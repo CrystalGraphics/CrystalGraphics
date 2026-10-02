@@ -569,6 +569,55 @@ com/crystalgraphics/api/material/CgRenderQueue
   field public,static,final TRANSPARENT_THRESHOLD I
   method public,static fromName (Ljava/lang/String;)I
   method public,static fromValue (I)I
+com/crystalgraphics/api/mesh/CgMesh
+  access public,final
+  extends java/lang/Object
+  method public autoBounds ()V
+  method public bounds (FFFFFF)V
+  method public bounds ([F)[F
+  method public changesSince (ILcom/crystalgraphics/api/mesh/CgMeshChanges;)Z
+  method public edit (Ljava/util/function/Consumer;)V
+  method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
+  method public indexCount ()I
+  method public indices (ILjava/nio/IntBuffer;)V
+  method public indices (I[I)V
+  method public isIndexed ()Z
+  method public isReleased ()Z
+  method public isShared ()Z
+  method public pad (F)V
+  method public readIndices (II[II)V
+  method public readVertices (IILjava/nio/ByteBuffer;)V
+  method public release ()V
+  method public revision ()I
+  method public submesh (I)Lcom/crystalgraphics/api/mesh/CgSubmesh;
+  method public submesh (III)V
+  method public submeshCount ()I
+  method public toString ()Ljava/lang/String;
+  method public topology ()Lcom/crystalgraphics/api/mesh/CgMeshTopology;
+  method public usage ()Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  method public vertexCount ()I
+  method public vertices (ILjava/nio/ByteBuffer;)V
+  method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMesh$Usage;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
+com/crystalgraphics/api/mesh/CgMesh$Usage
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final DYNAMIC Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  field public,static,final FRAME Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  field public,static,final GPU_ONLY Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  field public,static,final STATIC Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+  method public,static values ()[Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
+com/crystalgraphics/api/mesh/CgMeshChanges
+  access public,final
+  extends java/lang/Object
+  field public all Z
+  field public indexFrom I
+  field public indexTo I
+  field public revision I
+  field public vertexFrom I
+  field public vertexTo I
+  method public <init> ()V
 com/crystalgraphics/api/mesh/CgMeshData
   access public,final,record
   extends java/lang/Record
@@ -583,6 +632,30 @@ com/crystalgraphics/api/mesh/CgMeshData
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/mesh/CgMeshShapes
+  access public,final
+  extends java/lang/Object
+  method public,static capsule (IIFF)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static capsule (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IIFF)V
+  method public,static capsule (Lcom/crystalgraphics/api/vertex/CgVertexFormat;IIFF)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static cube ()Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static cube (Lcom/crystalgraphics/api/mesh/CgMeshWriter;)V
+  method public,static cube (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static cylinder (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static cylinder (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IFF)V
+  method public,static cylinder (Lcom/crystalgraphics/api/vertex/CgVertexFormat;I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static grid (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static grid (Lcom/crystalgraphics/api/vertex/CgVertexFormat;I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static icosphere (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static icosphere (Lcom/crystalgraphics/api/mesh/CgMeshWriter;I)V
+  method public,static icosphere (Lcom/crystalgraphics/api/vertex/CgVertexFormat;I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static plane (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IIFF)V
+  method public,static quad ()Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static quad (Lcom/crystalgraphics/api/mesh/CgMeshWriter;FFFF)V
+  method public,static quad (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static sphere (II)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static sphere (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IIF)V
+  method public,static sphere (Lcom/crystalgraphics/api/vertex/CgVertexFormat;II)Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/api/mesh/CgMeshTopology
   access public,final,enum
   extends java/lang/Enum
@@ -594,6 +667,44 @@ com/crystalgraphics/api/mesh/CgMeshTopology
   method public getGlMode ()I
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/CgMeshTopology;
   method public,static values ()[Lcom/crystalgraphics/api/mesh/CgMeshTopology;
+com/crystalgraphics/api/mesh/CgMeshWriter
+  access public,final
+  extends java/lang/Object
+  method public color (FFFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public color (I)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public end ()I
+  method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
+  method public index (I)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public line (II)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public next ()I
+  method public normal (FFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public position (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public position (FFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public quad (IIII)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public set (IF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public set (IFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public set (IFFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public set (IFFFF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public setInt (II)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public setInt (III)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public setInt (IIII)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public setInt (IIIII)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public submesh ()Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public topology (Lcom/crystalgraphics/api/mesh/CgMeshTopology;)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public triangle (III)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public uv (FF)Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+  method public vertex ()Lcom/crystalgraphics/api/mesh/CgMeshWriter;
+com/crystalgraphics/api/mesh/CgSubmesh
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IIII)V
+  method public firstIndex ()I
+  method public firstVertex ()I
+  method public indexCount ()I
+  method public vertexCount ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/shader/CgActiveUniform
   access public,final,record
   extends java/lang/Record
@@ -1346,6 +1457,7 @@ com/crystalgraphics/api/vertex/CgVertexFormat
   method public getKey ()Ljava/lang/String;
   method public getStride ()I
   method public hashCode ()I
+  method public indexOf (Ljava/lang/String;)I
   method public toString ()Ljava/lang/String;
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/api/vertex/CgVertexFormat$Builder;
   method public,static forShaderType (Ljava/lang/String;)Lcom/crystalgraphics/api/vertex/CgVertexFormat;

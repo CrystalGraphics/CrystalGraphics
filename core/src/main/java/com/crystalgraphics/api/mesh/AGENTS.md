@@ -1,29 +1,33 @@
-# api/mesh — CPU Mesh Data Types
+# api/mesh — meshes as data
 
-> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
+> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md) · plan: `plan/crystalgraphics/mesh-rewrite.md`
 
 ## What This Package Is
 
-Pure CPU-side mesh data types. No GL dependencies. Produced by mesh builders and loaders
-in `gl/mesh/`, consumed by `CgMesh.upload()` for GPU upload.
+Geometry on the CPU, with no GPU anywhere: a `CgMesh` holds vertices in one `CgVertexFormat`, indices, submeshes,
+bounds and a revision. A renderer keeps the GPU copy up to date when it draws (the mesh store, M3), so any thread
+may build or edit one.
+
+**Mid-rewrite.** `CgMeshData` and `gl/mesh/CgMesh` (the GL object) still carry every draw until M3-M5 move callers
+onto `api/mesh/CgMesh` and delete them.
 
 ## Type Map
 
 | Type | Role |
 |------|------|
-| `CgMeshTopology` | Enum mapping logical topology names to GL draw mode constants (`GL_TRIANGLES`, `GL_TRIANGLE_STRIP`, `GL_LINES`, `GL_LINE_STRIP`, `GL_POINTS`). Exposes `getGlMode()` for the raw GL int. |
-| `CgMeshData` | Immutable CPU-side mesh holder: `CgVertexFormat`, `CgMeshTopology`, flipped `ByteBuffer vertexBuffer`, optional flipped `ByteBuffer indexBuffer`, and explicit `indexCount`. `getVertexCount()` derives count from `vertexBuffer.remaining() / format.getStride()`. |
+| `CgMesh` | The mesh: `build(format[, usage], body)`, `edit(body)` (replaces the contents), `vertices(first, bytes)` / `indices(first, ints)` (overwrite part), `submesh(i, ...)`, `bounds(...)` / `pad(r)`, `release()`. Readers take `changesSince(revision, changes)` and `readVertices` / `readIndices` |
+| `CgMesh.Usage` | `STATIC`, `DYNAMIC`, `FRAME` (the frame ring), `GPU_ONLY` (CPU copy dropped after upload) |
+| `CgMeshWriter` | What `build` and `edit` hand their body: a vertex's attributes in any order, `end()` naming any missing; semantic setters for one the format lacks do nothing; `set`/`setInt` by attribute index; `triangle`/`quad`/`line`/`index`; `submesh()` |
+| `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |
+| `CgMeshChanges` | A reader's reused holder: the revision now, `all`, and the vertex and index ranges touched since the revision it last read |
+| `CgMeshShapes` | Shapes two ways: shared (one mesh per format and size, refusing edits) and writer forms that compose with anything else in a mesh |
+| `CgMeshTopology` | Triangles, strips, lines, points. Still carries GL modes until M5 |
+| `CgMeshData` | The old CPU holder `gl/mesh/CgMesh.upload` takes. Goes in M5 |
 
-## Design Rules
+## Rules
 
-- **No GL calls** in any type in this package.
-- **No LWJGL imports** in `CgMeshData` (pure Java).
-- `CgMeshTopology` is the only type that imports from `org.lwjgl.opengl` — it is an enum whose sole purpose is to map topology names to GL constants.
-- `indexCount` is stored explicitly in `CgMeshData` because the element byte width (u16 vs u32) is not determined at this stage. Deriving the count from `indexBuffer.remaining()` would require knowing the width.
-
-## Relationship to Other Packages
-
-| Package | Relationship |
-|---------|-------------|
-| `gl/mesh/` | `CgMeshBuilder`, `CgObjLoader`, `CgGltfLoader` produce `CgMeshData`; `CgMesh.upload(CgMeshData)` consumes it |
-| `api/vertex/` | `CgMeshData` holds a `CgVertexFormat` reference |
+- **No GL, no device** in any type here except `CgMeshTopology`'s GL constant, which M5 moves to the backends.
+- **Hot paths do not allocate**: a mesh reuses its writer and swaps arrays with it on every `edit`; a reader reuses
+  its `CgMeshChanges`.
+- **A shape writes position, UV, normal and white colour**: one shape serves every format made of those.
+- `CgMeshShapesTest` holds every shape byte-identical to `gl/mesh/CgMeshBuilder` until that class is deleted.
