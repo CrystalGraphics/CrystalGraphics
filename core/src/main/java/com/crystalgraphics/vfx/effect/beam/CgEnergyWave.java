@@ -17,8 +17,8 @@ import java.util.List;
 
 /**
  * An energy wave: charged at a muzzle, then a beam that flows outward, bends where its source turns, homes on a target
- * and stops where it hits. {@link #kamehameha()} is its default look; another palette and other layers make a Final
- * Flash or a Galick Gun.
+ * and stops where it hits. {@link #kamehameha()} is its default look; {@link #finalFlash()} and {@link #galickGun()}
+ * are its layers with another palette, which is all a new look needs.
  *
  * <pre>{@code
  * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));  // the muzzle; charging starts
@@ -218,6 +218,25 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .build();
 
+    private static final CgVfxLook FINAL_FLASH = KAMEHAMEHA.toBuilder()
+            .set(CORE, 1f, 1f, 0.9f, 1f)
+            .set(CORE_RIM, 1f, 0.92f, 0.55f, 1f)
+            .set(SHELL, 1.5f, 1.0f, 0.12f, 1f)
+            .set(SHELL_HOT, 1.6f, 1.35f, 0.55f, 1f)
+            .set(SPIRAL, 1.6f, 1.15f, 0.3f, 1f)
+            .set(GLOW, 1.4f, 0.85f, 0.12f, 0.6f)
+            .set(RADIUS, 0.7f)
+            .set(SPEED, 50f)
+            .build();
+    private static final CgVfxLook GALICK_GUN = KAMEHAMEHA.toBuilder()
+            .set(CORE, 1f, 0.95f, 1f, 1f)
+            .set(CORE_RIM, 0.95f, 0.72f, 1f, 1f)
+            .set(SHELL, 0.85f, 0.2f, 1.6f, 1f)
+            .set(SHELL_HOT, 1.3f, 0.75f, 1.6f, 1f)
+            .set(SPIRAL, 1.2f, 0.45f, 1.6f, 1f)
+            .set(GLOW, 0.75f, 0.18f, 1.4f, 0.6f)
+            .build();
+
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
 
@@ -245,6 +264,16 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Blue-white, Sparking! Zero's. */
     public static CgVfxLook kamehameha() {
         return KAMEHAMEHA;
+    }
+
+    /** Gold and wider: the Kamehameha's layers with another palette, which is all a new look needs. */
+    public static CgVfxLook finalFlash() {
+        return FINAL_FLASH;
+    }
+
+    /** Violet: the Kamehameha's layers with another palette. */
+    public static CgVfxLook galickGun() {
+        return GALICK_GUN;
     }
 
     private static CgVfxLayer orb(String shader, String slot, float radius, float parameter, CgVfxParam a,

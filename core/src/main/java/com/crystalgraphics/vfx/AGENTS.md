@@ -23,7 +23,7 @@ vfx.submit(CgWorldRenderer.get());
 | `vfx.path` | Centrelines: `CgVfxPath` (spline, arc-length rings, rotation-minimising frames), `CgVfxPathTexture` (paths on the GPU) |
 | `vfx.sim` | Simulation parts: `CgVfxStream` (the hose model, homing by proportional navigation) |
 | `vfx.render` | Reusable draw primitives: `CgVfxTube` (a path as chunked tube draws), `CgVfxRibbons` (stateless GPU particles: ribbons a shader places from their index) |
-| `vfx.effect.<family>` | One package per family of effects: `beam` (`CgEnergyWave`) |
+| `vfx.effect.<family>` | One package per family of effects: `beam` (`CgEnergyWave`, with the `kamehameha()`, `finalFlash()` and `galickGun()` looks: one set of layers, three palettes) |
 
 | Shaders | Hold |
 |---|---|
@@ -37,8 +37,9 @@ An effect announces the moments of its life (`CgEnergyWave.MOMENT_*`), each fram
 photographed on the frame it happens:
 
 ```bash
-./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.harness.vfx.moments=true -Dcrystalgraphics.harness.fixedDelta=0.0166667
-# -> gl-debug-harness/harness-output/vfx-spheres/vfx-spheres-NN-<moment>.png, then it exits
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.harness.vfx.moments=kamehameha -Dcrystalgraphics.harness.fixedDelta=0.0166667
+# -> gl-debug-harness/harness-output/vfx-spheres/vfx-spheres-NN-kamehameha-<moment>.png, then it exits
+# moments=finalFlash or galickGun for that lane, moments=true for all three
 ```
 
 **A new effect declares its moments as constants and calls `moment(...)` as it crosses each**, framing the part that
