@@ -340,7 +340,7 @@ void fragment(in v2f i, out vec4 fragColor) {
 // Java usage for a non-instanced draw:
 objectBuffer.writeSingle(modelMatrix);          // writes slot 0
 material.bind(frame, frameUniformBuffer, objectBuffer, 1);
-mesh.drawDirect();
+CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, vertexCount);   // geometry the caller bound
 ```
 
 ### 8.4 Instanced Multi-Object Draw (same material, same shader file)
@@ -353,7 +353,7 @@ for (Matrix4f m : modelMatrices) {
 }
 objectBuffer.endWrite();
 material.bind(frame, frameUniformBuffer, objectBuffer, count);
-mesh.drawInstanced(count);
+CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, count);
 ```
 
 ---

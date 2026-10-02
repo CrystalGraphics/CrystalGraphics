@@ -36,8 +36,8 @@ Main responsibilities:
 The class is intentionally organized in pipeline order. Read it top-to-bottom.
 
 **Singleton, like every other GPU-resource registry.** `CgFontRegistry.get()` returns
-the shared default-config instance — matching `CgTextureManager`, `CgMaterialRegistry`,
-`CgMeshRegistry`, and every other GPU-resource registry in this codebase. The no-arg
+the shared default-config instance — matching `CgTextureManager`, `CgMaterialRegistry`
+and every other GPU-resource registry in this codebase. The no-arg
 constructor is private; only `get()` and the two public `(atlasSize[, config])`
 constructors remain. `CgGraphicsLifecycle.destroyContext()` calls
 `CgFontRegistry.get().releaseAll()` to tear it down, exactly like

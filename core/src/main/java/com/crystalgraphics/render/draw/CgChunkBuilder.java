@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshSource;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -102,8 +101,7 @@ public final class CgChunkBuilder {
     }
 
     /** As {@link #draw(CgPipeline, int)}, for an {@link CgInstanceKind#OBJECT} draw of {@code mesh}. */
-    public CgChunkBuilder draw(CgPipeline pipeline, int bindingId, @Nullable CgMeshSource source) {
-        CgMesh mesh = source == null ? null : source.mesh();
+    public CgChunkBuilder draw(CgPipeline pipeline, int bindingId, @Nullable CgMesh mesh) {
         if (!open) throw new IllegalStateException("draw() outside a chunk: begin() first");
         if ((pipeline.kind() == CgInstanceKind.OBJECT) != (mesh != null)) {
             throw new IllegalArgumentException(pipeline.kind() == CgInstanceKind.OBJECT

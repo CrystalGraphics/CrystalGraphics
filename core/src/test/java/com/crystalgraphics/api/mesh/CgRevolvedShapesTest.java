@@ -1,7 +1,5 @@
-package com.crystalgraphics.gl.mesh;
+package com.crystalgraphics.api.mesh;
 
-import com.crystalgraphics.api.mesh.CgMeshData;
-import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.junit.Test;
 
@@ -20,10 +18,9 @@ import static org.junit.Assert.*;
  * declared extent</b> (which is what the preview camera is framed against), and <b>indices in range</b>
  * (an out-of-range index is undefined behaviour in the driver, not an exception here).</p>
  *
- * <p>No GL anywhere — {@link CgMeshBuilder} is arithmetic over a {@link ByteBuffer}, which is exactly why
- * it can be tested at all.</p>
+ * <p>No GL anywhere: {@link CgMeshShapes} writes data, which is exactly why it can be tested at all.</p>
  */
-public class CgRevolvedMeshTest {
+public class CgRevolvedShapesTest {
 
     /** Position + UV + colour + normal, so the normals are actually written and can be read back. */
     private static final CgVertexFormat FORMAT = CgVertexFormat.SPATIAL;
@@ -35,31 +32,30 @@ public class CgRevolvedMeshTest {
 
     @Test
     public void aCylinderIsATriangleMeshWithMatchingCounts() {
-        CgMeshData data = CgMeshBuilder.cylinder(FORMAT, SECTORS, 0.5f, 2f);
+        CgMesh data = cylinder(SECTORS, 0.5f, 2f);
         assertEquals(CgMeshTopology.TRIANGLES, data.topology());
         // Six profile rings -> five bands.
-        assertEquals(6 * (SECTORS + 1), data.getVertexCount());
+        assertEquals(6 * (SECTORS + 1), data.vertexCount());
         assertEquals(5 * SECTORS * 6, data.indexCount());
-        assertEquals("the buffer must be flipped and ready to upload", 0, data.vertexBuffer().position());
     }
 
     @Test
     public void aCapsuleHasTwoCapsWorthOfRings() {
         int capRings = 6;
-        CgMeshData data = CgMeshBuilder.capsule(FORMAT, SECTORS, capRings, 0.5f, 1f);
+        CgMesh data = capsule(SECTORS, capRings, 0.5f, 1f);
         // Each hemisphere emits capRings+1 rings, and BOTH emit an equator — that duplicate pair is the
         // cylindrical wall. Welding them would produce a sphere with no body.
         int rings = 2 * (capRings + 1);
-        assertEquals(rings * (SECTORS + 1), data.getVertexCount());
+        assertEquals(rings * (SECTORS + 1), data.vertexCount());
         assertEquals((rings - 1) * SECTORS * 6, data.indexCount());
     }
 
     @Test
     public void degenerateParametersAreRefusedRatherThanProducingRubbish() {
         assertThrows(IllegalArgumentException.class,
-                () -> CgMeshBuilder.cylinder(FORMAT, 2, 1f, 1f));
+                () -> cylinder(2, 1f, 1f));
         assertThrows(IllegalArgumentException.class,
-                () -> CgMeshBuilder.capsule(FORMAT, 16, 0, 1f, 1f));
+                () -> capsule(16, 0, 1f, 1f));
     }
 
     // ── The invariants that fail silently ───────────────────────────────────
@@ -73,14 +69,14 @@ public class CgRevolvedMeshTest {
      */
     @Test
     public void everyNormalIsUnitLength() {
-        assertNormalsAreUnit(CgMeshBuilder.cylinder(FORMAT, SECTORS, 0.5f, 2f));
-        assertNormalsAreUnit(CgMeshBuilder.capsule(FORMAT, SECTORS, 6, 0.5f, 1f));
+        assertNormalsAreUnit(cylinder(SECTORS, 0.5f, 2f));
+        assertNormalsAreUnit(capsule(SECTORS, 6, 0.5f, 1f));
     }
 
     /** A cylinder of height h and radius r stays inside that box — which is what frames the camera. */
     @Test
     public void aCylinderStaysInsideItsDeclaredExtent() {
-        CgMeshData data = CgMeshBuilder.cylinder(FORMAT, SECTORS, 0.6f, 1.6f);
+        CgMesh data = cylinder(SECTORS, 0.6f, 1.6f);
         forEachVertex(data, (x, y, z, nx, ny, nz) -> {
             assertTrue("y within half-height, was " + y, Math.abs(y) <= 0.8f + EPS);
             assertTrue("radius within 0.6, was " + Math.hypot(x, z),
@@ -98,7 +94,7 @@ public class CgRevolvedMeshTest {
     @Test
     public void aCapsuleIsCylinderPlusTwoCaps() {
         float radius = 0.5f, section = 1f;
-        CgMeshData data = CgMeshBuilder.capsule(FORMAT, SECTORS, 6, radius, section);
+        CgMesh data = capsule(SECTORS, 6, radius, section);
         float[] extremes = { Float.MAX_VALUE, -Float.MAX_VALUE };
         forEachVertex(data, (x, y, z, nx, ny, nz) -> {
             extremes[0] = Math.min(extremes[0], y);
@@ -112,8 +108,8 @@ public class CgRevolvedMeshTest {
     /** An index outside the vertex range is undefined behaviour in the driver, never an exception here. */
     @Test
     public void everyIndexIsInRange() {
-        assertIndicesInRange(CgMeshBuilder.cylinder(FORMAT, SECTORS, 0.5f, 2f));
-        assertIndicesInRange(CgMeshBuilder.capsule(FORMAT, SECTORS, 6, 0.5f, 1f));
+        assertIndicesInRange(cylinder(SECTORS, 0.5f, 2f));
+        assertIndicesInRange(capsule(SECTORS, 6, 0.5f, 1f));
     }
 
     // ── Reading the buffers back ────────────────────────────────────────────
@@ -122,14 +118,20 @@ public class CgRevolvedMeshTest {
         void visit(float x, float y, float z, float nx, float ny, float nz);
     }
 
+    private static CgMesh cylinder(int sectors, float radius, float height) {
+        return CgMesh.build(FORMAT, m -> CgMeshShapes.cylinder(m, sectors, radius, height));
+    }
+
+    private static CgMesh capsule(int sectors, int capRings, float radius, float height) {
+        return CgMesh.build(FORMAT, m -> CgMeshShapes.capsule(m, sectors, capRings, radius, height));
+    }
+
     /** SPATIAL is pos3 + uv2 + normal3, tightly packed floats. */
-    private static void forEachVertex(CgMeshData data, VertexVisitor visitor) {
-        // duplicate() does NOT carry byte order across — it comes back BIG_ENDIAN regardless of what
-        // the original was built with, so every absolute getFloat reads a byte-swapped value. Silent,
-        // and it produces numbers that look like plausible garbage rather than obvious garbage.
-        ByteBuffer vbo = data.vertexBuffer().duplicate().order(ByteOrder.nativeOrder());
+    private static void forEachVertex(CgMesh data, VertexVisitor visitor) {
         int stride = data.format().getStride();
-        for (int i = 0; i < data.getVertexCount(); i++) {
+        ByteBuffer vbo = ByteBuffer.allocate(data.vertexCount() * stride).order(ByteOrder.nativeOrder());
+        data.readVertices(0, data.vertexCount(), vbo);
+        for (int i = 0; i < data.vertexCount(); i++) {
             int base = i * stride;
             float x = vbo.getFloat(base);
             float y = vbo.getFloat(base + 4);
@@ -141,21 +143,18 @@ public class CgRevolvedMeshTest {
         }
     }
 
-    private static void assertNormalsAreUnit(CgMeshData data) {
+    private static void assertNormalsAreUnit(CgMesh data) {
         forEachVertex(data, (x, y, z, nx, ny, nz) -> {
             double length = Math.sqrt(nx * nx + ny * ny + nz * nz);
             assertEquals("normal length at (" + x + "," + y + "," + z + ")", 1.0, length, 1e-3);
         });
     }
 
-    private static void assertIndicesInRange(CgMeshData data) {
-        ByteBuffer ibo = data.indexBuffer().duplicate().order(ByteOrder.nativeOrder());
-        int vertexCount = data.getVertexCount();
-        // buildIbo picks 16- or 32-bit indices by vertex count; both meshes here are well under 65536.
-        boolean shortIndices = vertexCount <= 65536;
-        for (int i = 0; i < data.indexCount(); i++) {
-            int index = shortIndices ? (ibo.getShort(i * 2) & 0xFFFF) : ibo.getInt(i * 4);
-            assertTrue("index " + index + " outside 0.." + vertexCount, index >= 0 && index < vertexCount);
+    private static void assertIndicesInRange(CgMesh data) {
+        int[] indices = new int[data.indexCount()];
+        data.readIndices(0, indices.length, indices, 0);
+        for (int index : indices) {
+            assertTrue("index " + index + " outside 0.." + data.vertexCount(), index >= 0 && index < data.vertexCount());
         }
     }
 }

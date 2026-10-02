@@ -11,29 +11,10 @@
  *
  * <h3>Typical usage</h3>
  * <pre>{@code
- * // Load once (blocking compile):
- * CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");
- * material.setVec4("_Color", 1f, 0f, 0f, 1f);
+ * CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");   // once
+ * material.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
  *
- * // Per-frame non-instanced:
- * CgBufferWriter w = frameUbo.writer();
- * w.reset();
- * w.mat4(viewMatrix).mat4(projMatrix);
- * frameUbo.upload();
- *
- * objectBuffer.writeSingle(modelMatrix);
- * material.bind(frameUbo, objectBuffer, 1);
- * mesh.drawDirect();
- * material.unbind();
- *
- * // Per-frame instanced:
- * objectBuffer.beginWrite(N);
- * for (int i = 0; i < N; i++) objectBuffer.putMatrix(matrices[i]);
- * objectBuffer.endWrite();
- *
- * material.bind(frameUbo, objectBuffer, N);
- * mesh.drawInstanced(N);
- * material.unbind();
+ * CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();        // each frame it draws
  * }</pre>
  *
  * <h3>Caller-owned lifecycle</h3>

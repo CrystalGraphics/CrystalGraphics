@@ -2,10 +2,10 @@ package com.crystalgraphics.render.mesh;
 
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshChanges;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
-import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
@@ -126,6 +126,7 @@ public final class CgMeshStore {
             Placement next = allocate(mesh);
             if (p == null || changes.all || p.pending || p.slab == null) {
                 stage(next, 0, next.vertexCount, 0, next.indexCount);
+                mesh.dropCpuCopy();   // a GPU_ONLY mesh's bytes are in the staging now
             } else {
                 keep(p, next);
                 stage(next, Math.min(changes.vertexFrom, next.vertexCount), Math.min(changes.vertexTo, next.vertexCount),
@@ -166,8 +167,18 @@ public final class CgMeshStore {
         return p;
     }
 
+    private static int glMode(CgMeshTopology topology) {
+        return switch (topology) {
+            case TRIANGLES -> CgGL.GL_TRIANGLES;
+            case TRIANGLE_STRIP -> CgGL.GL_TRIANGLE_STRIP;
+            case LINES -> CgGL.GL_LINES;
+            case LINE_STRIP -> CgGL.GL_LINE_STRIP;
+            case POINTS -> CgGL.GL_POINTS;
+        };
+    }
+
     private void describe(Placement p, CgMesh mesh) {
-        p.mode = mesh.topology().getGlMode();
+        p.mode = glMode(mesh.topology());
         p.submeshCount = mesh.submeshCount();
         if (p.submeshes.length < p.submeshCount * 4) p.submeshes = new int[p.submeshCount * 4];
         for (int s = 0; s < p.submeshCount; s++) {
@@ -298,7 +309,7 @@ public final class CgMeshStore {
         }
         if (p == null || p.slab == null) return;
         p.lastUse = frame;
-        CgVertexArray.bind(p.slab.vao);
+        CgGL.glBindVertexArray(p.slab.vao);
         // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
         CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, p.slab.indexBuffer);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
@@ -371,6 +382,7 @@ public final class CgMeshStore {
     public void releaseAll() {
         for (CgMeshPool pool : pools.values()) pool.delete();
         pools.clear();
+        CgMeshPool.forgetVertexArrays();
         placements.clear();
         live.clear();
         retiring.clear();
