@@ -47,16 +47,17 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /**
      * The cloud: billows burst out mostly sideways, braked hard by the air, then rise a little on their heat as it cools
-     * and drift with the turbulence, swelling as they go.
+     * and drift with the turbulence, swelling as they go. Each erodes away within a few blocks of the camera, so a
+     * player standing in the blast still sees out (the billow shader's {@code _NearFrom} and {@code _NearTo}).
      */
     public static final CgVfxEmitter BILLOWS = CgVfxEmitter.builder("billows").renderer(CgVfxEmitter.Renderer.MESHES)
             .capacity(64).burst(0f, 64).shape(2.4f).launch(-0.1f, 0.75f, 1.5f).speed(8f, 14f)
-            .life(5f, 6.5f).size(1.4f, 2.5f, 1f).spin(0.05f, 0.25f).heat(1f)
+            .life(5f, 6.5f).size(1.1f, 2f, 1f).spin(0.05f, 0.25f).heat(1f)
             .module(new CgVfxModule.Drag(0.3f, 0.15f))
             .module(new CgVfxModule.Buoyancy(1.2f, 2.5f))
             .module(new CgVfxModule.Turbulence(1f, 0.06f, 0.15f))
             .module(new CgVfxModule.Wind(0.2f))
-            .size(CgKeyframes.start(0f, 1f).to(1f, 2.1f, CgEasings.OUT_CUBIC).build())
+            .size(CgKeyframes.start(0f, 1f).to(1f, 1.8f, CgEasings.OUT_CUBIC).build())
             .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(0.5f, 0.92f, CgEasings.LINEAR)
                     .to(1f, 0f, CgEasings.OUT_QUAD).build())
             .build();
