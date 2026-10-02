@@ -9,7 +9,6 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -51,6 +50,8 @@ public final class CgExecutor {
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
+    /** What every QUAD and CURVE instance expands. */
+    private static final CgMesh UNIT_QUAD = CgMesh.quads(1);
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
@@ -189,7 +190,7 @@ public final class CgExecutor {
                 if (packed.mesh[b] != null) store.place(packed.mesh[b]);
             }
         }
-        if (unitQuad) store.place(CgInstanceGeometry.unitQuad());
+        if (unitQuad) store.place(UNIT_QUAD);
         store.upload();
     }
 
@@ -311,10 +312,11 @@ public final class CgExecutor {
                 boundBinding = packed.binding[b];
                 frame.bindings.bind(boundBinding);
             }
-            CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgInstanceGeometry.unitQuad();
-            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b]);
+            CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
+            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
+                    packed.rangeCount[b]);
         }
-        CgVertexArray.bind(0);
+        CgGL.glBindVertexArray(0);
     }
 
     /** {@link #scissorRect} cut by a pass's damage. */

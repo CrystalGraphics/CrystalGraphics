@@ -23,7 +23,7 @@ import static org.junit.Assert.*;
 public class CgFrameBuilderTest {
 
     private static final String SOURCE = """
-            #type pos2_uv2_col4ub
+            #type none
             Properties {
                 _Alpha ("Alpha", float) = 1
             }

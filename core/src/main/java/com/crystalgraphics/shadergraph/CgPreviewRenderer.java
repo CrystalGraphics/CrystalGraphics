@@ -1,13 +1,12 @@
 package com.crystalgraphics.shadergraph;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.mesh.CgMeshData;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -187,8 +186,6 @@ public final class CgPreviewRenderer {
         return Map.copyOf(failureReasons);
     }
 
-    private CgMesh quadMesh;
-    private CgMesh sphereMesh;
     private boolean deleted;
 
     /** The preview camera: its own pass block, reused every draw. */
@@ -562,23 +559,14 @@ public final class CgPreviewRenderer {
         camera.resolution(previewSize, previewSize).time(CgFrameClock.seconds()).cameraFromView();
     }
 
-    /** Built lazily, uploaded by the render thread, and shared by every preview: two meshes for the whole editor. */
-    private CgMesh meshFor(CgPreviewGeometry geometry) {
-        if (geometry == CgPreviewGeometry.SPHERE) {
-            if (sphereMesh == null) {
-                sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
-            }
-            return sphereMesh;
-        }
-        if (quadMesh == null) {
-            CgMeshData data = CgMeshBuilder.quad2D(CgVertexFormat.SPATIAL, -1f, -1f, 1f, 1f);
-            quadMesh = CgMesh.upload(data);
-        }
-        return quadMesh;
+    /** Shared shapes: two meshes for every preview there is. */
+    private static CgMesh meshFor(CgPreviewGeometry geometry) {
+        return geometry == CgPreviewGeometry.SPHERE ? CgMeshShapes.sphere(CgVertexFormat.SPATIAL, 24, 32)
+                : CgMeshShapes.quad(CgVertexFormat.SPATIAL, 1f, 1f);
     }
 
     /**
-     * Gives this renderer's targets back to the pool and frees its own meshes.
+     * Gives this renderer's targets back to the pool.
      *
      * <h3>Releases; does not delete</h3>
      *
@@ -586,16 +574,10 @@ public final class CgPreviewRenderer {
      * reopening it a GPU allocate — driver-serialised work, on a gesture people repeat constantly. The
      * targets are owned by the <b>context</b> now ({@link CgPreviewPool}), so this hands back keys and
      * the framebuffers stay for whatever asks next.</p>
-     *
-     * <p>The meshes are genuinely this renderer's own and are still deleted. They are the small half.</p>
      */
     public void delete() {
         if (deleted) return;
         targets.releaseAllWithin(scope);
-        if (quadMesh != null) quadMesh.delete();
-        if (sphereMesh != null) sphereMesh.delete();
-        quadMesh = null;
-        sphereMesh = null;
         renderedSource.clear();
         renderedTarget.clear();
         renderedGeometry.clear();

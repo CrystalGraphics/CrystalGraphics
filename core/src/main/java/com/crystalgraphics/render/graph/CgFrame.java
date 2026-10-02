@@ -187,6 +187,8 @@ public final class CgFrame {
         /** Per batch, an index into its pass's scissor rects, or a {@code CgRasterPass} sentinel. */
         int[] scissor = new int[16];
         CgMesh[] mesh = new CgMesh[16];
+        /** Per batch, the range of its mesh: submesh (-1 for all, whole), first, count (-1 to the end). */
+        int[] submesh = new int[16], rangeFirst = new int[16], rangeCount = new int[16];
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
         /** Recorded draws its batches cover. */
@@ -207,6 +209,9 @@ public final class CgFrame {
                 instances = new int[n];
                 scissor = new int[n];
                 mesh = new CgMesh[n];
+                submesh = new int[n];
+                rangeFirst = new int[n];
+                rangeCount = new int[n];
             } else {
                 Arrays.fill(mesh, 0, count, null);
             }

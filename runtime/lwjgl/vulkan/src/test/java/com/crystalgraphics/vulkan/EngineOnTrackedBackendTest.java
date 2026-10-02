@@ -4,13 +4,12 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgShader;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
@@ -143,7 +142,7 @@ public class EngineOnTrackedBackendTest {
         constants.resolution(64, 64).cameraFromView();
 
         // An object draw: the frame block, the object buffer and a material, as a world pass draws them.
-        CgMesh cube = CgMesh.upload(CgMeshBuilder.unitCube(CgVertexFormat.SPATIAL));
+        CgMesh cube = CgMeshShapes.cube();
         CgMaterial demo = CgMaterial.load("crystalgraphics:shaders/demo_render.shader");
         try (CgImmediate draw = CgImmediate.begin(constants)) {
             draw.chunks().draw(demo.pipeline(CgInstanceKind.OBJECT), demo.captureBindings(draw.bindings()), cube);
@@ -176,12 +175,11 @@ public class EngineOnTrackedBackendTest {
         assertTrue(device.passes().size() > passes);
         quads.delete();
         strokes.delete();
-        cube.delete();
     }
 
     /** The smallest quad material: what every CrystalGUI quad shader is built on. */
     private static final String QUAD_SHADER = """
-            #type pos2_uv2_col4ub
+            #type none
             #pragma cg_use quad
             Queue = "Overlay"
             Properties {

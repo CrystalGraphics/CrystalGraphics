@@ -2,10 +2,8 @@ package com.crystalgraphics.api.mesh;
 
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgGltfLoader;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
-import com.crystalgraphics.gl.mesh.CgObjLoader;
 
 import java.nio.ByteBuffer;
 
@@ -13,9 +11,7 @@ import java.nio.ByteBuffer;
  * CPU-side mesh data: interleaved vertex bytes + optional index bytes.
  *
  * <p>This is a pure data holder with no GL dependencies. Produced by mesh
- * builders ({@link CgMeshBuilder})
- * and loaders ({@link CgObjLoader},
- * {@link CgGltfLoader}), and consumed
+ * builders ({@link CgMeshBuilder}), and consumed
  * by {@link CgMesh#upload(CgMeshData)}
  * for GPU upload.</p>
  *
