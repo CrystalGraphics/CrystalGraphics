@@ -1,11 +1,14 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -29,8 +32,11 @@ import java.nio.ByteOrder;
  * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the spheres were placed
  * }</pre>
  *
- * <p>The grid is placed on the first world frame, on a whole block some blocks along the camera's view and a little
- * above it, so terrain in front does not hide it, and stays there until the camera jumps far from it.</p>
+ * <p>The grid is placed on the first world frame, some blocks ahead of the camera, standing on the world's ground there
+ * ({@link CgWorldQueries#groundBelow}); until the ground answers (no world, or its chunk still loading) it floats a little
+ * above the eye, and settles onto the ground once it does. It stays there however far the player walks or flies, and
+ * moves only when the level changes or the camera jumps more than {@code TELEPORT} blocks in one frame: a teleport, or
+ * the server placing the player after the first frames saw the default spawn.</p>
  */
 public final class CgRenderDemo {
 
@@ -44,12 +50,16 @@ public final class CgRenderDemo {
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
 
     private static final int AHEAD = 12;      // blocks from the eye to the grid's centre, along the view
-    private static final int ABOVE = 2;       // and up the screen
-    private static final int REANCHOR_DISTANCE = 48;
+    private static final int ABOVE = 2;       // and up the screen, while it floats
+    private static final int TELEPORT = 32;   // blocks the camera may move in one frame before the grid follows
+    private static final int SEARCH = 24;     // blocks over the eye the ground search starts from, down twice as far
 
     private boolean installed;
-    private boolean anchored;
-    private long anchorX, anchorY, anchorZ;
+    private boolean anchored, grounded;
+    private long anchorX, anchorZ;
+    private double anchorY, eyeY;
+    private double lastX, lastY, lastZ;
+    private int levelEpoch;
     private int worldFrames;
 
     private final CgVfxShowcase showcase = new CgVfxShowcase();
@@ -82,29 +92,53 @@ public final class CgRenderDemo {
 
     private void frame(CgHostView view) {
         // Again after a jump: the first world frames can see the default spawn, before the server places the player.
-        if (!anchored || farFromGrid(view)) anchor(view);
+        int epoch = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch();
+        if (!anchored || jumped(view) || epoch != levelEpoch) {
+            levelEpoch = epoch;
+            anchor(view);
+        }
+        if (!grounded) ground();
+        lastX = view.x();
+        lastY = view.y();
+        lastZ = view.z();
         showcase.submit(CgWorldRenderer.get(), anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
         if (SKY) showcase.submitSky(CgWorldRenderer.get(), view.x(), view.y(), view.z());
     }
 
-    private boolean farFromGrid(CgHostView view) {
-        double dx = view.x() - anchorX, dy = view.y() - anchorY, dz = view.z() - anchorZ;
-        return dx * dx + dy * dy + dz * dz > REANCHOR_DISTANCE * REANCHOR_DISTANCE;
+    private boolean jumped(CgHostView view) {
+        double dx = view.x() - lastX, dy = view.y() - lastY, dz = view.z() - lastZ;
+        return dx * dx + dy * dy + dz * dz > TELEPORT * TELEPORT;
     }
 
-    /** Puts the grid ahead of the eye and up the screen, whatever the host folds into its view matrix. */
+    /**
+     * Puts the grid ahead of the eye, whatever the host folds into its view matrix: along the view and up the screen
+     * while it floats, and level with the eye where it will stand on the ground.
+     */
     private void anchor(CgHostView view) {
         Matrix4f toWorld = new Matrix4f(view.view()).invert();
         Vector3f eye = toWorld.transformPosition(new Vector3f());
         Vector3f forward = toWorld.transformDirection(new Vector3f(0f, 0f, -1f)).normalize();
         Vector3f up = toWorld.transformDirection(new Vector3f(0f, 1f, 0f)).normalize();
-        anchorX = (long) Math.floor(view.x() + eye.x + forward.x * AHEAD + up.x * ABOVE);
-        anchorY = (long) Math.floor(view.y() + eye.y + forward.y * AHEAD + up.y * ABOVE);
-        anchorZ = (long) Math.floor(view.z() + eye.z + forward.z * AHEAD + up.z * ABOVE);
+        double level = Math.hypot(forward.x, forward.z);
+        double aheadX = level > 1.0e-3 ? forward.x / level : forward.x, aheadZ = level > 1.0e-3 ? forward.z / level : forward.z;
+        anchorX = (long) Math.floor(view.x() + eye.x + aheadX * AHEAD);
+        anchorZ = (long) Math.floor(view.z() + eye.z + aheadZ * AHEAD);
+        eyeY = view.y() + eye.y;
+        anchorY = Math.floor(eyeY + forward.y * AHEAD + up.y * ABOVE);
         anchored = true;
+        grounded = false;
         worldFrames = 0;
         LOGGER.info("[CgRenderDemo] spheres around ({}, {}, {}), camera at ({}, {}, {})",
                 anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
+    }
+
+    /** Stands the grid on the ground under it, once the world answers. */
+    private void ground() {
+        double floor = CgWorldQueries.groundBelow(anchorX + 0.5, eyeY + SEARCH, anchorZ + 0.5, SEARCH * 3);
+        if (Double.isNaN(floor)) return;
+        anchorY = floor;
+        grounded = true;
+        LOGGER.info("[CgRenderDemo] spheres on the ground at y {}", floor);
     }
 
     /** The host's target as it stands after the transparent stage. Synchronous: a diagnostic, once. */
