@@ -871,6 +871,11 @@ CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per forma
 world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 
+// Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating
+CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {});
+trail.reserve(2 * maxPoints, 0);
+trail.edit(points, Trail::write);                        // each frame, before it draws
+
 // No vertex data: the shader (#type none) places each vertex from CG_VERTEX_ID
 CgMesh sparks = CgMesh.quads(1024);                      // corner CG_VERTEX_ID & 3, quad CG_VERTEX_ID >> 2
 CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
@@ -1492,6 +1497,10 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # (CgGL.enterGlFree -- a UI paint context recording) or
                                                      # off the context's thread, once, with its stack; every
                                                      # site and its count to stderr at exit
+
+# Meshes
+-Dcrystalgraphics.mesh.frameRing=false               # FRAME meshes take slab ranges like the others, not the
+                                                     # frame ring: one build, both paths, for comparing them
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in

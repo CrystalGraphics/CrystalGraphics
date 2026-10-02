@@ -2,6 +2,7 @@ package com.crystalgraphics.render.mesh;
 
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -72,6 +73,8 @@ final class CgMeshPool {
 
     final CgVertexFormat format;
     final List<Slab> slabs = new ArrayList<>();
+    /** This format's vertex array over the frame ring, and the ring storage its attributes point at. */
+    private int ringVao, ringBuffer, ringGeneration = -1;
 
     CgMeshPool(CgVertexFormat format) {
         this.format = format;
@@ -108,9 +111,34 @@ final class CgMeshPool {
         return true;
     }
 
+    /** This format's vertex array over {@code ring}, pointed again when the ring's storage was replaced. */
+    int ringVertexArray(CgStreamBuffer ring) {
+        if (ringVao == 0) ringVao = genVertexArray();
+        if (ringBuffer != ring.getGlBufferId() || ringGeneration != ring.getGeneration()) {
+            CgGL.glBindVertexArray(ringVao);
+            if (format.getStride() > 0) {
+                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, ring.getGlBufferId());
+                for (int i = 0; i < format.getAttributeCount(); i++) {
+                    pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
+                    CgGL.glEnableVertexAttribArray(i);
+                }
+                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+            }
+            ringBuffer = ring.getGlBufferId();
+            ringGeneration = ring.getGeneration();
+        }
+        return ringVao;
+    }
+
     void delete() {
         for (Slab slab : slabs) slab.delete();
         slabs.clear();
+        if (ringVao != 0) {
+            LIVE_VERTEX_ARRAYS.remove(ringVao);
+            CgGL.glDeleteVertexArrays(ringVao);
+            ringVao = 0;
+            ringGeneration = -1;
+        }
     }
 
     /** Forgets every vertex array name: the context that owned them is gone. */

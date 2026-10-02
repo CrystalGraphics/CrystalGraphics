@@ -146,6 +146,11 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
     }
 
     @Override
+    public int mappedOffset() {
+        return mappedAt;
+    }
+
+    @Override
     public int commit(int usedBytes) {
         if (!persistent) {
             CgGL.glFlushMappedBufferRange(target, 0, usedBytes);   // relative to the mapped range

@@ -37,6 +37,10 @@ import java.util.Map;
  *       last frame that drew it has retired, as is a released mesh's.</li>
  *   <li>The bytes are copied out of the mesh when it is placed, so an edit afterwards waits for the next frame.</li>
  *   <li>An upload is a copy from the frame ring into the slab: on Vulkan a transfer before the pass, never inside it.</li>
+ *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: its bytes go into the frame ring each frame it is placed, and
+ *       it draws from there with base-vertex calls. It holds nothing between frames, so it needs no release, and is
+ *       forgotten after a frame it is not drawn in. {@code -Dcrystalgraphics.mesh.frameRing=false} places it in a
+ *       slab as any other.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
@@ -50,6 +54,11 @@ public final class CgMeshStore {
     private static final int PLACED = CgTrace.name("mesh.placed");
     private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
     private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
+    private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
+
+    /** {@code -Dcrystalgraphics.mesh.frameRing=false}: FRAME meshes take slab ranges, as before the ring path. */
+    private static final boolean FRAME_RING = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.frameRing"));
+    private static final int RING_START = 256 << 10;
 
     private long drawing, drawn;
 
@@ -72,6 +81,11 @@ public final class CgMeshStore {
         long lastUse;
         /** Placed in this upload batch, its bytes not yet copied: nothing may be copied out of it yet. */
         boolean pending;
+        /** A FRAME mesh on the ring: its offsets are this frame's, and {@link #placedFrame} says which frame. */
+        boolean ring;
+        long placedFrame;
+        /** Where its vertices and indices sit in {@link #ringCpu} until the upload. */
+        int cpuVertexAt, cpuIndexAt;
         int[] submeshes = new int[4];
         int submeshCount;
     }
@@ -89,6 +103,18 @@ public final class CgMeshStore {
     private ByteBuffer cpu = ByteBuffer.allocate(64 << 10).order(ByteOrder.nativeOrder());
     private CgStreamBuffer staging;
 
+    /** Where FRAME meshes' bytes go, valid for the frame that wrote them. */
+    private CgStreamBuffer ring;
+    /** Ring placements, forgotten when a frame passes without them. */
+    private final ArrayList<Placement> ringLive = new ArrayList<>();
+    /**
+     * Ring placements staged this frame. Their bytes land in one region at the upload: the ring may replace its
+     * storage when it grows, which would lose a region written earlier in the frame.
+     */
+    private final ArrayList<Placement> ringBatch = new ArrayList<>();
+    private ByteBuffer ringCpu = ByteBuffer.allocate(64 << 10).order(ByteOrder.nativeOrder());
+    private int ringPad;
+
     private final CgMeshChanges changes = new CgMeshChanges();
     private final int[] nodes = new int[2], submesh = new int[4];
     private long frame = Long.MIN_VALUE;
@@ -102,6 +128,10 @@ public final class CgMeshStore {
     /** Makes {@code mesh} drawable this frame: placed, and its bytes staged if it is new or changed. */
     public void place(CgMesh mesh) {
         beginFrame();
+        if (FRAME_RING && mesh.usage() == CgMesh.Usage.FRAME) {
+            placeOnRing(mesh);
+            return;
+        }
         Placement p = placements.get(mesh);
         if (p != null && p.releases != mesh.releases()) {
             retire(p);
@@ -139,10 +169,55 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, PLACED, 1);
     }
 
+    /** Stages a FRAME mesh's bytes for this frame's ring region, once a frame however often it draws. */
+    private void placeOnRing(CgMesh mesh) {
+        Placement p = placements.get(mesh);
+        if (p != null && p.placedFrame == frame) return;
+        if (p == null) {
+            p = spare.isEmpty() ? new Placement() : spare.remove(spare.size() - 1);
+            p.mesh = mesh;
+            p.ring = true;
+            p.slab = null;
+            p.vertexNode = p.indexNode = -1;
+            placements.put(mesh, p);
+            ringLive.add(p);
+        }
+        p.placedFrame = frame;
+        p.lastUse = frame;
+        if (ring == null) ring = CgStreamBuffer.create(CgGL.GL_ARRAY_BUFFER, RING_START);
+        pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
+        int stride = mesh.format().getStride();
+        synchronized (mesh) {
+            p.releases = mesh.releases();
+            p.vertexCount = mesh.vertexCount();
+            p.indexCount = mesh.indexCount();
+            describe(p, mesh);
+            int vertexBytes = stride > 0 ? p.vertexCount * stride : 0, indexBytes = p.indexCount * 4;
+            ringCpu = room(ringCpu, vertexBytes + indexBytes);
+            p.cpuVertexAt = ringCpu.position();
+            if (vertexBytes > 0) mesh.readVertices(0, p.vertexCount, ringCpu);
+            p.cpuIndexAt = ringCpu.position();
+            if (indexBytes > 0) mesh.readIndices(0, p.indexCount, ringCpu);
+            ringPad += Math.max(stride - 1, 0) + 3;
+        }
+        ringBatch.add(p);
+        CgTrace.add(CgChannels.GL, PLACED, 1);
+    }
+
+    private static ByteBuffer room(ByteBuffer buffer, int bytes) {
+        if (buffer.remaining() >= bytes) return buffer;
+        ByteBuffer grown = ByteBuffer.allocate(Math.max(buffer.capacity() * 2, buffer.position() + bytes))
+                .order(ByteOrder.nativeOrder());
+        buffer.flip();
+        grown.put(buffer);
+        return grown;
+    }
+
     /** A placement for {@code mesh} as it is now, its ranges allocated. Under the mesh's lock. */
     private Placement allocate(CgMesh mesh) {
         Placement p = spare.isEmpty() ? new Placement() : spare.remove(spare.size() - 1);
         p.mesh = mesh;
+        p.ring = false;
         p.vertexCount = mesh.vertexCount();
         p.indexCount = mesh.indexCount();
         p.revision = changes.revision;
@@ -247,6 +322,7 @@ public final class CgMeshStore {
      * what changed meshes kept from their old ranges. Before the frame's first raster pass.
      */
     public void upload() {
+        if (!ringBatch.isEmpty()) uploadRing();
         if (copyCount == 0) {
             batch.clear();
             return;
@@ -283,6 +359,48 @@ public final class CgMeshStore {
         batch.clear();
     }
 
+    /**
+     * This frame's FRAME bytes into one ring region: each mesh's vertices at an offset that is a multiple of its
+     * stride, so a base-vertex draw reaches them, and its indices at a multiple of four.
+     */
+    private void uploadRing() {
+        int staged = ringCpu.position();
+        if (staged == 0) {
+            for (int i = 0; i < ringBatch.size(); i++) ringBatch.get(i).baseVertex = ringBatch.get(i).firstIndex = 0;
+            ringBatch.clear();
+            ringPad = 0;
+            return;
+        }
+        ByteBuffer out = ring.map(staged + ringPad);
+        int base = ring.mappedOffset(), at = 0;
+        byte[] bytes = ringCpu.array();
+        for (int i = 0; i < ringBatch.size(); i++) {
+            Placement p = ringBatch.get(i);
+            int stride = p.mesh.format().getStride();
+            int vertexBytes = p.cpuIndexAt - p.cpuVertexAt, indexBytes = p.indexCount * 4;
+            p.baseVertex = 0;
+            if (vertexBytes > 0) {
+                at = (base + at + stride - 1) / stride * stride - base;
+                out.position(at);
+                out.put(bytes, p.cpuVertexAt, vertexBytes);
+                p.baseVertex = (base + at) / stride;
+                at += vertexBytes;
+            }
+            if (indexBytes > 0) {
+                at = (base + at + 3) / 4 * 4 - base;
+                out.position(at);
+                out.put(bytes, p.cpuIndexAt, indexBytes);
+                p.firstIndex = (base + at) / 4;
+                at += indexBytes;
+            }
+        }
+        ring.commit(at);
+        CgTrace.add(CgChannels.GL, RING_BYTES, staged);
+        ringCpu.clear();
+        ringPad = 0;
+        ringBatch.clear();
+    }
+
     // ── Drawing ────────────────────────────────────────────────────────────────
 
     /**
@@ -300,18 +418,20 @@ public final class CgMeshStore {
      * every submesh whole. The base vertex, and so {@code CG_VERTEX_ID}, is the submesh's whatever the range.
      */
     public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
+        beginFrame();   // a frame executed again draws in a later frame than it was placed in
         Placement p = placements.get(mesh);
-        if (p == null || p.releases != mesh.releases()) {
+        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
             // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
             place(mesh);
             upload();
             p = placements.get(mesh);
         }
-        if (p == null || p.slab == null) return;
+        if (p == null || (p.slab == null && !p.ring)) return;
         p.lastUse = frame;
-        CgGL.glBindVertexArray(p.slab.vao);
+        boolean onRing = p.ring;
+        CgGL.glBindVertexArray(onRing ? pools.get(mesh.format()).ringVertexArray(ring) : p.slab.vao);
         // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
-        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, p.slab.indexBuffer);
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, onRing ? ring.getGlBufferId() : p.slab.indexBuffer);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
         for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
@@ -356,6 +476,14 @@ public final class CgMeshStore {
             Placement p = live.get(i);
             if (p.releases != p.mesh.releases()) retire(p);
         }
+        for (int i = ringLive.size() - 1; i >= 0; i--) {
+            Placement p = ringLive.get(i);
+            if (p.placedFrame >= now - 1) continue;
+            if (placements.get(p.mesh) == p) placements.remove(p.mesh);
+            ringLive.set(i, ringLive.get(ringLive.size() - 1));
+            ringLive.remove(ringLive.size() - 1);
+            free(p);
+        }
     }
 
     private void retire(Placement p) {
@@ -375,6 +503,7 @@ public final class CgMeshStore {
         }
         p.mesh = null;
         p.slab = null;
+        p.ring = false;
         spare.add(p);
     }
 
@@ -391,6 +520,12 @@ public final class CgMeshStore {
         cpu.clear();
         if (staging != null) staging.delete();
         staging = null;
+        if (ring != null) ring.delete();
+        ring = null;
+        ringLive.clear();
+        ringBatch.clear();
+        ringCpu.clear();
+        ringPad = 0;
         slabBytes = 0;
         frame = Long.MIN_VALUE;
     }
