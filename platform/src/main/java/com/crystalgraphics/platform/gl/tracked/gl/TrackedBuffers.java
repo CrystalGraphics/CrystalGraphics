@@ -123,6 +123,21 @@ public final class TrackedBuffers {
         if (b != null) b.storage.subData(offset, data);
     }
 
+    public void copy(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
+        GlBuffer from = bound(readTarget, "glCopyBufferSubData"), to = bound(writeTarget, "glCopyBufferSubData");
+        if (from == null || to == null) return;
+        if (readOffset < 0 || writeOffset < 0 || size < 0 || readOffset + size > from.storage.size()
+                || writeOffset + size > to.storage.size()) {
+            errors.invalidValue("glCopyBufferSubData out of range");
+            return;
+        }
+        if (from == to && Math.abs(readOffset - writeOffset) < size) {
+            errors.invalidValue("glCopyBufferSubData ranges overlap");
+            return;
+        }
+        to.storage.copyFrom(from.storage, readOffset, writeOffset, size);
+    }
+
     public void storage(int target, long size, int flags) {
         GlBuffer b = bound(target, "glBufferStorage");
         if (b != null) b.storage.storage(size, null, (flags & GL_MAP_PERSISTENT_BIT) != 0);

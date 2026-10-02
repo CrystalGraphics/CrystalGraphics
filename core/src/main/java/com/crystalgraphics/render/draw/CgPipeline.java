@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>The render state's unset domains are the pass's: an executor applies its pass's state, then this one's.</li>
  *   <li>A shader reloaded in place keeps its pipelines: {@link #program()} follows the shader's revision.</li>
  *   <li>Lives for the session. Interning is thread-safe; {@link #program()}, {@link #bind()},
- *       {@link #prepare()} and {@link #instanceBase} are render thread only.</li>
+ *       {@link #prepare()}, {@link #instanceBase} and {@link #vertexBase} are render thread only.</li>
  * </ul>
  */
 public final class CgPipeline {
@@ -58,7 +58,7 @@ public final class CgPipeline {
     @Nullable
     private CgShader program;
     private int programRevision = -1;
-    private int instanceBaseLocation = UNRESOLVED;
+    private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
 
     /** {@link #withState} answers, by state identity. */
     private CgPipeline[] derived = new CgPipeline[2];
@@ -176,6 +176,7 @@ public final class CgPipeline {
                 : shader.getOrCompile(pass.lightModeName(), Collections.emptySet());
         programRevision = revision;
         instanceBaseLocation = UNRESOLVED;
+        vertexBaseLocation = UNRESOLVED;
         return program;
     }
 
@@ -198,6 +199,15 @@ public final class CgPipeline {
     public void instanceBase(int base) {
         if (instanceBaseLocation == UNRESOLVED) instanceBaseLocation = program.getUniformLocation("cg_InstanceBase");
         if (instanceBaseLocation >= 0) CgGL.glUniform1i(instanceBaseLocation, base);
+    }
+
+    /**
+     * Where the drawn mesh's vertices start in the buffer it is drawn from: what {@code CG_VERTEX_ID} takes from
+     * {@code gl_VertexID}, so a shader sees the vertex's index in its own mesh. After {@link #bind()}.
+     */
+    public void vertexBase(int base) {
+        if (vertexBaseLocation == UNRESOLVED) vertexBaseLocation = program.getUniformLocation("cg_VertexBase");
+        if (vertexBaseLocation >= 0) CgGL.glUniform1i(vertexBaseLocation, base);
     }
 
     @Override

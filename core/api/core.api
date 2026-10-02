@@ -1290,6 +1290,7 @@ com/crystalgraphics/api/vertex/CgAttribType
   extends java/lang/Enum
   field public,static,final BYTE Lcom/crystalgraphics/api/vertex/CgAttribType;
   field public,static,final FLOAT Lcom/crystalgraphics/api/vertex/CgAttribType;
+  field public,static,final HALF_FLOAT Lcom/crystalgraphics/api/vertex/CgAttribType;
   field public,static,final INT Lcom/crystalgraphics/api/vertex/CgAttribType;
   field public,static,final SHORT Lcom/crystalgraphics/api/vertex/CgAttribType;
   field public,static,final UNSIGNED_BYTE Lcom/crystalgraphics/api/vertex/CgAttribType;
@@ -1297,6 +1298,7 @@ com/crystalgraphics/api/vertex/CgAttribType
   field public,static,final UNSIGNED_SHORT Lcom/crystalgraphics/api/vertex/CgAttribType;
   method public getByteSize ()I
   method public getGlConstant ()I
+  method public isInteger ()Z
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/vertex/CgAttribType;
   method public,static values ()[Lcom/crystalgraphics/api/vertex/CgAttribType;
 com/crystalgraphics/api/vertex/CgVertexAttribute
@@ -1312,6 +1314,7 @@ com/crystalgraphics/api/vertex/CgVertexAttribute
   method public getSemanticIndex ()I
   method public getType ()Lcom/crystalgraphics/api/vertex/CgAttribType;
   method public hashCode ()I
+  method public isInteger ()Z
   method public isNormalized ()Z
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/api/vertex/CgVertexConsumer
@@ -2502,6 +2505,7 @@ com/crystalgraphics/gl/vertex/CgVertexArray
   method public,static delete (I)V
   method public,static deleteRaw (I)V
   method public,static onContextDestroyed ()V
+  method public,static pointer (ILcom/crystalgraphics/api/vertex/CgVertexAttribute;IJ)V
 com/crystalgraphics/gpu/CgDeferral
   access public,final
   extends java/lang/Object
@@ -2682,6 +2686,7 @@ com/crystalgraphics/render/draw/CgPipeline
   method public shader ()Lcom/crystalgraphics/gl/material/CgMaterialShader;
   method public state ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public toString ()Ljava/lang/String;
+  method public vertexBase (I)V
   method public withState (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static byId (I)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static of (Lcom/crystalgraphics/gl/material/CgMaterialShader;Lcom/crystalgraphics/api/material/CgRenderPassVariant;Ljava/util/Set;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;

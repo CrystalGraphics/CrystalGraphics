@@ -131,6 +131,8 @@ public abstract class CgGLBackend {
     public abstract void glBufferData(int target, ShortBuffer data, int usage);
     public abstract void glBufferData(int target, long size, int usage);
     public abstract void glBufferSubData(int target, long offset, ByteBuffer data);
+    /** Between the buffers bound at two targets, in GL order with the draws around it (core GL 3.1). */
+    public abstract void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size);
     public abstract void glDeleteBuffers(int buffer);
     public abstract void glBindBufferBase(int target, int index, int buffer);
     public abstract void glBindBufferRange(int target, int index, int buffer, long offset, long size);
@@ -164,6 +166,8 @@ public abstract class CgGLBackend {
     public abstract void glDeleteVertexArrays(int array);
     public abstract void glEnableVertexAttribArray(int index);
     public abstract void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer);
+    /** An integer attribute: the shader reads {@code int}/{@code ivec}/{@code uvec}, never a float. */
+    public abstract void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer);
     public abstract void glVertexAttribDivisor(int index, int divisor);
 
     // -------------------------------------------------------------------------
@@ -218,6 +222,9 @@ public abstract class CgGLBackend {
     public abstract void glDrawElements(int mode, int count, int type, long indices);
     public abstract void glDrawArraysInstanced(int mode, int first, int count, int instanceCount);
     public abstract void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount);
+    /** Each index plus {@code baseVertex}, as is {@code gl_VertexID} (core GL 3.2). */
+    public abstract void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
+                                                           int instanceCount, int baseVertex);
 
     // -------------------------------------------------------------------------
     // GL state

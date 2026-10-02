@@ -11,6 +11,8 @@ import com.crystalgraphics.platform.gl.CgGL;
 public enum CgAttribType {
 
     FLOAT(CgGL.GL_FLOAT, 4),
+    /** 16-bit float, read as a float. */
+    HALF_FLOAT(CgGL.GL_HALF_FLOAT, 2),
     UNSIGNED_BYTE(CgGL.GL_UNSIGNED_BYTE, 1),
     BYTE(CgGL.GL_BYTE, 1),
     SHORT(CgGL.GL_SHORT, 2),
@@ -34,5 +36,10 @@ public enum CgAttribType {
     /** Returns the byte size of one component of this type. */
     public int getByteSize() {
         return byteSize;
+    }
+
+    /** An integer type: read as integers unless the attribute normalises it. */
+    public boolean isInteger() {
+        return this != FLOAT && this != HALF_FLOAT;
     }
 }

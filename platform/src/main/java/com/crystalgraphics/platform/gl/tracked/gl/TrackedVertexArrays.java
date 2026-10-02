@@ -21,7 +21,7 @@ public final class TrackedVertexArrays {
     static final class Attrib {
         boolean enabled;
         int buffer, size, type, stride, divisor;
-        boolean normalized;
+        boolean normalized, integer;
         long offset;
     }
 
@@ -78,18 +78,20 @@ public final class TrackedVertexArrays {
         current.changed();
     }
 
-    public void pointer(int index, int size, int type, boolean normalized, int stride, long offset) {
+    /** @param integer {@code glVertexAttribIPointer}: the shader reads integers */
+    public void pointer(int index, int size, int type, boolean normalized, boolean integer, int stride, long offset) {
         if (index >= ATTRIBS) { errors.invalidValue("glVertexAttribPointer " + index); return; }
         if (buffers.array == 0) {
             errors.invalidOperation("glVertexAttribPointer with no GL_ARRAY_BUFFER bound: client arrays are not core");
             return;
         }
-        format(size, type, normalized);
+        format(size, type, normalized, integer);
         Attrib a = current.attribs[index];
         a.buffer = buffers.array;
         a.size = size;
         a.type = type;
         a.normalized = normalized;
+        a.integer = integer;
         a.stride = stride;
         a.offset = offset;
         current.changed();
@@ -151,7 +153,7 @@ public final class TrackedVertexArrays {
                 buffersOf.add(a.buffer);
                 bases.add(a.offset);
             }
-            group.add(new CgPipelineDesc.VertexAttrib(index, format(a.size, a.type, a.normalized), (int) (a.offset - first.offset)));
+            group.add(new CgPipelineDesc.VertexAttrib(index, format(a.size, a.type, a.normalized, a.integer), (int) (a.offset - first.offset)));
         }
         if (group != null) close(layouts, group, first);
         v.layouts = Collections.unmodifiableList(layouts);
@@ -179,10 +181,11 @@ public final class TrackedVertexArrays {
 
     /**
      * GL's (size, type, normalized) as a vertex format. Integer data reaches a float attribute here, normalised
-     * or scaled; three components read as four, the fourth unused.
+     * or scaled, unless {@code integer}; three 8- or 16-bit components read as four, the fourth unused.
      */
-    static CgAttribFormat format(int size, int type, boolean normalized) {
+    static CgAttribFormat format(int size, int type, boolean normalized, boolean integer) {
         int n = size == 1 ? 1 : size == 2 ? 2 : 4;
+        if (integer) return integerFormat(size, n, type);
         switch (type) {
             case CgGL.GL_FLOAT:
                 return size == 1 ? CgAttribFormat.FLOAT32 : size == 2 ? CgAttribFormat.FLOAT32X2
@@ -211,6 +214,33 @@ public final class TrackedVertexArrays {
         }
         throw new UnsupportedOperationException("A vertex attribute of " + size + " x 0x" + Integer.toHexString(type)
                 + (normalized ? " normalized" : "") + " has no device format");
+    }
+
+    private static CgAttribFormat integerFormat(int size, int n, int type) {
+        switch (type) {
+            case CgGL.GL_UNSIGNED_BYTE:
+                if (n == 1) break;
+                return n == 2 ? CgAttribFormat.UINT8X2 : CgAttribFormat.UINT8X4;
+            case CgGL.GL_BYTE:
+                if (n == 1) break;
+                return n == 2 ? CgAttribFormat.SINT8X2 : CgAttribFormat.SINT8X4;
+            case CgGL.GL_UNSIGNED_SHORT:
+                if (n == 1) break;
+                return n == 2 ? CgAttribFormat.UINT16X2 : CgAttribFormat.UINT16X4;
+            case CgGL.GL_SHORT:
+                if (n == 1) break;
+                return n == 2 ? CgAttribFormat.SINT16X2 : CgAttribFormat.SINT16X4;
+            case CgGL.GL_UNSIGNED_INT:
+                return size == 1 ? CgAttribFormat.UINT32 : size == 2 ? CgAttribFormat.UINT32X2
+                        : size == 3 ? CgAttribFormat.UINT32X3 : CgAttribFormat.UINT32X4;
+            case CgGL.GL_INT:
+                return size == 1 ? CgAttribFormat.SINT32 : size == 2 ? CgAttribFormat.SINT32X2
+                        : size == 3 ? CgAttribFormat.SINT32X3 : CgAttribFormat.SINT32X4;
+            default:
+                break;
+        }
+        throw new UnsupportedOperationException("An integer vertex attribute of " + size + " x 0x"
+                + Integer.toHexString(type) + " has no device format");
     }
 
     public int query(int pname, double[] out) {

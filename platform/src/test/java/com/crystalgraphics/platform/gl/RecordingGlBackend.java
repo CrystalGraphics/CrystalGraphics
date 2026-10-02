@@ -98,6 +98,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glBufferData(int target, ShortBuffer data, int usage) { record("glBufferData"); }
     @Override public void glBufferData(int target, long size, int usage) { record("glBufferData"); }
     @Override public void glBufferSubData(int target, long offset, ByteBuffer data) { record("glBufferSubData"); }
+    @Override public void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) { record("glCopyBufferSubData"); }
     @Override public void glDeleteBuffers(int buffer) { record("glDeleteBuffers"); }
     @Override public void glBindBufferBase(int target, int index, int buffer) { record("glBindBufferBase"); }
     @Override public void glBindBufferRange(int target, int index, int buffer, long offset, long size) { record("glBindBufferRange"); }
@@ -113,6 +114,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDeleteVertexArrays(int array) { record("glDeleteVertexArrays"); }
     @Override public void glEnableVertexAttribArray(int index) { record("glEnableVertexAttribArray"); }
     @Override public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) { record("glVertexAttribPointer"); }
+    @Override public void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) { record("glVertexAttribIPointer"); }
     @Override public void glVertexAttribDivisor(int index, int divisor) { record("glVertexAttribDivisor"); }
     @Override public int glGenTextures() { record("glGenTextures"); return 0; }
     @Override public void glBindTexture(int target, int texture) { record("glBindTexture"); }
@@ -134,6 +136,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDrawElements(int mode, int count, int type, long indices) { record("glDrawElements"); }
     @Override public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) { record("glDrawArraysInstanced"); }
     @Override public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) { record("glDrawElementsInstanced"); }
+    @Override public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount, int baseVertex) { record("glDrawElementsInstancedBaseVertex"); }
     @Override public void glEnable(int cap) { record("glEnable"); }
     @Override public void glDisable(int cap) { record("glDisable"); }
     @Override public void glBlendFunc(int sfactor, int dfactor) { record("glBlendFunc"); }
