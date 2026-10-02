@@ -8,6 +8,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
+import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 
 import java.util.ArrayList;
@@ -50,7 +51,7 @@ public final class CgVfxSystem {
     private final IdentityHashMap<CgVfxLayer, CgMaterial> materials = new IdentityHashMap<>();
     private final List<CgMaterial> unbound = new ArrayList<>();
     private CgTexture2D boundTexture;
-    private CgMesh tubeMesh, sphereMesh;
+    private CgMesh tubeMesh, sphereMesh, ribbonMesh;
     private double clock = Double.NaN;
     private float owed;
 
@@ -88,6 +89,7 @@ public final class CgVfxSystem {
         if (tubeMesh == null) {
             tubeMesh = CgMesh.upload(CgVfxTube.meshData());
             sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 48, 96, 1f));
+            ribbonMesh = CgMesh.upload(CgVfxRibbons.meshData());
         }
         frame.begin(world, Math.min(owed / TICK, 1f));
         paths.begin();
@@ -106,8 +108,10 @@ public final class CgVfxSystem {
         paths.delete();
         if (tubeMesh != null) tubeMesh.delete();
         if (sphereMesh != null) sphereMesh.delete();
+        if (ribbonMesh != null) ribbonMesh.delete();
         tubeMesh = null;
         sphereMesh = null;
+        ribbonMesh = null;
         boundTexture = null;
         unbound.addAll(materials.values());
     }
@@ -126,6 +130,10 @@ public final class CgVfxSystem {
 
     CgMesh sphereMesh() {
         return sphereMesh;
+    }
+
+    CgMesh ribbonMesh() {
+        return ribbonMesh;
     }
 
     CgMaterial material(CgVfxLayer layer) {
