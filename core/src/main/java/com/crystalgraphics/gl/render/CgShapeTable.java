@@ -61,6 +61,10 @@ public final class CgShapeTable {
 
     static final int FLOATS = 52;
     private static final int RESERVED = 2;
+    /** The floats one entry takes in {@link #read}. */
+    public static final int ENTRY_FLOATS = FLOATS;
+    /** The first index a built shape gets: below it are the entries every table holds, never copied. */
+    public static final int FIRST_SHAPE = RESERVED;
 
     private static CgShaderBuffer buffer;
     private static CgShapeTable uploaded;
@@ -78,6 +82,19 @@ public final class CgShapeTable {
     public CgShapeTable() {
         reset();
     }
+
+    /** Copies shape {@code index}'s {@link #ENTRY_FLOATS} into {@code out} at {@code at}. @see #addCopy */
+    public void read(int index, float[] out, int at) {
+        System.arraycopy(entries, index * FLOATS, out, at, FLOATS);
+    }
+
+    /** Adds a copy of a shape {@link #read} out of this or another table; an equal one answers the same index. */
+    public int addCopy(float[] src, int at) {
+        System.arraycopy(src, at, copyScratch, 0, FLOATS);
+        return intern(copyScratch);
+    }
+
+    private final float[] copyScratch = new float[FLOATS];
 
     /** The table's buffer, for {@code #pragma cg_use shape}. */
     public static CgShaderBuffer buffer() {

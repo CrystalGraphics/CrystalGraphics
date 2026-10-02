@@ -176,6 +176,14 @@ public final class CgRecording {
         write(pass, requested);
     }
 
+    /**
+     * How many passes and requests it holds: two readings tell whether a stretch of drawing recorded anything but
+     * chunks into the pass that was open.
+     */
+    public int operations() {
+        return passes.size();
+    }
+
     /** Freezes it: every raster pass must have ended. Answers itself, for {@code graph.add(rec.seal())}. */
     public CgRecording seal() {
         if (sealed) return this;

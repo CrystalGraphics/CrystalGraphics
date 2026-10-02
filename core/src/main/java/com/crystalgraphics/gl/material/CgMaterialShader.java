@@ -265,6 +265,16 @@ public final class CgMaterialShader {
     // ── Compile pipeline ──────────────────────────────────────────────────────
 
     /**
+     * Whether the shader declares {@code #pragma cg_use token}, so reads the fields that engine buffer gives a record
+     * meaning: a quad's {@code custom2} is a shape index only to a shader that uses {@code shape}. False for a shader
+     * that cannot be parsed.
+     */
+    public boolean usesEngineBuffer(String token) {
+        CgParsedShader parsed = ensureParsed();
+        return parsed != null && parsed.engineBuffers().contains(token);
+    }
+
+    /**
      * The parse, made now if no compile has made one yet: what a recorder needs to name a pipeline and capture a
      * material's bindings, without the driver. CPU only, and safe on any thread.
      *

@@ -46,6 +46,15 @@ recorded chunks still name its snapshots. A recorder's passes are `LOOKBACK`: a 
 (the run ends it where the records' node changes) and each draw carries its records' bounds there, so a draw moves
 back past the draws it does not touch, within its node's domain.
 
+**Replay** (G6.3): `CgReplay` keeps the chunks a recorder took between two `chunksTaken` readings -- found on its
+per-frame tape, `taken(n)` -- with the clip entries and shapes the stretch added and its snapshots copied into a table
+that outlives the recordings, and adds them to a later recording renumbered: clip entries, shapes and nodes, and
+nothing allocated when nothing renumbers. A stretch is kept only if it recorded nothing but chunks and changed no
+pass or scissor (`stateChanges`, `CgRecording.operations`), drew in one node, named no clip from outside its chain
+and binds no texture made for one frame. A snapshot holds a texture view as what it pointed at, so whatever moves a
+kept record's target -- an atlas grown or evicted -- must void the stretch: the caller's epoch. `differs` compares two
+stretches but for what replay renumbers, which is the check mode.
+
 ## Rules
 
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'

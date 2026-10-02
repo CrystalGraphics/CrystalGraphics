@@ -79,6 +79,8 @@ public final class CgClipTable {
             .build();
 
     private static final int FLOATS = 36;
+    /** The floats one entry takes in {@link #read}, and where in them its parent and node are. */
+    public static final int ENTRY_FLOATS = FLOATS, PARENT_FLOAT = 3, NODE_FLOAT = 32;
 
     /** A UI shape's reconstruction width for an edge off the pixel grid (CrystalGUI's gui_box); 1 on it. */
     private static final float ROTATED_RAMP = 1.5f;
@@ -233,6 +235,44 @@ public final class CgClipTable {
 
     private boolean isPixelRect(int entry) {
         return entries[entry * FLOATS + 7] == 0f;
+    }
+
+    /** How many entries the table holds, entry 0 included: the index the next one gets. */
+    public int count() {
+        return count;
+    }
+
+    /** The spatial node entry {@code entry} is in, 0 for the target's own space. */
+    public int node(int entry) {
+        return (int) entries[entry * FLOATS + 32];
+    }
+
+    /** Copies entry {@code entry}'s {@link #ENTRY_FLOATS} into {@code out} at {@code at}. @see #addCopy */
+    public void read(int entry, float[] out, int at) {
+        System.arraycopy(entries, entry * FLOATS, out, at, FLOATS);
+    }
+
+    /**
+     * Adds a copy of an entry {@link #read} out of this or another table, inside {@code parent} and in spatial node
+     * {@code node}: how a replayed stretch of recording brings back the clips it made. Answers -1 past
+     * {@link #MAX_DEPTH}.
+     */
+    public int addCopy(float[] src, int at, int parent, int node) {
+        int depth = (parent > 0 ? depths[parent] : 0) + 1;
+        if (depth > MAX_DEPTH) return -1;
+        if (count == parents.length) {
+            entries = Arrays.copyOf(entries, entries.length * 2);
+            parents = Arrays.copyOf(parents, parents.length * 2);
+            depths = Arrays.copyOf(depths, depths.length * 2);
+        }
+        int o = count * FLOATS;
+        System.arraycopy(src, at, entries, o, FLOATS);
+        entries[o + PARENT_FLOAT] = parent;
+        entries[o + NODE_FLOAT] = node;
+        parents[count] = parent;
+        depths[count] = depth;
+        version++;
+        return count++;
     }
 
     /** The entry {@code entry} was added inside, 0 for none. */

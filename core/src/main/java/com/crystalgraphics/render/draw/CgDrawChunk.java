@@ -139,6 +139,18 @@ public final class CgDrawChunk {
         return sortKeys[draw];
     }
 
+    /**
+     * This chunk positioned in {@code spatial}, naming its snapshots in {@code bindings} by {@code bindingIds}, over
+     * {@code instances}, each null for this chunk's own: how a replay adds kept drawing to a later recording once it
+     * has renumbered what the records name. Arrays given become the copy's own.
+     */
+    public CgDrawChunk with(int spatial, CgBindingTable bindings, @Nullable int[] bindingIds,
+                            @Nullable float[][] instances) {
+        return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
+                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, bounds,
+                sortKeys, instances != null ? instances : this.instances);
+    }
+
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */
     public float[] data(CgInstanceKind kind) {
         return instances[kind.ordinal()];

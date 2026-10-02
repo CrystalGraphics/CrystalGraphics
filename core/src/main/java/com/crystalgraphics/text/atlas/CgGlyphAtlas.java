@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Logger;
 
 /**
@@ -278,6 +279,17 @@ public class CgGlyphAtlas {
      */
     @Getter
     private long evictionGeneration;
+
+    /** Pages evicted by every atlas in the process. @see #evictions() */
+    private static final AtomicLong EVICTIONS = new AtomicLong();
+
+    /**
+     * Pages every atlas has evicted, ever: one read that tells a holder of placements -- a cache, a kept recording --
+     * whether any of them may name a page that is gone, without walking the atlases.
+     */
+    public static long evictions() {
+        return EVICTIONS.get();
+    }
 
     // ── Constructors ──────────────────────────────────────────────────
     //
@@ -817,6 +829,7 @@ public class CgGlyphAtlas {
         // Any cached resolve holding a placement from this page is now dangling — its layer
         // index is about to be reused by a different page. See evictionGeneration's javadoc.
         evictionGeneration++;
+        EVICTIONS.incrementAndGet();
         return evicted.getPageIndex();
     }
 
