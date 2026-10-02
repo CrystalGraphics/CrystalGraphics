@@ -286,7 +286,7 @@ Structural skeleton (all sections are optional except `#type` and at least one `
 
 **`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and injects the format's vertex attribute declarations (`in <glslType> <name>;`) into the generated vertex GLSL immediately after the `cg_env.glsl` include. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
 
-Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`. Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
+Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
 
 ```glsl
 #type spatial
@@ -387,6 +387,7 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
 | `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
 | `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
+| `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
 ### Vertex Attribute Aliases
 
@@ -486,7 +487,7 @@ boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
 essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
 
 ```glsl
-#type pos2_uv2_col4ub
+#type none
 #pragma cg_use quad
 ```
 

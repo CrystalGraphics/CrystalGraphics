@@ -22,8 +22,8 @@
 // is textually repeated per use; this is the same repeated-texelFetch-on-the-same-index
 // pattern the TBO struct getter codegen already relies on being driver-CSE'd (see
 // gl/material/parse/CgGlslEmitter.java's own comment on appendTboFieldFetch). Vertex stage
-// only, and only valid when the material's #type provides a 2D cg_Position/cg_TexCoord0
-// (i.e. CgQuadRenderer's own unit quad mesh, #type pos2_uv2_col4ub).
+// only; each instance is drawn on CgMesh.quads(1), so the corner is CG_VERTEX_CORNER and the
+// material declares #type none.
 //
 // These are DEFINED unconditionally, here, but only RESOLVE in a shader that declares:
 //
@@ -61,8 +61,8 @@
 #define CG_QUAD_ORIGIN cg_spatial_point(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).origin)
 #define CG_QUAD_RIGHT cg_spatial_vector(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).right)
 #define CG_QUAD_UP cg_spatial_vector(CG_QUAD_NODE, QUAD_DATA(CG_INSTANCE_ID).up)
-#define CG_QUAD_WORLD_POS (CG_QUAD_ORIGIN + cg_Position.x * CG_QUAD_RIGHT + cg_Position.y * CG_QUAD_UP)
-#define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, cg_TexCoord0))
+#define CG_QUAD_WORLD_POS (CG_QUAD_ORIGIN + CG_VERTEX_CORNER.x * CG_QUAD_RIGHT + CG_VERTEX_CORNER.y * CG_QUAD_UP)
+#define CG_QUAD_UV (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, CG_VERTEX_CORNER))
 #define CG_QUAD_COLOR (QUAD_DATA(CG_INSTANCE_ID).color)
 #define CG_QUAD_NORMAL (normalize(cross(CG_QUAD_RIGHT, CG_QUAD_UP)))
 // The record's effect-group opacity: a material that honours groups multiplies its alpha by it (its whole colour when
@@ -111,7 +111,7 @@
 // material has no business calling these. Text does not either: a glyph's edge is the atlas's, and
 // the quad around it is transparent margin.
 //
-//   Vertex:    vec2 param = CG_QUAD_EDGE_PARAM;                 // grown when soft, else cg_Position
+//   Vertex:    vec2 param = CG_QUAD_EDGE_PARAM;                 // grown when soft, else CG_VERTEX_CORNER
 //              gl_Position = cg_ProjMatrix * vec4(CG_QUAD_EDGE_WORLD_POS(param), 1.0);
 //              o.param = param;                                 // carry it, not uv
 //   Fragment:  vec2 uv = CG_QUAD_EDGE_UV(i.param);              // clamped: the pad never samples past the rect
@@ -148,7 +148,7 @@ float cg_quad_edge_coverage(vec2 param, vec3 right, vec3 up) {
     vec2 c = near + far - 1.0;
     return clamp(c.x, 0.0, 1.0) * clamp(c.y, 0.0, 1.0);
 }
-#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(cg_Position.xy, CG_QUAD_RIGHT, CG_QUAD_UP)
+#define CG_QUAD_EDGE_PARAM cg_quad_edge_param(CG_VERTEX_CORNER, CG_QUAD_RIGHT, CG_QUAD_UP)
 #define CG_QUAD_EDGE_WORLD_POS(param) (CG_QUAD_ORIGIN + (param).x * CG_QUAD_RIGHT + (param).y * CG_QUAD_UP)
 #define CG_QUAD_EDGE_UV(param) (mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, clamp(param, 0.0, 1.0)))
 #define CG_QUAD_EDGE_COVERAGE(param) cg_quad_edge_coverage(param, CG_QUAD_RIGHT, CG_QUAD_UP)

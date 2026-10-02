@@ -181,7 +181,7 @@ public class EngineOnTrackedBackendTest {
 
     /** The smallest quad material: what every CrystalGUI quad shader is built on. */
     private static final String QUAD_SHADER = """
-            #type pos2_uv2_col4ub
+            #type none
             #pragma cg_use quad
             Queue = "Overlay"
             Properties {
