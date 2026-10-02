@@ -25,7 +25,7 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        float nv = abs(dot(normalize(i.normalWs), normalize(VFX_CAMERA - i.worldPos)));
+        float nv = abs(dot(normalize(i.normalWs), normalize(FX_CAMERA - i.worldPos)));
         vec3 color = vec3(2.2, 0.55, 0.08) * pow(nv, 1.5) * 1.6 + vec3(1.6, 1.3, 0.9) * pow(nv, 6.0) * 3.5;
         fragColor = vec4(color, 1.0);
     }

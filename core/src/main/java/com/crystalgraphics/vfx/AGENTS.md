@@ -27,7 +27,7 @@ vfx.submit(CgWorldRenderer.get());
 
 | Shaders | Hold |
 |---|---|
-| `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (noise, erf, tonemap, `FX_CAMERA`), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it) |
+| `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (hashes, gradient and value noise with their fractals, warped turbulence, flicker, voronoi, erf, tonemap, `FX_CAMERA` -- the ONE copy: the showcase's `shaders/demo/vfx_common.glsl` includes it and adds only its studio lighting), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it) |
 | `shaders/vfx/<family>/` | One directory per family, mirroring `vfx.effect.<family>`, named by slot (`body_*`, `head_*`) |
 
 ## Seeing every moment

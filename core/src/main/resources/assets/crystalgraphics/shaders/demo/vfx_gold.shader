@@ -27,9 +27,9 @@ Pass {
         vec3 n = normalize(i.normalWs);
         // From inside the sphere its inner wall shows, facing in.
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, vec3(1.0, 0.72, 0.24), 1.0, 0.08);
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

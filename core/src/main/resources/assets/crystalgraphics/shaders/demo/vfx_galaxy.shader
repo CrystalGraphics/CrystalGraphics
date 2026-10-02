@@ -40,7 +40,7 @@ Pass {
         for (int j = -1; j <= 1; j++) {
             for (int i = -1; i <= 1; i++) {
                 vec2 c = cell + vec2(float(i), float(j));
-                vec3 h = vfx_hash33(vec3(c, seed));
+                vec3 h = fx_hash33(vec3(c, seed));
                 if (h.z < keep) continue;
                 float d = length(g - c - h.xy);
                 light += (1.0 - smoothstep(0.0, radius, d)) * (0.35 + 0.65 * fract(h.z * 17.0));
@@ -56,18 +56,18 @@ Pass {
         // The unwound angle: constant along each arm. The pattern turns toward lower angles, so the arms trail.
         float s = atan(x.y, x.x) - 2.4 * lr + t * 0.08;
         vec2 ring = vec2(cos(s), sin(s));
-        float wobble = (vfx_fbm(vec3(ring * 1.4, lr * 0.9 + 5.0), 3) - 0.5) * 1.3;
+        float wobble = (fx_value_fbm(vec3(ring * 1.4, lr * 0.9 + 5.0), 3) - 0.5) * 1.3;
         float phase = 2.0 * s + wobble;
         float arm = pow(0.5 + 0.5 * cos(phase), 3.0);
         float crest = pow(0.5 + 0.5 * cos(phase), 10.0);
         // Texture streaming along the arms: fast round the unwound circle, slow along log r.
-        float streaks = vfx_fbm(vec3(ring * 7.0, lr * 1.6), 5);
+        float streaks = fx_value_fbm(vec3(ring * 7.0, lr * 1.6), 5);
         float edge = 1.0 - smoothstep(0.5, 0.74, r);
         float inner = exp(-r / 0.11);
         float young = smoothstep(0.06, 0.22, r) * edge;
         vec3 light = vec3(1.65, 1.05, 0.5) * inner * (0.7 + 0.5 * arm) * 1.6;
         // The arms' young stars, cyan-blue in places and violet in others.
-        float hue = smoothstep(0.35, 0.7, vfx_fbm(vec3(ring * 2.5, lr * 1.2 + 9.0), 3));
+        float hue = smoothstep(0.35, 0.7, fx_value_fbm(vec3(ring * 2.5, lr * 1.2 + 9.0), 3));
         vec3 armColor = mix(vec3(0.3, 0.72, 1.8), vec3(0.95, 0.42, 1.8), hue);
         light += armColor * young * arm * (0.2 + 1.2 * streaks * streaks) * exp(-r / 0.55) * 3.2;
         // A soft pink glow of ionised gas along the arm crests.
@@ -78,8 +78,8 @@ Pass {
         light += vec3(0.75, 0.88, 1.7) * galaxy_points(x, 70.0, 0.5, 0.1, 1.0, pixel) * arm * young * 5.0;
         // Star-forming regions: streaks of glowing gas drawn out along the arm crests like the rest of the arm, coming
         // in groups, violet going rose where they burn hottest, with bright young knots inside them.
-        float group = smoothstep(0.45, 0.72, vfx_noise(vec3(ring * 3.0, lr * 2.5 + 13.0)));
-        float drawn = vfx_fbm(vec3(ring * 16.0, lr * 3.0 + 21.0), 4);
+        float group = smoothstep(0.45, 0.72, fx_value_noise(vec3(ring * 3.0, lr * 2.5 + 13.0)));
+        float drawn = fx_value_fbm(vec3(ring * 16.0, lr * 3.0 + 21.0), 4);
         float gas = pow(smoothstep(0.45, 0.85, drawn), 2.0) * crest * young * group;
         vec3 nebula = mix(vec3(1.3, 0.45, 1.7), vec3(1.9, 0.45, 0.95), smoothstep(0.55, 0.85, drawn));
         light += nebula * gas * 2.4;
@@ -87,8 +87,8 @@ Pass {
         light += vec3(1.3, 1.1, 0.85) * galaxy_points(x, 170.0, 0.45, 0.09, 3.0, pixel) * (inner * 2.0 + 0.25 * edge) * 1.2;
         // Dust: thin filaments along the inner edge of each arm, and feathery spurs crossing between them.
         float lane = pow(0.5 + 0.5 * cos(phase - 0.8), 7.0);
-        float filaments = vfx_ridged(vec3(ring * 10.0, lr * 2.2), 4);
-        float spurs = vfx_ridged(vec3(x * 16.0, 7.0), 3);
+        float filaments = fx_value_ridged(vec3(ring * 10.0, lr * 2.2), 4);
+        float spurs = fx_value_ridged(vec3(x * 16.0, 7.0), 3);
         float dust = lane * smoothstep(0.45, 0.8, filaments) + (1.0 - arm) * smoothstep(0.8, 0.95, spurs) * 0.5;
         dust *= smoothstep(0.035, 0.12, r) * edge;
         // Dust dims blue more than red, so its edges redden what shows through.
@@ -101,17 +101,17 @@ Pass {
     vec3 galaxy_space(vec3 d) {
         vec3 s = d * 90.0;
         vec3 cell = floor(s);
-        vec3 at = fract(s) - 0.5 - (vfx_hash33(cell) - 0.5) * 0.6;
-        float star = step(0.965, vfx_hash31(cell)) * exp(-dot(at, at) * 90.0) * (0.4 + vfx_hash31(cell + 2.0));
-        vec3 tint = mix(vec3(1.0, 0.8, 0.6), vec3(0.65, 0.8, 1.35), vfx_hash31(cell + 5.0));
+        vec3 at = fract(s) - 0.5 - (fx_hash33(cell) - 0.5) * 0.6;
+        float star = step(0.965, fx_hash31(cell)) * exp(-dot(at, at) * 90.0) * (0.4 + fx_hash31(cell + 2.0));
+        vec3 tint = mix(vec3(1.0, 0.8, 0.6), vec3(0.65, 0.8, 1.35), fx_hash31(cell + 5.0));
         vec3 far = d * 22.0;
         vec3 farCell = floor(far);
-        vec3 h = vfx_hash33(farCell + 11.0);
+        vec3 h = fx_hash33(farCell + 11.0);
         vec3 off = fract(far) - 0.5 - (h - 0.5) * 0.5;
         vec3 axis = normalize(h - 0.5);
         float squash = dot(off, axis);
-        float smudge = step(0.975, vfx_hash31(farCell + 13.0)) * exp(-(dot(off, off) - squash * squash * 0.85) * 220.0);
-        vec3 nebula = mix(vec3(0.3, 0.06, 0.45), vec3(0.06, 0.2, 0.45), vfx_fbm(d * 2.2, 3)) * pow(vfx_fbm(d * 3.0 + 7.0, 4), 3.0);
+        float smudge = step(0.975, fx_hash31(farCell + 13.0)) * exp(-(dot(off, off) - squash * squash * 0.85) * 220.0);
+        vec3 nebula = mix(vec3(0.3, 0.06, 0.45), vec3(0.06, 0.2, 0.45), fx_value_fbm(d * 2.2, 3)) * pow(fx_value_fbm(d * 3.0 + 7.0, 4), 3.0);
         return tint * star * 2.2 + vec3(1.2, 0.95, 0.8) * smudge * 0.5 + nebula * 0.45 + vec3(0.002, 0.002, 0.006);
     }
 
@@ -131,7 +131,7 @@ Pass {
         // A pixel's size in marble radii, taken before any branch.
         float pixel = length(fwidth(i.worldPos)) / length(CG_OBJECT_TO_WORLD[0].xyz);
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
-        vec3 camera = VFX_CAMERA;
+        vec3 camera = FX_CAMERA;
         vec3 n = normalize(i.normalWs);
         if (!gl_FrontFacing) n = -n;
         vec3 v = normalize(camera - i.worldPos);
@@ -180,6 +180,6 @@ Pass {
         vec3 glass = vfx_studio(i.worldPos, reflect(-v, n), 0.0, floorY)
                 + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.03) * 2.0;
         color = color * (1.0 - fresnel) + glass * fresnel;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

@@ -61,7 +61,7 @@ Pass {
         vec3 n = normalize(i.normalWs);
         // From inside the sphere its inner wall shows, facing in.
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         vec3 p = normalize(i.objPos);
         vec3 face = vfx_cube_face(p);
         const float CELLS = 7.0;
@@ -70,8 +70,8 @@ Pass {
         vec2 local = fract(g) - 0.5;
         // A pixel's size in cells, from the sphere rather than the face coordinates, which jump at the face edges.
         float aa = length(fwidth(p)) * CELLS / 1.5708 * 0.75;
-        float pick = vfx_hash31(vec3(cell, face.z * 13.0 + 1.0));
-        float chipPick = vfx_hash31(vec3(cell, face.z * 13.0 + 2.0));
+        float pick = fx_hash31(vec3(cell, face.z * 13.0 + 1.0));
+        float chipPick = fx_hash31(vec3(cell, face.z * 13.0 + 2.0));
         bool chip = chipPick < 0.09;
         bool mirrored = pick > 0.5;
 
@@ -107,25 +107,25 @@ Pass {
             float behind = fract(t * 1.1 - flow);
             packet = exp(-behind * 9.0);
             // Vias: copper rings, some cells carrying one where the trace bends.
-            if (vfx_hash31(vec3(cell, face.z * 13.0 + 3.0)) < 0.3) {
+            if (fx_hash31(vec3(cell, face.z * 13.0 + 3.0)) < 0.3) {
                 float r = length(x - vec2(-0.1, 0.1));
                 via = 1.0 - smoothstep(0.085 - aa, 0.085 + aa, r);
                 viaHole = 1.0 - smoothstep(0.04 - aa, 0.04 + aa, r);
             }
         }
         // Regions of traffic, and which colour each runs in.
-        float activity = smoothstep(0.35, 0.65, vfx_fbm(p * 2.2 + vec3(0.0, t * 0.15, 0.0), 3));
+        float activity = smoothstep(0.35, 0.65, fx_value_fbm(p * 2.2 + vec3(0.0, t * 0.15, 0.0), 3));
         // Packets come and go in bursts: every cell runs one at the same point along its trace, so a finer drifting
         // field, read where the packet is, keeps most of them dark and the rest irregular.
-        float burst = smoothstep(0.5, 0.72, vfx_noise(p * 7.0 + vec3(t * 0.6, -t * 0.4, t * 0.3)));
+        float burst = smoothstep(0.5, 0.72, fx_value_noise(p * 7.0 + vec3(t * 0.6, -t * 0.4, t * 0.3)));
         vec3 cyan = vec3(0.25, 0.95, 1.8);
         vec3 orange = vec3(2.0, 0.65, 0.12);
-        vec3 energy = mix(cyan, orange, smoothstep(0.55, 0.62, vfx_noise(p * 1.6 + vec3(9.0))));
+        vec3 energy = mix(cyan, orange, smoothstep(0.55, 0.62, fx_value_noise(p * 1.6 + vec3(9.0))));
         // A power surge: every five seconds a front rolls out from somewhere across the board.
         float wave = 5.0;
         float strike = floor(t / wave);
         float age = t - strike * wave;
-        vec3 from = normalize(vfx_hash33(vec3(strike, 7.0, 7.0)) - 0.5);
+        vec3 from = normalize(fx_hash33(vec3(strike, 7.0, 7.0)) - 0.5);
         float surge = exp(-pow((acos(clamp(dot(p, from), -1.0, 1.0)) - age * 1.6) * 7.0, 2.0)) * exp(-age * 0.5);
 
         // The board: a dark navy mask under a clear coat mirroring the studio.
@@ -144,6 +144,6 @@ Pass {
         color = mix(color, copper * 0.9 + energy * surge * 2.0, pins * (1.0 - chipBody));
         // The surge washes faintly over the whole board as it passes.
         color += energy * surge * 0.15;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }

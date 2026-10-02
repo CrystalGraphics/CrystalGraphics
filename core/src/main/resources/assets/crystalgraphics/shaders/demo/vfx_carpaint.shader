@@ -36,15 +36,15 @@ Pass {
         vec3 n = normalize(i.normalWs);
         // From inside the sphere its inner wall shows, facing in.
         if (!gl_FrontFacing) n = -n;
-        vec3 v = normalize(VFX_CAMERA - i.worldPos);
+        vec3 v = normalize(FX_CAMERA - i.worldPos);
         float nv = max(dot(n, v), 0.0);
         float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
         vec3 base = carpaint_flip(nv);
         vec3 paint = vfx_pbr_studio(i.worldPos, floorY, n, v, base, 0.55, 0.38);
         // Flakes: small round mirrors, each tilted its own way, glinting where one reflects a softbox or the horizon.
-        vec3 cells = vfx_voronoi(i.objPos * 150.0);
+        vec3 cells = fx_voronoi(i.objPos * 150.0);
         float flake = smoothstep(0.3, 0.12, cells.x) * step(0.4, cells.z);
-        vec3 flakeNormal = normalize(n + (vfx_hash33(vec3(cells.z * 131.0, 7.0, 3.0)) - 0.5) * 0.45);
+        vec3 flakeNormal = normalize(n + (fx_hash33(vec3(cells.z * 131.0, 7.0, 3.0)) - 0.5) * 0.45);
         vec3 seen = vfx_studio(i.worldPos, reflect(-v, flakeNormal), 0.0, floorY);
         float glint = smoothstep(1.2, 3.5, dot(seen, vec3(0.2126, 0.7152, 0.0722))) * flake;
         paint += mix(base, vec3(1.0), 0.45) * glint * 5.0;
@@ -54,6 +54,6 @@ Pass {
                 + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.04)
                 + vfx_direct(n, v, VFX_RIM_DIR, VFX_RIM_COLOR, vec3(1.0), 0.0, 0.04);
         vec3 color = paint * (1.0 - coat) + clear * coat;
-        fragColor = vec4(vfx_aces(color), 1.0);
+        fragColor = vec4(fx_aces(0.8 * color), 1.0);
     }
 }
