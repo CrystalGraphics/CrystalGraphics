@@ -27,7 +27,7 @@ import java.nio.ByteBuffer;
  */
 public final class CgVfxRibbons {
 
-    public static final int COUNT = 96, SEGMENTS = 8;
+    public static final int COUNT = 96, SEGMENTS = 32;
 
     private CgVfxRibbons() {
     }

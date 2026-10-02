@@ -10,6 +10,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.path.CgVfxPath;
+import com.crystalgraphics.vfx.sim.CgVfxParticles;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import org.joml.Matrix4f;
 
@@ -42,8 +43,12 @@ import java.util.List;
  * {@link #SLOT_ARCS} as stateless ribbons ({@link CgVfxFrame#ribbons}, {@code CG_OBJECT_CUSTOM1} the ball's radius in
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
  * {@link #SLOT_IMPACT} and {@link #SLOT_BLAST_GLOW} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
- * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age), and
- * {@link #SLOT_BLAST} and {@link #SLOT_SMOKE} on spheres ({@code .w} the blast's progress, 0..1).</p>
+ * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age);
+ * {@link #SLOT_SPECKS}, {@link #SLOT_SPARKLES} and {@link #SLOT_INK} as ribbons ({@code CG_OBJECT_CUSTOM1} the
+ * blast's radius in blocks, which batch, the intensity, and seconds since the blast); and
+ * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1), and {@link #SLOT_SMOKE} on one sphere per
+ * billow ({@link CgVfxFrame#mesh}, {@code CG_OBJECT_CUSTOM1} the billow's life 0..1, its seed, its opacity and how
+ * hot it still is).</p>
  *
  * <p>It announces each moment of that life ({@link #MOMENT_CHARGE_START} to {@link #MOMENT_END}) to
  * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
@@ -82,7 +87,13 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST_GLOW = "blastGlow";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
-    /** The blast's smoke: a sphere at the target, alpha-blended. */
+    /** The blast's dark debris specks, its glowing sparkles, and the ink streaks of its shock: ribbons at the target. */
+    public static final String SLOT_SPECKS = "specks";
+    public static final String SLOT_SPARKLES = "sparkles";
+    public static final String SLOT_INK = "ink";
+    /** Draws of the specks and sparkles layers per frame, each a different set of up to {@code CgVfxRibbons.COUNT}. */
+    private static final int SPECK_BATCHES = 6, SPARKLE_BATCHES = 4;
+    /** The blast's cloud: a cel-shaded, displaced sphere per billow, opaque. */
     public static final String SLOT_SMOKE = "smoke";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
@@ -146,8 +157,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Seconds between the rings pulsing out from the impact. */
     public static final CgVfxParam IMPACT_RING_PERIOD = SCHEMA.scalar("impactRingPeriod", 0.45f);
     /** Seconds the final blast lasts, and its full radius as a multiple of the body's radius. */
-    public static final CgVfxParam BLAST_TIME = SCHEMA.scalar("blastTime", 1.8f);
-    public static final CgVfxParam BLAST_RADIUS = SCHEMA.scalar("blastRadius", 9f);
+    public static final CgVfxParam BLAST_TIME = SCHEMA.scalar("blastTime", 2.4f);
+    public static final CgVfxParam BLAST_RADIUS = SCHEMA.scalar("blastRadius", 12f);
     /** The dome's size over the blast (0..1 of it), a share of {@link #BLAST_RADIUS}: bursting out, then drifting. */
     public static final CgVfxParam BLAST_SIZE = SCHEMA.curve("blastSize", CgKeyframes.start(0f, 0.08f)
             .to(0.35f, 1f, CgEasings.OUT_EXPO)
@@ -159,13 +170,33 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.6f, 0.4f, CgEasings.OUT_CUBIC)
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
-    /** The smoke's opacity over the blast (0..1 of it). */
-    public static final CgVfxParam SMOKE = SCHEMA.curve("smoke", CgKeyframes.start(0.25f, 0f)
-            .to(0.55f, 1f, CgEasings.OUT_QUAD)
-            .to(1f, 0f, CgEasings.IN_QUAD)
+    /** A billow's opacity over its life (0..1 of it): it breaks up quickly at first, its last shreds thinning slowly. */
+    public static final CgVfxParam SMOKE = SCHEMA.curve("smoke", CgKeyframes.start(0f, 0f)
+            .to(0.1f, 1f, CgEasings.OUT_QUAD)
+            .to(0.5f, 0.92f, CgEasings.LINEAR)
+            .to(1f, 0f, CgEasings.OUT_QUAD)
             .build());
+    /** Seconds the blast's specks, sparkles and streaks hang after it, all easing out over the last {@link #TAIL}. */
+    public static final CgVfxParam BLAST_LINGER = SCHEMA.scalar("blastLinger", 7f);
+    /** Puffs of smoke the blast throws out, at most {@link #SMOKE_CAPACITY}. */
+    public static final CgVfxParam SMOKE_COUNT = SCHEMA.scalar("smokeCount", 64f);
+    /** A puff's radius at birth, and how many times that it swells to, as shares of the blast's radius. */
+    public static final CgVfxParam SMOKE_SIZE = SCHEMA.scalar("smokeSize", 0.2f);
+    public static final CgVfxParam SMOKE_GROWTH = SCHEMA.scalar("smokeGrowth", 2.1f);
+    /** How fast puffs fly out, in blast radii a second; how fast that decays a second; their lift, in radii a second squared. */
+    public static final CgVfxParam SMOKE_SPEED = SCHEMA.scalar("smokeSpeed", 0.45f);
+    public static final CgVfxParam SMOKE_DRAG = SCHEMA.scalar("smokeDrag", 0.6f);
+    public static final CgVfxParam SMOKE_RISE = SCHEMA.scalar("smokeRise", 0.08f);
+    /** Seconds a puff lives, on average. */
+    public static final CgVfxParam SMOKE_LIFE = SCHEMA.scalar("smokeLife", 5.5f);
+    public static final int SMOKE_CAPACITY = 96;
 
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
+    /** The blast cloud's body and its hot core. */
+    public static final CgVfxParam SMOKE_COLOR = SCHEMA.color("smokeColor", 0.06f, 0.3f, 0.95f, 1f);
+    public static final CgVfxParam SMOKE_HOT = SCHEMA.color("smokeHot", 0.3f, 0.88f, 1f, 1f);
+    /** The blast's dark debris and the ink of its shock streaks. */
+    public static final CgVfxParam DEBRIS = SCHEMA.color("debris", 0.02f, 0.04f, 0.12f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
     public static final CgVfxParam SHELL_HOT = SCHEMA.color("shellHot", 0.7f, 0.95f, 1.6f, 1f);
@@ -220,8 +251,14 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 18f).set1f("_Life", 1.2f)
                             .set1f("_Width", 0.08f).set1f("_Streak", 0.08f))
                     .build())
-            .layer(CgVfxLayer.builder(BEAM + "blast_smoke.shader").slot(SLOT_SMOKE)
-                    .colors(SHELL, null).priority(CgVfxLayer.PRIORITY_SMOKE).build())
+            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(SLOT_SMOKE)
+                    .colors(SMOKE_COLOR, SMOKE_HOT).priority(CgVfxLayer.PRIORITY_SMOKE).build())
+            .layer(CgVfxLayer.builder(BEAM + "blast_specks.shader").slot(SLOT_SPECKS)
+                    .colors(DEBRIS, null).priority(CgVfxLayer.PRIORITY_SMOKE).build())
+            .layer(CgVfxLayer.builder(BEAM + "blast_ink.shader").slot(SLOT_INK)
+                    .colors(DEBRIS, null).priority(CgVfxLayer.PRIORITY_SMOKE).build())
+            .layer(CgVfxLayer.builder(BEAM + "blast_sparkles.shader").slot(SLOT_SPARKLES)
+                    .colors(SMOKE_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .build();
@@ -233,6 +270,9 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL_HOT, 1.6f, 1.35f, 0.55f, 1f)
             .set(SPIRAL, 1.6f, 1.15f, 0.3f, 1f)
             .set(GLOW, 1.4f, 0.85f, 0.12f, 0.9f)
+            .set(SMOKE_COLOR, 0.95f, 0.3f, 0.04f, 1f)
+            .set(SMOKE_HOT, 1f, 0.88f, 0.3f, 1f)
+            .set(DEBRIS, 0.1f, 0.03f, 0.01f, 1f)
             .set(RADIUS, 1f)
             .set(SPEED, 50f)
             .build();
@@ -243,14 +283,20 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL_HOT, 1.3f, 0.75f, 1.6f, 1f)
             .set(SPIRAL, 1.2f, 0.45f, 1.6f, 1f)
             .set(GLOW, 0.75f, 0.18f, 1.4f, 0.9f)
+            .set(SMOKE_COLOR, 0.42f, 0.08f, 0.85f, 1f)
+            .set(SMOKE_HOT, 0.98f, 0.65f, 1f, 1f)
+            .set(DEBRIS, 0.06f, 0.01f, 0.1f, 1f)
             .build();
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
+    /** Seconds the blast's flecks take to ease out at the end of {@link #BLAST_LINGER}. */
+    public static final float TAIL = 1.5f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
     private final Matrix4f placed = new Matrix4f();
+    private final CgVfxParticles smoke = new CgVfxParticles(SMOKE_CAPACITY);
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -343,10 +389,46 @@ public final class CgEnergyWave extends CgVfxEffect {
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
         boolean drained = state() == State.STOPPING && stream.size() == 0;
         // The tail has run into the target: it bursts.
-        if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) blastAge = age;
-        boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE : age > blastAge + get(BLAST_TIME);
+        if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
+            blastAge = age;
+            emitSmoke();
+        }
+        float blastScale = get(RADIUS) * get(BLAST_RADIUS);
+        smoke.tick(dt, get(SMOKE_DRAG), get(SMOKE_RISE) * blastScale);
+        boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
+                : age > blastAge + Math.max(get(BLAST_TIME), get(BLAST_LINGER)) && smoke.count() == 0;
         if (momentsHeard()) moments(ending);
         if (ending) die();
+    }
+
+    /**
+     * The blast's cloud: billows thrown out from the target, mostly outward with a little lift, so it spreads as it rises;
+     * each its own size, speed and life.
+     */
+    private void emitSmoke() {
+        float scale = get(RADIUS) * get(BLAST_RADIUS);
+        float x = stream.impactX(), y = stream.impactY(), z = stream.impactZ();
+        int count = Math.min((int) get(SMOKE_COUNT), SMOKE_CAPACITY);
+        for (int i = 0; i < count; i++) {
+            float up = -0.15f + 0.85f * (float) Math.pow(rand(i, 0), 1.5), turn = rand(i, 1) * 6.2831853f;
+            float flat = (float) Math.sqrt(Math.max(1f - up * up, 0f));
+            float dx = flat * (float) Math.cos(turn), dz = flat * (float) Math.sin(turn);
+            float start = scale * 0.25f * rand(i, 2), speed = scale * get(SMOKE_SPEED) * (0.5f + rand(i, 3));
+            smoke.emit(x + dx * start, y + up * start, z + dz * start, dx * speed, up * speed, dz * speed,
+                    get(SMOKE_LIFE) * (0.75f + 0.5f * rand(i, 4)), scale * get(SMOKE_SIZE) * (0.7f + 0.6f * rand(i, 5)),
+                    rand(i, 6));
+        }
+    }
+
+    /** A number in 0..1 for puff {@code i}, draw {@code k}, fixed by the effect's seed. */
+    private float rand(int i, int k) {
+        int h = Float.floatToIntBits(seed) * 0x9E3779B1 ^ i * 0x85EBCA77 ^ k * 0xC2B2AE3D;
+        h ^= h >>> 15;
+        h *= 0x2C1B3C6D;
+        h ^= h >>> 12;
+        h *= 0x297A2D39;
+        h ^= h >>> 15;
+        return (h >>> 8) * (1f / (1 << 24));
     }
 
     /** Announces each moment as it is crossed, framed on the muzzle or on the flight. */
@@ -370,7 +452,8 @@ public final class CgEnergyWave extends CgVfxEffect {
         float blastTime = get(BLAST_TIME);
         if (age >= blastAge + 0.06f) atImpact(15, MOMENT_BLAST_START, atTarget);
         if (age >= blastAge + 0.3f * blastTime) atImpact(16, MOMENT_BLAST_PEAK, atTarget);
-        if (age >= blastAge + 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, atTarget);
+        // By then the cloud has spread past the dome.
+        if (age >= blastAge + 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, radius * get(BLAST_RADIUS) * 1.9f);
         if (age >= impactAge + 0.8f) onFlight(9, MOMENT_HOLDING);
         if (age >= stopAge + 0.05f) onFlight(10, MOMENT_STOP);
         if (!Float.isNaN(stopAge) && stream.size() <= sizeAtStop / 2) onFlight(11, MOMENT_TAIL);
@@ -480,11 +563,31 @@ public final class CgEnergyWave extends CgVfxEffect {
         float reach = radius * get(BLAST_RADIUS) * 2f;
         facing(placed, normalX, normalY, normalZ).scale(reach);
         drawAt(frame, layers, SLOT_DEBRIS, x, y, z, placed, reach, 0f, 1f, since, true);
-        float smoke = curve(SMOKE).at(t);
-        if (smoke > 0f) {
-            float size = radius * get(BLAST_RADIUS) * (0.6f + 0.7f * t);
-            placed.identity().translate(0f, size * 0.25f * t, 0f).scale(size);
-            drawAt(frame, layers, SLOT_SMOKE, x, y, z, placed, size, size, smoke, t, false);
+        // Specks, sparkles and ink fly within four blast radii; their shaders read the blast's radius to scale.
+        float blastRadius = radius * get(BLAST_RADIUS), linger = get(BLAST_LINGER);
+        float tail = 1f - smooth(linger - TAIL, linger, since);
+        placed.scaling(blastRadius * 4f);
+        for (int batch = 0; batch < SPECK_BATCHES; batch++)
+            drawAt(frame, layers, SLOT_SPECKS, x, y, z, placed, blastRadius, batch, tail, since, true);
+        for (int batch = 0; batch < SPARKLE_BATCHES; batch++)
+            drawAt(frame, layers, SLOT_SPARKLES, x, y, z, placed, blastRadius, batch, tail, since, true);
+        drawAt(frame, layers, SLOT_INK, x, y, z, placed, blastRadius, 0f, tail, since, true);
+        submitSmoke(frame, layers, 1f - Math.min(since / (blastTime * 0.55f), 1f));
+    }
+
+    /** Every billow of the blast's cloud, swelling as it ages; {@code hot} is how much fire still lights it, 0..1. */
+    private void submitSmoke(CgVfxFrame frame, List<CgVfxLayer> layers, float hot) {
+        float ahead = frame.alpha() * CgVfxSystem.TICK, growth = get(SMOKE_GROWTH) - 1f;
+        for (int k = 0; k < layers.size(); k++) {
+            CgVfxLayer layer = layers.get(k);
+            if (!SLOT_SMOKE.equals(layer.slot())) continue;
+            for (int i = 0; i < smoke.count(); i++) {
+                float t = smoke.progress(i), left = 1f - t;
+                float size = smoke.size(i) * (1f + growth * (1f - left * left)), turn = smoke.seed(i) * 6.2831853f;
+                placed.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(size);
+                frame.mesh(this, layer, smoke.x(i, ahead), smoke.y(i, ahead), smoke.z(i, ahead), placed,
+                        t, smoke.seed(i), curve(SMOKE).at(t), hot);
+            }
         }
     }
 

@@ -12,10 +12,10 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Inflow     ("How fast filaments pour inward, cycles a second", float) = 0.9
-    _Spin       ("How fast it turns, radians a second", float) = 1.1
+    _Inflow     ("How fast filaments pour inward, cycles a second", float) = 1.5
+    _Spin       ("How fast it turns, radians a second", float) = 2.6
     _Scale      ("Filament frequency", float) = 2.6
-    _Brightness ("Emission", float) = 1.3
+    _Brightness ("Emission", float) = 1.45
 }
 
 struct v2f { vec3 world; };
@@ -40,7 +40,8 @@ Pass {
             vec3 q = fx_rotate_z(p * exp2(ph), age * _Spin) * _Scale + seed * 17.0 + float(k) * 31.0;
             float n = fx_fbm(q, 3);
             float ridge = 1.0 - abs(n);
-            sum += weight * ridge * ridge * ridge * ridge;
+            float r4 = ridge * ridge * ridge * ridge;
+            sum += weight * r4 * (1.0 + 0.8 * ridge * ridge);
         }
         return sum;
     }
@@ -72,13 +73,15 @@ Pass {
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
         vec3 hot = CG_OBJECT_CUSTOM2.rgb, cool = CG_OBJECT_CUSTOM3.rgb;
         vec3 mid = mix(cool, hot, 0.45) * 1.15;
+        // The heart throbs, a violent surge several times a second.
+        float throb = 0.75 + 0.5 * fx_value_noise(vec3(age * 9.0, seed * 7.0, 1.5));
         vec3 sum = vec3(0.0);
         for (int s = 0; s < STEPS; s++) {
             vec3 p = o + d * (t0 + (float(s) + jitter) * stride);
             float r2 = dot(p, p);
             if (r2 >= 1.0) continue;
             float falloff = pow(1.0 - r2, 1.6);
-            float heart = exp(-r2 * 14.0);
+            float heart = exp(-r2 * 14.0 / throb);
             float density = falloff * (0.15 + 1.5 * filaments(p, age, seed)) + heart * 0.9;
             float heat = clamp(density * 0.85, 0.0, 1.0);
             vec3 colour = mix(cool, mid, smoothstep(0.05, 0.45, heat));
@@ -87,10 +90,12 @@ Pass {
         }
         // A thin cool corona where the ray grazes the ball's edge, so it has a defined rim and no hard one.
         float graze = length(o - d * dot(o, d));
-        sum += mix(cool, hot, 0.3) * 0.6 * exp(-pow((graze - 0.8) / 0.07, 2.0));
+        vec3 gp = o - d * dot(o, d);
+        float torn = 0.5 + 0.5 * fx_noise(fx_rotate_z(gp, age * _Spin) * 4.0 + vec3(0.0, 0.0, age * 3.0) + seed);
+        sum += mix(cool, hot, 0.3) * 0.9 * torn * torn * exp(-pow((graze - 0.8 - 0.06 * torn) / 0.07, 2.0));
         // The orb's centre against the opaque scene, softened over the orb's own size.
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         float seen = smoothstep(-radius, radius * 0.5, FX_SCENE_DISTANCE(ray) - dot(centre - eye, ray));
-        fragColor = vec4(sum * _Brightness * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * seen, 1.0);
+        fragColor = vec4(sum * _Brightness * fx_flicker(age, seed) * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * seen, 1.0);
     }
 }

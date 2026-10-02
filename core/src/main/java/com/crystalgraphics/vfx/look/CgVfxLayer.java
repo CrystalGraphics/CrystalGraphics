@@ -33,8 +33,8 @@ public final class CgVfxLayer {
      * consumer draws from (0 to 15), kept in this one table.
      */
     public static final int PRIORITY_VOLUME = 2, PRIORITY_SURFACE = 3, PRIORITY_BANDS = 4, PRIORITY_CORE = 5;
-    /** Alpha-blended layers, after every additive one, so they hide what is behind them rather than adding to it. */
-    public static final int PRIORITY_SMOKE = 6;
+    /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
+    public static final int PRIORITY_SMOKE = 1;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";
 

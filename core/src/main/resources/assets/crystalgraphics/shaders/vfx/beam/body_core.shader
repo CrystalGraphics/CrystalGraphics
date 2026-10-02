@@ -43,7 +43,9 @@ Pass {
         vec3 eye = FX_CAMERA;
         vec3 ray = normalize(i.world - eye);
         vec4 q = fx_capsule(eye, ray, i.axis, normalize(i.tangent), i.ring.x, i.ring.w);
-        float r = max(i.ring.y, 1.0e-4);
+        // A boiling edge: the radius heaves along the beam, faster than the flow.
+        float boil = fx_noise(vec3((q.w - i.ring.z * _Flow * 1.6) * 0.7, i.ring.z * 3.0, 2.5));
+        float r = max(i.ring.y * (1.0 + 0.22 * boil), 1.0e-4);
         float thickness = fx_core_thickness(q.y, r, q.z);
         if (thickness <= 0.0) discard;
         float scene = FX_SCENE_DISTANCE(ray);
@@ -51,6 +53,7 @@ Pass {
         float knots = fx_noise(vec3((q.w - i.ring.z * _Flow) * 0.45, q.y / r * 0.8, i.ring.z * 0.7));
         float white = 1.0 - exp(-thickness * _Density * (0.8 + 0.35 * knots));
         vec3 col = mix(CG_OBJECT_CUSTOM3.rgb, CG_OBJECT_CUSTOM2.rgb, smoothstep(0.1, 0.65, thickness));
-        fragColor = vec4(col * white * 1.35 * i.pulse * CG_OBJECT_CUSTOM2.a * seen, 1.0);
+        float surge = fx_flicker(i.ring.z - q.w * 0.02, 0.37);
+        fragColor = vec4(col * white * 1.5 * i.pulse * surge * CG_OBJECT_CUSTOM2.a * seen, 1.0);
     }
 }

@@ -11,7 +11,7 @@ Queue = "Transparent"
 Properties {
     _FxPath ("Path rings", sampler2D) = "black"
     _Pitch  ("Blocks per turn", float) = 2.6
-    _Speed  ("How fast the bands flow forward, turns a second", float) = 3.2
+    _Speed  ("How fast the bands flow forward, turns a second", float) = 5.5
     _Width  ("Band half-width, share of a turn", float) = 0.09
 }
 
@@ -45,12 +45,16 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float s = i.surface.x, angle = i.surface.y, age = i.surface.z;
         float a = angle * 6.28318531;
-        float u1 = angle * 2.0 + s / _Pitch - age * _Speed;
-        float u2 = -angle * 3.0 + s / (_Pitch * 0.7) - age * _Speed * 1.3;
+        // Bands writhing as they race forward, torn open by ridged gaps.
+        vec3 q = vec3((s - age * 24.0) * 0.35, cos(a) * 1.4, sin(a) * 1.4);
+        float writhe = fx_noise(q * 1.3 + 4.0) * 0.3;
+        float u1 = angle * 2.0 + s / _Pitch - age * _Speed + writhe;
+        float u2 = -angle * 3.0 + s / (_Pitch * 0.7) - age * _Speed * 1.35 - writhe;
         float b1 = band(u1, _Width, fwidth(u1) + 1.0e-4), b2 = band(u2, _Width * 0.8, fwidth(u2) + 1.0e-4);
-        float breakup = smoothstep(0.4, 0.62, 0.5 + 0.5 * fx_noise(vec3((s - age * 18.0) * 0.4, cos(a) * 1.5, sin(a) * 1.5)));
+        float tear = fx_ridged(q * 1.8 + 9.0, 2);
+        float breakup = smoothstep(0.38, 0.55, 0.5 + 0.5 * fx_noise(q)) * (1.0 - smoothstep(0.72, 0.86, tear));
         float ends = smoothstep(1.0, 3.5, s) * smoothstep(0.5, 2.5, i.surface.w);
-        vec3 col = CG_OBJECT_CUSTOM2.rgb * (b1 + 0.7 * b2) * 1.4 + CG_OBJECT_CUSTOM3.rgb * b1 * b2;
-        fragColor = vec4(col * breakup * ends * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.4), 1.0);
+        vec3 col = CG_OBJECT_CUSTOM2.rgb * (b1 + 0.7 * b2) * 1.6 + CG_OBJECT_CUSTOM3.rgb * (b1 * b2 * 2.0 + b1 * 0.35);
+        fragColor = vec4(col * breakup * ends * fx_flicker(age, 0.71) * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.4), 1.0);
     }
 }

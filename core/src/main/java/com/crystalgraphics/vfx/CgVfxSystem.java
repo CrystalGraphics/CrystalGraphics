@@ -8,6 +8,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
+import com.crystalgraphics.vfx.render.CgVfxBillboard;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 
@@ -51,8 +52,10 @@ public final class CgVfxSystem {
     private final CgVfxFrame frame = new CgVfxFrame(this);
     private final IdentityHashMap<CgVfxLayer, CgMaterial> materials = new IdentityHashMap<>();
     private final List<CgMaterial> unbound = new ArrayList<>();
+    /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
+    private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
-    private CgMesh tubeMesh, sphereMesh, ribbonMesh;
+    private CgMesh tubeMesh, sphereMesh, ribbonMesh, billboardMesh;
     private double clock = Double.NaN;
     private float owed;
 
@@ -105,12 +108,35 @@ public final class CgVfxSystem {
             tubeMesh = CgMesh.upload(CgVfxTube.meshData());
             sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 48, 96, 1f));
             ribbonMesh = CgMesh.upload(CgVfxRibbons.meshData());
+            billboardMesh = CgMesh.upload(CgVfxBillboard.meshData());
         }
+        warm();
         frame.begin(world, Math.min(owed / TICK, 1f));
         paths.begin();
         for (int i = 0; i < effects.size(); i++) effects.get(i).submit(frame);
         paths.upload();
         bindPaths();
+    }
+
+    /**
+     * Starts compiling every material a newly playing effect's look can draw, and polls what is still compiling: an
+     * effect's last layers (a blast, its cloud) appear seconds after it starts, and compiling them then stalls that
+     * frame.
+     */
+    private void warm() {
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect effect = effects.get(i);
+            if (effect.warmed) continue;
+            effect.warmed = true;
+            List<CgVfxLayer> layers = effect.look().layers();
+            for (int k = 0; k < layers.size(); k++) {
+                CgMaterial material = material(layers.get(k));
+                if (!warming.contains(material)) warming.add(material);
+            }
+        }
+        for (int i = warming.size() - 1; i >= 0; i--) {
+            if (warming.get(i).prepare()) warming.remove(i);
+        }
     }
 
     public List<CgVfxEffect> effects() {
@@ -124,11 +150,14 @@ public final class CgVfxSystem {
         if (tubeMesh != null) tubeMesh.delete();
         if (sphereMesh != null) sphereMesh.delete();
         if (ribbonMesh != null) ribbonMesh.delete();
+        if (billboardMesh != null) billboardMesh.delete();
         tubeMesh = null;
         sphereMesh = null;
         ribbonMesh = null;
+        billboardMesh = null;
         boundTexture = null;
         unbound.addAll(materials.values());
+        warming.clear();
     }
 
     CgVfxPathTexture paths() {
@@ -149,6 +178,10 @@ public final class CgVfxSystem {
 
     CgMesh ribbonMesh() {
         return ribbonMesh;
+    }
+
+    CgMesh billboardMesh() {
+        return billboardMesh;
     }
 
     CgMaterial material(CgVfxLayer layer) {
