@@ -100,8 +100,13 @@ public final class CgVfxTrail {
     /** Rewrites this trail's own mesh and draws it, coloured {@code (r, g, b)} at {@code strength}. Nothing below two points. */
     public void submit(CgWorldRenderer world, CgMaterial material, float r, float g, float b, float strength) {
         if (count < 2) return;
-        if (mesh == null) mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
-        else mesh.edit(this, CgVfxTrail::write);
+        if (mesh == null) {
+            mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
+            // Room for a full trail, so an edit never grows an array.
+            mesh.reserve(capacity * 2, (capacity - 1) * 6);
+        } else {
+            mesh.edit(this, CgVfxTrail::write);
+        }
         mesh.pad(widest);
         world.draw(mesh, material).at(ox, oy, oz).custom(0, r, g, b, strength).submit();
     }
@@ -137,7 +142,7 @@ public final class CgVfxTrail {
         }
     }
 
-    /** Releases its mesh; the trail may draw again, and makes a new one. */
+    /** Lets its mesh go; the trail may draw again, and makes a new one. A frame-ring mesh needs no release, a slab one does. */
     public void release() {
         if (mesh != null) mesh.release();
         mesh = null;
