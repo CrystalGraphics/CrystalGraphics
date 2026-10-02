@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -75,7 +75,7 @@ public final class CgVfxFrame {
      */
     public void mesh(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
-        draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+        draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
     }
 
     /**
@@ -85,7 +85,7 @@ public final class CgVfxFrame {
      */
     public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
-        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
     }
 
     /**
@@ -115,8 +115,9 @@ public final class CgVfxFrame {
             if (!slot.equals(layer.slot())) continue;
             switch (emitter.emitter().renderer()) {
                 case MESHES -> particleMeshes(effect, emitter, layer);
-                case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, false);
-                case ARCS -> particleDraws(effect, emitter, layer, system.ribbonMesh(), CgVfxRibbons.COUNT, true);
+                case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
+                case ARCS -> particleDraws(effect, emitter, layer, system.ribbonMesh(), CgVfxRibbons.COUNT,
+                        CgVfxRibbons.INDICES, true);
             }
         }
     }
@@ -131,9 +132,12 @@ public final class CgVfxFrame {
         }
     }
 
-    /** Draws of up to {@code perDraw} particles each, their transform the particles' bounding box. */
+    /**
+     * Draws of up to {@code perDraw} particles each, {@code indicesEach} of the mesh's indices a particle, their
+     * transform the particles' bounding box: the unit cube, stated, since the quads have no bounds of their own.
+     */
     private void particleDraws(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer, CgMesh mesh,
-                               int perDraw, boolean aroundSource) {
+                               int perDraw, int indicesEach, boolean aroundSource) {
         CgVfxParticleSet p = emitter.particles();
         int base = system.particleBase(emitter);
         CgVfxValues values = effect.values();
@@ -170,7 +174,8 @@ public final class CgVfxFrame {
                 hz = (maxZ - minZ) * 0.5f + margin;
             }
             scaled.scaling(Math.max(hx, 1.0e-3f), Math.max(hy, 1.0e-3f), Math.max(hz, 1.0e-3f));
-            CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
+            CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer)).indices(0, n * indicesEach)
+                    .bounds(-1f, -1f, -1f, 1f, 1f, 1f)
                     .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
                     .custom(0, base + start, n, layer.radius(), layer.parameter())
                     .custom(1, cx, cy, cz, effect.age);
@@ -181,14 +186,23 @@ public final class CgVfxFrame {
     }
 
     /**
-     * Draws {@code layer} on one camera-facing quad ({@code CgVfxBillboard}) at {@code (x, y, z)} from {@code effect}'s
+     * Draws {@code layer} on one camera-facing quad ({@code CgMesh.quads(1)}) at {@code (x, y, z)} from {@code effect}'s
      * origin, {@code size} times the layer's radius from its centre to an edge: one particle. Each is its own draw, so
      * the world renderer sorts alpha-blended ones back to front and instances neighbours. Its shader reads the same
-     * per-draw data as {@link #mesh}'s, {@code (ex, ey, ez, ew)} being the particle's own.
+     * per-draw data as {@link #mesh}'s, {@code (ex, ey, ez, ew)} being the particle's own, and turns the quad itself:
+     *
+     * <pre>{@code
+     * vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
+     * vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
+     * vec3 world = CG_OBJECT_TO_WORLD[3].xyz
+     *         + (right * FX_QUAD_CORNER.x + up * FX_QUAD_CORNER.y) * length(CG_OBJECT_TO_WORLD[0].xyz);
+     * }</pre>
      */
     public void billboard(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, float size,
                           float ex, float ey, float ez, float ew) {
-        draw(system.billboardMesh(), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew);
+        // Its bounds: the cube its transform scales, whichever way the shader turns it.
+        draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
+                .submit();
     }
 
     /**
@@ -228,8 +242,9 @@ public final class CgVfxFrame {
         draw.priority(layer.priority()).submit();
     }
 
-    private void draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
-                      float ex, float ey, float ez, float ew) {
+    /** A draw of {@code layer} on {@code mesh} with the per-draw data every effect shader reads, for the caller to submit. */
+    private CgWorldRenderer.Draw draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z,
+                                      Matrix4fc transform, float ex, float ey, float ez, float ew) {
         CgVfxValues values = effect.values();
         scaled.set(transform).scale(layer.radius());
         CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
@@ -238,7 +253,7 @@ public final class CgVfxFrame {
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        draw.priority(layer.priority()).submit();
+        return draw.priority(layer.priority());
     }
 
     private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {

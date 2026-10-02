@@ -1,10 +1,9 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
-import com.crystalgraphics.gl.mesh.CgMesh;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
@@ -15,7 +14,6 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
-import com.crystalgraphics.vfx.render.CgVfxBillboard;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
@@ -64,7 +62,8 @@ public final class CgVfxSystem {
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
-    private CgMesh tubeMesh, sphereMesh, ribbonMesh, billboardMesh, quadMesh;
+    // The tube and ribbons are this system's own; the sphere and quads are shared shapes.
+    private CgMesh tubeMesh, ribbonMesh, sphereMesh, quadMesh;
     /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
     private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
     private int particleRecords;
@@ -127,11 +126,10 @@ public final class CgVfxSystem {
     public void submit(CgWorldRenderer world) {
         if (effects.isEmpty()) return;
         if (tubeMesh == null) {
-            tubeMesh = CgMesh.upload(CgVfxTube.meshData());
-            sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 48, 96, 1f));
-            ribbonMesh = CgMesh.upload(CgVfxRibbons.meshData());
-            billboardMesh = CgMesh.upload(CgVfxBillboard.meshData());
-            quadMesh = CgMesh.upload(CgVfxQuads.meshData());
+            tubeMesh = CgVfxTube.mesh();
+            ribbonMesh = CgVfxRibbons.mesh();
+            sphereMesh = CgMeshShapes.sphere(48, 96);
+            quadMesh = CgVfxQuads.mesh();
         }
         warm();
         frame.begin(world, Math.min(owed / TICK, 1f));
@@ -203,19 +201,15 @@ public final class CgVfxSystem {
         return effects;
     }
 
-    /** Frees the meshes and the path texture; materials belong to the material registry. */
+    /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         effects.clear();
         paths.delete();
-        if (tubeMesh != null) tubeMesh.delete();
-        if (sphereMesh != null) sphereMesh.delete();
-        if (ribbonMesh != null) ribbonMesh.delete();
-        if (billboardMesh != null) billboardMesh.delete();
-        if (quadMesh != null) quadMesh.delete();
+        if (tubeMesh != null) tubeMesh.release();
+        if (ribbonMesh != null) ribbonMesh.release();
         tubeMesh = null;
-        sphereMesh = null;
         ribbonMesh = null;
-        billboardMesh = null;
+        sphereMesh = null;
         quadMesh = null;
         boundTexture = null;
         unbound.addAll(materials.values());
@@ -244,10 +238,6 @@ public final class CgVfxSystem {
 
     CgMesh quadMesh() {
         return quadMesh;
-    }
-
-    CgMesh billboardMesh() {
-        return billboardMesh;
     }
 
     CgMaterial material(CgVfxLayer layer) {

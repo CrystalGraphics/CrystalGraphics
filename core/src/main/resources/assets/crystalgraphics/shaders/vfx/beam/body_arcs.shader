@@ -3,7 +3,7 @@
 // leap far off the body before coming down. A strike holds its channel and strobes through its return strokes. Stateless
 // ribbons that read the path itself (CgVfxFrame.pathRibbons, fx_tube.glsl's fx_ring_at, fx_lightning.glsl): three per
 // bolt, its channel and two forks. Colour A is the glow, colour B the white core, A's alpha a strength. CgEnergyWave.
-#type spatial
+#type none
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_lightning.glsl"
@@ -61,7 +61,7 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        float index = cg_Normal.x, along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+        float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;
         int row = int(CG_OBJECT_CUSTOM0.x + 0.5);
         vec4 header = fx_path_header(_FxPath, row);
         float pathLength = header.y, seed = header.z, age = header.w;

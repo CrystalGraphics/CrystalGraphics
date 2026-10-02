@@ -3,7 +3,7 @@
 // a ribbon's index hashes into its direction, life and spin. CG_OBJECT_CUSTOM1: x the orb's radius in blocks, y the
 // orb's radius as a share of the sphere the streaks start on, z an intensity. Colour A is a streak, colour B its hot
 // head, A's alpha a strength. CgEnergyWave.
-#type spatial
+#type none
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 
@@ -39,7 +39,7 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        float index = cg_Normal.x, along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+        float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;
         float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
         vec4 h = fx_hash41(index * 1.618 + seed * 113.0);
         vec4 g = fx_hash41(index * 2.414 + seed * 71.0 + 5.0);
