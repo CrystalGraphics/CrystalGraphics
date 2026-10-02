@@ -4,6 +4,9 @@
 
 ## What This Package Is
 
+**The old stack, going.** The loaders moved to `api/mesh/CgMeshLoader` and the shapes to `api/mesh/CgMeshShapes`;
+what is left stays only until the VFX engine's draws move to `api/mesh/CgMesh`.
+
 Static GPU mesh construction, loading, and storage. Unlike the streaming batch path
 (which owns transient per-frame VBOs via `CgStreamBuffer`), this package manages
 immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`).
@@ -13,9 +16,6 @@ immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`)
 | Type | Role |
 |------|------|
 | `CgMeshBuilder` | Procedural mesh factory. All vertex packing via `CgVertexWriter.forBuffer()`. Five static methods: `unitCube`, `quad2D`, `plane`, `uvSphere`, `icosahedron`. Semantic presence (UV/COLOR/NORMAL) checked per-format to respect the step machine. Index type: u16 if vertexCount ≤ 65535, else u32. |
-| `CgObjLoader` | Loads OBJ files via `de.javagl:obj`. Uses `ObjUtils.convertToRenderable()` for triangulation + single-indexing. Packs vertices via `CgVertexWriter.forBuffer()`. `load(InputStream, format)` → one `CgMeshData`; `loadAll(...)` → list (currently single-group). |
-| `CgGltfLoader` | Loads glTF/GLB files via `de.javagl:jgltf-model`. Rejects skinned meshes (JOINTS_0 / WEIGHTS_0). Extracts POSITION, TEXCOORD_0, NORMAL accessors. Packs via `CgVertexWriter.forBuffer()`. `loadFirstPrimitive(stream, format)` and `loadPrimitive(stream, meshIdx, primIdx, format)`. |
-| `CgMeshLoader` | Unified facade. `load(resourcePath, format)` auto-detects `.obj` vs `.gltf`/`.glb` by extension. `loadObj()` / `loadGltf()` for explicit dispatch. |
 | `CgMesh` | Since mesh rewrite M3, a holder of an `api/mesh/CgMesh` (`mesh()`, through `CgMeshSource`): what the graph and the world renderer draw, from `render/mesh/CgMeshStore`'s pools. `upload(...)` reads the buffers at once, on any thread. `drawDirect()`/`drawInstanced(n)` draw immediately from GL objects of its own, made at the first such draw. `delete()` releases the pooled copy and those objects. Goes in M5 |
 
 ## Key Design Rules

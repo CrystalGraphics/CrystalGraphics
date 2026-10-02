@@ -53,8 +53,8 @@ import javax.annotation.Nullable;
  *   <li>Indices count from their submesh's first vertex ({@link CgSubmesh}).</li>
  *   <li>Bounds follow the positions written, unless {@link #bounds(float, float, float, float, float, float)} states
  *       them; {@link #pad} grows either, for a vertex shader that displaces.</li>
- *   <li>A shared shape from {@link CgMeshShapes} refuses edits and {@link #release()}: build your own with the
- *       writer form of the shape.</li>
+ *   <li>A shared mesh from {@link CgMeshShapes} or {@link CgMeshLoader} refuses edits and {@link #release()}: build
+ *       your own with the writer form of the shape.</li>
  *   <li>One writer at a time; the body of {@link #edit} runs outside the mesh's lock, so a reader is never held up
  *       by it, and the contents change in one step when it returns.</li>
  * </ul>

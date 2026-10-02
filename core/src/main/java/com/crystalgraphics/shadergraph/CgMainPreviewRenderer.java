@@ -5,7 +5,6 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -18,8 +17,6 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
-import java.util.EnumMap;
-import java.util.Map;
 
 /**
  * The main preview: the <b>finished shader</b> on a mesh you can turn. It issues no GL: a redraw is a raster pass
@@ -106,7 +103,6 @@ public final class CgMainPreviewRenderer {
     @Nullable
     private CgPreviewTarget target;
 
-    private final Map<CgPreviewMesh, CgMesh> meshes = new EnumMap<>(CgPreviewMesh.class);
     /** The preview camera: its own pass block, so nothing the world draws under is touched. */
     private final CgPassConstants camera = new CgPassConstants();
 
@@ -451,7 +447,7 @@ public final class CgMainPreviewRenderer {
             // Alpha visible at all. Blending ON, unlike a node thumbnail: Alpha is a real master port, and an
             // opaque preview of a transparent material is a preview of something else.
             CgRasterPass pass = target.begin(recording, camera, PASS_STATE);
-            CgPreviewDraw.object(recording, pass, material, meshFor(mesh));
+            CgPreviewDraw.object(recording, pass, material, mesh.mesh(CgVertexFormat.SPATIAL));
             target.end(recording, pass);
         }
     }
@@ -553,21 +549,13 @@ public final class CgMainPreviewRenderer {
     /** The compiles recorded for {@link #compilingMaterial}, any of which answering makes it ready. */
     private final CgRequests compiles = new CgRequests();
 
-    /** Built on first use, uploaded by the render thread, and kept: switching back to a shape must not re-upload it. */
-    private CgMesh meshFor(CgPreviewMesh mesh) {
-        return meshes.computeIfAbsent(mesh, m -> CgMesh.upload(m.build(CgVertexFormat.SPATIAL)));
-    }
-
     /**
-     * Gives its target back to the pool and frees every mesh built so far. Any thread: the meshes go on the render
-     * thread, and the target stays in the pool for the next preview.
+     * Gives its target back to the pool. Any thread: the target stays in the pool for the next preview.
      */
     public void delete() {
         if (deleted) return;
         targets.releaseAllWithin(scope);
         target = null;
-        for (CgMesh mesh : meshes.values()) mesh.delete();
-        meshes.clear();
         if (heldMaterial != null) heldMaterial.delete();
         heldMaterial = null;
         heldSource = null;

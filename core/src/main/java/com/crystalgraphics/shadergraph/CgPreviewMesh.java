@@ -1,8 +1,8 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.api.mesh.CgMeshData;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 
 /**
  * The shapes the main preview can draw a finished graph on.
@@ -61,22 +61,16 @@ public enum CgPreviewMesh {
         return viewRadius;
     }
 
-    /** Builds the geometry. Callers upload and cache; nothing here touches GL. */
-    public CgMeshData build(CgVertexFormat format) {
-        switch (this) {
-            case SPHERE:
-                return CgMeshBuilder.uvSphere(format, 24, SECTORS, 1f);
-            case CAPSULE:
-                // Total height 2.0 — a 1.0 cylindrical section between two 0.5 caps — so it reads as
-                // Unity's capsule rather than as a stretched pill.
-                return CgMeshBuilder.capsule(format, SECTORS, 8, 0.5f, 1f);
-            case CYLINDER:
-                return CgMeshBuilder.cylinder(format, SECTORS, 0.6f, 1.6f);
-            case CUBE:
-                return CgMeshBuilder.unitCube(format);
-            case QUAD:
-            default:
-                return CgMeshBuilder.quad2D(format, -1f, -1f, 1f, 1f);
-        }
+    /** The shape, shared: every preview of it draws one mesh. */
+    public CgMesh mesh(CgVertexFormat format) {
+        return switch (this) {
+            case SPHERE -> CgMeshShapes.sphere(format, 24, SECTORS);
+            // Total height 2.0 — a 1.0 cylindrical section between two 0.5 caps — so it reads as
+            // Unity's capsule rather than as a stretched pill.
+            case CAPSULE -> CgMeshShapes.capsule(format, SECTORS, 8, 0.5f, 1f);
+            case CYLINDER -> CgMeshShapes.cylinder(format, SECTORS, 0.6f, 1.6f);
+            case CUBE -> CgMeshShapes.cube(format);
+            case QUAD -> CgMeshShapes.quad(format, 1f, 1f);
+        };
     }
 }

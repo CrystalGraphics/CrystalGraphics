@@ -1,7 +1,7 @@
 package com.crystalgraphics.shadergraph;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
