@@ -1,14 +1,44 @@
 # CrystalGraphics — Agent Knowledge Base
 
-**What**: a modern OpenGL rendering engine for Minecraft mods — materials, meshes, framebuffers,
-instancing and text — shipped as **one jar** for Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and
-Fabric 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent
-of** CrystalGUI, which builds every node against this repository's node of the same version.
+**What**: a modern rendering engine for Minecraft mods — materials, meshes, framebuffers, instancing and
+text — designed for Vulkan and running on OpenGL wherever Vulkan is not the backend, shipped as **one jar** for
+Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and Fabric 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of
+every engine module. **The parent of** CrystalGUI, which builds every node against this repository's node of the
+same version.
 
 > **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
 > supports — Unity's Shader Graph, true to GLSL, on a modern GL 3.x+ pipeline with instancing as the
 > default draw path. It shipped in CrystalGUI (`com.crystalgui.app.shadergraph`). **Read
 > the manifesto (`plan/crystalgraphics/archive/CRYSTALSHADER_MANIFESTO.md`, private) before any rendering or shader decision.**
+
+---
+
+## Project philosophy
+
+The principles every design here answers to; the sections below assume them.
+
+- **Vulkan first; OpenGL keeps up through waterfalls.** The engine is designed for the Vulkan device: compute
+  passes, indirect draws and everything GL 4.6 or later offers are the design, used ungated there. OpenGL stays
+  supported from a 3.3 floor. Where an older context cannot do what the design does (macOS's GL stops at 4.1), a
+  waterfall tier provides it, each tier forceable for a driver that misbehaves, and Minecraft before 26 runs on those
+  tiers. The modern approach is never dropped to suit the old one, and a new GPU subsystem gets its own research
+  plan before any code.
+- **Fail fast; a tier is never a silent downgrade.** A capability no tier can provide throws, naming what is
+  missing. A tier reaches the same result by another route; anything that quietly draws less, or something else,
+  is a bug.
+- **One engine, every version; hosts only wire it.** `core/` and `platform/` name no Minecraft, loader or LWJGL
+  type, and a host says how its version spells a thing and decides nothing. A version, a node or a platform
+  capability lands here first, then in CrystalGUI.
+- **Draws are data, recorded, then executed once.** A frame is recorded into a graph on any thread, built off the
+  render thread (ordered by what reads and writes what, culled, batched) and executed in one place. Meshes are data
+  the same way: built and edited anywhere, their GPU copy the engine's business.
+- **The frame time is the budget.** Generation (glyphs, shader variants, meshes) runs on workers and the frame draws
+  what is ready; hot paths do not allocate; a frame waits on one fence at its start, never in the middle.
+- **Cooperate with the host; never assume control.** Minecraft and other mods change GL state behind the engine,
+  so the state shadow takes its truth at host boundaries (host sections), and every scope restores what it changed.
+- **Port what is solved; measure what is claimed.** Proven designs (Skia, Godot, Bevy, Dolphin, Unity's formats)
+  are ported or followed with attribution rather than re-derived. A performance claim comes from a trace, before and
+  after, in one run (`docs/PROFILING.md`).
 
 ---
 
@@ -200,20 +230,6 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Load a resource file (shader source, config, image) | [Resource I/O](#resource-io--cgio-and-cgtextureio) | `util/io/CgIO` |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
-
----
-
-## Project Philosophy
-
-- **Fail Fast**: throw exceptions for unsupported capabilities; never silently degrade
-- **Multi-Mod First**: other mods will mutate GL state; design for cooperation, not control
-- **Vulkan first; GL keeps up through waterfalls**: CrystalGraphics is designed for the Vulkan device. Compute
-  passes, indirect draws and everything GL 4.6 or later offers are the design, used ungated there. GL stays
-  supported: where an older GL context cannot do what the design does (macOS's GL stops at 4.1), a waterfall tier
-  provides it, each forceable, and Minecraft before 26 runs on those tiers. The modern approach is never dropped for
-  the old one. A new GPU subsystem (compute first) gets its own research plan before any code
-- **A GL 3.3 floor, and gates above it**: `CgCapabilities.detect()` throws below OpenGL 3.3, so nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name
-- **Angelica Coexistence**: on 1.7.10 with Angelica present, the GL state shadow reads Angelica's mirror instead of the driver (`AngelicaStateProvider`)
 
 ---
 
@@ -1025,6 +1041,8 @@ CgGlState.saveAll()       // → all 16 slots (used by CgExecutor around a frame
 ## Capabilities
 
 `CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`.
+
+Nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name.
 
 ## Render State
 
