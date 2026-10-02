@@ -11,6 +11,16 @@
 // inside vertex() or fragment().
 #define FX_CAMERA (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
 
+// Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only, like FX_CAMERA.
+// CgVfxQuads (CgMesh.quads): the vertex's quad, and its corner -1..1 on each axis.
+#define FX_QUAD_INDEX float(CG_VERTEX_ID >> 2)
+#define FX_QUAD_CORNER (CG_VERTEX_CORNER * 2.0 - 1.0)
+// CgVfxRibbons: the ribbon, how far along it 0..1 (0 its tail), and the side -1 or 1. 66 vertices a ribbon, two for
+// each of its 32 segments' ends: CgVfxRibbons.VERTICES and SEGMENTS.
+#define FX_RIBBON_INDEX float(CG_VERTEX_ID / 66)
+#define FX_RIBBON_ALONG (float((CG_VERTEX_ID % 66) >> 1) / 32.0)
+#define FX_RIBBON_SIDE (float(CG_VERTEX_ID & 1) * 2.0 - 1.0)
+
 // ── Hashes (Dave Hoskins, sin-free), 0..1 ──────────────────────────────────────────────────────────────────────
 
 float fx_hash31(vec3 p) {

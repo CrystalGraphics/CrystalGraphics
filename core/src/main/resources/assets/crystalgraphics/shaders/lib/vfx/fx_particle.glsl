@@ -1,7 +1,7 @@
 // What a particle shader needs to place a CgVfxQuads quad or a CgVfxRibbons stroke from a particle record. Pure
 // functions: nothing here names cg_* or CG_*, so the record itself is read by the shader through CG_PARTICLE_*.
 //
-//     int n = fx_particle_index(cg_Normal.x, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);   // -1 past the draw's count
+//     int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);   // -1 past the draw's count
 //     vec3 world = fx_particle_corner(centre, corner, vec2(length, width), angle, right, up);
 #pragma once
 
