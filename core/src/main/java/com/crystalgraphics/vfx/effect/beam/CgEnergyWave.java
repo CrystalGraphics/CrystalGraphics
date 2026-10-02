@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.effect.beam;
 
+import com.crystalgraphics.easing.CgEasings;
+import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -9,32 +11,38 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
-
 import org.joml.Matrix4f;
 
 import java.util.List;
 
 /**
- * An energy wave: a beam fired from a muzzle that flows outward, bends where its source turns, homes on a target and
- * stops where it hits. {@link #kamehameha()} is its default look; another palette and other layers make a Final Flash
- * or a Galick Gun.
+ * An energy wave: charged at a muzzle, then a beam that flows outward, bends where its source turns, homes on a target
+ * and stops where it hits. {@link #kamehameha()} is its default look; another palette and other layers make a Final
+ * Flash or a Galick Gun.
  *
  * <pre>{@code
- * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));  // the muzzle
+ * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));  // the muzzle; charging starts
  * wave.aim(dx, dy, dz);              // where the source points; call as it turns
  * wave.target(tx, ty, tz);           // what the beam homes on, in world coordinates
+ * wave.fire();                       // release now rather than after CHARGE_TIME
  * wave.set(CgEnergyWave.RADIUS, 1f); // any parameter, this wave only
  * wave.stop();                       // the tail runs out, then the wave ends
  * }</pre>
  *
- * <p>Its look's layers draw in two slots: {@link CgVfxLayer#SLOT_BODY} as tubes along the body, and {@link #SLOT_HEAD}
- * on a sphere at the front ({@link CgVfxFrame#mesh}), whose {@code CG_OBJECT_CUSTOM1} is the head's half-width and
- * half-length.</p>
+ * <p>Its life: a ball charges at the muzzle for {@link #CHARGE_TIME}, growing along {@link #CHARGE_SIZE} while a
+ * portal swirls into it; at the release a flash ({@link #FLASH}) and a shock ring, and the ball settles into the beam's
+ * root while the body flies out; after {@link #stop()} the root fades and the tail runs out into the target.</p>
+ *
+ * <p>Its look's layers draw in slots: {@link CgVfxLayer#SLOT_BODY} as tubes along the body; {@link #SLOT_HEAD},
+ * {@link #SLOT_CHARGE} and {@link #SLOT_FLASH} on spheres ({@link CgVfxFrame#mesh}, {@code CG_OBJECT_CUSTOM1} the
+ * half-width, half-length and intensity); {@link #SLOT_PORTAL} and {@link #SLOT_SHOCK} on a sphere flattened to a disc
+ * facing along the aim ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the shock's progress, 0..1).</p>
  *
  * <ul>
- *   <li>Fires from the moment it plays. Positions are absolute; the wave simulates relative to where it was made.</li>
+ *   <li>Positions are absolute; the wave simulates relative to where it was made.</li>
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
+ *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
  * </ul>
  */
 public final class CgEnergyWave extends CgVfxEffect {
@@ -42,6 +50,15 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxSchema SCHEMA = new CgVfxSchema();
     /** The slot a layer draws the head in: a sphere at the front, its +z along the body. */
     public static final String SLOT_HEAD = "head";
+    /** The charge ball, and after the release the beam's root: a sphere at the muzzle, its +z along the aim. */
+    public static final String SLOT_CHARGE = "charge";
+    /** The release flash: a sphere at the muzzle. */
+    public static final String SLOT_FLASH = "flash";
+    /** The portal swirling into the charge: a disc at the muzzle facing along the aim. */
+    public static final String SLOT_PORTAL = "portal";
+    /** The shock ring at the release: a disc at the muzzle facing along the aim. */
+    public static final String SLOT_SHOCK = "shock";
+
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.55f);
     /** How fast energy leaves the muzzle, in blocks a second. */
@@ -50,7 +67,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam TURN_RATE = SCHEMA.scalar("turnRate", 4f);
     /** How hard the body homes: 3 curves smoothly into the target, more bends harder early and runs straighter after. */
     public static final CgVfxParam NAVIGATION = SCHEMA.scalar("navigation", 3f);
-    /** Seconds the body takes to swell from thin to its full radius after firing. */
+    /** Seconds the body takes to swell from thin to its full radius after the release. */
     public static final CgVfxParam LAUNCH = SCHEMA.scalar("launch", 0.6f);
     /** The head's half-width, as a multiple of the body's radius. */
     public static final CgVfxParam HEAD_WIDTH = SCHEMA.scalar("headWidth", 1.45f);
@@ -62,6 +79,31 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam RING_SPACING = SCHEMA.scalar("ringSpacing", 0.2f);
     /** How much pulses running down the body swell it, as a share of the radius. */
     public static final CgVfxParam THROB = SCHEMA.scalar("throb", 0.07f);
+
+    /** Seconds the ball charges before the wave fires on its own; 0 fires at once. */
+    public static final CgVfxParam CHARGE_TIME = SCHEMA.scalar("chargeTime", 1.6f);
+    /** The charge ball's full radius, as a multiple of the body's. */
+    public static final CgVfxParam CHARGE_RADIUS = SCHEMA.scalar("chargeRadius", 1.7f);
+    /** The charge ball's size over the charge (0..1 of it), a share of {@link #CHARGE_RADIUS}: it swells past full, then settles. */
+    public static final CgVfxParam CHARGE_SIZE = SCHEMA.curve("chargeSize", CgKeyframes.start(0f, 0.15f)
+            .to(0.85f, 1.25f, CgEasings.OUT_CUBIC)
+            .to(1f, 1f, CgEasings.IN_OUT_QUAD)
+            .build());
+    /** The beam's root after the release, a share of the charge ball's full size. */
+    public static final CgVfxParam ROOT_SIZE = SCHEMA.scalar("rootSize", 0.8f);
+    /** The release flash's brightness over the seconds since the release. */
+    public static final CgVfxParam FLASH = SCHEMA.curve("flash", CgKeyframes.start(0f, 0f)
+            .to(0.05f, 3f, CgEasings.OUT_QUAD)
+            .to(0.5f, 0f, CgEasings.OUT_CUBIC)
+            .build());
+    /** The release flash's half-width, as a multiple of the body's radius. */
+    public static final CgVfxParam FLASH_RADIUS = SCHEMA.scalar("flashRadius", 3f);
+    /** Seconds the shock ring takes to sweep out, and how far it reaches, as a multiple of the body's radius. */
+    public static final CgVfxParam SHOCK_TIME = SCHEMA.scalar("shockTime", 0.55f);
+    public static final CgVfxParam SHOCK_RADIUS = SCHEMA.scalar("shockRadius", 8f);
+    /** The portal's radius, as a multiple of the body's radius. */
+    public static final CgVfxParam PORTAL_RADIUS = SCHEMA.scalar("portalRadius", 5f);
+
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
@@ -73,36 +115,54 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
             .colors(SHELL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build();
 
+    private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/body_glow.shader").volume()
+            .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
                     .radius(3.6f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/body_shell.shader")
+            .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
                     .radius(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/body_core.shader")
+            .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
                     .radius(0.62f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/orb_glow.shader").slot(SLOT_HEAD)
-                    .radius(3.2f).parameter(1.3f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/orb_shell.shader").slot(SLOT_HEAD)
-                    .radius(1.15f).parameter(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/orb_core.shader").slot(SLOT_HEAD)
-                    .radius(0.75f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
+            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.3f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
+            .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
+            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.6f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_shell", SLOT_CHARGE, 1.15f, 0f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
+            .layer(orb("orb_core", SLOT_CHARGE, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
+            .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(CgVfxLayer.builder(BEAM + "disc_portal.shader").slot(SLOT_PORTAL)
+                    .colors(SPIRAL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_BANDS).build())
+            .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
+                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .build();
+
+    /** Seconds the root takes to settle after the release, and to fade after a stop. */
+    private static final float SETTLE = 0.25f, FADE = 0.35f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
-    private final Matrix4f head = new Matrix4f();
+    private final Matrix4f placed = new Matrix4f();
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
     private float aimX = 1f, aimY, aimZ;
+    /** The age it releases at, and the age it was stopped at; NaN until each happens. */
+    private float releaseAge, stopAge = Float.NaN;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
         super(look, x, y, z);
+        releaseAge = Math.max(get(CHARGE_TIME), 0f);
     }
 
     /** Blue-white, Sparking! Zero's. */
     public static CgVfxLook kamehameha() {
         return KAMEHAMEHA;
+    }
+
+    private static CgVfxLayer orb(String shader, String slot, float radius, float parameter, CgVfxParam a,
+                                  CgVfxParam b, int priority) {
+        return CgVfxLayer.builder(BEAM + shader + ".shader").slot(slot).radius(radius).parameter(parameter)
+                .colors(a, b).priority(priority).build();
     }
 
     /** Where the source points, any length. */
@@ -125,6 +185,23 @@ public final class CgEnergyWave extends CgVfxEffect {
         return this;
     }
 
+    /** Releases the charge now, if it has not yet released. */
+    public CgEnergyWave fire() {
+        releaseAge = Math.min(releaseAge, age);
+        return this;
+    }
+
+    @Override
+    public void stop() {
+        if (state() == State.PLAYING) stopAge = age;
+        super.stop();
+    }
+
+    /** Whether it is still charging. */
+    public boolean charging() {
+        return age < releaseAge && state() == State.PLAYING;
+    }
+
     /** Whether the head is at the target this frame. */
     public boolean impacting() {
         return stream.impacting();
@@ -132,26 +209,75 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     @Override
     protected void tick(float dt) {
-        if (state() == State.PLAYING) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
+        if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
         stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
-        if (state() == State.STOPPING && stream.size() == 0) die();
+        if (state() == State.STOPPING && stream.size() == 0 && age > stopAge + FADE) die();
     }
 
     @Override
     protected void submit(CgVfxFrame frame) {
+        List<CgVfxLayer> layers = look().layers();
+        submitMuzzle(frame, layers);
         int needed = (stream.size() + 2) * 3;
         if (points.length < needed) points = new float[needed * 2];
-        int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, state() == State.PLAYING);
+        boolean firing = state() == State.PLAYING && age >= releaseAge;
+        int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, firing);
         path.build(points, n, get(RING_SPACING));
         if (path.count() < 2) return;
-        shape();
+        shape(firing);
         int row = frame.path(path, seed, age);
-        List<CgVfxLayer> layers = look().layers();
         for (int i = 0; i < layers.size(); i++) {
             CgVfxLayer layer = layers.get(i);
             if (CgVfxLayer.SLOT_BODY.equals(layer.slot())) frame.tube(this, path, row, layer);
         }
         submitHead(frame, layers);
+    }
+
+    /** The charge ball and then the root, the portal, the release flash and the shock ring, all at the muzzle. */
+    private void submitMuzzle(CgVfxFrame frame, List<CgVfxLayer> layers) {
+        float radius = get(RADIUS);
+        float sinceRelease = age - releaseAge;
+        float fade = Float.isNaN(stopAge) ? 1f : 1f - smooth(stopAge, stopAge + FADE, age);
+        if (fade <= 0f) return;
+
+        float full = radius * get(CHARGE_RADIUS);
+        float ball;
+        if (sinceRelease < 0f) {
+            float chargeTime = Math.max(get(CHARGE_TIME), 1.0e-3f);
+            ball = full * curve(CHARGE_SIZE).at(age / chargeTime);
+        } else {
+            ball = full * (1f + (get(ROOT_SIZE) - 1f) * smooth(0f, SETTLE, sinceRelease));
+        }
+        ball *= 1f + 0.05f * (float) Math.sin(age * 23f + seed * 6.28f);
+        alongAim(placed);
+        placed.rotateZ(age * 1.3f).scale(ball);
+        draw(frame, layers, SLOT_CHARGE, placed, ball, ball, fade, 0f);
+
+        if (sinceRelease >= 0f) {
+            float flash = curve(FLASH).at(sinceRelease);
+            if (flash > 0f) {
+                float flashRadius = radius * get(FLASH_RADIUS) * (0.6f + 0.6f * smooth(0f, 0.4f, sinceRelease));
+                alongAim(placed).scale(flashRadius);
+                draw(frame, layers, SLOT_FLASH, placed, flashRadius, flashRadius, flash, 0f);
+            }
+            float shockTime = get(SHOCK_TIME);
+            if (sinceRelease < shockTime) {
+                float progress = (float) CgEasings.OUT_CUBIC.ease(sinceRelease / shockTime);
+                float reach = radius * get(SHOCK_RADIUS);
+                alongAim(placed).scale(reach, reach, 0.002f);
+                draw(frame, layers, SLOT_SHOCK, placed, reach, reach, 1f - progress, progress);
+            }
+        }
+
+        float chargeTime = get(CHARGE_TIME);
+        float portal = sinceRelease < 0f
+                ? smooth(0f, 0.3f, chargeTime > 0f ? age / chargeTime : 1f)
+                : 1f - smooth(0f, 0.4f, sinceRelease);
+        if (portal > 0f) {
+            float portalRadius = radius * get(PORTAL_RADIUS);
+            alongAim(placed).scale(portalRadius, portalRadius, 0.002f);
+            draw(frame, layers, SLOT_PORTAL, placed, portalRadius, portalRadius, portal * fade, 0f);
+        }
     }
 
     /**
@@ -163,24 +289,41 @@ public final class CgEnergyWave extends CgVfxEffect {
         float tx = path.tangentX(last), ty = path.tangentY(last), tz = path.tangentZ(last);
         float pulse = 1f + 0.06f * (float) Math.sin(age * 21f + seed * 6.28f);
         float width = bodyRadius * get(HEAD_WIDTH) * pulse, length = bodyRadius * get(HEAD_LENGTH);
-        boolean steep = Math.abs(ty) > 0.95f;
-        head.identity().rotateTowards(tx, ty, tz, steep ? 1f : 0f, steep ? 0f : 1f, 0f)
-                .rotateZ(age * 1.7f).scale(width, width, length);
+        facing(placed, tx, ty, tz).rotateZ(age * 1.7f).scale(width, width, length);
         float back = length * 0.55f;
         float x = path.x(last) - tx * back, y = path.y(last) - ty * back, z = path.z(last) - tz * back;
         for (int i = 0; i < layers.size(); i++) {
             CgVfxLayer layer = layers.get(i);
-            if (SLOT_HEAD.equals(layer.slot())) frame.mesh(this, layer, x, y, z, head, width, length, 1f, 0f);
+            if (SLOT_HEAD.equals(layer.slot())) frame.mesh(this, layer, x, y, z, placed, width, length, 1f, 0f);
         }
     }
 
-    /** The body's radius along it: swelling after it fires, flared from the muzzle, swollen behind the head, rounded at it, throbbing. */
-    private void shape() {
-        float launch = get(LAUNCH);
-        float radius = get(RADIUS) * (launch > 0f ? 0.3f + 0.7f * smooth(0f, launch, age) : 1f);
+    /** Every layer in {@code slot}, at the muzzle. */
+    private void draw(CgVfxFrame frame, List<CgVfxLayer> layers, String slot, Matrix4f transform,
+                      float width, float length, float intensity, float progress) {
+        for (int i = 0; i < layers.size(); i++) {
+            CgVfxLayer layer = layers.get(i);
+            if (slot.equals(layer.slot())) frame.mesh(this, layer, 0f, 0f, 0f, transform, width, length, intensity, progress);
+        }
+    }
+
+    /** {@code m} turned so its +z runs along the aim. */
+    private Matrix4f alongAim(Matrix4f m) {
+        float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
+        return facing(m, aimX / length, aimY / length, aimZ / length);
+    }
+
+    private static Matrix4f facing(Matrix4f m, float x, float y, float z) {
+        boolean steep = Math.abs(y) > 0.95f;
+        return m.identity().rotateTowards(x, y, z, steep ? 1f : 0f, steep ? 0f : 1f, 0f);
+    }
+
+    /** The body's radius along it: swelling after the release, flared from the muzzle, swollen behind the head, rounded at it, throbbing. */
+    private void shape(boolean firing) {
+        float launch = get(LAUNCH), sinceRelease = age - releaseAge;
+        float radius = get(RADIUS) * (launch > 0f ? 0.3f + 0.7f * smooth(0f, launch, sinceRelease) : 1f);
         bodyRadius = radius;
         float throb = get(THROB), length = path.length();
-        boolean firing = state() == State.PLAYING;
         for (int i = 0; i < path.count(); i++) {
             float s = path.arc(i);
             float muzzle = firing ? 0.55f + 0.45f * smooth(0f, 2.5f * radius, s) : smooth(0f, radius, s);
