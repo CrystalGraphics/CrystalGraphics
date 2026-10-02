@@ -223,6 +223,18 @@ public class CgMeshTest {
         assertEquals(24, bytes(kept).remaining() / kept.format().getStride());
     }
 
+    @Test
+    public void reserveKeepsContentsAndRefusesASharedShape() {
+        CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {});
+        trail.reserve(1024, 4096);
+        trail.edit(CgMeshShapes::cube);
+        assertEquals(24, trail.vertexCount());
+        assertEquals(36, trail.indexCount());
+        trail.reserve(8, 8);                                   // never shrinks what an edit wrote
+        assertEquals(24, bytes(trail).remaining() / trail.format().getStride());
+        assertThrows(IllegalStateException.class, () -> CgMeshShapes.cube().reserve(64, 64));
+    }
+
     private static ByteBuffer bytes(CgMesh mesh) {
         ByteBuffer b = ByteBuffer.allocate(mesh.vertexCount() * mesh.format().getStride()).order(ByteOrder.nativeOrder());
         mesh.readVertices(0, mesh.vertexCount(), b);
