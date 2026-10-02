@@ -169,6 +169,13 @@ Rules that follow:
   flipped between them (`TraceCostProbe` in `harness-scenes` is the pattern) — drift cancels.
 - Across runs: back to back, on a quiet machine, each at least twice. **A difference smaller than twice the
   run-to-run spread is not a finding** — say so rather than report it.
+- **A spike no zone explains is the machine until a bare window says otherwise.** A stall of tens of
+  milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`,
+  `stage.parkSamplers`), the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any
+  engine theory, run a bare GLFW window (clear and swap, nothing of ours) for two minutes with `nvidia-smi`
+  sampling beside it: if it stalls too, the fix is the machine. The recipe, the script and what it found
+  (on 2026-10-01 a background utility froze every OpenGL window on this machine for seconds) are in
+  `plan/gl-gpu-stalls-notes.md`, from its line *If the freezes come back, start here*.
 
 ---
 
