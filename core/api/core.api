@@ -592,6 +592,7 @@ com/crystalgraphics/api/mesh/CgMesh
   method public readVertices (IILjava/nio/ByteBuffer;)V
   method public release ()V
   method public releases ()I
+  method public reserve (II)V
   method public revision ()I
   method public submesh (I)Lcom/crystalgraphics/api/mesh/CgSubmesh;
   method public submesh (III)V
@@ -1684,6 +1685,7 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method public getTarget ()I
   method public getWriteOffset ()I
   method public isDeleted ()Z
+  method public mappedOffset ()I
   method public offsetMovesPerUpload ()Z
   method public unbind ()V
   method public uploadFloats ([FI)I
