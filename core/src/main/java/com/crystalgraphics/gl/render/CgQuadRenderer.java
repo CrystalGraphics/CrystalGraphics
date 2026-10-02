@@ -264,7 +264,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     /**
      * Binds {@code texture} to {@code unit} for the records queued from now until the next flush, as a raw
      * {@code glBindTexture} before the draw did: it wins over the material's own sampler at that unit when bound
-     * after the last {@link #useMaterial}.
+     * after the last {@link #useMaterial}. {@code null} gives the unit back to the material.
      */
     public CgQuadRenderer bindTexture(int unit, CgTexture texture) {
         run.handBind(unit, texture);
