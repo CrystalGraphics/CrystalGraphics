@@ -2548,6 +2548,58 @@ com/crystalgraphics/platform/service/CgCursorService$Image
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;[IIIII)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
   method public,static standard (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
+com/crystalgraphics/platform/service/CgEntityQuery
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final ALIVE I
+  field public,static,final BODY_YAW I
+  field public,static,final EYE_HEIGHT I
+  field public,static,final GLIDING I
+  field public,static,final HEAD_YAW I
+  field public,static,final HEIGHT I
+  field public,static,final INVISIBLE I
+  field public,static,final IN_WATER I
+  field public,static,final KIND_ANIMAL I
+  field public,static,final KIND_ITEM I
+  field public,static,final KIND_MONSTER I
+  field public,static,final KIND_OTHER I
+  field public,static,final KIND_PLAYER I
+  field public,static,final KIND_PROJECTILE I
+  field public,static,final KIND_VEHICLE I
+  field public,static,final LIMB_SWING I
+  field public,static,final LIMB_SWING_AMOUNT I
+  field public,static,final LIVING I
+  field public,static,final LOCAL_PLAYER I
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgEntityQuery;
+  field public,static,final ON_FIRE I
+  field public,static,final ON_GROUND I
+  field public,static,final PITCH I
+  field public,static,final PLAYER I
+  field public,static,final POSE_LENGTH I
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final SNEAKING I
+  field public,static,final SPRINTING I
+  field public,static,final SWIMMING I
+  field public,static,final VELOCITY_X I
+  field public,static,final VELOCITY_Y I
+  field public,static,final VELOCITY_Z I
+  field public,static,final WIDTH I
+  field public,static,final X I
+  field public,static,final Y I
+  field public,static,final YAW I
+  field public,static,final Z I
+  method public,abstract cameraEntity ()I
+  method public,abstract flags (I)I
+  method public,abstract kind (I)I
+  method public,abstract localPlayer ()I
+  method public,abstract pose (IF[D)Z
+  method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
+com/crystalgraphics/platform/service/CgHostCamera
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostCamera;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract offset (FFFFFFF)V
 com/crystalgraphics/platform/service/CgInputService
   access public,abstract,interface
   extends java/lang/Object
@@ -2583,6 +2635,85 @@ com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract play (Ljava/lang/String;)V
+com/crystalgraphics/platform/service/CgWorldEvents
+  access public,final
+  extends java/lang/Object
+  method public,static blockBroken (IIIII)V
+  method public,static entityDied (IDDD)V
+  method public,static entityHurt (IDDD)V
+  method public,static explosion (DDDF)V
+  method public,static lightning (DDD)V
+  method public,static listen (Lcom/crystalgraphics/platform/service/CgWorldEvents$Listener;)V
+  method public,static stopListening (Lcom/crystalgraphics/platform/service/CgWorldEvents$Listener;)V
+com/crystalgraphics/platform/service/CgWorldEvents$Listener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public blockBroken (IIIII)V
+  method public entityDied (IDDD)V
+  method public entityHurt (IDDD)V
+  method public explosion (DDDF)V
+  method public lightning (DDD)V
+com/crystalgraphics/platform/service/CgWorldQuery
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final BIOME_FOG I
+  field public,static,final BIOME_FOLIAGE I
+  field public,static,final BIOME_GRASS I
+  field public,static,final BIOME_SKY I
+  field public,static,final BIOME_WATER I
+  field public,static,final BIOME_WATER_FOG I
+  field public,static,final FLUID_LAVA I
+  field public,static,final FLUID_NONE I
+  field public,static,final FLUID_WATER I
+  field public,static,final HEIGHT_NO_LEAVES I
+  field public,static,final HEIGHT_OCEAN_FLOOR I
+  field public,static,final HEIGHT_TOP I
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldQuery;
+  field public,static,final PRECIPITATION_NONE I
+  field public,static,final PRECIPITATION_RAIN I
+  field public,static,final PRECIPITATION_SNOW I
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final SURFACE_DIRT I
+  field public,static,final SURFACE_GLASS I
+  field public,static,final SURFACE_GRAVEL I
+  field public,static,final SURFACE_ICE I
+  field public,static,final SURFACE_METAL I
+  field public,static,final SURFACE_NONE I
+  field public,static,final SURFACE_OTHER I
+  field public,static,final SURFACE_PLANT I
+  field public,static,final SURFACE_SAND I
+  field public,static,final SURFACE_SNOW I
+  field public,static,final SURFACE_STONE I
+  field public,static,final SURFACE_WOOD I
+  field public,static,final SURFACE_WOOL I
+  method public,abstract biomeColor (IIII)I
+  method public,abstract collisionBottom (III)F
+  method public,abstract collisionBoxes (III[F)I
+  method public,abstract collisionTop (III)F
+  method public,abstract fluidHeight (III)F
+  method public,abstract fluidKind (III)I
+  method public,abstract hardness (III)F
+  method public,abstract levelEpoch ()I
+  method public,abstract light (III)I
+  method public,abstract lightEmission (III)I
+  method public,abstract loaded (II)Z
+  method public,abstract mapColor (III)I
+  method public,abstract maxY ()I
+  method public,abstract minY ()I
+  method public,abstract precipitation (III)I
+  method public,abstract seaLevel ()I
+  method public,abstract spriteRect (III[F)Z
+  method public,abstract surface (III)I
+  method public,abstract surfaceY (III)I
+  method public,abstract tint (III)I
+  method public,static blockLight (I)I
+  method public,static skyLight (I)I
+com/crystalgraphics/platform/service/CgWorldSound
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldSound;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract play (Ljava/lang/String;DDDFF)V
 com/crystalgraphics/trace/CgFrameImages
   access public,final
   extends java/lang/Object

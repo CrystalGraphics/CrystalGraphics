@@ -3092,16 +3092,97 @@ com/crystalgraphics/render/property/CgSpatialTree
   method public movable (I)Z
   method public parent (I)I
   method public reset ()V
+com/crystalgraphics/render/stage/CgHostEnvironment
+  access public,final
+  extends java/lang/Object
+  field public,static,final FIRST_PERSON I
+  field public,static,final FLUID_LAVA I
+  field public,static,final FLUID_NONE I
+  field public,static,final FLUID_POWDER_SNOW I
+  field public,static,final FLUID_WATER I
+  field public,static,final GRAPHICS_FABULOUS I
+  field public,static,final GRAPHICS_FANCY I
+  field public,static,final GRAPHICS_FAST I
+  field public,static,final PARTICLES_ALL I
+  field public,static,final PARTICLES_DECREASED I
+  field public,static,final PARTICLES_MINIMAL I
+  field public,static,final THIRD_PERSON_BACK I
+  field public,static,final THIRD_PERSON_FRONT I
+  method public <init> ()V
+  method public blindness ()F
+  method public camera (IIFFZ)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public cameraFluid ()I
+  method public celestialAngle ()F
+  method public clear ()Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public cloudHeight ()F
+  method public darkness ()F
+  method public dayTime ()J
+  method public flash ()F
+  method public fog (FFFFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public fogBlue ()F
+  method public fogEnd ()F
+  method public fogGreen ()F
+  method public fogRed ()F
+  method public fogStart ()F
+  method public fov ()F
+  method public fovEffects ()F
+  method public frozen ()Z
+  method public gameTime ()J
+  method public graphics ()I
+  method public guiHidden ()Z
+  method public hasCeiling ()Z
+  method public hasSky ()Z
+  method public moonPhase ()I
+  method public nightVision ()F
+  method public particleShare ()F
+  method public particles ()I
+  method public paused ()Z
+  method public perspective ()I
+  method public rain ()F
+  method public renderDistance ()F
+  method public screenEffects ()F
+  method public set (Lcom/crystalgraphics/render/stage/CgHostEnvironment;)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public settings (IIFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public sight (FFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public sky (ZZZFFFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public skyBlue ()F
+  method public skyBrightness ()F
+  method public skyGreen ()F
+  method public skyRed ()F
+  method public starBrightness ()F
+  method public sun (FIFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public sunDirection ([F)[F
+  method public thunder ()F
+  method public tickRate ()F
+  method public time (JJZFZ)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
+  method public ultraWarm ()Z
+  method public weather (FFF)Lcom/crystalgraphics/render/stage/CgHostEnvironment;
 com/crystalgraphics/render/stage/CgHostFrame
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public environment ()Lcom/crystalgraphics/render/stage/CgHostEnvironment;
   method public height ()I
   method public mainFramebuffer ()I
   method public partialTick ()F
   method public set (FIII)Lcom/crystalgraphics/render/stage/CgHostFrame;
+  method public textures ()Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public view ()Lcom/crystalgraphics/render/stage/CgHostView;
   method public width ()I
+com/crystalgraphics/render/stage/CgHostTextures
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public blockAtlas ()I
+  method public blockAtlas (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public blockAtlasHeight ()I
+  method public blockAtlasWidth ()I
+  method public lightmap ()I
+  method public lightmap (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public lightmapHeight ()I
+  method public lightmapWidth ()I
+  method public set (Lcom/crystalgraphics/render/stage/CgHostTextures;)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public version ()I
 com/crystalgraphics/render/stage/CgHostView
   access public,final
   extends java/lang/Object
@@ -4740,6 +4821,10 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   field public,final hot Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,final ink Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,final inkLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
+  field public,final rayLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
+  field public,final rays Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  field public,final ringLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
+  field public,final rings Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,final sparkCore Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,final sparkLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
   field public,final sparkles Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
@@ -4747,6 +4832,8 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   field public,final specks Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final BILLOWS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final INK Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  field public,static,final RAYS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  field public,static,final RINGS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final SPARKLES Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final SPECKS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   implements com/crystalgraphics/vfx/look/CgVfxLook$Part
@@ -4758,6 +4845,7 @@ com/crystalgraphics/vfx/look/CgVfxLayer
   extends java/lang/Object
   field public,static,final PRIORITY_BANDS I
   field public,static,final PRIORITY_CORE I
+  field public,static,final PRIORITY_LIGHT I
   field public,static,final PRIORITY_SMOKE I
   field public,static,final PRIORITY_SURFACE I
   field public,static,final PRIORITY_VOLUME I
@@ -4899,6 +4987,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public emitter ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   method public finished ()Z
   method public ground (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
+  method public ground (Lcom/crystalgraphics/vfx/particle/CgVfxGround;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public groundY ()F
   method public originX ()D
   method public originY ()D
@@ -4910,6 +4999,14 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public start (FFF)V
   method public tick (FLcom/crystalgraphics/vfx/particle/CgVfxAir;DDD)V
   method public time ()F
+com/crystalgraphics/vfx/particle/CgVfxGround
+  access public,final
+  extends java/lang/Object
+  field public,static,final FILL_PER_TICK I
+  method public <init> (I)V
+  method public fill (I)V
+  method public floor (FFFFF)F
+  method public reset (DDDFFF)Lcom/crystalgraphics/vfx/particle/CgVfxGround;
 com/crystalgraphics/vfx/particle/CgVfxModule
   access public,abstract,interface
   extends java/lang/Object
@@ -5108,3 +5205,47 @@ com/crystalgraphics/vfx/sim/CgVfxStream
   method public tick (FFFF)V
   method public via (FFF)V
   method public viaReached ()Z
+com/crystalgraphics/world/CgCameraShake
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX I
+  method public,static kick (FF)V
+  method public,static shake (DDDFFF)V
+com/crystalgraphics/world/CgEntityAttachments
+  access public,final
+  extends java/lang/Object
+  field public,static,final CENTRE I
+  field public,static,final CHEST I
+  field public,static,final EYES I
+  field public,static,final FEET I
+  field public,static,final HANDS_FORWARD I
+  field public,static,final HEAD I
+  field public,static,final LEFT_HAND I
+  field public,static,final LEFT_HAND_FORWARD I
+  field public,static,final RIGHT_HAND I
+  field public,static,final RIGHT_HAND_FORWARD I
+  method public,static forward ([D[D)[D
+  method public,static point (I[D[D)[D
+com/crystalgraphics/world/CgWorldQueries
+  access public,final
+  extends java/lang/Object
+  method public,static ceilingAbove (DDDI)D
+  method public,static ceilingAbove (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDI)D
+  method public,static groundBelow (DDDI)D
+  method public,static groundBelow (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDI)D
+  method public,static raycast (DDDDDDDLcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
+  method public,static raycast (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDDDDDLcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
+com/crystalgraphics/world/CgWorldQueries$Hit
+  access public,final
+  extends java/lang/Object
+  field public blockX I
+  field public blockY I
+  field public blockZ I
+  field public distance D
+  field public normalX F
+  field public normalY F
+  field public normalZ F
+  field public x D
+  field public y D
+  field public z D
+  method public <init> ()V
