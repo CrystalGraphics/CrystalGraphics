@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.forge;
 
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
@@ -51,6 +52,11 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 //? if >=1.14 <1.21.2 {
 import net.minecraft.util.profiling.ProfilerFiller;
 //?}
+//? if >=1.19 {
+import net.minecraftforge.client.event.ViewportEvent;
+//?} else {
+/*import net.minecraftforge.client.event.EntityViewRenderEvent;
+*///?}
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -141,6 +147,14 @@ public final class CrystalGraphicsForge implements VariantEntry {
             /*TickEvent.RenderTickEvent.Post.BUS.addListener(Events::onFrameEnd);
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(Events::onFrameEnd);
+            //?}
+            // The camera hooks a shake and an FOV kick are added at (HostCameraModern).
+            //? if >=1.21.6 {
+            /*ViewportEvent.ComputeCameraAngles.BUS.addListener(Events::onCameraAngles);
+            ViewportEvent.ComputeFov.BUS.addListener(Events::onFov);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onCameraAngles);
+            MinecraftForge.EVENT_BUS.addListener(Events::onFov);
             //?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
@@ -248,6 +262,27 @@ public final class CrystalGraphicsForge implements VariantEntry {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
         }
         //?}
+
+        //? if >=1.19 {
+        private static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        //?} else {
+        /*private static void onCameraAngles(EntityViewRenderEvent.CameraSetup event) {
+        *///?}
+            event.setYaw(HostCameraModern.yaw(event.getYaw()));
+            event.setPitch(HostCameraModern.pitch(event.getPitch()));
+            event.setRoll(HostCameraModern.roll(event.getRoll()));
+        }
+
+        // The FOV is a double to 1.21.1 and a float after; HostCameraModern.fov takes either.
+        //? if >=1.19 {
+        private static void onFov(ViewportEvent.ComputeFov event) {
+        //?} elif >=1.18 {
+        /*private static void onFov(EntityViewRenderEvent.FieldOfView event) {
+        *///?} else {
+        /*private static void onFov(EntityViewRenderEvent.FOVModifier event) {
+        *///?}
+            event.setFOV(HostCameraModern.fov(event.getFOV()));
+        }
 
         //? if >=1.19 {
         private static void onGameShuttingDown(GameShuttingDownEvent event) {

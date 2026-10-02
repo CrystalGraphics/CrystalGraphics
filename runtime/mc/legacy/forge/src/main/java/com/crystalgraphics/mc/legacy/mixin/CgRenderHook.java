@@ -2,6 +2,10 @@ package com.crystalgraphics.mc.legacy.mixin;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.mc.legacy.platform.HostViewLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.EnvironmentLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -39,8 +43,18 @@ public abstract class CgRenderHook {
 
     @Unique
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
-        HostViewLegacy.capture(mc, partialTicks, stage.host()
-                .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject).view());
+        CgHostFrame frame = stage.host()
+                .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
+        HostViewLegacy.capture(mc, partialTicks, frame.view());
+        if (stage == CgRenderStage.WORLD_OPAQUE) {
+            EnvironmentLegacy.capture(mc, partialTicks, frame.view(), frame.environment());
+            TexturesLegacy.capture(mc, frame.textures());
+            WorldEventsLegacy.poll();
+        } else {
+            // The same level render as the opaque pass.
+            frame.environment().set(CgRenderStage.WORLD_OPAQUE.host().environment());
+            frame.textures().set(CgRenderStage.WORLD_OPAQUE.host().textures());
+        }
         stage.fire();
     }
 

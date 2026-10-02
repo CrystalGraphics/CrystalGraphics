@@ -708,6 +708,9 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation — are the
   `CgWorldQuery` slot's, composed into ground scans and a raycast by `com.crystalgraphics.world.CgWorldQueries`. A GUI stage carries the GUI's projection in its own frame,
   so the world's camera stays readable while the host draws its GUI.
+- Every era answers the environment, the host textures and the world slots (`CgWorldQuery`, `CgEntityQuery`,
+  `CgHostCamera`, `CgWorldSound`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and
+  `*Modern`. What a version cannot answer stays absent, and each class's javadoc says what.
 - `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
   (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.
 - An id is defined once (`define` throws on a second); renderers record in ascending order, ties in

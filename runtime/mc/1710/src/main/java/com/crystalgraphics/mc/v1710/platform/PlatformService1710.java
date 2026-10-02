@@ -17,6 +17,10 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
 import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
+import com.crystalgraphics.mc.v1710.platform.world.EntityQuery1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldQuery1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
@@ -121,6 +125,11 @@ public final class PlatformService1710 implements CgPlatformService {
         // server that never fills it is the supported case rather than a degraded one.
         if (FMLCommonHandler.instance().getSide().isClient()) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+            // The world slots, client only for the same reason.
+            CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQuery1710());
+            CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQuery1710());
+            CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
+            CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.

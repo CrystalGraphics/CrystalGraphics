@@ -9,6 +9,6 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsForgeLevelMixins extends VariantMixins {
 
     public CrystalGraphicsForgeLevelMixins() {
-        super("crystalgraphics", "OpaquePassHook", "TransparentPassHook", "LevelViewHook");
+        super("crystalgraphics", "OpaquePassHook", "TransparentPassHook", "LevelViewHook", "ExplosionHook", "LevelEventHook");
     }
 }
