@@ -2,9 +2,9 @@
 // normal comes from the ball and the bumps on it; a key light from above leaves its top bright and its underside dark;
 // the fire it rose from glows into it from below while it is hot. Its edge is soft, and it fades where the scene is
 // nearer than the ball's own surface, so it meets the ground in a curve rather than along the quad's flat cut; that
-// comparison is its depth test. Overlapping puffs, sorted back to front by the world renderer, make the cloud. CG_OBJECT_CUSTOM1: x its life
-// 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the smoke, colour B the fire's light in it,
-// A's alpha a strength. CgEnergyWave's blast, through CgVfxParticles.
+// comparison is its depth test. Overlapping puffs, sorted back to front by the world renderer, make the cloud.
+// CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the smoke,
+// colour B the fire's light in it, A's alpha a strength.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
