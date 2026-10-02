@@ -41,6 +41,8 @@ public final class CgDrawChunk {
     private final int[] instanceCounts;
     @Nullable
     private final CgMesh[] meshes;
+    @Nullable
+    private final int[] ranges;
     private final float[] bounds;
     private final long[] sortKeys;
 
@@ -48,8 +50,8 @@ public final class CgDrawChunk {
     private final float[][] instances;
 
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
-                int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, float[] bounds,
-                long[] sortKeys, float[][] instances) {
+                int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
+                float[] bounds, long[] sortKeys, float[][] instances) {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -61,6 +63,7 @@ public final class CgDrawChunk {
         this.firsts = firsts;
         this.instanceCounts = instanceCounts;
         this.meshes = meshes;
+        this.ranges = ranges;
         this.bounds = bounds;
         this.sortKeys = sortKeys;
         this.instances = instances;
@@ -118,6 +121,21 @@ public final class CgDrawChunk {
         return meshes == null ? null : meshes[draw];
     }
 
+    /** The submesh a mesh draw draws, or -1 for every one of them, whole. */
+    public int rangeSubmesh(int draw) {
+        return ranges == null ? -1 : ranges[draw * 3];
+    }
+
+    /** Where in its submesh a mesh draw starts, in indices (or vertices, for one without). */
+    public int rangeFirst(int draw) {
+        return ranges == null ? 0 : ranges[draw * 3 + 1];
+    }
+
+    /** How many a mesh draw draws, or -1 to its submesh's end. */
+    public int rangeCount(int draw) {
+        return ranges == null ? -1 : ranges[draw * 3 + 2];
+    }
+
     public float x0(int draw) {
         return bounds[draw * 4];
     }
@@ -147,7 +165,7 @@ public final class CgDrawChunk {
     public CgDrawChunk with(int spatial, CgBindingTable bindings, @Nullable int[] bindingIds,
                             @Nullable float[][] instances) {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
-                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, bounds,
+                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, bounds,
                 sortKeys, instances != null ? instances : this.instances);
     }
 

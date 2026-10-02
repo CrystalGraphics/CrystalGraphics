@@ -183,6 +183,20 @@ public class CgMeshTest {
         assertArrayEquals(new int[]{0, 96, 0, 25}, mesh.submesh(0, new int[4]));
     }
 
+    @Test
+    public void quadsAreSharedIndicesOverNoVertexBytes() {
+        CgMesh quads = CgMesh.quads(3);
+        assertSame(quads, CgMesh.quads(3));
+        assertTrue(quads.isShared());
+        assertEquals(12, quads.vertexCount());
+        int[] indices = new int[18];
+        quads.readIndices(0, 18, indices, 0);
+        assertArrayEquals(new int[]{0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 8, 9, 10, 10, 11, 8}, indices);
+        assertNull("no positions: a draw states its bounds", quads.bounds(new float[6]));
+        assertEquals(0, CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP).indexCount());
+        assertNotSame(CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP), CgMesh.vertices(64, CgMeshTopology.LINES));
+    }
+
     private static ByteBuffer vertex(float x) {
         ByteBuffer b = ByteBuffer.allocate(CgVertexFormat.SPATIAL.getStride()).order(ByteOrder.nativeOrder());
         b.putFloat(0, x);

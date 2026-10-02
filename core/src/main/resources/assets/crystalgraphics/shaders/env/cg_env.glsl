@@ -65,6 +65,8 @@ uniform int cg_InstanceBase;
 // The vertex's index in its own mesh: cg_VertexBase is where the mesh starts in the buffer it is drawn from.
 uniform int cg_VertexBase;
 #define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
+// The corner of a CgMesh.quads(n) vertex: (0,0), (1,0), (1,1), (0,1) around each quad.
+#define CG_VERTEX_CORNER vec2(float(((CG_VERTEX_ID + 1) >> 1) & 1), float((CG_VERTEX_ID >> 1) & 1))
 #else
 flat in int cg_InstanceId;
 #define CG_INSTANCE_ID cg_InstanceId

@@ -21,7 +21,7 @@ outside one a `flush()` draws them at once through `CgImmediate`, the frame grap
 ### A renderer's shader declares its buffer
 
 ```glsl
-#type pos2_uv2_col4ub
+#type none
 #pragma cg_use quad     // QUAD_DATA / CG_QUAD_WORLD_POS / CG_QUAD_UV / CG_QUAD_COLOR
 ```
 

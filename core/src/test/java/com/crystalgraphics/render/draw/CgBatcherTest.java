@@ -94,4 +94,17 @@ public class CgBatcherTest {
         batcher.finish();
         assertEquals("[13][02]", batches());
     }
+
+    @Test
+    public void drawsOfOtherRangesOfOneMeshNeverShareABatch() {
+        Object mesh = new Object();
+        batcher.reset(CgOrder.SORTED);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, 0, 0, 0, 0, 1, 1, 10, 0);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 600, 600, 0, 0, 0, 0, 1, 1, 10, 1);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, 0, 0, 0, 0, 1, 1, 10, 2);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, 0, 0, 0, 0, 1, 1, 10, 3);
+        batcher.finish();
+        assertEquals("[0][1][2][3]", batches());
+        assertEquals(600, batcher.batchRangeFirst(1));
+    }
 }

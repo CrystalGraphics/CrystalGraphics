@@ -36,6 +36,7 @@ import java.util.function.Consumer;
 public final class CgMeshShapes {
 
     private static final Map<Key, CgMesh> SHARED = new ConcurrentHashMap<>();
+    private static final Map<CgVertexFormat, CgMeshLods> SPHERE_LODS = new ConcurrentHashMap<>();
 
     private record Key(String kind, CgVertexFormat format, int a, int b, float x, float y) {
     }
@@ -64,7 +65,13 @@ public final class CgMeshShapes {
     }
 
     public static CgMesh quad(CgVertexFormat format) {
-        return shared(new Key("quad", format, 0, 0, 0f, 0f), m -> quad(m, -0.5f, -0.5f, 0.5f, 0.5f));
+        return quad(format, 0.5f, 0.5f);
+    }
+
+    /** The rectangle from -{@code halfWidth} to {@code halfWidth} in X, and the same for Y, facing +Z. */
+    public static CgMesh quad(CgVertexFormat format, float halfWidth, float halfHeight) {
+        return shared(new Key("quad", format, 0, 0, halfWidth, halfHeight),
+                m -> quad(m, -halfWidth, -halfHeight, halfWidth, halfHeight));
     }
 
     /** The square from -0.5 to 0.5 in X and Z at Y 0, facing +Y, in {@code cells} by {@code cells} cells. */
@@ -85,6 +92,26 @@ public final class CgMeshShapes {
         return shared(new Key("sphere", format, rings, sectors, 0f, 0f), m -> sphere(m, rings, sectors, 1f));
     }
 
+    /**
+     * The sphere of radius 1 at five levels, 128 sectors down to 8, each held down to the screen height at which the
+     * next coarser one's silhouette would stray half a pixel on a screen 1080 pixels tall. Never culls.
+     */
+    public static CgMeshLods sphereLods() {
+        return sphereLods(CgVertexFormat.SPATIAL);
+    }
+
+    public static CgMeshLods sphereLods(CgVertexFormat format) {
+        return SPHERE_LODS.computeIfAbsent(format, f -> {
+            CgMeshLods.Builder lods = CgMeshLods.builder();
+            for (int sectors = 128; sectors >= 8; sectors /= 2) {
+                // A chord across 2*pi/n strays r*(1 - cos(pi/n)) from the circle; r is 540*height pixels at 1080 lines.
+                float height = sectors == 8 ? 0f : (float) (1.0 / (1080.0 * (1.0 - Math.cos(Math.PI / (sectors / 2)))));
+                lods.level(sphere(f, sectors / 2, sectors), height);
+            }
+            return lods.build();
+        });
+    }
+
     /** The sphere of radius 1 from an icosahedron subdivided {@code level} times: 20 x 4^level triangles. */
     public static CgMesh icosphere(int level) {
         return icosphere(CgVertexFormat.SPATIAL, level);
@@ -100,7 +127,12 @@ public final class CgMeshShapes {
     }
 
     public static CgMesh cylinder(CgVertexFormat format, int sectors) {
-        return shared(new Key("cylinder", format, sectors, 0, 0f, 0f), m -> cylinder(m, sectors, 0.5f, 1f));
+        return cylinder(format, sectors, 0.5f, 1f);
+    }
+
+    /** The capped cylinder of {@code radius} from Y -{@code height}/2 to {@code height}/2. */
+    public static CgMesh cylinder(CgVertexFormat format, int sectors, float radius, float height) {
+        return shared(new Key("cylinder", format, sectors, 0, radius, height), m -> cylinder(m, sectors, radius, height));
     }
 
     /**

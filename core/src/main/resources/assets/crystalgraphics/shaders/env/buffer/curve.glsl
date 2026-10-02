@@ -51,7 +51,7 @@
 // This works on both buffer paths with no compiler change -- CgMaterialShaderCompiler's
 // appendAttachedBuffers runs for the fragment source as well as the vertex source.
 //
-// CG_CURVE_WORLD_POS is vertex-only: it consumes cg_Position, and it does NOT read a quad the way
+// CG_CURVE_WORLD_POS is vertex-only: it consumes CG_VERTEX_CORNER, and it does NOT read a quad the way
 // CG_QUAD_WORLD_POS does. There is no per-instance origin/right/up for a curve -- the bounding box
 // is DERIVED here from the convex hull of the three points, expanded by cg_curve_pad's reach for
 // the current cap/fill mode (see that function) so the antialiased edge is never clipped. A
@@ -160,4 +160,4 @@ vec3 cg_curve_hull_max(vec3 p0, vec3 p1, vec3 p2, vec2 widths, float flags) {
 #define CG_CURVE_PAD cg_curve_pad(CG_CURVE_WIDTHS, CG_CURVE_FEATHER, CG_CURVE_FLAGS)
 #define CG_CURVE_HULL_MIN (cg_curve_hull_min(CG_CURVE_P0, CG_CURVE_P1, CG_CURVE_P2, CG_CURVE_WIDTHS, CG_CURVE_FLAGS) - vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
 #define CG_CURVE_HULL_MAX (cg_curve_hull_max(CG_CURVE_P0, CG_CURVE_P1, CG_CURVE_P2, CG_CURVE_WIDTHS, CG_CURVE_FLAGS) + vec3(CG_CURVE_PAD, CG_CURVE_PAD, 0.0))
-#define CG_CURVE_WORLD_POS (CG_CURVE_HULL_MIN + vec3(cg_Position.xy, 0.0) * (CG_CURVE_HULL_MAX - CG_CURVE_HULL_MIN))
+#define CG_CURVE_WORLD_POS (CG_CURVE_HULL_MIN + vec3(CG_VERTEX_CORNER, 0.0) * (CG_CURVE_HULL_MAX - CG_CURVE_HULL_MIN))

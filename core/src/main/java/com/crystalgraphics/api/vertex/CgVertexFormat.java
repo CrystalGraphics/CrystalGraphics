@@ -111,6 +111,12 @@ public final class CgVertexFormat {
             .build();
 
 
+    /**
+     * No attributes and a stride of 0: a mesh whose shader places every vertex itself from {@code CG_VERTEX_ID}
+     * ({@code CgMesh.quads}, {@code CgMesh.vertices}). Registered as {@code #type none}.
+     */
+    public static final CgVertexFormat NONE = new CgVertexFormat(new CgVertexAttribute[0], 0, "none");
+
     private CgVertexFormat(CgVertexAttribute[] attributes, int stride, String key) {
         this.attributes = attributes;
         this.stride = stride;

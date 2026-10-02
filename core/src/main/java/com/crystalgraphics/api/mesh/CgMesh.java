@@ -10,6 +10,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -51,25 +53,31 @@ import javax.annotation.Nullable;
  *   <li>Indices count from their submesh's first vertex ({@link CgSubmesh}).</li>
  *   <li>Bounds follow the positions written, unless {@link #bounds(float, float, float, float, float, float)} states
  *       them; {@link #pad} grows either, for a vertex shader that displaces.</li>
- *   <li>A shared shape from {@link CgMeshShapes} refuses edits and {@link #release()}: build your own with the
- *       writer form of the shape.</li>
+ *   <li>A shared mesh from {@link CgMeshShapes} or {@link CgMeshLoader} refuses edits and {@link #release()}: build
+ *       your own with the writer form of the shape.</li>
  *   <li>One writer at a time; the body of {@link #edit} runs outside the mesh's lock, so a reader is never held up
  *       by it, and the contents change in one step when it returns.</li>
  * </ul>
  */
 public final class CgMesh implements CgMeshSource {
 
-    /** How long a mesh's geometry lives, which decides where its GPU copy goes. */
+    /**
+     * How long a mesh's geometry lives. The store places every usage alike today: a range in its format's pool, a new
+     * one on each edit, the old freed once the frames that drew it retire. The names state intent for the paths that
+     * will differ: {@code FRAME} on the frame ring, {@code GPU_ONLY} without its CPU copy.
+     */
     public enum Usage {
-        /** Built once, drawn many times: a range in its format's pool. */
+        /** Built once, drawn many times. */
         STATIC,
-        /** Edited now and then: the same, placed again on every edit. */
+        /** Edited now and then. */
         DYNAMIC,
-        /** Rewritten every frame it draws: the frame ring, nothing kept. */
+        /** Rewritten every frame it draws. */
         FRAME,
-        /** As {@link #STATIC}, with the CPU copy dropped once the GPU has it. */
+        /** Never read back or rebuilt by the CPU. */
         GPU_ONLY
     }
+
+    private static final Map<Long, CgMesh> GENERATED = new ConcurrentHashMap<>();
 
     /** Changes remembered for {@link #changesSince}; a reader further behind reads everything. */
     private static final int LOG = 16;
@@ -122,6 +130,41 @@ public final class CgMesh implements CgMeshSource {
         CgMesh mesh = new CgMesh(format, usage, false);
         mesh.write(body, ACCEPT);
         return mesh;
+    }
+
+    /**
+     * {@code count} quads with no vertex data, for a shader that places each one: indices 0, 1, 2, then 2, 3, 0, and
+     * the next quad 4 on. {@code CG_VERTEX_ID & 3} is a vertex's corner, {@code CG_VERTEX_ID >> 2} its quad. Shared per
+     * count; it has no bounds, so a draw of it states its own.
+     *
+     * <pre>{@code
+     * world.draw(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
+     * }</pre>
+     *
+     * <p>Its shader declares {@code #type none}: there are no attributes to read.</p>
+     */
+    public static CgMesh quads(int count) {
+        if (count <= 0) throw new IllegalArgumentException("quads(" + count + ")");
+        return GENERATED.computeIfAbsent((long) count << 8, k -> shared(CgVertexFormat.NONE, m -> {
+            for (int i = 0; i < count * 4; i++) m.vertex().end();
+            for (int q = 0; q < count; q++) m.quad(q * 4, q * 4 + 1, q * 4 + 2, q * 4 + 3);
+        }));
+    }
+
+    /**
+     * {@code count} vertices with no data and no indices, drawn in order as {@code topology}: a strip, a fan or a list
+     * a shader places from {@code CG_VERTEX_ID}. Shared per count and topology.
+     *
+     * <pre>{@code
+     * world.draw(CgMesh.vertices(segments * 2, CgMeshTopology.TRIANGLE_STRIP), lightning).at(x, y, z).bounds(box).submit();
+     * }</pre>
+     */
+    public static CgMesh vertices(int count, CgMeshTopology topology) {
+        if (count <= 0) throw new IllegalArgumentException("vertices(" + count + ")");
+        return GENERATED.computeIfAbsent(((long) count << 8) | (topology.ordinal() + 1), k -> shared(CgVertexFormat.NONE, m -> {
+            m.topology(topology);
+            for (int i = 0; i < count; i++) m.vertex().end();
+        }));
     }
 
     /** A shape {@link CgMeshShapes} hands to everyone who asks: edits and release refuse. */
@@ -184,6 +227,7 @@ public final class CgMesh implements CgMeshSource {
      */
     public synchronized void writeVertices(int firstVertex, ByteBuffer bytes) {
         requireEditable();
+        if (stride == 0) throw new IllegalStateException(format.getKey() + " has no vertex bytes to write");
         int n = bytes.remaining();
         if (n % stride != 0) throw new IllegalArgumentException(n + " bytes is not a whole number of " + stride + "-byte vertices");
         if (firstVertex < 0 || firstVertex > vertexCount) {

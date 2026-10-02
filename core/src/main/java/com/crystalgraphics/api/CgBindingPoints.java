@@ -38,7 +38,8 @@ public final class CgBindingPoints {
      * loose ints plus its own copy of the SSBO-vs-TBO branch — the branch lives here, once.</p>
      *
      * @param ssbo SSBO binding point to use when the SSBO path is active
-     * @param tbo  GL texture unit to use when the TBO fallback path is active
+     * @param tbo  GL texture unit to use when the TBO fallback path is active; -1 on the SSBO path, which reserves
+     *             no texture unit
      */
     public record Binding(int ssbo, int tbo) {
         /** Returns {@link #ssbo} or {@link #tbo}, whichever matches the currently-active path. */
@@ -51,7 +52,7 @@ public final class CgBindingPoints {
 
     /**
      * Reserved binding pair for the engine's per-object data buffer ({@code CgObjectDataBuffer}).
-     * {@code ssbo} = {@code maxSsboBindings - 1}, {@code tbo} = {@code maxTextureImageUnits - 1}.
+     * {@code ssbo} = {@code maxSsboBindings - 1}, {@code tbo} = {@code maxTextureImageUnits - 1} on the TBO path.
      * {@code null} until {@link #init(CgCapabilities)} has been called.
      */
     public static Binding OBJECT_DATA;
@@ -196,18 +197,16 @@ public final class CgBindingPoints {
         int maxUboBindings  = caps.getMaxUniformBufferBindings();
 
         // ── SSBO/TBO Path bindings ───────────────────────────────────────────────────────────────
-        OBJECT_DATA = new Binding(--maxSsboBindings, --maxTextureUnits);
-        QUAD_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
-        // Note: this consumes one more texture unit from the same countdown DEPTH_TEXTURE_UNIT
-        // draws from below, so adding it shifts DEPTH_TEXTURE_UNIT down by one. That is fine —
-        // the slot is resolved dynamically and never hardcoded — but it is a deliberate change,
-        // not an accident: anything that caches the depth unit across an init() would be wrong.
-        CURVE_RENDERER = new Binding(--maxSsboBindings, --maxTextureUnits);
-        PARTICLES = new Binding(--maxSsboBindings, --maxTextureUnits);
-        
-        CLIP_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
-        PALETTE = new Binding(--maxSsboBindings, --maxTextureUnits);
-        SHAPE_TABLE = new Binding(--maxSsboBindings, --maxTextureUnits);
+        // A texture unit each only on the TBO path: a 12-unit host (Blaze3D) would otherwise leave materials four.
+        // The depth and scene-colour units below count down after these, so never cache them across an init().
+        boolean tbo = PATH == CgCapabilities.ShaderBufferPath.TBO;
+        OBJECT_DATA = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        QUAD_RENDERER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        CURVE_RENDERER = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        PARTICLES = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        CLIP_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        PALETTE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        SHAPE_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;

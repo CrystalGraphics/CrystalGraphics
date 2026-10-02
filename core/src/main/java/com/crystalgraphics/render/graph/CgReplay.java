@@ -195,6 +195,8 @@ public final class CgReplay {
                 if (a.pipeline(d) != b.pipeline(d)) return where + ": another pipeline";
                 if (a.kind(d) != b.kind(d) || a.instances(d) != b.instances(d)) return where + ": other instances";
                 if (a.mesh(d) != b.mesh(d)) return where + ": another mesh";
+                if (a.rangeSubmesh(d) != b.rangeSubmesh(d) || a.rangeFirst(d) != b.rangeFirst(d)
+                        || a.rangeCount(d) != b.rangeCount(d)) return where + ": another range of its mesh";
                 if (a.binding(d) != b.binding(d)) return where + ": " + bindingDiffers(a.bindings(), a.binding(d), b.binding(d));
                 if (a.x0(d) != b.x0(d) || a.y0(d) != b.y0(d) || a.x1(d) != b.x1(d) || a.y1(d) != b.y1(d)) {
                     return where + ": other bounds";

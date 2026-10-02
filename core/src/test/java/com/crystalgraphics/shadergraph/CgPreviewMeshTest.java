@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.api.mesh.CgMeshData;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.junit.Test;
 
@@ -40,7 +40,7 @@ public class CgPreviewMeshTest {
     public void everySolidFitsInsideItsOwnFramingAtEveryAngle() {
         for (CgPreviewMesh mesh : CgPreviewMesh.values()) {
             if (mesh == CgPreviewMesh.QUAD) continue;
-            double extent = worstProjectedExtent(mesh.build(CgVertexFormat.SPATIAL));
+            double extent = worstProjectedExtent(mesh.mesh(CgVertexFormat.SPATIAL));
             assertTrue(mesh + " projects to " + extent + " but is framed at " + mesh.viewRadius()
                             + " — it will be clipped at some orbit angle",
                     extent <= mesh.viewRadius());
@@ -51,7 +51,7 @@ public class CgPreviewMeshTest {
     @Test
     public void everyShapeFitsUnrotated() {
         for (CgPreviewMesh mesh : CgPreviewMesh.values()) {
-            double extent = restingExtent(mesh.build(CgVertexFormat.SPATIAL));
+            double extent = restingExtent(mesh.mesh(CgVertexFormat.SPATIAL));
             assertTrue(mesh + " does not even fit unrotated: " + extent + " vs " + mesh.viewRadius(),
                     extent <= mesh.viewRadius());
         }
@@ -75,20 +75,28 @@ public class CgPreviewMeshTest {
 
     /** The extent a shape's framing is chosen to contain. @see #everySolidFitsInsideItsOwnFramingAtEveryAngle */
     private static double framingTarget(CgPreviewMesh mesh) {
-        CgMeshData data = mesh.build(CgVertexFormat.SPATIAL);
+        CgMesh data = mesh.mesh(CgVertexFormat.SPATIAL);
         return mesh == CgPreviewMesh.QUAD ? restingExtent(data) : worstProjectedExtent(data);
     }
 
     /** Largest |x| or |y| with no rotation applied — what fills the panel when the panel first opens. */
-    private static double restingExtent(CgMeshData data) {
-        ByteBuffer vbo = data.vertexBuffer().duplicate().order(ByteOrder.nativeOrder());
-        int stride = data.format().getStride();
+    private static double restingExtent(CgMesh data) {
+        float[] p = positions(data);
         double worst = 0;
-        for (int i = 0; i < data.getVertexCount(); i++) {
-            int base = i * stride;
-            worst = Math.max(worst, Math.max(Math.abs(vbo.getFloat(base)), Math.abs(vbo.getFloat(base + 4))));
-        }
+        for (int i = 0; i < p.length; i += 3) worst = Math.max(worst, Math.max(Math.abs(p[i]), Math.abs(p[i + 1])));
         return worst;
+    }
+
+    /** Every vertex's position, x, y, z after one another. */
+    private static float[] positions(CgMesh mesh) {
+        int stride = mesh.format().getStride(), n = mesh.vertexCount();
+        ByteBuffer bytes = ByteBuffer.allocate(n * stride).order(ByteOrder.nativeOrder());
+        mesh.readVertices(0, n, bytes);
+        float[] out = new float[n * 3];
+        for (int i = 0; i < n; i++) {
+            for (int c = 0; c < 3; c++) out[i * 3 + c] = bytes.getFloat(i * stride + c * 4);
+        }
+        return out;
     }
 
     /**
@@ -109,8 +117,8 @@ public class CgPreviewMeshTest {
     @Test
     public void everyShapeBuildsRealGeometry() {
         for (CgPreviewMesh mesh : CgPreviewMesh.values()) {
-            CgMeshData data = mesh.build(CgVertexFormat.SPATIAL);
-            assertTrue(mesh + " has no vertices", data.getVertexCount() > 0);
+            CgMesh data = mesh.mesh(CgVertexFormat.SPATIAL);
+            assertTrue(mesh + " has no vertices", data.vertexCount() > 0);
             assertTrue(mesh + " has no indices", data.indexCount() > 0);
             assertEquals(mesh + " index count is not a whole number of triangles",
                     0, data.indexCount() % 3);
@@ -131,10 +139,9 @@ public class CgPreviewMeshTest {
      * {@code CgMainPreviewRenderer.applyCamera} builds, and a closed form for the worst case over both
      * angles is a harder thing to get right than a sweep is to run.</p>
      */
-    private static double worstProjectedExtent(CgMeshData data) {
-        ByteBuffer vbo = data.vertexBuffer().duplicate().order(ByteOrder.nativeOrder());
-        int stride = data.format().getStride();
-        int vertexCount = data.getVertexCount();
+    private static double worstProjectedExtent(CgMesh data) {
+        float[] p = positions(data);
+        int vertexCount = p.length / 3;
 
         double worst = 0;
         for (int yawStep = 0; yawStep < 24; yawStep++) {
@@ -145,10 +152,9 @@ public class CgPreviewMeshTest {
                 double cosP = Math.cos(pitch), sinP = Math.sin(pitch);
 
                 for (int i = 0; i < vertexCount; i++) {
-                    int base = i * stride;
-                    float x = vbo.getFloat(base);
-                    float y = vbo.getFloat(base + 4);
-                    float z = vbo.getFloat(base + 8);
+                    float x = p[i * 3];
+                    float y = p[i * 3 + 1];
+                    float z = p[i * 3 + 2];
 
                     // Ry then Rx, matching identity().rotateX(pitch).rotateY(yaw).
                     double rx = x * cosY + z * sinY;
@@ -160,23 +166,6 @@ public class CgPreviewMeshTest {
                     worst = Math.max(worst, Math.max(Math.abs(px), Math.abs(py)));
                 }
             }
-        }
-        return worst;
-    }
-
-    /** Distance from the origin to the furthest vertex. */
-    private static double boundingRadius(CgMeshData data) {
-        // duplicate() comes back BIG_ENDIAN whatever the original was, so the order has to be restated
-        // or every absolute read is byte-swapped.
-        ByteBuffer vbo = data.vertexBuffer().duplicate().order(ByteOrder.nativeOrder());
-        int stride = data.format().getStride();
-        double worst = 0;
-        for (int i = 0; i < data.getVertexCount(); i++) {
-            int base = i * stride;
-            float x = vbo.getFloat(base);
-            float y = vbo.getFloat(base + 4);
-            float z = vbo.getFloat(base + 8);
-            worst = Math.max(worst, Math.sqrt(x * x + y * y + z * z));
         }
         return worst;
     }

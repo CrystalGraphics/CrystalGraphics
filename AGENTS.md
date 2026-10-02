@@ -66,7 +66,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres"            # the VFX showcase: sixteen effect spheres (CgVfxShowcase)
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
 ./gradlew :gl-debug-harness:runHarness --args="--mode=attached-buffer-stress" # SSBO/TBO attach
-./gradlew :gl-debug-harness:runHarness --args="--mode=mesh-test"              # CgMeshLoader
+./gradlew :gl-debug-harness:runHarness --args="--mode=mesh-test"              # CgMeshShapes, CgMeshLoader, a part per material
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"             # Glyph atlas
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
@@ -286,7 +286,7 @@ Structural skeleton (all sections are optional except `#type` and at least one `
 
 **`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and injects the format's vertex attribute declarations (`in <glslType> <name>;`) into the generated vertex GLSL immediately after the `cg_env.glsl` include. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
 
-Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`. Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
+Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`.
 
 ```glsl
 #type spatial
@@ -387,6 +387,7 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
 | `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
 | `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
+| `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
 ### Vertex Attribute Aliases
 
@@ -486,7 +487,7 @@ boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
 essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
 
 ```glsl
-#type pos2_uv2_col4ub
+#type none
 #pragma cg_use quad
 ```
 
@@ -728,9 +729,18 @@ world.onFrame(view -> {                                // once a frame, before t
          .submit();
 });
 world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
+
+// Part of a mesh, geometry with no vertex data, and bounds the draw states itself:
+world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
+world.draw(model, brass).submesh(1).at(x, y, z).submit();
+world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
+
+// A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
+world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 ```
 
-- **Culled** against the view by the mesh's bounds (`CgMesh.bounds()`, computed at upload), and **sorted**
+- A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
+- **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
 - `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
   with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` a snapshot of its own (again only
@@ -842,17 +852,26 @@ CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
 CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per format and size
 world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
+
+// No vertex data: the shader (#type none) places each vertex from CG_VERTEX_ID
+CgMesh sparks = CgMesh.quads(1024);                      // corner CG_VERTEX_ID & 3, quad CG_VERTEX_ID >> 2
+CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
+
+// From a file: every OBJ material group and glTF primitive is a submesh, with the material it names
+CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb", CgVertexFormat.SPATIAL);
+for (int i = 0; i < ship.mesh().submeshCount(); i++) {
+    world.draw(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).submit();
+}
 ```
 
-Until M5 the older path still runs, and draws through the store too: `CgMeshLoader.load(...)` answers `CgMeshData`, and
-`gl/mesh/CgMesh.upload(data)` holds an `api/mesh/CgMesh`. Both kinds reach `CgChunkBuilder.draw` and
-`CgWorldRenderer.draw` through `CgMeshSource`.
+Until the old stack is deleted, `gl/mesh/CgMesh.upload(data)` still holds an `api/mesh/CgMesh` for the VFX engine's
+draws; both reach `CgChunkBuilder.draw` and `CgWorldRenderer.draw` through `CgMeshSource`.
 
 **Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md` · `render/AGENTS.md` (`mesh/`)
 
 ## Vertex Formats
 
-`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. This is the format `CgMeshBuilder` and `CgMeshLoader` target by default. Two formats with identical attribute lists are value-equal.
+`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. It is the format `CgMeshShapes` builds when asked for none. Two formats with identical attribute lists are value-equal.
 
 **Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.
 
@@ -1189,7 +1208,7 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/mesh/AGENTS.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgSubmesh`, `CgMeshChanges`, `CgMeshSource`; `CgMeshTopology`, `CgMeshData` until M5 |
-| `gl/mesh/AGENTS.md` | `CgMeshBuilder` (procedural), `CgObjLoader`, `CgGltfLoader`, `CgMeshLoader` facade, `CgMesh` (a holder of a data mesh, until M5) |
+| `gl/mesh/AGENTS.md` | `CgMeshBuilder` and `CgMesh`, the old stack the VFX engine still draws through until it is deleted |
 
 ### Vertex / Instancing
 | Path | What it covers |
