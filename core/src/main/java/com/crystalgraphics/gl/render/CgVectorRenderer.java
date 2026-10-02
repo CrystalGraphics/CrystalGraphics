@@ -140,11 +140,11 @@ import javax.annotation.Nullable;
  * <h3>Shader side</h3>
  * <p>Declare the buffer, exactly as quad consumers do:</p>
  * <pre>{@code
- * #type pos2_uv2_col4ub
+ * #type none
  * #pragma cg_use curve
  * }</pre>
  * <p>{@code cg_env.glsl} then provides {@code CG_CURVE_WORLD_POS} (vertex stage — it consumes
- * {@code cg_Position} to place the derived bounding quad) plus {@code CG_CURVE_P0}/{@code _P1}/
+ * {@code CG_VERTEX_CORNER} to place the derived bounding quad) plus {@code CG_CURVE_P0}/{@code _P1}/
  * {@code _P2}/{@code _COLOR0}/{@code _COLOR1}/{@code _WIDTHS}/{@code _FEATHER}/{@code _FLAGS},
  * which resolve in <em>both</em> stages. The fragment stage re-reads the instance record directly
  * through {@code CG_INSTANCE_ID} rather than receiving control points as varyings — the

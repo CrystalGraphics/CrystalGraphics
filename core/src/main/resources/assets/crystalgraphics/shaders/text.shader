@@ -5,7 +5,7 @@
 // CgTextRenderer. See plan/text-material.md.
 // =============================================================================
 
-#type pos2_uv2_col4ub
+#type none
 #pragma cg_use quad
 #pragma cg_use clip
 
@@ -141,7 +141,7 @@ Pass {
         o.uv         = CG_QUAD_UV;
         o.color      = CG_QUAD_COLOR;
         o.atlasLayer = CG_QUAD_ATLAS_LAYER;
-        o.param      = cg_Position.xy;
+        o.param      = CG_VERTEX_CORNER;
         o.gammaSmall = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaSmall);
         o.gammaLarge = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaLarge);
     }

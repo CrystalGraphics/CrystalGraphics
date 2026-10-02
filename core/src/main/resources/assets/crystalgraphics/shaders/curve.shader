@@ -9,7 +9,7 @@
 // stage reinterprets as the curve's derived control-hull bounding box.
 // =============================================================================
 
-#type pos2_uv2_col4ub
+#type none
 #pragma cg_use curve
 
 // The stroke maths itself lives in lib/stroke.glsl and is shared with crystalgui:shaders/

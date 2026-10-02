@@ -29,7 +29,7 @@ import javax.annotation.Nullable;
  * without ever hitting the ~16 GL vertex-attribute-slot ceiling.
  *
  * <h3>One shared mesh, format, and GPU buffer for every instance</h3>
- * <p>The unit quad mesh, the per-instance {@link CgBufferFormat}, and the backing
+ * <p>Every instance is drawn on {@code CgMesh.quads(1)}. The per-instance {@link CgBufferFormat} and the backing
  * {@link CgShaderBuffer} are all class-wide static resources, not per-instance.
  * {@link #flush()} is atomic (upload → bind → draw, no yield points, GL is
  * single-threaded here), so multiple {@code CgQuadRenderer} instances sharing one
@@ -84,7 +84,7 @@ import javax.annotation.Nullable;
  * <h3>Shader side: {@code CG_QUAD_WORLD_POS}/{@code CG_QUAD_UV}/{@code CG_QUAD_COLOR}</h3>
  * <p>{@code cg_env.glsl} (auto-included in every {@code .shader} material, no explicit
  * {@code #include} needed) declares three zero-argument macros for this exact schema —
- * no manual {@code origin + cg_Position.x*right + cg_Position.y*up} vector math, and no
+ * no manual {@code origin + CG_VERTEX_CORNER.x*right + CG_VERTEX_CORNER.y*up} vector math, and no
  * {@code QuadInstance inst = QUAD_DATA(CG_INSTANCE_ID);} boilerplate, in the vertex shader:</p>
  * <pre>{@code
  * gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
@@ -94,7 +94,7 @@ import javax.annotation.Nullable;
  * <p>These macros hardcode {@link #MACRO_NAME} ({@code "QUAD_DATA"}), which only resolves once this
  * renderer's buffer is attached. <b>Declare that in the shader:</b></p>
  * <pre>{@code
- * #type pos2_uv2_col4ub
+ * #type none
  * #pragma cg_use quad
  * }</pre>
  * <p>The pragma attaches the buffer during parsing, before anything can compile, and the parser
