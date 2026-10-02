@@ -23,7 +23,7 @@ import org.joml.Matrix4fc;
 public final class CgVfxFrame {
 
     private final CgVfxSystem system;
-    private final Matrix4f scaled = new Matrix4f();
+    private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
     private CgWorldRenderer world;
     private float alpha;
 
@@ -79,6 +79,17 @@ public final class CgVfxFrame {
     public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
         draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+    }
+
+    /**
+     * Draws {@code layer} on one camera-facing quad ({@code CgVfxBillboard}) at {@code (x, y, z)} from {@code effect}'s
+     * origin, {@code size} times the layer's radius from its centre to an edge: one particle. Each is its own draw, so
+     * the world renderer sorts alpha-blended ones back to front and instances neighbours. Its shader reads the same
+     * per-draw data as {@link #mesh}'s, {@code (ex, ey, ez, ew)} being the particle's own.
+     */
+    public void billboard(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, float size,
+                          float ex, float ey, float ez, float ew) {
+        draw(system.billboardMesh(), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew);
     }
 
     /**

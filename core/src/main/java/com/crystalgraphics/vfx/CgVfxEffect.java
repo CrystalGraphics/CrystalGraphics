@@ -33,6 +33,8 @@ public abstract class CgVfxEffect {
     protected final double originX, originY, originZ;
     /** The system playing it, set by {@link CgVfxSystem#play}. */
     CgVfxSystem system;
+    /** Its look's materials have been handed to the system to compile ahead of use. */
+    boolean warmed;
     private final CgVfxLook look;
     private final CgVfxValues values;
     private State state = State.PLAYING;

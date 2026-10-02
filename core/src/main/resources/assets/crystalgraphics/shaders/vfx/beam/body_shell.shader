@@ -1,6 +1,7 @@
-// An energy wave's shell: a churning blue skin streaming forward, eroded by a noise threshold into crisp-edged
-// streaks, sparse where it faces the eye so the core shows through and filled at the silhouette. Colour A is the skin,
-// colour B its hottest streaks, A's alpha a strength. CgEnergyWave.
+// An energy wave's shell: a roaring skin of roiling, folding turbulence streaming forward, torn by white-hot filaments
+// racing along it, its silhouette lashed by flame tongues that burst out and fall back. Eroded by a noise threshold into
+// crisp edges, sparse where it faces the eye so the core shows through and filled at the silhouette; it flickers
+// violently. Colour A is the skin, colour B its hottest streaks and filaments, A's alpha a strength. CgEnergyWave.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
@@ -10,10 +11,11 @@ Queue = "Transparent"
 
 Properties {
     _FxPath   ("Path rings", sampler2D) = "black"
-    _Flow     ("Flow, blocks a second", float) = 18.0
-    _Scale    ("Streak frequency", float) = 1.0
-    _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.6
-    _Displace ("Surface churn, share of the radius", float) = 0.12
+    _Flow     ("Flow, blocks a second", float) = 22.0
+    _Scale    ("Turbulence frequency", float) = 1.0
+    _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.55
+    _Displace ("Rolling bulges, share of the radius", float) = 0.16
+    _Tongue   ("Flame tongues, share of the radius", float) = 0.5
 }
 
 struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 surface; float pulse; };
@@ -31,15 +33,19 @@ Pass {
         FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
                                         cg_TexCoord0, CG_OBJECT_CUSTOM0.z, 0.0);
         float a = v.angle * 6.28318531;
-        float age = v.header.w, seed = v.header.z;
-        float churn = fx_noise(vec3((v.ring.arc - age * _Flow) * 0.5, cos(a) * 1.3, sin(a) * 1.3) + seed * 17.0);
-        v.position += (v.position - v.ring.position) * (_Displace * churn);
+        float age = v.header.w, seed = v.header.z, s = v.ring.arc;
+        vec2 around = vec2(cos(a), sin(a));
+        float roll = fx_noise(vec3((s - age * _Flow) * 0.35, around * 1.2) + seed * 17.0);
+        // Ridged crests flung outward: tongues bursting from the skin and falling back as the flow carries them.
+        float crest = fx_ridged(vec3((s - age * _Flow * 1.4) * 0.3, around * 1.6) + seed * 5.0, 2);
+        float tongue = smoothstep(0.5, 0.95, crest);
+        v.position += (v.position - v.ring.position) * (_Displace * roll + _Tongue * tongue);
         vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
         o.world = origin + v.position;
         o.axis = origin + v.ring.position;
         o.tangent = v.ring.tangent;
         // arc, angle, the effect's age, its seed
-        o.surface = vec4(v.ring.arc, v.angle, age, seed);
+        o.surface = vec4(s, v.angle, age, seed);
         o.pulse = v.ring.intensity;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
     }
@@ -53,17 +59,20 @@ Pass {
         float rim = 1.0 - abs(dot(n, ray));
         float a = i.surface.y * 6.28318531;
         vec2 around = vec2(cos(a), sin(a));
-        float age = i.surface.z, seed = i.surface.w;
-        // Long streaks along the beam, and a finer, faster set over them.
-        vec3 p = vec3((i.surface.x - age * _Flow) * 0.3, around * 2.4) * _Scale + seed * 13.0;
-        float e = 0.5 + 0.5 * fx_fbm(p, 4);
-        vec3 fine = vec3((i.surface.x - age * _Flow * 1.6) * 0.9, around * 5.0) * _Scale + seed * 7.0;
-        e = mix(e, 0.5 + 0.5 * fx_noise(fine), 0.3);
-        float threshold = mix(_Erosion, _Erosion - 0.22, rim);
+        float s = i.surface.x, age = i.surface.z, seed = i.surface.w;
+        // Roiling turbulence, folded by its own warp, streaming forward.
+        float turbulence = 0.5 + 0.5 * fx_warped(vec3((s - age * _Flow) * 0.16, around * 1.3) * _Scale + seed * 13.0, 1.8);
+        // Filaments racing ahead of the flow: thin ridged crests, white-hot.
+        float ridge = fx_ridged(vec3((s - age * _Flow * 2.2) * 0.35, around * 3.0) * _Scale + seed * 3.0, 3);
+        float filament = pow(ridge, 10.0);
+        float e = turbulence * 0.85 + filament * 0.3;
+        float threshold = mix(_Erosion, _Erosion - 0.25, rim);
         float aa = fwidth(e) + 0.002;
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
-        float hot = smoothstep(threshold, threshold + 0.22, e);
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.35 + 1.15 * rim);
-        fragColor = vec4(col * alpha * i.pulse * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
+        float hot = smoothstep(threshold + 0.05, threshold + 0.3, e);
+        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot * hot) * (0.35 + 1.1 * rim)
+                + CG_OBJECT_CUSTOM3.rgb * filament * 1.8;
+        float flicker = fx_flicker(age + s * 0.015, seed);
+        fragColor = vec4(col * alpha * i.pulse * flicker * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
     }
 }

@@ -144,6 +144,32 @@ vec3 fx_voronoi(vec3 p) {
     return vec3(f1, f2, id);
 }
 
+// fx_voronoi, also giving the offset from p to its nearest feature point: what an analytic gradient of anything built
+// on the nearest distance needs, since that distance changes along -nearest / f1.
+vec3 fx_voronoi(vec3 p, out vec3 nearest) {
+    vec3 cell = floor(p), f = fract(p);
+    float f1 = 8.0, f2 = 8.0, id = 0.0;
+    nearest = vec3(0.0);
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                vec3 offset = vec3(float(x), float(y), float(z));
+                vec3 to = offset + fx_hash33(cell + offset) - f;
+                float d = length(to);
+                if (d < f1) {
+                    f2 = f1;
+                    f1 = d;
+                    id = fx_hash31(cell + offset);
+                    nearest = to;
+                } else if (d < f2) {
+                    f2 = d;
+                }
+            }
+        }
+    }
+    return vec3(f1, f2, id);
+}
+
 // ── Light and colour ───────────────────────────────────────────────────────────────────────────────────────────
 
 // erf, to 0.0004 (Vedder's tanh form).

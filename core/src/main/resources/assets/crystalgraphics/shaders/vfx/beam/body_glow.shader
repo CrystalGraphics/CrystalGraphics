@@ -48,6 +48,6 @@ Pass {
             // A point light per ring, weighted so a straight line of them seen side-on peaks at 1.
             glow += spacing / (sigma * 1.7724539) * fx_point_glow(eye, ray, origin + ring.xyz, sigma, scene);
         }
-        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * glow, 1.0);
+        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * glow * fx_flicker(header.w, header.z), 1.0);
     }
 }

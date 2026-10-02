@@ -11,8 +11,8 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Count ("Streaks drawn", float) = 36.0
-    _Life  ("Seconds each takes to fall in", float) = 0.6
+    _Count ("Streaks drawn", float) = 40.0
+    _Life  ("Seconds each takes to fall in", float) = 0.42
     _Twist ("Turns about the aim as it falls", float) = 0.35
     _Trail ("Length, share of its fall", float) = 0.45
     _Width ("Half-width at its widest, share of the orb's radius", float) = 0.03

@@ -21,14 +21,15 @@ vfx.submit(CgWorldRenderer.get());
 | `vfx` | Running effects: `CgVfxSystem` (fixed tick, submission, every mesh and material the engine draws), `CgVfxEffect` (a playing effect), `CgVfxFrame` (what an effect draws through), `CgVfxMomentListener` (an effect's named moments, framed: the capture hook) |
 | `vfx.look` | How an effect looks and behaves: `CgVfxLook`, `CgVfxLayer` (one draw, in a slot), `CgVfxSchema` and `CgVfxParam` (what an effect reads), `CgVfxValues` (a value for each) |
 | `vfx.path` | Centrelines: `CgVfxPath` (spline, arc-length rings, rotation-minimising frames), `CgVfxPathTexture` (paths on the GPU) |
-| `vfx.sim` | Simulation parts: `CgVfxStream` (the hose model, homing by proportional navigation) |
-| `vfx.render` | Reusable draw primitives: `CgVfxTube` (a path as chunked tube draws), `CgVfxRibbons` (stateless GPU particles: ribbons a shader places from their index) |
+| `vfx.sim` | Simulation parts: `CgVfxStream` (the hose model, homing by proportional navigation), `CgVfxParticles` (a fixed pool of CPU particles with drag and buoyancy, in plain arrays; the effect decides how each looks) |
+| `vfx.render` | Reusable draw primitives: `CgVfxTube` (a path as chunked tube draws), `CgVfxRibbons` (stateless GPU particles: ribbons a shader places from their index; 32 segments, enough for a lightning channel), `CgVfxBillboard` (one camera-facing quad per particle, drawn through `CgVfxFrame.billboard` as its own draw, so the world renderer sorts alpha-blended ones back to front) |
 | `vfx.effect.<family>` | One package per family of effects: `beam` (`CgEnergyWave`, with the `kamehameha()`, `finalFlash()` and `galickGun()` looks: one set of layers, three palettes) |
 
 | Shaders | Hold |
 |---|---|
-| `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (hashes, gradient and value noise with their fractals, warped turbulence, flicker, voronoi, erf, tonemap, `FX_CAMERA` -- the ONE copy: the showcase's `shaders/demo/vfx_common.glsl` includes it and adds only its studio lighting), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it) |
+| `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (hashes, gradient and value noise with their fractals, warped turbulence, flicker, voronoi, erf, tonemap, `FX_CAMERA` -- the ONE copy: the showcase's `shaders/demo/vfx_common.glsl` includes it and adds only its studio lighting), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it), `fx_ribbon` (ribbon hashes and placement), `fx_lightning` (a bolt's midpoint-displaced channel, its return strokes, and the core-halo-glow profile across it), `fx_fleck` (a burst fleck's ballistic flight and its camera-facing quad: what the blast's specks and sparkles share) |
 | `shaders/vfx/<family>/` | One directory per family, mirroring `vfx.effect.<family>`, named by slot (`body_*`, `head_*`) |
+| `shaders/vfx/smoke/` | Shared by any family: `billow` (a cel-shaded explosion billow as a real mesh: a sphere displaced by Voronoi domes, opaque with a depth prepass, contour strokes where the surface turns from the eye -- the anime look, as built in UE5 Niagara; all noise per vertex), `smoke_puff` (realistic: a lit puff on a billboard that depth-tests its own ball's surface, so it meets the ground in a curve) |
 
 ## Seeing every moment
 
