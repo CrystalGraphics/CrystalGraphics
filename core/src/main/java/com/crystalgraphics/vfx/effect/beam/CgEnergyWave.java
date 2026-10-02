@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import org.joml.Matrix4f;
@@ -181,7 +182,7 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
-                    .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
+                    .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
                     .radius(4.4f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
@@ -192,20 +193,20 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .radius(1.2f).colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
                     .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
             .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
             .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
             .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.PRIORITY_LIGHT))
             .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(CgVfxLayer.builder(BEAM + "charge_streaks.shader").slot(SLOT_STREAKS)
                     .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "charge_arcs.shader").slot(SLOT_ARCS)
                     .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
             .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_SPLASH)
@@ -214,7 +215,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
                     .colors(CORE, SHELL).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
             .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
@@ -260,6 +261,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final Matrix4f placed = new Matrix4f();
     /** The blast's emitters, one per emitter of the look, started when it bursts. */
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
+    /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
+    private CgVfxGround blastGround;
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -357,6 +360,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             startBlast();
         }
         boolean emitted = true;
+        if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
         for (int i = 0; i < blast.size(); i++) {
             tick(blast.get(i), dt);
             emitted &= blast.get(i).finished();
@@ -367,13 +371,14 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (ending) die();
     }
 
-    /** Starts every emitter of the look at the target, each from its own seed. */
+    /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
     private void startBlast() {
         List<CgVfxEmitter> emitters = look().emitters();
+        blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
         for (int i = 0; i < emitters.size(); i++) {
             CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
-            emitter.ground(groundHeight());
+            emitter.ground(groundHeight()).ground(blastGround);
             blast.add(emitter);
         }
     }

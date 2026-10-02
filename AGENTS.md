@@ -694,7 +694,14 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   `CgHostView` is the host's own camera: the absolute position in doubles, and the view and projection the host
   draws with. Minecraft draws its world camera-relative, so the view maps a point minus that position.
 - Every host captures Minecraft's camera where that version computes it; the per-era sources are
-  `HostView1710`, `HostViewLegacy` and `HostViewModern`. A GUI stage carries the GUI's projection in its own frame,
+  `HostView1710`, `HostViewLegacy` and `HostViewModern`.
+- Beside the camera each frame carries the world's facts: `CgHostEnvironment` (`frame.environment()`) — the sun,
+  moon, stars and daylight, weather and lightning, the dimension's sky, fog where the host keeps it on the CPU (1.17.1 to
+  1.21.1), the fluid the camera is in, perspective, FOV and render distance, the player's sight effects, their particles,
+  graphics and accessibility settings (an effect spawns `particleShare()` of its particles), and the game clock, paused
+  and `/tick` state. Absent is NaN, -1 and false, never a default. Questions about a *position* — collision and its
+  boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation — are the
+  `CgWorldQuery` slot's, composed into ground scans and a raycast by `com.crystalgraphics.world.CgWorldQueries`. A GUI stage carries the GUI's projection in its own frame,
   so the world's camera stays readable while the host draws its GUI.
 - `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
   (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.
