@@ -115,6 +115,8 @@ dependencies {
     testImplementation("junit:junit:$junitVer")
     testImplementation("org.lwjgl.lwjgl:lwjgl:$lwjglVer")
     testImplementation("org.joml:joml-jdk8:$jomlVer")
+    testImplementation("de.javagl:obj:0.4.0")
+    testImplementation("de.javagl:jgltf-model:2.0.4")
     testImplementation(project(":freetype-msdfgen-harfbuzz-bindings"))
     testImplementation(project(":platform"))
 }

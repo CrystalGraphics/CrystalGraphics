@@ -9,7 +9,7 @@ bounds and a revision. A renderer keeps the GPU copy up to date when it draws (t
 may build or edit one.
 
 **Mid-rewrite.** Every draw comes from `render/mesh/CgMeshStore` since M3; `CgMeshData` and `gl/mesh/CgMesh` (now a
-holder of a `CgMesh`) stay until M5 moves their callers and deletes them.
+holder of a `CgMesh`) stay only until the VFX engine's draws move, then go.
 
 ## Type Map
 
@@ -21,9 +21,10 @@ holder of a `CgMesh`) stay until M5 moves their callers and deletes them.
 | `CgMeshWriter` | What `build` and `edit` hand their body: a vertex's attributes in any order, `end()` naming any missing; semantic setters for one the format lacks do nothing; `set`/`setInt` by attribute index; `triangle`/`quad`/`line`/`index`; `submesh()` |
 | `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |
 | `CgMeshChanges` | A reader's reused holder: the revision now, `all`, and the vertex and index ranges touched since the revision it last read |
+| `CgMeshLoader` | Files: `load(path, format)` and `model(path, format)` -- OBJ, glTF, GLB by extension, every material group or primitive a submesh with the material it names (`Model.material(i)`). Cached per path and format, and shared; `read(stream, extension, format)` gives an uncached mesh of the caller's own. `CgObjLoader` and `CgGltfLoader` are its package-private readers |
 | `CgMeshShapes` | Shapes two ways: shared (one mesh per format and size, refusing edits) and writer forms that compose with anything else in a mesh |
 | `CgMeshTopology` | Triangles, strips, lines, points. Still carries GL modes until M5 |
-| `CgMeshData` | The old CPU holder `gl/mesh/CgMesh.upload` takes. Goes in M5 |
+| `CgMeshData` | The old CPU holder `gl/mesh/CgMesh.upload` takes. Goes with it |
 | `CgMeshSource` | What `CgChunkBuilder.draw` and `CgWorldRenderer.draw` take, so both mesh classes reach them. Goes in M5 |
 
 ## Rules
@@ -31,5 +32,8 @@ holder of a `CgMesh`) stay until M5 moves their callers and deletes them.
 - **No GL, no device** in any type here except `CgMeshTopology`'s GL constant, which M5 moves to the backends.
 - **Hot paths do not allocate**: a mesh reuses its writer and swaps arrays with it on every `edit`; a reader reuses
   its `CgMeshChanges`.
-- **A shape writes position, UV, normal and white colour**: one shape serves every format made of those.
+- **A shape writes position, UV, normal and white colour**: one shape serves every format made of those. A loaded
+  file the same, colour from glTF's `COLOR_0` where it has one.
+- **`de.javagl:obj` and `jgltf-model` are `compileOnly`**: a game must carry them for the loader to run (the harness
+  and core's tests do).
 - `CgMeshShapesTest` holds every shape byte-identical to `gl/mesh/CgMeshBuilder` until that class is deleted.

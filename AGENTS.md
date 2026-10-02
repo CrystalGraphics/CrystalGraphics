@@ -66,7 +66,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres"            # the VFX showcase: sixteen effect spheres (CgVfxShowcase)
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
 ./gradlew :gl-debug-harness:runHarness --args="--mode=attached-buffer-stress" # SSBO/TBO attach
-./gradlew :gl-debug-harness:runHarness --args="--mode=mesh-test"              # CgMeshLoader
+./gradlew :gl-debug-harness:runHarness --args="--mode=mesh-test"              # CgMeshShapes, CgMeshLoader, a part per material
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"             # Glyph atlas
 ./gradlew :gl-debug-harness:runHarness --args="--mode=text-3d"                # Full text pipeline
 ./gradlew :gl-debug-harness:runHarness --args="--mode=capability-report"      # GL capability probe
@@ -849,17 +849,22 @@ ball.release();                                          // own meshes only; the
 // No vertex data: the shader (#type none) places each vertex from CG_VERTEX_ID
 CgMesh sparks = CgMesh.quads(1024);                      // corner CG_VERTEX_ID & 3, quad CG_VERTEX_ID >> 2
 CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
+
+// From a file: every OBJ material group and glTF primitive is a submesh, with the material it names
+CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb", CgVertexFormat.SPATIAL);
+for (int i = 0; i < ship.mesh().submeshCount(); i++) {
+    world.draw(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).submit();
+}
 ```
 
-Until M5 the older path still runs, and draws through the store too: `CgMeshLoader.load(...)` answers `CgMeshData`, and
-`gl/mesh/CgMesh.upload(data)` holds an `api/mesh/CgMesh`. Both kinds reach `CgChunkBuilder.draw` and
-`CgWorldRenderer.draw` through `CgMeshSource`.
+Until the old stack is deleted, `gl/mesh/CgMesh.upload(data)` still holds an `api/mesh/CgMesh` for the VFX engine's
+draws; both reach `CgChunkBuilder.draw` and `CgWorldRenderer.draw` through `CgMeshSource`.
 
 **Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md` · `render/AGENTS.md` (`mesh/`)
 
 ## Vertex Formats
 
-`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. This is the format `CgMeshBuilder` and `CgMeshLoader` target by default. Two formats with identical attribute lists are value-equal.
+`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. It is the format `CgMeshShapes` builds when asked for none. Two formats with identical attribute lists are value-equal.
 
 **Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.
 
@@ -1196,7 +1201,7 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | Path | What it covers |
 |---|---|
 | `api/mesh/AGENTS.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgSubmesh`, `CgMeshChanges`, `CgMeshSource`; `CgMeshTopology`, `CgMeshData` until M5 |
-| `gl/mesh/AGENTS.md` | `CgMeshBuilder` (procedural), `CgObjLoader`, `CgGltfLoader`, `CgMeshLoader` facade, `CgMesh` (a holder of a data mesh, until M5) |
+| `gl/mesh/AGENTS.md` | `CgMeshBuilder` and `CgMesh`, the old stack the VFX engine still draws through until it is deleted |
 
 ### Vertex / Instancing
 | Path | What it covers |

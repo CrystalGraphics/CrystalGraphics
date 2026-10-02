@@ -64,7 +64,13 @@ public final class CgMeshShapes {
     }
 
     public static CgMesh quad(CgVertexFormat format) {
-        return shared(new Key("quad", format, 0, 0, 0f, 0f), m -> quad(m, -0.5f, -0.5f, 0.5f, 0.5f));
+        return quad(format, 0.5f, 0.5f);
+    }
+
+    /** The rectangle from -{@code halfWidth} to {@code halfWidth} in X, and the same for Y, facing +Z. */
+    public static CgMesh quad(CgVertexFormat format, float halfWidth, float halfHeight) {
+        return shared(new Key("quad", format, 0, 0, halfWidth, halfHeight),
+                m -> quad(m, -halfWidth, -halfHeight, halfWidth, halfHeight));
     }
 
     /** The square from -0.5 to 0.5 in X and Z at Y 0, facing +Y, in {@code cells} by {@code cells} cells. */
@@ -100,7 +106,12 @@ public final class CgMeshShapes {
     }
 
     public static CgMesh cylinder(CgVertexFormat format, int sectors) {
-        return shared(new Key("cylinder", format, sectors, 0, 0f, 0f), m -> cylinder(m, sectors, 0.5f, 1f));
+        return cylinder(format, sectors, 0.5f, 1f);
+    }
+
+    /** The capped cylinder of {@code radius} from Y -{@code height}/2 to {@code height}/2. */
+    public static CgMesh cylinder(CgVertexFormat format, int sectors, float radius, float height) {
+        return shared(new Key("cylinder", format, sectors, 0, radius, height), m -> cylinder(m, sectors, radius, height));
     }
 
     /**
