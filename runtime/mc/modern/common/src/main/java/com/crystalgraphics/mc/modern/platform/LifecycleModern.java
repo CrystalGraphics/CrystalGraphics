@@ -87,7 +87,7 @@ public final class LifecycleModern {
                 CgHostFrame frame = CgRenderStage.WORLD_OPAQUE.host()
                         .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
                 HostViewModern.capture(mc, partialTick, frame.view());
-                EnvironmentModern.capture(mc, partialTick, frame.view().projection(), frame.environment());
+                EnvironmentModern.capture(mc, partialTick, frame.view(), frame.environment());
                 CgRenderStage.WORLD_OPAQUE.fire();
             } finally {
                 worldDepth(false);
