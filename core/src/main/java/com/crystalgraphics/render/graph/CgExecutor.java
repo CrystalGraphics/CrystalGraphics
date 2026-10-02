@@ -146,7 +146,14 @@ public final class CgExecutor {
                         resolved++;
                     }
                 }
-                if (!again || !doneOnce(frame.steps[s], frame.keepRequested)) step(frame, s);
+                CgPass pass = frame.steps[s];
+                if (!again || !doneOnce(pass, frame.keepRequested)) step(frame, s);
+                // A WINDOW MOVED BY ITS NODE executes no surface: what a re-execution drew into a kept texture.
+                if (again && pass instanceof CgRasterPass && pass.target != null
+                        && pass.target.kind() == CgGraphTexture.Kind.REQUESTED) {
+                    CgTrace.add(CgChannels.GL, frame.keepRequested ? "graph.again.requested-kept"
+                            : "graph.again.requested-drawn", 1);
+                }
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.releaseAfter[t] == s) {
                         CgGraphTexture texture = frame.transients.get(t);
