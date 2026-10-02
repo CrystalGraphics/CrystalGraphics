@@ -22,6 +22,17 @@ import com.crystalgraphics.platform.service.CgHostCamera;
 public final class HostCameraModern implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f;
+    private static volatile int capabilities;
+
+    /** A loader, where it wires a hook: what it applies ({@code CgHostCamera.ROTATION} and the rest). */
+    public static synchronized void declare(int parts) {
+        capabilities |= parts;
+    }
+
+    @Override
+    public int capabilities() {
+        return capabilities;
+    }
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {

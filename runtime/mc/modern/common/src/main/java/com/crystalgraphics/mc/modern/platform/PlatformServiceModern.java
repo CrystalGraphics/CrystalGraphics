@@ -24,6 +24,9 @@ import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgWorldSound;
+import com.crystalgraphics.platform.service.CgWorldEvents;
+import com.crystalgraphics.platform.service.CgWorldStimulus;
+import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldQueryModern;
 import com.crystalgraphics.mc.modern.platform.world.EntityQueryModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
@@ -120,6 +123,14 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
+            CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
+            // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
+            //? if >=1.14 {
+            CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);
+            //?}
+            //? if >=1.16.5 {
+            CgWorldEvents.declare(CgWorldEvents.LIGHTNING);
+            //?}
 
             // The cursor slot, filled here so no consumer has to -- and HERE rather than in
             // getInstance() for the reason the note above gives: getInstance() runs on both sides, and

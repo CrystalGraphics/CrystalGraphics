@@ -26,6 +26,11 @@ public final class HostCameraLegacy implements CgHostCamera {
         this.fovScale = fovScale;
     }
 
+    @Override
+    public int capabilities() {
+        return ROTATION | ROLL | FOV;
+    }
+
     @SubscribeEvent
     public void onCameraSetup(EntityViewRenderEvent.CameraSetup event) {
         //? if >=1.9 {

@@ -12,6 +12,7 @@ import com.crystalgraphics.mc.legacy.platform.world.EntityQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -28,6 +29,8 @@ import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.platform.service.CgWorldSound;
+import com.crystalgraphics.platform.service.CgWorldEvents;
+import com.crystalgraphics.platform.service.CgWorldStimulus;
 import net.minecraftforge.common.MinecraftForge;
 
 /**
@@ -70,6 +73,10 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryLegacy());
         CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryLegacy());
         CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
+        CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
+        // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
+        CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
+                | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
         HostCameraLegacy camera = new HostCameraLegacy();
         CgPlatform.provide(CgHostCamera.SERVICE, camera);
         MinecraftForge.EVENT_BUS.register(camera);
