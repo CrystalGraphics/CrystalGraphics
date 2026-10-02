@@ -3,6 +3,8 @@ package com.crystalgraphics.mc.modern.neoforge;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
+import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
@@ -95,6 +97,11 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 // client-only types, so they live here.
                 NeoForge.EVENT_BUS.addListener(ModBus::onCameraAngles);
                 NeoForge.EVENT_BUS.addListener(ModBus::onFov);
+                HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+                // ExplosionHook and LevelEventHook, the node mixins that report them.
+                //? if >=1.21.6 {
+                /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
+                *///?}
                 // A dev run wraps every GPU texture and the device for validation; ours are the GL ones under them.
                 //? if >=1.21.8 <26.1 {
                 /*LifecycleModern.unwrapWith(

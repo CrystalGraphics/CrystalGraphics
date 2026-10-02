@@ -27,6 +27,11 @@ public final class HostCamera1710 implements CgHostCamera {
         HostCamera1710.fovScale = fovScale;
     }
 
+    @Override
+    public int capabilities() {
+        return ROTATION | ROLL | FOV;
+    }
+
     /** {@code CameraHook}, at the head of {@code orientCamera}: the offset as GL rotations on the modelview. */
     public static void rotate() {
         if (roll != 0f) GL11.glRotatef(roll, 0f, 0f, 1f);

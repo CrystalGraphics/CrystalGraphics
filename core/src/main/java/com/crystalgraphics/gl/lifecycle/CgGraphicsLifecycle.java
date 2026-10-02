@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.lifecycle;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
+import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
@@ -206,6 +207,7 @@ public final class CgGraphicsLifecycle {
                 }
                 CgWorldRenderer.get().install();
                 CgRenderDemo.INSTANCE.install();
+                CgWorldProbe.installIfEnabled();
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again

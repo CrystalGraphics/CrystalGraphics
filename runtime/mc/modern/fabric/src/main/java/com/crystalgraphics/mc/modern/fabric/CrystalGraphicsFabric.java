@@ -2,7 +2,10 @@ package com.crystalgraphics.mc.modern.fabric;
 
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
+import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgWorldEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 //? if >=26.1 {
 /*import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
@@ -34,6 +37,18 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     @Override
     public void start(Object context) {
         Events.register();
+        // What the node mixins apply and report: CameraHook to 1.21.10, FovHook to 1.21.11, ExplosionHook on every
+        // version, LevelEventHook from 1.15. No roll: Fabric's setRotation takes two angles.
+        //? if <1.21.11 {
+        HostCameraModern.declare(CgHostCamera.ROTATION);
+        //?}
+        //? if <26.1 {
+        HostCameraModern.declare(CgHostCamera.FOV);
+        //?}
+        CgWorldEvents.declare(CgWorldEvents.EXPLOSION);
+        //? if >=1.15 {
+        CgWorldEvents.declare(CgWorldEvents.BLOCK_BROKEN);
+        //?}
     }
 
     // -- Events -----------------------------------------------------------------

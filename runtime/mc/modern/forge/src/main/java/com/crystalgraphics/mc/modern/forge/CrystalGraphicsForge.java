@@ -3,6 +3,8 @@ package com.crystalgraphics.mc.modern.forge;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
+import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
@@ -156,6 +158,11 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onCameraAngles);
             MinecraftForge.EVENT_BUS.addListener(Events::onFov);
             //?}
+            HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+            // ExplosionHook and LevelEventHook, the node mixins that report them.
+            //? if >=1.21.3 {
+            /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
+            *///?}
             // Forge 53 (1.21.3) removed the render-stage event; from there the passes are a mixin's.
             // @see com.crystalgraphics.mc.modern.forge.mixin.OpaquePassHook
             //? if >=1.21.3 {

@@ -43,6 +43,11 @@ public final class CgCameraShake {
         add(strength, seconds, Math.max(reach, 1e-3f), x, y, z);
     }
 
+    /** Whether anything has shaken: from then this owns the host camera's offset, and writes it every frame. */
+    public static boolean active() {
+        return installed;
+    }
+
     /** The field of view widened by {@code amount} (0.1 is 10%) at once, easing back over {@code seconds}. */
     public static void kick(float amount, float seconds) {
         add(amount, seconds, 0f, 0.0, 0.0, 0.0);
