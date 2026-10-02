@@ -4,6 +4,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
 import com.crystalgraphics.mc.modern.platform.world.TexturesModern;
+import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
@@ -90,6 +91,7 @@ public final class LifecycleModern {
                 HostViewModern.capture(mc, partialTick, frame.view());
                 EnvironmentModern.capture(mc, partialTick, frame.view(), frame.environment());
                 TexturesModern.capture(mc, frame.textures());
+                WorldEventsModern.poll(mc);
                 CgRenderStage.WORLD_OPAQUE.fire();
             } finally {
                 worldDepth(false);
