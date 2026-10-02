@@ -8,9 +8,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import javax.annotation.Nullable;
 
 /**
  * The GPU storage of one vertex format: slabs, each a vertex buffer and a 32-bit index buffer with an allocator for
@@ -73,8 +75,8 @@ final class CgMeshPool {
 
     final CgVertexFormat format;
     final List<Slab> slabs = new ArrayList<>();
-    /** This format's vertex array over the frame ring, and the ring storage its attributes point at. */
-    private int ringVao, ringBuffer, ringGeneration = -1;
+    /** This format's vertex array over each ring page, and the storage its attributes point at. */
+    private int[] ringVaos = new int[2], ringBuffers = new int[2], ringGenerations = new int[2];
 
     CgMeshPool(CgVertexFormat format) {
         this.format = format;
@@ -111,34 +113,49 @@ final class CgMeshPool {
         return true;
     }
 
-    /** This format's vertex array over {@code ring}, pointed again when the ring's storage was replaced. */
-    int ringVertexArray(CgStreamBuffer ring) {
-        if (ringVao == 0) ringVao = genVertexArray();
-        if (ringBuffer != ring.getGlBufferId() || ringGeneration != ring.getGeneration()) {
-            CgGL.glBindVertexArray(ringVao);
-            if (format.getStride() > 0) {
-                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, ring.getGlBufferId());
-                for (int i = 0; i < format.getAttributeCount(); i++) {
-                    pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
-                    CgGL.glEnableVertexAttribArray(i);
-                }
-                CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
-            }
-            ringBuffer = ring.getGlBufferId();
-            ringGeneration = ring.getGeneration();
+    /**
+     * This format's vertex array over ring page {@code page}, whose storage is {@code buffer}: pointed again when the
+     * storage changed. A format with no vertex data has one, over nothing.
+     */
+    int ringVertexArray(int page, @Nullable CgStreamBuffer buffer) {
+        if (format.getStride() == 0) page = 0;
+        if (page >= ringVaos.length) {
+            int n = Math.max(page + 1, ringVaos.length * 2);
+            ringVaos = Arrays.copyOf(ringVaos, n);
+            ringBuffers = Arrays.copyOf(ringBuffers, n);
+            ringGenerations = Arrays.copyOf(ringGenerations, n);
         }
-        return ringVao;
+        if (ringVaos[page] == 0) {
+            ringVaos[page] = genVertexArray();
+            ringBuffers[page] = -1;
+        }
+        if (format.getStride() > 0 && buffer != null
+                && (ringBuffers[page] != buffer.getGlBufferId() || ringGenerations[page] != buffer.getGeneration())) {
+            CgGL.glBindVertexArray(ringVaos[page]);
+            CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, buffer.getGlBufferId());
+            for (int i = 0; i < format.getAttributeCount(); i++) {
+                pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
+                CgGL.glEnableVertexAttribArray(i);
+            }
+            CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
+            ringBuffers[page] = buffer.getGlBufferId();
+            ringGenerations[page] = buffer.getGeneration();
+        }
+        return ringVaos[page];
+    }
+
+    /** Deletes the vertex array over a ring page the ring freed. */
+    void forgetRingPage(int page) {
+        if (page >= ringVaos.length || ringVaos[page] == 0) return;
+        LIVE_VERTEX_ARRAYS.remove(ringVaos[page]);
+        CgGL.glDeleteVertexArrays(ringVaos[page]);
+        ringVaos[page] = 0;
     }
 
     void delete() {
         for (Slab slab : slabs) slab.delete();
         slabs.clear();
-        if (ringVao != 0) {
-            LIVE_VERTEX_ARRAYS.remove(ringVao);
-            CgGL.glDeleteVertexArrays(ringVao);
-            ringVao = 0;
-            ringGeneration = -1;
-        }
+        for (int page = 0; page < ringVaos.length; page++) forgetRingPage(page);
     }
 
     /** Forgets every vertex array name: the context that owned them is gone. */
