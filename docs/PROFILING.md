@@ -357,14 +357,21 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw` — recording only: the passes execute inside the frame that records them, so their GPU time is that frame's; counters for what drew, was unchanged, is animated or still compiling, and `mainPreview.fallback` for a frame the main preview drew flat white | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
-| World | world, gpu | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent` | `render/stage/CgRenderStage`, `render/world/CgWorldRenderer` |
+| World | world, gpu; gl | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent`; on gl `stage.parkSamplers/unparkSamplers`, the host's sampler bindings read and put back around every firing | `render/stage/CgRenderStage`, `CgStageFrame`, `render/world/CgWorldRenderer` |
 | Culling | gl | frustum tests | `render/CgViewFrustum` |
-| Frame graph | gl | counters `graph.passes`, `.batches`, `.draws`, `.snapshots`, `.instances` per build; `graph.batches.skipped` (a pipeline with no program: its draws are missing that frame) and `graph.requested.made` (a requested texture's storage made -- at first use, or again after its picture was lost) per execution; `graph.passes.undamaged` and `graph.damage-kpx` (passes cut to their damage); `graph.again.requested-kept`/`-drawn` (a frame executed again: passes into kept textures skipped, or drawn whole) | `render/graph/CgFrameBuilder`, `CgExecutor` |
+| Frame graph | gl | `graph.build`, `graph.execute`, and inside it `graph.deferrals` (deferred texture work, the frame's pool) and `graph.placeMeshes`; counters `graph.passes`, `.batches`, `.draws`, `.snapshots`, `.instances` per build; `graph.batches.skipped` (a pipeline with no program: its draws are missing that frame) and `graph.requested.made` (a requested texture's storage made -- at first use, or again after its picture was lost) per execution; `graph.passes.undamaged` and `graph.damage-kpx` (passes cut to their damage); `graph.again.requested-kept`/`-drawn` (a frame executed again: passes into kept textures skipped, or drawn whole) | `render/graph/CgFrameBuilder`, `CgExecutor` |
+| Meshes | gl | `mesh.uploadRing` (FRAME meshes into the frame ring); counters `mesh.placed`, `.uploads`, `.upload-bytes`, `.ring-bytes`, `.slab-kb`, `.drawn-vertices`, and `mesh.edited-every-frame` (meshes not FRAME edited 60 frames running) | `render/mesh/CgMeshStore` |
 
-**Not instrumented** — zone these before any question that touches them: the frame graph's build and
-execution of a world stage beyond its whole firing (`render/graph/CgFrameBuilder`, `CgExecutor`), mesh placement and loading beyond the store's counters (`render/mesh/CgMeshStore`, `api/mesh/CgMeshLoader`), framebuffer creation and blits beyond the
+**Not instrumented** — zone these before any question that touches them: the executor's passes one by one
+(`render/graph/CgExecutor`), mesh loading (`api/mesh/CgMeshLoader`), framebuffer creation and blits beyond the
 depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShader` compiles outside a
 material, hot reload, and every host's own hooks (`runtime/mc/**`).
+
+**A readback's time is not always its own either.** A `glGet` waits for the driver's own thread to drain what was
+queued, so the first readback of a stage (`stage.parkSamplers`, `glState.adopt`) takes a stall from anywhere: another
+process on the GPU, a present still pending. On a busy machine those two held nearly every spike over 20 ms whichever
+mesh path ran, and the rest fell in `frame.input`, the window system's poll. Compare spike counts over interleaved
+runs, never one run.
 
 **A GPU zone's time is not always its own.** The first GPU zone of a frame absorbs whatever the GPU was still
 finishing: in the shader graph, the main preview's GPU zone once read 9 ms, and with that draw switched off the
