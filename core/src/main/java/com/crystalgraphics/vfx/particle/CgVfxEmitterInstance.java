@@ -1,0 +1,220 @@
+package com.crystalgraphics.vfx.particle;
+
+import java.util.List;
+
+/**
+ * One running {@link CgVfxEmitter}: its particles, its clock, where it spawns from, and the solver that moves them. An
+ * effect makes one per emitter it plays, starts it where the burst happens, and ticks it at the system's fixed step.
+ * The same seed and the same ticks always give the same particles.
+ *
+ * <pre>{@code
+ * CgVfxEmitterInstance embers = new CgVfxEmitterInstance(EMBERS, seed);
+ * embers.start(impactX, impactY, impactZ);        // relative to the effect's origin
+ * embers.ground(groundY - originY);               // optional: where the floor is, for CgVfxModule.Ground
+ *
+ * // every tick
+ * embers.tick(CgVfxSystem.TICK, system.air(), originX, originY, originZ);
+ * if (embers.finished()) ...                       // spawned everything and every particle has died
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Nothing spawns before {@link #start}; a second {@code start} restarts it.</li>
+ *   <li>Positions are relative to the effect's origin; the origin passed to {@link #tick} is only where turbulence is
+ *       sampled, so effects at different places see different eddies.</li>
+ * </ul>
+ */
+public final class CgVfxEmitterInstance {
+
+    private final CgVfxEmitter emitter;
+    private final CgVfxParticleSet particles;
+    private final int seed;
+    private final float[] scratch = new float[3];
+    private CgVfxAir air;
+    private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
+    private double originX, originY, originZ;
+    private int spawned, burstsDone;
+    private float rateOwed;
+
+    public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
+        this.emitter = emitter;
+        this.particles = new CgVfxParticleSet(emitter.capacity);
+        this.seed = Float.floatToIntBits(seed);
+    }
+
+    /** Starts spawning at {@code (x, y, z)}, relative to the effect's origin, from this tick on. */
+    public void start(float x, float y, float z) {
+        sourceX = x;
+        sourceY = y;
+        sourceZ = z;
+        time = 0f;
+        spawned = 0;
+        burstsDone = 0;
+        rateOwed = 0f;
+        particles.clear();
+    }
+
+    /** The height of the ground, relative to the effect's origin, for {@link CgVfxModule.Ground}; NaN for none. */
+    public CgVfxEmitterInstance ground(float y) {
+        groundY = y;
+        return this;
+    }
+
+    /** Spawns what is due, runs the module stack, solves and ages: one step of {@code dt} seconds. */
+    public void tick(float dt, CgVfxAir air, double originX, double originY, double originZ) {
+        if (time < 0f) return;
+        this.air = air;
+        this.originX = originX;
+        this.originY = originY;
+        this.originZ = originZ;
+        spawn(dt);
+        CgVfxParticleSet p = particles;
+        List<CgVfxModule> modules = emitter.modules;
+        for (int m = 0; m < modules.size(); m++) {
+            if (!modules.get(m).afterSolve()) modules.get(m).apply(this, dt);
+        }
+        solve(dt);
+        for (int m = 0; m < modules.size(); m++) {
+            if (modules.get(m).afterSolve()) modules.get(m).apply(this, dt);
+        }
+        for (int i = p.count() - 1; i >= 0; i--) {
+            p.age[i] += dt;
+            if (p.age[i] >= p.life[i]) p.remove(i);
+        }
+        time += dt;
+    }
+
+    /** True once it has spawned everything it will and every particle has died. */
+    public boolean finished() {
+        return time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length && particles.count() == 0;
+    }
+
+    public CgVfxEmitter emitter() {
+        return emitter;
+    }
+
+    public CgVfxParticleSet particles() {
+        return particles;
+    }
+
+    /** Seconds since {@link #start}, or -1 before it. */
+    public float time() {
+        return time;
+    }
+
+    public CgVfxAir air() {
+        return air;
+    }
+
+    public double originX() {
+        return originX;
+    }
+
+    public double originY() {
+        return originY;
+    }
+
+    public double originZ() {
+        return originZ;
+    }
+
+    /** Where it spawns from, relative to the effect's origin. */
+    public float sourceX() {
+        return sourceX;
+    }
+
+    public float sourceY() {
+        return sourceY;
+    }
+
+    public float sourceZ() {
+        return sourceZ;
+    }
+
+    public float groundY() {
+        return groundY;
+    }
+
+    /** A three-float scratch a module may use within one {@code apply}. */
+    float[] scratch() {
+        return scratch;
+    }
+
+    private void spawn(float dt) {
+        CgVfxEmitter e = emitter;
+        while (burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
+            for (int n = 0; n < e.burstCounts[burstsDone]; n++) spawnOne();
+            burstsDone++;
+        }
+        if (e.rate > 0f && time >= e.rateFrom && time < e.rateUntil) {
+            rateOwed += e.rate * dt;
+            while (rateOwed >= 1f) {
+                spawnOne();
+                rateOwed -= 1f;
+            }
+        }
+    }
+
+    private void spawnOne() {
+        CgVfxEmitter e = emitter;
+        int k = spawned++;
+        int i = particles.add();
+        if (i < 0) return;
+        CgVfxParticleSet p = particles;
+        float up = e.upMin + (e.upMax - e.upMin) * (float) Math.pow(rand(k, 0), e.upBias);
+        float heading = rand(k, 1) * 6.2831853f, across = (float) Math.sqrt(Math.max(1f - up * up, 0f));
+        float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);
+        float start = e.shapeRadius * (float) Math.cbrt(rand(k, 2));
+        float speed = e.speedMin + (e.speedMax - e.speedMin) * rand(k, 3);
+        p.x[i] = p.px[i] = sourceX + dx * start;
+        p.y[i] = p.py[i] = sourceY + up * start;
+        p.z[i] = p.pz[i] = sourceZ + dz * start;
+        p.vx[i] = dx * speed;
+        p.vy[i] = up * speed;
+        p.vz[i] = dz * speed;
+        p.life[i] = e.lifeMin + (e.lifeMax - e.lifeMin) * rand(k, 4);
+        p.size[i] = e.sizeMin + (e.sizeMax - e.sizeMin) * (float) Math.pow(rand(k, 5), e.sizeSkew);
+        p.seed[i] = rand(k, 6);
+        float spin = e.spinMin + (e.spinMax - e.spinMin) * rand(k, 7);
+        p.spinRate[i] = rand(k, 8) < 0.5f ? -spin : spin;
+        p.spin[i] = rand(k, 9) * 6.2831853f;
+        p.heat[i] = e.heat;
+    }
+
+    /**
+     * Semi-implicit Euler: forces into velocity, drag solved implicitly so a strong one slows a particle without ever
+     * reversing it, then position. Clears the accumulators for the next tick.
+     */
+    private void solve(float dt) {
+        CgVfxParticleSet p = particles;
+        for (int i = 0; i < p.count(); i++) {
+            p.px[i] = p.x[i];
+            p.py[i] = p.y[i];
+            p.pz[i] = p.z[i];
+            if (p.resting[i] == 0f) {
+                float vx = p.vx[i] + p.ax[i] * dt, vy = p.vy[i] + p.ay[i] * dt, vz = p.vz[i] + p.az[i] * dt;
+                float speed = (float) Math.sqrt(vx * vx + vy * vy + vz * vz);
+                float keep = 1f / (1f + (p.drag[i] + p.dragQuad[i] * speed) * dt);
+                p.vx[i] = vx * keep;
+                p.vy[i] = vy * keep;
+                p.vz[i] = vz * keep;
+                p.x[i] += p.vx[i] * dt;
+                p.y[i] += p.vy[i] * dt;
+                p.z[i] += p.vz[i] * dt;
+                p.spin[i] += p.spinRate[i] * dt;
+            }
+            p.ax[i] = p.ay[i] = p.az[i] = 0f;
+            p.drag[i] = p.dragQuad[i] = 0f;
+        }
+    }
+
+    /** A number in 0..1 for the {@code k}-th draw of the {@code n}-th particle spawned, fixed by the seed. */
+    private float rand(int n, int k) {
+        int h = seed * 0x9E3779B1 ^ n * 0x85EBCA77 ^ k * 0xC2B2AE3D;
+        h ^= h >>> 15;
+        h *= 0x2C1B3C6D;
+        h ^= h >>> 12;
+        h *= 0x297A2D39;
+        h ^= h >>> 15;
+        return (h >>> 8) * (1f / (1 << 24));
+    }
+}
