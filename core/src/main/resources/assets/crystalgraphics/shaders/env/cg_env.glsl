@@ -92,6 +92,12 @@ flat in int cg_InstanceId;
 // Do NOT use that texture unit in material Properties.
 uniform sampler2D cg_DepthBuffer;
 
+// cg_SceneColor: the scene's colour, taken the same way and at the same moments as cg_DepthBuffer, for a material that
+// bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered. Bound to
+// CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
+uniform sampler2D cg_SceneColor;
+#define CG_SCENE_COLOR(uv) texture(cg_SceneColor, (uv))
+
 // Raw depth is the host's convention -- Minecraft 26.2 is reversed-Z with a 0..1 clip range, earlier
 // versions are not -- so compare depths as eye distances, never as raw values:
 //

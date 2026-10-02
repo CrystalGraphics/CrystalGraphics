@@ -148,6 +148,14 @@ public final class CgBindingPoints {
     /** Name of depth texture sampler2D uniform*/
     public static final String DEPTH_TEXTURE_UNIFORM = "cg_DepthBuffer";
 
+    /**
+     * GL texture unit reserved for {@code cg_SceneColor}, the scene's colour snapshot, bound by the engine as
+     * {@link #DEPTH_TEXTURE_UNIT} is. Shader authors must not use it in material Properties.
+     */
+    public static int SCENE_COLOR_TEXTURE_UNIT = -1;
+
+    public static final String SCENE_COLOR_TEXTURE_UNIFORM = "cg_SceneColor";
+
     // ── User buffers — allocated from bottom of available range ──────────────
 
     /**
@@ -208,6 +216,7 @@ public final class CgBindingPoints {
 
         // ── Texture bindings ───────────────────────────────────────────────────────────────
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;
+        SCENE_COLOR_TEXTURE_UNIT = --maxTextureUnits;
     }
 
     /**

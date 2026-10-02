@@ -343,6 +343,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
 | `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured via one `glBlitFramebuffer` from MC's main render target at the start of each world stage whose materials read it: an opaque material sees the host's world, a transparent one the world renderer's opaque draws as well. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+| `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The scene's colour, taken the same way and at the same moments as `cg_DepthBuffer`, only for a stage whose drawn materials read it: in a transparent pass the host's world and the world renderer's opaque draws. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
 
 Convenience macros over the frame block:
 
@@ -352,6 +353,7 @@ Convenience macros over the frame block:
 | `CG_TIME_VEC4` | `cg_Time` | Full 4-component time vector |
 | `CG_RESOLUTION` | `cg_Resolution` | Viewport dimensions in pixels |
 | `CG_SCENE_EYE_DEPTH(uv)` | `cg_LinearEyeDepth(texture(cg_DepthBuffer, uv).r)` | Scene distance from the camera at `uv`, in eye units, under any depth convention |
+| `CG_SCENE_COLOR(uv)` | `texture(cg_SceneColor, uv)` | The scene's colour at `uv` (`gl_FragCoord.xy / CG_RESOLUTION` for the pixel behind) |
 | `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform |
 
 ### Per-Instance Object Data — SSBO / TBO Dual Path
