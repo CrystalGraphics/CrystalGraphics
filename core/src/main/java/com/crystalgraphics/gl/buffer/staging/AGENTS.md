@@ -5,12 +5,8 @@
 
 ## What This Package Is
 
-CPU-side vertex staging for the batch render layer system. Contains the
-raw staging buffer and the format-aware vertex writer that transforms
-fluent API calls into interleaved float data.
-
-These types sit between the public `CgVertexConsumer` API and the GPU
-upload path in `CgBatchRenderer`. They have no GL dependencies and no
+CPU-side staging: the raw staging buffer, the format-aware vertex writer that turns fluent calls into
+interleaved vertex data for meshes, and the buffer writer for shader-buffer records. No GL dependencies and no
 awareness of shaders, textures, or render state.
 
 ## Type Map
@@ -20,7 +16,6 @@ awareness of shaders, textures, or render state.
 | `CgStagingBuffer` | Growable `float[]` with write cursor. Pure data — no GL, no semantics. Growth factor: 1.5×. Implements `CgVertexOutput`. Also supports random-access write: `reserveAndZero(int floatCount)` pre-zeros a slot range and returns the start index; `setFloatAt(int absIndex, float v)` writes a float at an absolute index without advancing the cursor; `setIntBitsAt(int absIndex, int bits)` writes raw int bits (reinterpreted as float via `Float.intBitsToFloat`) at an absolute index — used by integer field writes in `CgBufferWriter`. Used by `CgBufferWriter` in format-aware mode. |
 | `CgBufferWriter` | General-purpose staged float writer for UBOs/SSBOs/TBOs (non-vertex payloads). **Always format-aware** — requires a `CgBufferFormat` at construction (no positional/null-format mode). Named writes: `mat4("field", m)`, `vec4("field", ...)`, `mat3("field", m)` (48 bytes, vec4-padded), `vec3("field", ...)`, `vec2("field", ...)`, `float_("field", v)`, `int_("field", int)`, `uint("field", int)`, `bool_("field", bool)`, `ivec2("field", int, int)`, `ivec3("field", int, int, int)`, `ivec4("field", int, int, int, int)`, `uvec2("field", int, int)`, `uvec3("field", int, int, int)`, `uvec4("field", int, int, int, int)`, `uint64("field", long)`, `int64("field", long)`, `color("field", argb)`. `reset()` returns `this`. `beginRecord()` calls `reserveAndZero(format.getFloatCount())` and records `recordStartIdx`. `endRecord()` is a no-op (record pre-zeroed). |
 | `CgVertexWriter` | V1 format-aware `CgVertexConsumer` implementation. Routes fluent calls (vertex/uv/color/normal) to a `CgVertexOutput` based on format attribute semantics. Static factory `forBuffer(ByteBuffer, CgVertexFormat)` enables direct ByteBuffer writes for mesh builders. |
-| `CgInstanceWriter` | Per-instance data writer backed by `CgStagingBuffer`. Fluent API: `mat4(...).color(...).putVec4(...).endInstance()`. `beginInstance()`/`endInstance()` validate stride in DEBUG mode. `mat3()` here is tight 9-float (vertex attribute packing — not std140). |
 | `CgColorPacking` | Utility for packing RGBA components into ABGR int. `packAbgr(r,g,b,a)` is endian-aware. |
 | `CgVertexOutput` | Package-private write target interface. Two methods: `putFloat(float)` and `putIntBits(int)`. Implemented by `CgStagingBuffer` and `CgStagingByteBuffer`. |
 | `CgStagingByteBuffer` | Package-private `CgVertexOutput` backed by a direct `ByteBuffer`. Used by `CgVertexWriter.forBuffer()`. |
@@ -39,7 +34,6 @@ awareness of shaders, textures, or render state.
 > `rgba` out); that mismatch is the reason it is worth writing exactly once. Channel order is pinned
 > by `CgBufferWriterColorTest`, including a bit-identical check against the hand-rolled `/ 255f` it
 > replaced in `CgQuadRenderer` — the path every glyph in the engine draws through.
-| `CgInstanceWriter.mat3(Matrix3f)` | 36 bytes (tight col-major) | Vertex attribute instance data — correct for that use |
 
 ## Data Flow
 
@@ -55,11 +49,10 @@ CgVertexWriter (implements CgVertexConsumer)
 CgStagingBuffer (float[] + cursor)
   │  putFloat() / putIntBits()
   ▼
-CgBatchRenderer.flush()
+a mesh upload, or a shader-buffer upload
   │  reads rawData()/rawCursor()
-  │  uploads to GPU via CgStreamBuffer.map()/commit()
   ▼
-GPU draw
+GPU
 ```
 
 ## CgVertexWriter V1 Constraints
@@ -97,7 +90,7 @@ with normalization enabled (4 bytes = 1 float slot in the staging array).
 
 ## Design Rules
 
-- **No GL calls** — these types are pure CPU. GL upload is `CgBatchRenderer`'s job.
+- **No GL calls** — these types are pure CPU; their readers upload.
 - **No allocation in hot path** — `putFloat()` / `putIntBits()` are
   array writes. Growth only happens at vertex boundaries.
 - **Format declaration order for writes** — `endVertex()` iterates the

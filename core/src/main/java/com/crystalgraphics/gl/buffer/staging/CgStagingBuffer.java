@@ -1,6 +1,5 @@
 package com.crystalgraphics.gl.buffer.staging;
 
-import com.crystalgraphics.gl.render.CgBatchRenderer;
 
 import java.util.Arrays;
 
@@ -8,8 +7,8 @@ import java.util.Arrays;
  * CPU-side float staging buffer: a growable {@code float[]} with a write cursor.
  *
  * <p>Pure data structure — no GL dependencies, no topology awareness, no semantic knowledge.
- * Values are written by {@link CgVertexWriter} / {@link CgInstanceWriter} / {@link CgBufferWriter}
- * and read by {@link CgBatchRenderer} or a shader-buffer upload path.</p>
+ * Values are written by {@link CgVertexWriter} / {@link CgBufferWriter} and read by a mesh or a shader-buffer
+ * upload.</p>
  *
  * <h3>Two construction modes</h3>
  * <dl>
@@ -133,7 +132,7 @@ public final class CgStagingBuffer implements CgVertexOutput {
 
     /**
      * Ensures there is room for one more vertex ({@code floatsPerVertex} more floats).
-     * Called by {@link CgVertexWriter#endVertex()} and {@link CgInstanceWriter#endInstance()}
+     * Called by {@link CgVertexWriter#endVertex()}
      * after each record to pre-allocate the next slot.
      */
     public void ensureRoomForFloat() {
@@ -144,7 +143,7 @@ public final class CgStagingBuffer implements CgVertexOutput {
     
     /**
      * Ensures there is room for one more vertex ({@code floatsPerVertex} more floats).
-     * Called by {@link CgVertexWriter#endVertex()} and {@link CgInstanceWriter#endInstance()}
+     * Called by {@link CgVertexWriter#endVertex()}
      * after each record to pre-allocate the next slot.
      */
     public void ensureRoomForNextVertex() {

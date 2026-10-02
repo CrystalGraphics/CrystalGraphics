@@ -30,9 +30,7 @@ import javax.annotation.Nullable;
  *
  * <h3>One shared mesh, format, and GPU buffer for every instance</h3>
  * <p>The unit quad mesh, the per-instance {@link CgBufferFormat}, and the backing
- * {@link CgShaderBuffer} are all class-wide static resources, not per-instance —
- * mirrors how {@link CgInstanceRenderer#flush()} already pools its instance stream
- * VBO by format via {@code CgVertexBufferRegistry}, not per renderer instance.
+ * {@link CgShaderBuffer} are all class-wide static resources, not per-instance.
  * {@link #flush()} is atomic (upload → bind → draw, no yield points, GL is
  * single-threaded here), so multiple {@code CgQuadRenderer} instances sharing one
  * GPU buffer is safe: whoever calls {@code flush()} last owns the buffer's contents
@@ -531,7 +529,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
          * CPU-side accumulation buffer — <strong>nothing more</strong>. This does
          * <strong>not</strong> upload to the GPU and does <strong>not</strong> issue a draw
          * call; it only queues one instance. Call {@link CgQuadRenderer#flush()}
-         * (directly, or via a {@link CgRenderLayer}) once, after however many
+         * once, after however many
          * {@code quad()...submit()} calls you want batched together, to actually draw them.
          *
          * @return the owning {@code CgQuadRenderer}, so the last call in a manually-batched
@@ -599,9 +597,7 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
             return;
         }
         if (accumStaging.isEmpty() && !run.pending()) return;
-        // Instrumented per stage because this is where text actually reaches the GPU. The text draw
-        // path runs through CgQuadRenderer (instanced quads), not CgBatchRenderer, so this method —
-        // not that one — is the tail of every glyph draw.
+        // Instrumented per stage because this is where text reaches the GPU: the tail of every glyph draw.
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "quadRenderer.flush")) {
             CgTrace.add(CgChannels.GL, "quadRenderer.flush.count", 1);
             CgTrace.add(CgChannels.GL, "quadRenderer.instances", accumStaging.vertexCount());

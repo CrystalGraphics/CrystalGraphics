@@ -111,8 +111,7 @@ public final class CgVertexArray {
     /**
      * Generates and returns a raw VAO id without wrapping it in a {@link CgVertexArray} object.
      *
-     * <p>Used by classes that manage their own VAO lifecycle (e.g. {@code CgMesh},
-      * {@code CgInstanceVertexArrayBinding}) and need a raw id instead of an owned wrapper.</p>
+     * <p>For a class that manages its own VAO's lifecycle ({@code CgMesh}) and wants a raw id, not a wrapper.</p>
      *
      * <p><strong>Must be called on the GL thread.</strong></p>
      *

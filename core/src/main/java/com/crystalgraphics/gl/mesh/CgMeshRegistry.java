@@ -1,7 +1,7 @@
 package com.crystalgraphics.gl.mesh;
 
-import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
-import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
+
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,10 +12,7 @@ import java.util.Map;
  * <p>All callers that load or build the same logical mesh should go through
  * this registry so the GPU mesh is created only once.</p>
  *
- * <p>Call {@link #deleteAll()} during GL context teardown (step 2 of 4),
- * after {@link CgVertexArrayRegistry#deleteAll()}
- * so that instanced VAOs referencing mesh VBOs are destroyed first,
- * and before {@link CgVertexBufferRegistry#deleteAll()}.</p>
+ * <p>{@link CgGraphicsLifecycle#destroyContext()} calls {@link #deleteAll()} at teardown.</p>
  */
 public final class CgMeshRegistry {
 
@@ -96,9 +93,7 @@ public final class CgMeshRegistry {
     /**
      * Deletes all cached meshes and clears the registry.
      *
-     * <p>This is step 2 of the canonical 4-step GL context teardown. Must be called
-     * on the GL thread, after {@link CgVertexArrayRegistry#deleteAll()}
-     * and before {@link CgVertexBufferRegistry#deleteAll()}.</p>
+     * <p>GL thread, at context teardown.</p>
      */
     public void deleteAll() {
         for (CgMesh mesh : cache.values()) {

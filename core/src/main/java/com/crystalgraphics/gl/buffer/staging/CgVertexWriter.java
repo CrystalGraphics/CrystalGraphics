@@ -3,7 +3,6 @@ package com.crystalgraphics.gl.buffer.staging;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexConsumer;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.render.CgBatchRenderer;
 
 import java.nio.ByteBuffer;
 
@@ -32,7 +31,6 @@ import java.nio.ByteBuffer;
  * for direct ByteBuffer output.</p>
  *
  * @see CgStagingByteBuffer
- * @see CgBatchRenderer
  */
 public final class CgVertexWriter implements CgVertexConsumer {
 

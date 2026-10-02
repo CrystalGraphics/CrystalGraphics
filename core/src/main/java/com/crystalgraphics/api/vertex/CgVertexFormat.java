@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * explicitly via {@code glBindAttribLocation} before shader link, making
  * VAO setup format-driven instead of shader-name-driven.</p>
  */
-public final class CgVertexFormat implements CgAttributeFormat {
+public final class CgVertexFormat {
 
     /**
      * Global registry mapping {@code key} → {@code CgVertexFormat}.
@@ -158,19 +158,6 @@ public final class CgVertexFormat implements CgAttributeFormat {
     /** Returns the attribute at the given index. */
     public CgVertexAttribute getAttribute(int index) {
         return attributes[index];
-    }
-
-    /**
-     * Returns the number of floats per vertex, assuming all components are
-     * 4-byte aligned. Used by the batch layer for float[] staging sizing.
-     */
-    public int getFloatsPerVertex() {
-        return stride / 4;
-    }
-
-    @Override
-    public int getFloatsPerElement() {
-        return stride / Float.BYTES;
     }
 
     @Override

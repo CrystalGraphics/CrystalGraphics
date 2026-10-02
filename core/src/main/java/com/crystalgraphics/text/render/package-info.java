@@ -20,8 +20,7 @@
  *
  * <h3>Batch Infrastructure</h3>
  * <p>{@link com.crystalgraphics.text.render.CgTextRenderer} owns a private
- * {@code CgBatchRenderer} directly — no caller-provided layer or buffer source is
- * required. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
+ * {@code CgQuadRenderer}. {@code beginBatch()}/{@code endBatch()} optionally batch multiple draws
  * together; {@code draw()} otherwise auto-wraps itself standalone. There is a single
  * {@code draw()} entry point for both 2D UI text and 3D world-space text — which
  * {@code CgTextScaleResolver} strategy the {@code CgTextRenderContext} argument holds
@@ -31,11 +30,8 @@
  * {@code CgRenderState} apply/clear) is managed directly by the renderer on
  * batch-key transitions.
  *
- * <p>No per-renderer GPU object ownership exists in this package — the owned
- * batch renderer's VAO/VBO/IBO still come from
- * {@link com.crystalgraphics.gl.vertex.CgVertexArrayRegistry}
- * and {@link com.crystalgraphics.gl.buffer.CgQuadIndexBuffer}; only CPU-side
- * staging is renderer-owned.</p>
+ * <p>No GPU object is owned in this package: glyph records go into the quad renderer's
+ * engine buffer, and only CPU-side staging is the text renderer's own.</p>
  *
  * <h3>Boundary with cache/generation</h3>
  * <p>The renderer calls into

@@ -59,10 +59,8 @@ FrameRingStreamBuffer (PERSISTENT and RING)
 │   through one float view of the whole mapping (rebuilt with it), commit() flushes nothing
 ├── RING small writes (a frame-local UBO, ≤256 B): one glBufferSubData at the reserved offset, not a
 │   map/unmap pair
-├── commit() → the offset; the caller re-points its VAO (CgVertexArrayBinding)
-├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten.
-│   Every caller draws straight after commit(); CgBatchRenderer's replay API, the one path that holds
-│   an upload, throws when drawn in a later frame
+├── commit() → the offset, which the caller binds (a range for a shader buffer)
+├── an offset is valid only in the frame that committed it: FRAMES later its bytes are overwritten
 ├── a frame that outgrows its region gets fresh storage and the next frame's region doubles, to 64 MB —
 │   counted as frameRing.overflow. RING orphans under the same name; PERSISTENT storage is immutable, so it
 │   takes a new buffer and bumps getGeneration(), which the bindings compare alongside the offset
@@ -90,8 +88,7 @@ CgQuadIndexBuffer (global singleton)
 - **No wait inside a frame.** The ring fences once per frame, and the only wait is at a frame's first
   upload, for the frame three back. The sync ring it replaced fenced every upload and waited mid-frame
   when it lapped, which a backend that records and submits later cannot do at all.
-- **`commit()` returns the data offset** — new per upload on a vertex stream, 0 for shader-buffer storage.
-  `CgVertexArrayBinding` and `CgInstanceVertexArrayBinding` re-point attributes from it.
+- **`commit()` returns the data offset** — new per upload on the ring, 0 for shader-buffer storage.
 - **A vertex stream is not storage.** An upload read in a later frame reads another frame's bytes.
 - **One quad IBO for everything** — `CgQuadIndexBuffer` is a global singleton; all quad-based renderers
   share it. Max 16384 quads due to `GL_UNSIGNED_SHORT`.
@@ -109,7 +106,6 @@ CgQuadIndexBuffer (global singleton)
 
 | Package | Relationship |
 |---------|-------------|
-| `gl/vertex/` | `CgVertexArrayBinding` owns one vertex stream per format |
 | `gl/buffer/shader/` | `CgShaderBuffer` owns one shader-buffer storage |
 | `gl/lifecycle/` | `CgGraphicsLifecycle.tickFrame()` ends the ring's frame |
 

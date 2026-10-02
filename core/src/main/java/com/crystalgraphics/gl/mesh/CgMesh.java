@@ -4,16 +4,13 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMeshData;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.vertex.CgAttribType;
-import com.crystalgraphics.api.vertex.CgAttributeFormat;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
-import com.crystalgraphics.gl.render.CgInstanceRenderer;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
-import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
 import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Getter;
 import javax.annotation.Nullable;
@@ -28,14 +25,8 @@ import java.nio.ByteOrder;
  * It is suitable for geometry that is uploaded once and drawn many times.</p>
  *
  * <h3>VAO ownership</h3>
- * <p>Each {@code CgMesh} owns a standalone VAO for non-instanced draws. For instanced
- * draws, a separate VAO combining this mesh's VBO with an instance stream buffer would
- * be used (not implemented here — that is the responsibility of the instanced binding layer).</p>
- *
- * <h3>Attribute setup</h3>
- * <p>The attribute pointer loop in {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}
- * uses the {@link CgAttributeFormat} interface for the attribute iteration, enabling
- * reuse of the same setup logic for base and instance layouts.</p>
+ * <p>Each {@code CgMesh} owns one VAO, used by every draw: per-instance data reaches the shader through its
+ * engine buffer and {@code CG_INSTANCE_ID}, never through instanced attributes.</p>
  *
  * <h3>IBO binding order (critical)</h3>
  * <p>The VAO captures the IBO binding via the element array buffer bind target.
@@ -239,8 +230,7 @@ public final class CgMesh {
         CgVertexArray.bind(vao);
 
         // VBO is already bound from the upload step above.
-        // Attribute pointer loop via CgAttributeFormat interface
-        CgAttributeFormat layout = this.format;
+        CgVertexFormat layout = this.format;
         for (int i = 0; i < layout.getAttributeCount(); i++) {
             CgVertexAttribute attr = layout.getAttribute(i);
             CgGL.glVertexAttribPointer(
@@ -337,8 +327,8 @@ public final class CgMesh {
 
         CgVertexArray.bind(glVao);
         if (glIndexBuffer != 0)
-            CgInstanceRenderer.drawElementsInstanced(topology.getGlMode(), indexCount, indexType, 0L, count);
-        else CgInstanceRenderer.drawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
+            CgGL.glDrawElementsInstanced(topology.getGlMode(), indexCount, indexType, 0L, count);
+        else CgGL.glDrawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
 
         CgVertexArray.bind(0);
     }
@@ -364,9 +354,6 @@ public final class CgMesh {
 
     private void release() {
         if (glVao == 0) return;
-        // Invalidate any instanced VAOs in the registry that reference this mesh's VBO/IBO,
-        // so they don't linger as stale GPU state pointing at deleted buffer objects.
-        CgVertexArrayRegistry.get().invalidateMeshBindings(this);
         CgVertexArray.deleteRaw(glVao);
         CgGL.glDeleteBuffers(glVertexBuffer);
         if (glIndexBuffer != 0) {

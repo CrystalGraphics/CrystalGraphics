@@ -65,7 +65,6 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 ./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgWorldRenderer through both world stages
 ./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres"            # the VFX showcase: sixteen effect spheres (CgVfxShowcase)
 ./gradlew :gl-debug-harness:runHarness --args="--mode=material-dual-path"     # CgMaterial shader compilation
-./gradlew :gl-debug-harness:runHarness --args="--mode=instancing-test"        # Instanced draw
 ./gradlew :gl-debug-harness:runHarness --args="--mode=attached-buffer-stress" # SSBO/TBO attach
 ./gradlew :gl-debug-harness:runHarness --args="--mode=mesh-test"              # CgMeshLoader
 ./gradlew :gl-debug-harness:runHarness --args="--mode=atlas-dump"             # Glyph atlas
@@ -197,7 +196,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Bind GPU buffers (SSBO/TBO/UBO) to a material | [Shader Buffers](#shader-buffers) | `gl/buffer/shader/AGENTS.md` |
 | Save and restore GL state across a pass | [GL State Save/Restore](#gl-state-saverestore) | `gl/state/AGENTS.md` |
 | Render text on screen | [Font/Text System](#fonttext-system) | `docs/font/README.md` |
-| Work on batch/UI/2D layer rendering | [Batch Render Layer](#batch-render-layer-system) | `gl/render/AGENTS.md` |
+| Draw 2D quads, curves or text through the renderers | [Instanced renderers](#instanced-renderers) | `gl/render/AGENTS.md` |
 | Load a resource file (shader source, config, image) | [Resource I/O](#resource-io--cgio-and-cgtextureio) | `util/io/CgIO` |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
@@ -831,13 +830,11 @@ mesh2.delete();                          // idempotent — frees VBO + IBO + VAO
 
 **Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md`
 
-## Vertex Formats + Instancing
+## Vertex Formats
 
-`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. This is the format `CgMeshBuilder` and `CgMeshLoader` target by default.
+`CgVertexFormat.SPATIAL` — the canonical format for spatial materials: `cg_Position` (vec3) + `cg_TexCoord0` (vec2) + `cg_Normal` (vec3), stride 32 bytes. This is the format `CgMeshBuilder` and `CgMeshLoader` target by default. Two formats with identical attribute lists are value-equal.
 
-`CgVertexFormat` is the registry key for `CgVertexArrayRegistry` — two formats with identical attribute lists are value-equal and share the same cached VAO/VBO.
-
-`CgInstanceFormat` — per-instance attribute layout. `mat4` fields expand to 4 physical `vec4` attributes. Pre-built: `CgInstanceFormat.TRANSFORM_COLOR_CUSTOM` (mat4 model + ubyte4 color + vec4 custom, 84 bytes, 6 attributes). Only divisor=1 is supported.
+**Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.
 
 **Package guides**: `api/vertex/AGENTS.md` · `gl/vertex/AGENTS.md`
 
@@ -1002,9 +999,9 @@ CgCullState.BACK               // GL_BACK face culling
 
 **Package guide**: `api/state/AGENTS.md`
 
-## Batch Render Layer System
+## Instanced renderers
 
-For UI, 2D overlays, and non-material draw paths (not the CrystalShader material pipeline). `CgBatchRenderer` + `CgRenderLayer` — layer-based immediate-mode quad/triangle batching. `CgBufferSource` — per-context owner, not a singleton. `CgTextLayers`/`CgDynamicTextureRenderLayer` still exist but are **no longer used by `CgTextRenderer`** — as of the batch-ownership migration (see `text/render/AGENTS.md`), `CgTextRenderer` owns its own private `CgBatchRenderer` directly instead of going through a caller-provided layer.
+Everything 2D draws through `CgQuadRenderer` (quads: UI boxes, glyphs, blits) or `CgVectorRenderer` (strokes, triangles, cells): records queued on the CPU, turned into recorded draws by `CgInstanceRun` -- into the recording inside one, through `CgImmediate` on `flush()` outside one. `CgTextRenderer` owns a `CgQuadRenderer`.
 
 **Package guides**: `gl/render/AGENTS.md` · `gl/buffer/staging/AGENTS.md`
 
@@ -1092,11 +1089,9 @@ CgGraphicsLifecycle.ensureContext(width, height);
 
 | Step | What | Why |
 |------|------|-----|
-| 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`); runs first so each renderer's owned `CgBatchRenderer` (VAO/VBO) releases individually before the bulk sweep below |
-| 1 | `CgVertexArrayRegistry.get().deleteAll()` | All VAOs — instanced first (they reference both VBOs), then non-instanced |
-| 2 | `CgMeshRegistry.get().deleteAll()` | Static mesh VBOs + IBOs + per-mesh VAOs |
-| 3 | `CgVertexBufferRegistry.get().deleteAll()` | All streaming VBOs (base + instance) |
-| 4 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
+| 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
+| 1 | `CgMeshRegistry.get().deleteAll()` | Each mesh's VAO, then its VBO and IBO |
+| 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
@@ -1106,8 +1101,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 
-> VAOs must be deleted **before** VBOs — this is why steps 1-3 are strictly ordered.  
-> Violating the order produces stale GPU state and silent corruption.
+> A mesh deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
 
 > **The backend closes last, and not in `destroyContext()`.** Every deletion above goes through it, and a
 > device releases memory when its frames retire, so whoever built a device-backed backend closes it after:
@@ -1125,8 +1119,6 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgMeshRegistry` | `CgMeshRegistry.get()` | All static `CgMesh` GPU objects | `getOrCreate(key, supplier)` for caching procedural meshes |
 | `CgTextureManager` | `CgTextureManager.get()` | All `CgTexture` instances (2D, array, 3D, cubemap) | `getOrCreate(path)` for cached texture load; `reloadAll()` on F3+T |
 | `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
-| `CgVertexArrayRegistry` | `CgVertexArrayRegistry.get()` | All VAOs (non-instanced + instanced) | Internal — do not create VAOs manually |
-| `CgVertexBufferRegistry` | `CgVertexBufferRegistry.get()` | All streaming VBOs (base + instance) | Internal — do not create VBOs manually |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/TBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/AGENTS.md` |
 | `CgTextRendererRegistry` | `CgTextRendererRegistry.get()` | Tracks every `CgTextRenderer` for teardown; auto-resizes screen-sized ones (`create()`, the default — opt out via `createManualSized()`) on `onResize()` | Does not own renderer *lifecycle* the way other registries do — owners still call `delete()` themselves; `deleteAll()` on teardown is a backstop, not the primary path — see `text/render/AGENTS.md` |
@@ -1182,8 +1174,8 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### Vertex / Instancing
 | Path | What it covers |
 |---|---|
-| `api/vertex/AGENTS.md` | `CgVertexFormat`, `CgInstanceFormat` (mat4 expansion, `TRANSFORM_COLOR_CUSTOM`), `CgVertexSemantic`, `CgAttribType` |
-| `gl/vertex/AGENTS.md` | `CgVertexArray`, `CgVertexArrayBinding`, `CgInstanceVertexArrayBinding`, `CgVertexArrayRegistry` |
+| `api/vertex/AGENTS.md` | `CgVertexFormat`, `CgVertexSemantic`, `CgAttribType` |
+| `gl/vertex/AGENTS.md` | `CgVertexArray`, the one VAO a mesh owns |
 
 ### Buffers
 | Path | What it covers |
@@ -1191,7 +1183,7 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `api/buffer/AGENTS.md` | `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment rules |
 | `gl/buffer/AGENTS.md` | `CgStreamBuffer` tier waterfall (persistent ring → mapped ring → orphan → subdata), the frame clock `CgFrameRing`, `CgQuadIndexBuffer` |
 | `gl/buffer/shader/AGENTS.md` | `CgShaderBuffer` (SSBO/TBO), `CgUniformBuffer` (UBO), `CgShaderBufferRegistry`, binding point rules |
-| `gl/buffer/staging/AGENTS.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgInstanceWriter` |
+| `gl/buffer/staging/AGENTS.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgBufferWriter` |
 
 ### GL State
 | Path | What it covers |
@@ -1199,10 +1191,10 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `api/state/AGENTS.md` | `CgRenderState`, `CgDepthState`, `CgBlendState`, `CgCullState`, `CgStencilState`, `CgTextureState` (`CgGlSlot` moved to `platform.gl.state`) |
 | `gl/state/AGENTS.md` | Nothing — the package is empty. Kept as a signpost to the state framework in `platform.gl` / `platform.gl.state`, and a record of what was removed |
 
-### Batch Render Layer
+### Instanced renderers
 | Path | What it covers |
 |---|---|
-| `gl/render/AGENTS.md` | `CgBatchRenderer`, `CgRenderLayer`, `CgInstanceRenderer`, `CgBufferSource`, `CgTextLayers` |
+| `gl/render/AGENTS.md` | `CgQuadRenderer`, `CgVectorRenderer`, `CgInstanceRun`, `CgClipTable`, `CgShapeTable` |
 
 ### Font / Text
 | Path | What it covers |
