@@ -576,11 +576,10 @@ com/crystalgraphics/api/mesh/CgMesh
   method public bounds (FFFFFF)V
   method public bounds ([F)[F
   method public changesSince (ILcom/crystalgraphics/api/mesh/CgMeshChanges;)Z
+  method public edit (Ljava/lang/Object;Ljava/util/function/BiConsumer;)V
   method public edit (Ljava/util/function/Consumer;)V
   method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   method public indexCount ()I
-  method public indices (ILjava/nio/IntBuffer;)V
-  method public indices (I[I)V
   method public isIndexed ()Z
   method public isReleased ()Z
   method public isShared ()Z
@@ -591,12 +590,15 @@ com/crystalgraphics/api/mesh/CgMesh
   method public revision ()I
   method public submesh (I)Lcom/crystalgraphics/api/mesh/CgSubmesh;
   method public submesh (III)V
+  method public submesh (I[I)[I
   method public submeshCount ()I
   method public toString ()Ljava/lang/String;
   method public topology ()Lcom/crystalgraphics/api/mesh/CgMeshTopology;
   method public usage ()Lcom/crystalgraphics/api/mesh/CgMesh$Usage;
   method public vertexCount ()I
-  method public vertices (ILjava/nio/ByteBuffer;)V
+  method public writeIndices (ILjava/nio/IntBuffer;)V
+  method public writeIndices (I[I)V
+  method public writeVertices (ILjava/nio/ByteBuffer;)V
   method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMesh$Usage;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/api/mesh/CgMesh$Usage

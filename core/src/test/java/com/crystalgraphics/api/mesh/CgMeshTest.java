@@ -111,7 +111,7 @@ public class CgMeshTest {
         assertArrayEquals(new float[]{-10.5f, -10.5f, -10.5f, 10.5f, 10.5f, 10.5f}, mine.bounds(new float[6]), 0f);
         mine.autoBounds();
         mine.pad(0f);
-        mine.vertices(1, vertex(-7f));
+        mine.writeVertices(1, vertex(-7f));
         assertArrayEquals("raw bytes count too", new float[]{-7, 0, 0, 3, 0, 0}, mine.bounds(new float[6]), 0f);
     }
 
@@ -139,8 +139,8 @@ public class CgMeshTest {
         mesh.changesSince(0, changes);
         int seen = changes.revision;
 
-        mesh.vertices(2, vertex(5f));
-        mesh.vertices(6, vertex(5f));
+        mesh.writeVertices(2, vertex(5f));
+        mesh.writeVertices(6, vertex(5f));
         assertTrue(mesh.changesSince(seen, changes));
         assertFalse(changes.all);
         assertEquals(2, changes.vertexFrom);
@@ -148,13 +148,13 @@ public class CgMeshTest {
         assertEquals(changes.indexFrom, changes.indexTo);
 
         int middle = changes.revision;
-        mesh.indices(0, new int[]{0, 1, 2});
+        mesh.writeIndices(0, new int[]{0, 1, 2});
         mesh.changesSince(middle, changes);
         assertEquals(changes.vertexFrom, changes.vertexTo);
         assertEquals(0, changes.indexFrom);
         assertEquals(3, changes.indexTo);
 
-        mesh.vertices(10, vertex(1f));
+        mesh.writeVertices(10, vertex(1f));
         assertEquals("a write past the end grows the mesh", 11, mesh.vertexCount());
     }
 
@@ -164,7 +164,7 @@ public class CgMeshTest {
         CgMeshChanges changes = new CgMeshChanges();
         mesh.changesSince(0, changes);
         int seen = changes.revision;
-        for (int i = 0; i < 40; i++) mesh.vertices(1, vertex(i));
+        for (int i = 0; i < 40; i++) mesh.writeVertices(1, vertex(i));
         assertTrue(mesh.changesSince(seen, changes));
         assertTrue(changes.all);
         assertTrue(mesh.changesSince(changes.revision - 3, changes));
@@ -177,9 +177,10 @@ public class CgMeshTest {
     public void anEditReusesTheArraysItSwappedOut() {
         CgMesh mesh = line(64);
         mesh.edit(m -> CgMeshShapes.sphere(m, 4, 4, 1f));
-        mesh.edit(m -> CgMeshShapes.sphere(m, 4, 4, 1f));
+        mesh.edit(4, (m, rings) -> CgMeshShapes.sphere(m, rings, 4, 1f));
         assertEquals(25, mesh.vertexCount());
         assertEquals(96, mesh.indexCount());
+        assertArrayEquals(new int[]{0, 96, 0, 25}, mesh.submesh(0, new int[4]));
     }
 
     private static ByteBuffer vertex(float x) {
