@@ -22,6 +22,8 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
  * <ul>
  *   <li>Its values start as its look's; {@link #set} changes this effect alone.</li>
  *   <li>An effect is done when it calls {@link #die()}; the system then drops it before the next frame.</li>
+ *   <li>It announces the moments of its life with {@link #moment}, which a {@link CgVfxMomentListener} hears: name
+ *       them as constants on the effect.</li>
  * </ul>
  */
 public abstract class CgVfxEffect {
@@ -29,6 +31,8 @@ public abstract class CgVfxEffect {
     public enum State { PLAYING, STOPPING, DEAD }
 
     protected final double originX, originY, originZ;
+    /** The system playing it, set by {@link CgVfxSystem#play}. */
+    CgVfxSystem system;
     private final CgVfxLook look;
     private final CgVfxValues values;
     private State state = State.PLAYING;
@@ -102,6 +106,19 @@ public abstract class CgVfxEffect {
     public final CgVfxEffect set(CgVfxParam param, CgKeyframes curve) {
         values.set(param, curve);
         return this;
+    }
+
+    /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
+    protected final boolean momentsHeard() {
+        return system != null && system.hasMomentListeners();
+    }
+
+    /**
+     * Announces that it has reached the moment {@code name}, framed by a point relative to its origin and a radius that
+     * holds what matters: what a capture tool photographs. Call it once, as the moment is crossed in {@link #tick}.
+     */
+    protected final void moment(String name, float x, float y, float z, float radius) {
+        if (momentsHeard()) system.moment(this, name, originX + x, originY + y, originZ + z, radius);
     }
 
     final void step(float dt) {

@@ -18,7 +18,7 @@ vfx.submit(CgWorldRenderer.get());
 
 | Package | Owns |
 |---|---|
-| `vfx` | Running effects: `CgVfxSystem` (fixed tick, submission, every mesh and material the engine draws), `CgVfxEffect` (a playing effect), `CgVfxFrame` (what an effect draws through) |
+| `vfx` | Running effects: `CgVfxSystem` (fixed tick, submission, every mesh and material the engine draws), `CgVfxEffect` (a playing effect), `CgVfxFrame` (what an effect draws through), `CgVfxMomentListener` (an effect's named moments, framed: the capture hook) |
 | `vfx.look` | How an effect looks and behaves: `CgVfxLook`, `CgVfxLayer` (one draw, in a slot), `CgVfxSchema` and `CgVfxParam` (what an effect reads), `CgVfxValues` (a value for each) |
 | `vfx.path` | Centrelines: `CgVfxPath` (spline, arc-length rings, rotation-minimising frames), `CgVfxPathTexture` (paths on the GPU) |
 | `vfx.sim` | Simulation parts: `CgVfxStream` (the hose model, homing by proportional navigation) |
@@ -29,6 +29,20 @@ vfx.submit(CgWorldRenderer.get());
 |---|---|
 | `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (noise, erf, tonemap, `FX_CAMERA`), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it) |
 | `shaders/vfx/<family>/` | One directory per family, mirroring `vfx.effect.<family>`, named by slot (`body_*`, `head_*`) |
+
+## Seeing every moment
+
+An effect announces the moments of its life (`CgEnergyWave.MOMENT_*`), each framed by a point and a radius, and
+`CgVfxSystem.onMoment` hears them. The harness turns that into a contact sheet of the whole lifecycle, each moment
+photographed on the frame it happens:
+
+```bash
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.harness.vfx.moments=true -Dcrystalgraphics.harness.fixedDelta=0.0166667
+# -> gl-debug-harness/harness-output/vfx-spheres/vfx-spheres-NN-<moment>.png, then it exits
+```
+
+**A new effect declares its moments as constants and calls `moment(...)` as it crosses each**, framing the part that
+matters; that is what makes it debuggable at full speed.
 
 ## Rules
 
