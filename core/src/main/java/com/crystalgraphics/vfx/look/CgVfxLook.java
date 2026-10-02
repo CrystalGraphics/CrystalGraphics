@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.easing.CgKeyframes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -82,7 +83,7 @@ public final class CgVfxLook {
             return this;
         }
 
-        public Builder set(CgVfxParam param, CgVfxCurve curve) {
+        public Builder set(CgVfxParam param, CgKeyframes curve) {
             values.set(param, curve);
             return this;
         }

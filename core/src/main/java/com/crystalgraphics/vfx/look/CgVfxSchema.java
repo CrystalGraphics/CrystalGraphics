@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.easing.CgKeyframes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,7 +25,7 @@ public final class CgVfxSchema {
 
     private final List<CgVfxParam> params = new ArrayList<>();
     private float[] defaults = new float[0];
-    private final List<CgVfxCurve> curves = new ArrayList<>();
+    private final List<CgKeyframes> curves = new ArrayList<>();
 
     public CgVfxParam scalar(String name, float value) {
         CgVfxParam param = declare(name, 1);
@@ -43,7 +44,7 @@ public final class CgVfxSchema {
     }
 
     /** A value over time, read with {@code CgVfxValues.curve}. */
-    public CgVfxParam curve(String name, CgVfxCurve value) {
+    public CgVfxParam curve(String name, CgKeyframes value) {
         unique(name);
         CgVfxParam param = new CgVfxParam(this, name, curves.size(), 0);
         curves.add(value);
@@ -64,8 +65,8 @@ public final class CgVfxSchema {
         return defaults.clone();
     }
 
-    CgVfxCurve[] defaultCurves() {
-        return curves.toArray(new CgVfxCurve[0]);
+    CgKeyframes[] defaultCurves() {
+        return curves.toArray(new CgKeyframes[0]);
     }
 
     private void unique(String name) {

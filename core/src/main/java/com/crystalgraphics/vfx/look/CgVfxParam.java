@@ -1,7 +1,9 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.easing.CgKeyframes;
+
 /**
- * One value an effect reads, declared on its {@link CgVfxSchema}: a scalar, a colour or a {@link CgVfxCurve}. A {@link CgVfxLook} gives each
+ * One value an effect reads, declared on its {@link CgVfxSchema}: a scalar, a colour or a {@link CgKeyframes}. A {@link CgVfxLook} gives each
  * its default, and a playing {@link CgVfxEffect} may override it.
  *
  * <pre>{@code

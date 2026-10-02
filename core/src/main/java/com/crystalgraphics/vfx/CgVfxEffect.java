@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.vfx.look.CgVfxCurve;
+import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -95,11 +95,11 @@ public abstract class CgVfxEffect {
         return this;
     }
 
-    public final CgVfxCurve curve(CgVfxParam param) {
+    public final CgKeyframes curve(CgVfxParam param) {
         return values.curve(param);
     }
 
-    public final CgVfxEffect set(CgVfxParam param, CgVfxCurve curve) {
+    public final CgVfxEffect set(CgVfxParam param, CgKeyframes curve) {
         values.set(param, curve);
         return this;
     }
