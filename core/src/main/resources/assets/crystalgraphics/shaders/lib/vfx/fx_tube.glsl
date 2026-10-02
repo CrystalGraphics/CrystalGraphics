@@ -77,3 +77,22 @@ vec4 fx_ray_axis(vec3 eye, vec3 ray, vec3 a, vec3 t) {
     float axial = (e - b * d) / denom;
     return vec4(along, length(eye + ray * along - (a + t * axial)), axial, sqrt(denom));
 }
+
+// The path at arc length s (blocks from its start), between the rings either side: what a shader riding the body
+// (CgVfxFrame.pathRibbons) places itself on. Clamped to the path's ends.
+FxRing fx_ring_at(sampler2D path, int row, float s, vec4 header) {
+    int count = max(int(header.x + 0.5), 1);
+    float spacing = header.y / max(header.x - 1.0, 1.0);
+    float f = clamp(s / max(spacing, 1.0e-4), 0.0, float(count - 1));
+    int i = min(int(f), count - 2);
+    float k = f - float(i);
+    FxRing a = fx_ring(path, row, max(i, 0)), b = fx_ring(path, row, min(i + 1, count - 1));
+    FxRing r;
+    r.position = mix(a.position, b.position, k);
+    r.radius = mix(a.radius, b.radius, k);
+    r.tangent = normalize(mix(a.tangent, b.tangent, k));
+    r.arc = mix(a.arc, b.arc, k);
+    r.normal = normalize(mix(a.normal, b.normal, k));
+    r.intensity = mix(a.intensity, b.intensity, k);
+    return r;
+}

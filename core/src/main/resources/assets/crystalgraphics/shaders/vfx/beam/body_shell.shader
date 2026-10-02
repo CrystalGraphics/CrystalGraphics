@@ -16,7 +16,7 @@ Properties {
     _Displace ("Surface churn, share of the radius", float) = 0.12
 }
 
-struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 surface; };
+struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 surface; float pulse; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -40,6 +40,7 @@ Pass {
         o.tangent = v.ring.tangent;
         // arc, angle, the effect's age, its seed
         o.surface = vec4(v.ring.arc, v.angle, age, seed);
+        o.pulse = v.ring.intensity;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
     }
 
@@ -63,6 +64,6 @@ Pass {
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
         float hot = smoothstep(threshold, threshold + 0.22, e);
         vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.35 + 1.15 * rim);
-        fragColor = vec4(col * alpha * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
+        fragColor = vec4(col * alpha * i.pulse * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
     }
 }
