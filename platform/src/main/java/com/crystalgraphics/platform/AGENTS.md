@@ -35,6 +35,11 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgInputService` | Interface | Key and mouse codes, modifier and button state, **and the clipboard** |
 | `service/CgSoundService` | Interface | UI sounds |
 | `service/CgCursorService` | Interface + slot | Presenting a cursor image; `CgCursorService.SERVICE` |
+| `service/CgWorldQuery` | Interface + slot | The world at a block or column, client only: collision and its boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation, the particle sprite. Primitives; core composes scans and the raycast (`com.crystalgraphics.world.CgWorldQueries`) |
+| `service/CgEntityQuery` | Interface + slot | Entities by int id, client only: interpolated pose, flags, kind, and a box walk handing ids to a visitor. Core computes hands, head and feet (`CgEntityAttachments`) |
+| `service/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
+| `service/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
+| `service/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
 
@@ -227,6 +232,8 @@ the other, coming up with a working GL backend and a dead keyboard, with nothing
 | `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
 | `CgPlatform.sound()` | `play(String soundId)` |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
+| `CgPlatform.get(CgWorldQuery.SERVICE)`, `CgEntityQuery.SERVICE` | the client world's blocks and entities; `NONE` with no level, on a server and in the harness |
+| `CgPlatform.get(CgHostCamera.SERVICE)`, `CgWorldSound.SERVICE` | writes a host opts into: a camera offset and a world sound; `NONE` ignores them |
 
 **The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
 is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and
