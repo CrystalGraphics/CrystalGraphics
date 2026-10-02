@@ -85,7 +85,7 @@ public final class CgVfxFrame {
      */
     public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
-        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
+        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f).submit();
     }
 
     /**
@@ -117,7 +117,7 @@ public final class CgVfxFrame {
                 case MESHES -> particleMeshes(effect, emitter, layer);
                 case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
                 case ARCS -> particleDraws(effect, emitter, layer, system.ribbonMesh(), CgVfxRibbons.COUNT,
-                        CgVfxRibbons.INDICES, true);
+                        CgVfxRibbons.VERTICES, true);
             }
         }
     }
@@ -133,8 +133,9 @@ public final class CgVfxFrame {
     }
 
     /**
-     * Draws of up to {@code perDraw} particles each, {@code indicesEach} of the mesh's indices a particle, their
-     * transform the particles' bounding box: the unit cube, stated, since the quads have no bounds of their own.
+     * Draws of up to {@code perDraw} particles each, {@code indicesEach} of the mesh's indices a particle (its vertices,
+     * for the ribbons, which have none), their transform the particles' bounding box: the unit cube, stated, since
+     * neither mesh has bounds of its own.
      */
     private void particleDraws(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer, CgMesh mesh,
                                int perDraw, int indicesEach, boolean aroundSource) {
@@ -233,7 +234,7 @@ public final class CgVfxFrame {
         // The ribbon mesh spans -1..1: half the extent each way.
         scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
         CgVfxValues values = effect.values();
-        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer))
+        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer)).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
                 .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
                 .custom(0, row, 0f, layer.radius(), layer.parameter())
                 .custom(1, cx, cy, cz, intensity);
