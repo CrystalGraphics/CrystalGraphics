@@ -31,6 +31,14 @@ import java.util.List;
  */
 public final class CgVfxLook {
 
+    /**
+     * A reusable piece of a look: layers and emitters added together, as {@code CgVfxExplosion} adds an explosion's
+     * parts. {@code CgVfxLook.builder(schema).add(part)}.
+     */
+    public interface Part {
+        void addTo(Builder look);
+    }
+
     private final CgVfxValues values;
     private final List<CgVfxLayer> layers;
     private final List<CgVfxEmitter> emitters;
@@ -103,6 +111,12 @@ public final class CgVfxLook {
 
         public Builder set(CgVfxParam param, CgKeyframes curve) {
             values.set(param, curve);
+            return this;
+        }
+
+        /** Adds a part's layers and emitters. */
+        public Builder add(Part part) {
+            part.addTo(this);
             return this;
         }
 

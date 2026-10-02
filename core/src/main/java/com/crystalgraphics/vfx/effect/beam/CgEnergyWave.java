@@ -9,10 +9,14 @@ import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import org.joml.Matrix4f;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -43,8 +47,8 @@ import java.util.List;
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
  * {@link #SLOT_IMPACT} and {@link #SLOT_BLAST_GLOW} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
- * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). {@link #SLOT_SMOKE} holds the blast cloud's
- * billow layer, which the particle engine draws (plan vfx-particles).</p>
+ * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
+ * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts.</p>
  *
  * <p>It announces each moment of that life ({@link #MOMENT_CHARGE_START} to {@link #MOMENT_END}) to
  * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
@@ -83,8 +87,6 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST_GLOW = "blastGlow";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
-    /** The blast's cloud: a cel-shaded, displaced sphere per billow, opaque. */
-    public static final String SLOT_SMOKE = "smoke";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
 
@@ -162,22 +164,21 @@ public final class CgEnergyWave extends CgVfxEffect {
             .build());
 
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
-    /** The blast cloud's body and its hot core. */
-    public static final CgVfxParam SMOKE_COLOR = SCHEMA.color("smokeColor", 0.06f, 0.3f, 0.95f, 1f);
-    public static final CgVfxParam SMOKE_HOT = SCHEMA.color("smokeHot", 0.3f, 0.88f, 1f, 1f);
-    /** The blast's dark debris and the ink of its shock streaks, for the particle engine's emitters. */
-    public static final CgVfxParam DEBRIS = SCHEMA.color("debris", 0.02f, 0.04f, 0.12f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
     public static final CgVfxParam SHELL_HOT = SCHEMA.color("shellHot", 0.7f, 0.95f, 1.6f, 1f);
     public static final CgVfxParam SPIRAL = SCHEMA.color("spiral", 0.5f, 0.85f, 1.6f, 1f);
     public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.18f, 0.45f, 1.4f, 0.9f);
 
+    /** The blast's cloud, debris, embers and shock streaks: the shared explosion parts, coloured per look. */
+    public static final CgVfxExplosion BLAST = new CgVfxExplosion(SCHEMA, "blast");
+
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
             .colors(SHELL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build();
 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
+
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
                     .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
@@ -221,8 +222,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 18f).set1f("_Life", 1.2f)
                             .set1f("_Width", 0.08f).set1f("_Streak", 0.08f))
                     .build())
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(SLOT_SMOKE)
-                    .colors(SMOKE_COLOR, SMOKE_HOT).priority(CgVfxLayer.PRIORITY_SMOKE).build())
+            .add(BLAST)
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .build();
@@ -234,9 +234,9 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL_HOT, 1.6f, 1.35f, 0.55f, 1f)
             .set(SPIRAL, 1.6f, 1.15f, 0.3f, 1f)
             .set(GLOW, 1.4f, 0.85f, 0.12f, 0.9f)
-            .set(SMOKE_COLOR, 0.95f, 0.3f, 0.04f, 1f)
-            .set(SMOKE_HOT, 1f, 0.88f, 0.3f, 1f)
-            .set(DEBRIS, 0.1f, 0.03f, 0.01f, 1f)
+            .set(BLAST.body, 0.95f, 0.3f, 0.04f, 1f)
+            .set(BLAST.hot, 1f, 0.88f, 0.3f, 1f)
+            .set(BLAST.debris, 0.1f, 0.03f, 0.01f, 1f)
             .set(RADIUS, 1f)
             .set(SPEED, 50f)
             .build();
@@ -247,9 +247,9 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(SHELL_HOT, 1.3f, 0.75f, 1.6f, 1f)
             .set(SPIRAL, 1.2f, 0.45f, 1.6f, 1f)
             .set(GLOW, 0.75f, 0.18f, 1.4f, 0.9f)
-            .set(SMOKE_COLOR, 0.42f, 0.08f, 0.85f, 1f)
-            .set(SMOKE_HOT, 0.98f, 0.65f, 1f, 1f)
-            .set(DEBRIS, 0.06f, 0.01f, 0.1f, 1f)
+            .set(BLAST.body, 0.42f, 0.08f, 0.85f, 1f)
+            .set(BLAST.hot, 0.98f, 0.65f, 1f, 1f)
+            .set(BLAST.debris, 0.06f, 0.01f, 0.1f, 1f)
             .build();
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
@@ -258,6 +258,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
     private final Matrix4f placed = new Matrix4f();
+    /** The blast's emitters, one per emitter of the look, started when it bursts. */
+    private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -350,10 +352,30 @@ public final class CgEnergyWave extends CgVfxEffect {
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
         boolean drained = state() == State.STOPPING && stream.size() == 0;
         // The tail has run into the target: it bursts.
-        if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) blastAge = age;
-        boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE : age > blastAge + get(BLAST_TIME);
+        if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
+            blastAge = age;
+            startBlast();
+        }
+        boolean emitted = true;
+        for (int i = 0; i < blast.size(); i++) {
+            tick(blast.get(i), dt);
+            emitted &= blast.get(i).finished();
+        }
+        boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
+                : age > blastAge + get(BLAST_TIME) && emitted;
         if (momentsHeard()) moments(ending);
         if (ending) die();
+    }
+
+    /** Starts every emitter of the look at the target, each from its own seed. */
+    private void startBlast() {
+        List<CgVfxEmitter> emitters = look().emitters();
+        for (int i = 0; i < emitters.size(); i++) {
+            CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
+            emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
+            emitter.ground(groundHeight());
+            blast.add(emitter);
+        }
     }
 
     /** Announces each moment as it is crossed, framed on the muzzle or on the flight. */
@@ -488,6 +510,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         float reach = radius * get(BLAST_RADIUS) * 2f;
         facing(placed, normalX, normalY, normalZ).scale(reach);
         drawAt(frame, layers, SLOT_DEBRIS, x, y, z, placed, reach, 0f, 1f, since, true);
+        for (int i = 0; i < blast.size(); i++) frame.particles(this, blast.get(i));
     }
 
     /** Every layer in {@code slot}, at {@code (x, y, z)} from the origin, as spheres or as ribbons. */

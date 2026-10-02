@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -10,8 +11,12 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxBillboard;
+import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 
@@ -36,8 +41,8 @@ import java.util.List;
  * <ul>
  *   <li>{@link #update} runs {@link #TICK}-second steps, as many as the clock owes and at most {@value #MAX_TICKS} a
  *       call, so a hitch slows effects down rather than stalling the frame. It touches no GPU state.</li>
- *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture holds only the
- *       last upload.</li>
+ *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture and the particle
+ *       buffer hold only the last upload.</li>
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
  *   <li>{@link #air} is the wind every effect's particles move through; set it once, or change it while playing.</li>
  * </ul>
@@ -59,7 +64,10 @@ public final class CgVfxSystem {
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
-    private CgMesh tubeMesh, sphereMesh, ribbonMesh, billboardMesh;
+    private CgMesh tubeMesh, sphereMesh, ribbonMesh, billboardMesh, quadMesh;
+    /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
+    private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
+    private int particleRecords;
     private final CgVfxAir air = new CgVfxAir();
     private double clock = Double.NaN;
     private float owed, simulated;
@@ -123,6 +131,7 @@ public final class CgVfxSystem {
             sphereMesh = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 48, 96, 1f));
             ribbonMesh = CgMesh.upload(CgVfxRibbons.meshData());
             billboardMesh = CgMesh.upload(CgVfxBillboard.meshData());
+            quadMesh = CgMesh.upload(CgVfxQuads.meshData());
         }
         warm();
         frame.begin(world, Math.min(owed / TICK, 1f));
@@ -130,6 +139,43 @@ public final class CgVfxSystem {
         for (int i = 0; i < effects.size(); i++) effects.get(i).submit(frame);
         paths.upload();
         bindPaths();
+        writeParticles(frame.alpha());
+    }
+
+    /**
+     * Where {@code emitter}'s records start in this frame's particle buffer, adding them on its first draw this frame.
+     * Its draws read {@code [base, base + count)}.
+     */
+    int particleBase(CgVfxEmitterInstance emitter) {
+        int base = 0;
+        for (int i = 0; i < particleEmitters.size(); i++) {
+            if (particleEmitters.get(i) == emitter) return base;
+            base += particleEmitters.get(i).particles().count();
+        }
+        particleEmitters.add(emitter);
+        particleRecords += emitter.particles().count();
+        return base;
+    }
+
+    /** Every particle drawn this frame into the buffer, once, in the order their bases were handed out. */
+    private void writeParticles(float alpha) {
+        if (particleRecords > 0) {
+            float ahead = alpha * TICK;
+            CgParticleBuffer.begin(particleRecords);
+            for (int k = 0; k < particleEmitters.size(); k++) {
+                CgVfxEmitter def = particleEmitters.get(k).emitter();
+                CgVfxParticleSet p = particleEmitters.get(k).particles();
+                for (int i = 0; i < p.count(); i++) {
+                    float t = p.progress(i);
+                    CgParticleBuffer.put(p.x(i, alpha), p.y(i, alpha), p.z(i, alpha), p.size[i] * def.sizeAt(t),
+                            p.vx[i], p.vy[i], p.vz[i], t,
+                            p.seed[i], p.spin[i] + p.spinRate[i] * ahead, p.heat[i], def.opacityAt(t));
+                }
+            }
+            CgParticleBuffer.end();
+        }
+        particleEmitters.clear();
+        particleRecords = 0;
     }
 
     /**
@@ -165,10 +211,12 @@ public final class CgVfxSystem {
         if (sphereMesh != null) sphereMesh.delete();
         if (ribbonMesh != null) ribbonMesh.delete();
         if (billboardMesh != null) billboardMesh.delete();
+        if (quadMesh != null) quadMesh.delete();
         tubeMesh = null;
         sphereMesh = null;
         ribbonMesh = null;
         billboardMesh = null;
+        quadMesh = null;
         boundTexture = null;
         unbound.addAll(materials.values());
         warming.clear();
@@ -192,6 +240,10 @@ public final class CgVfxSystem {
 
     CgMesh ribbonMesh() {
         return ribbonMesh;
+    }
+
+    CgMesh quadMesh() {
+        return quadMesh;
     }
 
     CgMesh billboardMesh() {

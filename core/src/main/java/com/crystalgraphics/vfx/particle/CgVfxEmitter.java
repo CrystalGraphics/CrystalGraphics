@@ -140,7 +140,7 @@ public final class CgVfxEmitter {
 
     public static final class Builder {
 
-        private final String name;
+        private String name;
         private String layer;
         private Renderer renderer = Renderer.QUADS;
         private int capacity = 256;
@@ -193,6 +193,12 @@ public final class CgVfxEmitter {
             modules.addAll(e.modules);
             sizeOverLife = e.sizeOverLife;
             opacityOverLife = e.opacityOverLife;
+        }
+
+        /** Renames it: a look holds one emitter per name, and replaces by it. */
+        public Builder name(String name) {
+            this.name = name;
+            return this;
         }
 
         /** The slot of the look's layer that draws these particles; the emitter's name unless given. */
