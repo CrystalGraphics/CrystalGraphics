@@ -105,7 +105,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 - The harness is LWJGL 3 and GLFW. `--device=gl` (the default) is `Lwjgl3GLBackend`; `--device=tracked` the
   tracked backend over a recording device; `--device=vulkan` over `CgVulkanDevice` and `OwnedVulkanHost`, with
   validation on unless `-Dcrystalgraphics.harness.vulkanValidation=false`. Its `AGENTS.md` has the rest.
-- Never call raw GL — use `CgVertexArray`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
+- Never call raw GL — use `CgMesh`, `CgStreamBuffer`, `CgTexture`, `CgFrameBuffer`, etc.
 - Implement `HarnessSceneLifecycle` (managed, single frame) or `InteractiveSceneLifecycle` (loop + camera),
   and register the scene in `SceneRegistry.createDefault()` — or, for a project on top of CrystalGraphics,
   in its own `HarnessExtension`. The harness names no such project.
@@ -216,7 +216,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Write or load a `.shader` material | [CrystalShader Pipeline](#crystalshader-material-pipeline) | `api/material/AGENTS.md` |
 | Draw meshes into the world | [CgWorldRenderer](#cgworldrenderer--drawing-into-the-world) | `render/world/AGENTS.md` |
 | Create a framebuffer (FBO) for post-processing | [Framebuffers](#framebuffers) | `api/framebuffer/AGENTS.md` |
-| Load or build a 3D mesh | [Meshes](#meshes) | `gl/mesh/AGENTS.md` |
+| Load or build a 3D mesh | [Meshes](#meshes) | `api/mesh/AGENTS.md` |
 | Create or load a texture | [Textures](#textures) | `api/texture/AGENTS.md` |
 | Bind GPU buffers (SSBO/TBO/UBO) to a material | [Shader Buffers](#shader-buffers) | `gl/buffer/shader/AGENTS.md` |
 | Save and restore GL state across a pass | [GL State Save/Restore](#gl-state-saverestore) | `gl/state/AGENTS.md` |
@@ -234,7 +234,7 @@ These rules apply everywhere. All agents must internalize them.
 
 **Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not `CgShaderFactory.fromSource()`; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 
-**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Textures and meshes are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgGL.mayIssueGl()` itself.
+**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgGL.mayIssueGl()` itself.
 
 > **The right thread is not the right CONTEXT, and on 1.7.10 that distinction is load-bearing.** FML's
 > splash screen runs mod loading with a second, *shared* context of its own — so `FMLInitializationEvent`
@@ -248,8 +248,8 @@ These rules apply everywhere. All agents must internalize them.
 >
 > **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; the first render stage a host fires
 > initialises lazily, on a frame that genuinely owns the render context. A dev run cannot show the
-> failure (no splash in the way), so it appears only in an installed client. `CgVertexArray.gen()`
-> warns when the driver returns a name this process still owns — the one cheap signal that two
+> failure (no splash in the way), so it appears only in an installed client. `CgMeshPool` warns
+> (`[cg-vao]`) when the driver returns a vertex array name this process still owns — the one cheap signal that two
 > contexts are in play. See `CrystalGUI/docs/CGUI_INVARIANTS.md` § *Rendering, GL and shaders*.
 
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
@@ -611,9 +611,11 @@ CgMaterial base    = CgMaterial.load("mymod:shaders/base.shader");
 CgMaterial outline = CgMaterial.load("mymod:shaders/outline.shader");
 base.setNextPass(outline);
 
-// Manual draw (outside the pipeline):
-base.drawChain(CgRenderPassVariant.FORWARD, () -> mesh.drawInstanced(N));
-// ^ draws base first, then outline immediately after with the same N instances
+// A recorded draw takes the chain: base, then outline, on the same instances
+CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
+
+// A hand-bound draw of geometry the caller bound:
+base.drawChain(CgRenderPassVariant.FORWARD, () -> CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound)
 ```
 
 
@@ -621,14 +623,14 @@ For explicit single-pass control (no chain):
 
 ```java
 material.bind();                                     // activates Forward pass, current keywords
-mesh.drawInstanced(N);
+CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
 material.unbind();
 
 // Shadow pass (no keywords applied — shadow passes always use empty keyword set):
 if (material.hasShadowCasterPass()) {
     shadowMapFbo.bind();
     material.bindForPass(CgRenderPassVariant.SHADOW);
-    mesh.drawInstanced(N);
+    CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
     material.unbind();
     shadowMapFbo.unbind();
 }
@@ -880,10 +882,7 @@ for (int i = 0; i < ship.mesh().submeshCount(); i++) {
 }
 ```
 
-Until the old stack is deleted, `gl/mesh/CgMesh.upload(data)` still holds an `api/mesh/CgMesh` for the VFX engine's
-draws; both reach `CgChunkBuilder.draw` and `CgWorldRenderer.draw` through `CgMeshSource`.
-
-**Package guides**: `api/mesh/AGENTS.md` · `gl/mesh/AGENTS.md` · `render/AGENTS.md` (`mesh/`)
+**Package guides**: `api/mesh/AGENTS.md` · `render/AGENTS.md` (`mesh/`)
 
 ## Vertex Formats
 
@@ -891,7 +890,7 @@ draws; both reach `CgChunkBuilder.draw` and `CgWorldRenderer.draw` through `CgMe
 
 **Per-instance data is never a vertex attribute**: it is an engine buffer's record (`CgInstanceKind` -- `OBJECT`, `QUAD`, `CURVE`), read through `CG_INSTANCE_ID`.
 
-**Package guides**: `api/vertex/AGENTS.md` · `gl/vertex/AGENTS.md`
+**Package guides**: `api/vertex/AGENTS.md`
 
 ## Shader Buffers
 
@@ -988,7 +987,7 @@ try (CgShaderScope scope = shader.bindScoped()) {
         b.set1f("u_time", elapsed);
         b.sampler2D("u_tex", 0, myTexture);
     });
-    mesh.drawDirect();
+    CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);   // a fullscreen triangle
 }  // prior program restored automatically
 ```
 
@@ -1147,7 +1146,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | Step | What | Why |
 |------|------|-----|
 | 0 | `CgTextRendererRegistry.get().deleteAll()` | Any `CgTextRenderer` still alive (backstop — individual owners should already have called `delete()`) |
-| 1 | `CgMeshStore.get().releaseAll()`, then `CgMeshRegistry.get().deleteAll()` | The store's slabs, then each GL mesh's own objects: each VAO, then its buffers. Meshes keep their data and are placed again by the next context |
+| 1 | `CgMeshStore.get().releaseAll()` | The store's slabs: each VAO, then its buffers. Meshes keep their data and are placed again by the next context, but for a `GPU_ONLY` one, which needs an edit first |
 | 2 | `CgQuadIndexBuffer.freeAll()` | Shared quad IBO |
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
@@ -1158,7 +1157,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 | 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 
-> A mesh deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
+> A slab deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
 
 > **The backend closes last, and not in `destroyContext()`.** Every deletion above goes through it, and a
 > device releases memory when its frames retire, so whoever built a device-backed backend closes it after:
@@ -1173,7 +1172,6 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 |----------|-----------|-------------|----------------------|
 | `CgMaterialRegistry` | `CgMaterialRegistry.get()` | All `CgMaterial` instances (per-instance UBOs) | `reloadAll()` on hot-reload; `deleteAll()` on teardown (via lifecycle) |
 | `CgMaterialShaderRegistry` | `CgMaterialShaderRegistry.get()` | Shared `CgMaterialShader` GL program assets | Internal — managed by `CgMaterialRegistry` |
-| `CgMeshRegistry` | `CgMeshRegistry.get()` | All static `CgMesh` GPU objects | `getOrCreate(key, supplier)` for caching procedural meshes |
 | `CgTextureManager` | `CgTextureManager.get()` | All `CgTexture` instances (2D, array, 3D, cubemap) | `getOrCreate(path)` for cached texture load; `reloadAll()` on F3+T |
 | `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/TBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
@@ -1185,7 +1183,7 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 
 # Package AGENTS.md Index
 
-All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
+All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths omit the common prefix.
 
 ### Demo / Benchmarks
 | Path | What it covers |
@@ -1225,14 +1223,12 @@ All 37 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 ### Mesh
 | Path | What it covers |
 |---|---|
-| `api/mesh/AGENTS.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgSubmesh`, `CgMeshChanges`, `CgMeshSource`; `CgMeshTopology`, `CgMeshData` until M5 |
-| `gl/mesh/AGENTS.md` | `CgMeshBuilder` and `CgMesh`, the old stack the VFX engine still draws through until it is deleted |
+| `api/mesh/AGENTS.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgMeshLoader`, `CgMeshLods`, `CgSubmesh`, `CgMeshChanges`, `CgMeshTopology` |
 
 ### Vertex / Instancing
 | Path | What it covers |
 |---|---|
 | `api/vertex/AGENTS.md` | `CgVertexFormat`, `CgVertexSemantic`, `CgAttribType` |
-| `gl/vertex/AGENTS.md` | `CgVertexArray`, the one VAO a mesh owns |
 
 ### Buffers
 | Path | What it covers |

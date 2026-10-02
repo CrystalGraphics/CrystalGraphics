@@ -27,7 +27,7 @@ import java.util.logging.Logger;
  *
  * <h3>Strategy waterfall</h3>
  * <p>Follows the same Core &gt; ARB &gt; fallback convention as {@code CgFrameBuffer} /
- * {@code CgVertexArray} / {@code CgStreamBuffer}:</p>
+ * {@code CgStreamBuffer}:</p>
  * <ol>
  *   <li><b>{@code glCopyImageSubData}</b> (core GL 4.3 / {@code ARB_copy_image}) — one call
  *       copies an arbitrary sub-volume, including every layer of an array texture at once. No

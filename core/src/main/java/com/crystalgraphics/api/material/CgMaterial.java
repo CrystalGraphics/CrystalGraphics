@@ -63,13 +63,14 @@ import javax.annotation.Nullable;
  * // Both callers must call mat.delete() when done.
  * }</pre>
  *
- * <h3>Per-frame bind pattern</h3>
+ * <h3>Drawing with a material</h3>
  * <pre>{@code
- * // pipeline.beginFrame() uploads frame UBO automatically.
- * objectBuffer.writeSingle(modelMatrix);
- * material.bind();
- * mesh.drawDirect();
- * material.unbind();
+ * CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();        // into the world, recorded
+ *
+ * try (CgImmediate draw = CgImmediate.begin(camera)) {                     // now, into the bound target
+ *     draw.chunks().draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(draw.bindings()), mesh);
+ *     model.get(draw.chunks().data(), draw.chunks().instance());
+ * }
  * }</pre>
  *
  * <h3>Keyword system</h3>
@@ -1382,7 +1383,7 @@ public final class CgMaterial {
      * <p>This is the canonical way to draw a mesh with a chained multi-draw material.
      * If {@link #getNextPass()} is {@code null}, only this material draws.</p>
      *
-     * @param drawCommand the draw logic (e.g. {@code () -> mesh.drawInstanced(N)})
+     * @param drawCommand the draw of geometry the caller bound (e.g. {@code () -> CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3)})
      */
     public void drawChain(Runnable drawCommand) {
         CgMaterial pass = this;
@@ -1403,7 +1404,7 @@ public final class CgMaterial {
      * {@code null}, only this material draws.</p>
      *
      * @param variant     the pass variant to activate for each material in the chain
-     * @param drawCommand the draw logic (e.g. {@code () -> mesh.drawInstanced(N)})
+     * @param drawCommand the draw of geometry the caller bound (e.g. {@code () -> CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3)})
      */
     public void drawChain(CgRenderPassVariant variant, Runnable drawCommand) {
         CgMaterial pass = this;

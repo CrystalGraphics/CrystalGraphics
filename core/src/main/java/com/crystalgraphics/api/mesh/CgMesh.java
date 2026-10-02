@@ -59,12 +59,12 @@ import javax.annotation.Nullable;
  *       by it, and the contents change in one step when it returns.</li>
  * </ul>
  */
-public final class CgMesh implements CgMeshSource {
+public final class CgMesh {
 
     /**
-     * How long a mesh's geometry lives. The store places every usage alike today: a range in its format's pool, a new
-     * one on each edit, the old freed once the frames that drew it retire. The names state intent for the paths that
-     * will differ: {@code FRAME} on the frame ring, {@code GPU_ONLY} without its CPU copy.
+     * How long a mesh's geometry lives. The store places every usage in its format's pool, a new range on each edit,
+     * the old freed once the frames that drew it retire; {@code FRAME} states intent for the frame ring, a path still to
+     * come.
      */
     public enum Usage {
         /** Built once, drawn many times. */
@@ -73,7 +73,11 @@ public final class CgMesh implements CgMeshSource {
         DYNAMIC,
         /** Rewritten every frame it draws. */
         FRAME,
-        /** Never read back or rebuilt by the CPU. */
+        /**
+         * Never read back: the CPU copy is dropped once the store has staged it. Counts, submeshes and bounds stay; a
+         * read or a partial write then throws, and an {@link #edit} writes a new copy. Placed again after
+         * {@link #release()} or a lost context only after an edit.
+         */
         GPU_ONLY
     }
 
@@ -109,6 +113,7 @@ public final class CgMesh implements CgMeshSource {
     private final boolean[] logAll = new boolean[LOG];
 
     private volatile int releases;
+    private boolean cpuDropped;
     private boolean noBounds;
     private CgMeshWriter idleWriter;
 
@@ -214,6 +219,7 @@ public final class CgMesh implements CgMeshSource {
             }
             System.arraycopy(w.bounds, 0, computed, 0, 6);
             computedStale = !w.anyPosition;
+            cpuDropped = false;
             w.vertices = oldVertices.length > 0 ? oldVertices : new byte[Math.max(stride, 1) * 16];
             w.indices = oldIndices.length > 0 ? oldIndices : new int[48];
             idleWriter = w;
@@ -227,6 +233,7 @@ public final class CgMesh implements CgMeshSource {
      */
     public synchronized void writeVertices(int firstVertex, ByteBuffer bytes) {
         requireEditable();
+        requireCpuCopy();
         if (stride == 0) throw new IllegalStateException(format.getKey() + " has no vertex bytes to write");
         int n = bytes.remaining();
         if (n % stride != 0) throw new IllegalArgumentException(n + " bytes is not a whole number of " + stride + "-byte vertices");
@@ -249,6 +256,7 @@ public final class CgMesh implements CgMeshSource {
      */
     public synchronized void writeIndices(int firstIndex, int[] values) {
         requireEditable();
+        requireCpuCopy();
         int end = beginIndices(firstIndex, values.length);
         for (int i = 0; i < values.length; i++) indices[firstIndex + i] = checkIndex(values[i]);
         endIndices(firstIndex, end);
@@ -257,6 +265,7 @@ public final class CgMesh implements CgMeshSource {
     /** {@link #writeIndices(int, int[])} from {@code values}' remaining ints. */
     public synchronized void writeIndices(int firstIndex, IntBuffer values) {
         requireEditable();
+        requireCpuCopy();
         int n = values.remaining(), at = values.position();
         int end = beginIndices(firstIndex, n);
         for (int i = 0; i < n; i++) indices[firstIndex + i] = checkIndex(values.get(at + i));
@@ -328,6 +337,25 @@ public final class CgMesh implements CgMeshSource {
         releases++;
     }
 
+    /**
+     * The store's: frees the CPU copy of a {@link Usage#GPU_ONLY} mesh once its bytes are staged. Does nothing for any
+     * other usage.
+     */
+    public synchronized void dropCpuCopy() {
+        if (usage != Usage.GPU_ONLY || cpuDropped) return;
+        if (computedStale) computeBounds();
+        vertices = new byte[0];
+        indices = NO_INDICES;
+        idleWriter = null;
+        cpuDropped = true;
+    }
+
+    private void requireCpuCopy() {
+        if (cpuDropped) {
+            throw new IllegalStateException("a GPU_ONLY mesh keeps no CPU copy once placed: edit it whole to write one");
+        }
+    }
+
     private void requireEditable() {
         if (shared) throw new IllegalStateException("a shared shape: build your own with the writer form of the shape");
     }
@@ -361,11 +389,6 @@ public final class CgMesh implements CgMeshSource {
     /** How many times {@link #release()} was asked: a renderer frees its copy when this moves. */
     public int releases() {
         return releases;
-    }
-
-    @Override
-    public CgMesh mesh() {
-        return this;
     }
 
     public synchronized CgMeshTopology topology() {
@@ -462,6 +485,7 @@ public final class CgMesh implements CgMeshSource {
 
     /** Copies {@code count} vertices from {@code firstVertex} into {@code dst} at its position, advancing it. */
     public synchronized void readVertices(int firstVertex, int count, ByteBuffer dst) {
+        requireCpuCopy();
         if (firstVertex < 0 || count < 0 || firstVertex + count > vertexCount) {
             throw new IndexOutOfBoundsException("vertices " + firstVertex + "+" + count + " of " + vertexCount);
         }
@@ -470,6 +494,7 @@ public final class CgMesh implements CgMeshSource {
 
     /** Copies {@code count} indices from {@code firstIndex} into {@code dst} at {@code at}. */
     public synchronized void readIndices(int firstIndex, int count, int[] dst, int at) {
+        requireCpuCopy();
         if (firstIndex < 0 || count < 0 || firstIndex + count > indexCount) {
             throw new IndexOutOfBoundsException("indices " + firstIndex + "+" + count + " of " + indexCount);
         }
@@ -478,6 +503,7 @@ public final class CgMesh implements CgMeshSource {
 
     /** Copies {@code count} indices from {@code firstIndex} into {@code dst} as native-order ints, advancing it. */
     public synchronized void readIndices(int firstIndex, int count, ByteBuffer dst) {
+        requireCpuCopy();
         if (firstIndex < 0 || count < 0 || firstIndex + count > indexCount) {
             throw new IndexOutOfBoundsException("indices " + firstIndex + "+" + count + " of " + indexCount);
         }

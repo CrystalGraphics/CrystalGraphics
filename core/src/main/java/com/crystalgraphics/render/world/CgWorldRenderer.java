@@ -11,7 +11,6 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
-import com.crystalgraphics.api.mesh.CgMeshSource;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -155,11 +154,11 @@ public final class CgWorldRenderer {
     }
 
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */
-    public Draw draw(CgMeshSource mesh, CgMaterial material) {
-        return scratch.start(mesh.mesh(), material);
+    public Draw draw(CgMesh mesh, CgMaterial material) {
+        return scratch.start(mesh, material);
     }
 
-    /** As {@link #draw(CgMeshSource, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */
+    /** As {@link #draw(CgMesh, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */
     public Draw draw(CgMeshLods lods, CgMaterial material) {
         Draw draw = scratch.start(lods.finest(), material);
         draw.lods = lods;

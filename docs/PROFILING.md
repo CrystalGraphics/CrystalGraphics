@@ -362,7 +362,7 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Frame graph | gl | counters `graph.passes`, `.batches`, `.draws`, `.snapshots`, `.instances` per build; `graph.batches.skipped` (a pipeline with no program: its draws are missing that frame) and `graph.requested.made` (a requested texture's storage made -- at first use, or again after its picture was lost) per execution; `graph.passes.undamaged` and `graph.damage-kpx` (passes cut to their damage); `graph.again.requested-kept`/`-drawn` (a frame executed again: passes into kept textures skipped, or drawn whole) | `render/graph/CgFrameBuilder`, `CgExecutor` |
 
 **Not instrumented** — zone these before any question that touches them: the frame graph's build and
-execution of a world stage beyond its whole firing (`render/graph/CgFrameBuilder`, `CgExecutor`), mesh upload and loading (`gl/mesh/*`), framebuffer creation and blits beyond the
+execution of a world stage beyond its whole firing (`render/graph/CgFrameBuilder`, `CgExecutor`), mesh placement and loading beyond the store's counters (`render/mesh/CgMeshStore`, `api/mesh/CgMeshLoader`), framebuffer creation and blits beyond the
 depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShader` compiles outside a
 material, hot reload, and every host's own hooks (`runtime/mc/**`).
 

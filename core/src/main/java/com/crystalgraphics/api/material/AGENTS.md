@@ -52,14 +52,14 @@ CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).su
 ```java
 // Forward draw:
 material.bind();
-mesh.drawInstanced(N);
+CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
 material.unbind();
 
 // Shadow map draw (from a shadow renderer):
 if (material.hasShadowCasterPass()) {
     shadowMapFbo.bind();
     material.bindForPass(CgRenderPassVariant.SHADOW);
-    mesh.drawInstanced(N);
+    CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, vertexCount, n);   // geometry the caller bound
     material.unbind();
     shadowMapFbo.unbind();
 }
@@ -186,7 +186,7 @@ Throws `IllegalStateException` if compile/link fails — never returns a broken 
 No-arg bind activated after `pipeline.beginFrame()` and after writing per-object records:
 ```java
 material.bind();
-mesh.drawDirect();
+CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, vertexCount);   // geometry the caller bound
 material.unbind();
 ```
 
@@ -261,8 +261,7 @@ No-op if `resourcePath == null` (shader-graph / programmatic materials).
 // Location 2: cg_Normal    (vec3, FLOAT)
 // Stride: 32 bytes
 CgVertexFormat format = CgVertexFormat.SPATIAL;
-CgMeshData data = CgMeshBuilder.unitCube(format);
-CgMesh mesh = CgMesh.upload(data);
+CgMesh mesh = CgMeshShapes.cube(format);
 ```
 
 ## Reserved Texture Unit
@@ -356,4 +355,4 @@ Given `buffer.getName() = "FontMetricsBuffer"`, `format.getGlslName() = "FontMet
 | `api/shader/` | `CgShader`, `CgShaderBindings`, `CgShaderPreprocessor` used internally |
 | `gl/shader/` | `CgShaderFactory.fromSource()` used by `CgMaterial.create()` |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |
-| `gl/mesh/` | `CgMesh.drawDirect()` and `CgMesh.drawInstanced(N)` are the draw consumers |
+| `render/world/`, `render/graph/` | `CgWorldRenderer` and the graph draw a `CgMesh` under a material, through the mesh store |

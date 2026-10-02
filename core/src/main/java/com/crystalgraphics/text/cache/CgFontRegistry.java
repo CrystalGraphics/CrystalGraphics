@@ -74,7 +74,7 @@ import java.util.logging.Logger;
  *
  * <h3>Singleton, like every other GPU-resource registry</h3>
  * <p>The default-config registry is a shared singleton, accessed via {@link #get()} —
- * matching {@code CgTextureManager}, {@code CgMaterialRegistry}, {@code CgMeshRegistry},
+ * matching {@code CgTextureManager}, {@code CgMaterialRegistry}
  * and every other GPU-resource-owning registry in this codebase. It is torn down by
  * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}, and
  * remains usable immediately afterward (a fresh GL context can initialize right away —
@@ -230,8 +230,8 @@ public class CgFontRegistry {
      */
     /**
      * The shared default-config registry, matching every other GPU-resource registry
-     * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry},
-     * {@code CgMeshRegistry}, etc.) — accessed via {@link #get()}, torn down via
+     * in this codebase ({@code CgTextureManager}, {@code CgMaterialRegistry}, etc.)
+     * — accessed via {@link #get()}, torn down via
      * {@code CgGraphicsLifecycle.destroyContext()} calling {@link #releaseAll()}.
      *
      * <p>Consumers that need a <em>differently configured</em> registry (custom atlas

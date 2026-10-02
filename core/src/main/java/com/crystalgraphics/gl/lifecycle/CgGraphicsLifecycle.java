@@ -19,12 +19,10 @@ import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 //import com.crystalgraphics.gl.debug.CgDebugBlit;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.gl.mesh.CgMeshRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
-import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -46,7 +44,7 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  *
  * <h3>Teardown order, geometry first</h3>
  * <ol>
- *   <li>{@link CgMeshStore#releaseAll()} and {@link CgMeshRegistry#deleteAll()} — each VAO, then its buffers</li>
+ *   <li>{@link CgMeshStore#releaseAll()} — each slab's VAO, then its buffers</li>
  *   <li>{@link CgQuadIndexBuffer#freeAll()} — shared quad IBO</li>
  * </ol>
  *
@@ -456,9 +454,8 @@ public final class CgGraphicsLifecycle {
             listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
         }
 
-        // Step 1: Static meshes: the store's slabs (each slab's VAO, then its buffers), then each GL mesh's own.
+        // Step 1: Meshes: the store's slabs, each slab's VAO, then its buffers. Meshes keep their data.
         CgMeshStore.get().releaseAll();
-        CgMeshRegistry.get().deleteAll();
 
         // Step 2: Shared quad IBO.
         CgQuadIndexBuffer.freeAll();
@@ -520,9 +517,8 @@ public final class CgGraphicsLifecycle {
         // Its fences name the dying context.
         CgFrameRing.reset();
 
-        // Capabilities are the dead context's; VAO names too.
+        // Capabilities are the dead context's.
         CgCapabilities.clearCache();
-        CgVertexArray.onContextDestroyed();
 
         // (initialized was cleared at the top of this method.)
         currentWidth = -1;

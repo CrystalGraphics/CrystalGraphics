@@ -203,6 +203,26 @@ public class CgMeshTest {
         return b;
     }
 
+    @Test
+    public void aGpuOnlyMeshDropsItsBytesOnceStagedAndAnEditWritesThemAgain() {
+        CgMesh mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.GPU_ONLY, m -> CgMeshShapes.sphere(m, 8, 16, 2f));
+        int vertices = mesh.vertexCount(), indices = mesh.indexCount();
+        mesh.dropCpuCopy();
+        assertEquals(vertices, mesh.vertexCount());
+        assertEquals(indices, mesh.indexCount());
+        assertArrayEquals(new float[] {-2, -2, -2, 2, 2, 2}, mesh.bounds(new float[6]), 1e-5f);
+        assertThrows(IllegalStateException.class, () -> mesh.readVertices(0, 1, ByteBuffer.allocate(64)));
+        assertThrows(IllegalStateException.class, () -> mesh.readIndices(0, 1, new int[1], 0));
+        assertThrows(IllegalStateException.class, () -> mesh.writeIndices(0, new int[] {0}));
+
+        mesh.edit(CgMeshShapes::cube);
+        assertEquals(24, bytes(mesh).remaining() / mesh.format().getStride());
+
+        CgMesh kept = CgMesh.build(CgVertexFormat.SPATIAL, CgMeshShapes::cube);
+        kept.dropCpuCopy();                                   // any other usage keeps its copy
+        assertEquals(24, bytes(kept).remaining() / kept.format().getStride());
+    }
+
     private static ByteBuffer bytes(CgMesh mesh) {
         ByteBuffer b = ByteBuffer.allocate(mesh.vertexCount() * mesh.format().getStride()).order(ByteOrder.nativeOrder());
         mesh.readVertices(0, mesh.vertexCount(), b);

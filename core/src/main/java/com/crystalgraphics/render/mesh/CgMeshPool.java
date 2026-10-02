@@ -1,11 +1,15 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.platform.gl.CgGL;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The GPU storage of one vertex format: slabs, each a vertex buffer and a 32-bit index buffer with an allocator for
@@ -20,6 +24,11 @@ import java.util.List;
  */
 final class CgMeshPool {
 
+    private static final Logger LOGGER = LogManager.getLogger("CgMeshPool");
+
+    /** Vertex array names this process holds. */
+    private static final Set<Integer> LIVE_VERTEX_ARRAYS = new HashSet<>();
+
     /** A slab's size when no mesh needs more. */
     static final int SLAB_VERTICES = 64 * 1024, SLAB_INDICES = 256 * 1024;
 
@@ -33,14 +42,14 @@ final class CgMeshPool {
             vertices = new CgOffsetAllocator(vertexCapacity);
             indices = new CgOffsetAllocator(indexCapacity);
             bytes = (long) vertexCapacity * format.getStride() + (long) indexCapacity * 4;
-            vao = CgVertexArray.createRawVaoId();
-            CgVertexArray.bind(vao);
+            vao = genVertexArray();
+            CgGL.glBindVertexArray(vao);
             if (format.getStride() > 0) {
                 vertexBuffer = CgGL.glGenBuffers();
                 CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vertexBuffer);
                 CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, (long) vertexCapacity * format.getStride(), CgGL.GL_STATIC_DRAW);
                 for (int i = 0; i < format.getAttributeCount(); i++) {
-                    CgVertexArray.pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
+                    pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
                     CgGL.glEnableVertexAttribArray(i);
                 }
             } else {
@@ -49,12 +58,13 @@ final class CgMeshPool {
             indexBuffer = CgGL.glGenBuffers();
             CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, indexBuffer);   // captured by the vertex array
             CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, (long) indexCapacity * 4, CgGL.GL_STATIC_DRAW);
-            CgVertexArray.bind(0);
+            CgGL.glBindVertexArray(0);
             CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
         }
 
         void delete() {
-            CgVertexArray.deleteRaw(vao);
+            LIVE_VERTEX_ARRAYS.remove(vao);
+            CgGL.glDeleteVertexArrays(vao);
             if (vertexBuffer != 0) CgGL.glDeleteBuffers(vertexBuffer);
             CgGL.glDeleteBuffers(indexBuffer);
         }
@@ -101,5 +111,29 @@ final class CgMeshPool {
     void delete() {
         for (Slab slab : slabs) slab.delete();
         slabs.clear();
+    }
+
+    /** Forgets every vertex array name: the context that owned them is gone. */
+    static void forgetVertexArrays() {
+        LIVE_VERTEX_ARRAYS.clear();
+    }
+
+    private static int genVertexArray() {
+        int id = CgGL.glGenVertexArrays();
+        if (!LIVE_VERTEX_ARRAYS.add(id)) {
+            // A name this process still holds means a second context: vertex arrays are not shared between contexts,
+            // so the second owner reconfigures the first's, whose draws then rasterise nothing and raise no error.
+            // On 1.7.10 the second context is FML's splash screen, which is why no GL work may run during mod loading.
+            LOGGER.warn("[cg-vao] glGenVertexArrays returned {}, which this process already owns. "
+                    + "Two contexts are in play and one vertex array now has two owners.", id);
+        }
+        return id;
+    }
+
+    /** Points attribute {@code index} at the bound array buffer: an integer attribute through {@code glVertexAttribIPointer}. */
+    private static void pointer(int index, CgVertexAttribute attr, int stride, long offset) {
+        int type = attr.getType().getGlConstant();
+        if (attr.isInteger()) CgGL.glVertexAttribIPointer(index, attr.getComponents(), type, stride, offset);
+        else CgGL.glVertexAttribPointer(index, attr.getComponents(), type, attr.isNormalized(), stride, offset);
     }
 }
