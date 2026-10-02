@@ -1,19 +1,14 @@
 package com.crystalgraphics.vfx.render;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.mesh.CgMeshData;
-import com.crystalgraphics.api.mesh.CgMeshTopology;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.buffer.staging.CgVertexWriter;
-import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.world.CgWorldRenderer;
-import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import org.joml.Matrix4f;
-
-import java.nio.ByteBuffer;
 
 /**
  * Draws a {@link CgVfxPath} as a tube: one static chunk mesh, {@link #SPANS} ring spans by {@link #SIDES} sides, drawn
@@ -40,36 +35,29 @@ public final class CgVfxTube {
 
     private final Matrix4f scale = new Matrix4f();
 
-    /** The chunk mesh, for {@code CgVfxSystem} to make: it owns every mesh the engine draws. */
-    public static CgMeshData meshData() {
-        CgVertexFormat format = CgVertexFormat.SPATIAL;
-        int columns = SIDES + 1, rows = SPANS + 1;
-        ByteBuffer vbo = CgBufferUtils.createByteBuffer(rows * columns * format.getStride());
-        CgVertexWriter writer = CgVertexWriter.forBuffer(vbo, format);
-        for (int r = 0; r < rows; r++) {
+    /** A new chunk mesh, for {@code CgVfxSystem}, which releases it. */
+    public static CgMesh mesh() {
+        return CgMesh.build(CgVertexFormat.SPATIAL, CgVfxTube::write);
+    }
+
+    private static void write(CgMeshWriter m) {
+        int columns = SIDES + 1;
+        for (int r = 0; r <= SPANS; r++) {
             for (int s = 0; s < columns; s++) {
                 float u = (float) s / SIDES;
                 float a = (float) (2.0 * Math.PI * u);
                 float c = (float) Math.cos(a), n = (float) Math.sin(a);
-                writer.vertex(0.5f * c, 0.5f * n, (float) r / SPANS - 0.5f);
-                writer.uv(r, u);
-                writer.normal(c, n, 0f);
-                writer.endVertex();
+                m.vertex().position(0.5f * c, 0.5f * n, (float) r / SPANS - 0.5f).uv(r, u).normal(c, n, 0f).end();
             }
         }
-        vbo.flip();
-        int indexCount = SPANS * SIDES * 6;
-        ByteBuffer ibo = CgBufferUtils.createByteBuffer(indexCount * 2);
         for (int r = 0; r < SPANS; r++) {
             for (int s = 0; s < SIDES; s++) {
                 int a = r * columns + s, b = a + 1, c = a + columns, d = c + 1;
                 // Counter-clockwise seen from outside: around the angle, then along the axis.
-                ibo.putShort((short) a).putShort((short) b).putShort((short) c);
-                ibo.putShort((short) b).putShort((short) d).putShort((short) c);
+                m.triangle(a, b, c);
+                m.triangle(b, d, c);
             }
         }
-        ibo.flip();
-        return new CgMeshData(format, CgMeshTopology.TRIANGLES, vbo, ibo, indexCount);
     }
 
     /**

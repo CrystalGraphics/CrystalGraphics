@@ -1,7 +1,7 @@
 // What a CgVfxRibbons shader needs to place stateless particles: stable hashes of a ribbon's index, a uniform direction,
 // and a vertex pushed sideways to face the eye. Nothing here names cg_* or CG_*.
 //
-//     float index = cg_Normal.x, along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+//     float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;   // fx_common.glsl
 //     vec4 h = fx_hash41(index + seed * 101.0);
 //     vec3 world = (CG_OBJECT_TO_WORLD * vec4(pointOnPath, 1.0)).xyz;
 //     world = fx_ribbon_vertex(world, tangentInWorld, FX_CAMERA, halfWidth, side);

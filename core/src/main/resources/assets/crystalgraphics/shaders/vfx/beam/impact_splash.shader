@@ -2,7 +2,7 @@
 // gravity, white-hot heads and fading tails. Stateless (CgVfxRibbons). Continuous while _Burst is 0, each spark relaunched
 // when its life ends; one burst at CG_OBJECT_CUSTOM1.w seconds ago when _Burst is 1. CG_OBJECT_CUSTOM1.z is an intensity.
 // Colour A is a spark's sheath, colour B its hot head, A's alpha a strength. CgEnergyWave.
-#type spatial
+#type none
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 
@@ -38,7 +38,7 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        float index = cg_Normal.x, along = cg_TexCoord0.x, side = cg_TexCoord0.y * 2.0 - 1.0;
+        float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;
         float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
         vec4 h = fx_hash41(index * 1.73 + seed * 61.0);
         float life = _Life * (0.6 + 0.8 * h.x);
