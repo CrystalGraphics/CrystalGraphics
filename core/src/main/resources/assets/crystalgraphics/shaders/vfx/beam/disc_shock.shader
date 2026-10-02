@@ -31,13 +31,13 @@ Pass {
         float r = length(p);
         float age = CG_OBJECT_CUSTOM0.z, seed = CG_OBJECT_CUSTOM0.w;
         float progress = CG_OBJECT_CUSTOM1.w;
-        float edge = progress * (1.0 + 0.04 * fx_noise(vec3(p / max(r, 1.0e-3) * 2.5, age * 3.0 + seed * 7.0)));
+        float edge = progress * (1.0 + 0.015 * fx_noise(vec3(p / max(r, 1.0e-3) * 2.5, age * 3.0 + seed * 7.0)));
         float d = r - edge;
         float aa = fwidth(r) + 1.0e-4;
         float wake = 0.06 + 0.22 * progress;
         // Crisp outside the edge, fading in over the wake behind it.
         float ring = (1.0 - smoothstep(-aa, aa, d)) * smoothstep(-wake, 0.0, d);
-        float line = 1.0 - smoothstep(0.012 + aa, 0.012 + 2.0 * aa, abs(d));
+        float line = 1.0 - smoothstep(0.02 + aa, 0.02 + 2.0 * aa, abs(d));
         vec3 col = CG_OBJECT_CUSTOM3.rgb * ring * 0.7 + CG_OBJECT_CUSTOM2.rgb * line * 1.6;
         fragColor = vec4(col * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (1.0 - smoothstep(0.98, 1.0, r)), 1.0);
     }

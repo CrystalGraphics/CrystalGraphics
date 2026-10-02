@@ -31,15 +31,19 @@ import java.util.List;
  *
  * <p>Its life: a ball of plasma charges at the muzzle for {@link #CHARGE_TIME}, growing along {@link #CHARGE_SIZE}
  * while streaks of energy fall into it and arcs crackle over it; at the release a flash ({@link #FLASH}) and a shock
- * ring, and the ball settles into the beam's root while the body flies out; after {@link #stop()} the root fades and the
- * tail runs out into the target.</p>
+ * ring, and the ball settles into the beam's root while the body flies out; where it hits, a contact orb throws sparks
+ * and pulses rings; after {@link #stop()} the root fades and the tail runs out into the target, which bursts into the
+ * final blast: a dome of light eroding as it cools, a flash, a ring, debris and smoke, for {@link #BLAST_TIME}.</p>
  *
  * <p>Its look's layers draw in slots: {@link CgVfxLayer#SLOT_BODY} as tubes along the body; {@link #SLOT_HEAD},
  * {@link #SLOT_CHARGE} and {@link #SLOT_FLASH} on spheres ({@link CgVfxFrame#mesh}, {@code CG_OBJECT_CUSTOM1} the
  * half-width, half-length and intensity); {@link #SLOT_SHOCK} on a sphere flattened to a disc facing along the aim
  * ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} its progress, 0..1); {@link #SLOT_STREAKS} and
  * {@link #SLOT_ARCS} as stateless ribbons ({@link CgVfxFrame#ribbons}, {@code CG_OBJECT_CUSTOM1} the ball's radius in
- * blocks, the ball's share of the streaks' sphere, and the intensity).</p>
+ * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
+ * {@link #SLOT_IMPACT} and {@link #SLOT_BLAST_GLOW} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
+ * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age), and
+ * {@link #SLOT_BLAST} and {@link #SLOT_SMOKE} on spheres ({@code .w} the blast's progress, 0..1).</p>
  *
  * <p>It announces each moment of that life ({@link #MOMENT_CHARGE_START} to {@link #MOMENT_END}) to
  * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
@@ -64,6 +68,20 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_STREAKS = "streaks";
     /** Arcs crackling over the charge and the root: ribbons round the ball, its radius their unit. */
     public static final String SLOT_ARCS = "arcs";
+    /** The orb at the target while the beam hits it: a sphere, its +z back along the beam. */
+    public static final String SLOT_IMPACT = "impact";
+    /** Sparks thrown back off the impact while it hits: ribbons, their +z back along the beam. */
+    public static final String SLOT_SPLASH = "splash";
+    /** Rings pulsing out from the impact, and the blast's ring: a disc facing back along the beam. */
+    public static final String SLOT_IMPACT_RING = "impactRing";
+    /** The blast's dome: a sphere at the target. */
+    public static final String SLOT_BLAST = "blast";
+    /** The blast's flash and its heart: spheres at the target. */
+    public static final String SLOT_BLAST_GLOW = "blastGlow";
+    /** The blast's debris, one burst of ribbons. */
+    public static final String SLOT_DEBRIS = "debris";
+    /** The blast's smoke: a sphere at the target, alpha-blended. */
+    public static final String SLOT_SMOKE = "smoke";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
 
@@ -71,7 +89,9 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String MOMENT_CHARGE_START = "charge-start", MOMENT_CHARGE_MID = "charge-mid",
             MOMENT_CHARGE_PEAK = "charge-peak", MOMENT_RELEASE = "release", MOMENT_FLASH = "flash",
             MOMENT_RING = "ring", MOMENT_SHOCK = "shock", MOMENT_LAUNCH = "launch", MOMENT_WAYPOINT = "waypoint", MOMENT_IMPACT = "impact",
-            MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail", MOMENT_END = "end";
+            MOMENT_SPLASH = "splash", MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail",
+            MOMENT_BLAST_START = "blast-start", MOMENT_BLAST_PEAK = "blast-peak", MOMENT_BLAST_FADE = "blast-fade",
+            MOMENT_END = "end";
 
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.55f);
@@ -117,6 +137,29 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam SHOCK_RADIUS = SCHEMA.scalar("shockRadius", 5.5f);
     /** The sphere the charge's streaks fall in from, as a multiple of the body's radius. */
     public static final CgVfxParam STREAK_RADIUS = SCHEMA.scalar("streakRadius", 3.6f);
+    /** The contact orb's radius while the beam hits, as a multiple of the body's radius. */
+    public static final CgVfxParam IMPACT_RADIUS = SCHEMA.scalar("impactRadius", 2.2f);
+    /** Seconds between the rings pulsing out from the impact. */
+    public static final CgVfxParam IMPACT_RING_PERIOD = SCHEMA.scalar("impactRingPeriod", 0.45f);
+    /** Seconds the final blast lasts, and its full radius as a multiple of the body's radius. */
+    public static final CgVfxParam BLAST_TIME = SCHEMA.scalar("blastTime", 1.8f);
+    public static final CgVfxParam BLAST_RADIUS = SCHEMA.scalar("blastRadius", 9f);
+    /** The dome's size over the blast (0..1 of it), a share of {@link #BLAST_RADIUS}: bursting out, then drifting. */
+    public static final CgVfxParam BLAST_SIZE = SCHEMA.curve("blastSize", CgKeyframes.start(0f, 0.08f)
+            .to(0.35f, 1f, CgEasings.OUT_EXPO)
+            .to(1f, 1.15f, CgEasings.LINEAR)
+            .build());
+    /** The blast's flash over the blast (0..1 of it). */
+    public static final CgVfxParam BLAST_GLOW = SCHEMA.curve("blastGlow", CgKeyframes.start(0f, 0f)
+            .to(0.04f, 3.5f, CgEasings.OUT_QUAD)
+            .to(0.6f, 0.4f, CgEasings.OUT_CUBIC)
+            .to(1f, 0f, CgEasings.LINEAR)
+            .build());
+    /** The smoke's opacity over the blast (0..1 of it). */
+    public static final CgVfxParam SMOKE = SCHEMA.curve("smoke", CgKeyframes.start(0.1f, 0f)
+            .to(0.35f, 1f, CgEasings.OUT_QUAD)
+            .to(1f, 0f, CgEasings.IN_QUAD)
+            .build());
 
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
@@ -147,6 +190,22 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "charge_arcs.shader").slot(SLOT_ARCS)
                     .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+            .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_SPLASH)
+                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+            .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_IMPACT_RING)
+                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
+            .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
+                    .colors(CORE, SHELL).priority(CgVfxLayer.PRIORITY_SURFACE).build())
+            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+            .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+            .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
+                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS)
+                    .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 16f).set1f("_Life", 1.1f))
+                    .build())
+            .layer(CgVfxLayer.builder(BEAM + "blast_smoke.shader").slot(SLOT_SMOKE)
+                    .colors(SHELL, null).priority(CgVfxLayer.PRIORITY_SMOKE).build())
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
                     .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .build();
@@ -161,8 +220,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
     private float aimX = 1f, aimY, aimZ;
-    /** The age it releases at, and the ages it was stopped at and first hit; NaN until each happens. */
-    private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN;
+    /** The age it releases at, and the ages it was stopped at, first hit and burst; NaN until each happens. */
+    private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN, blastAge = Float.NaN;
+    /** How hard the beam is hitting, eased toward 1 while it hits and 0 when it does not. */
+    private float impactLevel;
+    /** Back along the beam at the impact: where the impact's effects face. */
+    private float normalX, normalY = 1f, normalZ;
     /** The moments already announced, a bit each, and the stream's size when it was stopped. */
     private int momentsFired, sizeAtStop;
 
@@ -232,7 +295,11 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
         stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
-        boolean ending = state() == State.STOPPING && stream.size() == 0 && age > stopAge + FADE;
+        impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
+        boolean drained = state() == State.STOPPING && stream.size() == 0;
+        // The tail has run into the target: it bursts.
+        if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) blastAge = age;
+        boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE : age > blastAge + get(BLAST_TIME);
         if (momentsHeard()) moments(ending);
         if (ending) die();
     }
@@ -253,6 +320,12 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (sinceRelease >= 0.35f && stream.size() > 0) onFlight(6, MOMENT_LAUNCH);
         if (stream.viaReached()) onFlight(7, MOMENT_WAYPOINT);
         if (!Float.isNaN(impactAge)) onFlight(8, MOMENT_IMPACT);
+        float atTarget = radius * get(BLAST_RADIUS) * 1.3f;
+        if (age >= impactAge + 0.3f) atImpact(14, MOMENT_SPLASH, radius * 12f);
+        float blastTime = get(BLAST_TIME);
+        if (age >= blastAge + 0.06f) atImpact(15, MOMENT_BLAST_START, atTarget);
+        if (age >= blastAge + 0.3f * blastTime) atImpact(16, MOMENT_BLAST_PEAK, atTarget);
+        if (age >= blastAge + 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, atTarget);
         if (age >= impactAge + 0.8f) onFlight(9, MOMENT_HOLDING);
         if (age >= stopAge + 0.05f) onFlight(10, MOMENT_STOP);
         if (!Float.isNaN(stopAge) && stream.size() <= sizeAtStop / 2) onFlight(11, MOMENT_TAIL);
@@ -261,6 +334,10 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     private void atMuzzle(int bit, String name, float frame) {
         if (fire(bit)) moment(name, 0f, 0f, 0f, frame);
+    }
+
+    private void atImpact(int bit, String name, float frame) {
+        if (fire(bit)) moment(name, stream.impactX(), stream.impactY(), stream.impactZ(), frame);
     }
 
     /** Framed on the box holding the muzzle, the head and, while it hits, the impact. */
@@ -293,6 +370,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     protected void submit(CgVfxFrame frame) {
         List<CgVfxLayer> layers = look().layers();
         submitMuzzle(frame, layers);
+        submitImpact(frame, layers);
         int needed = (stream.size() + 2) * 3;
         if (points.length < needed) points = new float[needed * 2];
         boolean firing = state() == State.PLAYING && age >= releaseAge;
@@ -305,7 +383,74 @@ public final class CgEnergyWave extends CgVfxEffect {
             CgVfxLayer layer = layers.get(i);
             if (CgVfxLayer.SLOT_BODY.equals(layer.slot())) frame.tube(this, path, row, layer);
         }
+        if (stream.impacting()) {
+            int last = path.count() - 1;
+            normalX = -path.tangentX(last);
+            normalY = -path.tangentY(last);
+            normalZ = -path.tangentZ(last);
+        }
         submitHead(frame, layers);
+    }
+
+    /** At the target: the contact orb, its sparks and rings while the beam hits, then the final blast. */
+    private void submitImpact(CgVfxFrame frame, List<CgVfxLayer> layers) {
+        if (Float.isNaN(impactAge)) return;
+        float radius = get(RADIUS);
+        float x = stream.impactX(), y = stream.impactY(), z = stream.impactZ();
+        if (impactLevel > 0.01f) {
+            float orb = radius * get(IMPACT_RADIUS) * (1f + 0.08f * (float) Math.sin(age * 19f + seed * 6.28f))
+                    * (float) Math.sqrt(impactLevel);
+            facing(placed, normalX, normalY, normalZ).rotateZ(age * 1.1f).scale(orb);
+            drawAt(frame, layers, SLOT_IMPACT, x, y, z, placed, orb, orb, impactLevel, 0f, false);
+            float reach = radius * 12f;
+            facing(placed, normalX, normalY, normalZ).scale(reach);
+            drawAt(frame, layers, SLOT_SPLASH, x, y, z, placed, reach, 0f, impactLevel, -1f, true);
+            float period = get(IMPACT_RING_PERIOD);
+            float ring = ((age - impactAge) / period) % 1f;
+            float rings = radius * 6f;
+            facing(placed, normalX, normalY, normalZ).scale(rings, rings, 0.002f);
+            drawAt(frame, layers, SLOT_IMPACT_RING, x, y, z, placed, rings, rings,
+                    impactLevel * (1f - ring) * (1f - ring), (float) CgEasings.OUT_CUBIC.ease(ring), false);
+        }
+        if (Float.isNaN(blastAge)) return;
+        float since = age - blastAge, blastTime = get(BLAST_TIME), t = Math.min(since / blastTime, 1f);
+        float dome = radius * get(BLAST_RADIUS) * curve(BLAST_SIZE).at(t);
+        facing(placed, normalX, normalY, normalZ).scale(dome);
+        drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, t, false);
+        float glow = curve(BLAST_GLOW).at(t);
+        if (glow > 0f) {
+            float heart = dome * 0.35f;
+            facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
+            drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
+        }
+        float ringTime = Math.min(since / 0.7f, 1f);
+        if (ringTime < 1f) {
+            float reach = radius * get(BLAST_RADIUS) * 1.3f;
+            facing(placed, normalX, normalY, normalZ).scale(reach, reach, 0.002f);
+            float left = 1f - ringTime;
+            drawAt(frame, layers, SLOT_IMPACT_RING, x, y, z, placed, reach, reach, left * left,
+                    (float) CgEasings.OUT_CUBIC.ease(ringTime), false);
+        }
+        float reach = radius * get(BLAST_RADIUS) * 2f;
+        facing(placed, normalX, normalY, normalZ).scale(reach);
+        drawAt(frame, layers, SLOT_DEBRIS, x, y, z, placed, reach, 0f, 1f, since, true);
+        float smoke = curve(SMOKE).at(t);
+        if (smoke > 0f) {
+            float size = radius * get(BLAST_RADIUS) * (0.6f + 0.7f * t);
+            placed.identity().translate(0f, size * 0.25f * t, 0f).scale(size);
+            drawAt(frame, layers, SLOT_SMOKE, x, y, z, placed, size, size, smoke, t, false);
+        }
+    }
+
+    /** Every layer in {@code slot}, at {@code (x, y, z)} from the origin, as spheres or as ribbons. */
+    private void drawAt(CgVfxFrame frame, List<CgVfxLayer> layers, String slot, float x, float y, float z,
+                        Matrix4f transform, float a, float b, float intensity, float w, boolean ribbons) {
+        for (int i = 0; i < layers.size(); i++) {
+            CgVfxLayer layer = layers.get(i);
+            if (!slot.equals(layer.slot())) continue;
+            if (ribbons) frame.ribbons(this, layer, x, y, z, transform, a, b, intensity, w);
+            else frame.mesh(this, layer, x, y, z, transform, a, b, intensity, w);
+        }
     }
 
     /** The charge ball and then the root, its streaks and arcs, the release flash and the shock ring, all at the muzzle. */
