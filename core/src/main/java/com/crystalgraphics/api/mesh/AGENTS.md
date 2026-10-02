@@ -22,6 +22,7 @@ holder of a `CgMesh`) stay only until the VFX engine's draws move, then go.
 | `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |
 | `CgMeshChanges` | A reader's reused holder: the revision now, `all`, and the vertex and index ranges touched since the revision it last read |
 | `CgMeshLoader` | Files: `load(path, format)` and `model(path, format)` -- OBJ, glTF, GLB by extension, every material group or primitive a submesh with the material it names (`Model.material(i)`). Cached per path and format, and shared; `read(stream, extension, format)` gives an uncached mesh of the caller's own. `CgObjLoader` and `CgGltfLoader` are its package-private readers |
+| `CgMeshLods` | One shape at falling detail, Unity's LODGroup: `builder().level(mesh, screenHeight)...build()`, a level held while a draw covers at least that fraction of the screen's height, nothing drawn below the last. `CgWorldRenderer.draw(lods, material)` picks per draw. `CgMeshShapes.sphereLods()` is a shared one: 128 sectors down to 8, each held until the next coarser silhouette strays half a pixel at 1080 lines |
 | `CgMeshShapes` | Shapes two ways: shared (one mesh per format and size, refusing edits) and writer forms that compose with anything else in a mesh |
 | `CgMeshTopology` | Triangles, strips, lines, points. Still carries GL modes until M5 |
 | `CgMeshData` | The old CPU holder `gl/mesh/CgMesh.upload` takes. Goes with it |

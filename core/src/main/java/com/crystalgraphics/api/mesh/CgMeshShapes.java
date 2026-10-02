@@ -36,6 +36,7 @@ import java.util.function.Consumer;
 public final class CgMeshShapes {
 
     private static final Map<Key, CgMesh> SHARED = new ConcurrentHashMap<>();
+    private static final Map<CgVertexFormat, CgMeshLods> SPHERE_LODS = new ConcurrentHashMap<>();
 
     private record Key(String kind, CgVertexFormat format, int a, int b, float x, float y) {
     }
@@ -89,6 +90,26 @@ public final class CgMeshShapes {
 
     public static CgMesh sphere(CgVertexFormat format, int rings, int sectors) {
         return shared(new Key("sphere", format, rings, sectors, 0f, 0f), m -> sphere(m, rings, sectors, 1f));
+    }
+
+    /**
+     * The sphere of radius 1 at five levels, 128 sectors down to 8, each held down to the screen height at which the
+     * next coarser one's silhouette would stray half a pixel on a screen 1080 pixels tall. Never culls.
+     */
+    public static CgMeshLods sphereLods() {
+        return sphereLods(CgVertexFormat.SPATIAL);
+    }
+
+    public static CgMeshLods sphereLods(CgVertexFormat format) {
+        return SPHERE_LODS.computeIfAbsent(format, f -> {
+            CgMeshLods.Builder lods = CgMeshLods.builder();
+            for (int sectors = 128; sectors >= 8; sectors /= 2) {
+                // A chord across 2*pi/n strays r*(1 - cos(pi/n)) from the circle; r is 540*height pixels at 1080 lines.
+                float height = sectors == 8 ? 0f : (float) (1.0 / (1080.0 * (1.0 - Math.cos(Math.PI / (sectors / 2)))));
+                lods.level(sphere(f, sectors / 2, sectors), height);
+            }
+            return lods.build();
+        });
     }
 
     /** The sphere of radius 1 from an icosahedron subdivided {@code level} times: 20 x 4^level triangles. */
