@@ -2,6 +2,10 @@ package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.mc.v1710.platform.HostView1710;
+import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
+import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
+import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -93,8 +97,18 @@ public class CgRenderHook {
     // 1.7.10 renders into mc.getFramebuffer().framebufferObject, the main FBO.
     @Unique
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
-        HostView1710.capture(mc, partialTicks, stage.host()
-                .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject).view());
+        CgHostFrame frame = stage.host()
+                .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
+        HostView1710.capture(mc, partialTicks, frame.view());
+        if (stage == CgRenderStage.WORLD_OPAQUE) {
+            Environment1710.capture(mc, partialTicks, frame.view(), frame.environment());
+            Textures1710.capture(mc, frame.textures());
+            WorldEvents1710.poll();
+        } else {
+            // The same level render as the opaque pass.
+            frame.environment().set(CgRenderStage.WORLD_OPAQUE.host().environment());
+            frame.textures().set(CgRenderStage.WORLD_OPAQUE.host().textures());
+        }
         stage.fire();
     }
 

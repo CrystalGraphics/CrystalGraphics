@@ -8,18 +8,27 @@ import com.crystalgraphics.mc.legacy.platform.service.ReloadService;
 import com.crystalgraphics.mc.legacy.platform.service.RenderingService;
 import com.crystalgraphics.mc.legacy.platform.service.ResourceService;
 import com.crystalgraphics.mc.legacy.platform.service.SoundService;
+import com.crystalgraphics.mc.legacy.platform.world.EntityQueryLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldQueryLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
+import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
+import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.service.CgWorldSound;
+import net.minecraftforge.common.MinecraftForge;
 
 /**
  * The Forge 1.8–1.12.2 platform bundle: tier 1's LWJGL2 services, the {@link GlStateManagerGLBackend}, and
@@ -32,7 +41,7 @@ import com.crystalgraphics.platform.service.CgSoundService;
  * <ul>
  *   <li>Every service is built on first use and held as its SPI type: they name LWJGL and client classes
  *       a dedicated server does not have, and a field of such a type fails at class load.</li>
- *   <li>The cursor is filled on a client only, for the same reason.</li>
+ *   <li>The cursor and the world slots are filled on a client only, for the same reason.</li>
  * </ul>
  */
 public final class PlatformServiceLegacy implements CgPlatformService {
@@ -53,10 +62,17 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         return instance;
     }
 
-    /** Registers the bundle, and on a client fills the cursor slot. */
+    /** Registers the bundle, and on a client fills the cursor and world slots. */
     public static void register(boolean client) {
         CgPlatform.register(getInstance());
-        if (client) CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+        if (!client) return;
+        CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
+        CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryLegacy());
+        CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryLegacy());
+        CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
+        HostCameraLegacy camera = new HostCameraLegacy();
+        CgPlatform.provide(CgHostCamera.SERVICE, camera);
+        MinecraftForge.EVENT_BUS.register(camera);
     }
 
     @Override public CgGLBackend gl() {
