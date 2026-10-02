@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.neoforge;
 
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.mojang.logging.LogUtils;
@@ -16,6 +17,7 @@ import net.neoforged.bus.api.IEventBus;
 import com.crystalgraphics.mc.shared.FmlSide;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ViewportEvent;
 //? if >=1.20.6 {
 /*import net.neoforged.neoforge.client.event.RenderFrameEvent;
 *///?} else {
@@ -89,12 +91,27 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
             static void register(IEventBus modBus) {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
+                // The camera hooks a shake and an FOV kick are added at (HostCameraModern): game-bus events, but
+                // client-only types, so they live here.
+                NeoForge.EVENT_BUS.addListener(ModBus::onCameraAngles);
+                NeoForge.EVENT_BUS.addListener(ModBus::onFov);
                 // A dev run wraps every GPU texture and the device for validation; ours are the GL ones under them.
                 //? if >=1.21.8 <26.1 {
                 /*LifecycleModern.unwrapWith(
                         texture -> texture instanceof ValidationGpuTexture wrapped ? wrapped.getRealTexture() : texture,
                         device -> device instanceof ValidationGpuDevice wrapped ? wrapped.getRealDevice() : device);
                 *///?}
+            }
+
+            private static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+                event.setYaw(HostCameraModern.yaw(event.getYaw()));
+                event.setPitch(HostCameraModern.pitch(event.getPitch()));
+                event.setRoll(HostCameraModern.roll(event.getRoll()));
+            }
+
+            // A double to 1.21.1 and a float after; HostCameraModern.fov takes either.
+            private static void onFov(ViewportEvent.ComputeFov event) {
+                event.setFOV(HostCameraModern.fov(event.getFOV()));
             }
 
             // NeoForge 21.4 keys every listener by id.
