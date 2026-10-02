@@ -21,6 +21,31 @@ import java.nio.ByteBuffer;
  *       scales to the particles' bounding box.</li>
  * </ul>
  * <p>A quad past the draw's count collapses to a point in the vertex shader.</p>
+ *
+ * <pre>{@code
+ * // in the vertex shader of a particle material (#pragma cg_use particle)
+ * int n = fx_particle_index(cg_Normal.x, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);   // -1 past the count
+ * vec3 centre = origin + CG_PARTICLE_POSITION(max(n, 0));
+ * vec3 world = fx_particle_corner(centre, cg_TexCoord0 * 2.0 - 1.0, vec2(size), angle, right, up);
+ * }</pre>
+ *
+ * <h3>Vertex pulling, not an instanced unit quad</h3>
+ * <p>The GPU does the same work either way: four vertices a particle, each reading its record by index. This
+ * shape wins here because:</p>
+ * <ul>
+ *   <li><b>The world renderer's instancing is already taken.</b> Each {@code CgWorldRenderer} draw is an instance
+ *       with its own object record, so a quad instanced per particle is a draw, a record, a sort key and a cull test per
+ *       particle every frame, copying what the particle buffer already holds. This mesh is one draw and one record per
+ *       {@link #COUNT} particles. A particle {@code CgInstanceKind} would be the graph-native alternative, but that enum
+ *       is closed and not worth opening for this.</li>
+ *   <li><b>Tiny instances underfill the GPU.</b> Vertices are shaded in batches of 32 to 64; a 4-vertex instance leaves
+ *       most of each batch idle on many GPUs, which is why merged geometry or vertex pulling is the usual advice for
+ *       quad-heavy work.</li>
+ *   <li><b>It costs almost nothing.</b> About 70 KB, built once; the price is a cap of {@link #COUNT} a draw, so a
+ *       larger emitter takes several draws.</li>
+ * </ul>
+ * <p>Instancing or an indirect draw becomes the better tool once counts reach tens of thousands, as with a GPU
+ * simulation that decides the count itself.</p>
  */
 public final class CgVfxQuads {
 
