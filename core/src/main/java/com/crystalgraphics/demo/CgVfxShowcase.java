@@ -6,9 +6,12 @@ import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import org.joml.Matrix4f;
+
+import java.util.Arrays;
 
 /**
  * Sixteen spheres, each a different effect drawn by one {@code .shader} -- physically based gold, copper, liquid
@@ -74,20 +77,45 @@ public final class CgVfxShowcase {
     /** Bolts at the shield: seconds in flight, and how many radii out they come from. */
     private static final float BOLT_FLIGHT = 0.45f, BOLT_RANGE = 4.5f;
     /**
-     * The energy wave's loop, relative to the floor point: a muzzle front-left of the grid aiming straight back past it
-     * to a waypoint behind it, where the body bends sharply toward one of two targets far back on either side, fired at
-     * in turn.
+     * The three energy waves, a lane each on a side of the grid, relative to the floor point: each fires outward from
+     * beside the grid, straight to a waypoint, then bends sharply toward one of two targets either side of its lane, in
+     * turn. The Kamehameha and the Final Flash fire back to back, the Galick Gun away behind the grid; their shots are
+     * staggered so their charges and blasts do not land together.
      */
-    private static final float[] WAVE_FROM = {-14f, 2.5f, 10f}, WAVE_AIM = {0f, 0f, -1f}, WAVE_VIA = {-14f, 3f, -12f};
-    private static final float[][] WAVE_TARGETS = {{-40f, 3f, -26f}, {30f, 3f, -24f}};
-    /** Seconds per shot, and how long into it the wave stops firing, so its tail runs out and its blast clears before the next. */
+    private static final Lane[] LANES = {
+            new Lane("kamehameha", CgEnergyWave.kamehameha(), 0f, new float[]{-10f, 2.5f, 0f}, new float[]{-1f, 0f, 0f},
+                    new float[]{-28f, 3f, 0f}, new float[][]{{-40f, 3f, -26f}, {-40f, 3f, 26f}}),
+            new Lane("finalFlash", CgEnergyWave.finalFlash(), 3.3f, new float[]{10f, 2.5f, 0f}, new float[]{1f, 0f, 0f},
+                    new float[]{28f, 3f, 0f}, new float[][]{{40f, 3f, 26f}, {40f, 3f, -26f}}),
+            new Lane("galickGun", CgEnergyWave.galickGun(), 6.6f, new float[]{0f, 2.5f, -10f}, new float[]{0f, 0f, -1f},
+                    new float[]{0f, 3f, -28f}, new float[][]{{-26f, 3f, -40f}, {26f, 3f, -40f}}),
+    };
+    /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
     private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
-    /** The showcase's wave: slower than the default so it is seen growing, and homing hard so it bends sharply. */
-    private static final CgVfxLook WAVE_LOOK = CgEnergyWave.kamehameha().toBuilder()
-            .set(CgEnergyWave.SPEED, 30f)
-            .set(CgEnergyWave.NAVIGATION, 5f)
-            .set(CgEnergyWave.TURN_RATE, 6f)
-            .build();
+
+    /** Where one wave fires from and at, and its look: slower so it is seen growing, harder-homing so it bends sharply. */
+    private static final class Lane {
+
+        final String name;
+        final CgVfxLook look;
+        final float offset;
+        final float[] from, aim, via;
+        final float[][] targets;
+
+        Lane(String name, CgVfxLook base, float offset, float[] from, float[] aim, float[] via, float[][] targets) {
+            this.name = name;
+            this.look = base.toBuilder()
+                    .set(CgEnergyWave.SPEED, 30f)
+                    .set(CgEnergyWave.NAVIGATION, 5f)
+                    .set(CgEnergyWave.TURN_RATE, 6f)
+                    .build();
+            this.offset = offset;
+            this.from = from;
+            this.aim = aim;
+            this.via = via;
+            this.targets = targets;
+        }
+    }
 
     private CgMesh sphere;
     private CgMesh floor;
@@ -98,9 +126,10 @@ public final class CgVfxShowcase {
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
     private final float[] impacts = new float[12];
     private final CgVfxSystem vfx = new CgVfxSystem();
-    private CgEnergyWave wave;
+    /** Each lane's wave and the shot it is on. */
+    private final CgEnergyWave[] waves = new CgEnergyWave[LANES.length];
+    private final int[] shots = filled(LANES.length, -1);
     private double waveX = Double.NaN, waveY, waveZ;
-    private int waveShot = -1;
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
@@ -145,7 +174,7 @@ public final class CgVfxShowcase {
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
                     .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).priority(SPHERES).submit();
         }
-        wave(world, x, y, z, seconds);
+        waves(world, x, y, z, seconds);
     }
 
     /**
@@ -187,8 +216,7 @@ public final class CgVfxShowcase {
     /** Frees the meshes. Call on context teardown. */
     public void delete() {
         vfx.delete();
-        wave = null;
-        waveShot = -1;
+        Arrays.fill(waves, null);
         waveX = Double.NaN;
         if (sphere != null) sphere.delete();
         if (floor != null) floor.delete();
@@ -196,32 +224,53 @@ public final class CgVfxShowcase {
         floor = null;
     }
 
+    private static int[] filled(int length, int value) {
+        int[] array = new int[length];
+        Arrays.fill(array, value);
+        return array;
+    }
+
+    /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
+    public String laneOf(CgVfxEffect effect) {
+        for (Lane lane : LANES) {
+            if (effect.look() == lane.look) return lane.name;
+        }
+        return null;
+    }
+
     /**
-     * The energy wave's loop around the grid at {@code (x, y, z)}: a shot every {@link #WAVE_CYCLE} seconds, alternating
-     * between the two targets, each growing out from the muzzle, bending at the waypoint, holding, then running out into
-     * its target. Starts over
-     * when the grid moves.
+     * Each lane's loop around the grid at {@code (x, y, z)}: a shot every {@link #WAVE_CYCLE} seconds from its offset on,
+     * alternating between its two targets, each charging, growing out, bending at the waypoint, holding, running out and
+     * bursting. Starts over when the grid moves.
      */
-    private void wave(CgWorldRenderer world, double x, double y, double z, float seconds) {
+    private void waves(CgWorldRenderer world, double x, double y, double z, float seconds) {
         if (x != waveX || y != waveY || z != waveZ) {
-            if (wave != null) wave.kill();
-            wave = null;
-            waveShot = -1;
+            for (int k = 0; k < waves.length; k++) {
+                if (waves[k] != null) waves[k].kill();
+                waves[k] = null;
+                shots[k] = -1;
+            }
             waveX = x;
             waveY = y;
             waveZ = z;
         }
-        int shot = (int) Math.floor(seconds / WAVE_CYCLE);
-        if (shot != waveShot) {
-            waveShot = shot;
-            if (wave != null) wave.stop();
-            float[] target = WAVE_TARGETS[shot & 1];
-            wave = vfx.play(new CgEnergyWave(WAVE_LOOK, x + WAVE_FROM[0], y + WAVE_FROM[1], z + WAVE_FROM[2]));
-            wave.aim(WAVE_AIM[0], WAVE_AIM[1], WAVE_AIM[2])
-                    .via(x + WAVE_VIA[0], y + WAVE_VIA[1], z + WAVE_VIA[2])
-                    .target(x + target[0], y + target[1], z + target[2]);
+        for (int k = 0; k < LANES.length; k++) {
+            Lane lane = LANES[k];
+            float t = seconds - lane.offset;
+            if (t < 0f) continue;
+            int shot = (int) Math.floor(t / WAVE_CYCLE);
+            if (shot != shots[k]) {
+                shots[k] = shot;
+                if (waves[k] != null) waves[k].stop();
+                float[] target = lane.targets[shot & 1];
+                CgEnergyWave wave = vfx.play(new CgEnergyWave(lane.look, x + lane.from[0], y + lane.from[1], z + lane.from[2]));
+                wave.aim(lane.aim[0], lane.aim[1], lane.aim[2])
+                        .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
+                        .target(x + target[0], y + target[1], z + target[2]);
+                waves[k] = wave;
+            }
+            if (t - shot * WAVE_CYCLE > WAVE_HOLD) waves[k].stop();
         }
-        if (seconds - shot * WAVE_CYCLE > WAVE_HOLD) wave.stop();
         vfx.update(seconds);
         vfx.submit(world);
     }
