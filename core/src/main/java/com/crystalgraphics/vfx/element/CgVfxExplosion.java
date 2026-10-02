@@ -64,7 +64,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /** Dark debris: heavy and ballistic, it lands, bounces a little, tumbles to a stop and fades. */
     public static final CgVfxEmitter SPECKS = CgVfxEmitter.builder("specks").renderer(CgVfxEmitter.Renderer.QUADS)
-            .capacity(600).burst(0f, 576).shape(3f).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
+            .capacity(820).burst(0f, 800).shape(3f).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
             .life(4f, 6f).size(0.035f, 0.25f, 2.4f).spin(4f, 14f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.25f, 0f))
@@ -76,25 +76,26 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
             .build();
 
     /**
-     * Embers: so light the air decides where they go. Lofted by their heat and the blast's updraft, swirled by turbulence
-     * and carried by the wind, then settling slowly at about 2.5 blocks a second as they cool and dim.
+     * Embers: thrown out fast past the cloud and braked mostly by quadratic drag, so they clear the billows, then held up
+     * by their heat, swirled by turbulence and carried by the wind, sinking to the ground as they cool and dim.
      */
     public static final CgVfxEmitter SPARKLES = CgVfxEmitter.builder("sparkles").renderer(CgVfxEmitter.Renderer.QUADS)
-            .capacity(380).burst(0f, 360).shape(3f).launch(-0.1f, 1f, 0.6f).speed(4f, 12f)
+            .capacity(520).burst(0f, 500).shape(3f).launch(-0.05f, 0.8f, 1.6f).speed(18f, 36f)
             .life(4f, 7f).size(0.1f, 0.5f, 2f).heat(1f)
             .module(new CgVfxModule.Gravity(9.8f))
-            .module(new CgVfxModule.Drag(4f, 0f))
-            .module(new CgVfxModule.Buoyancy(14f, 1f))
-            .module(new CgVfxModule.Turbulence(6f, 0.15f, 0.5f))
+            .module(new CgVfxModule.Drag(1.5f, 0.05f))
+            .module(new CgVfxModule.Buoyancy(11f, 8f))
+            .module(new CgVfxModule.Turbulence(5f, 0.12f, 0.5f))
             .module(new CgVfxModule.Wind(1f))
-            .module(new CgVfxModule.Updraft(10f, 6f, 14f, 2.5f))
+            .module(new CgVfxModule.Updraft(6f, 5f, 12f, 2f))
+            .module(new CgVfxModule.Ground(0.2f, 0.7f, 0.6f))
             .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.LINEAR).to(0.6f, 1f, CgEasings.LINEAR)
                     .to(1f, 0f, CgEasings.OUT_QUAD).build())
             .build();
 
     /** Ink streaks of the shock: strokes fly out fast from the dome's edge, braked by the air, thinning to nothing. */
     public static final CgVfxEmitter INK = CgVfxEmitter.builder("ink").renderer(CgVfxEmitter.Renderer.ARCS)
-            .capacity(24).rate(25f, 0f, 0.8f).shape(6f).launch(-0.2f, 1f, 0.8f).speed(30f, 45f)
+            .capacity(34).rate(36f, 0f, 0.8f).shape(6f).launch(-0.2f, 1f, 0.8f).speed(30f, 45f)
             .life(0.6f, 1.1f).size(0.25f, 0.45f, 1f)
             .module(new CgVfxModule.Drag(0f, 0.08f))
             .size(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build())
