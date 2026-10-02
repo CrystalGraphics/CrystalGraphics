@@ -55,6 +55,10 @@ and binds no texture made for one frame. A snapshot holds a texture view as what
 kept record's target -- an atlas grown or evicted -- must void the stretch: the caller's epoch. `differs` compares two
 stretches but for what replay renumbers, which is the check mode.
 
+**Damage** (G7.3): `CgRasterPass.damage(x, y, w, h)` limits a pass into a target that keeps its contents -- a window's
+surface -- to what changed: the executor clears and scissors every draw to the rect, and skips a pass whose rect is
+empty (`graph.passes.undamaged`). The rect is the target's bottom-left pixels; executing the pass again is idempotent.
+
 ## Rules
 
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'

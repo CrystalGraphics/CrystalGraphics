@@ -36,6 +36,8 @@ import java.util.List;
  *       record under a spatial node is placed through. Records at node 0 are already in the target's space.</li>
  *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
  *       fixed unit, as a world pass binds the scene's depth.</li>
+ *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
+ *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
  * </ul>
  */
 public final class CgRasterPass extends CgPass {
@@ -48,6 +50,10 @@ public final class CgRasterPass extends CgPass {
     final CgOrder order;
     private final List<CgDrawChunk> chunks = new ArrayList<>();
     private boolean ended;
+    /** What changed in the target, in its bottom-left pixels -- x, y, width, height -- or null for all of it. */
+    @Nullable
+    private int[] damage;
+
 
     /** A chunk's scissor: an index into {@link #scissorRects}, {@link #NO_SCISSOR}, or {@link #INHERIT}. */
     static final int NO_SCISSOR = -1, INHERIT = -2;
@@ -145,6 +151,28 @@ public final class CgRasterPass extends CgPass {
      * {@code owner}: a layer whose content was recorded under {@code owner} and is composited back through it. A
      * pass with no view is the root's own target, at the origin.
      */
+    /**
+     * Executes only what lies in {@code (x, y, width, height)}, the target's bottom-left pixels: the clear and every
+     * draw cut to it, the rest of the target kept as it was -- a surface whose window changed in one place. An empty
+     * rect executes nothing. May be set after {@link #end}, until the recording is sealed.
+     *
+     * <pre>{@code
+     * pass.end();
+     * pass.damage(x, y, w, h);     // a caret blinked: 2 x 18 pixels of a window drawn again
+     * }</pre>
+     */
+    public CgRasterPass damage(int x, int y, int width, int height) {
+        recording.requireOpen();
+        damage = new int[] {x, y, Math.max(0, width), Math.max(0, height)};
+        return this;
+    }
+
+    /** The rect {@link #damage} limits the pass to, x, y, width, height; null when it draws the whole target. */
+    @Nullable
+    public int[] damage() {
+        return damage;
+    }
+
     public CgRasterPass view(int owner, float originX, float originY) {
         viewOwner = owner;
         viewX = originX;

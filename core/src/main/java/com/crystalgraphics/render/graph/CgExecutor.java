@@ -21,6 +21,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -100,7 +101,8 @@ public final class CgExecutor {
     /**
      * Executes {@code frame} again, after {@link #execute(CgFrame)}: what its passes read as it stands now -- property
      * values, a texture -- with its uploads, compiles and releases not repeated. With {@code keepRequested}, every pass
-     * that writes a requested texture is skipped too, leaving it as the last execution did. Render thread, inside a
+     * that writes a requested texture is skipped too, leaving it as the last execution did; without it, a pass
+     * {@linkplain CgRasterPass#damage limited to its damage} draws whole, since the values may move what it drew. Render thread, inside a
      * frame; GL state restored after.
      *
      * <pre>{@code
@@ -112,10 +114,12 @@ public final class CgExecutor {
     public static void executeAgain(CgFrame frame, boolean keepRequested) {
         if (frame.executions == 0) throw new IllegalStateException("executeAgain before the frame's first execution");
         frame.keepRequested = keepRequested;
+        frame.wholePasses = !keepRequested;
         try {
             execute(frame, true);
         } finally {
             frame.keepRequested = false;
+            frame.wholePasses = false;
         }
     }
 
@@ -206,10 +210,26 @@ public final class CgExecutor {
     }
 
     private void raster(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed) {
+        int[] damage = frame.wholePasses ? null : pass.damage();
+        raster(frame, pass, packed, damage);
+    }
+
+    private void raster(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
+        if (damage != null && (damage[2] == 0 || damage[3] == 0)) {
+            // NOTHING CHANGED IN IT: the target keeps what the last execution left.
+            CgTrace.add(CgChannels.GL, "graph.passes.undamaged", 1);
+            return;
+        }
+        if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
         bindTarget(pass.target);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
-            CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+            if (damage == null) {
+                CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+            } else {
+                CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
+                CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
+            }
             CgGL.glColorMask(true, true, true, true);
             CgGL.glClearColor(load.r(), load.g(), load.b(), load.a());
             if ((load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
@@ -229,15 +249,22 @@ public final class CgExecutor {
         }
 
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
+        if (damage != null) {
+            // Every draw cut to the damage, with or without a scissor of its own.
+            CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
+            CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
+        }
         CgPipeline pipeline = null;
         boolean usable = false;
         for (int b = 0; b < packed.count; b++) {
             if (packed.scissor[b] != boundScissor) {
                 boundScissor = packed.scissor[b];
                 if (boundScissor == CgRasterPass.NO_SCISSOR) {
-                    CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+                    if (damage == null) CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+                    else CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
                 } else if (boundScissor >= 0) {
                     scissorRect(pass, packed.palette, boundScissor);
+                    if (damage != null) cutToDamage(damage);
                     CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
                     CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
                 }
@@ -261,6 +288,17 @@ public final class CgExecutor {
             CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgInstanceGeometry.unitQuad();
             mesh.drawInstanced(packed.instances[b]);
         }
+    }
+
+    /** {@link #scissorRect} cut by a pass's damage. */
+    private void cutToDamage(int[] damage) {
+        int x0 = Math.max(scissorRect[0], damage[0]), y0 = Math.max(scissorRect[1], damage[1]);
+        int x1 = Math.min(scissorRect[0] + scissorRect[2], damage[0] + damage[2]);
+        int y1 = Math.min(scissorRect[1] + scissorRect[3], damage[1] + damage[3]);
+        scissorRect[0] = x0;
+        scissorRect[1] = y0;
+        scissorRect[2] = Math.max(0, x1 - x0);
+        scissorRect[3] = Math.max(0, y1 - y0);
     }
 
     /** Scissor {@code index} and every one it is inside, cut together, into {@link #scissorRect}. */

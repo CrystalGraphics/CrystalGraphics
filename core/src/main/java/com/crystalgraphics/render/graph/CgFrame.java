@@ -51,6 +51,8 @@ public final class CgFrame {
     int executions;
     /** Set for one {@link CgExecutor#executeAgain}: passes writing a requested texture are skipped. */
     boolean keepRequested;
+    /** Executing again with values that may have moved what a damaged pass drew: every pass draws whole. */
+    boolean wholePasses;
     /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
     private final List<CgClipTable> clipPool = new ArrayList<>();

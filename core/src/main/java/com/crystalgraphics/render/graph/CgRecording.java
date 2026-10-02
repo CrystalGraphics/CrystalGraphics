@@ -184,6 +184,11 @@ public final class CgRecording {
         return passes.size();
     }
 
+    /** The pass or request made {@code index}-th, counting as {@link #operations} does. */
+    public CgPass pass(int index) {
+        return passes.get(index);
+    }
+
     /** Freezes it: every raster pass must have ended. Answers itself, for {@code graph.add(rec.seal())}. */
     public CgRecording seal() {
         if (sealed) return this;
@@ -224,10 +229,6 @@ public final class CgRecording {
 
     int passCount() {
         return passes.size();
-    }
-
-    CgPass pass(int index) {
-        return passes.get(index);
     }
 
     int eventCount() {
