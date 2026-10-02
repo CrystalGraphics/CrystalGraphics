@@ -15,9 +15,16 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.level.LightLayer;
-//? if <26.1 {
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
-//?}
+//? if >=26.1 {
+/*import net.minecraft.client.color.block.BlockTintSource;
+*///?}
+//? if >=1.21.11 {
+/*import net.minecraft.world.attribute.EnvironmentAttributes;
+*///?}
+//? if >=26.3 {
+/*import org.joml.Vector3fc;
+*///?}
 
 import java.util.List;
 
@@ -29,8 +36,8 @@ import java.util.List;
  * <ul>
  *   <li>1.13.2 has no sound type, light listener, fluid height or biome colours under these names: it answers
  *       {@code SURFACE_OTHER}, block brightness, a source block's height and 0.</li>
- *   <li>Fog, sky and water-fog colours come from the biome on 1.16.5 to 1.21.10; 1.21.11 moved them into environment
- *       attributes (plan vfx-world W3) and they answer 0 until then. So do the tint and the particle sprite on 26.x.</li>
+ *   <li>Fog, sky and water-fog colours come from the biome on 1.16.5 to 1.21.10 and from environment attributes from
+ *       1.21.11; the tint from the block's tint source and the sprite from the block-state model set on 26.x.</li>
  * </ul>
  */
 public final class WorldQueryModern implements CgWorldQuery {
@@ -181,7 +188,10 @@ public final class WorldQueryModern implements CgWorldQuery {
         if (level == null) return 0;
         BlockState state = state(level, x, y, z);
         //? if >=26.1 {
-        /*return 0;
+        /*BlockTintSource source = Minecraft.getInstance().getBlockColors().getTintSource(state, 0);
+        if (source == null) return 0;
+        int c = source.colorInWorld(state, Minecraft.getInstance().level, pos);
+        return c == -1 ? 0 : 0xFF000000 | c;
         *///?} elif >=1.14 {
         int c = Minecraft.getInstance().getBlockColors().getColor(state, level, pos, 0);
         return c == -1 ? 0 : 0xFF000000 | c;
@@ -205,7 +215,22 @@ public final class WorldQueryModern implements CgWorldQuery {
             default: break;
         }
         //?}
-        //? if >=1.16.5 <1.21.11 {
+        //? if >=26.3 {
+        /*switch (kind) {
+            case BIOME_FOG: return argb(level.environmentAttributes().getValue(EnvironmentAttributes.FOG_COLOR, pos));
+            case BIOME_SKY: return argb(level.environmentAttributes().getValue(EnvironmentAttributes.SKY_COLOR, pos));
+            case BIOME_WATER_FOG: return argb(level.environmentAttributes().getValue(EnvironmentAttributes.WATER_FOG_COLOR, pos));
+            default: break;
+        }
+        *///?} elif >=1.21.11 {
+        /*switch (kind) {
+            case BIOME_FOG: return 0xFF000000 | level.environmentAttributes().getValue(EnvironmentAttributes.FOG_COLOR, pos);
+            case BIOME_SKY: return 0xFF000000 | level.environmentAttributes().getValue(EnvironmentAttributes.SKY_COLOR, pos);
+            case BIOME_WATER_FOG:
+                return 0xFF000000 | level.environmentAttributes().getValue(EnvironmentAttributes.WATER_FOG_COLOR, pos);
+            default: break;
+        }
+        *///?} elif >=1.16.5 {
         Biome biome = biome(level);
         switch (kind) {
             case BIOME_FOG: return 0xFF000000 | biome.getFogColor();
@@ -216,6 +241,13 @@ public final class WorldQueryModern implements CgWorldQuery {
         //?}
         return 0;
     }
+
+    //? if >=26.3 {
+    /*// An RGB colour, 0 to 1 a channel, as ARGB with alpha 255: 26.3's colour attributes.
+    private static int argb(Vector3fc c) {
+        return 0xFF000000 | Math.round(c.x() * 255f) << 16 | Math.round(c.y() * 255f) << 8 | Math.round(c.z() * 255f);
+    }
+    *///?}
 
     @Override
     public int precipitation(int x, int y, int z) {
@@ -254,21 +286,22 @@ public final class WorldQueryModern implements CgWorldQuery {
 
     @Override
     public boolean spriteRect(int x, int y, int z, float[] out) {
-        //? if <26.1 {
         Level level = level();
         if (level == null) return false;
         BlockState state = state(level, x, y, z);
         if (state.isAir()) return false;
+        //? if >=26.1 {
+        /*TextureAtlasSprite sprite = Minecraft.getInstance().getModelManager().getBlockStateModelSet()
+                .getParticleMaterial(state).sprite();
+        *///?} else {
         TextureAtlasSprite sprite = Minecraft.getInstance().getBlockRenderer().getBlockModelShaper().getParticleIcon(state);
+        //?}
         if (sprite == null) return false;
         out[0] = sprite.getU0();
         out[1] = sprite.getV0();
         out[2] = sprite.getU1();
         out[3] = sprite.getV1();
         return true;
-        //?} else {
-        /*return false;
-        *///?}
     }
 
     @Override

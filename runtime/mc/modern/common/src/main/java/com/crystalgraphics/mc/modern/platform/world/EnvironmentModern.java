@@ -1,11 +1,19 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.stage.CgHostView;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffects;
-import org.joml.Matrix4fc;
+//? if >=26.3 {
+/*import org.joml.Vector3fc;
+*///?}
+//? if >=1.21.11 {
+/*import net.minecraft.client.GraphicsPreset;
+import net.minecraft.world.attribute.EnvironmentAttributeSystem;
+import net.minecraft.world.attribute.EnvironmentAttributes;
+*///?}
 //? if >=1.15 {
 import net.minecraft.client.multiplayer.ClientLevel;
 //?} else {
@@ -17,15 +25,13 @@ import net.minecraft.client.renderer.GameRenderer;
 //? if >=1.17 <1.21.3 {
 import com.mojang.blaze3d.systems.RenderSystem;
 //?}
-//? if >=1.17 <26.2 {
+//? if >=1.17 {
 import net.minecraft.world.level.material.FogType;
 //?} elif >=1.14 <1.17 {
 /*import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 *///?}
-//? if >=1.16.5 <1.21.3 {
 import net.minecraft.world.phys.Vec3;
-//?}
 
 /**
  * Minecraft's world facts at the world stages, read where each version keeps them, into the stage's
@@ -33,9 +39,11 @@ import net.minecraft.world.phys.Vec3;
  * sky colour is a {@code Vec3} Minecraft makes, before 1.21.3).
  *
  * <ul>
- *   <li>1.21.11 moved the sun, sky, time and graphics into environment attributes and its clocks: those groups stay
- *       absent there until plan vfx-world W3. The moon's phase too, everywhere for now.</li>
- *   <li>Fog is readable 1.17.1 to 1.21.1 only; dimension facts from 1.16.5; the camera's fluid to 26.1.</li>
+ *   <li>From 1.21.11 the sun, moon, stars, sky, clouds, fog and the water-evaporating rule are environment attributes,
+ *       sampled at the camera; day time is the default clock on 26.x. Fog is readable 1.17.1 to 1.21.1 and from
+ *       1.21.11 (the attributes', without the player's effects), absent between.</li>
+ *   <li>The lightning flash has no reader from 1.21.11, nor the hidden HUD from 26.2: both stay absent there. The moon's
+ *       phase starts at 1.16.5; dimension facts too.</li>
  * </ul>
  */
 public final class EnvironmentModern {
@@ -43,7 +51,7 @@ public final class EnvironmentModern {
     private EnvironmentModern() {
     }
 
-    public static void capture(Minecraft mc, float partialTick, Matrix4fc projection, CgHostEnvironment out) {
+    public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
         out.clear();
         //? if >=1.15 {
         ClientLevel level = mc.level;
@@ -53,10 +61,21 @@ public final class EnvironmentModern {
         if (level == null) return;
         Options options = mc.options;
 
-        //? if <1.21.11 {
-        out.sun(level.getSunAngle(partialTick) / (float) (Math.PI * 2.0), -1, level.getStarBrightness(partialTick),
+        //? if >=1.21.11 {
+        /*EnvironmentAttributeSystem attributes = level.environmentAttributes();
+        Vec3 eye = new Vec3(view.x(), view.y(), view.z());
+        // Minecraft turns the sky by the sun's angle in degrees, 0 at noon, as it once turned it by the time of day.
+        out.sun(attributes.getValue(EnvironmentAttributes.SUN_ANGLE, eye) / 360f,
+                attributes.getValue(EnvironmentAttributes.MOON_PHASE, eye).index(),
+                attributes.getValue(EnvironmentAttributes.STAR_BRIGHTNESS, eye),
+                attributes.getValue(EnvironmentAttributes.SKY_LIGHT_FACTOR, eye));
+        *///?} elif >=1.16.5 {
+        out.sun(level.getSunAngle(partialTick) / (float) (Math.PI * 2.0), level.dimensionType().moonPhase(level.getDayTime()),
+                level.getStarBrightness(partialTick), level.getSkyDarken(partialTick));
+        //?} else {
+        /*out.sun(level.getSunAngle(partialTick) / (float) (Math.PI * 2.0), -1, level.getStarBrightness(partialTick),
                 level.getSkyDarken(partialTick));
-        //?}
+        *///?}
         //? if >=1.15 <1.21.11 {
         float flash = level.getSkyFlashTime() > 0 ? 1f : 0f;
         //?} else {
@@ -69,13 +88,27 @@ public final class EnvironmentModern {
         //?} else {
         /*boolean hasSky = false, hasCeiling = false;
         *///?}
-        //? if >=1.16.5 <1.21.11 {
+        //? if >=1.21.11 {
+        /*boolean ultraWarm = attributes.getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES);
+        *///?} elif >=1.16.5 {
         boolean ultraWarm = level.dimensionType().ultraWarm();
         //?} else {
         /*boolean ultraWarm = false;
         *///?}
         float red = Float.NaN, green = Float.NaN, blue = Float.NaN, clouds = Float.NaN;
-        //? if >=1.21.3 <1.21.11 {
+        //? if >=26.3 {
+        /*Vector3fc sky = attributes.getValue(EnvironmentAttributes.SKY_COLOR, eye);
+        red = sky.x();
+        green = sky.y();
+        blue = sky.z();
+        clouds = attributes.getValue(EnvironmentAttributes.CLOUD_HEIGHT, eye);
+        *///?} elif >=1.21.11 {
+        /*int sky = attributes.getValue(EnvironmentAttributes.SKY_COLOR, eye);
+        red = (sky >> 16 & 0xFF) / 255f;
+        green = (sky >> 8 & 0xFF) / 255f;
+        blue = (sky & 0xFF) / 255f;
+        clouds = attributes.getValue(EnvironmentAttributes.CLOUD_HEIGHT, eye);
+        *///?} elif >=1.21.3 {
         /*int sky = level.getSkyColor(mc.gameRenderer.getMainCamera().getPosition(), partialTick);
         red = (sky >> 16 & 0xFF) / 255f;
         green = (sky >> 8 & 0xFF) / 255f;
@@ -93,15 +126,26 @@ public final class EnvironmentModern {
         *///?}
         //? if >=1.16.5 <1.21.6 {
         clouds = level.effects().getCloudHeight();
-        //?}
+        //?} elif >=1.21.6 <1.21.11 {
+        /*if (level.dimensionType().cloudHeight().isPresent()) clouds = level.dimensionType().cloudHeight().get();
+        *///?}
         out.sky(hasSky, hasCeiling, ultraWarm, red, green, blue, clouds);
 
         //? if >=1.17 <1.21.3 {
         float[] fog = RenderSystem.getShaderFogColor();
         out.fog(fog[0], fog[1], fog[2], RenderSystem.getShaderFogStart(), RenderSystem.getShaderFogEnd());
-        //?}
+        //?} elif >=26.3 {
+        /*Vector3fc fog = attributes.getValue(EnvironmentAttributes.FOG_COLOR, eye);
+        out.fog(fog.x(), fog.y(), fog.z(), attributes.getValue(EnvironmentAttributes.FOG_START_DISTANCE, eye),
+                attributes.getValue(EnvironmentAttributes.FOG_END_DISTANCE, eye));
+        *///?} elif >=1.21.11 {
+        /*int fog = attributes.getValue(EnvironmentAttributes.FOG_COLOR, eye);
+        out.fog((fog >> 16 & 0xFF) / 255f, (fog >> 8 & 0xFF) / 255f, (fog & 0xFF) / 255f,
+                attributes.getValue(EnvironmentAttributes.FOG_START_DISTANCE, eye),
+                attributes.getValue(EnvironmentAttributes.FOG_END_DISTANCE, eye));
+        *///?}
 
-        out.camera(cameraFluid(mc), perspective(options), (float) Math.toDegrees(2.0 * Math.atan(1.0 / projection.m11())),
+        out.camera(cameraFluid(mc), perspective(options), (float) Math.toDegrees(2.0 * Math.atan(1.0 / view.projection().m11())),
                 renderDistance(options), guiHidden(options));
 
         LocalPlayer player = mc.player;
@@ -126,11 +170,12 @@ public final class EnvironmentModern {
 
         settings(options, out);
 
-        //? if <1.21.11 {
-        long gameTime = level.getGameTime(), dayTime = level.getDayTime();
-        //?} else {
-        /*long gameTime = -1L, dayTime = -1L;
-        *///?}
+        long gameTime = level.getLevelData().getGameTime();
+        //? if >=26.1 {
+        /*long dayTime = level.getDefaultClockTime();
+        *///?} else {
+        long dayTime = level.getLevelData().getDayTime();
+        //?}
         //? if >=1.20.3 {
         /*float tickRate = level.tickRateManager().tickrate();
         boolean frozen = level.tickRateManager().isFrozen();
@@ -142,8 +187,12 @@ public final class EnvironmentModern {
     }
 
     private static int cameraFluid(Minecraft mc) {
-        //? if >=1.17 <26.2 {
+        //? if >=26.2 {
+        /*FogType type = mc.gameRenderer.mainCamera().getFluidInCamera();
+        *///?} elif >=1.17 {
         FogType type = mc.gameRenderer.getMainCamera().getFluidInCamera();
+        //?}
+        //? if >=1.17 {
         if (type == FogType.WATER) return CgHostEnvironment.FLUID_WATER;
         if (type == FogType.LAVA) return CgHostEnvironment.FLUID_LAVA;
         if (type == FogType.POWDER_SNOW) return CgHostEnvironment.FLUID_POWDER_SNOW;
@@ -197,14 +246,17 @@ public final class EnvironmentModern {
         /*int particles = options.particles;
         float screen = Float.NaN, fov = Float.NaN;
         *///?}
-        //? if >=1.19 <1.21.11 {
+        //? if >=1.21.11 {
+        /*GraphicsPreset preset = options.graphicsPreset().get();
+        int graphics = preset == GraphicsPreset.FAST ? CgHostEnvironment.GRAPHICS_FAST
+                : preset == GraphicsPreset.FANCY ? CgHostEnvironment.GRAPHICS_FANCY
+                : preset == GraphicsPreset.FABULOUS ? CgHostEnvironment.GRAPHICS_FABULOUS : -1;
+        *///?} elif >=1.19 {
         int graphics = ((Enum<?>) options.graphicsMode().get()).ordinal();
         //?} elif >=1.16.5 <1.19 {
         /*int graphics = options.graphicsMode.ordinal();
-        *///?} elif <1.16.5 {
-        /*int graphics = options.fancyGraphics ? CgHostEnvironment.GRAPHICS_FANCY : CgHostEnvironment.GRAPHICS_FAST;
         *///?} else {
-        /*int graphics = -1;
+        /*int graphics = options.fancyGraphics ? CgHostEnvironment.GRAPHICS_FANCY : CgHostEnvironment.GRAPHICS_FAST;
         *///?}
         out.settings(particles, graphics, screen, fov);
     }
