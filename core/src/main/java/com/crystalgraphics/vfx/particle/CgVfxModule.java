@@ -151,18 +151,20 @@ public sealed interface CgVfxModule {
     }
 
     /**
-     * A floor at the instance's ground height: a particle reaching it bounces back up at {@code restitution} of its
-     * speed, loses {@code friction} of its sliding speed, and comes to rest once slower than {@code rest} blocks a
-     * second. Runs after the solver.
+     * The ground: the host world's surface under each particle (the instance's {@link CgVfxGround}), or its fixed
+     * height where there is no world. A particle reaching it bounces back up at {@code restitution} of its speed, loses
+     * {@code friction} of its sliding speed, and comes to rest once slower than {@code rest} blocks a second. Runs after
+     * the solver.
      */
     record Ground(float restitution, float friction, float rest) implements CgVfxModule {
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
-            float floor = emitter.groundY();
-            if (Float.isNaN(floor)) return;
+            if (!emitter.hasGround()) return;
             CgVfxParticleSet p = emitter.particles();
             for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f || p.y[i] > floor) continue;
+                if (p.resting[i] != 0f) continue;
+                float floor = emitter.floorUnder(i);
+                if (Float.isNaN(floor) || p.y[i] > floor) continue;
                 p.y[i] = floor;
                 if (p.vy[i] < 0f) p.vy[i] = -p.vy[i] * restitution;
                 p.vx[i] *= 1f - friction;

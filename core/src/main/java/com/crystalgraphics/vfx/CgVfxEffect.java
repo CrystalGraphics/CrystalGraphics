@@ -115,7 +115,10 @@ public abstract class CgVfxEffect {
         return this;
     }
 
-    /** Where its particles land, as a world height; NaN, the default, for no ground. */
+    /**
+     * Where its particles land where the host has no world (the harness), as a world height; NaN, the default, for no
+     * ground. In a world they land on its own surfaces ({@code CgVfxGround}).
+     */
     public final CgVfxEffect ground(double worldY) {
         groundY = worldY;
         return this;

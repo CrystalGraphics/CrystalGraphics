@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import org.joml.Matrix4f;
@@ -260,6 +261,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final Matrix4f placed = new Matrix4f();
     /** The blast's emitters, one per emitter of the look, started when it bursts. */
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
+    /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
+    private CgVfxGround blastGround;
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -357,6 +360,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             startBlast();
         }
         boolean emitted = true;
+        if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
         for (int i = 0; i < blast.size(); i++) {
             tick(blast.get(i), dt);
             emitted &= blast.get(i).finished();
@@ -367,13 +371,14 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (ending) die();
     }
 
-    /** Starts every emitter of the look at the target, each from its own seed. */
+    /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
     private void startBlast() {
         List<CgVfxEmitter> emitters = look().emitters();
+        blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
         for (int i = 0; i < emitters.size(); i++) {
             CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
-            emitter.ground(groundHeight());
+            emitter.ground(groundHeight()).ground(blastGround);
             blast.add(emitter);
         }
     }

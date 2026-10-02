@@ -31,6 +31,7 @@ public final class CgVfxEmitterInstance {
     private final float[] scratch = new float[3];
     private CgVfxAir air;
     private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
+    private CgVfxGround field;
     private double originX, originY, originZ;
     private int spawned, burstsDone;
     private float rateOwed;
@@ -53,10 +54,30 @@ public final class CgVfxEmitterInstance {
         particles.clear();
     }
 
-    /** The height of the ground, relative to the effect's origin, for {@link CgVfxModule.Ground}; NaN for none. */
+    /**
+     * The height of the ground, relative to the effect's origin, for {@link CgVfxModule.Ground}; NaN for none. With a
+     * {@link CgVfxGround} as well, only where the host has no level.
+     */
     public CgVfxEmitterInstance ground(float y) {
         groundY = y;
         return this;
+    }
+
+    /** The host world's surfaces around the burst, shared by its emitters; null for the fixed height alone. */
+    public CgVfxEmitterInstance ground(CgVfxGround field) {
+        this.field = field;
+        return this;
+    }
+
+    /** Whether {@link CgVfxModule.Ground} has anything to land particles on. */
+    boolean hasGround() {
+        return field != null || !Float.isNaN(groundY);
+    }
+
+    /** The floor under particle {@code i}, relative to the effect's origin, or NaN for none. */
+    float floorUnder(int i) {
+        CgVfxParticleSet p = particles;
+        return field == null ? groundY : field.floor(p.x[i], p.y[i], p.py[i], p.z[i], groundY);
     }
 
     /** Spawns what is due, runs the module stack, solves and ages: one step of {@code dt} seconds. */
