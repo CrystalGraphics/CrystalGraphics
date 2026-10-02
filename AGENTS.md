@@ -1,10 +1,10 @@
 # CrystalGraphics — Agent Knowledge Base
 
-**What**: a modern rendering engine for Minecraft mods — materials, meshes, framebuffers, instancing and
-text — designed for Vulkan and running on OpenGL wherever Vulkan is not the backend, shipped as **one jar** for
-Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and Fabric 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of
-every engine module. **The parent of** CrystalGUI, which builds every node against this repository's node of the
-same version.
+**What**: a modern rendering engine — materials, meshes, framebuffers, instancing and text — designed for Vulkan
+and running on OpenGL wherever Vulkan is not the backend. It runs in any application that hosts it (the GL debug
+harness is one), and also inside Minecraft: **one jar** for Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and Fabric
+1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent of** CrystalGUI, which
+builds every Minecraft node against this repository's node of the same version.
 
 > **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
 > supports — Unity's Shader Graph, true to GLSL, on a modern GL 3.x+ pipeline with instancing as the
