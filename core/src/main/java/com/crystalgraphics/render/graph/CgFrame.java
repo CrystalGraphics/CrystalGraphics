@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;

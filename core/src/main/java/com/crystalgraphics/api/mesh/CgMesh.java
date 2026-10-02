@@ -12,6 +12,7 @@ import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 
 /**
  * Geometry as data: vertices in one {@link CgVertexFormat}, indices, submeshes and bounds, kept on the CPU. A renderer
@@ -56,7 +57,7 @@ import java.util.function.Consumer;
  *       by it, and the contents change in one step when it returns.</li>
  * </ul>
  */
-public final class CgMesh {
+public final class CgMesh implements CgMeshSource {
 
     /** How long a mesh's geometry lives, which decides where its GPU copy goes. */
     public enum Usage {
@@ -99,7 +100,8 @@ public final class CgMesh {
     private final int[] logRevision = new int[LOG], logRanges = new int[LOG * 4];
     private final boolean[] logAll = new boolean[LOG];
 
-    private boolean released;
+    private volatile int releases;
+    private boolean noBounds;
     private CgMeshWriter idleWriter;
 
     private static final BiConsumer<CgMeshWriter, Consumer<CgMeshWriter>> ACCEPT = (w, body) -> body.accept(w);
@@ -168,7 +170,7 @@ public final class CgMesh {
                 submeshCount = 1;
             }
             System.arraycopy(w.bounds, 0, computed, 0, 6);
-            computedStale = false;
+            computedStale = !w.anyPosition;
             w.vertices = oldVertices.length > 0 ? oldVertices : new byte[Math.max(stride, 1) * 16];
             w.indices = oldIndices.length > 0 ? oldIndices : new int[48];
             idleWriter = w;
@@ -275,11 +277,11 @@ public final class CgMesh {
 
     /**
      * Frees the GPU copy once no frame in flight reads it. The mesh keeps its data; drawing it again places it
-     * again, which clears {@link #isReleased()}.
+     * again.
      */
-    public synchronized void release() {
+    public void release() {
         if (shared) throw new IllegalStateException("a shared shape is never released");
-        released = true;
+        releases++;
     }
 
     private void requireEditable() {
@@ -312,9 +314,14 @@ public final class CgMesh {
         return shared;
     }
 
-    /** Release was asked since the mesh was last placed on the GPU. */
-    public synchronized boolean isReleased() {
-        return released;
+    /** How many times {@link #release()} was asked: a renderer frees its copy when this moves. */
+    public int releases() {
+        return releases;
+    }
+
+    @Override
+    public CgMesh mesh() {
+        return this;
     }
 
     public synchronized CgMeshTopology topology() {
@@ -363,11 +370,16 @@ public final class CgMesh {
         return out;
     }
 
-    /** The bounds, padded, into {@code out} as min x, y, z then max x, y, z. Zero for a mesh with no positions. */
+    /**
+     * The bounds, padded, into {@code out} as min x, y, z then max x, y, z; zero for a mesh with no vertices. Null
+     * when there are none to give: positions that are not floats, or none, and no bounds stated.
+     */
+    @Nullable
     public synchronized float[] bounds(float[] out) {
         float[] b = declared;
         if (!hasDeclared) {
             if (computedStale) computeBounds();
+            if (noBounds) return null;
             b = computed;
         }
         for (int i = 0; i < 3; i++) {
@@ -380,6 +392,7 @@ public final class CgMesh {
     /** Bounds from the position bytes, after a raw {@link #writeVertices} write. */
     private void computeBounds() {
         computedStale = false;
+        noBounds = false;
         Arrays.fill(computed, 0f);
         int position = -1;
         for (int i = 0; i < format.getAttributeCount(); i++) {
@@ -388,11 +401,9 @@ public final class CgMesh {
                 break;
             }
         }
-        if (position < 0 || vertexCount == 0) return;
+        noBounds = position < 0 || format.getAttribute(position).getType() != CgAttribType.FLOAT;
+        if (noBounds || vertexCount == 0) return;
         CgVertexAttribute a = format.getAttribute(position);
-        if (a.getType() != CgAttribType.FLOAT) {
-            throw new IllegalStateException("bounds from " + a.getType() + " positions: state them with bounds(...)");
-        }
         ByteBuffer v = ByteBuffer.wrap(vertices).order(ByteOrder.nativeOrder());
         int components = a.getComponents();
         for (int i = 0; i < vertexCount; i++) {
@@ -419,6 +430,17 @@ public final class CgMesh {
             throw new IndexOutOfBoundsException("indices " + firstIndex + "+" + count + " of " + indexCount);
         }
         System.arraycopy(indices, firstIndex, dst, at, count);
+    }
+
+    /** Copies {@code count} indices from {@code firstIndex} into {@code dst} as native-order ints, advancing it. */
+    public synchronized void readIndices(int firstIndex, int count, ByteBuffer dst) {
+        if (firstIndex < 0 || count < 0 || firstIndex + count > indexCount) {
+            throw new IndexOutOfBoundsException("indices " + firstIndex + "+" + count + " of " + indexCount);
+        }
+        ByteOrder order = dst.order();
+        dst.order(ByteOrder.nativeOrder());
+        for (int i = firstIndex; i < firstIndex + count; i++) dst.putInt(indices[i]);
+        dst.order(order);
     }
 
     /**

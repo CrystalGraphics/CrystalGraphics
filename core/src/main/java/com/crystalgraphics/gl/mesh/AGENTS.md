@@ -16,7 +16,7 @@ immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`)
 | `CgObjLoader` | Loads OBJ files via `de.javagl:obj`. Uses `ObjUtils.convertToRenderable()` for triangulation + single-indexing. Packs vertices via `CgVertexWriter.forBuffer()`. `load(InputStream, format)` → one `CgMeshData`; `loadAll(...)` → list (currently single-group). |
 | `CgGltfLoader` | Loads glTF/GLB files via `de.javagl:jgltf-model`. Rejects skinned meshes (JOINTS_0 / WEIGHTS_0). Extracts POSITION, TEXCOORD_0, NORMAL accessors. Packs via `CgVertexWriter.forBuffer()`. `loadFirstPrimitive(stream, format)` and `loadPrimitive(stream, meshIdx, primIdx, format)`. |
 | `CgMeshLoader` | Unified facade. `load(resourcePath, format)` auto-detects `.obj` vs `.gltf`/`.glb` by extension. `loadObj()` / `loadGltf()` for explicit dispatch. |
-| `CgMesh` | Static GPU mesh: owns raw VBO (`GL_STATIC_DRAW`), optional IBO, and a standalone VAO. `upload(CgVertexFormat, topology, vertexData, indexData, indexCount)` — any thread, through its `CgDeferral`: where no GL may run the GL objects are made on the render thread before the next frame executes, so a recording can draw it in the frame that made it; the buffers are read then. `upload(CgMeshData)` convenience overload. `drawDirect()` — non-instanced draw using the standalone VAO. `delete()` — idempotent cleanup of all three GL objects; where no GL may run, it is carried out on the render thread. Uses `CgAttributeFormat` interface for the attribute pointer loop. |
+| `CgMesh` | Since mesh rewrite M3, a holder of an `api/mesh/CgMesh` (`mesh()`, through `CgMeshSource`): what the graph and the world renderer draw, from `render/mesh/CgMeshStore`'s pools. `upload(...)` reads the buffers at once, on any thread. `drawDirect()`/`drawInstanced(n)` draw immediately from GL objects of its own, made at the first such draw. `delete()` releases the pooled copy and those objects. Goes in M5 |
 
 ## Key Design Rules
 
@@ -27,9 +27,12 @@ immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`)
   semantics (UV, COLOR, NORMAL) the format contains before calling the corresponding
   writer methods, because the step machine in `CgVertexWriter` throws on out-of-order
   calls for absent semantics.
-- **IBO binding order** — in `CgMesh.upload()`, the IBO must be bound while the VAO is
-  bound, and the VAO must be unbound before the IBO is unbound. Inverting this order
-  writes null into the VAO's element array buffer slot.
+- **IBO binding order** — the IBO is bound while the VAO is bound, and the VAO is unbound
+  before the IBO is unbound. Inverting this order writes null into the VAO's element array
+  buffer slot.
+- **An indexed draw behind a VAO binds its index buffer again first**: LWJGL 2 checks the
+  offset against the element binding it saw bound, never the VAO's, and throws before the
+  driver. `CgMesh`'s immediate draws and `CgMeshStore.draw` both do.
 
 ## Index Type Policy
 

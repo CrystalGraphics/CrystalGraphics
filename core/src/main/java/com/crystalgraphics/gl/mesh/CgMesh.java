@@ -1,355 +1,182 @@
 package com.crystalgraphics.gl.mesh;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMeshData;
+import com.crystalgraphics.api.mesh.CgMeshSource;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.api.vertex.CgAttribType;
-import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.api.vertex.CgVertexSemantic;
 import com.crystalgraphics.gpu.CgDeferral;
-import com.crystalgraphics.gl.buffer.CgStreamBuffer;
-import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
 import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Getter;
+
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
 /**
- * Immutable static GPU mesh: owns a VBO, an optional IBO, and a standalone VAO.
- *
- * <p>Unlike the streaming batch path, a {@code CgMesh} uses {@code GL_STATIC_DRAW}
- * raw GL buffers — not {@link CgStreamBuffer}.
- * It is suitable for geometry that is uploaded once and drawn many times.</p>
- *
- * <h3>VAO ownership</h3>
- * <p>Each {@code CgMesh} owns one VAO, used by every draw: per-instance data reaches the shader through its
- * engine buffer and {@code CG_INSTANCE_ID}, never through instanced attributes.</p>
- *
- * <h3>IBO binding order (critical)</h3>
- * <p>The VAO captures the IBO binding via the element array buffer bind target.
- * The IBO must be bound <em>while the VAO is bound</em>, and the VAO must be
-     * unbound <em>before</em> the IBO is unbound. Unbinding the IBO while the VAO
-     * is still bound would write null into the VAO's element array buffer slot.</p>
- *
- * <h3>Lifetime</h3>
- * <p>Call {@link #delete()} only when no rendering code still references this mesh.
- * Deleting the mesh while VAO bindings in registries still reference its buffers
- * leaves stale GPU state pointing at deleted resources.</p>
- *
- * <h3>Any thread</h3>
- * <p>{@link #upload} and {@link #delete()} work anywhere: where no GL may run, the GL objects are made, or freed, on the
- * render thread before the next frame executes, so a recording or a worker can make a mesh and draw it in the same
- * frame.</p>
+ * A mesh uploaded from {@link CgMeshData}: since mesh rewrite M3 a holder of an {@code api.mesh.CgMesh}, which is what
+ * the graph and the world renderer draw, from the mesh store's pools. Goes in M5, when callers build
+ * {@code api.mesh.CgMesh} directly.
  *
  * <pre>{@code
- * CgMesh sphere = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));
- * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), snapshot, sphere);   // drawable in this frame
+ * CgMesh sphere = CgMesh.upload(CgMeshBuilder.uvSphere(CgVertexFormat.SPATIAL, 24, 32, 1f));   // any thread
+ * chunks.draw(material.pipeline(CgInstanceKind.OBJECT), snapshot, sphere);                      // drawable this frame
  * }</pre>
+ *
+ * <ul>
+ *   <li>{@link #upload} reads the buffers at once, on any thread; the caller may reuse them after.</li>
+ *   <li>{@link #drawDirect()} and {@link #drawInstanced(int)} draw immediately, outside the graph, from GL objects of
+ *       this mesh's own, made at the first such draw. Render thread.</li>
+ *   <li>{@link #delete()} releases the mesh's pooled copy and those objects; any thread.</li>
+ * </ul>
  */
-public final class CgMesh {
+public final class CgMesh implements CgMeshSource {
 
-    /** Vertex format describing the per-vertex attribute layout of the VBO. */
     @Getter private final CgVertexFormat format;
-
-    /** Primitive topology used for draw calls. */
     @Getter private final CgMeshTopology topology;
-
-    private int glVertexBuffer;
-    private int glIndexBuffer;
-    private int glVao;
-
-    /** Number of vertices in the VBO. */
     @Getter private final int vertexCount;
-
-    /** Number of index elements (not bytes). {@code 0} for non-indexed. */
+    /** Index elements, not bytes; 0 when it has none. */
     @Getter private final int indexCount;
-
-    /**
-     * GL index type: {@code GL_UNSIGNED_SHORT} or {@code GL_UNSIGNED_INT},
-     * auto-selected based on vertex count.
-     */
+    /** {@code GL_UNSIGNED_SHORT} or {@code GL_UNSIGNED_INT}: how the indices were packed when uploaded. */
     @Getter private final int indexType;
 
-    /** Whether {@link #delete()} has been called. */
-    private boolean deleted;
-
-    /** This mesh's GL work, in order. */
-    private final CgDeferral gpu = new CgDeferral();
-
-    /** Its local bounds, {@code [minX, minY, minZ, maxX, maxY, maxZ]}; null when its positions are not floats. */
+    private final com.crystalgraphics.api.mesh.CgMesh data;
     @Nullable
     private final float[] bounds;
 
-    private CgMesh(CgVertexFormat format, CgMeshTopology topology,
-                   int glVertexBuffer, int glIndexBuffer, int glVao,
-                   int vertexCount, int indexCount, int indexType, @Nullable float[] bounds) {
+    private int glVertexBuffer, glIndexBuffer, glVao;
+    private boolean deleted;
+    private final CgDeferral gpu = new CgDeferral();
+
+    private CgMesh(CgVertexFormat format, CgMeshTopology topology, int indexType,
+                   com.crystalgraphics.api.mesh.CgMesh data) {
         this.format = format;
         this.topology = topology;
-        this.glVertexBuffer = glVertexBuffer;
-        this.glIndexBuffer = glIndexBuffer;
-        this.glVao = glVao;
-        this.vertexCount = vertexCount;
-        this.indexCount = indexCount;
         this.indexType = indexType;
-        this.bounds = bounds;
+        this.data = data;
+        this.vertexCount = data.vertexCount();
+        this.indexCount = data.indexCount();
+        this.bounds = data.bounds(new float[6]);
+    }
+
+    @Override
+    public com.crystalgraphics.api.mesh.CgMesh mesh() {
+        return data;
     }
 
     /**
-     * Its local bounds as {@code [minX, minY, minZ, maxX, maxY, maxZ]}, from the vertices it was uploaded with: what a
-     * renderer culls it by. Null when its positions are not floats; a 2D position has z 0. Shared: do not write it.
+     * Its local bounds as {@code [minX, minY, minZ, maxX, maxY, maxZ]}, from the vertices it was uploaded with; null
+     * when its positions are not floats. Shared: do not write it.
      */
     @Nullable
     public float[] bounds() {
         return bounds;
     }
 
-    /** Raw GL buffer id for vertex data ({@code GL_STATIC_DRAW}). Render thread: a deferred mesh uploads first. */
-    public int getGlVertexBuffer() {
-        gpu.flush();
-        return glVertexBuffer;
-    }
-
-    /** Raw GL buffer id for index data, or {@code 0} for non-indexed. */
-    public int getGlIndexBuffer() {
-        gpu.flush();
-        return glIndexBuffer;
-    }
-
-    /** Standalone VAO id for non-instanced {@link #drawDirect()} calls. */
-    public int getGlVao() {
-        gpu.flush();
-        return glVao;
-    }
-
-    /** The float positions' extent in {@code vertexData}, read without moving it; null for a non-float position. */
-    @Nullable
-    private static float[] boundsOf(CgVertexFormat format, ByteBuffer vertexData, int vertexCount) {
-        CgVertexAttribute position = null;
-        for (int i = 0; i < format.getAttributeCount(); i++) {
-            CgVertexAttribute attribute = format.getAttribute(i);
-            if (attribute.getSemantic() == CgVertexSemantic.POSITION) {
-                position = attribute;
-                break;
-            }
-        }
-        if (position == null || position.getType() != CgAttribType.FLOAT || vertexCount == 0) return null;
-        int components = Math.min(3, position.getComponents());
-        float[] box = {Float.MAX_VALUE, Float.MAX_VALUE, components < 3 ? 0f : Float.MAX_VALUE,
-                -Float.MAX_VALUE, -Float.MAX_VALUE, components < 3 ? 0f : -Float.MAX_VALUE};
-        ByteBuffer data = vertexData.duplicate().order(ByteOrder.nativeOrder());
-        int base = data.position(), stride = format.getStride();
-        for (int v = 0; v < vertexCount; v++) {
-            int at = base + v * stride + position.getOffset();
-            for (int c = 0; c < components; c++) {
-                float value = data.getFloat(at + c * Float.BYTES);
-                if (value < box[c]) box[c] = value;
-                if (value > box[c + 3]) box[c + 3] = value;
-            }
-        }
-        return box;
-    }
-
     /**
-     * Uploads vertex and index data to the GPU and returns a new {@code CgMesh}.
-     *
-     * <p>Any thread. The buffers are read when the GL objects are made — at once where GL may run, else before the
-     * next frame executes — so keep them unchanged until then.</p>
-     *
-     * <h3>Index type inference</h3>
-     * <p>Index type is auto-detected from the vertex count: {@code GL_UNSIGNED_SHORT} if
-     * {@code vertexCount ≤ 65535}, else {@code GL_UNSIGNED_INT}. The caller is responsible
-     * for ensuring the index buffer was packed with matching element width. When in doubt,
-     * use the explicit-index-type overload:
-     * {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int, int)}.</p>
-     *
-     * <h3>VAO / IBO binding invariant</h3>
-     * <p>The IBO is bound while the VAO is bound so it is captured into VAO state.
-      * The VAO is unbound <em>first</em> before the IBO is unbound — unbinding the IBO
-     * while the VAO is still active would write null into the VAO's element array
-     * buffer slot and silently break indexed draws.</p>
-     *
-     * @param format      vertex format describing the per-vertex attribute layout
-     * @param topology    primitive topology
-     * @param vertexData  flipped direct {@code ByteBuffer} of interleaved vertex data
-     * @param indexData   flipped direct {@code ByteBuffer} of index data, or {@code null}
-     * @param indexCount  number of index elements (not bytes); {@code 0} if {@code indexData} is {@code null}
-     * @return a new GPU-resident mesh
+     * A mesh of {@code vertexData}'s remaining bytes and {@code indexCount} indices, packed 16-bit up to 65535
+     * vertices and 32-bit above.
      */
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
-                                 ByteBuffer vertexData, ByteBuffer indexData, int indexCount) {
+                                ByteBuffer vertexData, ByteBuffer indexData, int indexCount) {
         int vertexCount = vertexData.remaining() / format.getStride();
         int indexType = (vertexCount <= 65535) ? CgGL.GL_UNSIGNED_SHORT : CgGL.GL_UNSIGNED_INT;
         return upload(format, topology, vertexData, indexData, indexCount, indexType);
     }
 
-    /**
-     * Uploads vertex and index data with an explicit index type, bypassing the auto-detection.
-     *
-     * <p>Use this overload when you have pre-packed index data and need to specify
-     * {@code GL_UNSIGNED_SHORT} or {@code GL_UNSIGNED_INT} explicitly, independent of
-     * the vertex count heuristic used by the auto-detecting overload.</p>
-     *
-     * <p>Any thread, as {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}.</p>
-     *
-     * @param format      vertex format describing the per-vertex attribute layout
-     * @param topology    primitive topology
-     * @param vertexData  flipped direct {@code ByteBuffer} of interleaved vertex data
-     * @param indexData   flipped direct {@code ByteBuffer} of index data, or {@code null}
-     * @param indexCount  number of index elements (not bytes); {@code 0} if {@code indexData} is {@code null}
-     * @param indexType   {@code GL_UNSIGNED_SHORT} (5123) or {@code GL_UNSIGNED_INT} (5125)
-     * @return a new GPU-resident mesh
-     */
+    /** As {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}, the index packing stated. */
     public static CgMesh upload(CgVertexFormat format, CgMeshTopology topology,
-                                 ByteBuffer vertexData, ByteBuffer indexData, int indexCount, int indexType) {
-        int vertexCount = vertexData.remaining() / format.getStride();
-        CgMesh mesh = new CgMesh(format, topology, 0, 0, 0, vertexCount, indexCount, indexType,
-                boundsOf(format, vertexData, vertexCount));
-        mesh.gpu.run(() -> mesh.createObjects(vertexData, indexData));
-        return mesh;
+                                ByteBuffer vertexData, @Nullable ByteBuffer indexData, int indexCount, int indexType) {
+        com.crystalgraphics.api.mesh.CgMesh data = com.crystalgraphics.api.mesh.CgMesh.build(format, m -> m.topology(topology));
+        data.writeVertices(0, vertexData);
+        if (indexData != null && indexCount > 0) {
+            ByteBuffer packed = indexData.duplicate().order(ByteOrder.nativeOrder());
+            int at = packed.position();
+            int[] indices = new int[indexCount];
+            boolean wide = indexType == CgGL.GL_UNSIGNED_INT;
+            for (int i = 0; i < indexCount; i++) {
+                indices[i] = wide ? packed.getInt(at + i * 4) : packed.getShort(at + i * 2) & 0xFFFF;
+            }
+            data.writeIndices(0, indices);
+        }
+        return new CgMesh(format, topology, indexType, data);
     }
 
-    private void createObjects(ByteBuffer vertexData, @Nullable ByteBuffer indexData) {
-        // ── Upload VBO ────────────────────────────────────────────────────
-        int vbo = CgGL.glGenBuffers();
-        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vbo);
-        CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, vertexData, CgGL.GL_STATIC_DRAW);
+    /** {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)} from {@code data}. */
+    public static CgMesh upload(CgMeshData data) {
+        return upload(data.format(), data.topology(), data.vertexBuffer(), data.indexBuffer(), data.indexCount());
+    }
 
-        // ── Upload IBO (optional) ─────────────────────────────────────────
-        int ibo = 0;
-        if (indexData != null) {
-            ibo = CgGL.glGenBuffers();
-            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, ibo);
-            CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, indexData, CgGL.GL_STATIC_DRAW);
+    /** Draws it once, immediately, outside the graph. Render thread. */
+    public void drawDirect() {
+        bindForImmediateDraw();
+        if (glIndexBuffer != 0) CgGL.glDrawElements(topology.getGlMode(), indexCount, CgGL.GL_UNSIGNED_INT, 0L);
+        else CgGL.glDrawArrays(topology.getGlMode(), 0, vertexCount);
+        CgVertexArray.bind(0);
+    }
+
+    /** Draws it {@code count} times, immediately, with a material bound. Render thread. */
+    public void drawInstanced(int count) {
+        if (count < 1) throw new IllegalArgumentException("count must be >= 1, got " + count);
+        bindForImmediateDraw();
+        if (glIndexBuffer != 0) {
+            CgGL.glDrawElementsInstanced(topology.getGlMode(), indexCount, CgGL.GL_UNSIGNED_INT, 0L, count);
+        } else {
+            CgGL.glDrawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
         }
+        CgVertexArray.bind(0);
+    }
 
-        // ── Create VAO and configure attribute pointers ───────────────────
+    private void bindForImmediateDraw() {
+        if (deleted) throw new IllegalStateException("CgMesh has been deleted");
+        if (glVao == 0) createObjects();
+        CgVertexArray.bind(glVao);
+        // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the VAO's.
+        if (glIndexBuffer != 0) CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, glIndexBuffer);
+    }
+
+    private void createObjects() {
+        ByteBuffer vertices = ByteBuffer.allocateDirect(vertexCount * format.getStride()).order(ByteOrder.nativeOrder());
+        data.readVertices(0, vertexCount, vertices);
+        vertices.flip();
         int vao = CgVertexArray.createRawVaoId();
         CgVertexArray.bind(vao);
-
-        // VBO is already bound from the upload step above.
-        CgVertexFormat layout = this.format;
-        for (int i = 0; i < layout.getAttributeCount(); i++) {
-            CgVertexArray.pointer(i, layout.getAttribute(i), layout.getStride(), layout.getAttribute(i).getOffset());
+        int vbo = CgGL.glGenBuffers();
+        CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, vbo);
+        CgGL.glBufferData(CgGL.GL_ARRAY_BUFFER, vertices, CgGL.GL_STATIC_DRAW);
+        for (int i = 0; i < format.getAttributeCount(); i++) {
+            CgVertexArray.pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
             CgGL.glEnableVertexAttribArray(i);
         }
-
-        // Capture IBO into VAO state.
-        // CRITICAL: the IBO bind must happen while the VAO is bound so the VAO
-        // records the element array buffer reference. Do NOT unbind the IBO
-        // while the VAO is still bound — that would write null into the VAO's
-        // element array buffer slot and silently break all indexed draws.
-        if (ibo != 0) {
-            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, ibo);
+        int ibo = 0;
+        if (indexCount > 0) {
+            ByteBuffer indices = ByteBuffer.allocateDirect(indexCount * 4).order(ByteOrder.nativeOrder());
+            data.readIndices(0, indexCount, indices);
+            indices.flip();
+            ibo = CgGL.glGenBuffers();
+            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, ibo);   // captured by the bound VAO
+            CgGL.glBufferData(CgGL.GL_ELEMENT_ARRAY_BUFFER, indices, CgGL.GL_STATIC_DRAW);
         }
-
-        // ── Unbind in safe order ──────────────────────────────────────────
-        // Unbind VAO FIRST, then clean up other bindings.
-        // Only safe to unbind the IBO after the VAO is unbound.
         CgVertexArray.bind(0);
         CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, 0);
-        if (ibo != 0) {
-            CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, 0);
-        }
-
-        this.glVertexBuffer = vbo;
-        this.glIndexBuffer = ibo;
-        this.glVao = vao;
+        glVertexBuffer = vbo;
+        glIndexBuffer = ibo;
+        glVao = vao;
     }
 
-    /**
-     * Convenience overload: uploads directly from a {@link CgMeshData}.
-     *
-     * <p>Any thread, as {@link #upload(CgVertexFormat, CgMeshTopology, ByteBuffer, ByteBuffer, int)}.</p>
-     *
-     * @param data the CPU-side mesh data to upload
-     * @return a new GPU-resident mesh
-     */
-    public static CgMesh upload(CgMeshData data) {
-        return upload(data.format(), data.topology(),
-                data.vertexBuffer(), data.indexBuffer(), data.indexCount());
-    }
-
-    /**
-     * Draws this mesh directly (non-instanced) using the standalone VAO.
-     *
-     * <p><strong>Must be called on the GL thread.</strong></p>
-     *
-     * @throws IllegalStateException if {@link #delete()} has already been called
-     */
-    public void drawDirect() {
-        if (deleted) throw new IllegalStateException("CgMesh has been deleted");
-        gpu.flush();
-
-        CgVertexArray.bind(glVao);
-        if (glIndexBuffer != 0)
-            CgGL.glDrawElements(topology.getGlMode(), indexCount, indexType, 0L);
-        else CgGL.glDrawArrays(topology.getGlMode(), 0, vertexCount);
-
-        CgVertexArray.bind(0);
-    }
-
-    /**
-     * Draws this mesh instanced using the same standalone VAO as {@link #drawDirect()}.
-     *
-     * <p>Prerequisite: {@link CgMaterial#bind}
-     * must have been called before this method, which binds the
-     * {@link CgShaderBuffer} containing
-     * instance transforms.</p>
-     *
-     * <p>The instance count must not exceed the capacity of the bound
-     * {@code CgShaderBuffer}. If it does, {@code CgShaderBuffer.bind()} will have already thrown.</p>
-     *
-     * <p>No {@code glVertexAttribDivisor} is used — the SSBO/TBO mechanism provides
-     * per-instance data via {@code CG_INSTANCE_ID}, so no per-instance vertex attributes
-     * are needed. The VAO is exactly the same as for {@link #drawDirect()}.</p>
-     *
-     * <p><strong>Must be called on the GL thread.</strong></p>
-     *
-     * @param count number of instances to draw; must be {@code >= 1}
-     * @throws IllegalStateException    if {@link #delete()} has been called
-     * @throws IllegalArgumentException if {@code count < 1}
-     */
-    public void drawInstanced(int count) {
-        if (deleted) throw new IllegalStateException("CgMesh has been deleted");
-        if (count < 1) throw new IllegalArgumentException("count must be >= 1, got " + count);
-        gpu.flush();
-
-        CgVertexArray.bind(glVao);
-        if (glIndexBuffer != 0)
-            CgGL.glDrawElementsInstanced(topology.getGlMode(), indexCount, indexType, 0L, count);
-        else CgGL.glDrawArraysInstanced(topology.getGlMode(), 0, vertexCount, count);
-
-        CgVertexArray.bind(0);
-    }
-
-    /**
-     * Deletes all GPU resources owned by this mesh: the VAO, the VBO, and the IBO (if any).
-     *
-     * <p>Any thread: where no GL may run, the GPU objects go on the render thread before the next frame.</p>
-     *
-     * <p>Calling this method while any rendering code still holds a reference to this
-     * mesh instance leaves stale GPU state. Ensure all references are dropped before
-     * calling {@code delete()}.</p>
-     *
-     * <p>This method is idempotent — calling it multiple times has no additional effect.</p>
-     */
+    /** Releases the pooled copy and any immediate-draw objects. Any thread; idempotent. */
     public void delete() {
         if (deleted) return;
         deleted = true;
-        // What was queued is moot: a mesh never made has nothing to free.
-        gpu.clear();
-        gpu.run(this::release);
+        data.release();
+        gpu.run(this::releaseObjects);
     }
 
-    private void release() {
+    private void releaseObjects() {
         if (glVao == 0) return;
         CgVertexArray.deleteRaw(glVao);
         CgGL.glDeleteBuffers(glVertexBuffer);
-        if (glIndexBuffer != 0) {
-            CgGL.glDeleteBuffers(glIndexBuffer);
-        }
+        if (glIndexBuffer != 0) CgGL.glDeleteBuffers(glIndexBuffer);
+        glVao = 0;
     }
 }

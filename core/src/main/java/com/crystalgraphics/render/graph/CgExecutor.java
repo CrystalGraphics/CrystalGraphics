@@ -8,7 +8,9 @@ import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.gl.vertex.CgVertexArray;
+import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -136,6 +138,7 @@ public final class CgExecutor {
         for (int k = 0; k < KINDS; k++) {
             if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
         }
+        placeMeshes(frame);
         int resolved = 0;
         try {
             for (int s = 0; s < frame.stepCount; s++) {
@@ -172,6 +175,22 @@ public final class CgExecutor {
                 }
             }
         }
+    }
+
+    /** Every mesh the frame draws placed in the store, and what changed uploaded: before the first raster pass. */
+    private static void placeMeshes(CgFrame frame) {
+        CgMeshStore store = CgMeshStore.get();
+        boolean unitQuad = false;
+        for (int s = 0; s < frame.stepCount; s++) {
+            CgFrame.Raster packed = frame.rasters[s];
+            if (packed == null) continue;
+            unitQuad |= (packed.kinds & UNIT_KINDS) != 0;
+            for (int b = 0; b < packed.count; b++) {
+                if (packed.mesh[b] != null) store.place(packed.mesh[b]);
+            }
+        }
+        if (unitQuad) store.place(CgInstanceGeometry.unitQuad());
+        store.upload();
     }
 
     /** Whether a frame executing again skips {@code pass}. */
@@ -293,8 +312,9 @@ public final class CgExecutor {
                 frame.bindings.bind(boundBinding);
             }
             CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgInstanceGeometry.unitQuad();
-            mesh.drawInstanced(packed.instances[b]);
+            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b]);
         }
+        CgVertexArray.bind(0);
     }
 
     /** {@link #scissorRect} cut by a pass's damage. */

@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
 
 import javax.annotation.Nullable;
 

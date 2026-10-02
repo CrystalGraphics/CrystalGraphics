@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.gl.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;

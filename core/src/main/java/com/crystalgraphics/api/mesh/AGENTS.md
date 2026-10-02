@@ -8,8 +8,8 @@ Geometry on the CPU, with no GPU anywhere: a `CgMesh` holds vertices in one `CgV
 bounds and a revision. A renderer keeps the GPU copy up to date when it draws (the mesh store, M3), so any thread
 may build or edit one.
 
-**Mid-rewrite.** `CgMeshData` and `gl/mesh/CgMesh` (the GL object) still carry every draw until M3-M5 move callers
-onto `api/mesh/CgMesh` and delete them.
+**Mid-rewrite.** Every draw comes from `render/mesh/CgMeshStore` since M3; `CgMeshData` and `gl/mesh/CgMesh` (now a
+holder of a `CgMesh`) stay until M5 moves their callers and deletes them.
 
 ## Type Map
 
@@ -23,6 +23,7 @@ onto `api/mesh/CgMesh` and delete them.
 | `CgMeshShapes` | Shapes two ways: shared (one mesh per format and size, refusing edits) and writer forms that compose with anything else in a mesh |
 | `CgMeshTopology` | Triangles, strips, lines, points. Still carries GL modes until M5 |
 | `CgMeshData` | The old CPU holder `gl/mesh/CgMesh.upload` takes. Goes in M5 |
+| `CgMeshSource` | What `CgChunkBuilder.draw` and `CgWorldRenderer.draw` take, so both mesh classes reach them. Goes in M5 |
 
 ## Rules
 
