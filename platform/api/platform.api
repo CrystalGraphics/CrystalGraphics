@@ -1264,6 +1264,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glColorMask (ZZZZ)V
   method public,static glColorMaski (IZZZZ)V
   method public,static glCompileShader (I)V
+  method public,static glCopyBufferSubData (IIJJJ)V
   method public,static glCopyImageSubData (IIIIIIIIIIIIIII)V
   method public,static glCreateProgram ()I
   method public,static glCreateShader (I)I
@@ -1287,6 +1288,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glDrawBuffers (Ljava/nio/IntBuffer;)V
   method public,static glDrawElements (IIIJ)V
   method public,static glDrawElementsInstanced (IIIJI)V
+  method public,static glDrawElementsInstancedBaseVertex (IIIJII)V
   method public,static glEnable (I)V
   method public,static glEnableVertexAttribArray (I)V
   method public,static glEndTimeElapsedQuery ()V
@@ -1367,6 +1369,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glUnmapBuffer (I)Z
   method public,static glUseProgram (I)V
   method public,static glVertexAttribDivisor (II)V
+  method public,static glVertexAttribIPointer (IIIIJ)V
   method public,static glVertexAttribPointer (IIIZIJ)V
   method public,static glViewport (IIII)V
   method public,static importHostTexture (Ljava/lang/Object;)I
@@ -1426,6 +1429,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glColorMask (ZZZZ)V
   method public,abstract glColorMaski (IZZZZ)V
   method public,abstract glCompileShader (I)V
+  method public,abstract glCopyBufferSubData (IIJJJ)V
   method public,abstract glCreateProgram ()I
   method public,abstract glCreateShader (I)I
   method public,abstract glCullFace (I)V
@@ -1446,6 +1450,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glDrawBuffer (I)V
   method public,abstract glDrawElements (IIIJ)V
   method public,abstract glDrawElementsInstanced (IIIJI)V
+  method public,abstract glDrawElementsInstancedBaseVertex (IIIJII)V
   method public,abstract glEnable (I)V
   method public,abstract glEnableVertexAttribArray (I)V
   method public,abstract glEndTimeElapsedQuery ()V
@@ -1522,6 +1527,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glUnmapBuffer (I)Z
   method public,abstract glUseProgram (I)V
   method public,abstract glVertexAttribDivisor (II)V
+  method public,abstract glVertexAttribIPointer (IIIIJ)V
   method public,abstract glVertexAttribPointer (IIIZIJ)V
   method public,abstract glViewport (IIII)V
   method public,abstract importHostTexture (Ljava/lang/Object;)I
@@ -1806,6 +1812,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glColorMask (ZZZZ)V
   method public glColorMaski (IZZZZ)V
   method public glCompileShader (I)V
+  method public glCopyBufferSubData (IIJJJ)V
   method public glCreateProgram ()I
   method public glCreateShader (I)I
   method public glCullFace (I)V
@@ -1826,6 +1833,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glDrawBuffer (I)V
   method public glDrawElements (IIIJ)V
   method public glDrawElementsInstanced (IIIJI)V
+  method public glDrawElementsInstancedBaseVertex (IIIJII)V
   method public glEnable (I)V
   method public glEnableVertexAttribArray (I)V
   method public glEndTimeElapsedQuery ()V
@@ -1902,6 +1910,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glUnmapBuffer (I)Z
   method public glUseProgram (I)V
   method public glVertexAttribDivisor (II)V
+  method public glVertexAttribIPointer (IIIIJ)V
   method public glVertexAttribPointer (IIIZIJ)V
   method public glViewport (IIII)V
   method public importHostTexture (Ljava/lang/Object;)I
@@ -1969,6 +1978,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedVertexArrays;)V
   method public bind (II)V
   method public bindIndexed (IIIJJ)V
+  method public copy (IIJJJ)V
   method public data (IJLjava/nio/ByteBuffer;I)V
   method public delete (I)V
   method public gen ()I
@@ -2169,7 +2179,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedVertexArrays
   method public divisor (II)V
   method public enable (I)V
   method public gen ()I
-  method public pointer (IIIZIJ)V
+  method public pointer (IIIZZIJ)V
   method public query (I[D)I
 com/crystalgraphics/platform/gl/tracked/gl/TrackedVertexArrays$Vao
   access public,final
@@ -2199,6 +2209,7 @@ com/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Ljava/lang/String;)V
   method public allocation ()Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
+  method public copyFrom (Lcom/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer;JJJ)V
   method public data (JLjava/nio/ByteBuffer;Z)V
   method public map (JJZZZ)Ljava/nio/ByteBuffer;
   method public release ()V

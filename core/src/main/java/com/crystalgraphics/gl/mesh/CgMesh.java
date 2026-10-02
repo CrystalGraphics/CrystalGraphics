@@ -232,15 +232,7 @@ public final class CgMesh {
         // VBO is already bound from the upload step above.
         CgVertexFormat layout = this.format;
         for (int i = 0; i < layout.getAttributeCount(); i++) {
-            CgVertexAttribute attr = layout.getAttribute(i);
-            CgGL.glVertexAttribPointer(
-                    i,
-                    attr.getComponents(),
-                    attr.getType().getGlConstant(),
-                    attr.isNormalized(),
-                    layout.getStride(),
-                    attr.getOffset()
-            );
+            CgVertexArray.pointer(i, layout.getAttribute(i), layout.getStride(), layout.getAttribute(i).getOffset());
             CgGL.glEnableVertexAttribArray(i);
         }
 

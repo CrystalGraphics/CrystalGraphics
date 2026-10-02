@@ -47,6 +47,8 @@ dependencies {
     // which fails its whole runtime graph. Every host supplies its own log4j; the harness declares
     // 2.26.1 explicitly.
     compileOnly("org.apache.logging.log4j:log4j-api:$log4jVer")
+    // The tests' provider, as :core's: CgGL's audit logs from its class initializer.
+    testImplementation("org.apache.logging.log4j:log4j-core:2.26.1")
 }
 
 tasks.withType<JavaCompile> {

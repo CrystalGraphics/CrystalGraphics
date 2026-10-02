@@ -279,6 +279,11 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
+        GL31.glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
+    }
+
+    @Override
     public void glDeleteBuffers(int buffer) {
         GL15.glDeleteBuffers(buffer);
     }
@@ -325,6 +330,11 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
         GL20.glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+    }
+
+    @Override
+    public void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) {
+        GL30.glVertexAttribIPointer(index, size, type, stride, pointer);
     }
 
     @Override
@@ -430,6 +440,12 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
         GL31.glDrawElementsInstanced(mode, count, type, indices, instanceCount);
+    }
+
+    @Override
+    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
+                                                  int baseVertex) {
+        GL32.glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
     }
 
     // -------------------------------------------------------------------------

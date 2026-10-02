@@ -818,6 +818,10 @@ public final class CgGL {
         gl().glBufferSubData(target, offset, data);
     }
 
+    public static void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
+        gl().glCopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size);
+    }
+
     public static void glDeleteBuffers(int buffer) {
         gl().glDeleteBuffers(buffer);
         state().bufferDeleted(buffer);
@@ -858,6 +862,10 @@ public final class CgGL {
 
     public static void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
         gl().glVertexAttribPointer(index, size, type, normalized, stride, pointer);
+    }
+
+    public static void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) {
+        gl().glVertexAttribIPointer(index, size, type, stride, pointer);
     }
 
     public static void glVertexAttribDivisor(int index, int divisor) {
@@ -974,6 +982,11 @@ public final class CgGL {
 
     public static void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
         gl().glDrawElementsInstanced(mode, count, type, indices, instanceCount);
+    }
+
+    public static void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
+                                                         int instanceCount, int baseVertex) {
+        gl().glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
     }
 
     // =========================================================================

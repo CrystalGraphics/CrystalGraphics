@@ -68,6 +68,9 @@ public final class CgVertexAttribute {
     /** Returns whether values should be normalized to [0,1] or [-1,1]. */
     public boolean isNormalized() { return normalized; }
 
+    /** The shader reads integers ({@code int}, {@code ivec}, {@code uvec}): an integer type, not normalised. */
+    public boolean isInteger() { return type.isInteger() && !normalized; }
+
     /** Returns the byte size of this attribute (components * type byte size). */
     public int getByteSize() { return byteSize; }
 
@@ -129,7 +132,7 @@ public final class CgVertexAttribute {
      *
      * <p>Mapping rules:</p>
      * <ul>
-     *   <li><strong>Float family</strong> — {@link CgAttribType#FLOAT}, or any type with
+     *   <li><strong>Float family</strong> — {@link CgAttribType#FLOAT}, {@link CgAttribType#HALF_FLOAT}, or any type with
      *       {@code normalized=true}: GPU normalizes integers to [0,1] / [-1,1] at fetch time,
      *       so the GLSL type is {@code float}/{@code vec2}/{@code vec3}/{@code vec4}.</li>
      *   <li><strong>Signed integer family</strong> — {@link CgAttribType#BYTE},
@@ -151,7 +154,7 @@ public final class CgVertexAttribute {
     public String getGlslType() {
         // Float family: FLOAT always maps to float; any normalized integer also maps to float because
         // the GPU normalizes the integer value to [0,1] or [-1,1] before presenting it to GLSL.
-        if (type == CgAttribType.FLOAT || normalized) {
+        if (!isInteger()) {
             switch (components) {
                 case 1: return "float";
                 case 2: return "vec2";

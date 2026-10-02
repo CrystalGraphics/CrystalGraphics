@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -79,6 +80,58 @@ public class CgTrackedBuffersTest {
 
         gl.vertexArrays().apply(s);
         assertSame("unchanged attributes keep their layouts, and with them the pipeline", layouts, s.vertexLayouts);
+    }
+
+    @Test
+    public void anIntegerPointerReadsIntegersAndAHalfFloatOneFloats() {
+        gl.glBindVertexArray(gl.glGenVertexArrays());
+        buffer(CgGL.GL_ARRAY_BUFFER, 256, CgGL.GL_STATIC_DRAW);
+        gl.glEnableVertexAttribArray(0);
+        gl.glVertexAttribIPointer(0, 4, CgGL.GL_UNSIGNED_BYTE, 20, 0);
+        gl.glEnableVertexAttribArray(1);
+        gl.glVertexAttribIPointer(1, 2, CgGL.GL_SHORT, 20, 4);
+        gl.glEnableVertexAttribArray(2);
+        gl.glVertexAttribIPointer(2, 1, CgGL.GL_UNSIGNED_INT, 20, 8);
+        gl.glEnableVertexAttribArray(3);
+        gl.glVertexAttribPointer(3, 4, CgGL.GL_HALF_FLOAT, false, 20, 12);
+
+        CgDrawState s = gl.tracker().state;
+        gl.vertexArrays().apply(s);
+        assertEquals(List.of(new CgPipelineDesc.VertexAttrib(0, CgAttribFormat.UINT8X4, 0),
+                new CgPipelineDesc.VertexAttrib(1, CgAttribFormat.SINT16X2, 4),
+                new CgPipelineDesc.VertexAttrib(2, CgAttribFormat.UINT32, 8),
+                new CgPipelineDesc.VertexAttrib(3, CgAttribFormat.FLOAT16X4, 12)), s.vertexLayouts.get(0).attribs());
+    }
+
+    @Test
+    public void aCopyIntoDeviceLocalStorageIsADeviceCopyAndBetweenHostVisibleOnesTheCpus() {
+        int staging = buffer(CgGL.GL_ARRAY_BUFFER, 16, 0x88E0 /* GL_STREAM_DRAW */);
+        gl.glBufferSubData(CgGL.GL_ARRAY_BUFFER, 0, ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder()).putInt(0, 7));
+        int local = buffer(CgGL.GL_ARRAY_BUFFER, 32, CgGL.GL_STATIC_DRAW);
+        int visible = buffer(CgGL.GL_ARRAY_BUFFER, 32, 0x88E8 /* GL_DYNAMIC_DRAW */);
+
+        int mark = device.log().size();
+        copy(staging, local, 0, 16);
+        assertTrue(device.logSince(mark).stream().anyMatch(line -> line.startsWith("copyBuffer")));
+
+        mark = device.log().size();
+        copy(staging, visible, 8, 8);
+        assertTrue("host-visible to host-visible records nothing",
+                device.logSince(mark).stream().noneMatch(line -> line.startsWith("copyBuffer")));
+        CgAllocation to = gl.bufferObjects().get(visible).storage.allocation();
+        assertEquals(7, to.memory().getInt(8));
+
+        try {
+            copy(local, visible, 0, 8);
+            fail("a device-local source into a host-visible buffer is a readback");
+        } catch (UnsupportedOperationException expected) {
+        }
+    }
+
+    private void copy(int from, int to, long writeOffset, long size) {
+        gl.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
+        gl.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
+        gl.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, 0, writeOffset, size);
     }
 
     @Test

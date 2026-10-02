@@ -53,17 +53,16 @@ public final class CgVertexArray {
     public void configure(CgVertexFormat format) {
         bind();
         for (int i = 0; i < format.getAttributeCount(); i++) {
-            CgVertexAttribute attr = format.getAttribute(i);
-            CgGL.glVertexAttribPointer(
-                    i,
-                    attr.getComponents(),
-                    attr.getType().getGlConstant(),
-                    attr.isNormalized(),
-                    format.getStride(),
-                    attr.getOffset()
-            );
+            pointer(i, format.getAttribute(i), format.getStride(), format.getAttribute(i).getOffset());
             CgGL.glEnableVertexAttribArray(i);
         }
+    }
+
+    /** Points attribute {@code index} at the bound array buffer: an integer attribute through {@code glVertexAttribIPointer}. */
+    public static void pointer(int index, CgVertexAttribute attr, int stride, long offset) {
+        int type = attr.getType().getGlConstant();
+        if (attr.isInteger()) CgGL.glVertexAttribIPointer(index, attr.getComponents(), type, stride, offset);
+        else CgGL.glVertexAttribPointer(index, attr.getComponents(), type, attr.isNormalized(), stride, offset);
     }
 
     /**
@@ -74,15 +73,7 @@ public final class CgVertexArray {
     public void reconfigureWithOffset(CgVertexFormat format, int dataOffset) {
         bind();
         for (int i = 0; i < format.getAttributeCount(); i++) {
-            CgVertexAttribute attr = format.getAttribute(i);
-            CgGL.glVertexAttribPointer(
-                    i,
-                    attr.getComponents(),
-                    attr.getType().getGlConstant(),
-                    attr.isNormalized(),
-                    format.getStride(),
-                    dataOffset + attr.getOffset()
-            );
+            pointer(i, format.getAttribute(i), format.getStride(), dataOffset + format.getAttribute(i).getOffset());
         }
     }
 

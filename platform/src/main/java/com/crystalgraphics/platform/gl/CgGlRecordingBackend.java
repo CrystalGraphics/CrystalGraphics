@@ -37,7 +37,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
             BUFFER_STORAGE = 86, DELETE_SYNC = 87, DELETE_RBO = 88, BIND_RBO = 89, RBO_STORAGE = 90,
             RBO_STORAGE_MS = 91, FRAMEBUFFER_RBO = 92, TEX_IMAGE_2D_MS = 93, UNIFORM1_FV = 94, UNIFORM1_IV = 95,
             UNIFORM_MATRIX3 = 96, UNIFORM_MATRIX4 = 97, SCOPE_BEGIN = 98, SCOPE_END = 99, INVALIDATE = 100,
-            INVALIDATE_ALL = 101, FOREIGN = 102;
+            INVALIDATE_ALL = 101, FOREIGN = 102, COPY_BUFFER_SUB_DATA = 103, ATTRIB_IPOINTER = 104,
+            DRAW_ELEMENTS_INSTANCED_BASE_VERTEX = 105;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -184,6 +185,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case BUFFER_DATA_SHORTS: CgGL.glBufferData(ri(), rshorts(), ri()); break;
                 case BUFFER_DATA_SIZE: CgGL.glBufferData(ri(), rl(), ri()); break;
                 case BUFFER_SUB_DATA: CgGL.glBufferSubData(ri(), rl(), rbytes()); break;
+                case COPY_BUFFER_SUB_DATA: CgGL.glCopyBufferSubData(ri(), ri(), rl(), rl(), rl()); break;
                 case DELETE_BUFFERS: CgGL.glDeleteBuffers(ri()); break;
                 case BIND_BUFFER_BASE: CgGL.glBindBufferBase(ri(), ri(), ri()); break;
                 case BIND_BUFFER_RANGE: CgGL.glBindBufferRange(ri(), ri(), ri(), rl(), rl()); break;
@@ -195,6 +197,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case DELETE_VAO: CgGL.glDeleteVertexArrays(ri()); break;
                 case ENABLE_ATTRIB: CgGL.glEnableVertexAttribArray(ri()); break;
                 case ATTRIB_POINTER: CgGL.glVertexAttribPointer(ri(), ri(), ri(), rz(), ri(), rl()); break;
+                case ATTRIB_IPOINTER: CgGL.glVertexAttribIPointer(ri(), ri(), ri(), ri(), rl()); break;
                 case ATTRIB_DIVISOR: CgGL.glVertexAttribDivisor(ri(), ri()); break;
                 case BIND_TEXTURE: CgGL.glBindTexture(ri(), ri()); break;
                 case DELETE_TEXTURES: CgGL.glDeleteTextures(ri()); break;
@@ -217,6 +220,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case DRAW_ELEMENTS: CgGL.glDrawElements(ri(), ri(), ri(), rl()); break;
                 case DRAW_ARRAYS_INSTANCED: CgGL.glDrawArraysInstanced(ri(), ri(), ri(), ri()); break;
                 case DRAW_ELEMENTS_INSTANCED: CgGL.glDrawElementsInstanced(ri(), ri(), ri(), rl(), ri()); break;
+                case DRAW_ELEMENTS_INSTANCED_BASE_VERTEX:
+                    CgGL.glDrawElementsInstancedBaseVertex(ri(), ri(), ri(), rl(), ri(), ri()); break;
                 case ENABLE: CgGL.glEnable(ri()); break;
                 case DISABLE: CgGL.glDisable(ri()); break;
                 case BLEND_FUNC: CgGL.glBlendFunc(ri(), ri()); break;
@@ -525,6 +530,11 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override public void glBufferData(int target, ShortBuffer data, int usage) { op(BUFFER_DATA_SHORTS); i(target); shorts(data); i(usage); }
     @Override public void glBufferData(int target, long size, int usage) { op(BUFFER_DATA_SIZE); i(target); l(size); i(usage); }
     @Override public void glBufferSubData(int target, long offset, ByteBuffer data) { op(BUFFER_SUB_DATA); i(target); l(offset); bytes(data); }
+
+    @Override
+    public void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
+        op(COPY_BUFFER_SUB_DATA); i(readTarget); i(writeTarget); l(readOffset); l(writeOffset); l(size);
+    }
     @Override public void glDeleteBuffers(int buffer) { op(DELETE_BUFFERS); i(buffer); }
     @Override public void glBindBufferBase(int target, int index, int buffer) { op(BIND_BUFFER_BASE); i(target); i(index); i(buffer); }
 
@@ -554,6 +564,11 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override
     public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
         op(ATTRIB_POINTER); i(index); i(size); i(type); z(normalized); i(stride); l(pointer);
+    }
+
+    @Override
+    public void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) {
+        op(ATTRIB_IPOINTER); i(index); i(size); i(type); i(stride); l(pointer);
     }
 
     @Override public void glVertexAttribDivisor(int index, int divisor) { op(ATTRIB_DIVISOR); i(index); i(divisor); }
@@ -645,6 +660,12 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
         op(DRAW_ELEMENTS_INSTANCED); i(mode); i(count); i(type); l(indices); i(instanceCount);
+    }
+
+    @Override
+    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
+                                                  int baseVertex) {
+        op(DRAW_ELEMENTS_INSTANCED_BASE_VERTEX); i(mode); i(count); i(type); l(indices); i(instanceCount); i(baseVertex);
     }
 
     // ── State ─────────────────────────────────────────────────────────────────

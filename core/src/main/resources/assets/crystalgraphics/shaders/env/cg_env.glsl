@@ -62,6 +62,9 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 #ifdef CG_VERTEX_STAGE
 uniform int cg_InstanceBase;
 #define CG_INSTANCE_ID (gl_InstanceID + cg_InstanceBase)
+// The vertex's index in its own mesh: cg_VertexBase is where the mesh starts in the buffer it is drawn from.
+uniform int cg_VertexBase;
+#define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
 #else
 flat in int cg_InstanceId;
 #define CG_INSTANCE_ID cg_InstanceId

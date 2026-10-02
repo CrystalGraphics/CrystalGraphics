@@ -15,9 +15,9 @@ through `CG_INSTANCE_ID`.
 | Type | Role |
 |------|------|
 | `CgVertexFormat` | Immutable, hashable vertex format descriptor. Value-equal by attribute list + stride. Builder creates sequential attribute slots. **Auto-registers under `key name` on `build()`** — the `key name` doubles as the `#type` key in `.shader` files. `forShaderType(String)` looks up a registered format; `registeredShaderTypes()` returns all known names. Pre-defined: `POS2_UV2_COL4UB`, `POS3_UV2_COL4UB`, `SPATIAL` (registered as `"spatial"`, CrystalShader pipeline: cg_Position/cg_TexCoord0/cg_Normal, 32 bytes). Registry collision (same name, different layout) throws `IllegalStateException` at second `build()`. |
-| `CgVertexAttribute` | Single attribute within a format: name, type, components, offset, normalized flag, semantic metadata. Package-private constructor. Value-equal. `getGlslType()` derives the GLSL type string from `(type, components, normalized)`: float family for FLOAT or normalized types; int/ivec family for signed integer non-normalized; uint/uvec family for unsigned integer non-normalized. Throws `IllegalStateException` on unmapped combos. |
+| `CgVertexAttribute` | Single attribute within a format: name, type, components, offset, normalized flag, semantic metadata. Package-private constructor. Value-equal. `getGlslType()` derives the GLSL type string from `(type, components, normalized)`: float family for FLOAT, HALF_FLOAT or normalized types; int/ivec family for signed integer non-normalized; uint/uvec family for unsigned integer non-normalized. Throws `IllegalStateException` on unmapped combos. |
 | `CgVertexSemantic` | Enum of attribute roles: `POSITION`, `UV`, `COLOR`, `NORMAL`, `GENERIC`. Used by `CgVertexWriter` for fluent routing. |
-| `CgAttribType` | Enum of GL primitive types (`FLOAT`, `UNSIGNED_BYTE`, etc.) with byte sizes. |
+| `CgAttribType` | Enum of GL primitive types (`FLOAT`, `HALF_FLOAT`, `UNSIGNED_BYTE`, etc.) with byte sizes. A non-normalised integer attribute (`CgVertexAttribute.isInteger()`) reads as integers: `CgVertexArray.pointer` sets it with `glVertexAttribIPointer`. |
 | `CgVertexConsumer` | Fluent vertex-write interface implemented by `CgVertexWriter`. |
 | `CgVertexTransformUtil` | Utility for transforming vertex positions via `PoseStack`. |
 

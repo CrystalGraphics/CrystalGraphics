@@ -489,6 +489,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public void glBufferSubData(int target, long offset, ByteBuffer data) { buffers.subData(target, offset, data); }
 
+    @Override
+    public void glCopyBufferSubData(int readTarget, int writeTarget, long readOffset, long writeOffset, long size) {
+        buffers.copy(readTarget, writeTarget, readOffset, writeOffset, size);
+    }
+
     @Override public void glDeleteBuffers(int buffer) { buffers.delete(buffer); }
 
     @Override public void glBindBufferBase(int target, int index, int buffer) { buffers.bindIndexed(target, index, buffer, 0, -1); }
@@ -521,7 +526,12 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override
     public void glVertexAttribPointer(int index, int size, int type, boolean normalized, int stride, long pointer) {
-        vaos.pointer(index, size, type, normalized, stride, pointer);
+        vaos.pointer(index, size, type, normalized, false, stride, pointer);
+    }
+
+    @Override
+    public void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) {
+        vaos.pointer(index, size, type, false, true, stride, pointer);
     }
 
     @Override public void glVertexAttribDivisor(int index, int divisor) { vaos.divisor(index, divisor); }
@@ -637,18 +647,24 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── draws ──────────────────────────────────────────────────────────────────
 
-    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0); }
+    @Override public void glDrawArrays(int mode, int first, int count) { draw(mode, first, count, 1, -1, 0, 0); }
 
-    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices); }
+    @Override public void glDrawElements(int mode, int count, int type, long indices) { draw(mode, 0, count, 1, type, indices, 0); }
 
     @Override
     public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) {
-        draw(mode, first, count, instanceCount, -1, 0);
+        draw(mode, first, count, instanceCount, -1, 0, 0);
     }
 
     @Override
     public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) {
-        draw(mode, 0, count, instanceCount, type, indices);
+        draw(mode, 0, count, instanceCount, type, indices, 0);
+    }
+
+    @Override
+    public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount,
+                                                  int baseVertex) {
+        draw(mode, 0, count, instanceCount, type, indices, baseVertex);
     }
 
     /**
@@ -675,7 +691,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     /** @param type the index type, or -1 for a draw of arrays */
-    private void draw(int mode, int first, int count, int instances, int type, long indices) {
+    private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
         CgDrawState s = tracker.state;
         if (!framebuffers.applyDraw()) {
             errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
@@ -698,7 +714,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         if (type == CgGL.GL_UNSIGNED_BYTE) throw new UnsupportedOperationException("8-bit indices: a device takes 16 or 32");
         boolean wide = type == CgGL.GL_UNSIGNED_INT;
         s.indexBuffer(elements.storage.allocation(), 0, wide);
-        tracker.drawIndexed(topology, count, instances, (int) (indices / (wide ? 4 : 2)), 0, 0);
+        tracker.drawIndexed(topology, count, instances, (int) (indices / (wide ? 4 : 2)), baseVertex, 0);
     }
 
     // ── sync, timers, host sections ────────────────────────────────────────────

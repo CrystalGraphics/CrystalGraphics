@@ -384,6 +384,7 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
 | `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
+| `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
 
 ### Vertex Attribute Aliases
 

@@ -68,6 +68,27 @@ public final class CgTrackedBuffer {
     }
 
     /**
+     * {@code glCopyBufferSubData}. Into device-local storage it is a device copy, ordered with the draws around it;
+     * between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds.
+     * A device-local source into a host-visible destination is refused: that would be a readback.
+     */
+    public void copyFrom(CgTrackedBuffer src, long srcOffset, long dstOffset, long size) {
+        CgAllocation from = src.require(), to = require();
+        if (!to.hostVisible()) {
+            tracker.transfer().copyBuffer(from.buffer, from.offset + srcOffset, to.buffer, to.offset + dstOffset, size);
+            tracker.markUsed(from);
+            tracker.markUsed(to);
+            return;
+        }
+        if (!from.hostVisible())
+            throw new UnsupportedOperationException(label + ": a copy from device-local " + src.label + " is a readback");
+        ByteBuffer bytes = from.memory();
+        bytes.limit((int) (srcOffset + size));
+        bytes.position((int) srcOffset);
+        subData(dstOffset, bytes.slice());
+    }
+
+    /**
      * {@code glMapBufferRange}: the bytes to write, or to read once the GPU has written them.
      *
      * @param invalidateBuffer the old contents may go: new storage
