@@ -16,7 +16,8 @@ holder of a `CgMesh`) stay until M5 moves their callers and deletes them.
 | Type | Role |
 |------|------|
 | `CgMesh` | The mesh: `build(format[, usage], body)`, `edit(body)` (replaces the contents), `writeVertices(first, bytes)` / `writeIndices(first, ints)` (overwrite part), `edit(context, body)` for an edit every frame, `submesh(i, firstIndex, count)`, `submesh(i, int[4])` for a draw, `bounds(...)` / `pad(r)`, `release()`. Readers take `changesSince(revision, changes)` and `readVertices` / `readIndices` |
-| `CgMesh.Usage` | `STATIC`, `DYNAMIC`, `FRAME` (the frame ring), `GPU_ONLY` (CPU copy dropped after upload) |
+| `CgMesh.quads(n)`, `CgMesh.vertices(n, topology)` | Shared meshes with no vertex data (`CgVertexFormat.NONE`, `#type none`): a shader places each vertex from `CG_VERTEX_ID`. Drawn with ranges and stated bounds (`CgWorldRenderer.Draw.indices`, `.bounds`) |
+| `CgMesh.Usage` | `STATIC`, `DYNAMIC`, `FRAME`, `GPU_ONLY`. Today the store treats all four alike: a new range per edit, the old freed once its frames retire |
 | `CgMeshWriter` | What `build` and `edit` hand their body: a vertex's attributes in any order, `end()` naming any missing; semantic setters for one the format lacks do nothing; `set`/`setInt` by attribute index; `triangle`/`quad`/`line`/`index`; `submesh()` |
 | `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |
 | `CgMeshChanges` | A reader's reused holder: the revision now, `all`, and the vertex and index ranges touched since the revision it last read |

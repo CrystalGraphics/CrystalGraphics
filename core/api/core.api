@@ -607,6 +607,8 @@ com/crystalgraphics/api/mesh/CgMesh
   method public writeVertices (ILjava/nio/ByteBuffer;)V
   method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Lcom/crystalgraphics/api/mesh/CgMesh$Usage;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,static build (Lcom/crystalgraphics/api/vertex/CgVertexFormat;Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static quads (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static vertices (ILcom/crystalgraphics/api/mesh/CgMeshTopology;)Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/api/mesh/CgMesh$Usage
   access public,final,enum
   extends java/lang/Enum
@@ -1459,6 +1461,7 @@ com/crystalgraphics/api/vertex/CgVertexConsumer
 com/crystalgraphics/api/vertex/CgVertexFormat
   access public,final
   extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   field public,static,final POS2_UV2_COL4UB Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   field public,static,final POS3_UV2_COL4UB Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   field public,static,final SPATIAL Lcom/crystalgraphics/api/vertex/CgVertexFormat;
@@ -2677,13 +2680,17 @@ com/crystalgraphics/render/draw/CgBatcher
   field public,static,final LOOKBACK I
   method public <init> ()V
   method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIFFFFJI)V
+  method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIIIIFFFFJI)V
   method public batchBinding (I)I
   method public batchEnd (I)I
   method public batchKind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public batchMesh (I)Ljava/lang/Object;
   method public batchPipeline (I)I
+  method public batchRangeCount (I)I
+  method public batchRangeFirst (I)I
   method public batchScissor (I)I
   method public batchStart (I)I
+  method public batchSubmesh (I)I
   method public batches ()I
   method public finish ()V
   method public ref (I)I
@@ -2729,6 +2736,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public end ()Lcom/crystalgraphics/render/draw/CgDrawChunk;
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public range (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public reset ()V
   method public sortKey (J)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
 com/crystalgraphics/render/draw/CgChunkSink
@@ -2750,6 +2758,9 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public kind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public mesh (I)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public pipeline (I)I
+  method public rangeCount (I)I
+  method public rangeFirst (I)I
+  method public rangeSubmesh (I)I
   method public sortKey (I)J
   method public spatial ()I
   method public with (ILcom/crystalgraphics/render/draw/CgBindingTable;[I[[F)Lcom/crystalgraphics/render/draw/CgDrawChunk;
@@ -3028,6 +3039,7 @@ com/crystalgraphics/render/mesh/CgMeshStore
   access public,final
   extends java/lang/Object
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;I)V
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIII)V
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
   method public releaseAll ()V
   method public upload ()V
@@ -3244,9 +3256,13 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/world/CgWorldRenderer;)V
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public priority (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public submesh (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public submit ()V
   method public transform (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
 com/crystalgraphics/render/world/CgWorldRenderer$FrameListener
