@@ -27,7 +27,8 @@ import java.util.function.IntConsumer;
  * <ul>
  *   <li>Positions are absolute world coordinates, interpolated by the {@code partialTick} given: the frame's
  *       ({@code CgHostFrame.partialTick()}) puts an effect where the entity is drawn.</li>
- *   <li>Render thread only, like {@link CgWorldQuery}. Nothing here hands out a Minecraft object or allocates.</li>
+ *   <li>Render thread only, like {@link CgWorldQuery}. Nothing here hands out a Minecraft object; only
+ *       {@link #within} may allocate, the iterator over the host's entity list.</li>
  *   <li>{@link #NONE} answers -1, false and nothing: the harness, a dedicated server, no level.</li>
  * </ul>
  */

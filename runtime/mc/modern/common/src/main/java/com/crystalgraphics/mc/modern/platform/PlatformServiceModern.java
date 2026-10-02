@@ -21,7 +21,9 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.mc.modern.platform.world.WorldQueryModern;
+import com.crystalgraphics.mc.modern.platform.world.EntityQueryModern;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
@@ -109,8 +111,9 @@ public final class PlatformServiceModern implements CgPlatformService {
                 glBackend = new Blaze3dGLBackend();
             }
 
-            // The world query: client only for the same reason as the cursor below (it reads Minecraft's client level).
+            // The world and entity queries: client only for the same reason as the cursor below (they read the client level).
             CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryModern());
+            CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
 
             // The cursor slot, filled here so no consumer has to -- and HERE rather than in
             // getInstance() for the reason the note above gives: getInstance() runs on both sides, and

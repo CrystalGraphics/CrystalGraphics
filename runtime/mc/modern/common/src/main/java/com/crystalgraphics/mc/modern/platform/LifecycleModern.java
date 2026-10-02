@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
+import com.crystalgraphics.mc.modern.platform.world.TexturesModern;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
@@ -88,6 +89,7 @@ public final class LifecycleModern {
                         .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
                 HostViewModern.capture(mc, partialTick, frame.view());
                 EnvironmentModern.capture(mc, partialTick, frame.view(), frame.environment());
+                TexturesModern.capture(mc, frame.textures());
                 CgRenderStage.WORLD_OPAQUE.fire();
             } finally {
                 worldDepth(false);
@@ -123,6 +125,7 @@ public final class LifecycleModern {
                         .set(opaque.partialTick(), Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo)
                         .view().set(opaque.view());
                 CgRenderStage.WORLD_TRANSPARENT.host().environment().set(opaque.environment());
+                CgRenderStage.WORLD_TRANSPARENT.host().textures().set(opaque.textures());
                 CgRenderStage.WORLD_TRANSPARENT.fire();
             } finally {
                 worldDepth(false);
