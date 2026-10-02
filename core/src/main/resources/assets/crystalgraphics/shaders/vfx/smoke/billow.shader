@@ -6,7 +6,6 @@
 // eye, so every lobe and every bump on it is drawn round its edge. All the noise is per vertex; a pixel only shades. It
 // erodes away at the end of its life. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
 // x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
-// CgVfxParticles.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
