@@ -15,7 +15,7 @@ onto `api/mesh/CgMesh` and delete them.
 
 | Type | Role |
 |------|------|
-| `CgMesh` | The mesh: `build(format[, usage], body)`, `edit(body)` (replaces the contents), `vertices(first, bytes)` / `indices(first, ints)` (overwrite part), `submesh(i, ...)`, `bounds(...)` / `pad(r)`, `release()`. Readers take `changesSince(revision, changes)` and `readVertices` / `readIndices` |
+| `CgMesh` | The mesh: `build(format[, usage], body)`, `edit(body)` (replaces the contents), `writeVertices(first, bytes)` / `writeIndices(first, ints)` (overwrite part), `edit(context, body)` for an edit every frame, `submesh(i, firstIndex, count)`, `submesh(i, int[4])` for a draw, `bounds(...)` / `pad(r)`, `release()`. Readers take `changesSince(revision, changes)` and `readVertices` / `readIndices` |
 | `CgMesh.Usage` | `STATIC`, `DYNAMIC`, `FRAME` (the frame ring), `GPU_ONLY` (CPU copy dropped after upload) |
 | `CgMeshWriter` | What `build` and `edit` hand their body: a vertex's attributes in any order, `end()` naming any missing; semantic setters for one the format lacks do nothing; `set`/`setInt` by attribute index; `triangle`/`quad`/`line`/`index`; `submesh()` |
 | `CgSubmesh` | A part drawn on its own: first index, index count, first vertex, vertex count. Its indices count from its first vertex |

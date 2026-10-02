@@ -5,10 +5,12 @@ import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Arrays;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /**
@@ -27,9 +29,15 @@ import java.util.function.Consumer;
  * <p>Editing replaces the contents, or overwrites part of them; a draw recorded after the edit sees it:</p>
  *
  * <pre>{@code
- * trail.edit(m -> writeTrail(m, points));        // the same writer as build
- * mesh.vertices(16, bytes);                       // vertices 16.. from interleaved bytes in the mesh's format
- * mesh.indices(0, new int[]{0, 1, 2});
+ * mesh.edit(m -> CgMeshShapes.sphere(m, 8, 16, 1f));   // the same writer as build
+ * mesh.writeVertices(16, bytes);                         // vertices 16.. from interleaved bytes in its format
+ * mesh.writeIndices(0, new int[]{0, 1, 2});
+ * }</pre>
+ *
+ * <p>An edit every frame passes its state beside a body that captures nothing, so the call allocates nothing:</p>
+ *
+ * <pre>{@code
+ * trail.edit(points, Trail::write);               // static void write(CgMeshWriter m, TrailPoints points)
  * }</pre>
  *
  * <p>How long the geometry lives decides where its GPU copy goes ({@link Usage}):</p>
@@ -82,7 +90,8 @@ public final class CgMesh {
 
     private final float[] computed = new float[6];
     private boolean computedStale;
-    private float[] declared;
+    private final float[] declared = new float[6];
+    private boolean hasDeclared;
     private float pad;
 
     private int revision;
@@ -92,6 +101,8 @@ public final class CgMesh {
 
     private boolean released;
     private CgMeshWriter idleWriter;
+
+    private static final BiConsumer<CgMeshWriter, Consumer<CgMeshWriter>> ACCEPT = (w, body) -> body.accept(w);
 
     private CgMesh(CgVertexFormat format, Usage usage, boolean shared) {
         this.format = format;
@@ -107,14 +118,14 @@ public final class CgMesh {
 
     public static CgMesh build(CgVertexFormat format, Usage usage, Consumer<CgMeshWriter> body) {
         CgMesh mesh = new CgMesh(format, usage, false);
-        mesh.write(body);
+        mesh.write(body, ACCEPT);
         return mesh;
     }
 
     /** A shape {@link CgMeshShapes} hands to everyone who asks: edits and release refuse. */
     static CgMesh shared(CgVertexFormat format, Consumer<CgMeshWriter> body) {
         CgMesh mesh = new CgMesh(format, Usage.STATIC, true);
-        mesh.write(body);
+        mesh.write(body, ACCEPT);
         return mesh;
     }
 
@@ -123,17 +134,23 @@ public final class CgMesh {
     /** Replaces the contents with what {@code body} writes. */
     public void edit(Consumer<CgMeshWriter> body) {
         requireEditable();
-        write(body);
+        write(body, ACCEPT);
     }
 
-    private void write(Consumer<CgMeshWriter> body) {
+    /** Replaces the contents with what {@code body} writes from {@code context}: no capture, no allocation. */
+    public <T> void edit(T context, BiConsumer<CgMeshWriter, T> body) {
+        requireEditable();
+        write(context, body);
+    }
+
+    private <T> void write(T context, BiConsumer<CgMeshWriter, T> body) {
         CgMeshWriter w;
         synchronized (this) {
             w = idleWriter != null ? idleWriter : new CgMeshWriter(format);
             idleWriter = null;
         }
         w.reset(CgMeshTopology.TRIANGLES);
-        body.accept(w);
+        body.accept(w, context);
         w.finish();
         synchronized (this) {
             byte[] oldVertices = vertices;
@@ -163,7 +180,7 @@ public final class CgMesh {
      * Overwrites vertices from {@code firstVertex} with {@code bytes}' remaining bytes, interleaved in this mesh's
      * format; past the end it grows the mesh. Unity's {@code SetVertexBufferData}: the caller keeps its buffer.
      */
-    public synchronized void vertices(int firstVertex, ByteBuffer bytes) {
+    public synchronized void writeVertices(int firstVertex, ByteBuffer bytes) {
         requireEditable();
         int n = bytes.remaining();
         if (n % stride != 0) throw new IllegalArgumentException(n + " bytes is not a whole number of " + stride + "-byte vertices");
@@ -172,22 +189,27 @@ public final class CgMesh {
         }
         int count = n / stride, end = firstVertex + count;
         if (end * stride > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(end * stride, vertices.length * 2));
-        bytes.duplicate().get(vertices, firstVertex * stride, n);
+        int position = bytes.position();
+        bytes.get(vertices, firstVertex * stride, n);
+        ((Buffer) bytes).position(position);
         vertexCount = Math.max(vertexCount, end);
         computedStale = true;
         changed(false, firstVertex, end, 0, 0);
     }
 
-    /** Overwrites indices from {@code firstIndex}; past the end it grows the mesh. */
-    public synchronized void indices(int firstIndex, int[] values) {
+    /**
+     * Overwrites indices from {@code firstIndex}; past the end it grows the mesh. Each is checked against the whole
+     * mesh's vertices, not its submesh's: a raw write knows no submesh.
+     */
+    public synchronized void writeIndices(int firstIndex, int[] values) {
         requireEditable();
         int end = beginIndices(firstIndex, values.length);
         for (int i = 0; i < values.length; i++) indices[firstIndex + i] = checkIndex(values[i]);
         endIndices(firstIndex, end);
     }
 
-    /** Overwrites indices from {@code firstIndex} with {@code values}' remaining ints. */
-    public synchronized void indices(int firstIndex, IntBuffer values) {
+    /** {@link #writeIndices(int, int[])} from {@code values}' remaining ints. */
+    public synchronized void writeIndices(int firstIndex, IntBuffer values) {
         requireEditable();
         int n = values.remaining(), at = values.position();
         int end = beginIndices(firstIndex, n);
@@ -229,13 +251,19 @@ public final class CgMesh {
 
     /** States the bounds, in the mesh's own space, in place of those of its positions. */
     public synchronized void bounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-        declared = new float[]{minX, minY, minZ, maxX, maxY, maxZ};
+        declared[0] = minX;
+        declared[1] = minY;
+        declared[2] = minZ;
+        declared[3] = maxX;
+        declared[4] = maxY;
+        declared[5] = maxZ;
+        hasDeclared = true;
         changed(false, 0, 0, 0, 0);
     }
 
     /** Returns to bounds of the positions written. */
     public synchronized void autoBounds() {
-        declared = null;
+        hasDeclared = false;
         changed(false, 0, 0, 0, 0);
     }
 
@@ -247,7 +275,7 @@ public final class CgMesh {
 
     /**
      * Frees the GPU copy once no frame in flight reads it. The mesh keeps its data; drawing it again places it
-     * again.
+     * again, which clears {@link #isReleased()}.
      */
     public synchronized void release() {
         if (shared) throw new IllegalStateException("a shared shape is never released");
@@ -284,6 +312,7 @@ public final class CgMesh {
         return shared;
     }
 
+    /** Release was asked since the mesh was last placed on the GPU. */
     public synchronized boolean isReleased() {
         return released;
     }
@@ -320,10 +349,24 @@ public final class CgMesh {
         return new CgSubmesh(submeshes[i * 4], submeshes[i * 4 + 1], submeshes[i * 4 + 2], submeshes[i * 4 + 3]);
     }
 
+    /** Submesh {@code i} into {@code out} as first index, index count, first vertex, vertex count: for a draw. */
+    public synchronized int[] submesh(int i, int[] out) {
+        if (i < 0 || i >= submeshCount) throw new IndexOutOfBoundsException("submesh " + i + " of " + submeshCount);
+        if (submeshes == null) {
+            out[0] = 0;
+            out[1] = indexCount;
+            out[2] = 0;
+            out[3] = vertexCount;
+        } else {
+            System.arraycopy(submeshes, i * 4, out, 0, 4);
+        }
+        return out;
+    }
+
     /** The bounds, padded, into {@code out} as min x, y, z then max x, y, z. Zero for a mesh with no positions. */
     public synchronized float[] bounds(float[] out) {
         float[] b = declared;
-        if (b == null) {
+        if (!hasDeclared) {
             if (computedStale) computeBounds();
             b = computed;
         }
@@ -334,7 +377,7 @@ public final class CgMesh {
         return out;
     }
 
-    /** Bounds from the position bytes, after a raw {@link #vertices} write. */
+    /** Bounds from the position bytes, after a raw {@link #writeVertices} write. */
     private void computeBounds() {
         computedStale = false;
         Arrays.fill(computed, 0f);

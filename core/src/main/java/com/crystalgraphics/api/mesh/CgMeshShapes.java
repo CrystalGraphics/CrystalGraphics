@@ -173,7 +173,11 @@ public final class CgMeshShapes {
         }
     }
 
-    /** A UV sphere: {@code (rings + 1) * (sectors + 1)} vertices, the normal its direction from the centre. */
+    /**
+     * A UV sphere: {@code (rings + 1) * (sectors + 1)} vertices, the normal its direction from the centre. UV {@code u}
+     * runs 0 to 1 around the Y axis from +X towards +Z, the seam's column written twice (at 0 and at 1); {@code v} runs
+     * 0 at +Y to 1 at -Y. Shaders depend on it (VFX's {@code ring.shader} bends this sphere into a band): it is fixed.
+     */
     public static void sphere(CgMeshWriter m, int rings, int sectors, float radius) {
         if (rings <= 0) throw new IllegalArgumentException("rings must be > 0, got " + rings);
         if (sectors <= 0) throw new IllegalArgumentException("sectors must be > 0, got " + sectors);
