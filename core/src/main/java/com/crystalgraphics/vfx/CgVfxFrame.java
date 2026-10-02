@@ -81,6 +81,43 @@ public final class CgVfxFrame {
         draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
     }
 
+    /**
+     * Draws {@code layer} on the ribbon mesh spread over {@code path}, at {@code row}: stateless particles that ride the
+     * path itself, reading it through {@code fx_tube.glsl} ({@code fx_ring_at}). What its shader reads:
+     * <ul>
+     *   <li>{@code _FxPath}; the header gives the effect's age and seed.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, 0, the layer's radius, the layer's parameter.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM1}: the draw's centre minus the effect's origin, so
+     *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin; {@code .w} an intensity.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM2}, {@code CG_OBJECT_CUSTOM3}: the layer's two colours.</li>
+     * </ul>
+     * The draw's bounds are the path's, grown by its widest ring times the layer's radius.
+     */
+    public void pathRibbons(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer, float intensity) {
+        int count = path.count();
+        if (count < 2) return;
+        float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE, reach = 0f;
+        for (int i = 0; i < count; i++) {
+            minX = Math.min(minX, path.x(i)); maxX = Math.max(maxX, path.x(i));
+            minY = Math.min(minY, path.y(i)); maxY = Math.max(maxY, path.y(i));
+            minZ = Math.min(minZ, path.z(i)); maxZ = Math.max(maxZ, path.z(i));
+            reach = Math.max(reach, path.radius(i));
+        }
+        reach *= Math.max(layer.radius(), 1f) * 2f;
+        float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f, cz = (minZ + maxZ) * 0.5f;
+        // The ribbon mesh spans -1..1: half the extent each way.
+        scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
+        CgVfxValues values = effect.values();
+        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer))
+                .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
+                .custom(0, row, 0f, layer.radius(), layer.parameter())
+                .custom(1, cx, cy, cz, intensity);
+        color(draw, 2, layer.colorA(), values);
+        color(draw, 3, layer.colorB(), values);
+        draw.priority(layer.priority()).submit();
+    }
+
     private void draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                       float ex, float ey, float ez, float ew) {
         CgVfxValues values = effect.values();

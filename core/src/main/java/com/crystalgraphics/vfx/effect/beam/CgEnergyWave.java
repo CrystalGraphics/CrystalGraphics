@@ -68,6 +68,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_STREAKS = "streaks";
     /** Arcs crackling over the charge and the root: ribbons round the ball, its radius their unit. */
     public static final String SLOT_ARCS = "arcs";
+    /** Lightning crawling along the body: ribbons riding the path ({@link CgVfxFrame#pathRibbons}). */
+    public static final String SLOT_BODY_ARCS = "bodyArcs";
     /** The orb at the target while the beam hits it: a sphere, its +z back along the beam. */
     public static final String SLOT_IMPACT = "impact";
     /** Sparks thrown back off the impact while it hits: ribbons, their +z back along the beam. */
@@ -113,6 +115,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam RING_SPACING = SCHEMA.scalar("ringSpacing", 0.2f);
     /** How much pulses running down the body swell it, as a share of the radius. */
     public static final CgVfxParam THROB = SCHEMA.scalar("throb", 0.07f);
+    /** How much brighter the pulses racing down the body flash, as a share of its brightness. */
+    public static final CgVfxParam PULSE = SCHEMA.scalar("pulse", 0.45f);
 
     /** Seconds the ball charges before the wave fires on its own; 0 fires at once. */
     public static final CgVfxParam CHARGE_TIME = SCHEMA.scalar("chargeTime", 1.6f);
@@ -180,6 +184,10 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .radius(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
                     .radius(0.62f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
+            .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
+                    .radius(1.2f).colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+            .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
+                    .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
             .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.3f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
             .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
             .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
@@ -382,6 +390,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         for (int i = 0; i < layers.size(); i++) {
             CgVfxLayer layer = layers.get(i);
             if (CgVfxLayer.SLOT_BODY.equals(layer.slot())) frame.tube(this, path, row, layer);
+            else if (SLOT_BODY_ARCS.equals(layer.slot())) frame.pathRibbons(this, path, row, layer, 1f);
         }
         if (stream.impacting()) {
             int last = path.count() - 1;
@@ -558,15 +567,20 @@ public final class CgEnergyWave extends CgVfxEffect {
         float launch = get(LAUNCH), sinceRelease = age - releaseAge;
         float radius = get(RADIUS) * (launch > 0f ? 0.3f + 0.7f * smooth(0f, launch, sinceRelease) : 1f);
         bodyRadius = radius;
-        float throb = get(THROB), length = path.length();
+        float throb = get(THROB), pulse = get(PULSE), length = path.length();
         for (int i = 0; i < path.count(); i++) {
             float s = path.arc(i);
             float muzzle = firing ? 0.55f + 0.45f * smooth(0f, 2.5f * radius, s) : smooth(0f, radius, s);
             float head = 1f + 0.3f * smooth(length - 4f * radius, length - radius, s);
             float tip = (float) Math.sqrt(smooth(0f, 0.8f * radius, length - s));
-            float pulse = 1f + throb * (float) Math.sin(s * 1.3f - age * 16f)
+            float swell = 1f + throb * (float) Math.sin(s * 1.3f - age * 16f)
                     + 0.5f * throb * (float) Math.sin(s * 3.1f - age * 29f + seed * 6.28f);
-            path.radius(i, radius * muzzle * head * tip * pulse);
+            path.radius(i, radius * muzzle * head * tip * swell);
+            // Sharp bright pulses racing down the body, faster than it flows.
+            float flash = 0.5f + 0.5f * (float) Math.sin(s * 0.9f - age * 22f);
+            flash *= flash;
+            flash *= flash;
+            path.intensity(i, 1f + pulse * flash * flash);
         }
     }
 

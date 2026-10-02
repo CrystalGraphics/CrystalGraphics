@@ -15,7 +15,7 @@ Properties {
     _Density ("How fast it turns white", float) = 3.2
 }
 
-struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 ring; };
+struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 ring; float pulse; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -35,6 +35,7 @@ Pass {
         o.tangent = v.ring.tangent;
         // arc, the core's radius, the effect's age, the path's length
         o.ring = vec4(v.ring.arc, v.ring.radius * CG_OBJECT_CUSTOM0.z * 0.8, v.header.w, v.header.y);
+        o.pulse = v.ring.intensity;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
     }
 
@@ -50,6 +51,6 @@ Pass {
         float knots = fx_noise(vec3((q.w - i.ring.z * _Flow) * 0.45, q.y / r * 0.8, i.ring.z * 0.7));
         float white = 1.0 - exp(-thickness * _Density * (0.8 + 0.35 * knots));
         vec3 col = mix(CG_OBJECT_CUSTOM3.rgb, CG_OBJECT_CUSTOM2.rgb, smoothstep(0.1, 0.65, thickness));
-        fragColor = vec4(col * white * 1.35 * CG_OBJECT_CUSTOM2.a * seen, 1.0);
+        fragColor = vec4(col * white * 1.35 * i.pulse * CG_OBJECT_CUSTOM2.a * seen, 1.0);
     }
 }
