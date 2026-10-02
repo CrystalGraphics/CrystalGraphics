@@ -207,10 +207,11 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 
 - **Fail Fast**: throw exceptions for unsupported capabilities; never silently degrade
 - **Multi-Mod First**: other mods will mutate GL state; design for cooperation, not control
-- **Vulkan first, GL as the waterfall**: new infrastructure is designed for the Vulkan device, where compute passes,
-  indirect draws and everything GL 4.6 or later offers are used ungated. GL, and Minecraft before 26, are reached
-  through capability tiers stepping down from that design, each forceable. macOS is no reason to hold back: MoltenVK
-  runs the Vulkan path. A new GPU subsystem (compute first) gets its own research plan before any code
+- **Vulkan first; GL keeps up through waterfalls**: CrystalGraphics is designed for the Vulkan device. Compute
+  passes, indirect draws and everything GL 4.6 or later offers are the design, used ungated there. GL stays
+  supported: where an older GL context cannot do what the design does (macOS's GL stops at 4.1), a waterfall tier
+  provides it, each forceable, and Minecraft before 26 runs on those tiers. The modern approach is never dropped for
+  the old one. A new GPU subsystem (compute first) gets its own research plan before any code
 - **A GL 3.3 floor, and gates above it**: `CgCapabilities.detect()` throws below OpenGL 3.3, so nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name
 - **Angelica Coexistence**: on 1.7.10 with Angelica present, the GL state shadow reads Angelica's mirror instead of the driver (`AngelicaStateProvider`)
 
