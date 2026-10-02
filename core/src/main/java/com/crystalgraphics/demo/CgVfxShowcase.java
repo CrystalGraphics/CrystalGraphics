@@ -57,6 +57,12 @@ public final class CgVfxShowcase {
             1f, 1f, 1f, 1f, 1.35f, 1f, 1.5f, 1.45f, 1.75f, 1.7f, 1.6f, 2.1f, 1.7f, 1.55f, 1.5f, 1.5f,
     };
 
+    /**
+     * Order within a world stage, low first: the sky's fade under all that is blended, then the spheres, then the sky,
+     * where depth rejects whatever covers it before it is shaded, and its seal over all that is blended.
+     */
+    private static final int SKY_FADE = 0, SPHERES = 1, SKY = 15;
+
     private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13, SUPERNOVA = 11;
     /** The black hole is traced in a larger sphere than the rest, so its disk has room; the sphere itself never shows. */
     private static final float BLACK_HOLE_SIZE = 1.35f;
@@ -68,7 +74,7 @@ public final class CgVfxShowcase {
     private CgMesh sphere;
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
-    private CgMaterial glow, corona, bolt, sky, horizon, floorMaterial;
+    private CgMaterial glow, corona, bolt, sky, horizon, seal, floorMaterial;
     private double gridX = Double.NaN, gridZ = Double.NaN;
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
@@ -85,11 +91,11 @@ public final class CgVfxShowcase {
             spin(k, seconds);
             if (k == SUPERNOVA) {
                 transform.scale(SUPERNOVA_SIZE);
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).submit();
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).priority(SPHERES).submit();
                 transform.identity().scale(SUPERNOVA_SIZE * CORONA_REACH);
                 float flare = 1f + 0.15f * (float) Math.sin(seconds * 2.1) + 0.08f * flicker(seconds, k);
                 world.draw(sphere, corona).at(cx, cy, cz).transform(transform)
-                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).submit();
+                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).priority(SPHERES).submit();
                 continue;
             }
             // Every sphere knows how high above the floor it is: the metals mirror the floor from there.
@@ -100,13 +106,13 @@ public final class CgVfxShowcase {
                         .custom(0, impacts[0], impacts[1], impacts[2], impacts[3])
                         .custom(1, impacts[4], impacts[5], impacts[6], impacts[7])
                         .custom(2, impacts[8], impacts[9], impacts[10], impacts[11])
-                        .custom(3, above, 0f, 0f, 0f).submit();
+                        .custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
                 boltsInFlight(world, cx, cy, cz);
                 // What the field protects: a small gold core turning inside it.
                 transform.identity().rotateY(-seconds * 0.6f).scale(0.45f);
-                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
+                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
             } else {
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).submit();
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
             }
             float strength = GLOW[k][3];
             // The black hole has no ball to glow round: its disk lights the floor alone.
@@ -115,7 +121,7 @@ public final class CgVfxShowcase {
             transform.identity().scale(GLOW_REACH[k]);
             world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
-                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).submit();
+                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).priority(SPHERES).submit();
         }
     }
 
@@ -134,7 +140,7 @@ public final class CgVfxShowcase {
         }
         world.draw(floor, floorMaterial).at(x, y, z).submit();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).submit();
+        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
     }
 
     /**
@@ -145,8 +151,9 @@ public final class CgVfxShowcase {
     public void submitSky(CgWorldRenderer world, double cameraX, double cameraY, double cameraZ) {
         ensureResources();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).submit();
-        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).priority(15).submit();
+        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
+        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY_FADE).submit();
+        world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
     }
 
     /** Frees the meshes. Call on context teardown. */
@@ -204,7 +211,7 @@ public final class CgVfxShowcase {
             float distance = BOLT_RANGE + (1f - BOLT_RANGE) * travel;
             boolean steep = Math.abs(dy) > 0.95f;
             transform.identity().rotateTowards(dx, dy, dz, steep ? 1f : 0f, steep ? 0f : 1f, 0f).scale(0.05f, 0.05f, 0.34f);
-            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).submit();
+            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).priority(SPHERES).submit();
         }
     }
 
@@ -238,6 +245,7 @@ public final class CgVfxShowcase {
         bolt = CgMaterial.load("crystalgraphics:shaders/demo/vfx_bolt.shader");
         sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
         horizon = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_horizon.shader");
+        seal = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_seal.shader");
         floorMaterial = CgMaterial.newInstance("crystalgraphics:shaders/demo/vfx_floor.shader");
     }
 }

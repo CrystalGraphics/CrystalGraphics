@@ -89,6 +89,9 @@ vec3 sky_moon(int k, float t, vec3 planetDir, float planetSize, vec3 ringU, vec3
 
 // The clip z of a vertex with clip w {@code w}, just inside the far plane whichever way the pass's depth runs: 1, or 0
 // or -1 when reversed (Minecraft 26.2). A macro, since this file is compiled ahead of the frame block.
+// Whether a raw depth {@code depth} is the far plane's: open sky, which no host draw has covered.
+#define VFX_OPEN_SKY(depth) (CG_DEPTH_REVERSED ? (depth) <= 1.0e-6 : (depth) >= 1.0 - 1.0e-6)
+
 #define VFX_SKY_FAR_Z(w) ((w) * (cg_DepthParams.x > 0.5 ? (cg_DepthParams.y > 0.5 ? 1.0e-5 : -1.0 + 1.0e-5) : 1.0 - 1.0e-5))
 
 // The sky toward {@code d}, a unit vector, at {@code t} seconds, a pixel {@code pixel} radians across; tone mapped.
