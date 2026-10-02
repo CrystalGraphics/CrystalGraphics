@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * The parts nearly every explosion and ki attack shares, as Sparking Zero reuses them: a cloud of cel-shaded billows,
- * dark debris specks, glowing embers and the ink streaks of the shock. Each part is an emitter with its own physics
+ * dark debris specks, glowing embers, and the shock's ink: curved streaks, straight spikes and expanding rings. Each part is an emitter with its own physics
  * (plan vfx-particles) and a layer that draws it. An effect makes one on its schema, which declares the parts' colours
  * there, adds it to its looks, and starts the look's emitters where the burst happens.
  *
@@ -102,12 +102,35 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
             .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.LINEAR).build())
             .build();
 
+    /**
+     * Ink spikes: long straight strokes fanning up and out of the cloud, each stretched along its velocity by its
+     * speed, so they shorten as the air brakes them.
+     */
+    public static final CgVfxEmitter RAYS = CgVfxEmitter.builder("rays").renderer(CgVfxEmitter.Renderer.ARCS)
+            .capacity(32).rate(80f, 0.03f, 0.35f).shape(4f).launch(0.05f, 0.9f, 1.4f).speed(16f, 27f)
+            .life(1.8f, 2.7f).size(0.14f, 0.32f, 1.5f)
+            .module(new CgVfxModule.Drag(0f, 0.05f))
+            .size(CgKeyframes.start(0f, 1f).to(0.4f, 1f, CgEasings.LINEAR).to(1f, 0.35f, CgEasings.IN_OUT_SINE).build())
+            .opacity(CgKeyframes.start(0f, 1f).to(0.35f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_OUT_SINE).build())
+            .build();
+
+    /**
+     * Shockwave rings: thin ink bands at several heights, expanding fast to tens of blocks round the blast, thinning and
+     * breaking into dashes as they go. Each is one particle, its drawn size the ring's radius.
+     */
+    public static final CgVfxEmitter RINGS = CgVfxEmitter.builder("rings").renderer(CgVfxEmitter.Renderer.MESHES)
+            .capacity(6).rate(12f, 0f, 0.35f).shape(10f).launch(1f, 1f, 1f).speed(0.5f, 2f)
+            .life(2.2f, 3f).size(22f, 34f, 1f)
+            .size(CgKeyframes.start(0f, 0.25f).to(1f, 1f, CgEasings.OUT_QUAD).build())
+            .opacity(CgKeyframes.start(0f, 0.85f).to(0.35f, 0.85f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_OUT_SINE).build())
+            .build();
+
     /** The cloud's body and its hot core, the debris and ink, and a spark's white centre: colours on its schema. */
     public final CgVfxParam body, hot, debris, sparkCore;
     /** This kit's emitters: the defaults above, named for it, so a look can replace any by that name. */
-    public final CgVfxEmitter billows, specks, sparkles, ink;
+    public final CgVfxEmitter billows, specks, sparkles, ink, rays, rings;
     /** The layers that draw them, each in its emitter's slot. */
-    public final CgVfxLayer billowLayer, speckLayer, sparkLayer, inkLayer;
+    public final CgVfxLayer billowLayer, speckLayer, sparkLayer, inkLayer, rayLayer, ringLayer;
 
     /** Declares this kit's colours on {@code schema}, defaulting to a blue blast, and builds its layers. */
     public CgVfxExplosion(CgVfxSchema schema, String name) {
@@ -119,11 +142,17 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         specks = named(SPECKS, name);
         sparkles = named(SPARKLES, name);
         ink = named(INK, name);
+        rays = named(RAYS, name);
+        rings = named(RINGS, name);
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
                 .colors(body, hot).priority(CgVfxLayer.PRIORITY_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
                 .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
         inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
+                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+        rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
+                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+        ringLayer = CgVfxLayer.builder(PARTICLE + "ring.shader").slot(rings.layer())
                 .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
         sparkLayer = CgVfxLayer.builder(PARTICLE + "spark.shader").slot(sparkles.layer())
                 .colors(hot, sparkCore).priority(CgVfxLayer.PRIORITY_BANDS).build();
@@ -131,12 +160,12 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /** Every emitter of this kit, in the order they start. */
     public List<CgVfxEmitter> emitters() {
-        return List.of(billows, specks, sparkles, ink);
+        return List.of(billows, specks, sparkles, ink, rays, rings);
     }
 
     @Override
     public void addTo(CgVfxLook.Builder look) {
-        look.layer(billowLayer).layer(speckLayer).layer(inkLayer).layer(sparkLayer);
+        look.layer(billowLayer).layer(speckLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
         for (CgVfxEmitter emitter : emitters()) look.emitter(emitter);
     }
 
