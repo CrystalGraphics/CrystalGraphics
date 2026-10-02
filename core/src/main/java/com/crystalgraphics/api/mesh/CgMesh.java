@@ -62,16 +62,20 @@ import javax.annotation.Nullable;
 public final class CgMesh {
 
     /**
-     * How long a mesh's geometry lives. The store places every usage in its format's pool, a new range on each edit,
-     * the old freed once the frames that drew it retire; {@code FRAME} states intent for the frame ring, a path still to
-     * come.
+     * How long a mesh's geometry lives. The store places {@code STATIC}, {@code DYNAMIC} and {@code GPU_ONLY} in its
+     * format's pool, a new range on each edit, the old freed once the frames that drew it retire; {@code FRAME} goes
+     * into the frame ring each frame it draws.
      */
     public enum Usage {
         /** Built once, drawn many times. */
         STATIC,
         /** Edited now and then. */
         DYNAMIC,
-        /** Rewritten every frame it draws. */
+        /**
+         * Rewritten every frame it draws: its bytes go into the frame ring each frame, with no range of its own, so
+         * it needs no {@link #release()} and holds nothing once a frame passes without it. {@link #reserve} keeps its
+         * edits from allocating.
+         */
         FRAME,
         /**
          * Never read back: the CPU copy is dropped once the store has staged it. Counts, submeshes and bounds stay; a
@@ -335,6 +339,26 @@ public final class CgMesh {
     public void release() {
         if (shared) throw new IllegalStateException("a shared shape is never released");
         releases++;
+    }
+
+    /**
+     * Sizes the storage for {@code vertices} and {@code indices}, so an edit up to that size never grows an array: a
+     * mesh rewritten every frame allocates nothing from its first frame.
+     *
+     * <pre>{@code
+     * CgMesh trail = CgMesh.build(format, CgMesh.Usage.FRAME, m -> {});
+     * trail.reserve(2 * maxPoints, 0);
+     * trail.edit(points, Trail::write);   // each frame
+     * }</pre>
+     */
+    public synchronized void reserve(int vertices, int indices) {
+        requireEditable();
+        int bytes = vertices * stride;
+        if (this.vertices.length < bytes) this.vertices = Arrays.copyOf(this.vertices, bytes);
+        if (this.indices.length < indices) this.indices = Arrays.copyOf(this.indices, indices);
+        if (idleWriter == null) idleWriter = new CgMeshWriter(format);
+        if (idleWriter.vertices.length < bytes) idleWriter.vertices = Arrays.copyOf(idleWriter.vertices, bytes);
+        if (idleWriter.indices.length < indices) idleWriter.indices = Arrays.copyOf(idleWriter.indices, indices);
     }
 
     /**

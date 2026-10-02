@@ -140,6 +140,14 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     public abstract ByteBuffer map(int sizeBytes);
 
     /**
+     * Where the region the last {@link #map} returned starts in the buffer: what {@link #commit} will return. Valid
+     * between the two, for a caller that aligns what it writes to the buffer rather than to the region.
+     */
+    public int mappedOffset() {
+        return 0;
+    }
+
+    /**
      * Finalises the CPU-side upload and returns the byte offset where the data starts in the GL buffer.
      *
      * <p>This call only finalises the CPU write; do not assume the GPU has consumed the data when it
