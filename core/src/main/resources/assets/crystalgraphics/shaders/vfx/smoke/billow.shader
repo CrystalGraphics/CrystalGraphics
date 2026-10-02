@@ -4,7 +4,7 @@
 // Sparking Zero draws its blasts: a saturated body, a darker band only on the undersides, an irregular glowing core on
 // each lobe pushed toward a light that follows the eye, and dark contour strokes wherever the surface turns away from the
 // eye, so every lobe and every bump on it is drawn round its edge. All the noise is per vertex; a pixel only shades. It
-// erodes away at the end of its life. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
+// erodes away at the end of its life, and as the camera comes near it, so a player inside a blast still sees out. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
 // x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
@@ -20,6 +20,8 @@ Properties {
     _Contour ("Contour width, as how far the surface may turn from the eye", float) = 0.3
     _Core    ("How much of each lobe its core covers, lower is more", float) = 0.8
     _Glow    ("Brightness of the core while hot", float) = 1.7
+    _NearFrom ("Blocks from the eye where it starts eroding away", float) = 8.0
+    _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
 }
 
 struct v2f { vec3 world; vec3 normal; vec3 lobe; };
@@ -70,7 +72,9 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         float life = CG_OBJECT_CUSTOM1.x, opacity = CG_OBJECT_CUSTOM1.z, hot = CG_OBJECT_CUSTOM1.w;
-        if (i.lobe.z < (1.0 - opacity) * 1.05) discard;
+        // Eroding: holes eat through as it fades, and as the eye comes near, the same way.
+        float near = 1.0 - smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
+        if (i.lobe.z < max(1.0 - opacity, near) * 1.05) discard;
         vec3 n = normalize(i.normal);
         vec3 eye = FX_CAMERA;
         vec3 toEye = normalize(eye - i.world);
