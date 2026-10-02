@@ -18,10 +18,9 @@ import java.nio.FloatBuffer;
  * <p>Two kinds, from two factories, each a waterfall of {@link StreamBufferTier}s that {@link CgCapabilities}
  * picks once per context:</p>
  * <ul>
- *   <li>{@link #create(int)} -- a <b>vertex stream</b>: {@link StreamBufferTier#PERSISTENT} &gt;
+ *   <li>{@link #create(int, int)} -- a <b>stream</b>: {@link StreamBufferTier#PERSISTENT} &gt;
  *       {@link StreamBufferTier#RING} &gt; {@link StreamBufferTier#ORPHAN} &gt; {@link StreamBufferTier#SUBDATA}.
- *       On the two ring tiers each upload lands at a new offset, valid for the frame that wrote it;
- *       {@code CgBatchRenderer} and {@code CgInstanceRenderer} draw from it the same frame.</li>
+ *       On the two ring tiers each upload lands at a new offset, valid for the frame that wrote it.</li>
  *   <li>{@link #createForShaderBuffer(int, int)} -- <b>shader-buffer storage</b>: {@link StreamBufferTier#ORPHAN}
  *       &gt; {@link StreamBufferTier#SUBDATA}, always at offset 0 and readable until the next upload -- for a
  *       buffer whose readers pass no point that could re-upload it (a TBO, a mod's own registry buffer), and
@@ -298,16 +297,6 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
     /** Deletes the underlying GL buffer object. Must not be called more than once. */
     protected void deleteGlResources() {}
 
-    /**
-     * A vertex stream on {@code GL_ARRAY_BUFFER}, on {@link CgCapabilities#vertexStreamTier()}. On a ring
-     * tier every {@link #commit} returns a new offset; {@code CgVertexArrayBinding} re-points its attributes
-     * to it.
-     *
-     * @param capacityBytes initial GL buffer capacity in bytes
-     */
-    public static CgStreamBuffer create(int capacityBytes) {
-        return create(CgGL.GL_ARRAY_BUFFER, capacityBytes);
-    }
     
     /**
      * A stream on {@code target}, on {@link CgCapabilities#vertexStreamTier()}. On a ring tier every

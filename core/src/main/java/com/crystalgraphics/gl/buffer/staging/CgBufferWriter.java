@@ -14,8 +14,7 @@ import java.util.Objects;
 /**
  * Format-aware staged float writer backed by a {@link CgStagingBuffer}.
  *
- * <p>Companion to {@link CgInstanceWriter} for non-vertex-format buffer payloads
- * (UBOs, SSBOs, TBOs). Requires a {@link CgBufferFormat} — all shader buffers
+ * <p>For non-vertex-format buffer payloads (UBOs, SSBOs, TBOs). Requires a {@link CgBufferFormat} — all shader buffers
  * carry a typed format. {@link #beginRecord()}/{@link #endRecord()} bracket each
  * logical record.</p>
  *
@@ -33,7 +32,6 @@ import java.util.Objects;
  *
  * <p><strong>Thread safety:</strong> none. All calls must be on the render thread.</p>
  *
- * @see CgInstanceWriter
  * @see CgStagingBuffer
  */
 public final class CgBufferWriter {

@@ -10,8 +10,7 @@ import java.nio.ByteOrder;
  * all x86 hardware), the byte order in memory is R,G,B,A which maps to ABGR when
  * read as a 32-bit int. On big-endian systems the order is reversed.</p>
  *
- * <p>This class extracts packing logic that was previously duplicated between
- * {@link CgVertexWriter} and {@link CgInstanceWriter}.</p>
+ * <p>What {@link CgVertexWriter} and {@link CgBufferWriter} pack colours with.</p>
  */
 public final class CgColorPacking {
 

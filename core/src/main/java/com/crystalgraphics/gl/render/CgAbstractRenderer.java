@@ -1,12 +1,8 @@
 package com.crystalgraphics.gl.render;
 
 /**
- * Base class for batch renderers, providing shared lifecycle boilerplate.
- *
- * <p>Eliminates the duplicate {@code begun} field and identical
- * {@link #begin()}/{@link #end()}/{@link #isDirty()}/{@link #delete()} bodies
- * across all batch renderer subclasses ({@link CgInstanceRenderer},
- * {@link CgQuadRenderer}, etc.).</p>
+ * The shared {@link #begin()}/{@link #end()}/{@link #isDirty()}/{@link #delete()} lifecycle of
+ * {@link CgQuadRenderer} and {@link CgVectorRenderer}.
  *
  * <p>Subclasses implement {@link #onBegin()} to reset their staging buffers
  * and {@link #hasPendingWork()} to report dirtiness. The {@link #flush()}

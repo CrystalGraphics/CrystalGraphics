@@ -30,8 +30,6 @@ immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`)
 - **IBO binding order** — in `CgMesh.upload()`, the IBO must be bound while the VAO is
   bound, and the VAO must be unbound before the IBO is unbound. Inverting this order
   writes null into the VAO's element array buffer slot.
-- **`CgAttributeFormat` interface** for the attribute pointer loop — enables the same
-  setup code to work for base and instance layouts.
 
 ## Index Type Policy
 
@@ -45,6 +43,6 @@ immutable geometry that is uploaded once and drawn many times (`GL_STATIC_DRAW`)
 | Package | Relationship |
 |---------|-------------|
 | `api/mesh/` | Produces and consumes `CgMeshData` and `CgMeshTopology` |
-| `api/vertex/` | `CgVertexFormat` is the key format input; `CgAttributeFormat` interface drives the VAO loop |
+| `api/vertex/` | `CgVertexFormat` lays out the vertices and drives the VAO's attribute loop |
 | `gl/buffer/staging/` | `CgVertexWriter.forBuffer()` is used for all vertex packing |
 | `gl/vertex/` | `CgVertexArray.createRawVaoId()` / `bind()` / `deleteRaw()` used by `CgMesh` |

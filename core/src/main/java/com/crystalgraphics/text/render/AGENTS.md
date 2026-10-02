@@ -43,10 +43,8 @@ Main responsibilities:
 
 **Owned batch lifecycle (current architecture, post batch-ownership migration —
 see `CrystalGraphics/docs/plan/text-material.md` §2.6/§2.7).**
-`CgTextRenderer` owns a private `CgBatchRenderer` (format
-`CgVertexFormat.POS2_UV2_COL4UB`), created in `create(caps, registry)`. There is no
-caller-provided layer or `CgBufferSource` in the draw path anymore — the renderer is
-directly and fully self-contained.
+`CgTextRenderer` owns a private `CgQuadRenderer`, created in `create(caps, registry)`: each glyph is
+one quad record. No caller-provided layer is in the draw path -- the renderer is self-contained.
 
 - `beginBatch()`/`endBatch()` (no args) open/close a batching window: `draw()` calls
   made in between record into the same underlying batch and are flushed together
@@ -57,11 +55,8 @@ directly and fully self-contained.
   a standalone, directly-instantiated object with no owning render pass (a user
   creates one and calls `draw()` whenever they want), unlike UI's `CgUiRenderer`
   which is always driven by a larger owning context (`CgUiPaintContext`/`UiWindow`).
-- The renderer does **not** own any VAO/VBO/IBO GL objects itself — its owned
-  `CgBatchRenderer` borrows those from the shared `CgVertexArrayRegistry`/
-  `CgQuadIndexBuffer`, exactly as before. Only the CPU-side staging buffer is
-  renderer-owned, and that ownership is cheap (see the batch-lifecycle plan doc for
-  the reasoning on why this doesn't multiply GPU resources per instance).
+- The renderer owns **no** GPU object: glyph records go into the quad renderer's class-wide engine
+  buffer. Only the CPU-side staging is renderer-owned, which is cheap.
 - Shader bind/unbind and `CgRenderState` apply/clear on batch-key transitions are
   now handled directly inside `CgTextRenderer` (`transitionTo`/`flushPending`) since
   there is no layer left to own that responsibility.
@@ -150,11 +145,6 @@ Every `create()`/`createManualSized()` call registers with the singleton
   owners (`CgUiPaintContext`, `HUDRenderer`, harness scenes) remain responsible for
   calling `delete()` promptly; this registry does not change that expectation.
 
-`CgDynamicTextureRenderLayer`/`CgTextLayers` still exist as classes but are **no
-longer used by `CgTextRenderer`** — confirm no other consumer exists before
-considering their removal; that decision is explicitly out of scope for the
-batch-ownership migration.
-
 **No defensive flush at the end of `submitBatchedQuads`/`drawInternal` — this is
 intentional, do not add one.** `submitBatchedQuads` always calls `transitionTo` at
 least once if there are any visible glyphs (`currentKey == null` is true on the
@@ -175,8 +165,8 @@ upload+draw on every single call regardless of whether a `beginBatch()` is still
 open — silently defeating the entire cross-call batching win this architecture
 exists to deliver, with no signal to the caller that batching stopped working.
 Treat a forgotten `endBatch()` as a caller bug that should fail fast, matching the
-convention of every other begin/end pair in this codebase (`CgBatchRenderer`,
-`CgUiRenderer`, `CgBufferSource` — none of them defensively auto-flush either).
+convention of every other begin/end pair in this codebase (`CgQuadRenderer`, `CgUiRenderer` -- neither
+defensively auto-flushes).
 
 ### `CgTextRenderer.Draw`
 
@@ -314,9 +304,7 @@ Package-level description of render-side responsibilities.
 - layout remains in logical space; raster tier is a draw-time physical decision
 - the packed `long` sort key in `submitBatchedQuads` drives shader selection
 - world-text and 2D text share most of the pipeline until raster-tier / projection policy differs
-- the renderer owns NO GL objects itself — its owned `CgBatchRenderer`'s VAO/VBO/IBO still come
-  from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`; only CPU-side staging is
-  renderer-owned
+- the renderer owns no GPU object; only CPU-side staging is renderer-owned
 - `draw()`/`retainedDraw()` are self-contained — no caller-provided layer or sink is required,
   and there is a single fluent request type (`Draw`) for both 2D UI text and 3D world
   text (see `CgTextRenderer`'s "Fluent `Draw` request" note above). `beginBatch()`/
@@ -324,8 +312,6 @@ Package-level description of render-side responsibilities.
   `Draw.submit()` auto-wraps itself with its own begin/flush/end if no batch is active
 - GL state (shader bind/unbind, texture bind/unbind, `CgRenderState` apply/clear) is managed
   directly by `CgTextRenderer` on batch-key transitions (`transitionTo`/`flushPending`)
-- `CgDynamicTextureRenderLayer`/`CgTextLayers` are no longer part of this renderer's draw path —
-  they still exist as classes but are unused here (confirm no other consumer before deleting)
 - text emission through the owned batch renderer must be contiguous — no interleaving from
   other draw-list commands
 - there is no fixed-arity `draw(...)` method anymore — `Draw.submit()` is the only path into
@@ -341,12 +327,10 @@ Package-level description of render-side responsibilities.
 - Do not reintroduce cache or atlas policy into `CgTextRenderer`.
 - Do not let world-text docs drift away from actual `PerspectiveScaleResolver` behavior.
 - Do not reintroduce raw shader-program plumbing when `CgShader`/bindings already own uniform handling.
-- Do not give `CgTextRenderer`'s owned `CgBatchRenderer` its own VAO/VBO — it must keep borrowing
-  from the shared `CgVertexArrayRegistry`/`CgQuadIndexBuffer`, same as every other
-  `CgBatchRenderer` consumer. Per-instance ownership of the *batcher* (CPU staging only) is
-  correct and intentional; per-instance ownership of *GPU objects* is not.
+- Do not give `CgTextRenderer` GPU objects of its own: per-instance ownership of the *batcher* (CPU
+  staging only) is correct and intentional; per-instance ownership of *GPU objects* is not.
 - Do not reintroduce a fixed-arity `draw(...)` overload matrix (or a caller-provided
-  `CgDynamicTextureRenderLayer`/`CgBufferSource`/`CgTextRenderContext`/`frame` parameter) —
+  layer, `CgTextRenderContext` or `frame` parameter) —
   every one of those concerns is now renderer-owned state reached through `Draw`,
   `context()`, or `poseStack()`. A new optional draw-time parameter should become a new
   `Draw` chain method, never a new overload.

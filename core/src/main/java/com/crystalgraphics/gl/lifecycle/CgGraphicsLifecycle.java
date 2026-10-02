@@ -24,8 +24,6 @@ import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.gl.vertex.CgVertexArray;
-import com.crystalgraphics.gl.vertex.CgVertexArrayRegistry;
-import com.crystalgraphics.gl.vertex.CgVertexBufferRegistry;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -43,14 +41,11 @@ import com.crystalgraphics.shadergraph.CgPreviewPool;
  * Coordinates teardown of all CrystalGraphics GL resources in the correct order.
  *
  * <p>Call {@link #destroyContext()} exactly once when the OpenGL context is being
- * destroyed (e.g. game shutdown, render context reset). All VAOs must be deleted
- * before their referenced VBOs to avoid stale GPU state.</p>
+ * destroyed (e.g. game shutdown, render context reset).</p>
  *
- * <h3>Canonical 4-step teardown order</h3>
+ * <h3>Teardown order, geometry first</h3>
  * <ol>
- *   <li>{@link CgVertexArrayRegistry#deleteAll()} — ALL VAOs (instanced first, then non-instanced inside {@code deleteAll})</li>
- *   <li>{@link CgMeshRegistry#deleteAll()} — static mesh VBOs + IBOs + per-mesh VAOs</li>
- *   <li>{@link CgVertexBufferRegistry#deleteAll()} — ALL stream VBOs (base + instance)</li>
+ *   <li>{@link CgMeshRegistry#deleteAll()} — each mesh's VAO, then its VBO and IBO</li>
  *   <li>{@link CgQuadIndexBuffer#freeAll()} — shared quad IBO</li>
  * </ol>
  *
@@ -460,19 +455,10 @@ public final class CgGraphicsLifecycle {
             listeners.dispatchReverse("onDestroy", CgLifecycleListener::onDestroy);
         }
 
-        // Step 1: ALL VAOs — CgVertexArrayRegistry.deleteAll() deletes instanced VAOs first,
-        //   then non-instanced VAOs, ensuring no VBO referenced by a VAO is deleted first.
-        CgVertexArrayRegistry.get().deleteAll();
-
-        // Step 2: Static mesh VBOs + IBOs + per-mesh VAOs.
-        //   Mesh VAOs reference mesh VBOs, so meshes must be deleted after streaming VAOs
-        //   (handled in step 1) but before streaming VBOs (step 3).
+        // Step 1: Static meshes: each one's VAO, then its VBO and IBO.
         CgMeshRegistry.get().deleteAll();
 
-        // Step 3: ALL stream VBOs (base + instance streams).
-        CgVertexBufferRegistry.get().deleteAll();
-
-        // Step 4: Shared quad IBO.
+        // Step 2: Shared quad IBO.
         CgQuadIndexBuffer.freeAll();
 
         // Step 5: Free all cached textures.
@@ -491,9 +477,7 @@ public final class CgGraphicsLifecycle {
         CgShaderBufferRegistry.get().deleteAll();
 
         // Step 6a: All CgTextRenderer instances still alive (backstop for callers that
-        //   forgot to call delete() themselves) — deletes each renderer's owned
-        //   CgBatchRenderer (VAO/VBO) individually before the bulk VAO/VBO sweep below,
-        //   so those objects are already gone (no-op) by the time steps 1/3 run.
+        //   forgot to call delete() themselves).
         CgTextRendererRegistry.get().deleteAll();
         
         // Step 6b: Font/glyph atlas textures + background generation executor, then reset
