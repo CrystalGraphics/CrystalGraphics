@@ -24,8 +24,8 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  * <p>Every {@code CgFrameBuffer} has a {@link #name} (first argument to all
  * factory methods), a {@link CgFrameBufferFormat} descriptor, and a
  * {@link TreeMap} of {@link Attachment} objects sparse-keyed by color slot
- * index.  {@link CgCoreFrameBuffer} is the owned implementation and supplies the GL dispatch
- * through a set of protected abstract methods; a wrapped framebuffer is the other.</p>
+ * index. An owned one makes its GL objects through {@link CgGL}; a wrapped one (an id the engine did not make)
+ * overrides that dispatch with no-ops.</p>
  *
  * <h3>Factories</h3>
  * <ul>
@@ -62,7 +62,7 @@ import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
  * @see CgFrameBufferFormat
  * @see CgFrameBufferRegistry
  */
-public abstract class CgFrameBuffer {
+public class CgFrameBuffer {
    
     // ── Instance fields ────────────────────────────────────────────────────────
 
@@ -224,7 +224,7 @@ public abstract class CgFrameBuffer {
                 throw new UnsupportedOperationException("CgFrameBuffer '" + name + "': color slot " + slot + " exceeds GPU max draw buffers (" + maxSlots + ")");
             
 
-        CgFrameBuffer fbo = new CgCoreFrameBuffer(name, format, width, height);
+        CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
         fbo.initGl(width, height, format);
         return fbo;
     }
@@ -287,8 +287,6 @@ public abstract class CgFrameBuffer {
      * Allocates all GL resources for this FBO.  Called once from
      * {@link #create} immediately after the backend constructor.
      *
-     * <p>Uses abstract dispatch methods so each backend routes through its
-     * own LWJGL entry points.</p>
      */
     /**
      * Builds the attachments, leaving the framebuffer binding exactly as it was found.
@@ -744,25 +742,31 @@ public abstract class CgFrameBuffer {
         }
     }
 
-    // ── Abstract GL dispatch (implemented by each backend) ─────────────────────
+    // ── GL dispatch (a wrapped framebuffer overrides it with no-ops) ───────────
 
     /**
      * Generates a new GL framebuffer object and returns its ID.
      * Called once from {@link #initGl}.
      */
-    protected abstract int doGenFramebuffer();
+    protected int doGenFramebuffer() {
+        return CgGL.glGenFramebuffers();
+    }
 
     /**
      * Deletes the framebuffer object with the given ID.
      * Called by {@link #freeGlResources}.
      */
-    protected abstract void deleteFramebuffer(int id);
+    protected void deleteFramebuffer(int id) {
+        CgGL.glDeleteFramebuffers(id);
+    }
 
     /**
      * Deletes the renderbuffer with the given ID.
-     * Called by {@link Attachment#delete()} to ensure the correct GL API is used.
+     * Called by {@link Attachment#delete()}.
      */
-    protected abstract void deleteRenderbuffer(int id);
+    protected void deleteRenderbuffer(int id) {
+        CgGL.glDeleteRenderbuffers(id);
+    }
 
     /**
      * Binds a framebuffer to the given target ({@code GL_FRAMEBUFFER}, etc.).
@@ -772,7 +776,9 @@ public abstract class CgFrameBuffer {
      * @param target GL target (e.g. {@code GL_FRAMEBUFFER = 0x8D40})
      * @param fboId  FBO ID, or 0 to unbind
      */
-    protected abstract void doBindFbo(int target, int fboId);
+    protected void doBindFbo(int target, int fboId) {
+        CgGL.glBindFramebuffer(target, fboId);
+    }
 
     /**
      * Attaches a 2D texture to the currently bound framebuffer.
@@ -782,8 +788,9 @@ public abstract class CgFrameBuffer {
      * @param glTextureTarget texture target (e.g. {@code GL_TEXTURE_2D}, cube face)
      * @param texId           GL texture ID, or 0 to detach
      */
-    protected abstract void doFramebufferTexture2D(int target, int attachmentPoint,
-                                                    int glTextureTarget, int texId);
+    protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId) {
+        CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, 0);
+    }
 
     /**
      * Attaches a renderbuffer to the currently bound framebuffer.
@@ -792,14 +799,17 @@ public abstract class CgFrameBuffer {
      * @param attachmentPoint GL attachment point
      * @param rboId           GL renderbuffer ID, or 0 to detach
      */
-    protected abstract void doFramebufferRenderbuffer(int target, int attachmentPoint,
-                                                       int rboId);
+    protected void doFramebufferRenderbuffer(int target, int attachmentPoint, int rboId) {
+        CgGL.glFramebufferRenderbuffer(target, attachmentPoint, CgGL.GL_RENDERBUFFER, rboId);
+    }
 
     /**
      * Generates a new GL renderbuffer object and returns its ID.
      * The renderbuffer is left bound after this call.
      */
-    protected abstract int doGenRenderbuffer();
+    protected int doGenRenderbuffer() {
+        return CgGL.glGenRenderbuffers();
+    }
 
     /**
      * Allocates storage for the currently bound renderbuffer.
@@ -808,14 +818,11 @@ public abstract class CgFrameBuffer {
      * @param w              width in pixels
      * @param h              height in pixels
      */
-    protected abstract void doRenderbufferStorage(int internalFormat, int w, int h);
+    protected void doRenderbufferStorage(int internalFormat, int w, int h) {
+        CgGL.glRenderbufferStorage(CgGL.GL_RENDERBUFFER, internalFormat, w, h);
+    }
 
-    /**
-     * Multisampled renderbuffer storage.
-     *
-     * <p>Concrete rather than abstract, unlike its single-sampled twin: there is one spelling of it,
-     * through the same {@code GL_RENDERBUFFER} target.</p>
-     */
+    /** Multisampled renderbuffer storage. */
     protected void doRenderbufferStorageMultisample(int samples, int internalFormat, int w, int h) {
         CgGL.glRenderbufferStorageMultisample(CgGL.GL_RENDERBUFFER, samples, internalFormat, w, h);
     }
@@ -837,7 +844,9 @@ public abstract class CgFrameBuffer {
      * @return GL framebuffer status constant
      *         (e.g. {@code GL_FRAMEBUFFER_COMPLETE = 0x8CD5})
      */
-    protected abstract int doCheckFramebufferStatus();
+    protected int doCheckFramebufferStatus() {
+        return CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
+    }
 
     // ── Attachment inner class ─────────────────────────────────────────────────
 

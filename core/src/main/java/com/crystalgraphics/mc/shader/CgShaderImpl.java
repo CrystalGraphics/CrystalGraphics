@@ -3,7 +3,6 @@ package com.crystalgraphics.mc.shader;
 import com.crystalgraphics.api.shader.*;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.shader.CgCoreShaderProgram;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -365,7 +364,7 @@ import java.util.function.Consumer;
         }
         this.dirty = false;
         pending = false;
-        CgShaderProgram next = program != null && !program.isDeleted() ? program : CgCoreShaderProgram.create();
+        CgShaderProgram next = program != null && !program.isDeleted() ? program : CgShaderProgram.create();
         try {
             next.submitLink(vertexSource, fragmentSource, format);
         } catch (RuntimeException failed) {

@@ -693,35 +693,36 @@ com/crystalgraphics/api/shader/CgShaderPreprocessor
   method public toString ()Ljava/lang/String;
   method public,static clearCache ()V
 com/crystalgraphics/api/shader/CgShaderProgram
-  access public,abstract,interface
+  access public,final
   extends java/lang/Object
+  method public bind ()V
+  method public delete ()V
   method public finishLink ()V
   method public getActiveUniforms ()Ljava/util/List;
+  method public getId ()I
+  method public getUniformLocation (Ljava/lang/String;)I
+  method public isDeleted ()Z
   method public isLinkDone ()Z
   method public relink (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)V
+  method public setSampler (II)V
+  method public setUniform1f (IF)V
+  method public setUniform1i (II)V
+  method public setUniform2f (IFF)V
   method public setUniform2f (ILorg/joml/Vector2f;)V
+  method public setUniform3f (IFFF)V
   method public setUniform3f (ILorg/joml/Vector3f;)V
+  method public setUniform4f (IFFFF)V
   method public setUniform4f (ILorg/joml/Vector4f;)V
+  method public setUniformFloatBuffer (ILjava/nio/FloatBuffer;)V
+  method public setUniformIntBuffer (ILjava/nio/IntBuffer;)V
+  method public setUniformMatrix3f (ILjava/nio/FloatBuffer;)V
+  method public setUniformMatrix3f (ILorg/joml/Matrix3f;)V
+  method public setUniformMatrix4f (ILjava/nio/FloatBuffer;)V
+  method public setUniformMatrix4f (ILorg/joml/Matrix4f;)V
   method public submitLink (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)V
-  method public,abstract bind ()V
-  method public,abstract delete ()V
-  method public,abstract getId ()I
-  method public,abstract getUniformLocation (Ljava/lang/String;)I
-  method public,abstract isDeleted ()Z
-  method public,abstract isOwned ()Z
-  method public,abstract setSampler (II)V
-  method public,abstract setUniform1f (IF)V
-  method public,abstract setUniform1i (II)V
-  method public,abstract setUniform2f (IFF)V
-  method public,abstract setUniform3f (IFFF)V
-  method public,abstract setUniform4f (IFFFF)V
-  method public,abstract setUniformFloatBuffer (ILjava/nio/FloatBuffer;)V
-  method public,abstract setUniformIntBuffer (ILjava/nio/IntBuffer;)V
-  method public,abstract setUniformMatrix3f (ILjava/nio/FloatBuffer;)V
-  method public,abstract setUniformMatrix3f (ILorg/joml/Matrix3f;)V
-  method public,abstract setUniformMatrix4f (ILjava/nio/FloatBuffer;)V
-  method public,abstract setUniformMatrix4f (ILorg/joml/Matrix4f;)V
-  method public,abstract unbind ()V
+  method public unbind ()V
+  method public,static compile (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/shader/CgShaderProgram;
+  method public,static create ()Lcom/crystalgraphics/api/shader/CgShaderProgram;
 com/crystalgraphics/api/shader/CgSystemUniformRegistry
   access public,final
   extends java/lang/Object
@@ -1750,7 +1751,7 @@ com/crystalgraphics/gl/debug/CgDebugBlit
   method public,static dispose ()V
   method public,static rgba (I)V
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer
-  access public,abstract
+  access public
   extends java/lang/Object
   field protected deleted Z
   field protected depthAttachment Lcom/crystalgraphics/gl/framebuffer/CgFrameBuffer$Attachment;
@@ -1761,17 +1762,17 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   field protected,final format Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
   field protected,final name Ljava/lang/String;
   field protected,final owned Z
+  method protected deleteFramebuffer (I)V
+  method protected deleteRenderbuffer (I)V
+  method protected doBindFbo (II)V
   method protected doBindRenderbuffer (I)V
+  method protected doCheckFramebufferStatus ()I
+  method protected doFramebufferRenderbuffer (III)V
+  method protected doFramebufferTexture2D (IIII)V
+  method protected doGenFramebuffer ()I
+  method protected doGenRenderbuffer ()I
+  method protected doRenderbufferStorage (III)V
   method protected doRenderbufferStorageMultisample (IIII)V
-  method protected,abstract deleteFramebuffer (I)V
-  method protected,abstract deleteRenderbuffer (I)V
-  method protected,abstract doBindFbo (II)V
-  method protected,abstract doCheckFramebufferStatus ()I
-  method protected,abstract doFramebufferRenderbuffer (III)V
-  method protected,abstract doFramebufferTexture2D (IIII)V
-  method protected,abstract doGenFramebuffer ()I
-  method protected,abstract doGenRenderbuffer ()I
-  method protected,abstract doRenderbufferStorage (III)V
   method public bind ()V
   method public bindDraw ()V
   method public bindRead ()V
@@ -2174,26 +2175,6 @@ com/crystalgraphics/gl/mesh/CgObjLoader
   extends java/lang/Object
   method public,static load (Ljava/io/InputStream;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/mesh/CgMeshData;
   method public,static loadAll (Ljava/io/InputStream;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Ljava/util/List;
-com/crystalgraphics/gl/pass/CgClearPolicy
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final ALL Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  field public,static,final COLOR Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  field public,static,final COLOR_DEPTH Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  field public,static,final DEPTH Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  field public,static,final NONE Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  method public clears ()Z
-  method public getGlMask ()I
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-  method public,static values ()[Lcom/crystalgraphics/gl/pass/CgClearPolicy;
-com/crystalgraphics/gl/pass/CgProjectionMode
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final FULLSCREEN_NDC Lcom/crystalgraphics/gl/pass/CgProjectionMode;
-  field public,static,final ORTHOGRAPHIC_2D Lcom/crystalgraphics/gl/pass/CgProjectionMode;
-  field public,static,final WORLD_3D Lcom/crystalgraphics/gl/pass/CgProjectionMode;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gl/pass/CgProjectionMode;
-  method public,static values ()[Lcom/crystalgraphics/gl/pass/CgProjectionMode;
 com/crystalgraphics/gl/render/CgAbstractRenderer
   access public,abstract
   extends java/lang/Object
@@ -2374,47 +2355,6 @@ com/crystalgraphics/gl/render/CgVectorRenderer$Triangle
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
   method public silhouetteEdge (I)Lcom/crystalgraphics/gl/render/CgVectorRenderer$Triangle;
   method public submit ()Lcom/crystalgraphics/gl/render/CgVectorRenderer;
-com/crystalgraphics/gl/shader/CgAbstractShaderProgram
-  access public,abstract
-  extends java/lang/Object
-  field protected deleted Z
-  field protected programId I
-  field protected,final owned Z
-  field protected,static,final ALL_OWNED Ljava/util/Set;
-  implements com/crystalgraphics/api/shader/CgShaderProgram
-  method protected <init> (IZ)V
-  method protected,abstract freeGlResources ()V
-  method public bind ()V
-  method public delete ()V
-  method public getId ()I
-  method public isDeleted ()Z
-  method public isOwned ()Z
-  method public unbind ()V
-  method public,static freeAll ()V
-com/crystalgraphics/gl/shader/CgCoreShaderProgram
-  access public
-  extends com/crystalgraphics/gl/shader/CgAbstractShaderProgram
-  method protected freeGlResources ()V
-  method public finishLink ()V
-  method public getActiveUniforms ()Ljava/util/List;
-  method public getUniformLocation (Ljava/lang/String;)I
-  method public isLinkDone ()Z
-  method public relink (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)V
-  method public setSampler (II)V
-  method public setUniform1f (IF)V
-  method public setUniform1i (II)V
-  method public setUniform2f (IFF)V
-  method public setUniform3f (IFFF)V
-  method public setUniform4f (IFFFF)V
-  method public setUniformFloatBuffer (ILjava/nio/FloatBuffer;)V
-  method public setUniformIntBuffer (ILjava/nio/IntBuffer;)V
-  method public setUniformMatrix3f (ILjava/nio/FloatBuffer;)V
-  method public setUniformMatrix3f (ILorg/joml/Matrix3f;)V
-  method public setUniformMatrix4f (ILjava/nio/FloatBuffer;)V
-  method public setUniformMatrix4f (ILorg/joml/Matrix4f;)V
-  method public submitLink (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)V
-  method public,static compile (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/shader/CgCoreShaderProgram;
-  method public,static create ()Lcom/crystalgraphics/gl/shader/CgCoreShaderProgram;
 com/crystalgraphics/gl/shader/CgShaderFactory
   access public,final
   extends java/lang/Object

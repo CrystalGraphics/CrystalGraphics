@@ -121,7 +121,7 @@ CgShaderFactory.load(vert, frag)
              ├─ pp.process(vertSrc, vertexPath)   → expands #include
              ├─ pp.process(fragSrc, fragmentPath) → expands #include
              └─ CgShaderFactory.compile(expandedVert, expandedFrag, format)
-                  └─ CgCoreShaderProgram.compile(...)
+                  └─ CgShaderProgram.compile(...)
 
 shader.bind()
   ├─ dirty? → recompile() (above)

@@ -1,401 +1,318 @@
 package com.crystalgraphics.api.shader;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.gl.shader.CgCoreShaderProgram;
-import org.joml.*;
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
+import org.joml.Matrix3f;
+import org.joml.Matrix4f;
+import org.joml.Vector2f;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
+
 /**
- * Primary public API for GLSL shader program management in CrystalGraphics.
+ * A linked GLSL program: compiled from vertex and fragment source, bound for drawing, given its uniforms. Most
+ * callers want a {@link CgShader} or a material, which own one.
  *
- * <p>This interface abstracts the differences between OpenGL Core (GL20) and
- * ARB ({@code ARB_shader_objects}) shader entry points behind a single,
- * unified contract.  Implementations are created by the factory/backend layer
- * and should never be instantiated directly by consuming code.</p>
+ * <pre>{@code
+ * CgShaderProgram program = CgShaderProgram.compile(vertexSource, fragmentSource, CgVertexFormat.SPATIAL);
+ * program.bind();
+ * program.setUniformMatrix4f(program.getUniformLocation("u_mvp"), mvp);
+ * ... draw ...
+ * program.delete();
+ * }</pre>
  *
- * <h3>Ownership Model</h3>
- * <p>Each {@code CgShaderProgram} is either <em>owned</em> or <em>wrapped</em>:</p>
+ * <p>Linking without waiting, for a driver that compiles on threads of its own:</p>
+ * <pre>{@code
+ * CgShaderProgram program = CgShaderProgram.create();
+ * program.submitLink(vertexSource, fragmentSource, format);
+ * // later frames:
+ * if (program.isLinkDone()) program.finishLink();   // throws as compile would
+ * }</pre>
+ *
  * <ul>
- *   <li><strong>Owned</strong> ({@link #isOwned()} returns {@code true}):
- *       CrystalGraphics created this program and is responsible for its
- *       lifecycle.  Calling {@link #delete()} is valid and will release the
- *       underlying OpenGL resource.</li>
- *   <li><strong>Wrapped</strong> ({@link #isOwned()} returns {@code false}):
- *       This program was created externally (e.g., by another mod or by
- *       Minecraft's vanilla shader system) and is merely tracked by
- *       CrystalGraphics.  Calling {@link #delete()} on a wrapped program
- *       will throw {@link IllegalStateException}.</li>
+ *   <li>Render thread only, as every GL object.</li>
+ *   <li>The uniform setters act on the <em>bound</em> program: bind it first.</li>
+ *   <li>A failed compile or link throws {@link IllegalStateException} with the driver's log. A failed
+ *       {@link #relink} keeps the program's id and its previous executable.</li>
+ *   <li>Finish a {@link #submitLink} before binding: anything that queries the program waits for the driver.</li>
  * </ul>
- *
- *
- * <h3>Uniform and Sampler Binding</h3>
- * <p>Uniform setters operate on the currently bound program.  The program
- * must be bound (via {@link #bind()}) before calling any uniform or sampler
- * method.  Uniform locations are obtained via
- * {@link #getUniformLocation(String)} and may be cached by the caller.</p>
- *
- * <h3>Thread Safety</h3>
- * <p>Instances are <strong>not</strong> thread-safe.  All methods must be
- * called on the thread that owns the OpenGL context (typically the render
- * thread).</p>
- *
- * @see CgCapabilities
  */
-public interface CgShaderProgram {
+public final class CgShaderProgram {
 
-    /**
-     * Binds this shader program for rendering.
-     *
-     * <p>After this call, all subsequent rendering operations use this
-     * program's vertex and fragment shaders until another program is bound
-     * or {@link #unbind()} is called.</p>
-     */
-    void bind();
+    private final int programId;
+    private boolean deleted;
 
-    /**
-     * Unbinds this shader program by binding program 0, reverting to the
-     * fixed-function pipeline.
-     */
-    void unbind();
+    /** The shader objects of a {@link #submitLink} not yet finished; 0 when nothing is pending. */
+    private int pendingVert;
+    private int pendingFrag;
 
-    /**
-     * Returns the raw OpenGL program object ID.
-     *
-     * @return the OpenGL program name (a positive integer for linked
-     *         programs, or 0 for the fixed-function pipeline)
-     */
-    int getId();
-
-    /**
-     * Returns whether CrystalGraphics owns this program and may delete it.
-     *
-     * @return {@code true} if this program was created by CrystalGraphics
-     *         and may be deleted via {@link #delete()}; {@code false} if it
-     *         was created externally (wrapped) and must not be deleted
-     */
-    boolean isOwned();
-
-    /**
-     * Deletes this shader program, releasing the underlying OpenGL resource.
-     *
-     * <p>Only valid if {@link #isOwned()} returns {@code true}.  After
-     * deletion, {@link #isDeleted()} returns {@code true} and no further
-     * operations on this program are valid.</p>
-     *
-     * @throws IllegalStateException if {@link #isOwned()} returns {@code false}
-     * @throws IllegalStateException if already deleted
-     */
-    void delete();
-
-    /**
-     * Returns whether this shader program has been deleted.
-     *
-     * @return {@code true} if {@link #delete()} has been called successfully;
-     *         {@code false} otherwise
-     */
-    boolean isDeleted();
-
-    /**
-     * Queries the location of a named uniform variable in this program.
-     *
-     * <p>The program does not need to be currently bound to query uniform
-     * locations, but it must have been successfully linked.</p>
-     *
-     * @param name the name of the uniform variable as declared in the
-     *             GLSL source
-     * @return the uniform location (a non-negative integer), or {@code -1}
-     *         if the named uniform does not exist or was optimized out by
-     *         the GLSL compiler
-     * @throws IllegalArgumentException if {@code name} is null
-     */
-    int getUniformLocation(String name);
-
-    /**
-     * Sets an integer uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location obtained from
-     *                 {@link #getUniformLocation(String)}
-     * @param value    the integer value to set
-     */
-    void setUniform1i(int location, int value);
-
-    /**
-     * Sets a float uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location obtained from
-     *                 {@link #getUniformLocation(String)}
-     * @param value    the float value to set
-     */
-    void setUniform1f(int location, float value);
-
-    /**
-     * Sets a 2-component float vector uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param x        the first component
-     * @param y        the second component
-     */
-    void setUniform2f(int location, float x, float y);
-
-    /**
-     * Sets a 2-component float vector uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param vec      JOML Vector2f
-     */
-    default void setUniform2f(int location, Vector2f vec) {
-        setUniform2f(location, vec.x, vec.y);
+    private CgShaderProgram(int programId) {
+        this.programId = programId;
     }
 
     /**
-     * Sets a 3-component float vector uniform variable.
+     * Compiles a vertex and a fragment shader and links them, binding {@code format}'s attributes to sequential
+     * locations.
      *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param x        the first component
-     * @param y        the second component
-     * @param z        the third component
+     * @param format the vertex format of the geometry it draws, or null to bind no attribute locations
+     * @throws IllegalStateException if a stage fails to compile or the program to link, with the driver's log
      */
-    void setUniform3f(int location, float x, float y, float z);
+    public static CgShaderProgram compile(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        CgShaderProgram program = create();
+        try {
+            program.relink(vertexSource, fragmentSource, format);
+        } catch (IllegalStateException e) {
+            program.delete();
+            throw e;
+        }
+        return program;
+    }
+
+    /** A program with nothing linked yet, for a {@link #submitLink} to fill. */
+    public static CgShaderProgram create() {
+        return new CgShaderProgram(CgGL.glCreateProgram());
+    }
+
+    // ── Binding and lifetime ───────────────────────────────────────────────
+
+    /** Makes this the program draws use. */
+    public void bind() {
+        CgGL.glUseProgram(programId);
+    }
+
+    /** Binds program 0. */
+    public void unbind() {
+        CgGL.glUseProgram(0);
+    }
+
+    /** The GL program name. */
+    public int getId() {
+        return programId;
+    }
+
+    /** Releases the GL program, and any shader objects a pending link still holds. A second call does nothing. */
+    public void delete() {
+        if (deleted) return;
+        if (pendingVert != 0) {
+            CgGL.glDeleteShader(pendingVert);
+            CgGL.glDeleteShader(pendingFrag);
+            pendingVert = 0;
+            pendingFrag = 0;
+        }
+        CgGL.glDeleteProgram(programId);
+        deleted = true;
+    }
+
+    public boolean isDeleted() {
+        return deleted;
+    }
+
+    // ── Linking ────────────────────────────────────────────────────────────
 
     /**
-     * Sets a 3-component float vector uniform variable.
+     * Relinks this program from new sources, keeping its id: the old shader objects are detached and deleted, the
+     * new ones compiled, attached, given {@code format}'s attribute locations and linked.
      *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param vec      JOML Vector3f
+     * @param format the vertex format for {@code glBindAttribLocation}, or null to bind none
+     * @throws IllegalStateException if a stage fails to compile or the program to link. GL keeps the previous
+     *         executable, so a later successful relink recovers it
      */
-    default void setUniform3f(int location, Vector3f vec) {
-        setUniform3f(location, vec.x, vec.y, vec.z);
+    public void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        submitLink(vertexSource, fragmentSource, format);
+        finishLink();
     }
 
     /**
-     * Sets a 4-component float vector uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param x        the first component
-     * @param y        the second component
-     * @param z        the third component
-     * @param w        the fourth component
+     * {@link #relink}, returning before the driver has finished: no status is queried in between, which is what
+     * lets the driver compile on its own threads. The shader objects stay attached until {@link #finishLink}, which
+     * reads their logs if the link failed.
      */
-    void setUniform4f(int location, float x, float y, float z, float w);
+    public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
+        finishPendingQuietly();
+        IntBuffer countBuf = CgBufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
+        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
+        int attached = countBuf.get(0);
+        for (int i = 0; i < attached; i++) {
+            int id = shadersBuf.get(i);
+            CgGL.glDetachShader(programId, id);
+            CgGL.glDeleteShader(id);
+        }
 
-    /**
-     * Sets a 4-component float vector uniform variable.
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location the uniform location
-     * @param vec      JOML Vector4f
-     */
-    default void setUniform4f(int location, Vector4f vec) {
-        setUniform4f(location, vec.x, vec.y, vec.z, vec.w);
-    }
-    
-    /**
-     * Uploads a scalar int array uniform from an {@link IntBuffer}
-     * ({@code glUniform1iv} / {@code glUniform1ivARB} equivalent).
-     *
-     * <p>Each element in the buffer maps to one {@code int} uniform in a GLSL
-     * array (e.g. {@code uniform int flags[4];}). This does <strong>not</strong>
-     * support {@code ivec} array uploads — those require separate
-     * {@code glUniform2iv} / {@code glUniform3iv} calls not provided here.</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param buffer   the int data; read from position to limit
-     */
-    void setUniformIntBuffer(int location, IntBuffer buffer);
-    
-    /**
-     * Uploads a scalar float array uniform from a {@link FloatBuffer}
-     * ({@code glUniform1fv} / {@code glUniform1fvARB} equivalent).
-     *
-     * <p>Each element in the buffer maps to one {@code float} uniform in a GLSL
-     * array (e.g. {@code uniform float weights[8];}). This does <strong>not</strong>
-     * support {@code vec} or {@code mat} array uploads — use
-     * {@link #setUniformMatrix3f(int, FloatBuffer)} or
-     * {@link #setUniformMatrix4f(int, FloatBuffer)} for matrices.</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param buffer   the float data; read from position to limit
-     */
-    void setUniformFloatBuffer(int location, FloatBuffer buffer);
+        pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
+        CgGL.glShaderSource(pendingVert, vertexSource);
+        CgGL.glCompileShader(pendingVert);
+        pendingFrag = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
+        CgGL.glShaderSource(pendingFrag, fragmentSource);
+        CgGL.glCompileShader(pendingFrag);
 
-    /**
-     * Uploads a 3x3 float matrix uniform from a {@link FloatBuffer}.
-     *
-     * <p>The buffer must contain exactly <strong>9 elements</strong> (from
-     * position to limit) in <strong>column-major</strong> order. The buffer
-     * must be a direct buffer (heap buffers will cause LWJGL to throw).</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param buffer   a direct FloatBuffer with 9 elements in column-major order
-     */
-    void setUniformMatrix3f(int location, FloatBuffer buffer);
-
-    /**
-     * Uploads a 4x4 float matrix uniform from a {@link FloatBuffer}.
-     *
-     * <p>The buffer must contain exactly <strong>16 elements</strong> (from
-     * position to limit) in <strong>column-major</strong> order. The buffer
-     * must be a direct buffer (heap buffers will cause LWJGL to throw).</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param buffer   a direct FloatBuffer with 16 elements in column-major order
-     */
-    void setUniformMatrix4f(int location, FloatBuffer buffer);
-
-    /**
-     * Uploads a 3×3 float matrix uniform from a JOML {@link Matrix3f}.
-     *
-     * <p>The matrix is serialized to a direct {@link FloatBuffer} in
-     * <strong>column-major</strong> order internally, so callers do not need
-     * to perform manual buffer conversion.  Implementations use a
-     * thread-local buffer to avoid per-call allocation.</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param matrix   the JOML 3×3 matrix to upload (column-major)
-     */
-    void setUniformMatrix3f(int location, Matrix3f matrix);
-
-    /**
-     * Uploads a 4×4 float matrix uniform from a JOML {@link Matrix4f}.
-     *
-     * <p>The matrix is serialized to a direct {@link FloatBuffer} in
-     * <strong>column-major</strong> order internally, so callers do not need
-     * to perform manual buffer conversion.  Implementations use a
-     * thread-local buffer to avoid per-call allocation.</p>
-     *
-     * <p>If {@code location} is {@code -1} (uniform not found / optimized out),
-     * implementations return immediately without issuing a GL call.</p>
-     *
-     * @param location the uniform location, or -1 to no-op
-     * @param matrix   the JOML 4×4 matrix to upload (column-major)
-     */
-    void setUniformMatrix4f(int location, Matrix4f matrix);
-
-    /**
-     * Binds a texture unit to a sampler uniform.
-     *
-     * <p>This is a convenience wrapper around {@link #setUniform1i(int, int)}
-     * that sets the sampler uniform to the specified texture unit index.
-     * The caller is responsible for binding the actual texture to the
-     * corresponding texture unit via {@code glActiveTexture} and
-     * {@code glBindTexture}.</p>
-     *
-     * <p>The program must be bound before calling this method.</p>
-     *
-     * @param location    the sampler uniform location obtained from
-     *                    {@link #getUniformLocation(String)}
-     * @param textureUnit the 0-based texture unit index (0 corresponds to
-     *                    {@code GL_TEXTURE0}, 1 to {@code GL_TEXTURE1}, etc.)
-     */
-    void setSampler(int location, int textureUnit);
-
-    /**
-     * Relinks this program from new vertex and fragment GLSL source, reusing
-     * the same GL program object ID.
-     *
-     * <p>The pipeline is: detach and delete currently attached shader objects,
-     * compile new vertex and fragment shaders, attach them to this program,
-     * rebind attribute locations from {@code format} if non-null, then link.
-     * The new shader objects are detached and deleted after linking regardless
-     * of success or failure — they are not needed once the program is linked.</p>
-     *
-     * <p>On link failure an {@link IllegalStateException} is thrown containing
-     * the GL info log.  Per the OpenGL specification the previous executable
-     * remains active on the program object, so the program ID stays valid and
-     * a subsequent successful {@code relink()} call can recover it.</p>
-     *
-     * <p>The default implementation throws {@link UnsupportedOperationException};
-     * only owned programs backed by {@code CgCoreShaderProgram} support relinking.</p>
-     *
-     * @param vertexSource   new GLSL vertex shader source
-     * @param fragmentSource new GLSL fragment shader source
-     * @param format         vertex attribute format for {@code glBindAttribLocation},
-     *                       or {@code null} to skip location binding
-     * @throws IllegalStateException        if shader compilation or program linking fails
-     * @throws UnsupportedOperationException if this program backend does not support relink
-     */
-    default void relink(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        throw new UnsupportedOperationException("relink() not supported by this program backend");
-    }
-
-    /**
-     * {@link #relink}, returning before the driver has finished: nothing here waits for the compile.
-     *
-     * <pre>{@code
-     * program.submitLink(vert, frag, format);
-     * ... later frames ...
-     * if (program.isLinkDone()) program.finishLink();   // throws as relink would
-     * }</pre>
-     *
-     * <p>Anything that queries the program before {@link #finishLink} waits for the driver there instead, so
-     * finish it before binding it. The default links synchronously.</p>
-     */
-    default void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
-        relink(vertexSource, fragmentSource, format);
+        CgGL.glAttachShader(programId, pendingVert);
+        CgGL.glAttachShader(programId, pendingFrag);
+        if (format != null) {
+            for (int i = 0; i < format.getAttributeCount(); i++)
+                CgGL.glBindAttribLocation(programId, i, format.getAttribute(i).getName());
+        }
+        CgGL.glLinkProgram(programId);
     }
 
     /** Whether {@link #finishLink} would return without waiting. True wherever the driver cannot say. */
-    default boolean isLinkDone() {
-        return true;
+    public boolean isLinkDone() {
+        return pendingVert == 0 || !CgCapabilities.detect().isParallelShaderCompile()
+                || CgGL.glGetProgrami(programId, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
     }
 
     /**
-     * Ends a {@link #submitLink}: waits if the driver has not finished, then throws as {@link #relink} would.
-     * A no-op when nothing is pending.
+     * Ends a {@link #submitLink}: waits if the driver has not finished, then throws as {@link #relink} would. A no-op
+     * when nothing is pending.
      */
-    default void finishLink() {
+    public void finishLink() {
+        if (pendingVert == 0) return;
+        int vertId = pendingVert, fragId = pendingFrag;
+        pendingVert = 0;
+        pendingFrag = 0;
+        try {
+            // The compile statuses first: a failed stage makes the link fail too, and its log names the line.
+            if (CgGL.glGetShaderi(vertId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Vertex shader compile failed: " + CgGL.glGetShaderInfoLog(vertId, 4096));
+            }
+            if (CgGL.glGetShaderi(fragId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Fragment shader compile failed: " + CgGL.glGetShaderInfoLog(fragId, 4096));
+            }
+            if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Shader program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
+            }
+        } finally {
+            CgGL.glDetachShader(programId, vertId);
+            CgGL.glDetachShader(programId, fragId);
+            CgGL.glDeleteShader(vertId);
+            CgGL.glDeleteShader(fragId);
+        }
     }
 
+    /** A submit over one still pending: the earlier one is superseded, and its failure is nobody's to report. */
+    private void finishPendingQuietly() {
+        try {
+            finishLink();
+        } catch (IllegalStateException superseded) {
+            // Replaced by the submit that called this.
+        }
+    }
+
+    // ── Uniforms: on the bound program; a location of -1 (absent or optimised out) is skipped ─────────────
+
     /**
-     * Returns an unmodifiable list of all active uniforms in this program.
+     * The location of a uniform, or -1 when the program has none of that name (or the compiler removed it). Needs
+     * a linked program, not a bound one.
      *
-     * <p>Active uniforms are those reported by the GL driver via
-     * {@code glGetActiveUniform} after a successful link.  Built-in
-     * {@code gl_*} uniforms are excluded.  Returns an empty list if
-     * the program has no active uniforms or this default is not overridden.</p>
-     *
-     * <p>{@link CgCoreShaderProgram} overrides this with a real GL query.  The default returns an empty list for
-     * wrapped / external programs.</p>
-     *
-     * @return an unmodifiable list of active uniforms; never {@code null}
-     * @see CgActiveUniform
+     * @throws IllegalArgumentException if {@code name} is null
      */
-    default List<CgActiveUniform> getActiveUniforms() {
-        return Collections.emptyList();
+    public int getUniformLocation(String name) {
+        if (name == null) throw new IllegalArgumentException("Uniform name must not be null");
+        return CgGL.glGetUniformLocation(programId, name);
+    }
+
+    /** Every active uniform after a successful link, {@code gl_*} built-ins excluded. Unmodifiable, never null. */
+    public List<CgActiveUniform> getActiveUniforms() {
+        int count = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORMS);
+        if (count <= 0) return Collections.emptyList();
+        int maxLen = CgGL.glGetProgrami(programId, CgGL.GL_ACTIVE_UNIFORM_MAX_LENGTH);
+        if (maxLen <= 0) maxLen = 256;
+
+        List<CgActiveUniform> result = new ArrayList<>(count);
+        // The LWJGL 2 form: fills sizeTypeBuf[0] = size, [1] = type, and returns the name.
+        IntBuffer sizeTypeBuf = CgBufferUtils.createIntBuffer(2);
+        for (int i = 0; i < count; i++) {
+            sizeTypeBuf.clear();
+            String name = CgGL.glGetActiveUniform(programId, i, maxLen, sizeTypeBuf);
+            if (name == null || name.startsWith("gl_")) continue;
+            result.add(new CgActiveUniform(name, sizeTypeBuf.get(1), sizeTypeBuf.get(0), CgGL.glGetUniformLocation(programId, name)));
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    public void setUniform1i(int location, int value) {
+        CgGL.glUniform1i(location, value);
+    }
+
+    public void setUniform1f(int location, float value) {
+        CgGL.glUniform1f(location, value);
+    }
+
+    public void setUniform2f(int location, float x, float y) {
+        CgGL.glUniform2f(location, x, y);
+    }
+
+    public void setUniform2f(int location, Vector2f vec) {
+        setUniform2f(location, vec.x, vec.y);
+    }
+
+    public void setUniform3f(int location, float x, float y, float z) {
+        CgGL.glUniform3f(location, x, y, z);
+    }
+
+    public void setUniform3f(int location, Vector3f vec) {
+        setUniform3f(location, vec.x, vec.y, vec.z);
+    }
+
+    public void setUniform4f(int location, float x, float y, float z, float w) {
+        CgGL.glUniform4f(location, x, y, z, w);
+    }
+
+    public void setUniform4f(int location, Vector4f vec) {
+        setUniform4f(location, vec.x, vec.y, vec.z, vec.w);
+    }
+
+    /** A sampler uniform set to texture unit {@code textureUnit} (0 is {@code GL_TEXTURE0}); bind the texture there yourself. */
+    public void setSampler(int location, int textureUnit) {
+        CgGL.glUniform1i(location, textureUnit);
+    }
+
+    /** A {@code float[]} uniform, one element per buffer element; not a {@code vec} or {@code mat} array. */
+    public void setUniformFloatBuffer(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        CgGL.glUniform1(location, buffer);
+    }
+
+    /** An {@code int[]} uniform, one element per buffer element; not an {@code ivec} array. */
+    public void setUniformIntBuffer(int location, IntBuffer buffer) {
+        if (location < 0) return;
+        CgGL.glUniform1(location, buffer);
+    }
+
+    /** A {@code mat3} from 9 column-major floats in a direct buffer. */
+    public void setUniformMatrix3f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        CgGL.glUniformMatrix3(location, false, buffer);
+    }
+
+    public void setUniformMatrix3f(int location, Matrix3f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        buf.clear();
+        matrix.get(buf).rewind();
+        CgGL.glUniformMatrix3(location, false, buf);
+    }
+
+    /** A {@code mat4} from 16 column-major floats in a direct buffer. */
+    public void setUniformMatrix4f(int location, FloatBuffer buffer) {
+        if (location < 0) return;
+        CgGL.glUniformMatrix4(location, false, buffer);
+    }
+
+    public void setUniformMatrix4f(int location, Matrix4f matrix) {
+        if (location < 0) return;
+        FloatBuffer buf = JOML_BUFFER.get();
+        buf.clear();
+        matrix.get(buf).rewind();
+        CgGL.glUniformMatrix4(location, false, buf);
     }
 }
