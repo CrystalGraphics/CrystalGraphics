@@ -5,6 +5,9 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.gl.mesh.CgMeshBuilder;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import org.joml.Matrix4f;
 
 /**
@@ -70,6 +73,21 @@ public final class CgVfxShowcase {
     private static final float SUPERNOVA_SIZE = 1.15f, CORONA_REACH = 3.2f;
     /** Bolts at the shield: seconds in flight, and how many radii out they come from. */
     private static final float BOLT_FLIGHT = 0.45f, BOLT_RANGE = 4.5f;
+    /**
+     * The energy wave's loop, relative to the floor point: a muzzle front-left of the grid aiming straight back past it
+     * to a waypoint behind it, where the body bends sharply toward one of two targets far back on either side, fired at
+     * in turn.
+     */
+    private static final float[] WAVE_FROM = {-14f, 2.5f, 10f}, WAVE_AIM = {0f, 0f, -1f}, WAVE_VIA = {-14f, 3f, -12f};
+    private static final float[][] WAVE_TARGETS = {{-40f, 3f, -26f}, {30f, 3f, -24f}};
+    /** Seconds per shot, and how long into it the wave stops firing so its tail can run out before the next. */
+    private static final float WAVE_CYCLE = 6f, WAVE_HOLD = 3.4f;
+    /** The showcase's wave: slower than the default so it is seen growing, and homing hard so it bends sharply. */
+    private static final CgVfxLook WAVE_LOOK = CgEnergyWave.kamehameha().toBuilder()
+            .set(CgEnergyWave.SPEED, 30f)
+            .set(CgEnergyWave.NAVIGATION, 5f)
+            .set(CgEnergyWave.TURN_RATE, 6f)
+            .build();
 
     private CgMesh sphere;
     private CgMesh floor;
@@ -79,6 +97,10 @@ public final class CgVfxShowcase {
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
     private final float[] impacts = new float[12];
+    private final CgVfxSystem vfx = new CgVfxSystem();
+    private CgEnergyWave wave;
+    private double waveX = Double.NaN, waveY, waveZ;
+    private int waveShot = -1;
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
@@ -123,6 +145,7 @@ public final class CgVfxShowcase {
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
                     .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).priority(SPHERES).submit();
         }
+        wave(world, x, y, z, seconds);
     }
 
     /**
@@ -158,10 +181,44 @@ public final class CgVfxShowcase {
 
     /** Frees the meshes. Call on context teardown. */
     public void delete() {
+        vfx.delete();
+        wave = null;
+        waveShot = -1;
+        waveX = Double.NaN;
         if (sphere != null) sphere.delete();
         if (floor != null) floor.delete();
         sphere = null;
         floor = null;
+    }
+
+    /**
+     * The energy wave's loop around the grid at {@code (x, y, z)}: a shot every {@link #WAVE_CYCLE} seconds, alternating
+     * between the two targets, each growing out from the muzzle, bending at the waypoint, holding, then running out into
+     * its target. Starts over
+     * when the grid moves.
+     */
+    private void wave(CgWorldRenderer world, double x, double y, double z, float seconds) {
+        if (x != waveX || y != waveY || z != waveZ) {
+            if (wave != null) wave.kill();
+            wave = null;
+            waveShot = -1;
+            waveX = x;
+            waveY = y;
+            waveZ = z;
+        }
+        int shot = (int) Math.floor(seconds / WAVE_CYCLE);
+        if (shot != waveShot) {
+            waveShot = shot;
+            if (wave != null) wave.stop();
+            float[] target = WAVE_TARGETS[shot & 1];
+            wave = vfx.play(new CgEnergyWave(WAVE_LOOK, x + WAVE_FROM[0], y + WAVE_FROM[1], z + WAVE_FROM[2]));
+            wave.aim(WAVE_AIM[0], WAVE_AIM[1], WAVE_AIM[2])
+                    .via(x + WAVE_VIA[0], y + WAVE_VIA[1], z + WAVE_VIA[2])
+                    .target(x + target[0], y + target[1], z + target[2]);
+        }
+        if (seconds - shot * WAVE_CYCLE > WAVE_HOLD) wave.stop();
+        vfx.update(seconds);
+        vfx.submit(world);
     }
 
     /** Sphere {@code k}'s turn at {@code seconds}, into {@link #transform}: each at its own pace, two of them tilted. */
