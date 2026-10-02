@@ -6,11 +6,6 @@ harness is one), and also inside Minecraft: **one jar** for Forge 1.7.10–26.3,
 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent of** CrystalGUI, which
 builds every Minecraft node against this repository's node of the same version.
 
-> **The goal every line serves**: a node-based shader graph for Minecraft on every version the jar
-> supports — Unity's Shader Graph, true to GLSL, on a modern GL 3.x+ pipeline with instancing as the
-> default draw path. It shipped in CrystalGUI (`com.crystalgui.app.shadergraph`). **Read
-> the manifesto (`plan/crystalgraphics/archive/CRYSTALSHADER_MANIFESTO.md`, private) before any rendering or shader decision.**
-
 ---
 
 ## Project philosophy
