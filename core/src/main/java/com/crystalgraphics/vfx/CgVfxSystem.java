@@ -62,7 +62,7 @@ public final class CgVfxSystem {
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
-    // The tube and ribbons are this system's own; the sphere and quads are shared shapes.
+    // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, ribbonMesh, sphereMesh, quadMesh;
     /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
     private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
@@ -206,7 +206,6 @@ public final class CgVfxSystem {
         effects.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
-        if (ribbonMesh != null) ribbonMesh.release();
         tubeMesh = null;
         ribbonMesh = null;
         sphereMesh = null;
