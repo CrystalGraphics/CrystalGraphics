@@ -41,6 +41,9 @@ import java.util.List;
  * {@link #SLOT_ARCS} as stateless ribbons ({@link CgVfxFrame#ribbons}, {@code CG_OBJECT_CUSTOM1} the ball's radius in
  * blocks, the ball's share of the streaks' sphere, and the intensity).</p>
  *
+ * <p>It announces each moment of that life ({@link #MOMENT_CHARGE_START} to {@link #MOMENT_END}) to
+ * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
+ *
  * <ul>
  *   <li>Positions are absolute; the wave simulates relative to where it was made.</li>
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
@@ -63,6 +66,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_ARCS = "arcs";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
+
+    /** Its moments, in the order they come; each fires once. The charge's three are skipped when it fires at once. */
+    public static final String MOMENT_CHARGE_START = "charge-start", MOMENT_CHARGE_MID = "charge-mid",
+            MOMENT_CHARGE_PEAK = "charge-peak", MOMENT_RELEASE = "release", MOMENT_FLASH = "flash",
+            MOMENT_RING = "ring", MOMENT_SHOCK = "shock", MOMENT_LAUNCH = "launch", MOMENT_WAYPOINT = "waypoint", MOMENT_IMPACT = "impact",
+            MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail", MOMENT_END = "end";
 
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.55f);
@@ -152,8 +161,10 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
     private float aimX = 1f, aimY, aimZ;
-    /** The age it releases at, and the age it was stopped at; NaN until each happens. */
-    private float releaseAge, stopAge = Float.NaN;
+    /** The age it releases at, and the ages it was stopped at and first hit; NaN until each happens. */
+    private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN;
+    /** The moments already announced, a bit each, and the stream's size when it was stopped. */
+    private int momentsFired, sizeAtStop;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
         super(look, x, y, z);
@@ -199,7 +210,10 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     @Override
     public void stop() {
-        if (state() == State.PLAYING) stopAge = age;
+        if (state() == State.PLAYING) {
+            stopAge = age;
+            sizeAtStop = stream.size();
+        }
         super.stop();
     }
 
@@ -217,7 +231,62 @@ public final class CgEnergyWave extends CgVfxEffect {
     protected void tick(float dt) {
         if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
         stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
-        if (state() == State.STOPPING && stream.size() == 0 && age > stopAge + FADE) die();
+        if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
+        boolean ending = state() == State.STOPPING && stream.size() == 0 && age > stopAge + FADE;
+        if (momentsHeard()) moments(ending);
+        if (ending) die();
+    }
+
+    /** Announces each moment as it is crossed, framed on the muzzle or on the flight. */
+    private void moments(boolean ending) {
+        float radius = get(RADIUS), chargeTime = get(CHARGE_TIME), sinceRelease = age - releaseAge;
+        float muzzle = radius * Math.max(get(STREAK_RADIUS), get(CHARGE_RADIUS) * 1.3f) * 1.1f;
+        if (chargeTime > 0f) {
+            if (age >= 0.15f * chargeTime) atMuzzle(0, MOMENT_CHARGE_START, muzzle);
+            if (age >= 0.5f * chargeTime) atMuzzle(1, MOMENT_CHARGE_MID, muzzle);
+            if (age >= 0.85f * chargeTime) atMuzzle(2, MOMENT_CHARGE_PEAK, muzzle);
+        }
+        if (sinceRelease >= 0.03f) atMuzzle(3, MOMENT_RELEASE, muzzle);
+        if (sinceRelease >= 0.07f) atMuzzle(4, MOMENT_FLASH, radius * get(FLASH_RADIUS) * 2f);
+        if (sinceRelease >= 0.2f * get(SHOCK_TIME)) atMuzzle(13, MOMENT_RING, radius * get(SHOCK_RADIUS) * 1.3f);
+        if (sinceRelease >= 0.5f * get(SHOCK_TIME)) atMuzzle(5, MOMENT_SHOCK, radius * get(SHOCK_RADIUS) * 1.3f);
+        if (sinceRelease >= 0.35f && stream.size() > 0) onFlight(6, MOMENT_LAUNCH);
+        if (stream.viaReached()) onFlight(7, MOMENT_WAYPOINT);
+        if (!Float.isNaN(impactAge)) onFlight(8, MOMENT_IMPACT);
+        if (age >= impactAge + 0.8f) onFlight(9, MOMENT_HOLDING);
+        if (age >= stopAge + 0.05f) onFlight(10, MOMENT_STOP);
+        if (!Float.isNaN(stopAge) && stream.size() <= sizeAtStop / 2) onFlight(11, MOMENT_TAIL);
+        if (ending) onFlight(12, MOMENT_END);
+    }
+
+    private void atMuzzle(int bit, String name, float frame) {
+        if (fire(bit)) moment(name, 0f, 0f, 0f, frame);
+    }
+
+    /** Framed on the box holding the muzzle, the head and, while it hits, the impact. */
+    private void onFlight(int bit, String name) {
+        if (!fire(bit)) return;
+        float minX = 0f, minY = 0f, minZ = 0f, maxX = 0f, maxY = 0f, maxZ = 0f;
+        if (stream.size() > 0) {
+            minX = Math.min(minX, stream.headX()); maxX = Math.max(maxX, stream.headX());
+            minY = Math.min(minY, stream.headY()); maxY = Math.max(maxY, stream.headY());
+            minZ = Math.min(minZ, stream.headZ()); maxZ = Math.max(maxZ, stream.headZ());
+        }
+        if (stream.impacting()) {
+            minX = Math.min(minX, stream.impactX()); maxX = Math.max(maxX, stream.impactX());
+            minY = Math.min(minY, stream.impactY()); maxY = Math.max(maxY, stream.impactY());
+            minZ = Math.min(minZ, stream.impactZ()); maxZ = Math.max(maxZ, stream.impactZ());
+        }
+        float dx = maxX - minX, dy = maxY - minY, dz = maxZ - minZ;
+        float frame = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz) + get(RADIUS) * 6f;
+        moment(name, (minX + maxX) * 0.5f, (minY + maxY) * 0.5f, (minZ + maxZ) * 0.5f, frame);
+    }
+
+    /** True the first time {@code bit} is asked for. */
+    private boolean fire(int bit) {
+        if ((momentsFired & (1 << bit)) != 0) return false;
+        momentsFired |= 1 << bit;
+        return true;
     }
 
     @Override

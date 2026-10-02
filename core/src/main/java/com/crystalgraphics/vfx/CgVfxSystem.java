@@ -45,6 +45,7 @@ public final class CgVfxSystem {
     private static final String PATH_SAMPLER = "_FxPath";
 
     private final List<CgVfxEffect> effects = new ArrayList<>();
+    private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
     private final CgVfxTube tube = new CgVfxTube();
     private final CgVfxFrame frame = new CgVfxFrame(this);
@@ -56,8 +57,22 @@ public final class CgVfxSystem {
     private float owed;
 
     public <E extends CgVfxEffect> E play(E effect) {
+        effect.system = this;
         effects.add(effect);
         return effect;
+    }
+
+    /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
+    public void onMoment(CgVfxMomentListener listener) {
+        momentListeners.add(listener);
+    }
+
+    boolean hasMomentListeners() {
+        return !momentListeners.isEmpty();
+    }
+
+    void moment(CgVfxEffect effect, String name, double x, double y, double z, float radius) {
+        for (int i = 0; i < momentListeners.size(); i++) momentListeners.get(i).moment(effect, name, x, y, z, radius);
     }
 
     /** Advances every effect to {@code seconds} on the clock the caller keeps. */

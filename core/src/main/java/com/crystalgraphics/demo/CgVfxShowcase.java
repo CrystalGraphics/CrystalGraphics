@@ -179,6 +179,11 @@ public final class CgVfxShowcase {
         world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
     }
 
+    /** The system the showcase plays its effects through: register a {@code CgVfxMomentListener} on it to photograph their moments. */
+    public CgVfxSystem vfx() {
+        return vfx;
+    }
+
     /** Frees the meshes. Call on context teardown. */
     public void delete() {
         vfx.delete();

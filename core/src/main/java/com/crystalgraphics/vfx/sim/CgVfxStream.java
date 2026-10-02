@@ -34,6 +34,7 @@ public final class CgVfxStream {
     private float viaX = Float.NaN, viaY, viaZ;
     private float impactX, impactY, impactZ;
     private int sinceImpact = Integer.MAX_VALUE;
+    private boolean viaReached;
 
     /** Emits one sample at the muzzle, flying along {@code (dirX, dirY, dirZ)} (any length) at {@code speed}. */
     public void emit(float x, float y, float z, float dirX, float dirY, float dirZ, float speed) {
@@ -88,6 +89,7 @@ public final class CgVfxStream {
                 if (distance <= step || (closing <= 0f && distance <= 4f * step)) {
                     if (viaFirst) {
                         samples[o + 7] = 1f;
+                        viaReached = true;
                     } else {
                         impactX = gx;
                         impactY = gy;
@@ -144,6 +146,18 @@ public final class CgVfxStream {
 
     public float impactZ() { return impactZ; }
 
+    /** Whether any sample has passed the waypoint yet. */
+    public boolean viaReached() {
+        return viaReached;
+    }
+
+    /** The oldest live sample, the head, as it stood at the last tick; meaningless when {@link #size} is 0. */
+    public float headX() { return samples[head * FLOATS]; }
+
+    public float headY() { return samples[head * FLOATS + 1]; }
+
+    public float headZ() { return samples[head * FLOATS + 2]; }
+
     /** Live samples, the most {@link #points} can give besides the muzzle and the impact. */
     public int size() {
         return size;
@@ -153,6 +167,7 @@ public final class CgVfxStream {
         head = 0;
         size = 0;
         sinceImpact = Integer.MAX_VALUE;
+        viaReached = false;
     }
 
     /** Turns sample {@code o}'s velocity toward the goal by at most {@code maxTurn} radians, keeping its speed. */
