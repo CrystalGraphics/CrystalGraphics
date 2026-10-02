@@ -1,5 +1,5 @@
-// The final blast's dome: a shell of light with a bright rim and a faint fill, white-hot as it bursts out and cooling to
-// blue, eroding into crisp-edged patches as it cools until nothing is left. Drawn on CgVfxFrame.mesh's sphere, both
+// The final blast's dome: a shell of churning plasma, a blazing rim over a filled interior, white-hot as it bursts out
+// and cooling to blue, eroding into crisp-edged patches as it cools until nothing is left. Drawn on CgVfxFrame.mesh's sphere, both
 // faces. CG_OBJECT_CUSTOM1.z is an intensity, .w the blast's progress 0..1. Colour A is the hot burst, colour B the
 // cool shell, A's alpha a strength. CgEnergyWave.
 #type spatial
@@ -43,9 +43,13 @@ Pass {
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
         float heat = 1.0 - progress;
         vec3 col = mix(CG_OBJECT_CUSTOM3.rgb, CG_OBJECT_CUSTOM2.rgb, heat * heat);
-        float shell = pow(rim, 3.0) * 1.4 + 0.12;
+        // Plasma flowing over the surface, brightest where it folds.
+        float age = CG_OBJECT_CUSTOM0.z;
+        float flow = 0.5 + 0.5 * fx_fbm(i.local * 2.2 + vec3(age * 0.6, -age * 0.9, age * 0.4) + seed * 7.0, 4);
+        // A blazing fill while it is young, the rim taking over as it cools.
+        float shell = (pow(rim, 2.5) * 1.2 + 0.25 + 1.1 * heat * heat) * (0.4 + 1.2 * flow * flow);
         float edge = 1.0 - smoothstep(threshold, threshold + 0.08, e);
-        col *= shell + edge * 0.8 * step(0.0, threshold);
+        col *= shell + edge * 1.2 * step(0.0, threshold);
         fragColor = vec4(col * alpha * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.5), 1.0);
     }
 }

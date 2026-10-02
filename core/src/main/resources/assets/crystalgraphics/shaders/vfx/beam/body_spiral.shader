@@ -12,7 +12,7 @@ Properties {
     _FxPath ("Path rings", sampler2D) = "black"
     _Pitch  ("Blocks per turn", float) = 2.6
     _Speed  ("How fast the bands flow forward, turns a second", float) = 3.2
-    _Width  ("Band half-width, share of a turn", float) = 0.07
+    _Width  ("Band half-width, share of a turn", float) = 0.09
 }
 
 struct v2f { vec3 world; vec4 surface; };
@@ -50,7 +50,7 @@ Pass {
         float b1 = band(u1, _Width, fwidth(u1) + 1.0e-4), b2 = band(u2, _Width * 0.8, fwidth(u2) + 1.0e-4);
         float breakup = smoothstep(0.4, 0.62, 0.5 + 0.5 * fx_noise(vec3((s - age * 18.0) * 0.4, cos(a) * 1.5, sin(a) * 1.5)));
         float ends = smoothstep(1.0, 3.5, s) * smoothstep(0.5, 2.5, i.surface.w);
-        vec3 col = CG_OBJECT_CUSTOM2.rgb * (b1 + 0.7 * b2) + CG_OBJECT_CUSTOM3.rgb * b1 * b2;
+        vec3 col = CG_OBJECT_CUSTOM2.rgb * (b1 + 0.7 * b2) * 1.4 + CG_OBJECT_CUSTOM3.rgb * b1 * b2;
         fragColor = vec4(col * breakup * ends * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.4), 1.0);
     }
 }
