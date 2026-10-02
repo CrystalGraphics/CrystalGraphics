@@ -10,6 +10,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshSource;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.render.CgViewFrustum;
@@ -92,6 +93,7 @@ public final class CgWorldRenderer {
     private long notified = -1;
     private int count;
     private CgMesh[] meshes = new CgMesh[64];
+    private CgMeshLods[] lods = new CgMeshLods[64];
     private final float[] meshBounds = new float[6];
     /** Per draw: submesh, first, count of its mesh; its stated bounds (6) and whether set; its padding. */
     private int[] ranges = new int[64 * 3];
@@ -157,10 +159,18 @@ public final class CgWorldRenderer {
         return scratch.start(mesh.mesh(), material);
     }
 
+    /** As {@link #draw(CgMeshSource, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */
+    public Draw draw(CgMeshLods lods, CgMaterial material) {
+        Draw draw = scratch.start(lods.finest(), material);
+        draw.lods = lods;
+        return draw;
+    }
+
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */
     public final class Draw {
 
         private CgMesh mesh;
+        private CgMeshLods lods;
         private CgMaterial material;
         private double x, y, z;
         private final Matrix4f transform = new Matrix4f();
@@ -174,6 +184,7 @@ public final class CgWorldRenderer {
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
+            this.lods = null;
             this.material = material;
             x = y = z = 0;
             transform.identity();
@@ -279,6 +290,7 @@ public final class CgWorldRenderer {
         }
         if (count == meshes.length) grow();
         meshes[count] = d.mesh;
+        lods[count] = d.lods;
         materials[count] = d.material;
         positions[count * 3] = d.x;
         positions[count * 3 + 1] = d.y;
@@ -298,6 +310,7 @@ public final class CgWorldRenderer {
 
     private void clear() {
         Arrays.fill(meshes, 0, count, null);
+        Arrays.fill(lods, 0, count, null);
         Arrays.fill(materials, 0, count, null);
         count = 0;
     }
@@ -305,6 +318,7 @@ public final class CgWorldRenderer {
     private void grow() {
         int n = meshes.length * 2;
         meshes = Arrays.copyOf(meshes, n);
+        lods = Arrays.copyOf(lods, n);
         materials = Arrays.copyOf(materials, n);
         positions = Arrays.copyOf(positions, n * 3);
         transforms = Arrays.copyOf(transforms, n * 16);
@@ -410,7 +424,7 @@ public final class CgWorldRenderer {
             System.arraycopy(drawBounds, i * 6, meshBounds, 0, 6);
             bounds = meshBounds;
         } else {
-            bounds = meshes[i].bounds(meshBounds);
+            bounds = (lods[i] != null ? lods[i].finest() : meshes[i]).bounds(meshBounds);
         }
         if (bounds != null) {
             float p = pads[i];
@@ -420,7 +434,13 @@ public final class CgWorldRenderer {
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
             cz = (min.z + max.z) * 0.5f;
+            if (lods[i] != null) {
+                CgMesh level = lods[i].pick(screenHeight(cx, cy, cz, view));
+                if (level == null) return SKIP;
+                meshes[i] = level;
+            }
         } else {
+            if (lods[i] != null) meshes[i] = lods[i].finest();
             cx = model.m30();
             cy = model.m31();
             cz = model.m32();
@@ -432,6 +452,18 @@ public final class CgWorldRenderer {
                 : CgSortKey.opaque(queue, priorities[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
         boolean prepass = !transparent && (material.hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
         return prepass ? FORWARD_AND_PREPASS : FORWARD;
+    }
+
+    /**
+     * The fraction of the screen's height the sphere around {@code min}..{@code max}, centred on {@code (cx, cy, cz)},
+     * covers: its diameter projected at its centre's depth. Above 1 with the eye inside it.
+     */
+    private float screenHeight(float cx, float cy, float cz, CgHostView view) {
+        float r = 0.5f * (float) Math.sqrt((max.x - min.x) * (max.x - min.x) + (max.y - min.y) * (max.y - min.y)
+                + (max.z - min.z) * (max.z - min.z));
+        float w = viewProjection.m03() * cx + viewProjection.m13() * cy + viewProjection.m23() * cz + viewProjection.m33();
+        if (w <= r) return Float.MAX_VALUE;
+        return r * Math.abs(view.projection().m11()) / w;
     }
 
     /** Draw {@code i}'s model matrix, camera-relative: its position minus the view's, in doubles, then its transform. */

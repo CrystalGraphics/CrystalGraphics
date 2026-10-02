@@ -49,9 +49,17 @@ public final class CgMeshStore {
     private static final int UPLOAD_BYTES = CgTrace.name("mesh.upload-bytes");
     private static final int PLACED = CgTrace.name("mesh.placed");
     private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
+    private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
+
+    private long drawing, drawn;
 
     public static CgMeshStore get() {
         return STORE;
+    }
+
+    /** The vertices the last whole frame drew, every instance's, an index counting as one. */
+    public long drawnVertices() {
+        return drawn;
     }
 
     /** Where one mesh's copy is, and the revision and draw facts it was made from. */
@@ -302,6 +310,8 @@ public final class CgMeshStore {
             int start = submesh < 0 ? 0 : Math.min(first, total);
             int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
             if (n <= 0) continue;
+            drawing += (long) n * instances;
+            CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
             pipeline.vertexBase(base);
             if (indexCount > 0) {
                 CgGL.glDrawElementsInstancedBaseVertex(p.mode, n, CgGL.GL_UNSIGNED_INT,
@@ -319,6 +329,8 @@ public final class CgMeshStore {
         long now = CgFrameRing.frame();
         if (now == frame) return;
         frame = now;
+        drawn = drawing;
+        drawing = 0;
         CgTrace.counter(CgChannels.GL, SLAB_KB, slabBytes >> 10);
         long safe = now - CgFrameRing.FRAMES;
         for (int i = retiring.size() - 1; i >= 0; i--) {

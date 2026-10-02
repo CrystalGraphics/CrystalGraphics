@@ -658,6 +658,20 @@ com/crystalgraphics/api/mesh/CgMeshLoader$Model
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/mesh/CgMeshLods
+  access public,final
+  extends java/lang/Object
+  method public finest ()Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public level (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public levelCount ()I
+  method public pick (F)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public screenHeight (I)F
+  method public,static builder ()Lcom/crystalgraphics/api/mesh/CgMeshLods$Builder;
+com/crystalgraphics/api/mesh/CgMeshLods$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/api/mesh/CgMeshLods;
+  method public level (Lcom/crystalgraphics/api/mesh/CgMesh;F)Lcom/crystalgraphics/api/mesh/CgMeshLods$Builder;
 com/crystalgraphics/api/mesh/CgMeshShapes
   access public,final
   extends java/lang/Object
@@ -684,6 +698,8 @@ com/crystalgraphics/api/mesh/CgMeshShapes
   method public,static sphere (II)Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,static sphere (Lcom/crystalgraphics/api/mesh/CgMeshWriter;IIF)V
   method public,static sphere (Lcom/crystalgraphics/api/vertex/CgVertexFormat;II)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public,static sphereLods ()Lcom/crystalgraphics/api/mesh/CgMeshLods;
+  method public,static sphereLods (Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/mesh/CgMeshLods;
 com/crystalgraphics/api/mesh/CgMeshSource
   access public,abstract,interface
   extends java/lang/Object
@@ -3038,6 +3054,7 @@ com/crystalgraphics/render/mesh/CgMeshStore
   extends java/lang/Object
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;I)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIII)V
+  method public drawnVertices ()J
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
   method public releaseAll ()V
   method public upload ()V
@@ -3244,6 +3261,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public draw (Lcom/crystalgraphics/api/mesh/CgMeshSource;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public install ()V
   method public onFrame (Lcom/crystalgraphics/render/world/CgWorldRenderer$FrameListener;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;

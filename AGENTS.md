@@ -731,8 +731,12 @@ world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();  
 world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
 world.draw(model, brass).submesh(1).at(x, y, z).submit();
 world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
+
+// A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
+world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 ```
 
+- A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
 - `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
