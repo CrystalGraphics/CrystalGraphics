@@ -22,7 +22,7 @@ vfx.submit(CgWorldRenderer.get());
 | `vfx.look` | How an effect looks and behaves: `CgVfxLook`, `CgVfxLayer` (one draw, in a slot), `CgVfxSchema` and `CgVfxParam` (what an effect reads), `CgVfxValues` (a value for each) |
 | `vfx.path` | Centrelines: `CgVfxPath` (spline, arc-length rings, rotation-minimising frames), `CgVfxPathTexture` (paths on the GPU) |
 | `vfx.sim` | Simulation parts: `CgVfxStream` (the hose model, homing by proportional navigation) |
-| `vfx.render` | Reusable draw primitives: `CgVfxTube` (a path as chunked tube draws) |
+| `vfx.render` | Reusable draw primitives: `CgVfxTube` (a path as chunked tube draws), `CgVfxRibbons` (stateless GPU particles: ribbons a shader places from their index) |
 | `vfx.effect.<family>` | One package per family of effects: `beam` (`CgEnergyWave`) |
 
 | Shaders | Hold |

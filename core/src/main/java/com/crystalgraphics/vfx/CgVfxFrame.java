@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.gl.mesh.CgMesh;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -67,9 +68,24 @@ public final class CgVfxFrame {
      */
     public void mesh(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
+        draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+    }
+
+    /**
+     * Draws {@code layer} on the ribbon mesh ({@code CgVfxRibbons}), its unit cube placed by {@code transform} at
+     * {@code (x, y, z)} from {@code effect}'s origin and scaled by the layer's radius: stateless particles the shader
+     * places inside that cube. Its shader reads the same per-draw data as {@link #mesh}'s.
+     */
+    public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
+                        float ex, float ey, float ez, float ew) {
+        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+    }
+
+    private void draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
+                      float ex, float ey, float ez, float ew) {
         CgVfxValues values = effect.values();
         scaled.set(transform).scale(layer.radius());
-        CgWorldRenderer.Draw draw = world.draw(system.sphereMesh(), system.material(layer))
+        CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
                 .at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled)
                 .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew);
