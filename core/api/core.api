@@ -4016,6 +4016,7 @@ com/crystalgraphics/render/graph/CgComputePass
   method public dispatchIndirect (Lcom/crystalgraphics/compute/CgKernel;Lcom/crystalgraphics/render/graph/CgGraphBuffer;J)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public dispatches ()Ljava/util/List;
   method public end ()V
+  method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
 com/crystalgraphics/render/graph/CgDispatch
   access public,final
   extends java/lang/Object
@@ -4203,6 +4204,8 @@ com/crystalgraphics/render/graph/CgRecording
   method public release (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public release (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public reset ()V
+  method public scratch (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public scratch (Ljava/lang/String;JLcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public seal ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public shapes ()Lcom/crystalgraphics/gl/render/CgShapeTable;
   method public spatial ()Lcom/crystalgraphics/render/property/CgSpatialTree;

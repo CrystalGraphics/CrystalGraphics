@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.material.CgMaterialTestSupport;
@@ -266,6 +268,29 @@ public class CgComputeGraphTest {
         state.advance();
         assertEquals(11, state.bufferId());
         assertEquals(10, state.previous().bufferId());
+    }
+
+    // ── Scratch ───────────────────────────────────────────────────────────────
+
+    @Test
+    public void aRecordingReusedEachFrameHandsOutTheSameScratch_inTheOrderAskedFor() {
+        CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("scratch").color(0, CgTextureType.RGBA8).build();
+        CgRecording rec = new CgRecording();
+        CgGraphTexture across = rec.scratch("blur", 64, 32, rgba8);
+        CgGraphBuffer a = rec.scratch("a", 256, CgBufferUsage.STORAGE), b = rec.scratch("b", 256, CgBufferUsage.STORAGE);
+        assertNotSame(a, b);
+
+        rec.reset();
+        assertSame(across, rec.scratch("blur", 64, 32, rgba8));
+        assertSame(a, rec.scratch("a", 256, CgBufferUsage.STORAGE));
+        assertNotSame(b, rec.scratch("b", 512, CgBufferUsage.STORAGE));   // resized: made again, and kept from now
+        CgGraphBuffer resized = rec.scratch("c", 64, CgBufferUsage.STORAGE);
+
+        rec.reset();
+        rec.scratch("blur", 64, 32, rgba8);
+        rec.scratch("a", 256, CgBufferUsage.STORAGE);
+        assertEquals(512, rec.scratch("b", 512, CgBufferUsage.STORAGE).desc().bytes());
+        assertSame(resized, rec.scratch("c", 64, CgBufferUsage.STORAGE));
     }
 
     // ── What a dispatch refuses ───────────────────────────────────────────────
