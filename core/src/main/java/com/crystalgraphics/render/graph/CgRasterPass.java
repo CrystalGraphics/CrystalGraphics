@@ -124,6 +124,9 @@ public final class CgRasterPass extends CgPass {
                     recording.read(this, buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
                 }
             }
+            for (int s = 0; s < table.texelBuffers(id); s++) {
+                if (table.texelBuffer(id, s) instanceof CgGraphBuffer buffer) recording.read(this, buffer, CgAccess.SAMPLED_READ);
+            }
         }
         return this;
     }

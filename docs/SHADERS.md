@@ -32,6 +32,9 @@ Properties {
     _Roughness ("Roughness",    float)     = 0.5
 }
 
+struct Spark { vec4 positionLife; vec4 velocitySeed; };
+Buffers { SPARKS ("Sparks", Spark, readonly) }   // a buffer a kernel wrote, read as SPARKS(i) (see below)
+
 struct v2f { vec2 uv; vec3 worldPos; };
 
 Pass {
@@ -328,6 +331,56 @@ the provider class's static init (which would allocate against `CgBindingPoints`
 Like `cg_feature`, `cg_use` lines are stripped and never reach generated GLSL, and are only read
 from the material-level preamble (never from inside a `Pass` body).
 
+### Reading a kernel's buffers
+
+A material reads buffers a kernel wrote by declaring them in a `Buffers { }` block as a kernel does, every one
+`readonly`, and reads element `i` as `NAME(i)` in either stage:
+
+```glsl
+#type none
+Queue = "Geometry"
+
+struct Spark { vec4 positionLife; vec4 velocitySeed; };   // declared before Buffers { }
+
+Buffers {
+    SPARKS ("Sparks", Spark, readonly)
+    LIVE   ("Live",   uint,  readonly)                     // the live sparks' indices, compacted
+}
+
+Pass {
+    struct v2f { float life; };
+    void vertex(out v2f o) {
+        Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));          // quad n draws the nth live spark
+        vec3 p = s.positionLife.xyz + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
+        o.life = s.positionLife.w;
+        gl_Position = CG_MATRIX_MVP * vec4(p, 1.0);
+    }
+    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0, 0.6, 0.2, 1.0) * clamp(i.life, 0.0, 1.0); }
+}
+```
+
+```java
+sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // graph buffers; any thread
+world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
+```
+
+| Context | A buffer is read as | Bound at |
+|---|---|---|
+| storage blocks (GL 4.3, the Vulkan device) | a `readonly` storage block | `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i` |
+| without (macOS's 4.1, GL 3.3) | a `usamplerBuffer`, a texel per 16 bytes of a struct | texture unit `samplers + i`, after the material's own |
+
+- **The kernel's grammar and element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of
+  `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
+- **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph
+  orders each draw after the pass writing the buffer. A history buffer reads its newest version.
+- **Recorded draws only**: `captureBindings` (the world renderer, `CgImmediate`, a chunk) binds them; `bind()` binds
+  none. Every declared buffer is bound before the first capture, which throws naming one that is not.
+- **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
+- **Without storage blocks**, samplers and buffers share the units below the engine's scene samplers, and a material
+  needing more is refused at compile; a buffer of more texels than the context reads as one texture
+  (`GL_MAX_TEXTURE_BUFFER_SIZE`, at least 65536) throws at capture.
+- A vertex stage reading a buffer keeps its body in the generated depth and shadow passes.
+
 ---
 
 ### Passes, LightMode Routing, and MRTs
@@ -560,60 +613,530 @@ Raw shaders can use the same standard library as `.shader` materials. Include an
 
 **Package guides**: `api/shader/CLAUDE.md` · `gl/shader/CLAUDE.md` · `mc/shader/CLAUDE.md`
 
-## Compute — the `.compute` file
+## Compute — `.compute` kernels
 
-Kernels in the `.shader` family: the same preprocessor, `#include`, `#pragma cg_feature`, `#pragma cg_use` and
-`Properties`, GLSL inside. **`crystalgraphics:shaders/example.compute` is the reference**, as `example.shader` is
-for materials; `.compute` files live under `shaders/`, beside what draws their output. Plan:
-`plan/crystalgraphics/gpu-compute.md`.
+A `.compute` holds **kernels**: GLSL functions the GPU runs once per element. A kernel is written once and runs on
+every context a player may have, with the same answer on each: as a compute shader where the context has them, as
+draws where it does not (macOS's GL 4.1, a GL 3.3 context), and as a Java body where no GPU form can run it.
+**`crystalgraphics:shaders/example.compute` is the reference**: every part of the format, annotated, compiled by the
+tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Plan:
+`plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`.
+
+### Start to finish
+
+A kernel stepping sparks, and a quad drawn for each one still alive:
 
 ```glsl
-#pragma kernel Simulate map            // name, local size (none: 64), shape
-#pragma kernel Bin 256 general
-#pragma fallback Bin BinScatter         // what a tier without compute runs instead
+// mymod:shaders/sparks.compute. No #version and no main(): the compiler writes both, per kernel and device.
+#pragma kernel Step map                 // a name, the work group's size (none: 64), a shape
 
-struct Particle { vec4 positionLife; vec4 velocitySeed; };
-Buffers { STATE ("Particle state", Particle, readwrite) }
+Properties {
+    _Step ("Time step", float) = 0.05
+    _Drag ("Drag",      float) = 0.5
+}
 
-void Simulate() {
-    Particle p = STATE(CG_ELEMENT);
-    p.positionLife.xyz += p.velocitySeed.xyz * CG_TIME;
-    STATE_WRITE(p);                     // this element: what a map kernel writes
+struct Spark { vec4 positionLife; vec4 velocitySeed; };   // declared before Buffers { }
+
+Buffers {
+    IN    ("Sparks",       Spark, readonly)
+    OUT   ("Sparks after", Spark, writeonly)
+    ALIVE ("Alive",        uint,  writeonly)
+}
+
+void Step() {
+    Spark s = IN(CG_ELEMENT);                                // this invocation's element
+    s.velocitySeed.xyz = s.velocitySeed.xyz * (1.0 - _Drag * _Step) + vec3(0.0, -9.81, 0.0) * _Step;
+    s.positionLife += vec4(s.velocitySeed.xyz * _Step, -_Step);
+    OUT_WRITE(s);                                            // this element of OUT
+    ALIVE_WRITE(s.positionLife.w > 0.0 ? 1u : 0u);
 }
 ```
 
 ```java
-CgKernelProgram simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").program();
-try (CgGlScope scope = CgKernelProgram.scope()) {
-    simulate.use().buffer("STATE", stateBuffer).dispatch(count);
+CgKernel step = CgCompute.load("mymod:shaders/sparks.compute").kernel("Step");   // parsed once; any thread
+CgGraphBuffer sparks = CgGraphBuffer.history("sparks", CgBufferDesc.elements(CAPACITY, 32, CgBufferUsage.STORAGE));
+CgGraphBuffer alive = CgGraphBuffer.transientBuffer("sparks.alive", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
+CgGraphBuffer live = CgGraphBuffer.transientBuffer("sparks.live", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
+CgGraphBuffer count = CgGraphBuffer.persistent("sparks.count", CgBufferDesc.of(16, CgBufferUsage.STORAGE));
+
+// Recorded into the opaque stage's frame ahead of the world renderer, whose draws read the count.
+CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
+    CgComputePass pass = frame.recording().compute("sparks.step");
+    pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks).bind("ALIVE", alive).set("_Step", dt);
+    CgGpuOps.compact(pass, alive, null, CgGpuCount.of(CAPACITY), live, count, 0);   // live indices, and how many
+    pass.end();
+});
+
+sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // what the material's Buffers { } reads
+world.draw(CgMesh.quads(CAPACITY), sparkMaterial)
+     .indirect(count, 0, CgIndirect.INDICES, 6)              // six indices per spark the GPU counted
+     .at(x, y, z).bounds(box).submit();
+```
+
+- **Nothing above names a tier.** On GL 4.3 and the Vulkan device `Step` and the compaction run as compute shaders;
+  on macOS and GL 3.3 they run as draws; the draw takes the count the GPU wrote on all of them (GL 3.3 reads it back
+  first).
+- **A history buffer is the simulation's state**: `IN` reads the newest version and `OUT` writes the next, so one
+  buffer is both without a race. `sparks.previous()` is the version before.
+- **The count is persistent** because the draw may execute in another stage's frame (a transparent material draws in
+  `WORLD_TRANSPARENT`); the transients last one frame of one stage.
+- **The material reads the sparks** through its own `Buffers { }`, quad n placed at spark `SPARKS(LIVE(n))`: the
+  material is [Reading a kernel's buffers](#reading-a-kernels-buffers)'s example.
+
+### The file
+
+#### `#pragma kernel`, and the shape
+
+```glsl
+#pragma kernel Name [x [y [z]]] shape    // sizes: the work group's; none is 64 in one dimension
+#pragma kernel Integrate map             // 1D, 64 a group
+#pragma kernel Bin 256 scatter           // 1D, 256 a group
+#pragma kernel Shade 8 8 image           // 2D: CG_TEXEL.xy is the texel, dispatched (width, height, 1)
+```
+
+The kernel is `void Name()` somewhere in the file, taking and answering nothing. **The shape says what it writes**,
+and so what it may reach and which tiers run it; the compiler refuses a kernel that reaches past its shape, naming the
+kernel, what it reached and the line, helpers and macros included.
+
+| Shape | Writes | Gets | Runs |
+|---|---|---|---|
+| `map` | its own element of each output buffer | `NAME_WRITE(v)` | every tier |
+| `gather` | as `map`, reading other elements too | as `map` | every tier |
+| `append` | as `map`, and appends elements | `NAME_APPEND(v)` | every tier |
+| `scatter` | at computed indices: stores, adds, minima, maxima, counters | `NAME_STORE`, `_ADD`, `_MIN`, `_MAX`, `_INC` | every tier |
+| `image` | its own texel of each output image | an image's `NAME_WRITE(v)` | every tier |
+| `general` | anything compute does: `shared` memory, `barrier()`, subgroups, raw atomics, any index of any image | everything, and `NAME_DATA[i]` | compute only, unless given a fallback or a Java body |
+
+Only a `general` kernel may name `barrier()` and the memory barriers, `atomic*`, `imageLoad`/`imageStore`/`imageSize`,
+`subgroup*` and `CG_SUBGROUP_*`, `CG_ATOMIC_*`, `shared` variables, or anything of a work group (`gl_LocalInvocationID`,
+`CG_GROUP_ID`, `CG_LOCAL_INDEX`, …): a kernel run as draws has no work group.
+
+#### Fallbacks, `compute_only`, keywords, engine buffers, includes
+
+```glsl
+#pragma kernel Reduce 256 general
+#pragma kernel ReduceScatter scatter
+#pragma fallback Reduce ReduceScatter    // what a tier without compute runs in Reduce's place, dispatched as Reduce is
+
+#pragma kernel Sort 256 general
+#pragma compute_only Sort                // never run without compute; its caller asks kernel.runs() first
+
+#pragma cg_feature WIND                  // a keyword: each set asked for compiles once, as a material's variants
+#pragma cg_use particle                  // an engine buffer: writable in a general kernel, read-only in the rest
+#include "crystalgraphics:shaders/lib/rng.glsl"
+```
+
+- Only a `general` kernel takes a `#pragma fallback`, and its fallback is a lowerable kernel of the same file, bound by
+  the same names.
+- `compute_only` and `#pragma fallback` exclude each other: a fallback is a form without compute, which `compute_only`
+  says there is none of.
+- `cg_feature` (at most 8), `cg_use` and `#include` work as in a `.shader`; any `lib/` file may be included.
+
+#### `Properties`
+
+```glsl
+Properties {
+    _Gravity  ("Gravity",   vec4)      = (0, -9.81, 0, 0)
+    _Drag     ("Drag",      float)     = 0.1
+    _BinCount ("Bins",      int)       = 64
+    _Noise    ("Noise",     sampler2D) = "white"
 }
 ```
 
-- **The shape** (`map`, `gather`, `append`, `scatter`, `image`, `general`) says what a kernel writes, and so which
-  tiers run it. The compiler checks it against everything the kernel reaches and refuses what exceeds it by name.
-- **Buffers and images are declared, not written**: the engine writes each kernel's declarations and accessors
-  (`NAME(i)`, `NAME_WRITE`, `NAME_STORE`, `NAME_ADD`, `NAME_APPEND`, `NAME_INC`; `NAME_LOAD`, `NAME_WRITE` on an
-  image) and assigns every binding.
-- **Each kernel's source carries only the functions, `shared` variables, buffers and images it reaches.**
-- **Subgroups** (`CG_SUBGROUP_ADD` and the rest) are the device's operations where it has them all and the work
-  group through shared memory where not; a kernel never branches on support.
-- **Every tier runs it**: as compute on V and G43; below compute (G40, G33) every shape but `general` is lowered to
-  draws (transform feedback, blended points, fragment passes), and a general kernel runs its `#pragma fallback`; on
-  the CPU tier, or wherever nothing else can, a Java body given with `kernel.cpu(...)`. A kernel some tier cannot
-  run throws where its first dispatch is recorded **on every machine**, naming the tier and the construct, so the
-  author's GPU finds what a Mac's would. One that needs compute says `#pragma compute_only`, and its caller asks
-  `kernel.runs()`. A builtin newer than GLSL 3.30 is polyfilled exactly where a tier lacks it, or refused.
+Values sit in one std140 block (`CgKernelBlock`) and samplers on texture units of their own. A material's types;
+**`vec3` is refused**, since std140 pads it. A dispatch sets them (`dispatch.set("_Drag", 0.2f)`,
+`dispatch.texture("_Noise", tex)`) and anything unset keeps the file's default.
+
+#### `Buffers`
+
+```glsl
+struct Particle { vec4 positionLife; vec4 velocitySeed; };   // a struct a buffer holds comes before Buffers { }
+
+Buffers {
+//  NAME     ("Display",        element,  access)
+    STATE   ("Particle state", Particle, readwrite)
+    SPAWNED ("Spawned",        Particle, append)
+    BINS    ("Height counts",  uint,     counter)
+    WEIGHTS ("Height weights", float,    readwrite)
+    SUMS    ("Life per group", float,    writeonly)
+}
+```
+
+The engine writes each buffer's declaration and accessors, and buffer `i` is bound at storage binding point `i`;
+**the code never declares a `buffer` block, a `uniform` or a `binding =`**. An element is a scalar, vector, matrix or a
+struct declared above, its arrays sized by integers. **Below `general`, an element is a `float`, `int` or `uint`,
+their 2- and 4-vectors, or a struct of `vec4`, `ivec4` and `uvec4` only**: what a context without compute can hold.
+A `general` kernel keeps any std430 layout.
+
+| Access | Accessors | Notes |
+|---|---|---|
+| `readonly` | `NAME(i)` | |
+| `writeonly` | `NAME_WRITE(v)`, `NAME_STORE(i, v)` | |
+| `readwrite` | `NAME(i)`, `NAME_WRITE(v)`, `NAME_STORE(i, v)`, `NAME_ADD`/`_MIN`/`_MAX(i, v)` | the atomics on a `float`, `int` or `uint` element |
+| `append` | `NAME(i)`, `NAME_APPEND(v)`, `NAME_COUNT()` | the count is a separate `uint` the caller binds and zeroes |
+| `counter` | `NAME(i)`, `NAME_INC(i)`, `NAME_ADD(i, n)` | `uint` or `int`; each answers the value before |
+
+Every buffer has `NAME_LENGTH()`, and a `general` kernel `NAME_DATA[i]`, the array itself. Which accessor a shape
+gets: `NAME_WRITE` in every shape but `image`; `NAME_STORE`, `_ADD`, `_MIN`, `_MAX` and `_INC` in `scatter` and
+`general`; `NAME_APPEND` in `append` and `general`. A float add, minimum or maximum is native where the device has
+float atomics and a compare-and-swap loop where not. `NAME_APPEND` past the buffer's length is dropped, and
+`NAME_COUNT()` never answers more than the length.
+
+#### `Images`
+
+```glsl
+Images {
+//  NAME     ("Display", format, access [, 2d | 3d | 2darray | cube])
+    SOURCE  ("Source",  rgba8,  readonly)
+    HEAT    ("Heat",    rgba8,  writeonly)
+    DENSITY ("Density", r32ui,  readwrite, 3d)
+}
+```
+
+Image `i` is bound at image unit `i`, and the texture bound must have the declared format. Formats are GLSL's layout
+qualifiers: `rgba32f`, `rgba16f`, `rg32f`, `rg16f`, `r11f_g11f_b10f`, `r32f`, `r16f`, `rgba16`, `rgb10_a2`, `rgba8`,
+`rg16`, `rg8`, `r16`, `r8`, the `_snorm` forms of the 16- and 8-bit ones, and the `i` and `ui` integer formats.
+
+| Accessor | Is | Who |
+|---|---|---|
+| `NAME_LOAD(p)` | the texel at `p` (`ivec2`, or `ivec3` for 3D, an array or a cube) | `readonly`, `readwrite` |
+| `NAME_SIZE()` | the bound level's size | any |
+| `NAME_WRITE(v)` | this texel, `CG_TEXEL` | `image`, `general` |
+| `NAME_STORE(p, v)` | any texel | `general` |
+| `NAME_ADD`/`_MIN`/`_MAX(p, v)` | an atomic, on `r32i` or `r32ui`, `readwrite` | `general` |
+
+A texel reads and writes as `vec4`, `ivec4` or `uvec4` by its format.
+
+#### Everything else
+
+Constants, structs and functions any kernel may call; `shared` variables, one a statement, for `general` kernels.
+**Each kernel's source carries only what it reaches**: a helper using what a `map` may not costs a `map` kernel
+nothing until it calls it. The file never declares `#version`, `main()`, `layout(local_size_*)`, a `uniform`, a
+`buffer` or an `image`; each is refused with where it belongs.
+
+### Built-ins
+
+| Name | Is |
+|---|---|
+| `CG_ELEMENT` | this invocation's element, x fastest: `x + w * (y + h * z)` |
+| `CG_DISPATCH_ID`, `CG_DISPATCH_COUNT` | `ivec3`: where it is, and the elements asked for per axis (an indirect dispatch: its groups times their size). Read these, never `gl_GlobalInvocationID` |
+| `CG_IN_RANGE` | whether this invocation is one of the elements asked for |
+| `CG_TEXEL` | the texel an `image` kernel writes; `.xy` for a 2D image |
+| `CG_GROUP_ID`, `CG_LOCAL_ID`, `CG_LOCAL_INDEX` | the work group, in a `general` kernel only |
+| `CG_LOCAL_SIZE_X`/`_Y`/`_Z`, `CG_LOCAL_SIZE`, `CG_GROUP_SIZE`, `CG_GROUP_POW2` | the group's size per axis, as `ivec3`, in all, and that rounded up to a power of two (a reduction's tree) |
+| `CG_DIMENSIONS`, `CG_KERNEL_<Name>` | how many sizes the pragma gave; defined in the kernel being compiled, for code shared by several |
+| `CG_TIME`, `cg_ViewMatrix`, `cg_ProjMatrix`, `CG_RESOLUTION`, … | `cg_env.glsl`'s frame block, from the pass's constants (identity matrices and the time now for a pass given none) |
+| `CG_SUBGROUP_*` | subgroup operations, `general` only (below) |
+| `CG_ATOMIC_ADD_FLOAT`/`_MIN_`/`_MAX_(mem, v)` | float atomics on a `uint` holding a float's bits, in a buffer or `shared`, `general` only: `shared uint total; CG_ATOMIC_ADD_FLOAT(total, w);` |
+
+**Every shape but `general` returns before the kernel runs for an invocation past the count**; a `general` kernel runs
+every invocation of every group, so its barriers stay uniform, and asks `CG_IN_RANGE` itself, after them.
+
+**Subgroups** are the device's operations where it has all of basic, vote, arithmetic, ballot and shuffle, and the
+whole work group through shared memory where not; a kernel written against them runs on both and never branches on
+support:
+
+```glsl
+shared float partial[CG_GROUP_SIZE];
+
+void Reduce() {                                              // #pragma kernel Reduce 256 general
+    float v = CG_IN_RANGE ? VALUES(CG_ELEMENT) : 0.0;
+    float sum = CG_SUBGROUP_ADD(v);
+    if (CG_SUBGROUP_ELECT()) partial[CG_SUBGROUP_INDEX] = sum;   // one per subgroup: CG_SUBGROUP_COUNT of them
+    memoryBarrierShared();
+    barrier();
+    if (CG_LOCAL_INDEX == 0) {
+        float total = 0.0;
+        for (int i = 0; i < CG_SUBGROUP_COUNT; i++) total += partial[i];
+        SUMS_STORE(CG_GROUP_ID.x, total);
+    }
+}
+```
+
+`CG_SUBGROUP_SIZE`, `_INVOCATION`, `_INDEX`, `_COUNT`; `CG_SUBGROUP_ADD`, `_MIN`, `_MAX`, `_INCLUSIVE_ADD`,
+`_EXCLUSIVE_ADD(x)`; `_ALL`, `_ANY`, `_BALLOT`, `_BALLOT_COUNT(b)`; `_BROADCAST(x, id)`, `_FIRST(x)`, `_ELECT()`,
+`_BARRIER()`. Call them where the whole work group does, on `float`, `int` or `uint` scalars. Emulated, the work group
+is the subgroup (`CG_SUBGROUP_COUNT` 1), it costs `(CG_GROUP_SIZE + 4) * 4` bytes of shared memory, and a ballot holds
+128 invocations: a larger group calling `CG_SUBGROUP_BALLOT` is refused where subgroups are emulated.
+
+### Running a kernel
+
+#### In a frame graph
 
 ```java
-particles.kernel("Simulate").cpu(d -> {
+CgComputePass sim = recording.compute("particles.step", constants);   // constants: the frame block; omit for none
+sim.dispatch(simulate, count)                       // count elements; (kernel, x, y, z) for 2D and 3D
+    .bind("STATE_IN", state)                        // a history: read as its newest version
+    .bind("STATE_OUT", state)                       // ... and written as its next
+    .bind("SPAWNS", spawns).counter("SPAWNS", spawnCount, 0)   // an append buffer's count: a uint at that offset
+    .image("DENSITY", density)                      // a graph texture as a storage image; (name, tex, level, layer)
+    .texture("_Noise", noise)                       // a sampler property
+    .set("_Drag", 0.1f);                            // a value property: float, vec2, vec4 or int
+sim.dispatchIndirect(spawn, spawnArgs, 0).bind("SPAWNS", spawns);   // group counts from three uints on the GPU
+sim.end();
+```
+
+- **What a binding is read or written as comes from the kernel's accessors**: `STATE(i)` reads, `STATE_WRITE` writes.
+  The graph orders passes and places every barrier from that; **every buffer and image a kernel uses must be bound**.
+- **Record a kernel ahead of the draw that reads what it writes.** In a world stage that is a renderer registered
+  below `CgWorldRenderer.ORDER`.
+- `dispatchGroups(kernel, x, y, z)` dispatches whole groups: `CG_DISPATCH_COUNT` is every invocation they hold. A
+  count past the device's group limit runs as several dispatches, each from its own base.
+- A pass is culled when nothing reads what it writes, unless it writes a persistent, history or imported buffer, or a
+  texture that outlives the frame. A frame executed again does not run it again unless it writes only transients or is
+  marked `again()`: a frame shown twice must not step a simulation twice.
+
+| Graph buffer | Storage | |
+|---|---|---|
+| `CgGraphBuffer.transientBuffer(name, desc)` | this frame only, pooled by size | scratch between passes |
+| `CgGraphBuffer.persistent(name, desc)` | made on first use, kept until `recording.release(buffer)` | state, counts read by a later stage |
+| `CgGraphBuffer.history(name, desc)` | two, the newest versions; each write makes the next | a simulation: read one, write the other |
+| `CgGraphBuffer.imported(name, glBuffer, bytes)` | someone else's GL buffer | interop |
+
+```java
+CgBufferDesc desc = CgBufferDesc.elements(count, 32, CgBufferUsage.STORAGE);   // or CgBufferDesc.of(bytes, usage, ...)
+recording.fill(buffer, 0);                                   // every word; (buffer, offset, size, value) for a range
+recording.update(buffer, 0, bytes);                          // a ByteBuffer, copied now
+recording.copy(from, 0, to, 0, size);
+recording.release(buffer);                                   // a persistent or history buffer, once its users ran
+```
+
+A buffer declares every use it is put to: `STORAGE` for a kernel or a storage block, `INDIRECT` for
+`dispatchIndirect`'s arguments, `COPY` for a fill, update or copy; `VERTEX`, `INDEX` and `UNIFORM` for draws. **New
+storage holds whatever the driver gives**: fill it, or write every element, before anything reads it.
+
+#### Outside a frame
+
+```java
+try (CgImmediate.Compute run = CgImmediate.compute("bake")) {   // a graph of one compute pass, executed on close
+    run.dispatch(bake, count).bind("CELLS", CgGraphBuffer.imported("cells", glBuffer, bytes));
+}
+```
+
+This runs on every tier, as a graph does. `CgKernelProgram` is the direct form, **for compute alone** (V and G43): it
+binds GL names itself and orders nothing after it.
+
+```java
+CgKernelProgram simulate = particles.kernel("Simulate").withKeywords("WIND").program();   // render thread
+simulate.properties().set1f("_Drag", 0.1f);
+try (CgGlScope scope = CgKernelProgram.scope()) {           // saves what a dispatch changes
+    simulate.use().buffer("STATE", stateBuffer).frame(constants).dispatch(particleCount);
+}
+CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // the reader barriers
+```
+
+### Drawing what a kernel wrote
+
+| A kernel wrote | A draw reads it | Tiers |
+|---|---|---|
+| a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
+| an image | the graph texture, sampled by a material | every tier |
+| a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
+
+```java
+// A count: a quad per live spark, or a mesh instanced once per element
+world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
+world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+
+// An image: written by a kernel, sampled by the material's first sampler in a pass recorded after it
+CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("heat").color(0, CgTextureType.RGBA8).build();
+CgGraphTexture heat = CgGraphTexture.transientTexture("heat", new CgTextureDesc(256, 256, rgba8));
+CgComputePass shade = rec.compute("heat");
+shade.dispatch(heatKernel, 256, 256, 1).image("HEAT", heat);
+shade.end();
+int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, heat);
+```
+
+- `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the
+  range count × factor times, each instance reading the draw's one object record, and `CG_DRAW_INSTANCE` is which
+  element it is.
+- **A buffer of records** is [Reading a kernel's buffers](#reading-a-kernels-buffers): the material declares it as the
+  kernel does, `readonly`, and the graph orders the draw after the pass writing it.
+
+### Every tier
+
+| Tier | Context | A kernel runs |
+|---|---|---|
+| `V` | CrystalGraphics' Vulkan device | as compute |
+| `G43` | GL 4.3, or 4.2 with the compute and storage-image extensions | as compute |
+| `G40` | GL 4.0 and up without compute: macOS's 4.1 | lowered; else its fallback lowered; else its Java body; else its fallback's |
+| `G33` | GL 3.3 | as `G40`, a count a draw takes read back first |
+| `CPU` | forced | its Java body, else its fallback's |
+
+A context runs at the best tier it has; `-Dcrystalgraphics.compute.tier=V|G43|G40|G33|CPU` forces one, and forcing one
+the context lacks throws naming what it lacks. `kernel.form()` answers how this context runs a kernel (`COMPUTE`,
+`LOWERED` or `CPU`, and which kernel: itself or its fallback).
+
+**Lowered**, a `map` or `gather` kernel is a fragment pass over a render target laid out as the buffer's words, read
+into the buffer on the GPU; an `image` kernel is a fragment pass into the image; what an `append` kernel appends is
+captured by transform feedback; a `scatter` kernel is points blended into a target. What follows from that:
+
+- Every pass of a dispatch reads what the buffers held before it.
+- A scatter's add, minimum and maximum are blends: a float sum is exact to 2^24 a bin, and a counter's `NAME_INC` or
+  `NAME_ADD` **whose result is used** is refused, since a blend answers nothing.
+- Refused, by name: an appended element wider than 64 words, a cube image, an SNORM image written, and reading two
+  levels of the texture a kernel writes. Reading one level while writing another works.
+- Each buffer a dispatch writes lands through one read-back, which costs the driver 15-70 µs of CPU: see the cost
+  table below.
+
+**Every tier is asked at a kernel's first record, on any machine**: the first `dispatch` of it, or its first
+`program()`, asks the form G43, G40 and G33 would choose, and compiles the builtins it reaches at each tier's GLSL
+(4.20, 4.00, 3.30). A kernel a Mac would refuse throws on the author's machine too, naming the tier and the construct:
+
+```
+[mymod:shaders/bins.compute] kernel Bin cannot run at tier G40 …, which has no compute: general and uses shared
+memory (cache). Give it a lowerable #pragma fallback or a Java body with kernel.cpu(...), or declare it
+'#pragma compute_only Bin' and ask kernel.runs() before dispatching it
+```
+
+Three ways out, for a `general` kernel: a lowerable `#pragma fallback`; a Java body; or `#pragma compute_only` and a
+`runs()` check where it is used:
+
+```java
+CgKernel sort = kernels.kernel("Sort");                     // #pragma compute_only Sort
+if (sort.runs()) pass.dispatch(sort, count).bind("KEYS", keys);   // false below compute without a Java body
+else sortAnotherWay(keys);
+```
+
+**Builtins newer than GLSL 3.30** (`bitCount`, `findMSB`, `uaddCarry`, `umulExtended`, `fma`, `frexp`,
+`packUnorm4x8`, `packHalf2x16`, …) are called through an exact polyfill wherever a tier lacks them, a dozen
+instructions for one. One no polyfill gives exactly (`textureGather`, `textureQueryLevels`, a `double`) is refused on
+the tiers below its version. A function of the file's own named as a builtin keeps its own body.
+
+#### A Java body
+
+```java
+particles.kernel("Simulate").cpu(d -> {                     // every keyword set of the kernel shares it
     CgCpuBuffer state = d.buffer("STATE");
-    for (int e = d.first(); e < d.end(); e++) state.setFloat(e, 3, state.getFloat(e, 3) - d.time());
+    int pos = state.field("positionLife").word(), vel = state.field("velocitySeed").word();
+    float step = d.property("_Step");
+    for (int e = d.first(); e < d.end(); e++) {
+        for (int c = 0; c < 3; c++) state.setFloat(e, pos + c, state.getFloat(e, pos + c) + state.getFloat(e, vel + c) * step);
+    }
 });
 ```
 
-In a frame a kernel runs in a graph's compute pass (`recording.compute(...)`), on `CgGraphBuffer`s and storage images,
-every barrier derived by the executor. **`CgGpuOps`** is the library every GPU-driven consumer would otherwise write:
-fill, iota, copy, dispatch arguments, reduce, bounds, scan, compact, sort and histogram, and over a texture's mip levels
-downsample and blur, dispatched into the caller's pass with the count fixed or read from the GPU, and the same answer
-on every tier. Its package guide, `compute/CLAUDE.md`, has the bindings, the built-ins and what
-is easy to get wrong; `render/graph/CLAUDE.md` the graph's half.
+- A `map`, `gather`, `append` or `image` body runs on several worker threads at once, each over its range
+  (`d.first()` to `d.end()`), writing its own elements only. A `scatter` or `general` body runs once, on one thread,
+  over every element.
+- `CgCpuDispatch`: `buffer(name)`, `image(name)`, `property(name[, component])`, `propertyInt(name)`,
+  `keyword(name)`, `time()` (`CG_TIME`), `count(axis)` and `x(e)`, `y(e)`, `z(e)`; to append,
+  `int i = d.append("SPAWNED")` then write element `i` of `d.appended("SPAWNED")`, and `appendCount(name)` is
+  `NAME_COUNT()`.
+- `CgCpuBuffer`: `getFloat`/`getInt`/`setFloat`/`setInt(element[, word])`, `addInt`, `addFloat`, `min*`/`max*`, and
+  `field(name)` for a struct member's words. `CgCpuImage`: `loadFloat`/`loadInt(x, y, z, c)`, `store`/`storeInt`.
+- The body runs over CPU copies of the bound buffers, read back once and kept while nothing else writes them; a
+  buffer written outside the graph is only seen fresh when bound as an imported graph buffer.
+
+### Ops: `CgGpuOps`
+
+What every GPU-driven consumer would otherwise write: dispatched into the caller's compute pass, with scratch as graph
+transients, the same answer on every tier.
+
+```java
+CgComputePass pass = recording.compute("particles");
+pass.dispatch(simulate, capacity).bind("STATE", state).bind("ALIVE", flags);
+CgGpuOps.compact(pass, flags, null, CgGpuCount.of(capacity), live, counts, 0);   // the live indices, in order
+CgGpuCount alive = CgGpuCount.at(counts, 0, capacity);                         // how many, as the GPU counted
+CgGpuOps.sort(pass, Element.FLOAT, Order.DESCENDING, depths, live, alive);    // back to front, stable
+CgGpuOps.dispatchArgs(pass, alive, 64, args, 0);                              // for dispatchIndirect
+pass.end();
+```
+
+| Op | Does |
+|---|---|
+| `fill(pass, buffer, value, count)` | the count's words set to `value` |
+| `iota(pass, buffer, first, step, count)` | word i is `first + i * step` |
+| `copy(pass, from, to, count)` | the count's words copied |
+| `dispatchArgs(pass, count, groupSize, args, word)` | the three group counts `dispatchIndirect` reads; `args` needs `INDIRECT` |
+| `reduce(pass, fold, element, values, count, result, word)` | `SUM`, `MIN` or `MAX` of the count's elements; the identity for none |
+| `bounds(pass, records, stride, offset, count, out, word)` | the box of the points at `offset` of each record: min xyz then max xyz |
+| `scan(pass, scan, fold, element, values, count, out)` | `INCLUSIVE` or `EXCLUSIVE` prefix fold |
+| `compact(pass, flags, values, count, out, outCount, word)` | the indices of non-zero flags in order (or their `values`), and how many |
+| `sort(pass, element, order, keys, values, count)` | LSD radix sort, stable, moving `values` with the keys when given |
+| `sort(pass, bits, order, keys, values, count)` | by the low `bits` bits of `uint` keys: a 12-bit cell id in three passes, not eight |
+| `histogram(pass, keys, count, bins, binCount, shift)` | bin `min(key >>> shift, binCount - 1)` counted; exact to 2^24 a bin |
+| `downsample(pass, texture, filter)`, `(pass, texture, from, to, filter)` | each mip level from the one above: `AVERAGE` (area-weighted), `MIN` or `MAX` (a depth pyramid) |
+| `blur(pass, source, target, sigma)`, `(pass, source, level, target, level, sigma)` | a separable Gaussian; in place at a small level is the cheap blur |
+
+- **A count is fixed or a word on the GPU** (`CgGpuCount.of(n)`, `CgGpuCount.at(buffer, word, capacity)`). A GPU count
+  dispatches the capacity and every kernel stops at the count it reads, so no op needs it on the CPU.
+- Buffers hold 32-bit words with `STORAGE`; an `Element` (`UINT`, `INT`, `FLOAT`) says how to read them. Nothing past
+  the count is written, and an op handed one buffer to read and write throws.
+- **The same bits on every tier**: integers exactly, a float sum in the same tree order (sixteen at a time, so not a
+  plain loop's bits), a sort stable everywhere. Where compute runs, the sort is FidelityFX Parallel Sort's and a
+  histogram of at most 1024 bins counts in shared memory, with the same answer.
+- **The image ops** take graph textures of `CgGpuOps.IMAGE_TYPES` (RGBA8, RGBA16F, R16F, R32F), with levels for a
+  chain (`CgTextureDesc.withMips()`), and answer within a rounding of the format. A blur reads
+  `2 * ceil(3 * sigma) + 1` texels an axis, so a wide one belongs at a smaller level.
+
+```java
+CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
+CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);            // each level from the one above
+CgGpuOps.blur(pass, bloom, 3, bloom, 3, 2f);                 // in place, at an eighth the size
+CgGpuOps.downsample(pass, depth, Filter.MAX);                // a depth pyramid: each texel the farthest it covers
+```
+
+**`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, any element drawing
+its own numbers in any order, integer-exact on every tier, with `CgRng` giving the same bits in Java. Key an element
+by an id it carries, never its slot, or compaction reshuffles its numbers.
+
+**What each op costs**, GPU ms on an RTX 4070 SUPER at a million elements and a 1920x1080 chain (the harness's
+`gpu-ops-cost` prints it for any machine):
+
+| Op | compute (G43) | lowered (G40, G33) |
+|---|---|---|
+| fill, iota, copy | 0.02-0.04 | 0.08-0.15 |
+| reduce | 0.03 | 0.4-0.5 |
+| scan, compact | 0.08, 0.11 | 0.7, 1.0 |
+| bounds | 0.29 | 2.7 |
+| histogram, 64 bins | 0.01 | 0.44 |
+| sort, 32 bits | 0.42 | 12 |
+| downsample, blur | 0.03-0.53 | 0.16-0.55 |
+
+Lowered, each buffer a dispatch writes lands through one `glReadPixels`, which costs this driver 15-70 µs of CPU:
+0.1-1 ms per op, and 7 ms for a 32-bit sort, whose every digit pass lands several buffers. The CPU tier takes 3-19 ms
+for the buffer ops and 360 ms for a 32-bit sort. **Below compute, sort fewer bits**: a depth key quantised to 16 bits
+sorts in four passes, not eight.
+
+### Easy to get wrong
+
+- **The shape is checked against everything a kernel reaches**, helpers and macros included: a `map` calling a helper
+  that calls `barrier()` is refused with the kernel, the name and the line.
+- **A struct comes before `Buffers { }`**: the generated declarations stand where the block stood.
+- **A `general` kernel has no early return**: it checks `CG_IN_RANGE` after its barriers.
+- **An append buffer's count is the caller's**: bound with `.counter(name, buffer, offset)` and zeroed before the
+  dispatch (`recording.fill`).
+- **An unbound buffer, count or image** a kernel uses throws at `pass.end()`, naming the pass, the kernel and the
+  binding.
+- **`vec3`** is refused as a property and, below `general`, as a buffer element.
+- **A `CgKernelProgram` dispatch orders nothing after it**, and does not run below compute; a graph's dispatch is
+  fenced by the executor and runs everywhere.
+- **Limits are the device's, checked at `program()`**: the size per axis, invocations, shared memory.
+- **New graph buffer storage is not zeroed.**
+- **A CPU body's copy is only as fresh as the graph knows**: a raster pass writing a storage buffer is not seen.
+
+### Debugging and testing
+
+```java
+String glsl = kernel.glsl();                // the source it compiles from on this context, includes unexpanded
+CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and which kernel runs
+```
+
+- A kernel that fails to compile throws with the driver's log and the emitted source, numbered. One that fails to
+  parse throws `CgShaderParseException` from `CgCompute.load`, naming the file, the kernel and the line.
+- An asset reload (`CgAssetReloader`) re-reads every `.compute`; `CgCompute.load(path).reload()` re-reads one.
+- `-Dcrystalgraphics.compute.tier=G40` runs a kernel as a Mac would on any machine; `G33` with
+  `-Dcrystalgraphics.shaderBuffer.tier=TBO` as a GL 3.3 context.
+- `-Pharness.downlevel=mac41|gl33` runs the harness on Mesa shaped as a real GL 4.1 or 3.3 context, without the
+  extensions a forced tier on a desktop driver still has (`gl-debug-harness/AGENTS.md`).
+- `CgComputeSelfTest` ships: one kernel per shape, every result worked out in Java.
+  `-Dcrystalgraphics.compute.selfTest=true` logs its verdict on any client at its first frame, and the harness's
+  `compute-tiers` runs it. `gpu-ops` checks every op against Java; `shader-compile-audit` compiles every shipped
+  kernel, and every lowered pass of it, on the driver.
+
+```bash
+./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --seconds=5" -Dcrystalgraphics.compute.tier=G40
+./gradlew :gl-debug-harness:runHarness --args="--mode=gpu-ops --seconds=5" -Pharness.downlevel=mac41
+./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true
+```

@@ -30,7 +30,7 @@ public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int ma
         boolean g33 = caps.computeTier() == CgCapabilities.ComputeTier.G33;
         return new CgLoweredTarget(caps.shaderBufferPath(), CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_OUTPUT_VERTICES),
                 CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS), CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE),
-                CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_BUFFER_SIZE), caps.drawIndirect() && !g33, g33 ? 330 : 400);
+                caps.getMaxTextureBufferSize(), caps.drawIndirect() && !g33, g33 ? 330 : 400);
     }
 
     /** Engine buffers as storage blocks, as on a context with them; else as buffer textures. */

@@ -16,6 +16,8 @@ import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.compute.lower.CgLoweredEmitter;
+import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -25,6 +27,7 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgIO;
 
 import javax.annotation.Nullable;
@@ -1163,6 +1166,23 @@ public final class CgMaterialShader {
             int at = shader.getUniformLocation(property.getName());
             if (at >= 0) shader.getProgram().setUniform1i(at, unit);
             unit++;
+        }
+        wireMaterialBuffers(shader, parsed.buffers(), unit);
+    }
+
+    /** Each {@code Buffers { }} entry: a storage block at its reserved point, or a buffer texture after the samplers. */
+    private static void wireMaterialBuffers(CgShader shader, List<CgBufferDecl> buffers, int samplers) {
+        boolean texels = CgCapabilities.detect().shaderBufferPath() == CgCapabilities.ShaderBufferPath.TBO;
+        int program = shader.getProgram().getId();
+        for (int i = 0; i < buffers.size(); i++) {
+            CgBufferDecl b = buffers.get(i);
+            if (texels) {
+                int at = shader.getUniformLocation(CgLoweredEmitter.tbo(b));
+                if (at >= 0) shader.getProgram().setUniform1i(at, CgBindingPoints.materialBufferUnit(samplers, i));
+            } else {
+                int index = CgGL.glGetProgramResourceIndex(program, CgGL.GL_SHADER_STORAGE_BLOCK, CgLoweredEmitter.readerBlock(b));
+                if (index != CgGL.GL_INVALID_INDEX) CgGL.glShaderStorageBlockBinding(program, index, CgBindingPoints.MATERIAL_BUFFERS_SSBO + i);
+            }
         }
     }
 

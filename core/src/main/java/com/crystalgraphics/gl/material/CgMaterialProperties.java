@@ -99,6 +99,9 @@ public final class CgMaterialProperties implements CgShaderBindings {
     public boolean hasUboProps()     { return !uboProps.isEmpty(); }
     public boolean hasSamplerProps() { return !samplerProps.isEmpty(); }
 
+    /** How many samplers the shader declares: the units they take, from 0. */
+    public int samplerCount() { return samplerProps.size(); }
+
     /** Returns all properties — ordered as declared in the {@code Properties { }} block. */
     public List<CgMaterialProperty> all() { return all; }
 
