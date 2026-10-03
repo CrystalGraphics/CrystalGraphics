@@ -414,12 +414,13 @@ public final class CgWorldProbe {
         double lightningX, lightningZ, blastX, blastY, blastZ;
         int blockX, blockY, blockZ;
         boolean lightning, block, explosion, hurt, died;
-        String blockDetail = "none", explosionDetail = "none";
+        String blockDetail = "none", explosionDetail = "none", heardFar = "none";
 
         void reset(int kinds) {
             declared = kinds;
             unavailable = blockSkipped = blastSkipped = null;
             lightning = block = explosion = hurt = died = false;
+            heardFar = "none";
         }
 
         boolean complete() {
@@ -456,12 +457,16 @@ public final class CgWorldProbe {
 
         @Override
         public void entityHurt(int id, double x, double y, double z) {
-            if (id != player && near(x, y, z)) hurt = true;
+            if (id == player) return;
+            if (near(x, y, z)) hurt = true;
+            else heardFar = String.format("hurt %d at %.1f %.1f %.1f", id, x, y, z);
         }
 
         @Override
         public void entityDied(int id, double x, double y, double z) {
-            if (id != player && near(x, y, z)) died = true;
+            if (id == player) return;
+            if (near(x, y, z)) died = true;
+            else heardFar = String.format("died %d at %.1f %.1f %.1f", id, x, y, z);
         }
 
         // Wide: a pig on a fuseless TNT is thrown several blocks before a slow frame polls it.
@@ -475,6 +480,24 @@ public final class CgWorldProbe {
             event("events.explosion", CgWorldEvents.EXPLOSION, blastSkipped, explosion, explosionDetail);
             event("events.entity-hurt", CgWorldEvents.ENTITY_HURT, blastSkipped, hurt, "the pig beside the blast");
             event("events.entity-died", CgWorldEvents.ENTITY_DIED, blastSkipped, died, "the pig beside the blast");
+            if (blastSkipped == null && unavailable == null && (!hurt || !died)) {
+                info("events.beside-blast", livingNearBlast() + "; heard elsewhere: " + heardFar);
+            }
+        }
+
+        /** What a missed pig left: the living things the client holds round the blast now. */
+        private String livingNearBlast() {
+            CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+            StringBuilder out = new StringBuilder();
+            int[] count = new int[1];
+            entities.within(blastX - 48, blastY - 48, blastZ - 48, blastX + 48, blastY + 48, blastZ + 48, id -> {
+                if (id == player || (entities.flags(id) & CgEntityQuery.LIVING) == 0 || count[0]++ >= 4) return;
+                entities.pose(id, 1f, pose);
+                out.append(String.format(" [%d kind %d at %.1f %.1f %.1f, alive %b]", id, entities.kind(id),
+                        pose[CgEntityQuery.X], pose[CgEntityQuery.Y], pose[CgEntityQuery.Z],
+                        (entities.flags(id) & CgEntityQuery.ALIVE) != 0));
+            });
+            return count[0] + " living within 48 blocks" + out;
         }
 
         private void event(String name, int kind, String skippedBecause, boolean heard, String detail) {

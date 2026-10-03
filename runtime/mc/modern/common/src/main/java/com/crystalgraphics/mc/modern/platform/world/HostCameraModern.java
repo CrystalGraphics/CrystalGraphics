@@ -15,13 +15,15 @@ import com.crystalgraphics.platform.service.CgHostCamera;
  *
  * <ul>
  *   <li>Rotation, roll and field of view only: no modern hook offers the camera's position, so the translation is
- *       dropped. Fabric has no roll either (its {@code setRotation} takes two angles).</li>
+ *       dropped. Fabric has no roll either (its {@code setRotation} takes two angles), and Forge 26.1.1 to 26.2 apply
+ *       only the field of view (their angle event comes after the view is taken).</li>
  *   <li>Render thread only, like the hooks that read it.</li>
  * </ul>
  */
 public final class HostCameraModern implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f, eventRoll;
+    private static final Angle YAW = new Angle(), PITCH = new Angle(), ROLL_ANGLE = new Angle();
     private static volatile int capabilities;
     /** The parts whose hook has run: render thread only, like the hooks. */
     private static int applied;
@@ -51,16 +53,30 @@ public final class HostCameraModern implements CgHostCamera {
 
     public static float yaw(float base) {
         applied |= ROTATION;
-        return base + yaw;
+        return YAW.add(base, yaw);
     }
 
     public static float pitch(float base) {
-        return base + pitch;
+        return PITCH.add(base, pitch);
     }
 
     public static float roll(float base) {
         applied |= ROLL;
-        return eventRoll = base + roll;
+        return eventRoll = ROLL_ANGLE.add(base, roll);
+    }
+
+    /**
+     * One angle's offset, added once: an angle arriving as the turned value we last returned passes unchanged. Forge 26.3
+     * posts its camera event twice a frame, the second from the camera the first already turned.
+     */
+    private static final class Angle {
+        private float in = Float.NaN, out = Float.NaN;
+
+        float add(float base, float offset) {
+            if (base == out && out != in) return base;
+            in = base;
+            return out = base + offset;
+        }
     }
 
     /**
