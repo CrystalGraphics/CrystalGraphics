@@ -19,6 +19,7 @@ import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -66,8 +67,6 @@ import java.util.stream.Collectors;
 public final class CgLoweredKernel {
 
     private static final int LOWERED_PASSES = CgTrace.name("compute.lowered-passes");
-    /** Texture-buffer slots the engine's helper programs use, apart from the kernel's own (slot = unit). */
-    private static final int HELPER_SLOT = 64;
     /** What one stage of GL 3.3 samples, at least. */
     private static final int STAGE_UNITS = 16;
 
@@ -379,7 +378,7 @@ public final class CgLoweredKernel {
         CgGL.glViewport(0, 0, 1, 1);
         CgLoweredPrograms.Helper add = CgLoweredPrograms.counterAdd();
         add.use();
-        CgLoweredResources.bindTextureBuffer(samplers, HELPER_SLOT, CgGL.GL_R32UI, b.counter(i));
+        CgBufferTextures.bind(samplers, CgGL.GL_R32UI, b.counter(i));
         texture(samplers + 1, CgGL.GL_TEXTURE_2D, count.texture());
         add.set("_cg_counter", samplers);
         add.set("_cg_count", samplers + 1);
@@ -399,8 +398,8 @@ public final class CgLoweredKernel {
         CgGL.glDisable(CgGL.GL_BLEND);
         CgLoweredPrograms.Helper place = CgLoweredPrograms.place();
         place.use();
-        CgLoweredResources.bindTextureBuffer(samplers, HELPER_SLOT, CgLoweredEmitter.texelFormat(a), captured);
-        CgLoweredResources.bindTextureBuffer(samplers + 1, HELPER_SLOT + 1, CgGL.GL_R32UI, b.counter(i));
+        CgBufferTextures.bind(samplers, CgLoweredEmitter.texelFormat(a), captured);
+        CgBufferTextures.bind(samplers + 1, CgGL.GL_R32UI, b.counter(i));
         texture(samplers + 2, CgGL.GL_TEXTURE_2D, CgLoweredResources.count().texture());
         place.set("_cg_src", samplers);
         place.set("_cg_counter", samplers + 1);
@@ -427,7 +426,7 @@ public final class CgLoweredKernel {
         CgGL.glDisable(CgGL.GL_BLEND);
         CgLoweredPrograms.Helper init = CgLoweredPrograms.scatterInit(floats, buffer.element());
         init.use();
-        CgLoweredResources.bindTextureBuffer(samplers, HELPER_SLOT, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+        CgBufferTextures.bind(samplers, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
         init.set("_cg_src", samplers);
         init.set("_cg_first", (int) (b.offset(i) / buffer.stride()) * k);
         init.set("_cg_count", (int) texels);
@@ -465,7 +464,7 @@ public final class CgLoweredKernel {
         CgLoweredPrograms.Helper toBits = CgLoweredPrograms.scatterBits(buffer.element());
         toBits.use();
         texture(samplers, CgGL.GL_TEXTURE_2D, t.texture());
-        CgLoweredResources.bindTextureBuffer(samplers + 1, HELPER_SLOT, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+        CgBufferTextures.bind(samplers + 1, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
         toBits.set("_cg_texels", samplers);
         toBits.set("_cg_src", samplers + 1);
         toBits.set("_cg_first", (int) (b.offset(i) / buffer.stride()));
@@ -583,11 +582,11 @@ public final class CgLoweredKernel {
                 throw new IllegalStateException(buffer.name() + " reaches texel " + texels + "; this context reads a buffer "
                         + "as a texture of at most " + target.maxTextureBufferSize());
             }
-            CgLoweredResources.bindTextureBuffer(bufferUnit[i], bufferUnit[i], CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+            CgBufferTextures.bind(bufferUnit[i], CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
             CgGL.glUniform1i(pass.base()[i], (int) (b.offset(i) / buffer.stride()));
             CgGL.glUniform1i(pass.length()[i], (int) (b.bytes(i) / buffer.stride()));
             if (counterUnit[i] >= 0) {
-                CgLoweredResources.bindTextureBuffer(counterUnit[i], counterUnit[i], CgGL.GL_R32UI, b.counter(i));
+                CgBufferTextures.bind(counterUnit[i], CgGL.GL_R32UI, b.counter(i));
                 CgGL.glUniform1i(pass.counterAt()[i], (int) (b.counterOffset(i) / 4));
             }
         }
@@ -597,7 +596,7 @@ public final class CgLoweredKernel {
             texture(imageUnit[i], b.imageTarget(i), b.image(i));
             CgGL.glUniform1i(pass.level()[i], b.level(i));
         }
-        CgLoweredResources.bindTextureBuffer(argsUnit, argsUnit, CgGL.GL_R32UI, b.isIndirect() ? b.args() : 0);
+        CgBufferTextures.bind(argsUnit, CgGL.GL_R32UI, b.isIndirect() ? b.args() : 0);
         CgGL.glUniform1i(pass.argsAt(), b.isIndirect() ? (int) (b.argsOffset() / 4) : 0);
         dispatchValues.put(0, 0).put(1, 0).put(2, 0);
         if (b.isIndirect()) dispatchValues.put(3, -1).put(4, -1).put(5, -1);
@@ -625,7 +624,7 @@ public final class CgLoweredKernel {
         discardTarget();
         CgLoweredPrograms.Helper helper = CgLoweredPrograms.command();
         helper.use();
-        CgLoweredResources.bindTextureBuffer(argsUnit, argsUnit, CgGL.GL_R32UI, b.args());
+        CgBufferTextures.bind(argsUnit, CgGL.GL_R32UI, b.args());
         helper.set("_cg_args", argsUnit);
         helper.set("_cg_at", (int) (b.argsOffset() / 4));
         helper.set("_cg_sx", kernel.sizeX());

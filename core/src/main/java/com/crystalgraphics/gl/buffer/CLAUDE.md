@@ -119,6 +119,7 @@ CgQuadIndexBuffer (global singleton)
 | `MapAndOrphanStreamBuffer.java` | The orphan tier: per upload, offset 0, small-write path. |
 | `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
+| `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgGraphicsLifecycle.destroyContext()`. |
 
 ---
 

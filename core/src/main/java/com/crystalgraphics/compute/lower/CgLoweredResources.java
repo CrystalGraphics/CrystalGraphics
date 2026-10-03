@@ -5,18 +5,16 @@ import com.crystalgraphics.compute.cpu.CgCpuMirrors;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * What every lowered dispatch shares (gpu-compute C5): scratch buffers and texel targets pooled by size, the buffer
- * textures buffers are read through, an empty vertex array to draw with, and which counters a fill zeroed this frame.
- * Render thread; {@link #releaseAll} at context teardown. Nothing
- * here allocates once its pools hold what a frame uses.
+ * What every lowered dispatch shares (gpu-compute C5): scratch buffers and texel targets pooled by size, an empty
+ * vertex array to draw with, and which counters a fill zeroed this frame. Buffers are read through
+ * {@code CgBufferTextures}. Render thread; {@link #releaseAll} at context teardown. Nothing here allocates once its
+ * pools hold what a frame uses.
  *
  * <pre>{@code
  * int scratch = CgLoweredResources.scratch(bytes);
@@ -31,14 +29,13 @@ public final class CgLoweredResources {
     private static long[] freeScratchSize = new long[16];
     private static int freeScratchCount;
     private static final List<CgTexelTarget> FREE_TARGETS = new ArrayList<>();
-    private static int[] textureBuffers = new int[0];
     /** Ranges a fill zeroed this frame, as buffer, first byte, end byte: an append counter in one is known zero. */
     private static long[] zeroed = new long[3 * 16];
     private static int zeroedCount;
     private static long zeroedFrame = Long.MIN_VALUE;
     private static int[] created = new int[16];
     private static int createdCount;
-    private static int vertexArray, empty, framebuffer, outputs, outputsDrawn;
+    private static int vertexArray, framebuffer, outputs, outputsDrawn;
     /** Per count of targets, the draw-buffer list naming that many attachments. */
     private static final IntBuffer[] DRAW_BUFFERS = new IntBuffer[CgLowering.MAX_TARGETS + 1];
     private static CgTexelTarget count;
@@ -103,23 +100,6 @@ public final class CgLoweredResources {
         return count;
     }
 
-    /** The buffer texture bound at {@code slot}: re-pointed at a buffer each use. */
-    public static int textureBuffer(int slot) {
-        if (slot >= textureBuffers.length) {
-            int had = textureBuffers.length;
-            textureBuffers = Arrays.copyOf(textureBuffers, slot + 1);
-            for (int i = had; i <= slot; i++) textureBuffers[i] = CgGL.glGenTextures();
-        }
-        return textureBuffers[slot];
-    }
-
-    /** Binds buffer {@code buffer} as texture-buffer slot {@code slot} at texture unit {@code unit}, read as {@code format}. */
-    public static void bindTextureBuffer(int unit, int slot, int format, int buffer) {
-        CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
-        CgGL.glBindTexture(CgGL.GL_TEXTURE_BUFFER, textureBuffer(slot));
-        CgGL.glTexBuffer(CgGL.GL_TEXTURE_BUFFER, format, buffer == 0 ? empty() : buffer);
-    }
-
     /** An empty vertex array, for draws whose stages read no attributes. */
     public static int vertexArray() {
         if (vertexArray == 0) vertexArray = CgGL.glGenVertexArrays();
@@ -147,18 +127,6 @@ public final class CgLoweredResources {
         }
         CgGL.glDrawBuffers(DRAW_BUFFERS[targets]);
         outputsDrawn = targets;
-    }
-
-    /** Sixteen zero bytes: what an unbound buffer texture reads. */
-    public static int empty() {
-        if (empty == 0) {
-            empty = CgGL.glGenBuffers();
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, empty);
-            CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder()),
-                    CgGL.GL_STATIC_DRAW);
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-        }
-        return empty;
     }
 
     // ── Counters a fill zeroed ────────────────────────────────────────────────
@@ -206,17 +174,13 @@ public final class CgLoweredResources {
         freeScratchCount = 0;
         for (CgTexelTarget t : FREE_TARGETS) t.delete();
         FREE_TARGETS.clear();
-        for (int texture : textureBuffers) CgGL.glDeleteTextures(texture);
-        textureBuffers = new int[0];
         zeroedCount = 0;
         if (count != null) count.delete();
         count = null;
         if (vertexArray != 0) CgGL.glDeleteVertexArrays(vertexArray);
-        if (empty != 0) CgGL.glDeleteBuffers(empty);
         if (framebuffer != 0) CgGL.glDeleteFramebuffers(framebuffer);
         if (outputs != 0) CgGL.glDeleteFramebuffers(outputs);
         vertexArray = 0;
-        empty = 0;
         framebuffer = 0;
         outputs = 0;
         outputsDrawn = 0;
