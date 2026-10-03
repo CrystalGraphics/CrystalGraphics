@@ -40,6 +40,26 @@ public interface CgGlStateProvider {
     void read(CgGlSlot slot, CgGlStateShadow target);
 
     /**
+     * One binding point of a domain captured at first write ({@link CgGlSlot#STORAGE_BUFFERS}, {@link CgGlSlot#IMAGES},
+     * {@link CgGlSlot#INDIRECT_BUFFERS}): what a scope saves before our first write of it. {@code glGet} by default.
+     *
+     * @param index the storage binding point, the image unit, or the {@link CgGlStateShadow#INDIRECT_TARGETS} index
+     */
+    default void readBinding(CgGlSlot slot, int index, CgGlStateShadow target) {
+        glGet().readBinding(slot, index, target);
+    }
+
+    /**
+     * Whether the host binds {@code slot}'s points itself while it has the context. Asked only of the domains
+     * captured at first write: one the host never binds keeps the shadow across host sections, so a scope saves
+     * it with no read. No by default: vanilla Minecraft binds no storage buffer, image unit or indirect buffer on
+     * any version. A host running a shader pack's loader answers yes.
+     */
+    default boolean hostBinds(CgGlSlot slot) {
+        return false;
+    }
+
+    /**
      * Whether a read costs no driver round trip -- a host cache answers every one.
      *
      * <p>A nested scope then re-reads instead of trusting the shadow, which is free and catches a host

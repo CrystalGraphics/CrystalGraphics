@@ -214,6 +214,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | I need to… | Jump to section | Primary package guide |
 |---|---|---|
 | Write or load a `.shader` material | [CrystalShader Pipeline](#crystalshader-material-pipeline) | `api/material/AGENTS.md` |
+| Write or run a kernel (`.compute`) | [Compute](#compute--the-compute-file) | `compute/AGENTS.md` |
 | Draw meshes into the world | [CgWorldRenderer](#cgworldrenderer--drawing-into-the-world) | `render/world/AGENTS.md` |
 | Create a framebuffer (FBO) for post-processing | [Framebuffers](#framebuffers) | `api/framebuffer/AGENTS.md` |
 | Load or build a 3D mesh | [Meshes](#meshes) | `api/mesh/AGENTS.md` |
@@ -401,7 +402,8 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
 | `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
 | `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
-| `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`) |
+| `CG_INSTANCE_ID` | `gl_InstanceID + cg_InstanceBase` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. `cg_InstanceBase` is where a batch's instances start in its kind's upload — 0 unless a frame-graph executor sets it (`CgPipeline.instanceBase`). Below 0 it names the one record every instance reads (`CgPipeline.sharedInstance`): an indirect `INSTANCES` draw's |
+| `CG_DRAW_INSTANCE` | `gl_InstanceID` (vertex only) | The instance's index in its own draw: in an indirect `INSTANCES` draw, the element it draws |
 | `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
 | `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
@@ -419,16 +421,17 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 
 `cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
 
-### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE`
+### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
 One `.shader` file becomes **two** GLSL programs, and `partitionGlobalDecls` hoists **every** `#`-line
 from a material or pass preamble — `#include` very much included — into **both** of them. There is no
-stage filtering, by design: a shader author writes one preamble, not two.
+stage filtering, by design: a shader author writes one preamble, not two. A kernel is a third stage, and
+includes `cg_env.glsl` and its engine buffers' env files like any material.
 
 The consequence is the rule:
 
-> **A lib included at material scope is compiled into the vertex stage too. If any of it is
-> fragment-only, it must guard itself.**
+> **A lib included at material scope is compiled into the vertex stage too, and an env file into every
+> stage. If any of it is fragment-only, it must guard itself.**
 
 The compiler emits exactly one of these into each generated source, **before** the user directive
 block, so an included lib can see it:
@@ -437,17 +440,18 @@ block, so an included lib can see it:
 |---|---|
 | `CG_VERTEX_STAGE 1` | generated vertex source only |
 | `CG_FRAGMENT_STAGE 1` | generated fragment source only |
+| `CG_COMPUTE_STAGE 1` | a kernel's source |
 
 ```glsl
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 float sdf_coverage(float dist) { return 1.0 - smoothstep(-fwidth(dist), fwidth(dist), dist); }
 #endif
 ```
 
-**Use `#ifndef CG_VERTEX_STAGE`, not `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
+**Name the stages that cannot have it, never `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
 through `CgShaderPreprocessor` with *no* stage defines at all, so an `#ifdef` silently deletes the
-function from every one of them. `#ifndef` includes it everywhere except the one stage that cannot
-have it.
+function from every one of them. A kernel drops every function it does not call, so a lib's guard only
+matters to one that calls it; an env file's guard is what lets a kernel `#pragma cg_use` its buffer.
 
 > **Both facts here were learned the expensive way.** `sdf.glsl`'s `fwidth` reached the vertex stage
 > and an AMD tester could not launch the UI gallery at all, while it ran flawlessly on NVIDIA —
@@ -455,17 +459,18 @@ have it.
 > to be emitted *after* the user `#include`s, which meant every guard evaluated identically in both
 > stages and did nothing at all. Ordering is what makes the guard mechanism exist.
 
-Fragment-only, i.e. never legal in a vertex shader: `fwidth`/`dFdx`/`dFdy` and their `Fine`/`Coarse`
-variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
+Fragment-only, i.e. never legal in a vertex shader or a kernel: `fwidth`/`dFdx`/`dFdy` and their
+`Fine`/`Coarse` variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
 `interpolateAt*`, `gl_SampleID`/`gl_SamplePosition`/`gl_SampleMask`.
 
-Two things enforce this so it cannot regress silently:
+Three things enforce this so it cannot regress silently:
 
 - **`ShippedShaderStagePurityTest`** (in both CrystalGraphics and CrystalGUI) compiles every shipped
-  `.shader` and asserts no such identifier is *reachable* in the generated vertex source. It resolves
-  the stage conditionals itself, because `CgShaderPreprocessor` expands `#include` but leaves
-  `#ifdef` to the driver. GL-free, so it catches this on any machine.
-- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader and keyword
+  `.shader` and asserts no such identifier is *reachable* in the generated vertex source;
+  **`ShippedKernelStagePurityTest`** does the same for every shipped kernel, against vertex-only names
+  too. Both resolve the stage conditionals through `CgShaderStages`, because `CgShaderPreprocessor`
+  expands `#include` but leaves `#if` to the driver. GL-free, so they catch this on any machine.
+- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader, kernel and keyword
   variant, collecting failures instead of crashing on the first. Run it on any GPU that disagrees.
 
 ---
@@ -753,6 +758,10 @@ world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).boun
 world.draw(model, brass).submesh(1).at(x, y, z).submit();
 world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
 
+// How much draws comes from a count a kernel wrote: a quad per live spark, a billow per live puff
+world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
+world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+
 // A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 ```
@@ -817,6 +826,61 @@ Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once
 
 ---
 
+# Compute — the `.compute` file
+
+Kernels in the `.shader` family: the same preprocessor, `#include`, `#pragma cg_feature`, `#pragma cg_use` and
+`Properties`, GLSL inside. **`crystalgraphics:shaders/example.compute` is the reference**, as `example.shader` is
+for materials; `.compute` files live under `shaders/`, beside what draws their output. Plan:
+`plan/crystalgraphics/gpu-compute.md`.
+
+```glsl
+#pragma kernel Simulate map            // name, local size (none: 64), shape
+#pragma kernel Bin 256 general
+#pragma fallback Bin BinScatter         // what a tier without compute runs instead
+
+struct Particle { vec4 positionLife; vec4 velocitySeed; };
+Buffers { STATE ("Particle state", Particle, readwrite) }
+
+void Simulate() {
+    Particle p = STATE(CG_ELEMENT);
+    p.positionLife.xyz += p.velocitySeed.xyz * CG_TIME;
+    STATE_WRITE(p);                     // this element: what a map kernel writes
+}
+```
+
+```java
+CgKernelProgram simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").program();
+try (CgGlScope scope = CgKernelProgram.scope()) {
+    simulate.use().buffer("STATE", stateBuffer).dispatch(count);
+}
+```
+
+- **The shape** (`map`, `gather`, `append`, `scatter`, `image`, `general`) says what a kernel writes, and so which
+  tiers run it. The compiler checks it against everything the kernel reaches and refuses what exceeds it by name.
+- **Buffers and images are declared, not written**: the engine writes each kernel's declarations and accessors
+  (`NAME(i)`, `NAME_WRITE`, `NAME_STORE`, `NAME_ADD`, `NAME_APPEND`, `NAME_INC`; `NAME_LOAD`, `NAME_WRITE` on an
+  image) and assigns every binding.
+- **Each kernel's source carries only the functions, `shared` variables, buffers and images it reaches.**
+- **Subgroups** (`CG_SUBGROUP_ADD` and the rest) are the device's operations where it has them all and the work
+  group through shared memory where not; a kernel never branches on support.
+- **Every tier runs it**: as compute on V and G43; below compute (G40, G33) every shape but `general` is lowered to
+  draws (transform feedback, blended points, fragment passes), and a general kernel runs its `#pragma fallback`; on
+  the CPU tier, or wherever nothing else can, a Java body given with `kernel.cpu(...)`. A kernel that can run nowhere
+  throws where its dispatch is recorded, naming the construct.
+
+```java
+particles.kernel("Simulate").cpu(d -> {
+    CgCpuBuffer state = d.buffer("STATE");
+    for (int e = d.first(); e < d.end(); e++) state.setFloat(e, 3, state.getFloat(e, 3) - d.time());
+});
+```
+
+In a frame a kernel runs in a graph's compute pass (`recording.compute(...)`), on `CgGraphBuffer`s and storage images,
+every barrier derived by the executor. Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what
+is easy to get wrong; `render/graph/AGENTS.md` the graph's half.
+
+---
+
 # Core Framework Systems
 
 ## Framebuffers
@@ -871,7 +935,8 @@ CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per forma
 world.draw(ball, material).at(x, y, z).submit();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 
-// Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating
+// Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating.
+// The GPU reads the ring more slowly than a slab, so a mesh drawn many times a frame stays DYNAMIC.
 CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {});
 trail.reserve(2 * maxPoints, 0);
 trail.edit(points, Trail::write);                        // each frame, before it draws
@@ -1030,16 +1095,22 @@ try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO, CgGlSlot.PROGRAM)) {
 // Convenience shorthands:
 CgGlState.saveProgram()   // → save(PROGRAM)
 CgGlState.saveFull()      // → save(FBO, PROGRAM, TEXTURES, VERTEX_INPUT)
-CgGlState.saveAll()       // → all 16 slots (used by CgExecutor around a frame)
+CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 ```
 
-`CgGlSlot` constants: `FBO` · `PROGRAM` · `TEXTURES` · `VERTEX_INPUT` · `BLEND` · `DEPTH` · `CULL` · `STENCIL` · `COLOR_MASK` · `VIEWPORT` · `SCISSOR` · `POLYGON_OFFSET` · `ALPHA_TEST` · `LINE_WIDTH` · `POLYGON_MODE` · `POINT_SIZE`
+`CgGlSlot` constants: `FBO` · `PROGRAM` · `TEXTURES` · `VERTEX_INPUT` · `BLEND` · `DEPTH` · `CULL` · `STENCIL` · `COLOR_MASK` · `VIEWPORT` · `SCISSOR` · `POLYGON_OFFSET` · `ALPHA_TEST` · `LINE_WIDTH` · `POLYGON_MODE` · `POINT_SIZE`, and three **captured at first write** — `STORAGE_BUFFERS` · `IMAGES` · `INDIRECT_BUFFERS`: a scope declaring them reads nothing when it opens, saves each binding point the first time it is written inside it, and restores only those (`gl/state/AGENTS.md`)
 
 **Package guides**: `api/state/AGENTS.md` · `gl/state/AGENTS.md`
 
 ## Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()` — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+
+**`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
+from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
+`CgDevice.describe` on the Vulkan device. Each context logs it once as `[crystalgraphics] gpu …`, `prodSmoke`
+gathers every client's into `build/prodSmoke/gpu-report.txt`, and the harness's `--mode=capability-report` prints it
+as a table.
 
 Nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name.
 
@@ -1156,6 +1227,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
+| 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
@@ -1205,6 +1277,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `render/graph/AGENTS.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
 | `gl/material/AGENTS.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
 | `gl/material/parse/AGENTS.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
+| `compute/AGENTS.md` | `CgCompute`, `CgKernel`, `.compute` parsing and emission, `CgKernelProgram` — kernels |
 
 ### Shaders
 | Path | What it covers |
@@ -1501,6 +1574,18 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
 # Meshes
 -Dcrystalgraphics.mesh.frameRing=false               # FRAME meshes take slab ranges like the others, not the
                                                      # frame ring: one build, both paths, for comparing them
+-Dcrystalgraphics.mesh.editStacks=true               # each mesh edit records its stack, which the [cg-mesh]
+                                                     # report of a mesh edited every frame prints
+
+# Frame graph
+-Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
+                                                     # validation must catch on --mode=compute-graph
+
+# Compute tiers (compute/AGENTS.md § Three forms)
+-Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
+                                                     # context has what it needs; refused, naming it, where not
+-Dcrystalgraphics.shaderBuffer.tier=TBO              # SSBO_GL43|SSBO_ARB|TBO: engine buffers read as buffer textures,
+                                                     # GLSL 3.30, as a 3.3 context runs them; with G33, that context
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in

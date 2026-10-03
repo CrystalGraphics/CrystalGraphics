@@ -29,12 +29,14 @@ public final class RecordingGlBackend extends CgGLBackend {
     public final List<Double> clearDepths = new ArrayList<>();
     /** Every glPolygonOffset as {factor, units}, in order. */
     public final List<List<Float>> polygonOffsets = new ArrayList<>();
+    /** Every glMemoryBarrier's bits, in order. */
+    public final List<Integer> memoryBarriers = new ArrayList<>();
 
     private void record(String name) { calls.add(name); }
 
     public List<String> calls() { return calls; }
 
-    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); }
+    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); memoryBarriers.clear(); }
 
     public int countOf(String name) {
         int n = 0;
@@ -137,6 +139,20 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) { record("glDrawArraysInstanced"); }
     @Override public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) { record("glDrawElementsInstanced"); }
     @Override public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount, int baseVertex) { record("glDrawElementsInstancedBaseVertex"); }
+    @Override public void glDrawArraysIndirect(int mode, long offset) { record("glDrawArraysIndirect"); }
+    @Override public void glDrawElementsIndirect(int mode, int type, long offset) { record("glDrawElementsIndirect"); }
+    @Override public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) { record("glMultiDrawArraysIndirect"); }
+    @Override public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) { record("glMultiDrawElementsIndirect"); }
+    @Override public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawArraysIndirectCount"); }
+    @Override public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawElementsIndirectCount"); }
+    @Override public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) { record("glDispatchCompute"); }
+    @Override public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) { record("glTransformFeedbackVaryings"); }
+    @Override public void glBeginTransformFeedback(int primitiveMode) { record("glBeginTransformFeedback"); }
+    @Override public void glEndTransformFeedback() { record("glEndTransformFeedback"); }
+    @Override public void glDispatchComputeIndirect(long offset) { record("glDispatchComputeIndirect"); }
+    @Override public void glMemoryBarrier(int barriers) { record("glMemoryBarrier"); memoryBarriers.add(barriers); }
+    @Override public void cgFillBuffer(int buffer, long offset, long size, int value) { record("cgFillBuffer"); }
+    @Override public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { record("glBindImageTexture"); }
     @Override public void glEnable(int cap) { record("glEnable"); }
     @Override public void glDisable(int cap) { record("glDisable"); }
     @Override public void glBlendFunc(int sfactor, int dfactor) { record("glBlendFunc"); }
@@ -170,6 +186,9 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glPixelStorei(int pname, int param) { record("glPixelStorei"); }
     @Override public int glGetInteger(int pname) { record("glGetInteger"); return 0; }
     @Override public void glGetInteger(int pname, IntBuffer params) { record("glGetInteger"); }
+    @Override public String glGetString(int name) { record("glGetString"); return ""; }
+    @Override public String glGetStringi(int name, int index) { record("glGetStringi"); return ""; }
+    @Override public int glGetIntegeri(int target, int index) { record("glGetIntegeri"); return 0; }
     @Override public boolean glGetBoolean(int pname) { record("glGetBoolean"); return false; }
     @Override public void glGetBoolean(int pname, ByteBuffer params) { record("glGetBoolean"); }
     @Override public void glGetFloat(int pname, FloatBuffer params) { record("glGetFloat"); }

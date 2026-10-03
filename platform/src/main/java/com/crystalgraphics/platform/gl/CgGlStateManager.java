@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -56,6 +57,14 @@ import java.util.regex.Pattern;
  * outermost {@code fromHost} forgets the shadow, host code run inside goes through {@code hostForeign}, which
  * forgets it again, so even an outermost scope reads only what is untrusted. A host brackets its whole
  * frame, or each outermost scope in it pays a {@code glGet} per declared domain.</p>
+ *
+ * <h2>Bindings captured at first write</h2>
+ * <p>{@link CgGlSlot#STORAGE_BUFFERS}, {@link CgGlSlot#IMAGES}, {@link CgGlSlot#INDIRECT_BUFFERS} and
+ * {@link CgGlSlot#TRANSFORM_FEEDBACK} have many
+ * binding points and are rarely written, so a scope declaring them reads nothing when it opens. The first write of a
+ * point inside it saves the point's value into every open scope declaring the domain, read from the provider only
+ * when the shadow does not know it, and a scope restores only the points it saved. The shadow keeps them across host
+ * sections unless the provider says the host binds them itself ({@link CgGlStateProvider#hostBinds}).</p>
  *
  * <h2>Restore is not a second write path</h2>
  * <p>{@link #restore} re-issues through {@link CgGL}, so it goes through the same deduplication as any other
@@ -104,6 +113,17 @@ public final class CgGlStateManager {
             F_ACTIVE_TEXTURE = 1L << 30, F_VERTEX_ARRAY = 1L << 31, F_ARRAY_BUFFER = 1L << 32,
             F_ELEMENT_BUFFER = 1L << 33;
     private static final long ALL_FIELDS = (1L << 34) - 1;
+    /** The captured domains' fields, past ALL_FIELDS: their trust is per binding point, so these name leaks only. */
+    private static final long F_STORAGE_BINDING = 1L << 34, F_IMAGE_UNIT = 1L << 35, F_INDIRECT_BUFFER = 1L << 36,
+            F_FEEDBACK = 1L << 37;
+    private static final CgGlSlot[] CAPTURED = {CgGlSlot.STORAGE_BUFFERS, CgGlSlot.IMAGES, CgGlSlot.INDIRECT_BUFFERS,
+            CgGlSlot.TRANSFORM_FEEDBACK};
+    private static final int CAPTURED_SLOTS = (1 << CgGlSlot.STORAGE_BUFFERS.ordinal())
+            | (1 << CgGlSlot.IMAGES.ordinal()) | (1 << CgGlSlot.INDIRECT_BUFFERS.ordinal())
+            | (1 << CgGlSlot.TRANSFORM_FEEDBACK.ordinal());
+    /** How many binding points each captured domain restores, in {@link #CAPTURED}'s order. */
+    private static final int[] POINTS = {CgGlStateShadow.MAX_STORAGE_BINDINGS, CgGlStateShadow.MAX_IMAGE_UNITS,
+            CgGlStateShadow.INDIRECT_TARGETS.length, CgGlStateShadow.RASTERIZER_DISCARD_POINT + 1};
     /** Each unit's {@code GL_TEXTURE_2D} binding is a field of its own, kept in a separate mask. */
     private static final int ALL_UNITS = -1;
 
@@ -131,6 +151,10 @@ public final class CgGlStateManager {
             case FBO:            return F_DRAW_FBO | F_READ_FBO;
             case TEXTURES:       return F_ACTIVE_TEXTURE;
             case VERTEX_INPUT:   return F_VERTEX_ARRAY | F_ARRAY_BUFFER | F_ELEMENT_BUFFER;
+            case STORAGE_BUFFERS: return F_STORAGE_BINDING;
+            case IMAGES:          return F_IMAGE_UNIT;
+            case INDIRECT_BUFFERS: return F_INDIRECT_BUFFER;
+            case TRANSFORM_FEEDBACK: return F_FEEDBACK;
             default: throw new IllegalStateException("No fields for slot " + slot);
         }
     }
@@ -170,6 +194,8 @@ public final class CgGlStateManager {
     private final CgGlStateShadow current = new CgGlStateShadow();
     private long unknownFields = ALL_FIELDS;
     private int unknownUnits = ALL_UNITS;
+    /** Per captured domain: the binding points the shadow knows, and those our code has written. */
+    private final int[] known = new int[CAPTURED.length], touched = new int[CAPTURED.length];
     private Thread owner;
 
     private CgGlStateProvider provider;
@@ -179,6 +205,7 @@ public final class CgGlStateManager {
     private final CgGlStateShadow liveCurrent = new CgGlStateShadow();
     private long liveUnknownFields;
     private int liveUnknownUnits;
+    private final int[] liveKnown = new int[CAPTURED.length];
 
     private final Frame[] frames = new Frame[MAX_DEPTH];
     private int depth;
@@ -226,6 +253,10 @@ public final class CgGlStateManager {
 
     /** Whether every field of {@code slot} is known — which only a scope's read or a write of each one gives. */
     public boolean isTrusted(CgGlSlot slot) {
+        if ((CAPTURED_SLOTS & (1 << slot.ordinal())) != 0) {
+            int d = captured(slot);
+            return known[d] == (int) ((1L << POINTS[d]) - 1);
+        }
         return (unknownFields & SLOT_FIELDS[slot.ordinal()]) == 0 && (slot != CgGlSlot.TEXTURES || unknownUnits == 0);
     }
 
@@ -392,13 +423,20 @@ public final class CgGlStateManager {
         for (CgGlSlot s : slots) {
             unknownFields |= SLOT_FIELDS[s.ordinal()];
             if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
+            if ((CAPTURED_SLOTS & (1 << s.ordinal())) != 0) known[captured(s)] = 0;
         }
     }
 
     public void invalidateAll() {
         if (recording != null) recording.recordInvalidateAll();
+        forgetAll();
+    }
+
+    /** Anything may have been written: every domain, but a captured one only where the host binds it. */
+    private void forgetAll() {
         unknownFields = ALL_FIELDS;
         unknownUnits = ALL_UNITS;
+        for (CgGlSlot s : CAPTURED) if (provider.hostBinds(s)) known[captured(s)] = 0;
     }
 
     /**
@@ -450,6 +488,13 @@ public final class CgGlStateManager {
             { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, current.polygonOffsetLine, enable)) return false; current.polygonOffsetLine = enable; return issue(F_OFFSET_LINE); }
         if (cap == CgGL.GL_POLYGON_OFFSET_POINT)
             { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, current.polygonOffsetPoint, enable)) return false; current.polygonOffsetPoint = enable; return issue(F_OFFSET_POINT); }
+        if (cap == CgGL.GL_RASTERIZER_DISCARD) {
+            int point = CgGlStateShadow.RASTERIZER_DISCARD_POINT;
+            capture(CgGlSlot.TRANSFORM_FEEDBACK, point);
+            if (same(CgGlSlot.TRANSFORM_FEEDBACK, point) && current.rasterizerDiscard == enable) return skip();
+            current.rasterizerDiscard = enable;
+            return issueCaptured(CgGlSlot.TRANSFORM_FEEDBACK, point, F_FEEDBACK);
+        }
         // An untracked capability. Always issue — we cannot say whether it is redundant, and guessing that
         // it is would drop a real call.
         return true;
@@ -654,6 +699,13 @@ public final class CgGlStateManager {
         for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
             if (current.boundTexture2D[unit] == texture) current.boundTexture2D[unit] = 0;
         }
+        forgetPoints(CgGlSlot.IMAGES, current.imageTexture, texture);
+    }
+
+    /** A deleted object's points are left unknown: what GL reverts an indexed binding to is not worth guessing. */
+    private void forgetPoints(CgGlSlot slot, int[] names, int name) {
+        int d = captured(slot);
+        for (int i = 0; i < names.length; i++) if (names[i] == name) known[d] &= ~(1 << i);
     }
 
     /** @see #textureDeleted */
@@ -668,6 +720,9 @@ public final class CgGlStateManager {
         if (buffer == 0) return;
         if (current.arrayBuffer == buffer) current.arrayBuffer = 0;
         if (current.elementArrayBuffer == buffer) current.elementArrayBuffer = 0;
+        forgetPoints(CgGlSlot.STORAGE_BUFFERS, current.storageBuffer, buffer);
+        forgetPoints(CgGlSlot.INDIRECT_BUFFERS, current.indirectBuffer, buffer);
+        forgetPoints(CgGlSlot.TRANSFORM_FEEDBACK, current.feedbackBuffer, buffer);
     }
 
     /** @see #textureDeleted */
@@ -746,7 +801,153 @@ public final class CgGlStateManager {
             current.elementArrayBuffer = buffer;
             return issue(F_ELEMENT_BUFFER);
         }
+        int indirect = CgGlStateShadow.indirectIndex(target);
+        if (indirect >= 0) {
+            capture(CgGlSlot.INDIRECT_BUFFERS, indirect);
+            if (same(CgGlSlot.INDIRECT_BUFFERS, indirect) && current.indirectBuffer[indirect] == buffer) return skip();
+            current.indirectBuffer[indirect] = buffer;
+            return issueCaptured(CgGlSlot.INDIRECT_BUFFERS, indirect, F_INDIRECT_BUFFER);
+        }
         return true;    // uniform/shader-storage etc. — not modelled, always issued
+    }
+
+    // ── Captured at first write ───────────────────────────────────────────────
+
+    /** {@code glBindBufferBase} ({@code size} 0) or {@code glBindBufferRange} on {@code GL_SHADER_STORAGE_BUFFER}. */
+    public boolean storageBindingChanged(int index, int buffer, long offset, long size) {
+        assertOwner();
+        if (!tracked(index, CgGlStateShadow.MAX_STORAGE_BINDINGS)) return true;
+        capture(CgGlSlot.STORAGE_BUFFERS, index);
+        CgGlStateShadow c = current;
+        if (same(CgGlSlot.STORAGE_BUFFERS, index) && c.storageBuffer[index] == buffer && c.storageOffset[index] == offset
+                && c.storageSize[index] == size) return skip();
+        c.storageBuffer[index] = buffer;
+        c.storageOffset[index] = offset;
+        c.storageSize[index] = size;
+        return issueCaptured(CgGlSlot.STORAGE_BUFFERS, index, F_STORAGE_BINDING);
+    }
+
+    /** {@code glBindBufferBase} ({@code size} 0) or {@code glBindBufferRange} on {@code GL_TRANSFORM_FEEDBACK_BUFFER}. */
+    public boolean feedbackBindingChanged(int index, int buffer, long offset, long size) {
+        assertOwner();
+        if (!tracked(index, CgGlStateShadow.MAX_FEEDBACK_BINDINGS)) return true;
+        capture(CgGlSlot.TRANSFORM_FEEDBACK, index);
+        CgGlStateShadow c = current;
+        if (same(CgGlSlot.TRANSFORM_FEEDBACK, index) && c.feedbackBuffer[index] == buffer && c.feedbackOffset[index] == offset
+                && c.feedbackSize[index] == size) return skip();
+        c.feedbackBuffer[index] = buffer;
+        c.feedbackOffset[index] = offset;
+        c.feedbackSize[index] = size;
+        return issueCaptured(CgGlSlot.TRANSFORM_FEEDBACK, index, F_FEEDBACK);
+    }
+
+    /** {@code glBindImageTexture}, with {@code layer} -1 for a layered binding. */
+    public boolean imageBindingChanged(int unit, int texture, int level, int layer, int access, int format) {
+        assertOwner();
+        if (!tracked(unit, CgGlStateShadow.MAX_IMAGE_UNITS)) return true;
+        capture(CgGlSlot.IMAGES, unit);
+        CgGlStateShadow c = current;
+        if (same(CgGlSlot.IMAGES, unit) && c.imageTexture[unit] == texture && c.imageLevel[unit] == level
+                && c.imageLayer[unit] == layer && c.imageAccess[unit] == access && c.imageFormat[unit] == format) {
+            return skip();
+        }
+        c.imageTexture[unit] = texture;
+        c.imageLevel[unit] = level;
+        c.imageLayer[unit] = layer;
+        c.imageAccess[unit] = access;
+        c.imageFormat[unit] = format;
+        return issueCaptured(CgGlSlot.IMAGES, unit, F_IMAGE_UNIT);
+    }
+
+    /**
+     * A point past what a scope restores is issued and left: the engine's reserved storage points count down from
+     * the driver's maximum ({@code CgBindingPoints}), where no host binds.
+     */
+    private static boolean tracked(int index, int points) {
+        return index >= 0 && index < points;
+    }
+
+    /** Whether the shadow's value of the point is the driver's, so an equal write may be skipped. */
+    private boolean same(CgGlSlot slot, int index) {
+        return !mustIssue(slot) && (known[captured(slot)] & (1 << index)) != 0;
+    }
+
+    private boolean issueCaptured(CgGlSlot slot, int index, long field) {
+        int d = captured(slot), bit = 1 << index;
+        known[d] |= bit;
+        touched[d] |= bit;
+        callsIssued++;
+        wrote(field);
+        return true;
+    }
+
+    /**
+     * Saves point {@code index} into every open scope declaring {@code slot} that has not saved it yet: none has
+     * seen a write of it since it opened, so the value now is the one it opened on. Read first when unknown.
+     */
+    private void capture(CgGlSlot slot, int index) {
+        if (recording != null) return;   // the replay saves, when the write is real
+        int slotBit = 1 << slot.ordinal(), d = captured(slot), bit = 1 << index;
+        for (int f = depth - 1; f >= 0; f--) {
+            Frame frame = frames[f];
+            if ((frame.mask & slotBit) == 0 || frame.handOver || (frame.captured[d] & bit) != 0) continue;
+            if ((known[d] & bit) == 0) adoptBinding(slot, index);
+            frame.saved.copyBinding(slot, index, current);
+            frame.captured[d] |= bit;
+        }
+    }
+
+    private void adoptBinding(CgGlSlot slot, int index) {
+        adopting = true;
+        long t = CgTrace.stamp(GL);
+        try {
+            provider.readBinding(slot, index, current);
+        } finally {
+            adopting = false;
+            CgTrace.zoneDone(GL, ADOPT, t);
+            CgTrace.add(GL, ADOPT_COUNT, 1);
+        }
+        known[captured(slot)] |= 1 << index;
+        adopted++;
+    }
+
+    /** {@code slot}'s index in {@link #CAPTURED}. */
+    private static int captured(CgGlSlot slot) {
+        return slot == CgGlSlot.STORAGE_BUFFERS ? 0 : slot == CgGlSlot.IMAGES ? 1
+                : slot == CgGlSlot.INDIRECT_BUFFERS ? 2 : 3;
+    }
+
+    /** Re-binds the points {@code f} saved, through {@link CgGL}. */
+    private void restoreCaptured(CgGlSlot slot, Frame f) {
+        CgGlStateShadow s = f.saved;
+        int points = f.captured[captured(slot)];
+        for (int i = 0; points != 0; i++, points >>>= 1) {
+            if ((points & 1) == 0) continue;
+            switch (slot) {
+                case STORAGE_BUFFERS:
+                    if (s.storageSize[i] == 0) CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, i, s.storageBuffer[i]);
+                    else CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, i, s.storageBuffer[i], s.storageOffset[i],
+                            s.storageSize[i]);
+                    break;
+                case IMAGES:
+                    CgGL.glBindImageTexture(i, s.imageTexture[i], s.imageLevel[i], s.imageLayer[i] < 0,
+                            Math.max(0, s.imageLayer[i]), s.imageAccess[i], s.imageFormat[i]);
+                    break;
+                case INDIRECT_BUFFERS:
+                    CgGL.glBindBuffer(CgGlStateShadow.INDIRECT_TARGETS[i], s.indirectBuffer[i]);
+                    break;
+                default:
+                    if (i == CgGlStateShadow.RASTERIZER_DISCARD_POINT) {
+                        if (s.rasterizerDiscard) CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+                        else CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+                    } else if (s.feedbackSize[i] == 0) {
+                        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, i, s.feedbackBuffer[i]);
+                    } else {
+                        CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, i, s.feedbackBuffer[i],
+                                s.feedbackOffset[i], s.feedbackSize[i]);
+                    }
+            }
+        }
     }
 
     // ── Recording ─────────────────────────────────────────────────────────────
@@ -758,8 +959,10 @@ public final class CgGlStateManager {
         liveCurrent.copyFrom(current);
         liveUnknownFields = unknownFields;
         liveUnknownUnits = unknownUnits;
+        System.arraycopy(known, 0, liveKnown, 0, known.length);
         unknownFields = ALL_FIELDS;
         unknownUnits = ALL_UNITS;
+        Arrays.fill(known, 0);
         recording = r;
     }
 
@@ -769,13 +972,13 @@ public final class CgGlStateManager {
         current.copyFrom(liveCurrent);
         unknownFields = liveUnknownFields;
         unknownUnits = liveUnknownUnits;
+        System.arraycopy(liveKnown, 0, known, 0, known.length);
     }
 
     /** A recorded scope closed: what it restores is known only on replay. */
     void forgetRecorded(boolean foreign, CgGlSlot... slots) {
         if (foreign) {
-            unknownFields = ALL_FIELDS;
-            unknownUnits = ALL_UNITS;
+            forgetAll();
         } else {
             forget(slots);
         }
@@ -921,8 +1124,7 @@ public final class CgGlStateManager {
     public void hostForeign(Runnable body, CgGlSlot... slots) {
         if (recording != null) {
             recording.recordForeign(body, slots);
-            unknownFields = ALL_FIELDS;
-            unknownUnits = ALL_UNITS;
+            forgetAll();
             return;
         }
         try (CgGlScope ignored = hostForeign(slots)) {
@@ -961,9 +1163,14 @@ public final class CgGlStateManager {
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
-            if (!handOver && (reread || !isTrusted(slot))) adopt(slot);   // a hand-over restores nothing
+            if ((CAPTURED_SLOTS & bit) != 0) {
+                if (reread && provider.hostBinds(slot)) known[captured(slot)] = 0;   // read at first write instead
+            } else if (!handOver && (reread || !isTrusted(slot))) {
+                adopt(slot);   // a hand-over restores nothing
+            }
             f.mask |= bit;
         }
+        Arrays.fill(f.captured, 0);
         f.saved.copyFrom(current);
         if (roundTrip != null) roundTrip.opened(f);
         return f;
@@ -1015,6 +1222,8 @@ public final class CgGlStateManager {
         private Throwable openedAt;
         /** Texture units the open read covered: a unit first selected inside this scope has no "before". */
         private int unitsAtOpen;
+        /** Per captured domain: the points this scope saved, and those our code had touched when it opened. */
+        private final int[] captured = new int[CAPTURED.length], touchedAtOpen = new int[CAPTURED.length];
 
         private Frame() {}
 
@@ -1036,6 +1245,10 @@ public final class CgGlStateManager {
                 for (CgGlSlot slot : SLOTS) {
                     if (handOver) break;
                     if ((mask & (1 << slot.ordinal())) == 0) continue;
+                    if ((CAPTURED_SLOTS & (1 << slot.ordinal())) != 0) {
+                        restoreCaptured(slot, this);
+                        continue;
+                    }
                     // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
                     // the normal deduplicated path and usually emits nothing.
                     forcing = mustIssue(slot) || !isTrusted(slot);
@@ -1259,11 +1472,16 @@ public final class CgGlStateManager {
         void opened(Frame f) {
             if (f.handOver) return;
             f.unitsAtOpen = highestUnit + 1;
+            System.arraycopy(touched, 0, f.touchedAtOpen, 0, touched.length);
             if (f.before == null) f.before = new CgGlStateShadow();
             // An outermost scope on plain glGet outside a host section has just adopted every declared domain
             // from the driver; inside one it trusted the shadow, which is what this check exists to question.
-            if (depth == 1 && !CgGL.inHostSection() && provider == CgGlStateProvider.glGet()) f.before.copyFrom(f.saved);
-            else read(CgGlStateProvider.glGet(), f.mask, f.before);
+            if (depth == 1 && !CgGL.inHostSection() && provider == CgGlStateProvider.glGet()) {
+                f.before.copyFrom(f.saved);
+                read(CgGlStateProvider.glGet(), f.mask & CAPTURED_SLOTS, f.before);   // captured: nothing read at open
+            } else {
+                read(CgGlStateProvider.glGet(), f.mask, f.before);
+            }
             if (driverReader != null) {
                 if (f.beforeDriver == null) f.beforeDriver = new CgGlStateShadow();
                 read(driverReader, f.mask, f.beforeDriver);
@@ -1280,6 +1498,7 @@ public final class CgGlStateManager {
             }
             String where = " (depth " + depth + ")";
             untouchedUnits(f.before, after, f.unitsAtOpen);
+            untouchedPoints(f.before, after, f.touchedAtOpen);
             String diff = f.before.differences(after, f.mask);
             if (diff != null) {
                 hostFailed++;
@@ -1289,6 +1508,8 @@ public final class CgGlStateManager {
                 read(driverReader, f.mask, afterDriver);
                 untouchedUnits(f.beforeDriver, afterDriver, f.unitsAtOpen);
                 untouchedUnits(after, afterDriver, f.unitsAtOpen);
+                untouchedPoints(f.beforeDriver, afterDriver, f.touchedAtOpen);
+                untouchedPoints(after, afterDriver, f.touchedAtOpen);
                 int real = f.mask & ~virtualised;
                 String driverDiff = f.beforeDriver.differences(afterDriver, real);
                 if (driverDiff != null) {
@@ -1323,6 +1544,13 @@ public final class CgGlStateManager {
                     // probe's cost, and a unit we never select is one we cannot have failed to restore.
                     if (s == CgGlSlot.TEXTURES && from instanceof CgGlGetProvider) {
                         ((CgGlGetProvider) from).readTextures(into, highestUnit + 1);
+                    } else if ((CAPTURED_SLOTS & (1 << s.ordinal())) != 0) {
+                        // Only the points our code has bound: one it never bound it cannot have failed to restore.
+                        int d = captured(s);
+                        for (int i = 0; i < POINTS[d]; i++) {
+                            if ((touched[d] & (1 << i)) != 0) from.readBinding(s, i, into);
+                            else into.copyBinding(s, i, keep);
+                        }
                     } else {
                         from.read(s, into);
                     }
@@ -1342,6 +1570,14 @@ public final class CgGlStateManager {
         private void untouchedUnits(CgGlStateShadow from, CgGlStateShadow to, int limit) {
             for (int u = limit; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
                 to.boundTexture2D[u] = from.boundTexture2D[u];
+            }
+        }
+
+        /** Points our code first bound inside the scope have no "before"; {@code to} takes {@code from}'s. */
+        private void untouchedPoints(CgGlStateShadow from, CgGlStateShadow to, int[] touchedAtOpen) {
+            for (int d = 0; d < CAPTURED.length; d++) {
+                int fresh = touched[d] & ~touchedAtOpen[d];
+                for (int i = 0; fresh != 0; i++, fresh >>>= 1) if ((fresh & 1) != 0) to.copyBinding(CAPTURED[d], i, from);
             }
         }
 
@@ -1365,7 +1601,8 @@ public final class CgGlStateManager {
                 "alphaTest", "alphaFunc", "colorMask", "viewport", "scissorTest", "scissorBox",
                 "polygonOffsetFill", "polygonOffsetLine", "polygonOffsetPoint", "polygonOffset",
                 "polygonModeFront", "polygonModeBack", "lineWidth", "pointSize", "program", "drawFbo", "readFbo",
-                "texture", "vertexArray", "arrayBuffer", "elementBuffer"};
+                "texture", "vertexArray", "arrayBuffer", "elementBuffer", "storageBuffer", "imageUnit",
+                "indirectBuffer", "transformFeedback"};
 
         private String fieldNames(long fields) {
             StringBuilder out = new StringBuilder();

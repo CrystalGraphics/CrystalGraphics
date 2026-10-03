@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import java.nio.ByteBuffer;
@@ -292,6 +293,11 @@ public final class CgGL {
     public static final int GL_COPY_READ_BUFFER      = 0x8F36;
     public static final int GL_COPY_WRITE_BUFFER     = 0x8F37;
     public static final int GL_PIXEL_UNPACK_BUFFER   = 0x88EC;
+    public static final int GL_DRAW_INDIRECT_BUFFER     = 0x8F3F;
+    public static final int GL_DISPATCH_INDIRECT_BUFFER = 0x90EE;
+    /** Where an indirect draw's count is read: GL 4.6, and {@code GL_PARAMETER_BUFFER_ARB} has the same value. */
+    public static final int GL_PARAMETER_BUFFER         = 0x80EE;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER = 0x8C8E;
 
     // --- Buffer usages -------------------------------------------------------
     public static final int GL_STATIC_DRAW = 0x88E4, 
@@ -318,6 +324,14 @@ public final class CgGL {
     public static final int GL_UNIFORM_BUFFER_BINDING        = 0x8A28;
     public static final int GL_MAX_UNIFORM_BUFFER_BINDINGS   = 0x8A2F;
     public static final int GL_SHADER_STORAGE_BUFFER_BINDING = 0x90D3;
+    public static final int GL_SHADER_STORAGE_BUFFER_START   = 0x90D4;
+    public static final int GL_SHADER_STORAGE_BUFFER_SIZE    = 0x90D5;
+    public static final int GL_DRAW_INDIRECT_BUFFER_BINDING     = 0x8F43;
+    public static final int GL_DISPATCH_INDIRECT_BUFFER_BINDING = 0x90EF;
+    public static final int GL_PARAMETER_BUFFER_BINDING         = 0x80EF;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_BINDING = 0x8C8F;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_START   = 0x8C84;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_SIZE    = 0x8C85;
 
     // --- Framebuffer ---------------------------------------------------------
     public static final int GL_FRAMEBUFFER          = 0x8D40;
@@ -368,6 +382,7 @@ public final class CgGL {
     public static final int GL_VERTEX_SHADER   = 0x8B31;
     public static final int GL_FRAGMENT_SHADER = 0x8B30;
     public static final int GL_GEOMETRY_SHADER = 0x8DD9;
+    public static final int GL_COMPUTE_SHADER  = 0x91B9;
 
     // --- Shader / program query params ---------------------------------------
     public static final int GL_COMPILE_STATUS            = 0x8B81;
@@ -387,6 +402,7 @@ public final class CgGL {
     // --- SSBO ----------------------------------------------------------------
     public static final int GL_SHADER_STORAGE_BLOCK               = 0x92E6;
     public static final int GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS = 0x90DD;
+    public static final int GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF;
 
     // --- GL capability flags -------------------------------------------------
     public static final int GL_BLEND                     = 0x0BE2;
@@ -459,7 +475,69 @@ public final class CgGL {
     public static final int GL_WAIT_FAILED                = 0x911D;
 
     // --- Queries / gets ------------------------------------------------------
+    public static final int GL_VENDOR                           = 0x1F00;
+    public static final int GL_RENDERER                         = 0x1F01;
+    public static final int GL_VERSION                          = 0x1F02;
+    public static final int GL_EXTENSIONS                       = 0x1F03;
+    public static final int GL_SHADING_LANGUAGE_VERSION         = 0x8B8C;
+    public static final int GL_MAJOR_VERSION                    = 0x821B;
+    public static final int GL_MINOR_VERSION                    = 0x821C;
+    public static final int GL_NUM_EXTENSIONS                   = 0x821D;
+    public static final int GL_CONTEXT_PROFILE_MASK             = 0x9126;
     public static final int GL_MAX_TEXTURE_SIZE                 = 0x0D33;
+    public static final int GL_MAX_TEXTURE_BUFFER_SIZE          = 0x8C2B;
+    public static final int GL_MAX_IMAGE_UNITS                  = 0x8F38;
+    public static final int GL_MAX_SHADER_STORAGE_BLOCK_SIZE    = 0x90DE;
+    public static final int GL_MAX_GEOMETRY_OUTPUT_VERTICES     = 0x8DE0;
+    public static final int GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS = 0x8DE1;
+
+    // --- Compute -------------------------------------------------------------
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_COUNT       = 0x91BE;
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_SIZE        = 0x91BF;
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS = 0x90EB;
+    public static final int GL_MAX_COMPUTE_SHARED_MEMORY_SIZE     = 0x8262;
+    /** {@code KHR_shader_subgroup}: the invocations in a subgroup, the stages with subgroup operations, and which. */
+    public static final int GL_SUBGROUP_SIZE_KHR                  = 0x9532;
+    public static final int GL_SUBGROUP_SUPPORTED_STAGES_KHR      = 0x9533;
+    public static final int GL_SUBGROUP_SUPPORTED_FEATURES_KHR    = 0x9534;
+
+    // --- Memory barriers: what glMemoryBarrier makes see a kernel's writes -------
+    public static final int GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT  = 0x0001;
+    public static final int GL_ELEMENT_ARRAY_BARRIER_BIT        = 0x0002;
+    public static final int GL_UNIFORM_BARRIER_BIT              = 0x0004;
+    public static final int GL_TEXTURE_FETCH_BARRIER_BIT        = 0x0008;
+    public static final int GL_SHADER_IMAGE_ACCESS_BARRIER_BIT  = 0x0020;
+    public static final int GL_COMMAND_BARRIER_BIT              = 0x0040;
+    public static final int GL_PIXEL_BUFFER_BARRIER_BIT         = 0x0080;
+    public static final int GL_TEXTURE_UPDATE_BARRIER_BIT       = 0x0100;
+    public static final int GL_BUFFER_UPDATE_BARRIER_BIT        = 0x0200;
+    public static final int GL_FRAMEBUFFER_BARRIER_BIT          = 0x0400;
+    public static final int GL_TRANSFORM_FEEDBACK_BARRIER_BIT   = 0x0800;
+    public static final int GL_ATOMIC_COUNTER_BARRIER_BIT       = 0x1000;
+    public static final int GL_SHADER_STORAGE_BARRIER_BIT       = 0x2000;
+    public static final int GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT = 0x4000;
+    public static final int GL_ALL_BARRIER_BITS                 = 0xFFFFFFFF;
+
+    // --- Image units ---------------------------------------------------------
+    public static final int GL_READ_ONLY  = 0x88B8;
+    public static final int GL_WRITE_ONLY = 0x88B9;
+    public static final int GL_READ_WRITE = 0x88BA;
+    /** Indexed by unit, through {@link #glGetIntegeri}. */
+    public static final int GL_IMAGE_BINDING_NAME    = 0x8F3A;
+    public static final int GL_IMAGE_BINDING_LEVEL   = 0x8F3B;
+    public static final int GL_IMAGE_BINDING_LAYERED = 0x8F3C;
+    public static final int GL_IMAGE_BINDING_LAYER   = 0x8F3D;
+    public static final int GL_IMAGE_BINDING_ACCESS  = 0x8F3E;
+    public static final int GL_IMAGE_BINDING_FORMAT  = 0x906E;
+
+    // --- Transform feedback --------------------------------------------------
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS   = 0x8C80;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS = 0x8C8A;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS     = 0x8C8B;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_BUFFERS              = 0x8E70;
+    public static final int GL_INTERLEAVED_ATTRIBS                         = 0x8C8C;
+    public static final int GL_SEPARATE_ATTRIBS                            = 0x8C8D;
+    public static final int GL_RASTERIZER_DISCARD                          = 0x8C89;
     public static final int GL_MAX_3D_TEXTURE_SIZE              = 0x8073;
     public static final int GL_MAX_ARRAY_TEXTURE_LAYERS         = 0x88FF;
     public static final int GL_MAX_TEXTURE_IMAGE_UNITS          = 0x8872;
@@ -828,10 +906,14 @@ public final class CgGL {
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
+        if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, 0, 0)) return;
+        if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, 0, 0)) return;
         gl().glBindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
+        if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, offset, size)) return;
+        if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, offset, size)) return;
         gl().glBindBufferRange(target, index, buffer, offset, size);
     }
 
@@ -987,6 +1069,150 @@ public final class CgGL {
     public static void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
                                                          int instanceCount, int baseVertex) {
         gl().glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    }
+
+    /**
+     * A draw whose arguments the GPU holds, at {@code offset} in the bound {@code GL_DRAW_INDIRECT_BUFFER}: four
+     * {@code uint}s, {@code count, instanceCount, first, baseInstance}.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+     * CgGL.glDrawArraysIndirect(CgGL.GL_TRIANGLES, 0);
+     * }</pre>
+     */
+    public static void glDrawArraysIndirect(int mode, long offset) {
+        gl().glDrawArraysIndirect(mode, offset);
+    }
+
+    /** Five {@code uint}s at {@code offset}: {@code count, instanceCount, firstIndex, baseVertex, baseInstance}. */
+    public static void glDrawElementsIndirect(int mode, int type, long offset) {
+        gl().glDrawElementsIndirect(mode, type, offset);
+    }
+
+    /** {@code drawCount} of {@link #glDrawArraysIndirect}'s arguments, {@code stride} bytes apart (0: packed). */
+    public static void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        gl().glMultiDrawArraysIndirect(mode, offset, drawCount, stride);
+    }
+
+    public static void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        gl().glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
+    }
+
+    /**
+     * As many draws as the {@code uint} at {@code countOffset} in the bound {@code GL_PARAMETER_BUFFER} says, at
+     * most {@code maxDrawCount}: a count a kernel wrote, with no readback.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+     * CgGL.glBindBuffer(CgGL.GL_PARAMETER_BUFFER, args);           // the count beside the arguments
+     * CgGL.glMultiDrawArraysIndirectCount(CgGL.GL_TRIANGLES, 16, 0, maxDraws, 0);
+     * }</pre>
+     */
+    public static void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount,
+                                                      int stride) {
+        gl().glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+    }
+
+    public static void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset,
+                                                        int maxDrawCount, int stride) {
+        gl().glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+    }
+
+    // =========================================================================
+    // Compute
+    // =========================================================================
+
+    /**
+     * Runs the current program's kernel over a grid of work groups.
+     *
+     * <pre>{@code
+     * CgGL.glUseProgram(simulate);
+     * CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 0, particles);
+     * CgGL.glDispatchCompute((count + 63) / 64, 1, 1);
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // before the draw reading them
+     * }</pre>
+     */
+    /**
+     * The vertex or geometry outputs {@code program} captures into the bound {@code GL_TRANSFORM_FEEDBACK_BUFFER}s, as
+     * {@link #GL_INTERLEAVED_ATTRIBS} into point 0 or {@link #GL_SEPARATE_ATTRIBS} one point each. Before linking.
+     * GL 3.0; a device has none, and refuses it.
+     *
+     * <pre>{@code
+     * CgGL.glTransformFeedbackVaryings(program, new String[]{"_cg_c0", "_cg_c1"}, CgGL.GL_INTERLEAVED_ATTRIBS);
+     * CgGL.glLinkProgram(program);
+     * CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, out, 0, bytes);
+     * CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+     * CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);
+     * CgGL.glDrawArrays(CgGL.GL_POINTS, 0, count);
+     * CgGL.glEndTransformFeedback();
+     * CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+     * }</pre>
+     */
+    public static void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        gl().glTransformFeedbackVaryings(program, varyings, bufferMode);
+    }
+
+    /** Starts capturing {@code primitiveMode} ({@code GL_POINTS}, {@code GL_LINES} or {@code GL_TRIANGLES}). */
+    public static void glBeginTransformFeedback(int primitiveMode) {
+        gl().glBeginTransformFeedback(primitiveMode);
+    }
+
+    public static void glEndTransformFeedback() {
+        gl().glEndTransformFeedback();
+    }
+
+    public static void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        gl().glDispatchCompute(groupsX, groupsY, groupsZ);
+    }
+
+    /** Three {@code uint} group counts at {@code offset} in the bound {@code GL_DISPATCH_INDIRECT_BUFFER}. */
+    public static void glDispatchComputeIndirect(long offset) {
+        gl().glDispatchComputeIndirect(offset);
+    }
+
+    /** GL's barrier, naming no resource. Engine code says which and for whom: {@link #cgBufferBarrier}. */
+    public static void glMemoryBarrier(int barriers) {
+        gl().glMemoryBarrier(barriers);
+    }
+
+    /**
+     * One level of {@code texture} as image unit {@code unit}, in {@code format}, the texture's own internal format.
+     * The kernel's image uniform names the unit through {@link #glUniform1i}.
+     */
+    public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access,
+                                          int format) {
+        if (!state().imageBindingChanged(unit, texture, level, layered ? -1 : layer, access, format)) return;
+        gl().glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    /**
+     * {@code buffer}'s uses at {@code from} finished before {@code to}, as {@link CgAccess} bits: the reader's
+     * {@code glMemoryBarrier} bits on GL, this exact barrier on a device.
+     *
+     * <pre>{@code
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
+     * CgGL.cgBufferBarrier(args, CgAccess.COMPUTE_WRITE, CgAccess.INDIRECT);
+     * }</pre>
+     */
+    public static void cgBufferBarrier(int buffer, int from, int to) {
+        gl().cgBufferBarrier(buffer, from, to);
+    }
+
+    /**
+     * {@code value} into every four bytes of {@code buffer} from {@code offset} for {@code size} bytes, both multiples
+     * of 4: an append buffer's count zeroed, a histogram cleared. A device fill on the tracked backend.
+     *
+     * <pre>{@code
+     * CgGL.cgFillBuffer(counts, 0, 4L * bins, 0);
+     * }</pre>
+     */
+    public static void cgFillBuffer(int buffer, long offset, long size, int value) {
+        gl().cgFillBuffer(buffer, offset, size, value);
+    }
+
+    /** {@link #cgBufferBarrier} for a texture: {@code cgImageBarrier(density, COMPUTE_WRITE, SAMPLED_READ)}. */
+    public static void cgImageBarrier(int texture, int from, int to) {
+        gl().cgImageBarrier(texture, from, to);
     }
 
     // =========================================================================
@@ -1258,6 +1484,29 @@ public final class CgGL {
 
     public static float glGetFloat(int pname) {
         return gl().glGetFloat(pname);
+    }
+
+    /** The context's {@code GL_VERSION}, {@code GL_VENDOR}, {@code GL_RENDERER} or {@code GL_SHADING_LANGUAGE_VERSION}. */
+    public static String glGetString(int name) {
+        return gl().glGetString(name);
+    }
+
+    /**
+     * One indexed string: every extension a core context lists, one at a time.
+     *
+     * <pre>{@code
+     * for (int i = 0, n = CgGL.glGetInteger(CgGL.GL_NUM_EXTENSIONS); i < n; i++) {
+     *     String name = CgGL.glGetStringi(CgGL.GL_EXTENSIONS, i);
+     * }
+     * }</pre>
+     */
+    public static String glGetStringi(int name, int index) {
+        return gl().glGetStringi(name, index);
+    }
+
+    /** One element of an indexed value: {@code glGetIntegeri(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1)} is the y count. */
+    public static int glGetIntegeri(int target, int index) {
+        return gl().glGetIntegeri(target, index);
     }
 
     // =========================================================================

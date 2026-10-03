@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.material.parse;
 
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.api.shader.CgShaderStages;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.After;
@@ -14,10 +15,8 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Deque;
 import java.util.List;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -123,7 +122,8 @@ public class ShippedShaderStagePurityTest {
                 String offender = firstFragmentOnlyBuiltinInVertexStage(cs.vertexSource(), resourcePath);
                 assertNull(resourcePath + " pass '" + pass.name() + "' (" + path + "): the generated"
                         + " VERTEX stage uses the fragment-only builtin '" + offender + "'."
-                        + " Guard it with #ifndef CG_VERTEX_STAGE in the lib that defines it.",
+                        + " Guard it with #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE) in the lib"
+                        + " that defines it.",
                         offender);
             }
         }
@@ -149,6 +149,16 @@ public class ShippedShaderStagePurityTest {
         assertNull(firstFragmentOnlyBuiltinInVertexStage(
                 "#version 330 core\n#define CG_VERTEX_STAGE 1\n"
                         + "#ifndef CG_VERTEX_STAGE\nfloat ok(float d) { return fwidth(d); }\n#endif\n",
+                "test"));
+    }
+
+    /** The three-stage guard, as the shipped libs write it. */
+    @Test
+    public void detector_ignores_builtinGuardedOutOfVertexAndComputeStages() {
+        assertNull(firstFragmentOnlyBuiltinInVertexStage(
+                String.join("\n", "#version 330 core", "#define CG_VERTEX_STAGE 1",
+                        "#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)",
+                        "float ok(float d) { return fwidth(d); }", "#endif", ""),
                 "test"));
     }
 
@@ -190,7 +200,7 @@ public class ShippedShaderStagePurityTest {
     }
 
     /** Removes {@code //} and block comments so prose ("...or discard...") cannot false-positive. */
-    static String stripComments(String src) {
+    public static String stripComments(String src) {
         StringBuilder out = new StringBuilder(src.length());
         for (int i = 0; i < src.length(); i++) {
             char c = src.charAt(i);
@@ -211,67 +221,9 @@ public class ShippedShaderStagePurityTest {
         return out.toString();
     }
 
-    /**
-     * Drops text the driver's preprocessor would discard for the given stage.
-     *
-     * <p>{@link CgShaderPreprocessor} expands includes but leaves conditionals alone, so this has to
-     * do the stage half of that job or a correctly-guarded {@code fwidth} still reads as a failure.
-     * Only {@code CG_VERTEX_STAGE} / {@code CG_FRAGMENT_STAGE} are resolved; <b>every other
-     * conditional keeps both branches</b>, deliberately — an inactive {@code #pragma cg_feature}
-     * must not be able to hide a banned builtin from this scan.</p>
-     */
+    /** Drops what the driver discards for the vertex stage, or the fragment stage. */
     static String stripInactiveStageBlocks(String src, boolean vertexStage) {
-        StringBuilder out = new StringBuilder(src.length());
-        // frame[0] = is this a resolved stage conditional, frame[1] = is this branch emitting
-        Deque<boolean[]> stack = new ArrayDeque<>();
-
-        for (String line : src.split("\n", -1)) {
-            String t = line.trim();
-            if (t.startsWith("#ifdef ") || t.startsWith("#ifndef ")) {
-                boolean negated = t.startsWith("#ifndef ");
-                String name = t.substring(negated ? 8 : 7).trim();
-                Boolean defined = stageMacroValue(name, vertexStage);
-                if (defined == null) {
-                    stack.push(new boolean[]{false, true});
-                } else {
-                    stack.push(new boolean[]{true, negated != defined});
-                }
-                continue;
-            }
-            if (t.startsWith("#if")) {                 // #if / #if defined(...) — unresolved
-                stack.push(new boolean[]{false, true});
-                continue;
-            }
-            if (t.startsWith("#elif")) {               // give up on this frame; keep everything
-                if (!stack.isEmpty()) stack.peek()[0] = false;
-                if (!stack.isEmpty()) stack.peek()[1] = true;
-                continue;
-            }
-            if (t.equals("#else")) {
-                if (!stack.isEmpty()) {
-                    boolean[] f = stack.peek();
-                    f[1] = f[0] ? !f[1] : true;
-                }
-                continue;
-            }
-            if (t.startsWith("#endif")) {
-                if (!stack.isEmpty()) stack.pop();
-                continue;
-            }
-            boolean emitting = true;
-            for (boolean[] f : stack) {
-                if (!f[1]) { emitting = false; break; }
-            }
-            if (emitting) out.append(line).append('\n');
-        }
-        return out.toString();
-    }
-
-    /** {@code TRUE}/{@code FALSE} for the two stage macros, {@code null} for anything else. */
-    private static Boolean stageMacroValue(String name, boolean vertexStage) {
-        if ("CG_VERTEX_STAGE".equals(name)) return vertexStage;
-        if ("CG_FRAGMENT_STAGE".equals(name)) return !vertexStage;
-        return null;
+        return CgShaderStages.reachable(src, vertexStage ? CgShaderStages.Stage.VERTEX : CgShaderStages.Stage.FRAGMENT);
     }
 
     /** Every {@code .shader} under {@code assets/<namespace>/shaders/} and its subdirectories, as CgIO resource paths. */

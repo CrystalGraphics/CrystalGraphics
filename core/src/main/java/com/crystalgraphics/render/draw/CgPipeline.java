@@ -202,6 +202,14 @@ public final class CgPipeline {
     }
 
     /**
+     * The one record every instance of the next draw reads, at {@code record} in its kind's upload: an indirect
+     * {@code INSTANCES} draw's, whose instance count only the GPU knows. After {@link #bind()}.
+     */
+    public void sharedInstance(int record) {
+        instanceBase(-1 - record);
+    }
+
+    /**
      * Where the drawn mesh's vertices start in the buffer it is drawn from: what {@code CG_VERTEX_ID} takes from
      * {@code gl_VertexID}, so a shader sees the vertex's index in its own mesh. After {@link #bind()}.
      */

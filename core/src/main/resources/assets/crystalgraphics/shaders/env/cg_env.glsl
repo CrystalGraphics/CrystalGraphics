@@ -58,16 +58,20 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 
 // -- Instance ID bridge -----------------------------------------------------
 // The vertex stage adds cg_InstanceBase: where a batch's instances start in its kind's upload for the pass, 0 for
-// a draw that uploaded its own. The fragment stage reads the sum as a flat varying the compiler wires.
+// a draw that uploaded its own. Below 0 it names the one record every instance reads, -1 - cg_InstanceBase: an
+// indirect INSTANCES draw's. The fragment stage reads the result as a flat varying the compiler wires. A kernel has
+// neither: its invocations are env/compute/kernel.glsl's.
 #ifdef CG_VERTEX_STAGE
 uniform int cg_InstanceBase;
-#define CG_INSTANCE_ID (gl_InstanceID + cg_InstanceBase)
+#define CG_INSTANCE_ID (cg_InstanceBase < 0 ? -1 - cg_InstanceBase : gl_InstanceID + cg_InstanceBase)
+// The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws.
+#define CG_DRAW_INSTANCE gl_InstanceID
 // The vertex's index in its own mesh: cg_VertexBase is where the mesh starts in the buffer it is drawn from.
 uniform int cg_VertexBase;
 #define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
 // The corner of a CgMesh.quads(n) vertex: (0,0), (1,0), (1,1), (0,1) around each quad.
 #define CG_VERTEX_CORNER vec2(float(((CG_VERTEX_ID + 1) >> 1) & 1), float((CG_VERTEX_ID >> 1) & 1))
-#else
+#elif !defined(CG_COMPUTE_STAGE)
 flat in int cg_InstanceId;
 #define CG_INSTANCE_ID cg_InstanceId
 #endif

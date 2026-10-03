@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
@@ -474,6 +475,9 @@ public final class CgGraphicsLifecycle {
         // Step 7a: Material instances (property UBOs) + their backing shader assets (GL programs).
         CgMaterialRegistry.get().deleteAll();
         CgMaterialShaderRegistry.get().deleteAll();
+
+        // Step 7a2: Kernel programs and their blocks; the parsed files stay for the next context.
+        CgCompute.releaseAll();
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.

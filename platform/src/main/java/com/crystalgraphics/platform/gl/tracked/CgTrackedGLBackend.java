@@ -2,6 +2,8 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureRegion;
@@ -19,6 +21,7 @@ import com.crystalgraphics.platform.gl.tracked.gl.TrackedPrograms;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedVertexArrays;
+import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
@@ -54,10 +57,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     private static final int GL_MAX_RENDERBUFFER_SIZE = 0x84E8, GL_MAX_COLOR_ATTACHMENTS = 0x8CDF;
     private static final int GL_MAX_UNIFORM_BLOCK_SIZE = 0x8A30, GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8A34;
+    private static final int GL_COMPUTE_SHADER_BIT = 0x20;
     private static final int GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF, GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT = 0x919F;
     private static final int GL_MAX_TEXTURE_BUFFER_SIZE = 0x8C2B, GL_MAX_VIEWPORT_DIMS = 0x0D3A;
-    private static final int GL_CONTEXT_PROFILE_MASK = 0x9126, GL_MAJOR_VERSION = 0x821B, GL_MINOR_VERSION = 0x821C;
-    private static final int GL_NUM_EXTENSIONS = 0x821D, GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
+    private static final int GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
 
     private final CgDevice device;
     private final CgTracker tracker;
@@ -200,10 +203,15 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             case GL_MAX_TEXTURE_BUFFER_SIZE:           return one(l.maxTexelBufferElements());
             case GL_MAX_VIEWPORT_DIMS:                 q[0] = q[1] = l.maxViewportSize(); return 2;
             case GL_MAX_TEXTURE_MAX_ANISOTROPY:        return one(l.maxAnisotropy());
-            case GL_CONTEXT_PROFILE_MASK:              return one(1);
-            case GL_MAJOR_VERSION:                     return one(4);
-            case GL_MINOR_VERSION:                     return one(4);
-            case GL_NUM_EXTENSIONS:                    return one(0);
+            case CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE:     return one(l.compute().sharedMemory());
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS: return one(l.compute().invocations());
+            case CgGL.GL_SUBGROUP_SIZE_KHR:                  return one(l.compute().subgroupSize());
+            case CgGL.GL_SUBGROUP_SUPPORTED_STAGES_KHR:      return one(l.compute().subgroupOperations() != 0 ? GL_COMPUTE_SHADER_BIT : 0);
+            case CgGL.GL_SUBGROUP_SUPPORTED_FEATURES_KHR:    return one(l.compute().subgroupOperations());
+            case CgGL.GL_CONTEXT_PROFILE_MASK:         return one(1);
+            case CgGL.GL_MAJOR_VERSION:                return one(4);
+            case CgGL.GL_MINOR_VERSION:                return one(4);
+            case CgGL.GL_NUM_EXTENSIONS:               return one(0);
             default: return -1;
         }
     }
@@ -230,6 +238,55 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     @Override public float glGetFloat(int pname) { query(pname); return (float) q[0]; }
+
+    /** The device every call lands on. */
+    public CgDevice device() {
+        return device;
+    }
+
+    /** The device's own name, vendor and driver, as GL 4.4 core. */
+    @Override
+    public String glGetString(int name) {
+        CgDeviceInfo info = device.info();
+        switch (name) {
+            case CgGL.GL_VENDOR:                   return info.vendor();
+            case CgGL.GL_RENDERER:                 return info.name();
+            case CgGL.GL_VERSION:                  return "4.4 CrystalGraphics tracked, driver " + info.driver();
+            case CgGL.GL_SHADING_LANGUAGE_VERSION: return "4.40";
+            default: throw new IllegalArgumentException("glGetString(0x" + Integer.toHexString(name) + ") is not modelled");
+        }
+    }
+
+    /** Lists no extensions ({@code GL_NUM_EXTENSIONS} is 0): the device says what it has, through {@code CgDevice.describe}. */
+    @Override
+    public String glGetStringi(int name, int index) {
+        throw new IllegalArgumentException("the tracked backend lists no extensions");
+    }
+
+    @Override
+    public int glGetIntegeri(int target, int index) {
+        switch (target) {
+            case CgGL.GL_SHADER_STORAGE_BUFFER_BINDING: return buffers.storageName[index];
+            case CgGL.GL_SHADER_STORAGE_BUFFER_START:   return (int) buffers.storageOffset[index];
+            case CgGL.GL_SHADER_STORAGE_BUFFER_SIZE:    return (int) Math.max(0, buffers.storageSize[index]);
+            case CgGL.GL_IMAGE_BINDING_NAME:    return textures.imageUnit(index)[0];
+            case CgGL.GL_IMAGE_BINDING_LEVEL:   return textures.imageUnit(index)[1];
+            case CgGL.GL_IMAGE_BINDING_LAYERED: return textures.imageUnit(index)[2] < 0 ? 1 : 0;
+            case CgGL.GL_IMAGE_BINDING_LAYER:   return Math.max(0, textures.imageUnit(index)[2]);
+            case CgGL.GL_IMAGE_BINDING_FORMAT:  return textures.imageUnit(index)[3];
+            case CgGL.GL_IMAGE_BINDING_ACCESS:  return textures.imageUnit(index)[4];
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE: {
+                CgDeviceInfo.Compute c = device.info().limits().compute();
+                return index == 0 ? c.sizeX() : index == 1 ? c.sizeY() : c.sizeZ();
+            }
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT: {
+                CgDeviceInfo.Compute c = device.info().limits().compute();
+                return index == 0 ? c.countX() : index == 1 ? c.countY() : c.countZ();
+            }
+            default:
+                throw new IllegalArgumentException("glGetIntegeri(0x" + Integer.toHexString(target) + ") is not modelled");
+        }
+    }
 
     @Override
     public void glGetFloat(int pname, FloatBuffer params) {
@@ -693,28 +750,171 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     /** @param type the index type, or -1 for a draw of arrays */
     private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
         CgDrawState s = tracker.state;
-        if (!framebuffers.applyDraw()) {
-            errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
-            return;
-        }
-        state.sync();
-        vaos.apply(s);
-        programs.apply(s, buffers, textures);
-        programs.feedDisabledInputs(s);
+        if (!prepareDraw(s)) return;
         CgPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
             tracker.draw(topology, count, instances, first, 0);
             return;
         }
+        if (!indices(s, type)) return;
+        tracker.drawIndexed(topology, count, instances, (int) (indices / (type == CgGL.GL_UNSIGNED_INT ? 4 : 2)),
+                baseVertex, 0);
+    }
+
+    @Override public void glDrawArraysIndirect(int mode, long offset) { drawIndirect(mode, -1, offset, 1, 0, -1); }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) { drawIndirect(mode, type, offset, 1, 0, -1); }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        drawIndirect(mode, -1, offset, drawCount, stride, -1);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        drawIndirect(mode, type, offset, drawCount, stride, -1);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        drawIndirect(mode, -1, offset, maxDrawCount, stride, countOffset);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        drawIndirect(mode, type, offset, maxDrawCount, stride, countOffset);
+    }
+
+    /**
+     * @param type        the index type, or -1 for a draw of arrays
+     * @param stride      GL's: 0 for packed records
+     * @param countOffset the draw count's place in the parameter buffer, or -1 for {@code draws} draws
+     */
+    private void drawIndirect(int mode, int type, long offset, int draws, int stride, long countOffset) {
+        CgAllocation args = argumentsIn(buffers.drawIndirect, "An indirect draw"), count = null;
+        if (args == null) return;
+        if (countOffset >= 0 && (count = argumentsIn(buffers.parameter, "An indirect draw's count")) == null) return;
+        CgDrawState s = tracker.state;
+        if (!prepareDraw(s)) return;
+        boolean indexed = type >= 0;
+        if (indexed && !indices(s, type)) return;
+        tracker.drawIndirect(GlEnums.topology(mode), indexed, args, offset, draws,
+                stride != 0 ? stride : indexed ? 20 : 16, count, countOffset);
+    }
+
+    /** Everything a draw reads into {@code s}; false, with GL's error, when the framebuffer has nothing attached. */
+    private boolean prepareDraw(CgDrawState s) {
+        if (!framebuffers.applyDraw()) {
+            errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
+            return false;
+        }
+        state.sync();
+        vaos.apply(s);
+        programs.apply(s, buffers, textures);
+        programs.feedDisabledInputs(s);
+        return true;
+    }
+
+    /** The vertex array's element buffer as the draw's indices; false, with GL's error, when it has none. */
+    private boolean indices(CgDrawState s, int type) {
         TrackedBuffers.GlBuffer elements = buffers.get(vaos.current().elementBuffer);
         if (elements == null) {
             errors.invalidOperation("glDrawElements with no element buffer bound to the vertex array");
-            return;
+            return false;
         }
         if (type == CgGL.GL_UNSIGNED_BYTE) throw new UnsupportedOperationException("8-bit indices: a device takes 16 or 32");
-        boolean wide = type == CgGL.GL_UNSIGNED_INT;
-        s.indexBuffer(elements.storage.allocation(), 0, wide);
-        tracker.drawIndexed(topology, count, instances, (int) (indices / (wide ? 4 : 2)), baseVertex, 0);
+        s.indexBuffer(elements.storage.allocation(), 0, type == CgGL.GL_UNSIGNED_INT);
+        return true;
+    }
+
+    /** The storage of buffer {@code name}, bound for {@code what}'s arguments; null, with GL's error, without one. */
+    private CgAllocation argumentsIn(int name, String what) {
+        TrackedBuffers.GlBuffer b = buffers.get(name);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidOperation(what + " with no buffer bound for its arguments");
+            return null;
+        }
+        return b.storage.allocation();
+    }
+
+    // ── compute ────────────────────────────────────────────────────────────────
+
+    /** Kernels lower to transform feedback only below compute; a device runs them as compute (tier V). */
+    @Override
+    public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
+    @Override
+    public void glBeginTransformFeedback(int primitiveMode) {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
+    @Override
+    public void glEndTransformFeedback() {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
+    @Override
+    public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        CgComputePipeline p = programs.applyCompute(tracker.state, buffers, textures, textures);
+        tracker.dispatch(p, groupsX, groupsY, groupsZ);
+    }
+
+    @Override
+    public void glDispatchComputeIndirect(long offset) {
+        CgAllocation args = argumentsIn(buffers.dispatchIndirect, "glDispatchComputeIndirect");
+        if (args == null) return;
+        tracker.dispatchIndirect(programs.applyCompute(tracker.state, buffers, textures, textures), args, offset);
+    }
+
+    /** GL's barrier is for a kernel's writes; every other hazard the tracker orders itself. */
+    @Override
+    public void glMemoryBarrier(int barriers) {
+        tracker.memoryBarrier(CgAccess.COMPUTE_WRITE, GlEnums.accesses(barriers));
+    }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        textures.bindImage(unit, texture, level, layered, layer, access, format);
+    }
+
+    /** This exact barrier, on the device memory under {@code buffer}. */
+    @Override
+    public void cgBufferBarrier(int buffer, int from, int to) {
+        TrackedBuffers.GlBuffer b = buffers.get(buffer);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidValue("cgBufferBarrier on buffer " + buffer + ", which has no storage");
+            return;
+        }
+        tracker.bufferBarrier(b.storage.allocation(), from, to);
+    }
+
+    /** A device fill where the buffer's storage is device-local. */
+    @Override
+    public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        TrackedBuffers.GlBuffer b = buffers.get(buffer);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidValue("cgFillBuffer on buffer " + buffer + ", which has no storage");
+            return;
+        }
+        if (offset < 0 || size < 0 || (offset | size) % 4 != 0 || offset + size > b.storage.size()) {
+            errors.invalidValue("cgFillBuffer of " + size + " bytes at " + offset + ": out of range or not whole words");
+            return;
+        }
+        b.storage.fill(offset, size, value);
+    }
+
+    @Override
+    public void cgImageBarrier(int texture, int from, int to) {
+        TrackedTextures.GlTexture t = textures.get(texture);
+        if (t == null || t.image == null) {
+            errors.invalidValue("cgImageBarrier on texture " + texture + ", which has no image");
+            return;
+        }
+        tracker.imageBarrier(t.image, from, to);
     }
 
     // ── sync, timers, host sections ────────────────────────────────────────────

@@ -90,6 +90,13 @@ public final class CgDrawState {
         return this;
     }
 
+    /** One level of a texture a kernel reads and writes. */
+    public CgDrawState image(int slot, CgTextureView level) {
+        keep(null);
+        bindings.image(slot, level);
+        return this;
+    }
+
     private CgDrawState buffer(int slot, CgBindingLayout.Type type, CgAllocation a, long offset, long size) {
         keep(a);
         bindings.buffer(slot, type, a.buffer, a.offset + offset, size);

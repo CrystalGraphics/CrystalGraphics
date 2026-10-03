@@ -20,8 +20,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
  * Turns a {@link CgFrameGraph} into a {@link CgFrame}: orders the passes by what they read and write, culls those
- * nobody reads, plans when each transient texture lives, batches every raster pass, and packs every instance of a
- * kind into one array and every binding snapshot into one table. No GL, so it runs wherever the frame is built — a
+ * nobody reads, plans when each transient texture and buffer lives, lists what each pass accesses for the barriers
+ * the executor derives, batches every raster pass, and packs every instance of a kind into one array and every
+ * binding snapshot into one table. No GL, so it runs wherever the frame is built — a
  * builder thread, or inline on the render thread.
  *
  * <pre>{@code
@@ -52,9 +53,13 @@ public final class CgFrameBuilder {
     // Scratch, kept between builds.
     private CgPass[] passes = new CgPass[16];
     private int[] base = new int[4];
-    private final IdentityHashMap<CgGraphTexture, Integer> slots = new IdentityHashMap<>();
-    private final List<CgGraphTexture> textures = new ArrayList<>();
+    private final IdentityHashMap<CgGraphResource, Integer> slots = new IdentityHashMap<>();
+    private final List<CgGraphResource> resources = new ArrayList<>();
     private IntList[] out = new IntList[0], in = new IntList[0], uses = new IntList[0];
+    /** Per pass, its events: the recording's index and the event's, in parallel. */
+    private IntList[] eventRecording = new IntList[0], eventIndex = new IntList[0];
+    /** Per pass, whether it writes a resource that outlives the frame: what no cull may remove. */
+    private boolean[] writesOutliving = new boolean[16];
     private final List<IntList> readers = new ArrayList<>();
     private final IntList lastWriter = new IntList();
     private boolean[] needed = new boolean[16];
@@ -86,8 +91,15 @@ public final class CgFrameBuilder {
             CgFrame frame = recycled.poll();
             if (frame == null) frame = new CgFrame();
             frame.steps(steps);
-            for (int s = 0; s < steps; s++) frame.steps[s] = passes[order[s]];
+            for (int s = 0; s < steps; s++) {
+                CgPass pass = passes[order[s]];
+                frame.steps[s] = pass;
+                frame.outlives[s] = writesOutliving[order[s]];
+                frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.Fill
+                        || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
+            }
             lifetimes(frame, steps);
+            accesses(frame, recordings, steps);
 
             interned.clear();
             internMapsUsed = 0;
@@ -97,11 +109,13 @@ public final class CgFrameBuilder {
                     pack(raster, frame, packed);
                     frame.batches += packed.count;
                     frame.draws += packed.draws;
+                } else if (frame.steps[s] instanceof CgComputePass compute) {
+                    pack(compute, frame, frame.compute(s));
                 }
             }
             Arrays.fill(passes, 0, total, null);
             slots.clear();
-            textures.clear();
+            resources.clear();
 
             CgTrace.add(CgChannels.GL, PASSES, steps);
             CgTrace.add(CgChannels.GL, BATCHES, frame.batches);
@@ -134,11 +148,17 @@ public final class CgFrameBuilder {
             out = grow(out, total);
             in = grow(in, total);
             uses = grow(uses, total);
+            eventRecording = grow(eventRecording, total);
+            eventIndex = grow(eventIndex, total);
         }
+        if (writesOutliving.length < total) writesOutliving = new boolean[Math.max(total, writesOutliving.length * 2)];
         for (int p = 0; p < total; p++) {
             out[p].clear();
             in[p].clear();
             uses[p].clear();
+            eventRecording[p].clear();
+            eventIndex[p].clear();
+            writesOutliving[p] = false;
         }
         return total;
     }
@@ -150,12 +170,14 @@ public final class CgFrameBuilder {
             CgRecording rec = recordings.get(r);
             for (int e = 0; e < rec.eventCount(); e++) {
                 int p = base[r] + rec.eventPass(e);
-                CgGraphTexture texture = rec.eventTexture(e);
-                Integer slot = slots.get(texture);
+                CgGraphResource resource = rec.eventResource(e);
+                eventRecording[p].add(r);
+                eventIndex[p].add(e);
+                Integer slot = slots.get(resource);
                 if (slot == null) {
-                    slot = textures.size();
-                    slots.put(texture, slot);
-                    textures.add(texture);
+                    slot = resources.size();
+                    slots.put(resource, slot);
+                    resources.add(resource);
                     if (readers.size() <= slot) readers.add(new IntList());
                     readers.get(slot).clear();
                     lastWriter.add(-1);
@@ -167,6 +189,7 @@ public final class CgFrameBuilder {
                 if (rec.eventType(e) == CgRecording.READ) {
                     readers.get(t).add(p);
                 } else {
+                    if (resource.outlivesFrame()) writesOutliving[p] = true;
                     IntList since = readers.get(t);
                     for (int i = 0; i < since.size; i++) if (since.get(i) != p) edge(since.get(i), p);
                     since.clear();
@@ -182,7 +205,7 @@ public final class CgFrameBuilder {
         Arrays.fill(needed, 0, total, false);
         stack.clear();
         for (int p = 0; p < total; p++) {
-            if (passes[p].sideEffect()) {
+            if (passes[p].sideEffect() || writesOutliving[p]) {
                 needed[p] = true;
                 stack.add(p);
             }
@@ -234,7 +257,7 @@ public final class CgFrameBuilder {
 
     /** When each transient lives, in the executed order. */
     private void lifetimes(CgFrame frame, int steps) {
-        int n = textures.size();
+        int n = resources.size();
         if (firstUse.length < n) {
             firstUse = new int[Math.max(n, firstUse.length * 2)];
             lastUse = new int[firstUse.length];
@@ -244,7 +267,7 @@ public final class CgFrameBuilder {
             IntList used = uses[order[s]];
             for (int i = 0; i < used.size; i++) {
                 int t = used.get(i);
-                if (textures.get(t).kind() != CgGraphTexture.Kind.TRANSIENT) continue;
+                if (!resources.get(t).isTransient()) continue;
                 if (firstUse[t] < 0) firstUse[t] = s;
                 lastUse[t] = s;
             }
@@ -254,10 +277,40 @@ public final class CgFrameBuilder {
         frame.lifetimes(count);
         for (int t = 0, i = 0; t < n; t++) {
             if (firstUse[t] < 0) continue;
-            frame.transients.add(textures.get(t));
+            frame.transients.add(resources.get(t));
             frame.acquireAt[i] = firstUse[t];
             frame.releaseAfter[i] = lastUse[t];
             i++;
+        }
+    }
+
+    /**
+     * What each step accesses, every resource once with its access bits joined: what the executor derives barriers
+     * from. A view — a history's previous version — is kept as named, since it is other storage.
+     */
+    private void accesses(CgFrame frame, List<CgRecording> recordings, int steps) {
+        frame.accessFrom(steps);
+        for (int s = 0; s < steps; s++) {
+            int p = order[s];
+            frame.accessFrom[s] = frame.accessCount;
+            for (int i = 0; i < eventIndex[p].size; i++) {
+                CgRecording rec = recordings.get(eventRecording[p].get(i));
+                int e = eventIndex[p].get(i);
+                frame.access(frame.accessFrom[s], rec.eventView(e), rec.eventAccess(e));
+            }
+        }
+        frame.accessFrom[steps] = frame.accessCount;
+    }
+
+    private void pack(CgComputePass pass, CgFrame frame, CgFrame.Compute packed) {
+        CgBindingTable table = pass.recording.bindings();
+        int[] map = internMap(table);
+        List<CgDispatch> dispatches = pass.dispatches();
+        packed.size(dispatches.size());
+        for (int d = 0; d < dispatches.size(); d++) {
+            int local = dispatches.get(d).bindings;
+            if (map[local] < 0) map[local] = frame.bindings.copy(table, local);
+            packed.bindings[d] = map[local];
         }
     }
 
@@ -284,7 +337,7 @@ public final class CgFrameBuilder {
                 refDraw[refs] = d;
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
                 batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
-                        chunk.rangeFirst(d), chunk.rangeCount(d), domain, scissor,
+                        chunk.rangeFirst(d), chunk.rangeCount(d), chunk.indirectCount(d) != null, domain, scissor,
                         domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
                 refs++;
             }
@@ -316,9 +369,16 @@ public final class CgFrameBuilder {
                 System.arraycopy(chunk.data(k), chunk.first(d) * floats, frame.instances[ki], frame.instanceFloats[ki], length);
                 frame.instanceFloats[ki] += length;
                 packed.instances[b] += chunk.instances(d);
+                if (chunk.indirectCount(d) != null) {
+                    packed.counts[b] = chunk.indirectCount(d);
+                    packed.countOffsets[b] = chunk.indirectOffset(d);
+                    packed.countModes[b] = chunk.indirectMode(d).ordinal() | chunk.indirectFactor(d) << 2;
+                    packed.indirects++;
+                }
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));

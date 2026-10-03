@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -24,8 +25,9 @@ import java.util.List;
  * }</pre>
  *
  * <ul>
- *   <li>A chunk whose bindings read a {@link CgGraphTexture} makes this pass read it as of {@link #add}: the
- *       graph runs the pass that wrote it first, whenever either was made.</li>
+ *   <li>A chunk whose bindings read a {@link CgGraphTexture}, or bind a {@link CgGraphBuffer} as storage, or whose
+ *       indirect draw takes its count from one, makes this pass read it as of {@link #add}: the graph runs the pass
+ *       that wrote it first, whenever either was made.</li>
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
@@ -92,10 +94,16 @@ public final class CgRasterPass extends CgPass {
         chunks.add(chunk);
         CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
+            if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgTexture texture = table.texture(id, t);
-                if (texture instanceof CgGraphTexture graph) recording.read(this, graph);
+                if (texture instanceof CgGraphTexture graph) recording.read(this, graph, CgAccess.SAMPLED_READ);
+            }
+            for (int s = 0; s < table.storages(id); s++) {
+                if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
+                    recording.read(this, buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+                }
             }
         }
         return this;
@@ -215,7 +223,7 @@ public final class CgRasterPass extends CgPass {
         textures = Arrays.copyOf(textures, n + 1);
         textureUnits[n] = unit;
         textures[n] = texture;
-        if (texture instanceof CgGraphTexture graph) recording.read(this, graph);
+        if (texture instanceof CgGraphTexture graph) recording.read(this, graph, CgAccess.SAMPLED_READ);
         return this;
     }
 
@@ -242,7 +250,7 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has already ended");
         recording.requireOpen();
         ended = true;
-        recording.write(this, target);
+        recording.write(this, target, CgAccess.COLOR_WRITE);
     }
 
     public List<CgDrawChunk> chunks() {

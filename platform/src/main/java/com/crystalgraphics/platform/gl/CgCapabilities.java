@@ -3,7 +3,10 @@ package com.crystalgraphics.platform.gl;
 import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 
+import java.util.Arrays;
 import java.util.Locale;
 
 /**
@@ -73,6 +76,35 @@ public final class CgCapabilities {
      * misbehaves on the tier chosen, and for comparing them. Forcing a tier this context cannot do throws
      * from {@link #detect()}.</p>
      */
+    /**
+     * Where kernels run, best first. A kernel runs at the highest tier at or below {@link #computeTier()} it can,
+     * and every tier is forceable for a driver that misbehaves: {@code -Dcrystalgraphics.compute.tier=g40}.
+     */
+    public enum ComputeTier {
+        /** A device: compute passes on the tracked backend's device. */
+        V,
+        /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
+        G43,
+        /** No compute: kernels lowered to vertex programs under transform feedback, counts drawn from the stream. */
+        G40,
+        /** As {@code G40} with no stream count: a draw takes its whole capacity. */
+        G33,
+        /** Kernels' Java bodies on worker threads. */
+        CPU;
+
+        /** What this tier needs that the context lacks, or null. */
+        String missing(CgCapabilities caps, boolean device) {
+            switch (this) {
+                case V:   return device ? null : "a device (the tracked backend)";
+                case G43: return caps.compute && caps.storageImages ? null : "compute shaders and storage images (GL 4.3)";
+                case G40: return device ? "transform feedback, which a device does not carry"
+                        : caps.feedbackCount ? null : "transform feedback 2 (GL 4.0)";
+                case G33: return device ? "transform feedback, which a device does not carry" : null;
+                default:  return null;
+            }
+        }
+    }
+
     public enum StreamBufferTier {
         /** A frame ring in immutable storage mapped once for its life: no map call per upload. GL 4.4 / {@code ARB_buffer_storage}. */
         PERSISTENT,
@@ -184,6 +216,20 @@ public final class CgCapabilities {
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
 
+    // ── Compute and GPU-driven draws ──────────────────────────────────────────
+    // Each answers what a consumer needs, joined from a core version, its ARB extension and, on the tracked
+    // backend, the device. @see #computeTier
+    @Getter(AccessLevel.NONE)
+    boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
+            drawParameters, feedbackCount, asyncCompute, bindless;
+    @Getter(AccessLevel.NONE) ComputeTier computeTier;
+    /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
+    @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
+    /** What a storage buffer bound from an offset aligns the offset to; 0 without storage buffers. */
+    @Getter(AccessLevel.NONE) int storageOffsetAlignment;
+    @Getter(AccessLevel.NONE) final int[] maxComputeWorkGroupSize = new int[3], maxComputeWorkGroupCount = new int[3];
+    @Getter(AccessLevel.NONE) int subgroupSize, subgroupOperations;
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
     // ─────────────────────────────────────────────────────────────────────────
@@ -219,6 +265,7 @@ public final class CgCapabilities {
             cachedCaps = local;
             // Published so the fixed-function guards in CgGL cost a field load. @see CgGL#CORE
             CgGL.CORE = local.coreProfile;
+            CgGpuReport.log();
         }
         return local;
     }
@@ -230,6 +277,9 @@ public final class CgCapabilities {
      * the OpenGL context.  Use this when the GL context is destroyed and recreated.</p>
      */
     public static void clearCache() { cachedCaps = null; }
+
+    /** The current context's capabilities where something has detected them, else null. Any thread; probes nothing. */
+    public static CgCapabilities detected() { return cachedCaps; }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Detection
@@ -294,12 +344,74 @@ public final class CgCapabilities {
         // GL_CONTEXT_PROFILE_MASK (0x9126); bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
         caps.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;
 
-        if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
-        else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
-        else if (caps.textureBufferMaterialPath) caps.shaderBufferPath = ShaderBufferPath.TBO;
-        else                                     caps.shaderBufferPath = ShaderBufferPath.NONE;
+        // ── Compute and GPU-driven draws ──────────────────────────────────────
+        CgDeviceInfo device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().info() : null;
+        boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
+        caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
+        caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
+        caps.floatAtomics      = device == null && gl.GL_NV_shader_atomic_float();
+        caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
+        caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
+        caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
+        caps.drawParameters    = device == null && (gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters());
+        caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
+        caps.asyncCompute      = false;
+        caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
+        caps.computeTier       = computeTier(caps, device != null);
+        caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
+        if (caps.compute) {
+            caps.maxComputeSharedMemory = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
+            caps.maxComputeInvocations = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
+            for (int axis = 0; axis < 3; axis++) {
+                caps.maxComputeWorkGroupSize[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE, axis);
+                caps.maxComputeWorkGroupCount[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT, axis);
+            }
+            if ((device != null || gl.GL_KHR_shader_subgroup())
+                    && (CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_STAGES_KHR) & GL_COMPUTE_SHADER_BIT) != 0) {
+                caps.subgroupSize = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SIZE_KHR);
+                caps.subgroupOperations = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_FEATURES_KHR);
+            }
+        }
+        caps.subgroups = (caps.subgroupOperations & SUBGROUP_BASIC) != 0;
 
+        caps.shaderBufferPath = shaderBufferPath(caps);
         return caps;
+    }
+
+    /** The best path, or {@code -Dcrystalgraphics.shaderBuffer.tier}'s where this context has it. */
+    private static ShaderBufferPath shaderBufferPath(CgCapabilities caps) {
+        ShaderBufferPath best = caps.shaderStorageBufferCore ? ShaderBufferPath.SSBO_GL43
+                : caps.shaderStorageBufferArb ? ShaderBufferPath.SSBO_ARB
+                : caps.textureBufferMaterialPath ? ShaderBufferPath.TBO
+                : ShaderBufferPath.NONE;
+        String property = System.getProperty("crystalgraphics.shaderBuffer.tier");
+        if (property == null) return best;
+        ShaderBufferPath forced = ShaderBufferPath.valueOf(property.trim().toUpperCase(Locale.ROOT));
+        boolean has = switch (forced) {
+            case SSBO_GL43 -> caps.shaderStorageBufferCore;
+            case SSBO_ARB -> caps.shaderStorageBufferArb;
+            case TBO -> true;                                  // core since 3.1, below the floor
+            case NONE -> false;
+        };
+        if (!has) {
+            throw new IllegalStateException("-Dcrystalgraphics.shaderBuffer.tier=" + forced
+                    + " is not a path this context has; the best it supports is " + best);
+        }
+        return forced;
+    }
+
+    private static ComputeTier computeTier(CgCapabilities caps, boolean device) {
+        ComputeTier best = Arrays.stream(ComputeTier.values()).filter(t -> t.missing(caps, device) == null)
+                .findFirst().orElseThrow();
+        String property = System.getProperty("crystalgraphics.compute.tier");
+        if (property == null) return best;
+        ComputeTier forced = ComputeTier.valueOf(property.trim().toUpperCase(Locale.ROOT));
+        String missing = forced.missing(caps, device);
+        if (missing != null) {
+            throw new IllegalStateException("-Dcrystalgraphics.compute.tier=" + forced + " needs " + missing
+                    + "; the best this context supports is " + best);
+        }
+        return forced;
     }
 
     private static StreamBufferTier vertexStreamTier(CgCapabilities caps) {
@@ -347,6 +459,68 @@ public final class CgCapabilities {
 
     /** The tier shader-buffer storage takes: {@code ORPHAN}, or {@code SUBDATA} where vertex streams take it. */
     public StreamBufferTier shaderStreamTier() { return shaderStreamTier; }
+
+    /** Kernels: GL 4.3 or {@code ARB_compute_shader}, with storage buffers; any device. */
+    public boolean compute() { return compute; }
+
+    /** {@code imageLoad} and {@code imageStore}: GL 4.2 or {@code ARB_shader_image_load_store}; any device. */
+    public boolean storageImages() { return storageImages; }
+
+    /** {@link #subgroupOperations()} bits, as {@code VkSubgroupFeatureFlags} and {@code KHR_shader_subgroup} name them. */
+    public static final int SUBGROUP_BASIC = 0x1, SUBGROUP_VOTE = 0x2, SUBGROUP_ARITHMETIC = 0x4, SUBGROUP_BALLOT = 0x8,
+            SUBGROUP_SHUFFLE = 0x10;
+    private static final int GL_COMPUTE_SHADER_BIT = 0x20;
+
+    /** Subgroup operations in kernels: {@code KHR_shader_subgroup} listing the compute stage; any device. */
+    public boolean subgroups() { return subgroups; }
+
+    /** The invocations in a subgroup, or 0 without {@link #subgroups()}. */
+    public int subgroupSize() { return subgroupSize; }
+
+    /** What kernels may do across a subgroup: {@link #SUBGROUP_BASIC} and the rest, or 0. */
+    public int subgroupOperations() { return subgroupOperations; }
+
+    /** Atomic adds on floats: {@code NV_shader_atomic_float}. No device enables its counterpart. */
+    public boolean floatAtomics() { return floatAtomics; }
+
+    /** A draw's arguments from a buffer: GL 4.0 or {@code ARB_draw_indirect}; any device. */
+    public boolean drawIndirect() { return drawIndirect; }
+
+    /** More than one indirect draw in a call: GL 4.3 or {@code ARB_multi_draw_indirect}, or a device that enabled it. */
+    public boolean multiDrawIndirect() { return multiDrawIndirect; }
+
+    /** The draw count from a buffer too: GL 4.6 or {@code ARB_indirect_parameters}, or a device that enabled it. */
+    public boolean indirectCount() { return indirectCount; }
+
+    /** {@code gl_DrawID} in a multi-draw: GL 4.6 or {@code ARB_shader_draw_parameters}. No device enables it. */
+    public boolean drawParameters() { return drawParameters; }
+
+    /** A captured transform-feedback stream drawn by its own count: GL 4.0 or {@code ARB_transform_feedback2}. */
+    public boolean feedbackCount() { return feedbackCount; }
+
+    /** Kernels on a queue beside the frame's. Always false: every device submits on one queue. */
+    public boolean asyncCompute() { return asyncCompute; }
+
+    /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */
+    public boolean bindless() { return bindless; }
+
+    /** Bytes of {@code shared} memory one work group may declare. */
+    public int maxComputeSharedMemory() { return maxComputeSharedMemory; }
+
+    /** The multiple a storage buffer's offset must be when part of it is bound: 0 without storage buffers. */
+    public int storageOffsetAlignment() { return storageOffsetAlignment; }
+
+    /** Invocations one work group may hold: the product of its size. */
+    public int maxComputeInvocations() { return maxComputeInvocations; }
+
+    /** A work group's largest size along {@code axis}, 0 to 2. */
+    public int maxComputeWorkGroupSize(int axis) { return maxComputeWorkGroupSize[axis]; }
+
+    /** The most work groups one dispatch may launch along {@code axis}, 0 to 2. */
+    public int maxComputeWorkGroupCount(int axis) { return maxComputeWorkGroupCount[axis]; }
+
+    /** The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s. */
+    public ComputeTier computeTier() { return computeTier; }
 
 
     // ─────────────────────────────────────────────────────────────────────────

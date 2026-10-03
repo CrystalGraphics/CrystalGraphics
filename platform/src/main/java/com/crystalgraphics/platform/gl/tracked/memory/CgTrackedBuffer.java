@@ -44,10 +44,13 @@ public final class CgTrackedBuffer {
         if (initial != null) subData(0, initial);
     }
 
-    /** {@code glBufferStorage}: immutable, host-visible storage. A persistent one is mapped for good and never renamed. */
-    public void storage(long size, ByteBuffer initial, boolean persistentMapping) {
+    /**
+     * {@code glBufferStorage}: immutable storage, host-visible where the CPU maps it. A persistent one is mapped for
+     * good and never renamed.
+     */
+    public void storage(long size, ByteBuffer initial, boolean hostVisible, boolean persistentMapping) {
         if (persistent) throw new IllegalStateException(label + " has immutable storage");
-        replace(tracker.allocate(size, true, label));
+        replace(tracker.allocate(size, hostVisible, label));
         if (initial != null) subData(0, initial);
         persistent = persistentMapping;
     }
@@ -70,7 +73,8 @@ public final class CgTrackedBuffer {
     /**
      * {@code glCopyBufferSubData}. Into device-local storage it is a device copy, ordered with the draws around it;
      * between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds.
-     * A device-local source into a host-visible destination is refused: that would be a readback.
+     * A device-local source into a host-visible destination is a readback: it waits for the GPU, as GL's map after it
+     * would.
      */
     public void copyFrom(CgTrackedBuffer src, long srcOffset, long dstOffset, long size) {
         CgAllocation from = src.require(), to = require();
@@ -80,12 +84,31 @@ public final class CgTrackedBuffer {
             tracker.markUsed(to);
             return;
         }
-        if (!from.hostVisible())
-            throw new UnsupportedOperationException(label + ": a copy from device-local " + src.label + " is a readback");
+        if (!from.hostVisible()) {
+            if (!persistent && !tracker.writable(to)) to = rename(true);
+            ByteBuffer out = to.memory().duplicate();
+            out.limit((int) (dstOffset + size)).position((int) dstOffset);
+            tracker.transfer().readBuffer(from.buffer, from.offset + srcOffset, out);
+            tracker.markUsed(from);
+            return;
+        }
         ByteBuffer bytes = from.memory();
         bytes.limit((int) (srcOffset + size));
         bytes.position((int) srcOffset);
         subData(dstOffset, bytes.slice());
+    }
+
+    /** {@code cgFillBuffer}: a device fill into device-local storage, the CPU's into host-visible storage. */
+    public void fill(long offset, long size, int value) {
+        CgAllocation a = require();
+        if (!a.hostVisible()) {
+            tracker.transfer().fillBuffer(a.buffer, a.offset + offset, size, value);
+            tracker.markUsed(a);
+            return;
+        }
+        if (!persistent && !tracker.writable(a)) a = rename(true);
+        ByteBuffer to = a.memory().order(ByteOrder.nativeOrder());
+        for (long at = offset; at < offset + size; at += 4) to.putInt((int) at, value);
     }
 
     /**

@@ -537,4 +537,77 @@ public class CgGlStateManagerTest {
                 mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
     }
 
+    // ── Captured at first write ───────────────────────────────────────────────
+
+    @Test
+    public void aCapturedScopeReadsAndRestoresNothingItDidNotWrite() {
+        try (CgGlScope s = CgGlState.save(CgGlSlot.STORAGE_BUFFERS, CgGlSlot.IMAGES, CgGlSlot.INDIRECT_BUFFERS)) {
+            assertEquals("nothing read at open", 0, gl.countOf("glGetIntegeri") + gl.countOf("glGetInteger"));
+        }
+        assertEquals("nothing written, nothing restored", 0, gl.calls().size());
+    }
+
+    @Test
+    public void theFirstWriteOfAPointReadsItOnceAndTheScopeRestoresIt() {
+        try (CgGlScope s = CgGlState.save(CgGlSlot.STORAGE_BUFFERS)) {
+            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, 3, 7, 0, 64);
+            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, 3, 8, 0, 64);
+            assertEquals("one point read once: buffer, offset, size", 3, gl.countOf("glGetIntegeri"));
+        }
+        assertEquals("put back as read: a whole-buffer binding of 0", 1, gl.countOf("glBindBufferBase"));
+        assertFalse(mgr.storageBindingChanged(3, 0, 0, 0));
+    }
+
+    @Test
+    public void aFeedbackScopePutsBackItsCaptureBindingAndRasterizerDiscard() {
+        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 4);
+        CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+        try (CgGlScope s = CgGlState.save(CgGlSlot.TRANSFORM_FEEDBACK)) {
+            CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 7, 16, 64);
+            CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+        }
+        assertFalse(mgr.feedbackBindingChanged(0, 4, 0, 0));
+        assertFalse(mgr.capabilityChanged(CgGL.GL_RASTERIZER_DISCARD, false));
+    }
+
+    @Test
+    public void anEnclosingScopeSavesAPointBeforeANestedScopeWritesIt() {
+        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 1, 5);
+        try (CgGlScope outer = CgGlState.save(CgGlSlot.STORAGE_BUFFERS)) {
+            try (CgGlScope inner = CgGlState.save(CgGlSlot.STORAGE_BUFFERS)) {
+                CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 1, 6);
+            }
+            assertFalse("the inner scope put 5 back", mgr.storageBindingChanged(1, 5, 0, 0));
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 1, 7);
+        }
+        assertFalse("and so did the outer", mgr.storageBindingChanged(1, 5, 0, 0));
+        assertEquals("known throughout, so never read", 0, gl.countOf("glGetIntegeri"));
+    }
+
+    @Test
+    public void aPointIsForgottenAtAHostSectionOnlyWhereTheHostBindsIt() {
+        CgGL.glBindImageTexture(0, 4, 0, false, 0, CgGL.GL_READ_WRITE, CgGL.GL_RGBA8);
+        mgr.invalidateAll();
+        assertFalse("vanilla binds no image unit: still known",
+                mgr.imageBindingChanged(0, 4, 0, 0, CgGL.GL_READ_WRITE, CgGL.GL_RGBA8));
+
+        CgGlState.setProvider(new CgGlStateProvider() {
+            @Override public void read(CgGlSlot slot, CgGlStateShadow t) {}
+            @Override public boolean hostBinds(CgGlSlot slot) { return true; }
+        });
+        CgGL.glBindImageTexture(0, 4, 0, false, 0, CgGL.GL_READ_WRITE, CgGL.GL_RGBA8);
+        mgr.invalidateAll();
+        assertTrue("a shader pack's loader binds them: forgotten",
+                mgr.imageBindingChanged(0, 4, 0, 0, CgGL.GL_READ_WRITE, CgGL.GL_RGBA8));
+    }
+
+    @Test
+    public void deletingABufferForgetsThePointsBoundToIt() {
+        CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 2, 9);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 9);
+        CgGL.glDeleteBuffers(9);
+        assertTrue(mgr.storageBindingChanged(2, 9, 0, 0));
+        assertTrue(mgr.bufferChanged(CgGL.GL_DRAW_INDIRECT_BUFFER, 9));
+    }
+
 }

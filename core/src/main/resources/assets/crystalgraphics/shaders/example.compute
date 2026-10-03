@@ -1,0 +1,160 @@
+// The reference .compute: every part of the format, each kernel compiled by the tests on every target.
+//
+// A .compute holds kernels, functions the GPU runs once per element. GLSL inside, with the .shader family's
+// preprocessor, keywords, engine buffers and Properties:
+//
+//     CgKernelProgram integrate = CgCompute.load("crystalgraphics:shaders/example.compute").kernel("Integrate").program();
+//     try (CgGlScope scope = CgKernelProgram.scope()) {
+//         integrate.use().buffer("STATE", stateBuffer).dispatch(particleCount);
+//     }
+//
+// No #version and no main(): the compiler writes both, per kernel and device.
+
+// #pragma kernel Name [x [y [z]]] shape. The sizes are the work group's (none: 64); the shape is what the kernel
+// writes, and so which tiers run it.
+//
+//     map      writes its own element of each output buffer (NAME_WRITE)        every tier
+//     gather   a map that reads other elements too                               every tier
+//     append   a map that also appends to an append buffer (NAME_APPEND)         every tier
+//     scatter  stores, adds, min or max at computed indices (NAME_STORE, _ADD)   every tier
+//     image    writes its own texel of each output image (NAME_WRITE)            every tier
+//     general  anything compute does: shared memory, barrier(), subgroups       compute only
+//
+// The compiler refuses a kernel that reaches past its shape, naming what it reached.
+#pragma kernel Integrate map
+#pragma kernel Spawn 64 append
+#pragma kernel Histogram 128 scatter
+#pragma kernel Shade 8 8 image
+#pragma kernel Reduce 256 general
+#pragma kernel ReduceScatter scatter
+
+// What a tier without compute runs in place of a general kernel. It is dispatched as the kernel would be.
+#pragma fallback Reduce ReduceScatter
+
+// A keyword: each set a kernel is asked for compiles once, as a material's variants do.
+#pragma cg_feature WIND
+
+// An engine buffer, as in a .shader: PARTICLE_DATA(n), writable in a general kernel and read-only in the others.
+// #pragma cg_use particle
+
+// Values set per program (CgKernelProgram.properties()), in one std140 block; samplers on their own units.
+// vec3 is refused: std140 pads it, and the block would disagree with the GLSL.
+Properties {
+    _Gravity  ("Gravity",   vec4) = (0, -9.81, 0, 0)
+    _Drag     ("Drag",      float) = 0.1
+    _Step     ("Time step", float) = 0.016
+    _BinCount ("Bins",      int) = 64
+    _Noise    ("Noise",     sampler2D) = "white"
+}
+
+// A struct a buffer holds comes before Buffers { }. Any kernel but a general one can only reach a buffer of 4-, 8-
+// or 16-byte scalars and vectors, or of structs of vec4, ivec4 and uvec4: what a tier without compute holds.
+struct Particle {
+    vec4 positionLife;     // xyz position, w seconds left
+    vec4 velocitySeed;     // xyz velocity, w a 0..1 seed
+};
+
+// NAME ("Display", element, access). Buffer i is bound at storage binding point i (CgKernelProgram.buffer).
+//
+//     readonly   NAME(i)                       readwrite  NAME(i), NAME_WRITE(v), NAME_STORE(i, v), NAME_ADD/_MIN/_MAX(i, v)
+//     writeonly  NAME_WRITE(v), NAME_STORE     append     NAME(i), NAME_APPEND(v), NAME_COUNT()
+//     counter    NAME(i), NAME_INC(i), NAME_ADD(i, n): uint or int, each answering the value before
+//
+// Every buffer has NAME_LENGTH(), and a general kernel NAME_DATA[i], the array itself. An append buffer's count is
+// a separate uint (CgKernelProgram.counter), which the caller zeroes.
+Buffers {
+    STATE   ("Particle state",  Particle, readwrite)
+    SPAWNED ("Spawned",         Particle, append)
+    BINS    ("Height counts",   uint,     counter)
+    WEIGHTS ("Height weights",  float,    readwrite)
+    SUMS    ("Life per group",  float,    writeonly)
+}
+
+// NAME ("Display", format, access [, 2d | 3d | 2darray | cube]). Image i is at image unit i (CgKernelProgram.image).
+//
+//     NAME_LOAD(p), NAME_SIZE()      readonly or readwrite
+//     NAME_WRITE(v)                  this texel, CG_TEXEL: an image or general kernel
+//     NAME_STORE(p, v), NAME_ADD/_MIN/_MAX(p, v)   a general kernel; the atomics on r32i or r32ui
+Images {
+    SOURCE ("Source", rgba8, readonly)
+    HEAT   ("Heat",   rgba8, writeonly)
+}
+
+const float SPAWN_SPEED = 2.0;
+
+// Code any kernel may call. A kernel's source carries only the functions it reaches, so a helper using what a
+// map may not use costs a map kernel nothing until it calls it.
+vec3 wind(vec3 p) {
+    return vec3(sin(p.y * 0.5 + CG_TIME), 0.0, cos(p.x * 0.5 + CG_TIME)) * 0.3;
+}
+
+// Built-ins: CG_ELEMENT, this invocation's element (x fastest); CG_DISPATCH_ID and CG_DISPATCH_COUNT in each
+// dimension; CG_IN_RANGE; CG_TEXEL; and cg_env's frame block (CG_TIME). Every kernel but a general one returns before
+// it runs for an invocation past the count.
+void Integrate() {
+    Particle p = STATE(CG_ELEMENT);
+    vec3 v = p.velocitySeed.xyz * (1.0 - _Drag * _Step) + _Gravity.xyz * _Step;
+#ifdef WIND
+    v += wind(p.positionLife.xyz) * _Step;
+#endif
+    p.positionLife.xyz += v * _Step;
+    p.positionLife.w -= _Step;
+    p.velocitySeed.xyz = v;
+    STATE_WRITE(p);
+}
+
+// Its own element, and any number appended: here one child for each particle that just died.
+void Spawn() {
+    Particle p = STATE(CG_ELEMENT);
+    if (p.positionLife.w > 0.0) return;
+    Particle child;
+    float angle = p.velocitySeed.w * 6.2831853;
+    child.positionLife = vec4(p.positionLife.xyz, 2.0);
+    child.velocitySeed = vec4(cos(angle) * SPAWN_SPEED, SPAWN_SPEED, sin(angle) * SPAWN_SPEED, fract(p.velocitySeed.w * 7.31));
+    SPAWNED_APPEND(child);
+}
+
+// At computed indices: a count and a float sum per height band. A float add is native where the device has float
+// atomics and a compare-and-swap loop where not.
+void Histogram() {
+    Particle p = STATE(CG_ELEMENT);
+    int bin = clamp(int(p.positionLife.y) + _BinCount / 2, 0, _BinCount - 1);
+    BINS_INC(bin);
+    WEIGHTS_ADD(bin, p.positionLife.w);
+}
+
+// Its own texel. Two sizes, so CG_TEXEL.xy is the texel and the dispatch is (width, height, 1).
+void Shade() {
+    ivec2 size = HEAT_SIZE();
+    vec2 uv = (vec2(CG_TEXEL.xy) + 0.5) / vec2(size);
+    float n = textureLod(_Noise, uv, 0.0).r;
+    HEAT_WRITE(vec4(SOURCE_LOAD(CG_TEXEL.xy).rgb * n, 1.0));
+}
+
+// General: shared memory, barriers and subgroup operations. CG_SUBGROUP_* is the device's subgroup operation where it
+// has them, and the whole work group through shared memory where not; a kernel written against them runs on both. Call
+// them where every invocation of the group does, and check CG_IN_RANGE yourself: a general kernel runs every
+// invocation of every group.
+shared float partial[CG_GROUP_SIZE];
+
+void Reduce() {
+    float life = CG_IN_RANGE ? max(STATE(CG_ELEMENT).positionLife.w, 0.0) : 0.0;
+    float sum = CG_SUBGROUP_ADD(life);
+    if (CG_SUBGROUP_ELECT()) partial[CG_SUBGROUP_INDEX] = sum;
+    memoryBarrierShared();
+    barrier();
+    if (CG_LOCAL_INDEX == 0) {
+        float total = 0.0;
+        for (int i = 0; i < CG_SUBGROUP_COUNT; i++) total += partial[i];
+        SUMS_STORE(CG_GROUP_ID.x, total);
+    }
+}
+
+// Reduce's fallback: the same sums, each by the first element of its group of 256, with no group in sight.
+void ReduceScatter() {
+    if (CG_ELEMENT % 256 != 0) return;
+    float total = 0.0;
+    int end = min(CG_ELEMENT + 256, CG_DISPATCH_COUNT.x);
+    for (int i = CG_ELEMENT; i < end; i++) total += max(STATE(i).positionLife.w, 0.0);
+    SUMS_STORE(CG_ELEMENT / 256, total);
+}

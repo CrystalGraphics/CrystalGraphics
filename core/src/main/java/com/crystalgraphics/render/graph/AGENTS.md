@@ -21,9 +21,60 @@ CgExecutor.execute(frame);
 builder.recycle(frame);
 ```
 
+**Kernels and buffers** (gpu-compute C3): a compute pass runs kernels from `.compute` files (`compute/AGENTS.md`) on
+`CgGraphBuffer`s — the twin of `CgGraphTexture`: transient (pooled by size class), persistent, history (the newest two
+versions, every write making the next) or imported — and on graph textures as storage images. A dispatch's bindings
+say what it reads and writes, taken from the accessors its kernel uses, so ordering, culling and lifetimes come from
+them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write.
+
+```java
+CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));
+CgComputePass sim = rec.compute("particles.step", constants);
+sim.dispatch(step, n).bind("IN", state).bind("OUT", state).set("_Drag", 0.1f);   // reads the newest, writes the next
+sim.end();
+CgComputePass paint = rec.compute("particles.paint");
+paint.dispatchIndirect(draw, args, 0).bind("IN", state).bind("BEFORE", state.previous()).image("OUT", picture);
+paint.end();
+int bindings = rec.bindings().begin().storage(CELLS_POINT, state).end();   // a draw reading it as a storage block
+```
+
+**Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
+name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
+`cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's
+`glMemoryBarrier` bits on GL. Draws, copies and uploads among themselves stay the backend's to order, as they were.
+`-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
+fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
+kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
+
+**Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
+`CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
+count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
+draw's command with an engine kernel (`env/compute/args.compute`, `CgIndirectArgs`) from the count and the range the
+mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. On G40 that kernel runs lowered;
+on G33 and the CPU tier, where no draw takes a count from a buffer, the batch is drawn with its count read back (a stall,
+`buffer.readbacks`) or, where the CPU tier wrote it, taken from the CPU's copy with no read.
+
+```java
+CgComputePass live = rec.compute("sparks.count");
+live.dispatch(compact, capacity).bind("STATE", state).counter("ALIVE", alive, 0);
+live.end();
+chunks.draw(pipeline, bindings, CgMesh.quads(capacity)).indirect(alive, 0, CgIndirect.INDICES, 6);   // a quad each
+chunks.instance();                                                                                      // its record
+```
+
+- `INDICES` and `VERTICES` draw count x factor of the range, never more than it holds; `INSTANCES` draws the range
+  count x factor times, every instance reading the draw's one record, and `CG_DRAW_INSTANCE` is which element it is.
+- An indirect draw is a batch of its own, and its command's first instance is 0 on every device: the instance base is
+  `cg_InstanceBase`, as for any draw.
+- Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
+  kernels writing them share nothing and need no barrier between them.
+
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
-pass writing a requested texture too. It is how a compositor moves something without a recording.
+pass writing a requested texture too. It is how a compositor moves something without a recording. A compute pass or buffer operation that writes
+anything outliving the frame is not taken twice — a frame shown again must not step a simulation — unless marked
+`again()`; one writing only transients runs again. A skipped pass whose transient a pass run again reads throws,
+naming both.
 
 `CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
 `CgImmediate.flush(chunk, order)` is what `CgQuadRenderer`/`CgVectorRenderer.flush()` call, under the frame block
@@ -67,9 +118,13 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'
   snapshots bind, as of `add`; it writes its target at `end`. A read sees the last write recorded before it — in its
   recording or one added to the graph earlier. Creation order only breaks ties.
-- **A pass nobody reads is culled** unless it writes a texture that outlives the frame (imported, current,
-  requested) or carries a request.
-- **Transients live from their first to their last use** in the executed order, from a pool keyed by description.
+- **A pass nobody reads is culled** unless it writes a resource that outlives the frame (an imported, current or
+  requested texture; an imported, persistent or history buffer) or carries a request.
+- **Transients live from their first to their last use** in the executed order, from a pool keyed by description
+  (textures) or size class (buffers): two that never live at once share storage.
+- **A compute pass runs on every tier**: each dispatch as its kernel's form (`compute/AGENTS.md` § *Three forms*),
+  chosen when the dispatch is recorded, which is where a kernel that can run nowhere throws. A pass with a dispatch
+  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass.
 - **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
   pass that throws fails its request and the frame goes on.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
@@ -82,3 +137,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 
 `--mode=graph-executor-test` draws one picture through `CgQuadRenderer`, `CgImmediate`, and a frame recorded and built
 on a worker thread; the three PNGs in its output directory must be byte-identical, on `--device=gl` and `vulkan`.
+`--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
+built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.
+`--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
+against a direct draw of what its count means, in a graph, executed again and through the world renderer. Both pass
+forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
+(`compute/AGENTS.md` § *Tests*).

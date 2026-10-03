@@ -57,9 +57,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     @Override
     public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations, String label) {
         String vertex = withDefines(vertexGlsl, label);
-        SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), true, label), label);
-        SpirvModule zeroToOne = new SpirvModule(spirv(vertex, true, label), label);
-        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label), false, label), label);
+        SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
+        SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
+        SpirvModule fragment = new SpirvModule(spirv(withDefines(fragmentGlsl, label), shaderc_glsl_fragment_shader, label),
+                label);
 
         int next = 0;
         int vLoose = has(glDepth.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
@@ -128,6 +129,45 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
                 fragment.defaultBlockSize, slots);
     }
 
+    @Override
+    public ComputeProgram compileCompute(String glsl, String label) {
+        SpirvModule m = new SpirvModule(spirv(glsl, shaderc_glsl_compute_shader, label), label);
+        int next = 0;
+        int loose = has(m.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
+        List<Block> ub = new ArrayList<>(), sb = new ArrayList<>();
+        List<Sampler> smp = new ArrayList<>();
+        List<Image> img = new ArrayList<>();
+        List<CgBindingLayout.Slot> slots = new ArrayList<>();
+        if (loose >= 0) slots.add(new CgBindingLayout.Slot(loose, CgBindingLayout.Type.UNIFORM_BUFFER));
+        for (SpirvModule.Resource r : m.uniformBuffers) {
+            if (r.name().equals(SpirvModule.DEFAULT_BLOCK)) {
+                m.set(r, loose);
+                continue;
+            }
+            m.set(r, next);
+            ub.add(new Block(r.name(), next));
+            slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.UNIFORM_BUFFER));
+        }
+        for (SpirvModule.Resource r : m.storageBuffers) {
+            m.set(r, next);
+            sb.add(new Block(r.name(), next));
+            slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_BUFFER));
+        }
+        for (SpirvModule.Resource r : m.samplers) {
+            m.set(r, next);
+            smp.add(new Sampler(r.name(), next, r.glType(), r.texel()));
+            slots.add(new CgBindingLayout.Slot(next++, r.texel() ? CgBindingLayout.Type.TEXEL_BUFFER
+                    : CgBindingLayout.Type.SAMPLED_TEXTURE));
+        }
+        for (SpirvModule.Resource r : m.images) {
+            m.set(r, next);
+            img.add(new Image(r.name(), next, r.glType()));
+            slots.add(new CgBindingLayout.Slot(next++, CgBindingLayout.Type.STORAGE_IMAGE));
+        }
+        return new ComputeProgram(m.spirv, m.localSize.clone(), ub, sb, smp, img, List.copyOf(m.uniforms), loose,
+                m.defaultBlockSize, slots);
+    }
+
     /**
      * Bound inputs at their {@code glBindAttribLocation} locations; every other input where glslang placed it — its
      * {@code layout(location)}, else declaration order, as GL drivers commonly do — unless a binding holds that
@@ -182,20 +222,18 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         return false;
     }
 
-    private ByteBuffer spirv(String source, boolean vertex, String label) {
+    private ByteBuffer spirv(String source, int kind, String label) {
         // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
         ByteBuffer text = memUTF8(source, false);
         long result;
         try (MemoryStack stack = stackPush()) {
-            result = shaderc_compile_into_spv(compiler, text,
-                    vertex ? shaderc_glsl_vertex_shader : shaderc_glsl_fragment_shader, stack.UTF8(label),
-                    stack.UTF8("main"), options);
+            result = shaderc_compile_into_spv(compiler, text, kind, stack.UTF8(label), stack.UTF8("main"), options);
         } finally {
             memFree(text);
         }
         try {
             if (shaderc_result_get_compilation_status(result) != shaderc_compilation_status_success)
-                throw new CgShaderModule.CompileException(label + " (" + (vertex ? "vertex" : "fragment") + "): "
+                throw new CgShaderModule.CompileException(label + " (" + stage(kind) + "): "
                         + shaderc_result_get_error_message(result));
             ByteBuffer bytes = shaderc_result_get_bytes(result);
             ByteBuffer copy = ByteBuffer.allocateDirect(bytes.remaining()).order(ByteOrder.nativeOrder());
@@ -204,6 +242,10 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
         } finally {
             shaderc_result_release(result);
         }
+    }
+
+    private static String stage(int kind) {
+        return kind == shaderc_glsl_vertex_shader ? "vertex" : kind == shaderc_glsl_fragment_shader ? "fragment" : "compute";
     }
 
     /** 26.2's two defines after {@code #version}, and a {@code #line} so errors keep the source's numbering. */

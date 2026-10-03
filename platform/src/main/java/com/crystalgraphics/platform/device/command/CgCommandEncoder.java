@@ -26,11 +26,22 @@ import java.nio.ByteBuffer;
 public interface CgCommandEncoder {
 
     CgRenderPass beginPass(CgPassDesc desc);
+    /** A compute pass. Transfers and barriers may sit between its dispatches; a render pass may not open inside it. */
+    CgComputePass beginCompute(String label);
+    /** {@code buffer}'s uses at {@code from} finished before {@code to}, writes visible: {@link CgAccess} bits. Outside a render pass. */
+    void bufferBarrier(CgGpuBuffer buffer, int from, int to);
+    /** The same for a texture, in the layout {@code to} reads it in. Outside a render pass. */
+    void imageBarrier(CgGpuTexture texture, int from, int to);
+    /** Every resource's uses at {@code from} before {@code to}: GL's {@code glMemoryBarrier}, which names none. */
+    void memoryBarrier(int from, int to);
 
     /** Copies {@code data}'s remaining bytes into a device-local buffer, through staging. */
     void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data);
 
     void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size);
+
+    /** {@code value} into every four bytes of a range: offset and size multiples of 4. Outside a render pass. */
+    void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value);
 
     /** Writes tightly packed texels in {@code dst}'s format; {@code data}'s remaining bytes must fill the region. */
     void writeTexture(CgGpuTexture dst, CgTextureRegion region, ByteBuffer data);
@@ -53,6 +64,9 @@ public interface CgCommandEncoder {
 
     /** Reads texels back, tightly packed; waits for the GPU. */
     void readTexture(CgGpuTexture src, CgTextureRegion region, ByteBuffer out);
+
+    /** Reads {@code out.remaining()} bytes from {@code srcOffset} back into {@code out}; waits for the GPU. */
+    void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out);
 
     /** Copies texels into a buffer, tightly packed, without waiting. */
     void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion region, CgGpuBuffer dst, long dstOffset);

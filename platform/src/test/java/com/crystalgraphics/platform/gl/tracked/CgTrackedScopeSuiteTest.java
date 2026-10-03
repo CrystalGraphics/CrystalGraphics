@@ -89,14 +89,19 @@ public class CgTrackedScopeSuiteTest {
             CgGL.glBindVertexArray(vao);
             CgGL.glBindBuffer(CgGL.GL_ARRAY_BUFFER, buffer);
         });
+        m.put(CgGlSlot.STORAGE_BUFFERS, () -> CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, 2, buffer, 16, 64));
+        m.put(CgGlSlot.IMAGES,
+                () -> CgGL.glBindImageTexture(1, texture, 0, false, 0, CgGL.GL_READ_WRITE, CgGL.GL_RGBA8));
+        m.put(CgGlSlot.INDIRECT_BUFFERS, () -> CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, buffer));
         return m;
     }
 
     @Test
     public void everySlotIsRestored() {
         Map<CgGlSlot, Runnable> changes = changes();
-        assertEquals("a change for every slot", CgGlSlot.values().length, changes.size());
-        for (CgGlSlot slot : CgGlSlot.values()) {
+        // A device has no transform feedback: kernels run there as compute, never lowered.
+        assertEquals("a change for every slot a device carries", CgGlSlot.values().length - 1, changes.size());
+        for (CgGlSlot slot : changes.keySet()) {
             CgGlStateShadow before = snapshot();
             try (CgGlScope ignored = CgGlState.save(slot)) {
                 changes.get(slot).run();
@@ -168,7 +173,8 @@ public class CgTrackedScopeSuiteTest {
             try {
                 Object v = f.get(s);
                 b.append(f.getName()).append('=')
-                        .append(v instanceof int[] a ? Arrays.toString(a) : Objects.toString(v)).append(' ');
+                        .append(v instanceof int[] a ? Arrays.toString(a)
+                                : v instanceof long[] l ? Arrays.toString(l) : Objects.toString(v)).append(' ');
             } catch (IllegalAccessException e) {
                 throw new AssertionError(e);
             }

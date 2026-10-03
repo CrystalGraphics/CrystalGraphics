@@ -10,6 +10,7 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nullable;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -38,6 +39,16 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  * if (program.isLinkDone()) program.finishLink();   // throws as compile would
  * }</pre>
  *
+ * <p>A compute program, for a kernel:</p>
+ * <pre>{@code
+ * CgShaderProgram kernel = CgShaderProgram.compileCompute(computeSource);
+ * }</pre>
+ *
+ * <p>A capture program, for a kernel lowered below compute: its outputs written to a transform feedback buffer:</p>
+ * <pre>{@code
+ * CgShaderProgram capture = CgShaderProgram.compileCapture(vertex, geometry, null, new String[]{"_cg_c0", "_cg_c1"});
+ * }</pre>
+ *
  * <ul>
  *   <li>Render thread only, as every GL object.</li>
  *   <li>The uniform setters act on the <em>bound</em> program: bind it first.</li>
@@ -51,9 +62,10 @@ public final class CgShaderProgram {
     private final int programId;
     private boolean deleted;
 
-    /** The shader objects of a {@link #submitLink} not yet finished; 0 when nothing is pending. */
+    /** The shader objects of a link not yet finished; 0 when nothing is pending. */
     private int pendingVert;
     private int pendingFrag;
+    private int pendingCompute;
 
     private CgShaderProgram(int programId) {
         this.programId = programId;
@@ -75,6 +87,71 @@ public final class CgShaderProgram {
             throw e;
         }
         return program;
+    }
+
+    /**
+     * Compiles a compute shader and links it alone.
+     *
+     * @throws IllegalStateException if it fails to compile or link, with the driver's log
+     */
+    public static CgShaderProgram compileCompute(String computeSource) {
+        CgShaderProgram program = create();
+        try {
+            program.submitComputeLink(computeSource);
+            program.finishLink();
+        } catch (IllegalStateException e) {
+            program.delete();
+            throw e;
+        }
+        return program;
+    }
+
+    /**
+     * Compiles a vertex shader, with a geometry and a fragment shader where given, and links them; {@code varyings},
+     * outputs of the last stage before rasterising, are captured interleaved into transform feedback buffer 0.
+     * Synchronous.
+     *
+     * @param varyings the outputs to capture, or null for none
+     * @throws IllegalStateException if a stage fails to compile or the program to link, with the driver's log
+     */
+    public static CgShaderProgram compileCapture(String vertex, @Nullable String geometry, @Nullable String fragment,
+                                                 @Nullable String[] varyings) {
+        CgShaderProgram program = create();
+        int id = program.programId;
+        int[] stages = new int[3];
+        try {
+            stages[0] = stage(CgGL.GL_VERTEX_SHADER, vertex, "Vertex");
+            if (geometry != null) stages[1] = stage(CgGL.GL_GEOMETRY_SHADER, geometry, "Geometry");
+            if (fragment != null) stages[2] = stage(CgGL.GL_FRAGMENT_SHADER, fragment, "Fragment");
+            for (int s : stages) if (s != 0) CgGL.glAttachShader(id, s);
+            if (varyings != null) CgGL.glTransformFeedbackVaryings(id, varyings, CgGL.GL_INTERLEAVED_ATTRIBS);
+            CgGL.glLinkProgram(id);
+            if (CgGL.glGetProgrami(id, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Capture program link failed: " + CgGL.glGetProgramInfoLog(id, 4096));
+            }
+        } catch (IllegalStateException e) {
+            program.delete();
+            throw e;
+        } finally {
+            for (int s : stages) {
+                if (s == 0) continue;
+                if (!program.deleted) CgGL.glDetachShader(id, s);
+                CgGL.glDeleteShader(s);
+            }
+        }
+        return program;
+    }
+
+    private static int stage(int type, String source, String name) {
+        int shader = CgGL.glCreateShader(type);
+        CgGL.glShaderSource(shader, source);
+        CgGL.glCompileShader(shader);
+        if (CgGL.glGetShaderi(shader, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetShaderInfoLog(shader, 4096);
+            CgGL.glDeleteShader(shader);
+            throw new IllegalStateException(name + " shader compile failed: " + log);
+        }
+        return shader;
     }
 
     /** A program with nothing linked yet, for a {@link #submitLink} to fill. */
@@ -108,6 +185,10 @@ public final class CgShaderProgram {
             pendingVert = 0;
             pendingFrag = 0;
         }
+        if (pendingCompute != 0) {
+            CgGL.glDeleteShader(pendingCompute);
+            pendingCompute = 0;
+        }
         CgGL.glDeleteProgram(programId);
         deleted = true;
     }
@@ -138,15 +219,7 @@ public final class CgShaderProgram {
      */
     public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
         finishPendingQuietly();
-        IntBuffer countBuf = CgBufferUtils.createIntBuffer(1);
-        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
-        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
-        int attached = countBuf.get(0);
-        for (int i = 0; i < attached; i++) {
-            int id = shadersBuf.get(i);
-            CgGL.glDetachShader(programId, id);
-            CgGL.glDeleteShader(id);
-        }
+        detachAll();
 
         pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
         CgGL.glShaderSource(pendingVert, vertexSource);
@@ -164,9 +237,32 @@ public final class CgShaderProgram {
         CgGL.glLinkProgram(programId);
     }
 
+    /** {@link #submitLink} for a compute program: one compute shader, linked alone. */
+    public void submitComputeLink(String computeSource) {
+        finishPendingQuietly();
+        detachAll();
+        pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
+        CgGL.glShaderSource(pendingCompute, computeSource);
+        CgGL.glCompileShader(pendingCompute);
+        CgGL.glAttachShader(programId, pendingCompute);
+        CgGL.glLinkProgram(programId);
+    }
+
+    private void detachAll() {
+        IntBuffer countBuf = CgBufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
+        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
+        int attached = countBuf.get(0);
+        for (int i = 0; i < attached; i++) {
+            int id = shadersBuf.get(i);
+            CgGL.glDetachShader(programId, id);
+            CgGL.glDeleteShader(id);
+        }
+    }
+
     /** Whether {@link #finishLink} would return without waiting. True wherever the driver cannot say. */
     public boolean isLinkDone() {
-        return pendingVert == 0 || !CgCapabilities.detect().isParallelShaderCompile()
+        return pendingVert == 0 && pendingCompute == 0 || !CgCapabilities.detect().isParallelShaderCompile()
                 || CgGL.glGetProgrami(programId, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
     }
 
@@ -175,6 +271,10 @@ public final class CgShaderProgram {
      * when nothing is pending.
      */
     public void finishLink() {
+        if (pendingCompute != 0) {
+            finishComputeLink();
+            return;
+        }
         if (pendingVert == 0) return;
         int vertId = pendingVert, fragId = pendingFrag;
         pendingVert = 0;
@@ -195,6 +295,22 @@ public final class CgShaderProgram {
             CgGL.glDetachShader(programId, fragId);
             CgGL.glDeleteShader(vertId);
             CgGL.glDeleteShader(fragId);
+        }
+    }
+
+    private void finishComputeLink() {
+        int computeId = pendingCompute;
+        pendingCompute = 0;
+        try {
+            if (CgGL.glGetShaderi(computeId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Compute shader compile failed: " + CgGL.glGetShaderInfoLog(computeId, 4096));
+            }
+            if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Compute program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
+            }
+        } finally {
+            CgGL.glDetachShader(programId, computeId);
+            CgGL.glDeleteShader(computeId);
         }
     }
 

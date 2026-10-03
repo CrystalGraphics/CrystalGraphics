@@ -33,6 +33,19 @@ public final class CgGlStateShadow {
 
     /** Matches the largest unit count worth tracking; higher units are CrystalGraphics-owned. */
     public static final int MAX_TEXTURE_UNITS = 32;
+    /** Storage-buffer binding points a scope restores. */
+    public static final int MAX_STORAGE_BINDINGS = 32;
+    /** Image units a scope restores: GL's guaranteed eight. */
+    public static final int MAX_IMAGE_UNITS = 8;
+    /** The indirect-argument targets, in {@link #indirectBuffer}'s order, and the queries that read them. */
+    public static final int[] INDIRECT_TARGETS = {CgGL.GL_DRAW_INDIRECT_BUFFER, CgGL.GL_DISPATCH_INDIRECT_BUFFER,
+            CgGL.GL_PARAMETER_BUFFER};
+    public static final int[] INDIRECT_BINDINGS = {CgGL.GL_DRAW_INDIRECT_BUFFER_BINDING,
+            CgGL.GL_DISPATCH_INDIRECT_BUFFER_BINDING, CgGL.GL_PARAMETER_BUFFER_BINDING};
+    /** Transform-feedback buffer points a scope restores: GL 3.0's four separate captures. */
+    public static final int MAX_FEEDBACK_BINDINGS = 4;
+    /** {@link CgGlSlot#TRANSFORM_FEEDBACK}'s point for {@code GL_RASTERIZER_DISCARD}, after the buffer points. */
+    public static final int RASTERIZER_DISCARD_POINT = MAX_FEEDBACK_BINDINGS;
 
     // ── Blend ─────────────────────────────────────────────────────────────────
     public boolean blendEnabled;
@@ -117,6 +130,61 @@ public final class CgGlStateShadow {
      */
     public int elementArrayBuffer;
 
+    // ── Captured at first write ───────────────────────────────────────────────
+    /** Per point; a size of 0 is the whole buffer, as {@code glBindBufferBase} binds it and GL reports it. */
+    public final int[] storageBuffer = new int[MAX_STORAGE_BINDINGS];
+    public final long[] storageOffset = new long[MAX_STORAGE_BINDINGS], storageSize = new long[MAX_STORAGE_BINDINGS];
+
+    /** Per unit, as {@code glBindImageTexture} takes it; a layer of -1 is every layer. */
+    public final int[] imageTexture = new int[MAX_IMAGE_UNITS], imageLevel = new int[MAX_IMAGE_UNITS],
+            imageLayer = new int[MAX_IMAGE_UNITS], imageAccess = new int[MAX_IMAGE_UNITS],
+            imageFormat = new int[MAX_IMAGE_UNITS];
+
+    /** Per {@link #INDIRECT_TARGETS} entry. */
+    public final int[] indirectBuffer = new int[INDIRECT_TARGETS.length];
+
+    /** Per point, as {@link #storageBuffer} is. */
+    public final int[] feedbackBuffer = new int[MAX_FEEDBACK_BINDINGS];
+    public final long[] feedbackOffset = new long[MAX_FEEDBACK_BINDINGS], feedbackSize = new long[MAX_FEEDBACK_BINDINGS];
+    public boolean rasterizerDiscard;
+
+    /** The {@link #INDIRECT_TARGETS} index of {@code target}, or -1. */
+    public static int indirectIndex(int target) {
+        for (int i = 0; i < INDIRECT_TARGETS.length; i++) if (INDIRECT_TARGETS[i] == target) return i;
+        return -1;
+    }
+
+    /** Copies one binding point of a domain captured at first write. */
+    public void copyBinding(CgGlSlot slot, int index, CgGlStateShadow o) {
+        switch (slot) {
+            case STORAGE_BUFFERS:
+                storageBuffer[index] = o.storageBuffer[index];
+                storageOffset[index] = o.storageOffset[index];
+                storageSize[index] = o.storageSize[index];
+                break;
+            case IMAGES:
+                imageTexture[index] = o.imageTexture[index];
+                imageLevel[index] = o.imageLevel[index];
+                imageLayer[index] = o.imageLayer[index];
+                imageAccess[index] = o.imageAccess[index];
+                imageFormat[index] = o.imageFormat[index];
+                break;
+            case INDIRECT_BUFFERS:
+                indirectBuffer[index] = o.indirectBuffer[index];
+                break;
+            case TRANSFORM_FEEDBACK:
+                if (index == RASTERIZER_DISCARD_POINT) {
+                    rasterizerDiscard = o.rasterizerDiscard;
+                } else {
+                    feedbackBuffer[index] = o.feedbackBuffer[index];
+                    feedbackOffset[index] = o.feedbackOffset[index];
+                    feedbackSize[index] = o.feedbackSize[index];
+                }
+                break;
+            default: throw new IllegalArgumentException(slot + " has no binding points");
+        }
+    }
+
     /** Copies every field. Deliberately whole-struct; scopes restore only the domains they named. */
     public void copyFrom(CgGlStateShadow o) {
         blendEnabled = o.blendEnabled;
@@ -160,6 +228,20 @@ public final class CgGlStateShadow {
 
         vertexArray = o.vertexArray; arrayBuffer = o.arrayBuffer;
         elementArrayBuffer = o.elementArrayBuffer;
+
+        System.arraycopy(o.storageBuffer, 0, storageBuffer, 0, MAX_STORAGE_BINDINGS);
+        System.arraycopy(o.storageOffset, 0, storageOffset, 0, MAX_STORAGE_BINDINGS);
+        System.arraycopy(o.storageSize, 0, storageSize, 0, MAX_STORAGE_BINDINGS);
+        System.arraycopy(o.imageTexture, 0, imageTexture, 0, MAX_IMAGE_UNITS);
+        System.arraycopy(o.imageLevel, 0, imageLevel, 0, MAX_IMAGE_UNITS);
+        System.arraycopy(o.imageLayer, 0, imageLayer, 0, MAX_IMAGE_UNITS);
+        System.arraycopy(o.imageAccess, 0, imageAccess, 0, MAX_IMAGE_UNITS);
+        System.arraycopy(o.imageFormat, 0, imageFormat, 0, MAX_IMAGE_UNITS);
+        System.arraycopy(o.indirectBuffer, 0, indirectBuffer, 0, indirectBuffer.length);
+        System.arraycopy(o.feedbackBuffer, 0, feedbackBuffer, 0, MAX_FEEDBACK_BINDINGS);
+        System.arraycopy(o.feedbackOffset, 0, feedbackOffset, 0, MAX_FEEDBACK_BINDINGS);
+        System.arraycopy(o.feedbackSize, 0, feedbackSize, 0, MAX_FEEDBACK_BINDINGS);
+        rasterizerDiscard = o.rasterizerDiscard;
     }
 
     /**
@@ -190,9 +272,7 @@ public final class CgGlStateShadow {
             if ((slotMask & (1 << slotOf(f).ordinal())) == 0) continue;
             try {
                 Object mine = f.get(this), theirs = f.get(actual);
-                boolean same = mine instanceof int[]
-                        ? Arrays.equals((int[]) mine, (int[]) theirs)
-                        : Objects.equals(mine, theirs);
+                boolean same = Objects.deepEquals(mine, theirs);
                 if (same) continue;
                 if (f.getName().equals("elementArrayBuffer") && elementArrayBuffer == UNKNOWN_BINDING) continue;
                 out = out == null ? new StringBuilder() : out.append(", ");
@@ -205,7 +285,8 @@ public final class CgGlStateShadow {
     }
 
     private static String show(Object v) {
-        return v instanceof int[] ? Arrays.toString((int[]) v) : String.valueOf(v);
+        if (v instanceof int[]) return Arrays.toString((int[]) v);
+        return v instanceof long[] ? Arrays.toString((long[]) v) : String.valueOf(v);
     }
 
     private static final Field[] FIELDS = Arrays.stream(CgGlStateShadow.class.getFields())
@@ -234,6 +315,10 @@ public final class CgGlStateShadow {
         if (n.endsWith("Fbo")) return CgGlSlot.FBO;
         if (n.equals("activeTextureUnit") || n.equals("boundTexture2D")) return CgGlSlot.TEXTURES;
         if (n.equals("vertexArray") || n.equals("arrayBuffer") || n.equals("elementArrayBuffer")) return CgGlSlot.VERTEX_INPUT;
+        if (n.startsWith("storage")) return CgGlSlot.STORAGE_BUFFERS;
+        if (n.startsWith("image")) return CgGlSlot.IMAGES;
+        if (n.equals("indirectBuffer")) return CgGlSlot.INDIRECT_BUFFERS;
+        if (n.startsWith("feedback") || n.equals("rasterizerDiscard")) return CgGlSlot.TRANSFORM_FEEDBACK;
         throw new IllegalStateException("CgGlStateShadow." + n + " belongs to no CgGlSlot; add it to slotOf");
     }
 }

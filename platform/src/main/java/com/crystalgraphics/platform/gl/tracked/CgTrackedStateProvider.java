@@ -3,6 +3,7 @@ package com.crystalgraphics.platform.gl.tracked;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlStateProvider;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
+import com.crystalgraphics.platform.gl.tracked.gl.TrackedBuffers;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
 
@@ -90,8 +91,55 @@ public final class CgTrackedStateProvider implements CgGlStateProvider {
                 t.arrayBuffer = gl.bufferObjects().array;
                 t.elementArrayBuffer = gl.vertexArrays().current().elementBuffer;
                 break;
+            case STORAGE_BUFFERS:
+                for (int i = 0; i < CgGlStateShadow.MAX_STORAGE_BINDINGS; i++) readBinding(slot, i, t);
+                break;
+            case IMAGES:
+                for (int i = 0; i < CgGlStateShadow.MAX_IMAGE_UNITS; i++) readBinding(slot, i, t);
+                break;
+            case INDIRECT_BUFFERS:
+                for (int i = 0; i < CgGlStateShadow.INDIRECT_TARGETS.length; i++) readBinding(slot, i, t);
+                break;
+            case TRANSFORM_FEEDBACK:
+                for (int i = 0; i <= CgGlStateShadow.RASTERIZER_DISCARD_POINT; i++) readBinding(slot, i, t);
+                break;
             default:
                 throw new IllegalArgumentException("No tracked state for " + slot);
+        }
+    }
+
+    @Override
+    public void readBinding(CgGlSlot slot, int index, CgGlStateShadow t) {
+        TrackedBuffers b = gl.bufferObjects();
+        switch (slot) {
+            case STORAGE_BUFFERS:
+                t.storageBuffer[index] = b.storageName[index];
+                t.storageOffset[index] = b.storageOffset[index];
+                t.storageSize[index] = Math.max(0, b.storageSize[index]);
+                break;
+            case IMAGES: {
+                int[] u = gl.textureObjects().imageUnit(index);
+                t.imageTexture[index] = u[0];
+                t.imageLevel[index] = u[1];
+                t.imageLayer[index] = u[2];
+                t.imageFormat[index] = u[3];
+                t.imageAccess[index] = u[4];
+                break;
+            }
+            case INDIRECT_BUFFERS:
+                t.indirectBuffer[index] = index == 0 ? b.drawIndirect : index == 1 ? b.dispatchIndirect : b.parameter;
+                break;
+            case TRANSFORM_FEEDBACK:   // a device has no transform feedback: never bound, never discarding
+                if (index == CgGlStateShadow.RASTERIZER_DISCARD_POINT) {
+                    t.rasterizerDiscard = false;
+                } else {
+                    t.feedbackBuffer[index] = 0;
+                    t.feedbackOffset[index] = 0;
+                    t.feedbackSize[index] = 0;
+                }
+                break;
+            default:
+                throw new IllegalArgumentException(slot + " is read whole: read");
         }
     }
 }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.device.command.CgAccess;
+
 import java.nio.*;
 
 
@@ -227,6 +229,105 @@ public abstract class CgGLBackend {
                                                            int instanceCount, int baseVertex);
 
     // -------------------------------------------------------------------------
+    // Indirect draws: arguments in the bound GL_DRAW_INDIRECT_BUFFER, at an offset
+    // -------------------------------------------------------------------------
+
+    /** GL 4.0 or {@code ARB_draw_indirect}. */
+    public abstract void glDrawArraysIndirect(int mode, long offset);
+    public abstract void glDrawElementsIndirect(int mode, int type, long offset);
+    /** {@code drawCount} draws {@code stride} bytes apart, 0 for packed: GL 4.3 or {@code ARB_multi_draw_indirect}. */
+    public abstract void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride);
+    public abstract void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride);
+    /**
+     * The draw count read from {@code countOffset} in the bound {@code GL_PARAMETER_BUFFER}, at most
+     * {@code maxDrawCount}: GL 4.6 or {@code ARB_indirect_parameters}.
+     */
+    public abstract void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount,
+                                                        int stride);
+    public abstract void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset,
+                                                          int maxDrawCount, int stride);
+
+    // -------------------------------------------------------------------------
+    // Compute: GL 4.3 or ARB_compute_shader; images and barriers GL 4.2 or ARB_shader_image_load_store
+    // -------------------------------------------------------------------------
+
+    /** GL 3.0. @see CgGL#glTransformFeedbackVaryings */
+    public abstract void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode);
+
+    public abstract void glBeginTransformFeedback(int primitiveMode);
+
+    public abstract void glEndTransformFeedback();
+
+    public abstract void glDispatchCompute(int groupsX, int groupsY, int groupsZ);
+    /** The group counts at {@code offset} in the bound {@code GL_DISPATCH_INDIRECT_BUFFER}. */
+    public abstract void glDispatchComputeIndirect(long offset);
+    public abstract void glMemoryBarrier(int barriers);
+    public abstract void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access,
+                                           int format);
+
+    /**
+     * {@code buffer}'s uses at {@code from} finished before {@code to}, as {@link CgAccess} bits. On GL, the reader's
+     * {@code glMemoryBarrier} bits after a kernel's write, and nothing otherwise: GL orders every other hazard itself.
+     * A device-backed backend records this barrier as it is.
+     */
+    public void cgBufferBarrier(int buffer, int from, int to) {
+        int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, false);
+        if (bits != 0) glMemoryBarrier(bits);
+    }
+
+    /**
+     * {@code value} into every four bytes of {@code buffer} from {@code offset} for {@code size} bytes, both multiples
+     * of 4: GL 4.3's {@code glClearBufferSubData} or {@code ARB_clear_buffer_object}, else {@link #fillBySubData}; a
+     * device fill on a device-backed backend.
+     */
+    public abstract void cgFillBuffer(int buffer, long offset, long size, int value);
+
+    /** {@link #cgFillBuffer} from the CPU, for a context with neither: the range written in 64 KB pieces. */
+    protected final void fillBySubData(int target, long offset, long size, int value) {
+        if (fillPattern == null || fillValue != value) {
+            if (fillPattern == null) fillPattern = ByteBuffer.allocateDirect(64 * 1024).order(ByteOrder.nativeOrder());
+            for (int i = 0; i < fillPattern.capacity(); i += 4) fillPattern.putInt(i, value);
+            fillValue = value;
+        }
+        for (long at = 0; at < size; at += fillPattern.capacity()) {
+            fillPattern.clear();
+            fillPattern.limit((int) Math.min(fillPattern.capacity(), size - at));
+            glBufferSubData(target, offset + at, fillPattern);
+        }
+    }
+
+    private ByteBuffer fillPattern;
+    private int fillValue;
+
+    /** {@link #cgBufferBarrier} for a texture. */
+    public void cgImageBarrier(int texture, int from, int to) {
+        int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);
+        if (bits != 0) glMemoryBarrier(bits);
+    }
+
+    /** The {@code glMemoryBarrier} bits that make a kernel's writes visible to {@code to}. */
+    private static int glBarrierBits(int to, boolean image) {
+        int bits = 0;
+        if ((to & CgAccess.STORAGE) != 0) {
+            bits |= image ? CgGL.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT : CgGL.GL_SHADER_STORAGE_BARRIER_BIT;
+        }
+        if ((to & CgAccess.UNIFORM_READ) != 0) bits |= CgGL.GL_UNIFORM_BARRIER_BIT;
+        if ((to & CgAccess.SAMPLED_READ) != 0) bits |= CgGL.GL_TEXTURE_FETCH_BARRIER_BIT;
+        if ((to & CgAccess.VERTEX_INPUT) != 0) bits |= CgGL.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT;
+        if ((to & CgAccess.INDEX_INPUT) != 0) bits |= CgGL.GL_ELEMENT_ARRAY_BARRIER_BIT;
+        if ((to & CgAccess.INDIRECT) != 0) bits |= CgGL.GL_COMMAND_BARRIER_BIT;
+        if ((to & (CgAccess.COPY_READ | CgAccess.COPY_WRITE)) != 0) {
+            bits |= image ? CgGL.GL_TEXTURE_UPDATE_BARRIER_BIT : CgGL.GL_BUFFER_UPDATE_BARRIER_BIT;
+        }
+        if ((to & CgAccess.HOST_READ) != 0) {
+            bits |= image ? CgGL.GL_TEXTURE_UPDATE_BARRIER_BIT | CgGL.GL_PIXEL_BUFFER_BARRIER_BIT
+                    : CgGL.GL_BUFFER_UPDATE_BARRIER_BIT | CgGL.GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT;
+        }
+        if ((to & CgAccess.COLOR_WRITE) != 0) bits |= CgGL.GL_FRAMEBUFFER_BARRIER_BIT;
+        return bits;
+    }
+
+    // -------------------------------------------------------------------------
     // GL state
     // -------------------------------------------------------------------------
 
@@ -293,6 +394,12 @@ public abstract class CgGLBackend {
     public abstract void glGetFloat(int pname, FloatBuffer params);
     /** Returns a single float state value (e.g. {@code GL_LINE_WIDTH}, {@code GL_POINT_SIZE}). */
     public abstract float glGetFloat(int pname);
+    /** {@code glGetString}: the context's version, vendor, renderer or shading-language version. */
+    public abstract String glGetString(int name);
+    /** {@code glGetStringi}: the string at {@code index}, an extension's name for {@code GL_EXTENSIONS}. */
+    public abstract String glGetStringi(int name, int index);
+    /** {@code glGetIntegeri_v}: one element of an indexed value, such as a compute work group's dimension. */
+    public abstract int glGetIntegeri(int target, int index);
 
     // -------------------------------------------------------------------------
     // Samplers

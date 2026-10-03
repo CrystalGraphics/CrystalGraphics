@@ -13,9 +13,10 @@ import java.nio.ByteBuffer;
 public final class TrackedBuffers {
 
     static final int GL_MAP_WRITE_BIT = 0x2, GL_MAP_INVALIDATE_BUFFER_BIT = 0x8, GL_MAP_UNSYNCHRONIZED_BIT = 0x20;
-    static final int GL_MAP_PERSISTENT_BIT = 0x40;
-    private static final int GL_STATIC_READ = 0x88E5, GL_STATIC_COPY = 0x88E6;
+    static final int GL_MAP_PERSISTENT_BIT = 0x40, GL_CLIENT_STORAGE_BIT = 0x200;
     private static final int GL_PIXEL_PACK_BUFFER_BINDING = 0x88ED, GL_PIXEL_UNPACK_BUFFER_BINDING = 0x88EF;
+    private static final int GL_DRAW_INDIRECT_BUFFER_BINDING = 0x8F43, GL_DISPATCH_INDIRECT_BUFFER_BINDING = 0x90EF;
+    private static final int GL_PARAMETER_BUFFER_BINDING = 0x80EF;
     static final int INDEXED = 64;
 
     /** One GL buffer object. */
@@ -36,9 +37,12 @@ public final class TrackedBuffers {
     private final GlNames<GlBuffer> names = new GlNames<>("Buffer");
 
     public int array, uniform, storage, texture, copyRead, copyWrite, pixelPack, pixelUnpack;
-    final int[] uniformName = new int[INDEXED], storageName = new int[INDEXED];
+    public int drawIndirect, dispatchIndirect, parameter;
+    final int[] uniformName = new int[INDEXED];
     final long[] uniformOffset = new long[INDEXED], uniformSize = new long[INDEXED];
-    final long[] storageOffset = new long[INDEXED], storageSize = new long[INDEXED];
+    /** Per storage binding point; a size of -1 is the whole buffer. */
+    public final int[] storageName = new int[INDEXED];
+    public final long[] storageOffset = new long[INDEXED], storageSize = new long[INDEXED];
 
     public TrackedBuffers(CgTracker tracker, TrackedGlErrors errors, TrackedVertexArrays vaos) {
         this.tracker = tracker;
@@ -70,6 +74,9 @@ public final class TrackedBuffers {
             case CgGL.GL_COPY_WRITE_BUFFER:     copyWrite = name; break;
             case CgGL.GL_PIXEL_PACK_BUFFER:     pixelPack = name; break;
             case CgGL.GL_PIXEL_UNPACK_BUFFER:   pixelUnpack = name; break;
+            case CgGL.GL_DRAW_INDIRECT_BUFFER:     drawIndirect = name; break;
+            case CgGL.GL_DISPATCH_INDIRECT_BUFFER: dispatchIndirect = name; break;
+            case CgGL.GL_PARAMETER_BUFFER:         parameter = name; break;
             default: errors.invalidEnum("glBindBuffer", target);
         }
     }
@@ -102,6 +109,9 @@ public final class TrackedBuffers {
             case CgGL.GL_COPY_WRITE_BUFFER:     name = copyWrite; break;
             case CgGL.GL_PIXEL_PACK_BUFFER:     name = pixelPack; break;
             case CgGL.GL_PIXEL_UNPACK_BUFFER:   name = pixelUnpack; break;
+            case CgGL.GL_DRAW_INDIRECT_BUFFER:     name = drawIndirect; break;
+            case CgGL.GL_DISPATCH_INDIRECT_BUFFER: name = dispatchIndirect; break;
+            case CgGL.GL_PARAMETER_BUFFER:         name = parameter; break;
             default: errors.invalidEnum(call, target); return null;
         }
         if (name == 0) {
@@ -111,10 +121,15 @@ public final class TrackedBuffers {
         return names.get(name);
     }
 
+    /**
+     * Host-visible for a buffer the CPU writes often or reads back; device-local for one uploaded once, or written
+     * and read by the GPU alone (the {@code COPY} hints: a kernel's output).
+     */
     public void data(int target, long size, ByteBuffer data, int usage) {
         GlBuffer b = bound(target, "glBufferData");
         if (b == null) return;
-        boolean hostVisible = usage != CgGL.GL_STATIC_DRAW && usage != GL_STATIC_READ && usage != GL_STATIC_COPY;
+        boolean hostVisible = usage == CgGL.GL_STREAM_DRAW || usage == CgGL.GL_DYNAMIC_DRAW
+                || usage == CgGL.GL_STREAM_READ || usage == CgGL.GL_DYNAMIC_READ;
         b.storage.data(size, data, hostVisible);
     }
 
@@ -140,7 +155,9 @@ public final class TrackedBuffers {
 
     public void storage(int target, long size, int flags) {
         GlBuffer b = bound(target, "glBufferStorage");
-        if (b != null) b.storage.storage(size, null, (flags & GL_MAP_PERSISTENT_BIT) != 0);
+        if (b == null) return;
+        boolean hostVisible = (flags & (CgGL.GL_MAP_READ_BIT | CgGL.GL_MAP_WRITE_BIT | GL_CLIENT_STORAGE_BIT)) != 0;
+        b.storage.storage(size, null, hostVisible, (flags & GL_MAP_PERSISTENT_BIT) != 0);
     }
 
     public ByteBuffer map(int target, long offset, long length, int access) {
@@ -175,6 +192,9 @@ public final class TrackedBuffers {
         if (copyWrite == name) copyWrite = 0;
         if (pixelPack == name) pixelPack = 0;
         if (pixelUnpack == name) pixelUnpack = 0;
+        if (drawIndirect == name) drawIndirect = 0;
+        if (dispatchIndirect == name) dispatchIndirect = 0;
+        if (parameter == name) parameter = 0;
         for (int i = 0; i < INDEXED; i++) {
             if (uniformName[i] == name) uniformName[i] = 0;
             if (storageName[i] == name) storageName[i] = 0;
@@ -190,6 +210,9 @@ public final class TrackedBuffers {
             case CgGL.GL_SHADER_STORAGE_BUFFER_BINDING: return TrackedRenderState.one(out, storage);
             case GL_PIXEL_PACK_BUFFER_BINDING:          return TrackedRenderState.one(out, pixelPack);
             case GL_PIXEL_UNPACK_BUFFER_BINDING:        return TrackedRenderState.one(out, pixelUnpack);
+            case GL_DRAW_INDIRECT_BUFFER_BINDING:       return TrackedRenderState.one(out, drawIndirect);
+            case GL_DISPATCH_INDIRECT_BUFFER_BINDING:   return TrackedRenderState.one(out, dispatchIndirect);
+            case GL_PARAMETER_BUFFER_BINDING:           return TrackedRenderState.one(out, parameter);
             default: return -1;
         }
     }
