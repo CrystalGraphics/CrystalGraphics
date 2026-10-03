@@ -349,7 +349,8 @@ The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache.
 
 What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` draws it into its bloom
 target after the transparent pass, blurs it and adds it over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*).
-Unity's and Godot's name for the same thing.
+Unity's, Godot's and Unreal's emission is a material output added to an HDR scene colour; Minecraft's target is
+8-bit, so here it is a pass that draws the mesh again into a float target.
 
 ```glsl
 // The Forward pass's code and render state again: what it draws, it also blooms
