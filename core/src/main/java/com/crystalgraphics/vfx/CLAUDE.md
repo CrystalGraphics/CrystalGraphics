@@ -64,6 +64,11 @@ matters; that is what makes it debuggable at full speed.
   tube layer is `volume()` and sums only its own chunk's rings on a sphere.
 - **Libraries name no `cg_*` or `CG_*`**: an include compiles ahead of the frame block, so it takes values as
   arguments, and what must name them is a macro.
+- **A glowing layer is `"Lighting" = "Unlit"` and ends with a codeless Emissive pass**,
+  `Pass { Tags { "LightMode" = "Emissive" } }`, so it blooms (`docs/SHADERS.md` § *The Emissive pass*). Not the halo
+  layers (`orb_glow`, `body_glow`), which stand in for bloom and would double it, nor ink strokes, debris, smoke, the
+  air shaders, the light pools (`*_light`) or the sky. A premultiplied glow authors `RenderState { Blend ONE ONE ... }`
+  in that pass, or it darkens the glows behind it in the bloom target.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
 - **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
   thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
