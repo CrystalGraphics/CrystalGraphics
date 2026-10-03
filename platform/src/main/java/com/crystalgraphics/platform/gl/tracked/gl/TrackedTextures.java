@@ -66,8 +66,8 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private final Map<CgGpuSampler.Desc, CgGpuSampler> samplers = new HashMap<>();
     private final int[][] units;
     private final CgTextureView[] incomplete = new CgTextureView[KINDS];
-    /** Per image unit: texture, level, layer (-1: every layer), format. */
-    private final int[][] imageUnits = new int[IMAGE_UNITS][4];
+    /** Per image unit: texture, level, layer (-1: every layer), format, access. */
+    private final int[][] imageUnits = new int[IMAGE_UNITS][5];
     private final CgTextureView[] imageViews = new CgTextureView[IMAGE_UNITS];
     public final GlPixels.Store unpack = new GlPixels.Store(), pack = new GlPixels.Store();
     private int active;
@@ -136,8 +136,8 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         }
     }
 
-    /** {@code glBindImageTexture}. The access is the shader's to keep; a device binds every image read-write. */
-    public void bindImage(int unit, int texture, int level, boolean layered, int layer, int format) {
+    /** {@code glBindImageTexture}. The access is kept for queries; a device binds every image read-write. */
+    public void bindImage(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
         if (unit < 0 || unit >= IMAGE_UNITS) { errors.invalidValue("glBindImageTexture unit " + unit); return; }
         if (texture != 0 && !names.exists(texture)) {
             errors.invalidValue("glBindImageTexture: texture " + texture + " was never generated");
@@ -148,7 +148,13 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         u[1] = level;
         u[2] = layered ? -1 : layer;
         u[3] = format;
+        u[4] = access;
         imageViews[unit] = null;
+    }
+
+    /** Image unit {@code unit}: texture, level, layer (-1: every layer), format, access. */
+    public int[] imageUnit(int unit) {
+        return imageUnits[unit];
     }
 
     /** {@code glTexImage2D}/{@code 3D}: specifies a level; level 0 of a new size or format makes a new image. */

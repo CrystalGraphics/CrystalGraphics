@@ -52,6 +52,9 @@ public class CgGlGetProvider implements CgGlStateProvider {
             case FBO:            readFbo(t);           break;
             case TEXTURES:       readTextures(t);      break;
             case VERTEX_INPUT:   readVertexInput(t);   break;
+            case STORAGE_BUFFERS, IMAGES, INDIRECT_BUFFERS:
+                // Whole, these would read every point, some through queries the context may not have.
+                throw new IllegalArgumentException(slot + " is captured a point at a time: readBinding");
             default:
                 // Reached only if a slot is added without a reader. Failing loudly is the point: returning
                 // silently would strand the domain with no restore baseline.
@@ -210,12 +213,38 @@ public class CgGlGetProvider implements CgGlStateProvider {
         t.elementArrayBuffer = integer(CgGL.GL_ELEMENT_ARRAY_BUFFER_BINDING);
     }
 
+    @Override
+    public void readBinding(CgGlSlot slot, int index, CgGlStateShadow t) {
+        switch (slot) {
+            case STORAGE_BUFFERS:
+                t.storageBuffer[index] = integerAt(CgGL.GL_SHADER_STORAGE_BUFFER_BINDING, index);
+                t.storageOffset[index] = integerAt(CgGL.GL_SHADER_STORAGE_BUFFER_START, index);
+                t.storageSize[index] = integerAt(CgGL.GL_SHADER_STORAGE_BUFFER_SIZE, index);
+                break;
+            case IMAGES:
+                t.imageTexture[index] = integerAt(CgGL.GL_IMAGE_BINDING_NAME, index);
+                t.imageLevel[index] = integerAt(CgGL.GL_IMAGE_BINDING_LEVEL, index);
+                t.imageLayer[index] = integerAt(CgGL.GL_IMAGE_BINDING_LAYERED, index) != 0 ? -1
+                        : integerAt(CgGL.GL_IMAGE_BINDING_LAYER, index);
+                t.imageAccess[index] = integerAt(CgGL.GL_IMAGE_BINDING_ACCESS, index);
+                t.imageFormat[index] = integerAt(CgGL.GL_IMAGE_BINDING_FORMAT, index);
+                break;
+            case INDIRECT_BUFFERS:
+                t.indirectBuffer[index] = integer(CgGlStateShadow.INDIRECT_BINDINGS[index]);
+                break;
+            default:
+                throw new IllegalArgumentException(slot + " is read whole: read");
+        }
+    }
+
     // -- Where the answers come from ------------------------------------------------------------------
     //
     // Every read above goes through these, so a provider that must reach the driver another way -- past
     // a mod that rewrites GL call sites -- overrides six methods rather than the reader.
 
     protected int integer(int pname) { return CgGL.glGetInteger(pname); }
+
+    protected int integerAt(int pname, int index) { return CgGL.glGetIntegeri(pname, index); }
 
     protected boolean bool(int pname) { return CgGL.glGetBoolean(pname); }
 

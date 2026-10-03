@@ -38,9 +38,11 @@ public final class TrackedBuffers {
 
     public int array, uniform, storage, texture, copyRead, copyWrite, pixelPack, pixelUnpack;
     public int drawIndirect, dispatchIndirect, parameter;
-    final int[] uniformName = new int[INDEXED], storageName = new int[INDEXED];
+    final int[] uniformName = new int[INDEXED];
     final long[] uniformOffset = new long[INDEXED], uniformSize = new long[INDEXED];
-    final long[] storageOffset = new long[INDEXED], storageSize = new long[INDEXED];
+    /** Per storage binding point; a size of -1 is the whole buffer. */
+    public final int[] storageName = new int[INDEXED];
+    public final long[] storageOffset = new long[INDEXED], storageSize = new long[INDEXED];
 
     public TrackedBuffers(CgTracker tracker, TrackedGlErrors errors, TrackedVertexArrays vaos) {
         this.tracker = tracker;

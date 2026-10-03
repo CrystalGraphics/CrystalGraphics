@@ -59,7 +59,7 @@ public final class CgRecordingDevice implements CgDevice {
 
     private static final CgDeviceInfo INFO = new CgDeviceInfo("recording", "CrystalGraphics", "0",
             new CgDeviceInfo.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
-                    256, 256, 16, 16384, 16f), true, true, true, true, true);
+                    256, 256, 16, 16384, 16f), true, true, true, true, true, true);
 
     private final List<String> log = new ArrayList<>();
     private final List<CgPassDesc> passes = new ArrayList<>();

@@ -3,7 +3,10 @@ package com.crystalgraphics.platform.gl;
 import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 
+import java.util.Arrays;
 import java.util.Locale;
 
 /**
@@ -73,6 +76,34 @@ public final class CgCapabilities {
      * misbehaves on the tier chosen, and for comparing them. Forcing a tier this context cannot do throws
      * from {@link #detect()}.</p>
      */
+    /**
+     * Where kernels run, best first. A kernel runs at the highest tier at or below {@link #computeTier()} it can,
+     * and every tier is forceable for a driver that misbehaves: {@code -Dcrystalgraphics.compute.tier=g40}.
+     */
+    public enum ComputeTier {
+        /** A device: compute passes on the tracked backend's device. */
+        V,
+        /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
+        G43,
+        /** No compute: kernels lowered to vertex programs under transform feedback, counts drawn from the stream. */
+        G40,
+        /** As {@code G40} with no stream count: a draw takes its whole capacity. */
+        G33,
+        /** Kernels' Java bodies on worker threads. */
+        CPU;
+
+        /** What this tier needs that the context lacks, or null. */
+        String missing(CgCapabilities caps, boolean device) {
+            switch (this) {
+                case V:   return device ? null : "a device (the tracked backend)";
+                case G43: return caps.compute && caps.storageImages ? null : "compute shaders and storage images (GL 4.3)";
+                case G40: return caps.feedbackCount ? null : "transform feedback 2 (GL 4.0), which a device does not carry";
+                case G33: return device ? "transform feedback, which a device does not carry" : null;
+                default:  return null;
+            }
+        }
+    }
+
     public enum StreamBufferTier {
         /** A frame ring in immutable storage mapped once for its life: no map call per upload. GL 4.4 / {@code ARB_buffer_storage}. */
         PERSISTENT,
@@ -183,6 +214,14 @@ public final class CgCapabilities {
     /** Whether the current context is a core profile. Fixed-function state
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
+
+    // ── Compute and GPU-driven draws ──────────────────────────────────────────
+    // Each answers what a consumer needs, joined from a core version, its ARB extension and, on the tracked
+    // backend, the device. @see #computeTier
+    @Getter(AccessLevel.NONE)
+    boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
+            drawParameters, feedbackCount, asyncCompute, bindless;
+    @Getter(AccessLevel.NONE) ComputeTier computeTier;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
@@ -295,12 +334,42 @@ public final class CgCapabilities {
         // GL_CONTEXT_PROFILE_MASK (0x9126); bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.
         caps.coreProfile = (CgGL.glGetInteger(0x9126) & 0x1) != 0;
 
+        // ── Compute and GPU-driven draws ──────────────────────────────────────
+        CgDeviceInfo device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().info() : null;
+        boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
+        caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
+        caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
+        caps.subgroups         = device != null || gl.GL_KHR_shader_subgroup();
+        caps.floatAtomics      = device == null && gl.GL_NV_shader_atomic_float();
+        caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
+        caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
+        caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
+        caps.drawParameters    = device == null && (gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters());
+        caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
+        caps.asyncCompute      = false;
+        caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
+        caps.computeTier       = computeTier(caps, device != null);
+
         if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
         else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
         else if (caps.textureBufferMaterialPath) caps.shaderBufferPath = ShaderBufferPath.TBO;
         else                                     caps.shaderBufferPath = ShaderBufferPath.NONE;
 
         return caps;
+    }
+
+    private static ComputeTier computeTier(CgCapabilities caps, boolean device) {
+        ComputeTier best = Arrays.stream(ComputeTier.values()).filter(t -> t.missing(caps, device) == null)
+                .findFirst().orElseThrow();
+        String property = System.getProperty("crystalgraphics.compute.tier");
+        if (property == null) return best;
+        ComputeTier forced = ComputeTier.valueOf(property.trim().toUpperCase(Locale.ROOT));
+        String missing = forced.missing(caps, device);
+        if (missing != null) {
+            throw new IllegalStateException("-Dcrystalgraphics.compute.tier=" + forced + " needs " + missing
+                    + ", which this context lacks; the best it supports is " + best);
+        }
+        return forced;
     }
 
     private static StreamBufferTier vertexStreamTier(CgCapabilities caps) {
@@ -348,6 +417,42 @@ public final class CgCapabilities {
 
     /** The tier shader-buffer storage takes: {@code ORPHAN}, or {@code SUBDATA} where vertex streams take it. */
     public StreamBufferTier shaderStreamTier() { return shaderStreamTier; }
+
+    /** Kernels: GL 4.3 or {@code ARB_compute_shader}, with storage buffers; any device. */
+    public boolean compute() { return compute; }
+
+    /** {@code imageLoad} and {@code imageStore}: GL 4.2 or {@code ARB_shader_image_load_store}; any device. */
+    public boolean storageImages() { return storageImages; }
+
+    /** Subgroup operations: {@code KHR_shader_subgroup}; any device, at Vulkan 1.1's basic set in kernels. */
+    public boolean subgroups() { return subgroups; }
+
+    /** Atomic adds on floats: {@code NV_shader_atomic_float}. No device enables its counterpart. */
+    public boolean floatAtomics() { return floatAtomics; }
+
+    /** A draw's arguments from a buffer: GL 4.0 or {@code ARB_draw_indirect}; any device. */
+    public boolean drawIndirect() { return drawIndirect; }
+
+    /** More than one indirect draw in a call: GL 4.3 or {@code ARB_multi_draw_indirect}, or a device that enabled it. */
+    public boolean multiDrawIndirect() { return multiDrawIndirect; }
+
+    /** The draw count from a buffer too: GL 4.6 or {@code ARB_indirect_parameters}, or a device that enabled it. */
+    public boolean indirectCount() { return indirectCount; }
+
+    /** {@code gl_DrawID} in a multi-draw: GL 4.6 or {@code ARB_shader_draw_parameters}. No device enables it. */
+    public boolean drawParameters() { return drawParameters; }
+
+    /** A captured transform-feedback stream drawn by its own count: GL 4.0 or {@code ARB_transform_feedback2}. */
+    public boolean feedbackCount() { return feedbackCount; }
+
+    /** Kernels on a queue beside the frame's. Always false: every device submits on one queue. */
+    public boolean asyncCompute() { return asyncCompute; }
+
+    /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */
+    public boolean bindless() { return bindless; }
+
+    /** The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s. */
+    public ComputeTier computeTier() { return computeTier; }
 
 
     // ─────────────────────────────────────────────────────────────────────────

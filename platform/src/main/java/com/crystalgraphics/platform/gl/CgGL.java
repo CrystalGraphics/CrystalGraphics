@@ -323,6 +323,11 @@ public final class CgGL {
     public static final int GL_UNIFORM_BUFFER_BINDING        = 0x8A28;
     public static final int GL_MAX_UNIFORM_BUFFER_BINDINGS   = 0x8A2F;
     public static final int GL_SHADER_STORAGE_BUFFER_BINDING = 0x90D3;
+    public static final int GL_SHADER_STORAGE_BUFFER_START   = 0x90D4;
+    public static final int GL_SHADER_STORAGE_BUFFER_SIZE    = 0x90D5;
+    public static final int GL_DRAW_INDIRECT_BUFFER_BINDING     = 0x8F43;
+    public static final int GL_DISPATCH_INDIRECT_BUFFER_BINDING = 0x90EF;
+    public static final int GL_PARAMETER_BUFFER_BINDING         = 0x80EF;
 
     // --- Framebuffer ---------------------------------------------------------
     public static final int GL_FRAMEBUFFER          = 0x8D40;
@@ -512,6 +517,13 @@ public final class CgGL {
     public static final int GL_READ_ONLY  = 0x88B8;
     public static final int GL_WRITE_ONLY = 0x88B9;
     public static final int GL_READ_WRITE = 0x88BA;
+    /** Indexed by unit, through {@link #glGetIntegeri}. */
+    public static final int GL_IMAGE_BINDING_NAME    = 0x8F3A;
+    public static final int GL_IMAGE_BINDING_LEVEL   = 0x8F3B;
+    public static final int GL_IMAGE_BINDING_LAYERED = 0x8F3C;
+    public static final int GL_IMAGE_BINDING_LAYER   = 0x8F3D;
+    public static final int GL_IMAGE_BINDING_ACCESS  = 0x8F3E;
+    public static final int GL_IMAGE_BINDING_FORMAT  = 0x906E;
 
     // --- Transform feedback --------------------------------------------------
     public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS   = 0x8C80;
@@ -886,10 +898,12 @@ public final class CgGL {
     }
 
     public static void glBindBufferBase(int target, int index, int buffer) {
+        if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, 0, 0)) return;
         gl().glBindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
+        if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, offset, size)) return;
         gl().glBindBufferRange(target, index, buffer, offset, size);
     }
 
@@ -1128,6 +1142,7 @@ public final class CgGL {
      */
     public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access,
                                           int format) {
+        if (!state().imageBindingChanged(unit, texture, level, layered ? -1 : layer, access, format)) return;
         gl().glBindImageTexture(unit, texture, level, layered, layer, access, format);
     }
 

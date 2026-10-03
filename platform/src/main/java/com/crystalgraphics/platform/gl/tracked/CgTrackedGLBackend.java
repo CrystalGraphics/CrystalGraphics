@@ -836,7 +836,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override
     public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
-        textures.bindImage(unit, texture, level, layered, layer, format);
+        textures.bindImage(unit, texture, level, layered, layer, access, format);
     }
 
     /** This exact barrier, on the device memory under {@code buffer}. */

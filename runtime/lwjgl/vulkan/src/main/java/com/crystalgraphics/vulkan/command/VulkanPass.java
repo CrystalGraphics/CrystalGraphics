@@ -145,11 +145,13 @@ final class VulkanPass implements CgRenderPass {
 
     @Override
     public void drawIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+        requireMultiDraw(drawCount);
         vkCmdDrawIndirect(cmd(), ((VulkanBuffer) buffer).buffer, offset, drawCount, stride);
     }
 
     @Override
     public void drawIndexedIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+        requireMultiDraw(drawCount);
         vkCmdDrawIndexedIndirect(cmd(), ((VulkanBuffer) buffer).buffer, offset, drawCount, stride);
     }
 
@@ -167,6 +169,13 @@ final class VulkanPass implements CgRenderPass {
         requireIndirectCount();
         vkCmdDrawIndexedIndirectCount(cmd(), ((VulkanBuffer) buffer).buffer, offset, ((VulkanBuffer) count).buffer,
                 countOffset, maxDraws, stride);
+    }
+
+    private void requireMultiDraw(int drawCount) {
+        if (drawCount > 1 && !device.info().multiDrawIndirect()) {
+            throw new IllegalStateException("drawIndirect of " + drawCount + " commands: the device was created without "
+                    + "multiDrawIndirect");
+        }
     }
 
     private void requireIndirectCount() {

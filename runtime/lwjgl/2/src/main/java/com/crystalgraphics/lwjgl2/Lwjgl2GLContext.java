@@ -2,6 +2,8 @@ package com.crystalgraphics.lwjgl2;
 
 import com.crystalgraphics.platform.gl.CgGLContext;
 import org.lwjgl.opengl.ContextCapabilities;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GLContext;
 
 /**
@@ -14,6 +16,8 @@ import org.lwjgl.opengl.GLContext;
 public final class Lwjgl2GLContext implements CgGLContext {
 
     private volatile ContextCapabilities caps;
+    /** What LWJGL 2's capabilities predate: GL 4.6, and the subgroup extension. */
+    private volatile boolean openGL46, subgroups;
     
     private ContextCapabilities caps() {
         if(caps == null) probe();
@@ -23,6 +27,12 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override
     public void probe() {
         caps = GLContext.getCapabilities();
+        int major = GL11.glGetInteger(GL30.GL_MAJOR_VERSION), minor = GL11.glGetInteger(GL30.GL_MINOR_VERSION);
+        openGL46 = major > 4 || major == 4 && minor >= 6;
+        subgroups = false;
+        for (int i = 0, n = GL11.glGetInteger(GL30.GL_NUM_EXTENSIONS); i < n && !subgroups; i++) {
+            subgroups = "GL_KHR_shader_subgroup".equals(GL30.glGetStringi(GL11.GL_EXTENSIONS, i));
+        }
     }
 
     // ── GL version tiers ──────────────────────────────────────────────────────
@@ -31,8 +41,10 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean OpenGL32() { return caps().OpenGL32; }
     @Override public boolean OpenGL33() { return caps().OpenGL33; }
     @Override public boolean OpenGL40() { return caps().OpenGL40; }
+    @Override public boolean OpenGL42() { return caps().OpenGL42; }
     @Override public boolean OpenGL43() { return caps().OpenGL43; }
     @Override public boolean OpenGL44() { return caps().OpenGL44; }
+    @Override public boolean OpenGL46() { caps(); return openGL46; }
 
     // ── Streaming ─────────────────────────────────────────────────────────────
 
@@ -56,4 +68,17 @@ public final class Lwjgl2GLContext implements CgGLContext {
 
     // LWJGL 2's capabilities predate the extension, so a compile here finishes a frame later rather than when polled.
     @Override public boolean parallelShaderCompile() { return false; }
+
+    // ── Compute and GPU-driven draws ──────────────────────────────────────────
+
+    @Override public boolean GL_ARB_compute_shader() { return caps().GL_ARB_compute_shader; }
+    @Override public boolean GL_ARB_shader_image_load_store() { return caps().GL_ARB_shader_image_load_store; }
+    @Override public boolean GL_ARB_draw_indirect() { return caps().GL_ARB_draw_indirect; }
+    @Override public boolean GL_ARB_multi_draw_indirect() { return caps().GL_ARB_multi_draw_indirect; }
+    @Override public boolean GL_ARB_indirect_parameters() { return caps().GL_ARB_indirect_parameters; }
+    @Override public boolean GL_ARB_shader_draw_parameters() { return caps().GL_ARB_shader_draw_parameters; }
+    @Override public boolean GL_ARB_transform_feedback2() { return caps().GL_ARB_transform_feedback2; }
+    @Override public boolean GL_KHR_shader_subgroup() { caps(); return subgroups; }
+    @Override public boolean GL_NV_shader_atomic_float() { return caps().GL_NV_shader_atomic_float; }
+    @Override public boolean GL_ARB_bindless_texture() { return caps().GL_ARB_bindless_texture; }
 }
