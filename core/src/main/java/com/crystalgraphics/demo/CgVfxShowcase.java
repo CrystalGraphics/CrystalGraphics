@@ -9,6 +9,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.effect.air.CgVfxHeatHaze;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import org.joml.Matrix4f;
 
@@ -94,6 +95,10 @@ public final class CgVfxShowcase {
     };
     /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
     private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
+    /** Heat haze on its own, at the spheres' height just in front of the front row, two spheres behind it. */
+    private static final float[] HAZE_AT = {0f, HEIGHT, 1.5f * SPACING + 2.6f};
+    private static final float HAZE_RADIUS = 2.6f;
+    private static final float HAZE_INTENSITY = 1.5f;
 
     /** Where one wave fires from and at, and its look: slower so it is seen growing, harder-homing so it bends sharply. */
     private static final class Lane {
@@ -133,6 +138,7 @@ public final class CgVfxShowcase {
     /** Each lane's wave and the shot it is on. */
     private final CgEnergyWave[] waves = new CgEnergyWave[LANES.length];
     private final int[] shots = filled(LANES.length, -1);
+    private CgVfxHeatHaze haze;
     private double waveX = Double.NaN, waveY, waveZ;
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
@@ -221,6 +227,7 @@ public final class CgVfxShowcase {
     public void delete() {
         vfx.delete();
         Arrays.fill(waves, null);
+        haze = null;
         waveX = Double.NaN;
         if (floor != null) floor.release();
         sphere = null;
@@ -253,6 +260,10 @@ public final class CgVfxShowcase {
                 waves[k] = null;
                 shots[k] = -1;
             }
+            if (haze != null) haze.kill();
+            haze = vfx.play(new CgVfxHeatHaze(CgVfxHeatHaze.standard(), x + HAZE_AT[0], y + HAZE_AT[1], z + HAZE_AT[2]));
+            haze.set(CgVfxHeatHaze.RADIUS, HAZE_RADIUS);
+            haze.set(CgVfxHeatHaze.INTENSITY, HAZE_INTENSITY);
             waveX = x;
             waveY = y;
             waveZ = z;

@@ -94,6 +94,10 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST_GLOW = "blastGlow";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
+    /** Heat haze round the charge ball and round the contact orb, at their steady size: spheres, without the pulse. */
+    public static final String SLOT_CHARGE_HAZE = "chargeHaze", SLOT_IMPACT_HAZE = "impactHaze";
+    /** The beam's hazes bend harder than haze.shader's default: their spheres are small and their intensity tops out at 1. */
+    private static final float HAZE_STRENGTH = 0.06f;
     /** The blast's shock front, racing out ahead of its dust: a sphere at the target. */
     public static final String SLOT_BLAST_SHOCK = "blastShock";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
@@ -190,10 +194,11 @@ public final class CgEnergyWave extends CgVfxEffect {
     private static final String AIR = "crystalgraphics:shaders/vfx/air/";
 
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
-            .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(2.2f)
+            .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(3.2f).parameter(2.4f)
+                    .properties(b -> b.set1f("_Core", 1.4f))
                     .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
-            .layer(haze(SLOT_CHARGE, 2.6f))
-            .layer(haze(SLOT_IMPACT, 2.4f))
+            .layer(haze(SLOT_CHARGE_HAZE, 2.6f))
+            .layer(haze(SLOT_IMPACT_HAZE, 2.4f))
             .layer(haze(SLOT_BLAST_GLOW, 2.2f))
             .layer(CgVfxLayer.builder(AIR + "shock.shader").slot(SLOT_BLAST_SHOCK)
                     .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
@@ -317,9 +322,13 @@ public final class CgEnergyWave extends CgVfxEffect {
         return GALICK_GUN;
     }
 
-    /** Heat haze round what a slot draws, {@code radius} times its size; dropped at the Low tier. */
+    /**
+     * Heat haze round what a slot draws, {@code radius} times its size, leaving the slot's own sphere unbent; dropped at
+     * the Low tier.
+     */
     private static CgVfxLayer haze(String slot, float radius) {
-        return CgVfxLayer.builder(AIR + "haze.shader").slot(slot).radius(radius)
+        return CgVfxLayer.builder(AIR + "haze.shader").slot(slot).radius(radius).parameter(1f)
+                .properties(b -> b.set1f("_Strength", HAZE_STRENGTH))
                 .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build();
     }
 
@@ -537,8 +546,10 @@ public final class CgEnergyWave extends CgVfxEffect {
         float radius = get(RADIUS);
         float x = stream.impactX(), y = stream.impactY(), z = stream.impactZ();
         if (impactLevel > 0.01f) {
-            float orb = radius * get(IMPACT_RADIUS) * (1f + 0.08f * (float) Math.sin(age * 19f + seed * 6.28f))
-                    * (float) Math.sqrt(impactLevel);
+            float steadyOrb = radius * get(IMPACT_RADIUS) * (float) Math.sqrt(impactLevel);
+            placed.identity().scale(steadyOrb);
+            drawAt(frame, layers, SLOT_IMPACT_HAZE, x, y, z, placed, steadyOrb, steadyOrb, impactLevel, 0f, false);
+            float orb = steadyOrb * (1f + 0.08f * (float) Math.sin(age * 19f + seed * 6.28f));
             facing(placed, normalX, normalY, normalZ).rotateZ(age * 1.1f).scale(orb);
             drawAt(frame, layers, SLOT_IMPACT, x, y, z, placed, orb, orb, impactLevel, 0f, false);
             float reach = radius * 12f;
@@ -610,6 +621,8 @@ public final class CgEnergyWave extends CgVfxEffect {
         } else {
             ball = full * (1f + (get(ROOT_SIZE) - 1f) * smooth(0f, SETTLE, sinceRelease));
         }
+        placed.identity().scale(ball);
+        draw(frame, layers, SLOT_CHARGE_HAZE, placed, ball, ball, fade, 0f);
         ball *= 1f + 0.05f * (float) Math.sin(age * 23f + seed * 6.28f);
         alongAim(placed);
         placed.rotateZ(age * 1.3f).scale(ball);
