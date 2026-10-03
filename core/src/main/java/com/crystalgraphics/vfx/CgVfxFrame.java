@@ -26,6 +26,8 @@ import java.util.List;
  *     for (CgVfxLayer layer : look().layers()) frame.tube(this, path, row, layer);
  * }
  * }</pre>
+ *
+ * <p>A layer above this frame's quality tier ({@link CgVfxLayer#from}) draws nothing, whichever method draws it.</p>
  */
 public final class CgVfxFrame {
 
@@ -52,6 +54,11 @@ public final class CgVfxFrame {
         return world;
     }
 
+    /** Whether this frame's quality tier is below {@code layer}'s. */
+    private boolean skips(CgVfxLayer layer) {
+        return !system.quality().atLeast(layer.from());
+    }
+
     /** Puts {@code path} in this frame's path texture and answers its row. */
     public int path(CgVfxPath path, float seed, float age) {
         return system.paths().add(path, seed, age);
@@ -59,6 +66,7 @@ public final class CgVfxFrame {
 
     /** Draws {@code layer} as a tube along {@code path}, at {@code row}, around {@code effect}'s origin. */
     public void tube(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer) {
+        if (skips(layer)) return;
         system.tube().submit(world, layer.isVolume() ? system.sphereMesh() : system.tubeMesh(), system.material(layer), path, row,
                 effect.originX, effect.originY, effect.originZ, layer, effect.values());
     }
@@ -75,6 +83,7 @@ public final class CgVfxFrame {
      */
     public void mesh(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
+        if (skips(layer)) return;
         draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
     }
 
@@ -85,6 +94,7 @@ public final class CgVfxFrame {
      */
     public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
+        if (skips(layer)) return;
         draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f).submit();
     }
 
@@ -112,7 +122,7 @@ public final class CgVfxFrame {
         List<CgVfxLayer> layers = effect.look().layers();
         for (int k = 0; k < layers.size(); k++) {
             CgVfxLayer layer = layers.get(k);
-            if (!slot.equals(layer.slot())) continue;
+            if (!slot.equals(layer.slot()) || skips(layer)) continue;
             switch (emitter.emitter().renderer()) {
                 case MESHES -> particleMeshes(effect, emitter, layer);
                 case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
@@ -201,6 +211,7 @@ public final class CgVfxFrame {
      */
     public void billboard(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, float size,
                           float ex, float ey, float ez, float ew) {
+        if (skips(layer)) return;
         // Its bounds: the cube its transform scales, whichever way the shader turns it.
         draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
                 .submit();
@@ -220,7 +231,7 @@ public final class CgVfxFrame {
      */
     public void pathRibbons(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer, float intensity) {
         int count = path.count();
-        if (count < 2) return;
+        if (count < 2 || skips(layer)) return;
         float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
         float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE, reach = 0f;
         for (int i = 0; i < count; i++) {

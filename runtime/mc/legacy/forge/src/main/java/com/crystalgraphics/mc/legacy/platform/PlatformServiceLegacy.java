@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.legacy.platform;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.mc.legacy.platform.service.GameDirectoryService;
 import com.crystalgraphics.mc.legacy.platform.service.LifecycleService;
 import com.crystalgraphics.mc.legacy.platform.service.ReloadService;
 import com.crystalgraphics.mc.legacy.platform.service.RenderingService;
@@ -21,6 +22,7 @@ import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
@@ -76,6 +78,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryLegacy());
         CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
+        CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService());
         // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
         CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                 | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);

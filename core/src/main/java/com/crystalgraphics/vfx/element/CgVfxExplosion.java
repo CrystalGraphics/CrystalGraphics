@@ -64,7 +64,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /** Dark debris: heavy and ballistic, it lands, bounces a little, tumbles to a stop and fades. */
     public static final CgVfxEmitter SPECKS = CgVfxEmitter.builder("specks").renderer(CgVfxEmitter.Renderer.QUADS)
-            .capacity(820).burst(0f, 800).shape(3f).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
+            .optional().capacity(820).burst(0f, 800).shape(3f).launch(0.05f, 1f, 0.7f).speed(6f, 16f)
             .life(4f, 6f).size(0.035f, 0.25f, 2.4f).spin(4f, 14f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(0.25f, 0f))
@@ -80,7 +80,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
      * by their heat, swirled by turbulence and carried by the wind, sinking to the ground as they cool and dim.
      */
     public static final CgVfxEmitter SPARKLES = CgVfxEmitter.builder("sparkles").renderer(CgVfxEmitter.Renderer.QUADS)
-            .capacity(520).burst(0f, 500).shape(3f).launch(-0.05f, 0.8f, 1.6f).speed(18f, 36f)
+            .optional().capacity(520).burst(0f, 500).shape(3f).launch(-0.05f, 0.8f, 1.6f).speed(18f, 36f)
             .life(4f, 7f).size(0.1f, 0.5f, 2f).heat(1f)
             .module(new CgVfxModule.Gravity(9.8f))
             .module(new CgVfxModule.Drag(1.5f, 0.05f))

@@ -133,6 +133,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
+            CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);

@@ -24,6 +24,7 @@ import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
+import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -386,6 +387,7 @@ public final class CgGraphicsLifecycle {
             CgGlState.invalidateAllIfPresent();
 
             CgFontRegistry.get().tickFrame(frameCounter);
+            CgSettings.tickFrame();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
 
             // And again AFTER dispatch. Listeners are third-party code that may render, and anything they

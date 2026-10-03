@@ -39,6 +39,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgEntityQuery` | Interface + slot | Entities by int id, client only: interpolated pose, flags, kind, and a box walk handing ids to a visitor. Core computes hands, head and feet (`CgEntityAttachments`) |
 | `service/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
 | `service/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
+| `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |
 | `service/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
