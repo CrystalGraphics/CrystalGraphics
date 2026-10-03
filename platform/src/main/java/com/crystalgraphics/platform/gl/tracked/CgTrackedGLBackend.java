@@ -259,7 +259,19 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override
     public int glGetIntegeri(int target, int index) {
-        throw new IllegalArgumentException("glGetIntegeri(0x" + Integer.toHexString(target) + ") is not modelled");
+        switch (target) {
+            case CgGL.GL_SHADER_STORAGE_BUFFER_BINDING: return buffers.storageName[index];
+            case CgGL.GL_SHADER_STORAGE_BUFFER_START:   return (int) buffers.storageOffset[index];
+            case CgGL.GL_SHADER_STORAGE_BUFFER_SIZE:    return (int) Math.max(0, buffers.storageSize[index]);
+            case CgGL.GL_IMAGE_BINDING_NAME:    return textures.imageUnit(index)[0];
+            case CgGL.GL_IMAGE_BINDING_LEVEL:   return textures.imageUnit(index)[1];
+            case CgGL.GL_IMAGE_BINDING_LAYERED: return textures.imageUnit(index)[2] < 0 ? 1 : 0;
+            case CgGL.GL_IMAGE_BINDING_LAYER:   return Math.max(0, textures.imageUnit(index)[2]);
+            case CgGL.GL_IMAGE_BINDING_FORMAT:  return textures.imageUnit(index)[3];
+            case CgGL.GL_IMAGE_BINDING_ACCESS:  return textures.imageUnit(index)[4];
+            default:
+                throw new IllegalArgumentException("glGetIntegeri(0x" + Integer.toHexString(target) + ") is not modelled");
+        }
     }
 
     @Override
