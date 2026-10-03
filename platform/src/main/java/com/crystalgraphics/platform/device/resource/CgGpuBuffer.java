@@ -19,7 +19,7 @@ import java.util.Set;
 public interface CgGpuBuffer extends CgDeviceObject {
 
     enum Usage {
-        VERTEX, INDEX, UNIFORM, STORAGE, TEXEL, COPY_SRC, COPY_DST;
+        VERTEX, INDEX, UNIFORM, STORAGE, TEXEL, INDIRECT, COPY_SRC, COPY_DST;
 
         /** Every usage: a slab that sub-allocations of any kind share. */
         public static final Set<Usage> ALL = EnumSet.allOf(Usage.class);

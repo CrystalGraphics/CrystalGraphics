@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.device.command;
 
+import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.pipeline.CgBindings;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
@@ -56,6 +57,18 @@ public interface CgRenderPass {
     void draw(int vertexCount, int instanceCount, int firstVertex, int firstInstance);
 
     void drawIndexed(int indexCount, int instanceCount, int firstIndex, int baseVertex, int firstInstance);
+    /** {@code drawCount} commands {@code stride} bytes apart from {@code offset}: GL's {@code DrawArraysIndirectCommand}. */
+    void drawIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride);
+    /** The same with GL's {@code DrawElementsIndirectCommand}, through the bound index buffer. */
+    void drawIndexedIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride);
+    /**
+     * {@link #drawIndirect} with the count a uint at {@code countOffset}, at most {@code maxDraws}. Where
+     * {@link CgDeviceInfo#indirectCount} holds.
+     */
+    void drawIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset, int maxDraws, int stride);
+    /** {@link #drawIndexedIndirect} with a count from the GPU, as {@link #drawIndirectCount}. */
+    void drawIndexedIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset, int maxDraws,
+                                  int stride);
 
     void end();
 }

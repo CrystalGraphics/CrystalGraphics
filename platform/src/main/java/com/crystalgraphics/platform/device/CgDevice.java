@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
@@ -69,6 +70,8 @@ public interface CgDevice {
     CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots);
 
     CgPipeline createPipeline(CgPipelineDesc desc);
+
+    CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout);
 
     CgTimerQuery createTimerQuery(String label);
 

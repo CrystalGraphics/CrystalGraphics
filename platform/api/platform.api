@@ -41,6 +41,7 @@ com/crystalgraphics/platform/device/CgDevice
   method public toHost ()V
   method public,abstract createBindingLayout (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
   method public,abstract createBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;
+  method public,abstract createComputePipeline (Ljava/lang/String;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;)Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;
   method public,abstract createPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;)Lcom/crystalgraphics/platform/device/pipeline/CgPipeline;
   method public,abstract createSampler (Lcom/crystalgraphics/platform/device/resource/CgGpuSampler$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
   method public,abstract createShaderModule (Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;Ljava/nio/ByteBuffer;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
@@ -63,9 +64,11 @@ com/crystalgraphics/platform/device/CgDevice
 com/crystalgraphics/platform/device/CgDeviceInfo
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZ)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZ)V
   method public anisotropy ()Z
   method public driver ()Ljava/lang/String;
+  method public indirectCount ()Z
+  method public indirectFirstInstance ()Z
   method public limits ()Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;
   method public name ()Ljava/lang/String;
   method public nonSolidFill ()Z
@@ -101,21 +104,51 @@ com/crystalgraphics/platform/device/CgDeviceObject
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract label ()Ljava/lang/String;
+com/crystalgraphics/platform/device/command/CgAccess
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COLOR_WRITE Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final COMPUTE_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final COMPUTE_WRITE Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final COPY_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final COPY_WRITE Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final FRAGMENT_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final HOST_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final INDEX_INPUT Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final INDIRECT Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final SAMPLED_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final UNIFORM_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final VERTEX_INPUT Lcom/crystalgraphics/platform/device/command/CgAccess;
+  field public,static,final VERTEX_READ Lcom/crystalgraphics/platform/device/command/CgAccess;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/command/CgAccess;
+  method public,static values ()[Lcom/crystalgraphics/platform/device/command/CgAccess;
 com/crystalgraphics/platform/device/command/CgCommandEncoder
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract beginCompute (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/command/CgComputePass;
   method public,abstract beginPass (Lcom/crystalgraphics/platform/device/command/CgPassDesc;)Lcom/crystalgraphics/platform/device/command/CgRenderPass;
   method public,abstract beginTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
   method public,abstract blit (Lcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgGpuSampler$Filter;)V
+  method public,abstract bufferBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;Lcom/crystalgraphics/platform/device/command/CgAccess;Lcom/crystalgraphics/platform/device/command/CgAccess;)V
   method public,abstract copyBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)V
   method public,abstract copyTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;)V
   method public,abstract copyTextureToBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
   method public,abstract endTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
   method public,abstract generateMipmaps (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)V
+  method public,abstract imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/command/CgAccess;Lcom/crystalgraphics/platform/device/command/CgAccess;)V
+  method public,abstract memoryBarrier (Lcom/crystalgraphics/platform/device/command/CgAccess;Lcom/crystalgraphics/platform/device/command/CgAccess;)V
   method public,abstract readTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
   method public,abstract resolve (Lcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgTextureView;)V
   method public,abstract writeBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLjava/nio/ByteBuffer;)V
   method public,abstract writeTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
+com/crystalgraphics/platform/device/command/CgComputePass
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract dispatch (III)V
+  method public,abstract dispatchIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
+  method public,abstract end ()V
+  method public,abstract pushBindings (Lcom/crystalgraphics/platform/device/pipeline/CgBindings;)V
+  method public,abstract setPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;)V
 com/crystalgraphics/platform/device/command/CgPassDesc
   access public,final,record
   extends java/lang/Record
@@ -178,6 +211,10 @@ com/crystalgraphics/platform/device/command/CgRenderPass
   method public,abstract clearDepthStencil (ZFZIIIII)V
   method public,abstract draw (IIII)V
   method public,abstract drawIndexed (IIIII)V
+  method public,abstract drawIndexedIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndexedIndirectCount (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndirectCount (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
   method public,abstract end ()V
   method public,abstract pushBindings (Lcom/crystalgraphics/platform/device/pipeline/CgBindings;)V
   method public,abstract setDepthBias (FF)V
@@ -331,6 +368,7 @@ com/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type
   extends java/lang/Enum
   field public,static,final SAMPLED_TEXTURE Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final STORAGE_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
+  field public,static,final STORAGE_IMAGE Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final TEXEL_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final UNIFORM_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
@@ -344,6 +382,7 @@ com/crystalgraphics/platform/device/pipeline/CgBindings
   method public buffer (ILcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public clear ()Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public count ()I
+  method public image (ILcom/crystalgraphics/platform/device/resource/CgTextureView;)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public indexOf (I)I
   method public offset (I)J
   method public sampler (I)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
@@ -353,6 +392,12 @@ com/crystalgraphics/platform/device/pipeline/CgBindings
   method public texture (ILcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public type (I)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   method public view (I)Lcom/crystalgraphics/platform/device/resource/CgTextureView;
+com/crystalgraphics/platform/device/pipeline/CgComputePipeline
+  access public,abstract,interface
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/device/CgDeviceObject
+  method public,abstract layout ()Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
+  method public,abstract module ()Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
 com/crystalgraphics/platform/device/pipeline/CgPipeline
   access public,abstract,interface
   extends java/lang/Object
@@ -548,6 +593,7 @@ com/crystalgraphics/platform/device/recording/CgRecordingDevice
   method public <init> (IIIZ)V
   method public createBindingLayout (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
   method public createBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;
+  method public createComputePipeline (Ljava/lang/String;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;)Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;
   method public createPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;)Lcom/crystalgraphics/platform/device/pipeline/CgPipeline;
   method public createSampler (Lcom/crystalgraphics/platform/device/resource/CgGpuSampler$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
   method public createShaderModule (Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;Ljava/nio/ByteBuffer;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
@@ -604,6 +650,7 @@ com/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage
   field public,static,final COPY_DST Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final COPY_SRC Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final INDEX Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
+  field public,static,final INDIRECT Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final STORAGE Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final TEXEL Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final UNIFORM Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
@@ -697,6 +744,7 @@ com/crystalgraphics/platform/device/resource/CgGpuTexture$Usage
   field public,static,final COPY_SRC Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   field public,static,final SAMPLED Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   field public,static,final SAMPLED_UPLOADED Ljava/util/Set;
+  field public,static,final STORAGE Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   method public,static values ()[Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
 com/crystalgraphics/platform/device/resource/CgTextureRegion
@@ -740,6 +788,7 @@ com/crystalgraphics/platform/device/shader/CgGlslCompiler
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract compile (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$Program;
+  method public,abstract compileCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$ComputeProgram;
 com/crystalgraphics/platform/device/shader/CgGlslCompiler$Attribute
   access public,final,record
   extends java/lang/Record
@@ -755,6 +804,33 @@ com/crystalgraphics/platform/device/shader/CgGlslCompiler$Block
   extends java/lang/Record
   method public <init> (Ljava/lang/String;I)V
   method public binding ()I
+  method public name ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/shader/CgGlslCompiler$ComputeProgram
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/nio/ByteBuffer;[ILjava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;IILjava/util/List;)V
+  method public images ()Ljava/util/List;
+  method public localSize ()[I
+  method public samplers ()Ljava/util/List;
+  method public slots ()Ljava/util/List;
+  method public spirv ()Ljava/nio/ByteBuffer;
+  method public storageBlocks ()Ljava/util/List;
+  method public uniformBinding ()I
+  method public uniformBlocks ()Ljava/util/List;
+  method public uniformSize ()I
+  method public uniforms ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/shader/CgGlslCompiler$Image
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;II)V
+  method public binding ()I
+  method public glType ()I
   method public name ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -819,6 +895,7 @@ com/crystalgraphics/platform/device/shader/CgShaderModule$CompileException
 com/crystalgraphics/platform/device/shader/CgShaderModule$Stage
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final COMPUTE Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   field public,static,final FRAGMENT Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   field public,static,final VERTEX Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;

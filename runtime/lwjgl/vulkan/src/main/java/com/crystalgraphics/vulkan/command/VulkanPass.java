@@ -2,7 +2,6 @@ package com.crystalgraphics.vulkan.command;
 
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
-import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.pipeline.CgBindings;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
@@ -10,22 +9,19 @@ import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
-import com.crystalgraphics.vulkan.resource.VulkanSampler;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkClearAttachment;
 import org.lwjgl.vulkan.VkClearRect;
 import org.lwjgl.vulkan.VkCommandBuffer;
-import org.lwjgl.vulkan.VkDescriptorBufferInfo;
-import org.lwjgl.vulkan.VkDescriptorImageInfo;
 import org.lwjgl.vulkan.VkRect2D;
 import org.lwjgl.vulkan.VkViewport;
-import org.lwjgl.vulkan.VkWriteDescriptorSet;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRDynamicRendering.vkCmdEndRenderingKHR;
-import static org.lwjgl.vulkan.KHRPushDescriptor.vkCmdPushDescriptorSetKHR;
 import static org.lwjgl.vulkan.VK10.*;
+import static org.lwjgl.vulkan.VK12.vkCmdDrawIndexedIndirectCount;
+import static org.lwjgl.vulkan.VK12.vkCmdDrawIndirectCount;
 
 /**
  * One {@code vkCmdBeginRenderingKHR} instance. Bindings are pushed per draw into set 0; the viewport is positive, so
@@ -58,28 +54,8 @@ final class VulkanPass implements CgRenderPass {
     public void pushBindings(CgBindings b) {
         if (b.count() == 0) return;
         if (pipeline == null) throw new IllegalStateException("Bindings pushed before a pipeline");
-        try (MemoryStack stack = stackPush()) {
-            VkWriteDescriptorSet.Buffer writes = VkWriteDescriptorSet.calloc(b.count(), stack);
-            for (int i = 0; i < b.count(); i++) {
-                VkWriteDescriptorSet w = writes.get(i).sType$Default().dstBinding(b.binding(i))
-                        .descriptorType(CgVulkanDevice.descriptorType(b.type(i)));
-                if (b.type(i) == CgBindingLayout.Type.SAMPLED_TEXTURE) {
-                    VulkanTexture t = (VulkanTexture) b.view(i).texture();
-                    w.pImageInfo(VkDescriptorImageInfo.calloc(1, stack).sampler(((VulkanSampler) b.sampler(i)).sampler)
-                            .imageView(t.view(device.vk(), b.view(i), false))
-                            .imageLayout(VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL));
-                } else if (b.type(i) == CgBindingLayout.Type.TEXEL_BUFFER) {
-                    w.pTexelBufferView(stack.longs(device.texelView((VulkanBuffer) b.buffer(i), b.offset(i), b.size(i),
-                            b.texelFormat(i))));
-                } else {
-                    w.pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(((VulkanBuffer) b.buffer(i)).buffer)
-                            .offset(b.offset(i)).range(b.size(i) > 0 ? b.size(i) : VK_WHOLE_SIZE));
-                }
-                w.descriptorCount(1);
-            }
-            vkCmdPushDescriptorSetKHR(cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
-                    ((VulkanBindingLayout) pipeline.desc.layout()).pipelineLayout, 0, writes);
-        }
+        VulkanDescriptors.push(device, cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                ((VulkanBindingLayout) pipeline.desc.layout()).pipelineLayout, b);
     }
 
     @Override
@@ -165,6 +141,38 @@ final class VulkanPass implements CgRenderPass {
     @Override
     public void drawIndexed(int indexCount, int instanceCount, int firstIndex, int baseVertex, int firstInstance) {
         vkCmdDrawIndexed(cmd(), indexCount, instanceCount, firstIndex, baseVertex, firstInstance);
+    }
+
+    @Override
+    public void drawIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+        vkCmdDrawIndirect(cmd(), ((VulkanBuffer) buffer).buffer, offset, drawCount, stride);
+    }
+
+    @Override
+    public void drawIndexedIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+        vkCmdDrawIndexedIndirect(cmd(), ((VulkanBuffer) buffer).buffer, offset, drawCount, stride);
+    }
+
+    @Override
+    public void drawIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset, int maxDraws,
+                                  int stride) {
+        requireIndirectCount();
+        vkCmdDrawIndirectCount(cmd(), ((VulkanBuffer) buffer).buffer, offset, ((VulkanBuffer) count).buffer, countOffset,
+                maxDraws, stride);
+    }
+
+    @Override
+    public void drawIndexedIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset,
+                                         int maxDraws, int stride) {
+        requireIndirectCount();
+        vkCmdDrawIndexedIndirectCount(cmd(), ((VulkanBuffer) buffer).buffer, offset, ((VulkanBuffer) count).buffer,
+                countOffset, maxDraws, stride);
+    }
+
+    private void requireIndirectCount() {
+        if (!device.info().indirectCount()) {
+            throw new IllegalStateException("drawIndirectCount: the device was created without drawIndirectCount");
+        }
     }
 
     /** Ends rendering; an attachment a shader samples goes back to rest for the next pass to read. */

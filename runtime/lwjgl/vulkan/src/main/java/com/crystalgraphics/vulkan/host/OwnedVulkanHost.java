@@ -100,6 +100,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkDevice device;
     private final int family;
     private boolean bresenhamLines;
+    private boolean indirectCount, indirectFirstInstance;
     private final VkQueue queue;
 
     private final long[] pools = new long[FRAMES];
@@ -174,6 +175,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public int validationErrors() { return errors; }
 
     @Override public boolean bresenhamLines() { return bresenhamLines; }
+    @Override public boolean indirectCount() { return indirectCount; }
+    @Override public boolean indirectFirstInstance() { return indirectFirstInstance; }
 
     @Override
     public void whenFrameRetired(long f, Runnable action) {
@@ -584,19 +587,24 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 .pNext(hasLines ? hasLineModes.address() : 0L);
         vkGetPhysicalDeviceFeatures2(physical, VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(has12.address()));
         bresenhamLines = hasLines && hasLineModes.bresenhamLines();
+        indirectCount = has12.drawIndirectCount();
+        indirectFirstInstance = has.drawIndirectFirstInstance();
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
                 .samplerAnisotropy(has.samplerAnisotropy()).fillModeNonSolid(has.fillModeNonSolid())
                 .independentBlend(has.independentBlend()).imageCubeArray(has.imageCubeArray())
                 // What GL 4.x gives a shader: doubles and 64-bit integers, where the hardware has them.
-                .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64());
+                .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64())
+                // GPU-driven draws: several commands per call, a first instance, and image writes in kernels.
+                .multiDrawIndirect(has.multiDrawIndirect()).drawIndirectFirstInstance(indirectFirstInstance)
+                .shaderStorageImageWriteWithoutFormat(has.shaderStorageImageWriteWithoutFormat());
         // GL's line rule, where the device has it: without it a line on a pixel boundary can vanish.
         VkPhysicalDeviceLineRasterizationFeaturesEXT lineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
                 .sType$Default().bresenhamLines(true);
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
-                .hostQueryReset(has12.hostQueryReset()).pNext(dynamic.address());
+                .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount).pNext(dynamic.address());
 
         List<String> names = new ArrayList<>(List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME));

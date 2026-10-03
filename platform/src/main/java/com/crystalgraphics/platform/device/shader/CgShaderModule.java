@@ -5,7 +5,7 @@ import com.crystalgraphics.platform.device.CgDeviceObject;
 /** One compiled stage, loaded from SPIR-V. */
 public interface CgShaderModule extends CgDeviceObject {
 
-    enum Stage { VERTEX, FRAGMENT }
+    enum Stage { VERTEX, FRAGMENT, COMPUTE }
 
     Stage stage();
 
