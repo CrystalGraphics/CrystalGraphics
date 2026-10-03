@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import java.nio.ByteBuffer;
@@ -292,6 +293,10 @@ public final class CgGL {
     public static final int GL_COPY_READ_BUFFER      = 0x8F36;
     public static final int GL_COPY_WRITE_BUFFER     = 0x8F37;
     public static final int GL_PIXEL_UNPACK_BUFFER   = 0x88EC;
+    public static final int GL_DRAW_INDIRECT_BUFFER     = 0x8F3F;
+    public static final int GL_DISPATCH_INDIRECT_BUFFER = 0x90EE;
+    /** Where an indirect draw's count is read: GL 4.6, and {@code GL_PARAMETER_BUFFER_ARB} has the same value. */
+    public static final int GL_PARAMETER_BUFFER         = 0x80EE;
 
     // --- Buffer usages -------------------------------------------------------
     public static final int GL_STATIC_DRAW = 0x88E4, 
@@ -368,6 +373,7 @@ public final class CgGL {
     public static final int GL_VERTEX_SHADER   = 0x8B31;
     public static final int GL_FRAGMENT_SHADER = 0x8B30;
     public static final int GL_GEOMETRY_SHADER = 0x8DD9;
+    public static final int GL_COMPUTE_SHADER  = 0x91B9;
 
     // --- Shader / program query params ---------------------------------------
     public static final int GL_COMPILE_STATUS            = 0x8B81;
@@ -484,6 +490,28 @@ public final class CgGL {
     public static final int GL_SUBGROUP_SIZE_KHR                  = 0x9532;
     public static final int GL_SUBGROUP_SUPPORTED_STAGES_KHR      = 0x9533;
     public static final int GL_SUBGROUP_SUPPORTED_FEATURES_KHR    = 0x9534;
+
+    // --- Memory barriers: what glMemoryBarrier makes see a kernel's writes -------
+    public static final int GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT  = 0x0001;
+    public static final int GL_ELEMENT_ARRAY_BARRIER_BIT        = 0x0002;
+    public static final int GL_UNIFORM_BARRIER_BIT              = 0x0004;
+    public static final int GL_TEXTURE_FETCH_BARRIER_BIT        = 0x0008;
+    public static final int GL_SHADER_IMAGE_ACCESS_BARRIER_BIT  = 0x0020;
+    public static final int GL_COMMAND_BARRIER_BIT              = 0x0040;
+    public static final int GL_PIXEL_BUFFER_BARRIER_BIT         = 0x0080;
+    public static final int GL_TEXTURE_UPDATE_BARRIER_BIT       = 0x0100;
+    public static final int GL_BUFFER_UPDATE_BARRIER_BIT        = 0x0200;
+    public static final int GL_FRAMEBUFFER_BARRIER_BIT          = 0x0400;
+    public static final int GL_TRANSFORM_FEEDBACK_BARRIER_BIT   = 0x0800;
+    public static final int GL_ATOMIC_COUNTER_BARRIER_BIT       = 0x1000;
+    public static final int GL_SHADER_STORAGE_BARRIER_BIT       = 0x2000;
+    public static final int GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT = 0x4000;
+    public static final int GL_ALL_BARRIER_BITS                 = 0xFFFFFFFF;
+
+    // --- Image units ---------------------------------------------------------
+    public static final int GL_READ_ONLY  = 0x88B8;
+    public static final int GL_WRITE_ONLY = 0x88B9;
+    public static final int GL_READ_WRITE = 0x88BA;
 
     // --- Transform feedback --------------------------------------------------
     public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS   = 0x8C80;
@@ -1017,6 +1045,108 @@ public final class CgGL {
     public static void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
                                                          int instanceCount, int baseVertex) {
         gl().glDrawElementsInstancedBaseVertex(mode, count, type, indices, instanceCount, baseVertex);
+    }
+
+    /**
+     * A draw whose arguments the GPU holds, at {@code offset} in the bound {@code GL_DRAW_INDIRECT_BUFFER}: four
+     * {@code uint}s, {@code count, instanceCount, first, baseInstance}.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+     * CgGL.glDrawArraysIndirect(CgGL.GL_TRIANGLES, 0);
+     * }</pre>
+     */
+    public static void glDrawArraysIndirect(int mode, long offset) {
+        gl().glDrawArraysIndirect(mode, offset);
+    }
+
+    /** Five {@code uint}s at {@code offset}: {@code count, instanceCount, firstIndex, baseVertex, baseInstance}. */
+    public static void glDrawElementsIndirect(int mode, int type, long offset) {
+        gl().glDrawElementsIndirect(mode, type, offset);
+    }
+
+    /** {@code drawCount} of {@link #glDrawArraysIndirect}'s arguments, {@code stride} bytes apart (0: packed). */
+    public static void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        gl().glMultiDrawArraysIndirect(mode, offset, drawCount, stride);
+    }
+
+    public static void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        gl().glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
+    }
+
+    /**
+     * As many draws as the {@code uint} at {@code countOffset} in the bound {@code GL_PARAMETER_BUFFER} says, at
+     * most {@code maxDrawCount}: a count a kernel wrote, with no readback.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+     * CgGL.glBindBuffer(CgGL.GL_PARAMETER_BUFFER, args);           // the count beside the arguments
+     * CgGL.glMultiDrawArraysIndirectCount(CgGL.GL_TRIANGLES, 16, 0, maxDraws, 0);
+     * }</pre>
+     */
+    public static void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount,
+                                                      int stride) {
+        gl().glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+    }
+
+    public static void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset,
+                                                        int maxDrawCount, int stride) {
+        gl().glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+    }
+
+    // =========================================================================
+    // Compute
+    // =========================================================================
+
+    /**
+     * Runs the current program's kernel over a grid of work groups.
+     *
+     * <pre>{@code
+     * CgGL.glUseProgram(simulate);
+     * CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 0, particles);
+     * CgGL.glDispatchCompute((count + 63) / 64, 1, 1);
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // before the draw reading them
+     * }</pre>
+     */
+    public static void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        gl().glDispatchCompute(groupsX, groupsY, groupsZ);
+    }
+
+    /** Three {@code uint} group counts at {@code offset} in the bound {@code GL_DISPATCH_INDIRECT_BUFFER}. */
+    public static void glDispatchComputeIndirect(long offset) {
+        gl().glDispatchComputeIndirect(offset);
+    }
+
+    /** GL's barrier, naming no resource. Engine code says which and for whom: {@link #cgBufferBarrier}. */
+    public static void glMemoryBarrier(int barriers) {
+        gl().glMemoryBarrier(barriers);
+    }
+
+    /**
+     * One level of {@code texture} as image unit {@code unit}, in {@code format}, the texture's own internal format.
+     * The kernel's image uniform names the unit through {@link #glUniform1i}.
+     */
+    public static void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access,
+                                          int format) {
+        gl().glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    /**
+     * {@code buffer}'s uses at {@code from} finished before {@code to}, as {@link CgAccess} bits: the reader's
+     * {@code glMemoryBarrier} bits on GL, this exact barrier on a device.
+     *
+     * <pre>{@code
+     * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
+     * CgGL.cgBufferBarrier(args, CgAccess.COMPUTE_WRITE, CgAccess.INDIRECT);
+     * }</pre>
+     */
+    public static void cgBufferBarrier(int buffer, int from, int to) {
+        gl().cgBufferBarrier(buffer, from, to);
+    }
+
+    /** {@link #cgBufferBarrier} for a texture: {@code cgImageBarrier(density, COMPUTE_WRITE, SAMPLED_READ)}. */
+    public static void cgImageBarrier(int texture, int from, int to) {
+        gl().cgImageBarrier(texture, from, to);
     }
 
     // =========================================================================

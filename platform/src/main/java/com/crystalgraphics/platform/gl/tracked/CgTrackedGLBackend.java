@@ -2,6 +2,8 @@ package com.crystalgraphics.platform.gl.tracked;
 
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureRegion;
@@ -19,6 +21,7 @@ import com.crystalgraphics.platform.gl.tracked.gl.TrackedPrograms;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedRenderState;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedTextures;
 import com.crystalgraphics.platform.gl.tracked.gl.TrackedVertexArrays;
+import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTarget;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
@@ -721,28 +724,140 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     /** @param type the index type, or -1 for a draw of arrays */
     private void draw(int mode, int first, int count, int instances, int type, long indices, int baseVertex) {
         CgDrawState s = tracker.state;
-        if (!framebuffers.applyDraw()) {
-            errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
-            return;
-        }
-        state.sync();
-        vaos.apply(s);
-        programs.apply(s, buffers, textures);
-        programs.feedDisabledInputs(s);
+        if (!prepareDraw(s)) return;
         CgPipelineDesc.Topology topology = GlEnums.topology(mode);
         if (type < 0) {
             tracker.draw(topology, count, instances, first, 0);
             return;
         }
+        if (!indices(s, type)) return;
+        tracker.drawIndexed(topology, count, instances, (int) (indices / (type == CgGL.GL_UNSIGNED_INT ? 4 : 2)),
+                baseVertex, 0);
+    }
+
+    @Override public void glDrawArraysIndirect(int mode, long offset) { drawIndirect(mode, -1, offset, 1, 0, -1); }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) { drawIndirect(mode, type, offset, 1, 0, -1); }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        drawIndirect(mode, -1, offset, drawCount, stride, -1);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        drawIndirect(mode, type, offset, drawCount, stride, -1);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        drawIndirect(mode, -1, offset, maxDrawCount, stride, countOffset);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        drawIndirect(mode, type, offset, maxDrawCount, stride, countOffset);
+    }
+
+    /**
+     * @param type        the index type, or -1 for a draw of arrays
+     * @param stride      GL's: 0 for packed records
+     * @param countOffset the draw count's place in the parameter buffer, or -1 for {@code draws} draws
+     */
+    private void drawIndirect(int mode, int type, long offset, int draws, int stride, long countOffset) {
+        CgAllocation args = argumentsIn(buffers.drawIndirect, "An indirect draw"), count = null;
+        if (args == null) return;
+        if (countOffset >= 0 && (count = argumentsIn(buffers.parameter, "An indirect draw's count")) == null) return;
+        CgDrawState s = tracker.state;
+        if (!prepareDraw(s)) return;
+        boolean indexed = type >= 0;
+        if (indexed && !indices(s, type)) return;
+        tracker.drawIndirect(GlEnums.topology(mode), indexed, args, offset, draws,
+                stride != 0 ? stride : indexed ? 20 : 16, count, countOffset);
+    }
+
+    /** Everything a draw reads into {@code s}; false, with GL's error, when the framebuffer has nothing attached. */
+    private boolean prepareDraw(CgDrawState s) {
+        if (!framebuffers.applyDraw()) {
+            errors.invalidFramebufferOperation("A draw with nothing attached to the framebuffer");
+            return false;
+        }
+        state.sync();
+        vaos.apply(s);
+        programs.apply(s, buffers, textures);
+        programs.feedDisabledInputs(s);
+        return true;
+    }
+
+    /** The vertex array's element buffer as the draw's indices; false, with GL's error, when it has none. */
+    private boolean indices(CgDrawState s, int type) {
         TrackedBuffers.GlBuffer elements = buffers.get(vaos.current().elementBuffer);
         if (elements == null) {
             errors.invalidOperation("glDrawElements with no element buffer bound to the vertex array");
-            return;
+            return false;
         }
         if (type == CgGL.GL_UNSIGNED_BYTE) throw new UnsupportedOperationException("8-bit indices: a device takes 16 or 32");
-        boolean wide = type == CgGL.GL_UNSIGNED_INT;
-        s.indexBuffer(elements.storage.allocation(), 0, wide);
-        tracker.drawIndexed(topology, count, instances, (int) (indices / (wide ? 4 : 2)), baseVertex, 0);
+        s.indexBuffer(elements.storage.allocation(), 0, type == CgGL.GL_UNSIGNED_INT);
+        return true;
+    }
+
+    /** The storage of buffer {@code name}, bound for {@code what}'s arguments; null, with GL's error, without one. */
+    private CgAllocation argumentsIn(int name, String what) {
+        TrackedBuffers.GlBuffer b = buffers.get(name);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidOperation(what + " with no buffer bound for its arguments");
+            return null;
+        }
+        return b.storage.allocation();
+    }
+
+    // ── compute ────────────────────────────────────────────────────────────────
+
+    @Override
+    public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        CgComputePipeline p = programs.applyCompute(tracker.state, buffers, textures, textures);
+        tracker.dispatch(p, groupsX, groupsY, groupsZ);
+    }
+
+    @Override
+    public void glDispatchComputeIndirect(long offset) {
+        CgAllocation args = argumentsIn(buffers.dispatchIndirect, "glDispatchComputeIndirect");
+        if (args == null) return;
+        tracker.dispatchIndirect(programs.applyCompute(tracker.state, buffers, textures, textures), args, offset);
+    }
+
+    /** GL's barrier is for a kernel's writes; every other hazard the tracker orders itself. */
+    @Override
+    public void glMemoryBarrier(int barriers) {
+        tracker.memoryBarrier(CgAccess.COMPUTE_WRITE, GlEnums.accesses(barriers));
+    }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        textures.bindImage(unit, texture, level, layered, layer, format);
+    }
+
+    /** This exact barrier, on the device memory under {@code buffer}. */
+    @Override
+    public void cgBufferBarrier(int buffer, int from, int to) {
+        TrackedBuffers.GlBuffer b = buffers.get(buffer);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidValue("cgBufferBarrier on buffer " + buffer + ", which has no storage");
+            return;
+        }
+        tracker.bufferBarrier(b.storage.allocation(), from, to);
+    }
+
+    @Override
+    public void cgImageBarrier(int texture, int from, int to) {
+        TrackedTextures.GlTexture t = textures.get(texture);
+        if (t == null || t.image == null) {
+            errors.invalidValue("cgImageBarrier on texture " + texture + ", which has no image");
+            return;
+        }
+        tracker.imageBarrier(t.image, from, to);
     }
 
     // ── sync, timers, host sections ────────────────────────────────────────────

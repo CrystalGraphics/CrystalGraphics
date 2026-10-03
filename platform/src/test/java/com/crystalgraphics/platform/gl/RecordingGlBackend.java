@@ -137,6 +137,16 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glDrawArraysInstanced(int mode, int first, int count, int instanceCount) { record("glDrawArraysInstanced"); }
     @Override public void glDrawElementsInstanced(int mode, int count, int type, long indices, int instanceCount) { record("glDrawElementsInstanced"); }
     @Override public void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices, int instanceCount, int baseVertex) { record("glDrawElementsInstancedBaseVertex"); }
+    @Override public void glDrawArraysIndirect(int mode, long offset) { record("glDrawArraysIndirect"); }
+    @Override public void glDrawElementsIndirect(int mode, int type, long offset) { record("glDrawElementsIndirect"); }
+    @Override public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) { record("glMultiDrawArraysIndirect"); }
+    @Override public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) { record("glMultiDrawElementsIndirect"); }
+    @Override public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawArraysIndirectCount"); }
+    @Override public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawElementsIndirectCount"); }
+    @Override public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) { record("glDispatchCompute"); }
+    @Override public void glDispatchComputeIndirect(long offset) { record("glDispatchComputeIndirect"); }
+    @Override public void glMemoryBarrier(int barriers) { record("glMemoryBarrier"); }
+    @Override public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { record("glBindImageTexture"); }
     @Override public void glEnable(int cap) { record("glEnable"); }
     @Override public void glDisable(int cap) { record("glDisable"); }
     @Override public void glBlendFunc(int sfactor, int dfactor) { record("glBlendFunc"); }

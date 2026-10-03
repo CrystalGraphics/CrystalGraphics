@@ -38,7 +38,11 @@ final class CgGlRecordingBackend extends CgGLBackend {
             RBO_STORAGE_MS = 91, FRAMEBUFFER_RBO = 92, TEX_IMAGE_2D_MS = 93, UNIFORM1_FV = 94, UNIFORM1_IV = 95,
             UNIFORM_MATRIX3 = 96, UNIFORM_MATRIX4 = 97, SCOPE_BEGIN = 98, SCOPE_END = 99, INVALIDATE = 100,
             INVALIDATE_ALL = 101, FOREIGN = 102, COPY_BUFFER_SUB_DATA = 103, ATTRIB_IPOINTER = 104,
-            DRAW_ELEMENTS_INSTANCED_BASE_VERTEX = 105;
+            DRAW_ELEMENTS_INSTANCED_BASE_VERTEX = 105, DRAW_ARRAYS_INDIRECT = 106, DRAW_ELEMENTS_INDIRECT = 107,
+            MULTI_DRAW_ARRAYS_INDIRECT = 108, MULTI_DRAW_ELEMENTS_INDIRECT = 109,
+            MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
+            DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
+            CG_IMAGE_BARRIER = 117;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -222,6 +226,20 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case DRAW_ELEMENTS_INSTANCED: CgGL.glDrawElementsInstanced(ri(), ri(), ri(), rl(), ri()); break;
                 case DRAW_ELEMENTS_INSTANCED_BASE_VERTEX:
                     CgGL.glDrawElementsInstancedBaseVertex(ri(), ri(), ri(), rl(), ri(), ri()); break;
+                case DRAW_ARRAYS_INDIRECT: CgGL.glDrawArraysIndirect(ri(), rl()); break;
+                case DRAW_ELEMENTS_INDIRECT: CgGL.glDrawElementsIndirect(ri(), ri(), rl()); break;
+                case MULTI_DRAW_ARRAYS_INDIRECT: CgGL.glMultiDrawArraysIndirect(ri(), rl(), ri(), ri()); break;
+                case MULTI_DRAW_ELEMENTS_INDIRECT: CgGL.glMultiDrawElementsIndirect(ri(), ri(), rl(), ri(), ri()); break;
+                case MULTI_DRAW_ARRAYS_INDIRECT_COUNT:
+                    CgGL.glMultiDrawArraysIndirectCount(ri(), rl(), rl(), ri(), ri()); break;
+                case MULTI_DRAW_ELEMENTS_INDIRECT_COUNT:
+                    CgGL.glMultiDrawElementsIndirectCount(ri(), ri(), rl(), rl(), ri(), ri()); break;
+                case DISPATCH_COMPUTE: CgGL.glDispatchCompute(ri(), ri(), ri()); break;
+                case DISPATCH_COMPUTE_INDIRECT: CgGL.glDispatchComputeIndirect(rl()); break;
+                case MEMORY_BARRIER: CgGL.glMemoryBarrier(ri()); break;
+                case BIND_IMAGE_TEXTURE: CgGL.glBindImageTexture(ri(), ri(), ri(), rz(), ri(), ri(), ri()); break;
+                case CG_BUFFER_BARRIER: CgGL.cgBufferBarrier(ri(), ri(), ri()); break;
+                case CG_IMAGE_BARRIER: CgGL.cgImageBarrier(ri(), ri(), ri()); break;
                 case ENABLE: CgGL.glEnable(ri()); break;
                 case DISABLE: CgGL.glDisable(ri()); break;
                 case BLEND_FUNC: CgGL.glBlendFunc(ri(), ri()); break;
@@ -667,6 +685,49 @@ final class CgGlRecordingBackend extends CgGLBackend {
                                                   int baseVertex) {
         op(DRAW_ELEMENTS_INSTANCED_BASE_VERTEX); i(mode); i(count); i(type); l(indices); i(instanceCount); i(baseVertex);
     }
+
+    @Override public void glDrawArraysIndirect(int mode, long offset) { op(DRAW_ARRAYS_INDIRECT); i(mode); l(offset); }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) {
+        op(DRAW_ELEMENTS_INDIRECT); i(mode); i(type); l(offset);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        op(MULTI_DRAW_ARRAYS_INDIRECT); i(mode); l(offset); i(drawCount); i(stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        op(MULTI_DRAW_ELEMENTS_INDIRECT); i(mode); i(type); l(offset); i(drawCount); i(stride);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        op(MULTI_DRAW_ARRAYS_INDIRECT_COUNT); i(mode); l(offset); l(countOffset); i(maxDrawCount); i(stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        op(MULTI_DRAW_ELEMENTS_INDIRECT_COUNT); i(mode); i(type); l(offset); l(countOffset); i(maxDrawCount); i(stride);
+    }
+
+    // ── Compute ───────────────────────────────────────────────────────────────
+
+    @Override public void glDispatchCompute(int x, int y, int z) { op(DISPATCH_COMPUTE); i(x); i(y); i(z); }
+    @Override public void glDispatchComputeIndirect(long offset) { op(DISPATCH_COMPUTE_INDIRECT); l(offset); }
+    @Override public void glMemoryBarrier(int barriers) { op(MEMORY_BARRIER); i(barriers); }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        op(BIND_IMAGE_TEXTURE); i(unit); i(texture); i(level); z(layered); i(layer); i(access); i(format);
+    }
+
+    /** Taped as named, so the backend it replays on decides what the barrier is. */
+    @Override public void cgBufferBarrier(int buffer, int from, int to) { op(CG_BUFFER_BARRIER); i(buffer); i(from); i(to); }
+    @Override public void cgImageBarrier(int texture, int from, int to) { op(CG_IMAGE_BARRIER); i(texture); i(from); i(to); }
 
     // ── State ─────────────────────────────────────────────────────────────────
 

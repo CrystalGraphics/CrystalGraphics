@@ -498,6 +498,71 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
+    // Indirect draws and compute. The ARB extensions behind them name their functions as core does, so one call
+    // serves both; only indirect counts are spelled differently.
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glDrawArraysIndirect(int mode, long offset) {
+        GL40C.glDrawArraysIndirect(mode, offset);
+    }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) {
+        GL40C.glDrawElementsIndirect(mode, type, offset);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        GL43C.glMultiDrawArraysIndirect(mode, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        GL43C.glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        if (GL.getCapabilities().glMultiDrawArraysIndirectCount != 0L) {
+            GL46C.glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+        } else {
+            ARBIndirectParameters.glMultiDrawArraysIndirectCountARB(mode, offset, countOffset, maxDrawCount, stride);
+        }
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        if (GL.getCapabilities().glMultiDrawElementsIndirectCount != 0L) {
+            GL46C.glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+        } else {
+            ARBIndirectParameters.glMultiDrawElementsIndirectCountARB(mode, type, offset, countOffset, maxDrawCount,
+                    stride);
+        }
+    }
+
+    @Override
+    public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        GL43C.glDispatchCompute(groupsX, groupsY, groupsZ);
+    }
+
+    @Override
+    public void glDispatchComputeIndirect(long offset) {
+        GL43C.glDispatchComputeIndirect(offset);
+    }
+
+    @Override
+    public void glMemoryBarrier(int barriers) {
+        GL42C.glMemoryBarrier(barriers);
+    }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        GL42C.glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    // -------------------------------------------------------------------------
     // GL state — Tier 1 (RenderSystem) and Tier 3 (raw GL) where no Tier 1/2 exists
     // -------------------------------------------------------------------------
 

@@ -28,12 +28,12 @@ public interface CgCommandEncoder {
     CgRenderPass beginPass(CgPassDesc desc);
     /** A compute pass. Transfers and barriers may sit between its dispatches; a render pass may not open inside it. */
     CgComputePass beginCompute(String label);
-    /** {@code buffer}'s writes at {@code from} made visible to {@code to}. Outside a render pass. */
-    void bufferBarrier(CgGpuBuffer buffer, CgAccess from, CgAccess to);
+    /** {@code buffer}'s uses at {@code from} finished before {@code to}, writes visible: {@link CgAccess} bits. Outside a render pass. */
+    void bufferBarrier(CgGpuBuffer buffer, int from, int to);
     /** The same for a texture, in the layout {@code to} reads it in. Outside a render pass. */
-    void imageBarrier(CgGpuTexture texture, CgAccess from, CgAccess to);
-    /** Every resource's writes at {@code from} made visible to {@code to}: GL's {@code glMemoryBarrier}, which names none. */
-    void memoryBarrier(CgAccess from, CgAccess to);
+    void imageBarrier(CgGpuTexture texture, int from, int to);
+    /** Every resource's uses at {@code from} before {@code to}: GL's {@code glMemoryBarrier}, which names none. */
+    void memoryBarrier(int from, int to);
 
     /** Copies {@code data}'s remaining bytes into a device-local buffer, through staging. */
     void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data);

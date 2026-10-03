@@ -4,48 +4,58 @@ import com.crystalgraphics.platform.device.command.CgAccess;
 
 import static org.lwjgl.vulkan.VK10.*;
 
-/** A {@link CgAccess} as Vulkan's barriers take it: a pipeline stage, an access mask, and the layout an image needs. */
+/** {@link CgAccess} bits as Vulkan's barriers take them: pipeline stages, access masks, and the layout an image needs. */
 final class VulkanAccess {
+
+    private static final int SHADERS = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+            | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+    /** By bit, in {@link CgAccess}'s order. */
+    private static final int[] STAGES = {
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, SHADERS, SHADERS,
+            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    private static final int[] ACCESSES = {
+            VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_ACCESS_UNIFORM_READ_BIT, VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
+            VK_ACCESS_INDEX_READ_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT};
 
     private VulkanAccess() {}
 
-    static int stage(CgAccess a) {
-        return switch (a) {
-            case COMPUTE_READ, COMPUTE_WRITE -> VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-            case VERTEX_READ -> VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-            case FRAGMENT_READ -> VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-            case UNIFORM_READ, SAMPLED_READ -> VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
-                    | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-            case VERTEX_INPUT, INDEX_INPUT -> VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-            case INDIRECT -> VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-            case COPY_READ, COPY_WRITE -> VK_PIPELINE_STAGE_TRANSFER_BIT;
-            case HOST_READ -> VK_PIPELINE_STAGE_HOST_BIT;
-            case COLOR_WRITE -> VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        };
+    /** Top of pipe for none: nothing to wait on. */
+    static int stage(int access) {
+        int stages = 0;
+        for (int i = 0; i < STAGES.length; i++) if ((access & (1 << i)) != 0) stages |= STAGES[i];
+        return stages == 0 ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : stages;
     }
 
-    static int access(CgAccess a) {
-        return switch (a) {
-            case COMPUTE_READ, VERTEX_READ, FRAGMENT_READ, SAMPLED_READ -> VK_ACCESS_SHADER_READ_BIT;
-            case COMPUTE_WRITE -> VK_ACCESS_SHADER_WRITE_BIT;
-            case UNIFORM_READ -> VK_ACCESS_UNIFORM_READ_BIT;
-            case VERTEX_INPUT -> VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-            case INDEX_INPUT -> VK_ACCESS_INDEX_READ_BIT;
-            case INDIRECT -> VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-            case COPY_READ -> VK_ACCESS_TRANSFER_READ_BIT;
-            case COPY_WRITE -> VK_ACCESS_TRANSFER_WRITE_BIT;
-            case HOST_READ -> VK_ACCESS_HOST_READ_BIT;
-            case COLOR_WRITE -> VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        };
+    static int access(int access) {
+        int mask = 0;
+        for (int i = 0; i < ACCESSES.length; i++) if ((access & (1 << i)) != 0) mask |= ACCESSES[i];
+        return mask;
     }
 
-    /** The layout an image is in for {@code a}: storage access is {@code GENERAL}, sampling read-only. */
-    static int layout(CgAccess a) {
-        return switch (a) {
-            case COMPUTE_READ, COMPUTE_WRITE, VERTEX_READ, FRAGMENT_READ -> VK_IMAGE_LAYOUT_GENERAL;
-            case COPY_READ -> VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            case COPY_WRITE -> VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-            case COLOR_WRITE -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    /** Storage access is {@code GENERAL}, a copy or a target its own, sampling read-only; uses wanting two are {@code GENERAL}. */
+    static int layout(int access) {
+        if ((access & CgAccess.STORAGE) != 0) return VK_IMAGE_LAYOUT_GENERAL;
+        int layout = -1;
+        for (int i = 0; i < STAGES.length; i++) {
+            if ((access & (1 << i)) == 0) continue;
+            int l = layoutOf(1 << i);
+            if (layout >= 0 && l != layout) return VK_IMAGE_LAYOUT_GENERAL;
+            layout = l;
+        }
+        return layout < 0 ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : layout;
+    }
+
+    private static int layoutOf(int bit) {
+        return switch (bit) {
+            case CgAccess.COPY_READ -> VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            case CgAccess.COPY_WRITE -> VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            case CgAccess.COLOR_WRITE -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             default -> VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         };
     }

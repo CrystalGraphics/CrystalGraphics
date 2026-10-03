@@ -2,7 +2,6 @@ package com.crystalgraphics.vulkan.command;
 
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.command.CgComputePass;
-import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgFormat;
@@ -80,7 +79,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     }
 
     @Override
-    public void bufferBarrier(CgGpuBuffer buffer, CgAccess from, CgAccess to) {
+    public void bufferBarrier(CgGpuBuffer buffer, int from, int to) {
         outsidePass("bufferBarrier");
         VulkanBarriers.buffer(cmd(), ((VulkanBuffer) buffer).buffer, VulkanAccess.stage(from), VulkanAccess.access(from),
                 VulkanAccess.stage(to), VulkanAccess.access(to));
@@ -88,14 +87,14 @@ public final class VulkanEncoder implements CgCommandEncoder {
     }
 
     @Override
-    public void imageBarrier(CgGpuTexture texture, CgAccess from, CgAccess to) {
+    public void imageBarrier(CgGpuTexture texture, int from, int to) {
         outsidePass("imageBarrier");
         device.barriers += ((VulkanTexture) texture).barrier(cmd(), VulkanAccess.layout(to), VulkanAccess.stage(from),
                 VulkanAccess.access(from), VulkanAccess.stage(to), VulkanAccess.access(to));
     }
 
     @Override
-    public void memoryBarrier(CgAccess from, CgAccess to) {
+    public void memoryBarrier(int from, int to) {
         outsidePass("memoryBarrier");
         VulkanBarriers.global(cmd(), VulkanAccess.stage(from), VulkanAccess.access(from), VulkanAccess.stage(to),
                 VulkanAccess.access(to));

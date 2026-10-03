@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.platform.device.command.CgAccess;
+
 import java.nio.*;
 
 
@@ -225,6 +227,74 @@ public abstract class CgGLBackend {
     /** Each index plus {@code baseVertex}, as is {@code gl_VertexID} (core GL 3.2). */
     public abstract void glDrawElementsInstancedBaseVertex(int mode, int count, int type, long indices,
                                                            int instanceCount, int baseVertex);
+
+    // -------------------------------------------------------------------------
+    // Indirect draws: arguments in the bound GL_DRAW_INDIRECT_BUFFER, at an offset
+    // -------------------------------------------------------------------------
+
+    /** GL 4.0 or {@code ARB_draw_indirect}. */
+    public abstract void glDrawArraysIndirect(int mode, long offset);
+    public abstract void glDrawElementsIndirect(int mode, int type, long offset);
+    /** {@code drawCount} draws {@code stride} bytes apart, 0 for packed: GL 4.3 or {@code ARB_multi_draw_indirect}. */
+    public abstract void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride);
+    public abstract void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride);
+    /**
+     * The draw count read from {@code countOffset} in the bound {@code GL_PARAMETER_BUFFER}, at most
+     * {@code maxDrawCount}: GL 4.6 or {@code ARB_indirect_parameters}.
+     */
+    public abstract void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount,
+                                                        int stride);
+    public abstract void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset,
+                                                          int maxDrawCount, int stride);
+
+    // -------------------------------------------------------------------------
+    // Compute: GL 4.3 or ARB_compute_shader; images and barriers GL 4.2 or ARB_shader_image_load_store
+    // -------------------------------------------------------------------------
+
+    public abstract void glDispatchCompute(int groupsX, int groupsY, int groupsZ);
+    /** The group counts at {@code offset} in the bound {@code GL_DISPATCH_INDIRECT_BUFFER}. */
+    public abstract void glDispatchComputeIndirect(long offset);
+    public abstract void glMemoryBarrier(int barriers);
+    public abstract void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access,
+                                           int format);
+
+    /**
+     * {@code buffer}'s uses at {@code from} finished before {@code to}, as {@link CgAccess} bits. On GL, the reader's
+     * {@code glMemoryBarrier} bits after a kernel's write, and nothing otherwise: GL orders every other hazard itself.
+     * A device-backed backend records this barrier as it is.
+     */
+    public void cgBufferBarrier(int buffer, int from, int to) {
+        int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, false);
+        if (bits != 0) glMemoryBarrier(bits);
+    }
+
+    /** {@link #cgBufferBarrier} for a texture. */
+    public void cgImageBarrier(int texture, int from, int to) {
+        int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);
+        if (bits != 0) glMemoryBarrier(bits);
+    }
+
+    /** The {@code glMemoryBarrier} bits that make a kernel's writes visible to {@code to}. */
+    private static int glBarrierBits(int to, boolean image) {
+        int bits = 0;
+        if ((to & CgAccess.STORAGE) != 0) {
+            bits |= image ? CgGL.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT : CgGL.GL_SHADER_STORAGE_BARRIER_BIT;
+        }
+        if ((to & CgAccess.UNIFORM_READ) != 0) bits |= CgGL.GL_UNIFORM_BARRIER_BIT;
+        if ((to & CgAccess.SAMPLED_READ) != 0) bits |= CgGL.GL_TEXTURE_FETCH_BARRIER_BIT;
+        if ((to & CgAccess.VERTEX_INPUT) != 0) bits |= CgGL.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT;
+        if ((to & CgAccess.INDEX_INPUT) != 0) bits |= CgGL.GL_ELEMENT_ARRAY_BARRIER_BIT;
+        if ((to & CgAccess.INDIRECT) != 0) bits |= CgGL.GL_COMMAND_BARRIER_BIT;
+        if ((to & (CgAccess.COPY_READ | CgAccess.COPY_WRITE)) != 0) {
+            bits |= image ? CgGL.GL_TEXTURE_UPDATE_BARRIER_BIT : CgGL.GL_BUFFER_UPDATE_BARRIER_BIT;
+        }
+        if ((to & CgAccess.HOST_READ) != 0) {
+            bits |= image ? CgGL.GL_TEXTURE_UPDATE_BARRIER_BIT | CgGL.GL_PIXEL_BUFFER_BARRIER_BIT
+                    : CgGL.GL_BUFFER_UPDATE_BARRIER_BIT | CgGL.GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT;
+        }
+        if ((to & CgAccess.COLOR_WRITE) != 0) bits |= CgGL.GL_FRAMEBUFFER_BARRIER_BIT;
+        return bits;
+    }
 
     // -------------------------------------------------------------------------
     // GL state

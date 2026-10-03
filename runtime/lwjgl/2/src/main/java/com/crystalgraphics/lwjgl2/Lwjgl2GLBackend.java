@@ -449,6 +449,64 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
+    // Indirect draws and compute. LWJGL 2's ARB classes call these same core entry points, which the extension
+    // loads as well; LWJGL 2 knows no GL 4.6, and a 4.6 driver lists ARB_indirect_parameters beside it.
+    // LWJGL 2 refuses an indirect draw unless glBindBuffer told it of a GL_DRAW_INDIRECT_BUFFER, which every bind
+    // through CgGL does.
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glDrawArraysIndirect(int mode, long offset) {
+        GL40.glDrawArraysIndirect(mode, offset);
+    }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) {
+        GL40.glDrawElementsIndirect(mode, type, offset);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        GL43.glMultiDrawArraysIndirect(mode, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        GL43.glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        ARBIndirectParameters.glMultiDrawArraysIndirectCountARB(mode, offset, countOffset, maxDrawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        ARBIndirectParameters.glMultiDrawElementsIndirectCountARB(mode, type, offset, countOffset, maxDrawCount, stride);
+    }
+
+    @Override
+    public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        GL43.glDispatchCompute(groupsX, groupsY, groupsZ);
+    }
+
+    @Override
+    public void glDispatchComputeIndirect(long offset) {
+        GL43.glDispatchComputeIndirect(offset);
+    }
+
+    @Override
+    public void glMemoryBarrier(int barriers) {
+        GL42.glMemoryBarrier(barriers);
+    }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        GL42.glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    // -------------------------------------------------------------------------
     // GL state
     // -------------------------------------------------------------------------
 

@@ -235,6 +235,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         int f = formats.features(formats.vk(format));
         switch (usage) {
             case SAMPLED: return (f & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
+            case STORAGE: return (f & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
             case ATTACHMENT: return (f & (format.aspect() == CgFormat.Aspect.COLOR ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
                     : VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0;
             default: return (f & (VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) != 0;
@@ -284,7 +285,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
         int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
-        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
+            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
+                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
+                        + " cannot be a storage image on " + info.name());
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
         if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
             usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
