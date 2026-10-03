@@ -1042,6 +1042,12 @@ CgGlState.saveAll()       // → all 16 slots (used by CgExecutor around a frame
 
 `CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`.
 
+**`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
+from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
+`CgDevice.describe` on the Vulkan device. Each context logs it once as `[crystalgraphics] gpu …`, `prodSmoke`
+gathers every client's into `build/prodSmoke/gpu-report.txt`, and the harness's `--mode=capability-report` prints it
+as a table.
+
 Nothing core in 3.3 has an ARB or EXT fallback; what is above it (SSBO, `glCopyImageSubData`) keeps its gate and its fallback. **A 3.2 context with 3.3's extensions passes**: vanilla 1.17–1.21.4 asks for 3.2 core and NVIDIA returns exactly that, so Fabric and pre-early-window Forge run on one. On it LWJGL 3 loads no 3.3 entry point, which is why `Lwjgl3GLBackend.glVertexAttribDivisor` falls back to the ARB name.
 
 ## Render State

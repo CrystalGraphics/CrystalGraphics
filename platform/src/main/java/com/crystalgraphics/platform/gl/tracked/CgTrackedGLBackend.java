@@ -56,8 +56,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     private static final int GL_MAX_UNIFORM_BLOCK_SIZE = 0x8A30, GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8A34;
     private static final int GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF, GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT = 0x919F;
     private static final int GL_MAX_TEXTURE_BUFFER_SIZE = 0x8C2B, GL_MAX_VIEWPORT_DIMS = 0x0D3A;
-    private static final int GL_CONTEXT_PROFILE_MASK = 0x9126, GL_MAJOR_VERSION = 0x821B, GL_MINOR_VERSION = 0x821C;
-    private static final int GL_NUM_EXTENSIONS = 0x821D, GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
+    private static final int GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
 
     private final CgDevice device;
     private final CgTracker tracker;
@@ -200,10 +199,10 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             case GL_MAX_TEXTURE_BUFFER_SIZE:           return one(l.maxTexelBufferElements());
             case GL_MAX_VIEWPORT_DIMS:                 q[0] = q[1] = l.maxViewportSize(); return 2;
             case GL_MAX_TEXTURE_MAX_ANISOTROPY:        return one(l.maxAnisotropy());
-            case GL_CONTEXT_PROFILE_MASK:              return one(1);
-            case GL_MAJOR_VERSION:                     return one(4);
-            case GL_MINOR_VERSION:                     return one(4);
-            case GL_NUM_EXTENSIONS:                    return one(0);
+            case CgGL.GL_CONTEXT_PROFILE_MASK:         return one(1);
+            case CgGL.GL_MAJOR_VERSION:                return one(4);
+            case CgGL.GL_MINOR_VERSION:                return one(4);
+            case CgGL.GL_NUM_EXTENSIONS:               return one(0);
             default: return -1;
         }
     }
@@ -230,6 +229,35 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     @Override public float glGetFloat(int pname) { query(pname); return (float) q[0]; }
+
+    /** The device every call lands on. */
+    public CgDevice device() {
+        return device;
+    }
+
+    /** The device's own name, vendor and driver, as GL 4.4 core. */
+    @Override
+    public String glGetString(int name) {
+        CgDeviceInfo info = device.info();
+        switch (name) {
+            case CgGL.GL_VENDOR:                   return info.vendor();
+            case CgGL.GL_RENDERER:                 return info.name();
+            case CgGL.GL_VERSION:                  return "4.4 CrystalGraphics tracked, driver " + info.driver();
+            case CgGL.GL_SHADING_LANGUAGE_VERSION: return "4.40";
+            default: throw new IllegalArgumentException("glGetString(0x" + Integer.toHexString(name) + ") is not modelled");
+        }
+    }
+
+    /** Lists no extensions ({@code GL_NUM_EXTENSIONS} is 0): the device says what it has, through {@code CgDevice.describe}. */
+    @Override
+    public String glGetStringi(int name, int index) {
+        throw new IllegalArgumentException("the tracked backend lists no extensions");
+    }
+
+    @Override
+    public int glGetIntegeri(int target, int index) {
+        throw new IllegalArgumentException("glGetIntegeri(0x" + Integer.toHexString(target) + ") is not modelled");
+    }
 
     @Override
     public void glGetFloat(int pname, FloatBuffer params) {

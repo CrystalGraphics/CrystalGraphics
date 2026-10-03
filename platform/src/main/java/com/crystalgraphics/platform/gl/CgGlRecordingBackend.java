@@ -750,6 +750,9 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override public void glReadPixels(int x, int y, int w, int h, int format, int type, long packOffset) { throw refused("glReadPixels", READS); }
     @Override public void glGetInteger(int pname, IntBuffer params) { throw refused("glGetIntegerv", "no recording answers a multi-value query"); }
     @Override public boolean glGetBoolean(int pname) { return manager.recordedSets(pname) ? manager.recordedBoolean(pname) : live.glGetBoolean(pname); }
+    @Override public String glGetString(int name) { return live.glGetString(name); }
+    @Override public String glGetStringi(int name, int index) { return live.glGetStringi(name, index); }
+    @Override public int glGetIntegeri(int target, int index) { return live.glGetIntegeri(target, index); }
     @Override public void glGetBoolean(int pname, ByteBuffer params) { throw refused("glGetBooleanv", "no recording answers a multi-value query"); }
     @Override public void glGetFloat(int pname, FloatBuffer params) { throw refused("glGetFloatv", "no recording answers a float query"); }
     @Override public float glGetFloat(int pname) { throw refused("glGetFloat", "no recording answers a float query"); }

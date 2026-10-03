@@ -582,6 +582,7 @@ com/crystalgraphics/api/mesh/CgMesh
   method public dropCpuCopy ()V
   method public edit (Ljava/lang/Object;Ljava/util/function/BiConsumer;)V
   method public edit (Ljava/util/function/Consumer;)V
+  method public editSite ()Ljava/lang/Throwable;
   method public format ()Lcom/crystalgraphics/api/vertex/CgVertexFormat;
   method public indexCount ()I
   method public isIndexed ()Z

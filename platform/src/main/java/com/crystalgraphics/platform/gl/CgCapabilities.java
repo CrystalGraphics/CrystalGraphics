@@ -219,6 +219,7 @@ public final class CgCapabilities {
             cachedCaps = local;
             // Published so the fixed-function guards in CgGL cost a field load. @see CgGL#CORE
             CgGL.CORE = local.coreProfile;
+            CgGpuReport.log();
         }
         return local;
     }

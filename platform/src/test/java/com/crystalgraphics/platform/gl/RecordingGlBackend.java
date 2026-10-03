@@ -170,6 +170,9 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glPixelStorei(int pname, int param) { record("glPixelStorei"); }
     @Override public int glGetInteger(int pname) { record("glGetInteger"); return 0; }
     @Override public void glGetInteger(int pname, IntBuffer params) { record("glGetInteger"); }
+    @Override public String glGetString(int name) { record("glGetString"); return ""; }
+    @Override public String glGetStringi(int name, int index) { record("glGetStringi"); return ""; }
+    @Override public int glGetIntegeri(int target, int index) { record("glGetIntegeri"); return 0; }
     @Override public boolean glGetBoolean(int pname) { record("glGetBoolean"); return false; }
     @Override public void glGetBoolean(int pname, ByteBuffer params) { record("glGetBoolean"); }
     @Override public void glGetFloat(int pname, FloatBuffer params) { record("glGetFloat"); }
