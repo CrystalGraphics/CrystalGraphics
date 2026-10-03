@@ -5,9 +5,12 @@ import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import org.joml.Vector3d;
+import org.joml.Vector3f;
 
 /**
  * Shakes the host's camera, and kicks its field of view, for every effect at once, on the trauma model: an impact adds
@@ -53,6 +56,8 @@ public final class CgCameraShake {
     private static int kicks;
     private static boolean installed, moving;
     private static double lastFrame = Double.NaN;
+    private static final Vector3d CAMERA = new Vector3d();
+    private static final Vector3f ORIGIN = new Vector3f();
 
     private CgCameraShake() {
     }
@@ -98,6 +103,20 @@ public final class CgCameraShake {
         return installed;
     }
 
+    /**
+     * Where the world's camera stands as of its latest frame, in absolute coordinates: what a shake's distance is
+     * measured from. Render thread only.
+     */
+    public static Vector3d camera(Vector3d out) {
+        return eye(CgRenderStage.WORLD_OPAQUE.host().view(), out);
+    }
+
+    /** The view's position plus wherever its matrix puts the eye: nothing more in a camera-relative host. */
+    private static Vector3d eye(CgHostView view, Vector3d out) {
+        view.view().originAffine(ORIGIN);
+        return out.set(view.x() + ORIGIN.x, view.y() + ORIGIN.y, view.z() + ORIGIN.z);
+    }
+
     /** The decaying trauma now, 0..1, without the rumbles. */
     public static float trauma() {
         return MODEL.trauma();
@@ -117,7 +136,8 @@ public final class CgCameraShake {
         if (MODEL.still() && kicks == 0 && !moving) return;
         CgHostFrame host = stage.host();
         CgHostEnvironment world = host.environment();
-        double cx = host.view().x(), cy = host.view().y(), cz = host.view().z();
+        eye(host.view(), CAMERA);
+        double cx = CAMERA.x, cy = CAMERA.y, cz = CAMERA.z;
         float shake = MODEL.step(dt, cx, cy, cz);
         float fov = 0f;
         for (int k = kicks - 1; k >= 0; k--) {
