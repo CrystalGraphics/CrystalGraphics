@@ -32,10 +32,10 @@ try (CgImmediate.Compute run = CgImmediate.compute("bake")) {     // outside a g
 
 | Package | Holds |
 |---|---|
-| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, a value: `program()`, `glsl()`, `cpu(body)`, `form()`, `lowered()`. `CgKernelForm` — how this context runs a kernel (below). `CgDispatchBindings` — what a dispatch below compute binds, in GL names |
+| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, a value: `program()`, `glsl()`, `cpu(body)`, `form()`, `runs()`, `check()`, `lowered()`. `CgKernelForm` — how this context runs a kernel, and the every-tier check (below). `CgDispatchBindings` — what a dispatch below compute binds, in GL names |
 | `source` | What a `.compute` declares, as data, no GL: `CgComputeSource`, `CgKernelDecl` (size, shape, fallback, and what its code reaches), `CgBufferDecl`, `CgImageDecl`, `CgSourcePart` (the code, cut where kernels differ), the vocabularies `CgKernelShape`, `CgBufferAccess`, `CgImageAccess`, `CgImageFormat`, `CgImageDimension`, and the accessors `CgBufferAccessor`/`CgImageAccessor` with the rule for each |
 | `parse` | `CgComputeParser`, GL-free; package-private `TopLevel` (file scope, item by item), `GlslText`, `Std430`, `ConstantInt` |
-| `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
+| `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits), `CgGlslBuiltins` (each builtin newer than GLSL 3.30, its version and its exact polyfill, or none) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
 | `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
 | `lower` | A kernel below compute (C5): `CgLowering` (the passes a shape lowers to, or the construct that stops it; GL-free), `CgLoweredEmitter` (each pass's stages), `CgLoweredTarget`, `CgLoweredKernel` (the passes compiled, and its dispatch), `CgLoweredPrograms` (the helper programs), `CgLoweredResources` (scratch, texel targets, zeroed counters), `CgTexelTarget` |
 | `cpu` | The CPU tier (C6): `CgCpuBody` (a kernel's Java body), `CgCpuDispatch`, `CgCpuBuffer`, `CgCpuImage` (what a body sees), `CgCpuRunner` (runs one), `CgCpuMirrors` (the CPU copies of GL buffers) |
@@ -58,11 +58,11 @@ still collapses a lib the engine's env files include too.
 
 ## What a kernel's source is
 
-The header the target needs (`#version 430 core`, or `330 core` with the ARB compute extensions below GL 4.3; the
+The header the target needs (`#version 430 core`, or `420 core` with the ARB compute extensions below GL 4.3; the
 KHR subgroup extensions where they are native), the keywords asked for, `CG_COMPUTE_STAGE`, the size macros
 (`CG_LOCAL_SIZE_X/Y/Z`, `CG_GROUP_SIZE`, `CG_GROUP_POW2`, `CG_DIMENSIONS`, `CG_KERNEL_<Name>`), `cg_env.glsl`,
 `env/compute/kernel.glsl` and `atomic.glsl` (and `subgroup.glsl` if it uses `CG_SUBGROUP_*`), the properties, the
-engine buffers, then **the file's code with every function and `shared` variable this kernel does not reach left
+engine buffers, the polyfills of the builtins its GLSL lacks, then **the file's code with every function and `shared` variable this kernel does not reach left
 out**, the `Buffers`/`Images` blocks replaced in place by declarations and accessors for the buffers and images it
 reaches (a stage holds 16 storage blocks on NVIDIA, and a file may declare more), and a `main` that calls the kernel —
 returning first for an invocation past the count, in every shape but `general`.
@@ -125,6 +125,32 @@ first time and kept while nothing else writes the buffer; what it writes is uplo
 next pass. A map, gather, append or image body runs as ranges on a pool of daemon workers (`crystalgraphics-compute-*`),
 a scatter or general body once, in order. Images are read whole before the body and written whole after.
 
+## Every tier, asked on any machine
+
+A kernel's first dispatch, and its first `program()`, ask **every tier a player may have**, not only this machine's
+(gpu-compute §6.6): the form G43, G40 and G33 would choose, and that each compiles the builtins the kernel reaches
+at that tier's lowest GLSL (4.20, 4.00, 3.30). So a kernel a Mac would refuse is refused on the author's NVIDIA too,
+naming the tier. `CgKernelForm.check` is the same question, GL-free.
+
+A kernel that needs compute and has no lowered form says so, and its caller asks before dispatching:
+
+```glsl
+#pragma kernel Sort 256 general
+#pragma compute_only Sort        // never lowered; refused below compute, asked of compute only
+```
+
+```java
+CgKernel sort = kernels.kernel("Sort");
+if (sort.runs()) pass.dispatch(sort, count).bind("KEYS", keys);   // false below compute without a Java body
+else sortOnTheCpu(keys);
+```
+
+**Builtins newer than 3.30** (`bitCount`, `findMSB`, `uaddCarry`, `umulExtended`, `fma`, `frexp`, `packUnorm4x8`,
+`packHalf2x16`, …) are called through an exact polyfill wherever the stage's GLSL lacks them: the call becomes
+`_cg_bitCount(...)` and the definition goes before the kernel's code. One no polyfill gives exactly
+(`textureGather`, `textureQueryLevels`, a `double`) is refused where the tier lacks it, with its version and the tier's.
+`CgGlslBuiltins` is the table.
+
 ## Easy to get wrong
 
 - **The shape is checked against what the code reaches, helpers and macros included.** A map kernel calling a
@@ -148,9 +174,13 @@ a scatter or general body once, in order. Images are read whole before the body 
 - **Limits are the device's, checked at `program()`**: size per axis, invocations, shared memory (unreadable array
   sizes are left to the driver). A dispatch past the group count limit runs as several, each from its own base.
 - `vec3` properties are refused, as a material's are: the block is std140.
-- **A kernel that can run nowhere is refused where its dispatch is recorded**, naming the construct (`general and
-  uses shared memory (cache)`) or the missing body — not at `load`, since a body is given after it, and never in the
-  frame that executes it.
+- **A kernel some tier cannot run is refused where its first dispatch is recorded, on every machine**, naming the
+  tier and the construct (`general and uses shared memory (cache)`) or the missing body — not at `load`, since a body
+  is given after it, and never in the frame that executes it. Give it a lowerable fallback, a Java body, or
+  `#pragma compute_only` and a `runs()` check. The check is repeated when a body is added or the file reloads.
+- **`compute_only` takes no `#pragma fallback`**: a fallback is a lowered form, which `compute_only` says it has none of.
+- **A polyfill is exact, not free**: `bitCount` is a dozen instructions where the builtin is one, and only on the
+  tiers that lack it. A kernel defining its own function of a builtin's name keeps its own; nothing is renamed.
 - **Lowering refuses**, by name: a general kernel; an element wider than one capture (64 words); a counter's
   `NAME_INC`/`NAME_ADD` whose result is used (a blend answers nothing); a cube image; an SNORM image written.
 - **A CPU body writes only through what it is handed**: its range's elements in a map, gather or image kernel (ranges
@@ -163,8 +193,8 @@ a scatter or general body once, in order. Images are read whole before the body 
 
 ## Tests
 
-`CgComputeParserTest`, `CgKernelEmitterTest`, `ShippedKernelStagePurityTest` (lowered stages too), `CgLoweringTest`
-and `CgKernelFormTest` in core (GL-free); `ShippedKernelSpirvTest` in `runtime/lwjgl/vulkan` compiles every shipped
+`CgComputeParserTest`, `CgKernelEmitterTest`, `ShippedKernelStagePurityTest` (lowered stages too), `CgLoweringTest`,
+`CgKernelFormTest` (the every-tier check) and `CgGlslBuiltinsTest` in core (GL-free); `ShippedKernelSpirvTest` in `runtime/lwjgl/vulkan` compiles every shipped
 kernel through shaderc; the harness's `shader-compile-audit` compiles them, and every lowered pass of them, on the
 driver; `compute-seam` dispatches `harness:shaders/compute_seam.compute` on every device against a CPU reference,
 subgroups native and emulated.

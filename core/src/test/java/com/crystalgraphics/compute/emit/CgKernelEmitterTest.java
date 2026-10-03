@@ -39,7 +39,7 @@ public class CgKernelEmitterTest {
     @Test
     public void arbTarget_asksForTheExtensions() {
         String glsl = emit("Integrate", CgKernelTarget.GL43.withArb(true));
-        assertTrue(glsl.startsWith("#version 330 core\n#extension GL_ARB_compute_shader : require\n"));
+        assertTrue(glsl.startsWith("#version 420 core\n#extension GL_ARB_compute_shader : require\n"));
     }
 
     @Test
@@ -108,9 +108,9 @@ public class CgKernelEmitterTest {
     public void deviceLimits_areChecked() {
         CgComputeSource s = example();
         CgKernelDecl reduce = s.kernel("Reduce");
-        CgKernelTarget small = new CgKernelTarget(false, 0, false, 32768, 128, 1024, 1024, 64);
+        CgKernelTarget small = new CgKernelTarget(false, 0, false, 32768, 128, 1024, 1024, 64, 430);
         assertRefused(s, reduce, small, "256 invocations");
-        CgKernelTarget tight = new CgKernelTarget(false, 0, false, 1024, 1024, 1024, 1024, 64);
+        CgKernelTarget tight = new CgKernelTarget(false, 0, false, 1024, 1024, 1024, 1024, 64, 430);
         assertRefused(s, reduce, tight, "shared memory");
     }
 

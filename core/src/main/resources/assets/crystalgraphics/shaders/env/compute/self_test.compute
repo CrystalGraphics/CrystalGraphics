@@ -17,9 +17,13 @@
 #pragma kernel Doubled general
 #pragma kernel After map
 #pragma kernel Stuck general
+#pragma kernel Only general
+#pragma kernel Bits map
 #pragma fallback Bin BinLowered
+#pragma compute_only Only
 
 struct Pair { vec4 a; uvec4 b; };
+struct BitResults { uvec4 a; uvec4 b; uvec4 c; uvec4 d; uvec4 e; uvec4 f; uvec4 g; uvec4 h; };
 
 Buffers {
     INTS     ("Ints",      int,   readonly)
@@ -37,6 +41,8 @@ Buffers {
     MANY     ("Many",      uint,  append)
     DOUBLED  ("Doubled",   uint,  readwrite)
     AFTER    ("After",     uint,  writeonly)
+    ONLY     ("Only",      uint,  writeonly)
+    BITS     ("Bits",      BitResults, writeonly)
 }
 
 Images {
@@ -47,6 +53,7 @@ Images {
 shared uint halves[2];
 shared uint doubled[64];
 shared uint stuck[64];
+shared uint only[64];
 
 // Every element but each fifth doubles x and adds its int to y: an element left alone keeps what it held.
 void Map() {
@@ -145,3 +152,59 @@ void Stuck() {
     barrier();
     if (CG_LOCAL_INDEX == 0) HALVES_ADD(0, stuck[0]);
 }
+
+// Compute alone, declared so: below compute it is refused by name, and kernel.runs() answers false.
+void Only() {
+    only[CG_LOCAL_INDEX] = uint(CG_ELEMENT) * 5u;
+    barrier();
+    ONLY_WRITE(only[CG_LOCAL_INDEX] + 1u);
+}
+
+uint bytesOf(ivec4 b) {
+    return uint(b.x & 255) | uint(b.y & 255) << 8 | uint(b.z & 255) << 16 | uint(b.w & 255) << 24;
+}
+
+uint shortsOf(ivec2 s) {
+    return uint(s.x & 65535) | uint(s.y & 65535) << 16;
+}
+
+// Every builtin newer than GLSL 3.30 that has a polyfill: below 4.00 and 4.20 the polyfills run, and every tier must
+// give the bits CgComputeSelfTest works out.
+void Bits() {
+    uint x = uint(CG_ELEMENT) * 2654435761u + 12345u;
+    uint y = (x ^ (x >> 13)) * 1540483477u;
+    BitResults o;
+    o.a = uvec4(bitfieldExtract(x, 5, 11), uint(bitfieldExtract(int(x), 3, 9)), bitfieldInsert(x, y, 7, 13),
+                bitfieldReverse(x));
+    o.b = uvec4(uint(bitCount(x)), uint(findLSB(x)), uint(findMSB(x)), uint(findMSB(int(y))));
+    uint carry, borrow, hi, lo;
+    int ihi, ilo;
+    uint sum = uaddCarry(x, y, carry);
+    uint difference = usubBorrow(x, y, borrow);
+    umulExtended(x, y, hi, lo);
+    imulExtended(int(x), int(y), ihi, ilo);
+    o.c = uvec4(sum, difference, carry | (borrow << 1), hi);
+    o.d = uvec4(lo, uint(ihi), uint(ilo), floatBitsToUint(fma(float(CG_ELEMENT), 3.0, 1.0)));
+    vec4 v = vec4(ivec4(uvec4(x, x >> 8, y, y >> 8) & 0xFFu | 1u) - 128) * 0.015625;
+    o.e = uvec4(packUnorm4x8(v), packSnorm4x8(v), packUnorm2x16(v.xy), packSnorm2x16(v.zw));
+    // Unpacked and scaled back by hand: a driver may fold pack(unpack(v)) into v, which skips snorm's clamp of -128.
+    o.f = uvec4(bytesOf(ivec4(round(unpackUnorm4x8(x) * 255.0))), bytesOf(ivec4(round(unpackSnorm4x8(y) * 127.0))),
+                shortsOf(ivec2(round(unpackUnorm2x16(x) * 65535.0))), shortsOf(ivec2(round(unpackSnorm2x16(y) * 32767.0))));
+    // Halves a half holds exactly, and normal half bits: what every driver packs and unpacks alike.
+    vec2 h = uintBitsToFloat((uvec2(x, y) & 0x807FE000u) | ((113u + uvec2(y, x) % 30u) << 23));
+    uint hb = ((y >> 16) & 0x83FFu) | ((1u + (x >> 8) % 30u) << 10);
+    int e;
+    float mantissa = frexp(h.x, e);
+    o.g = uvec4(packHalf2x16(h), floatBitsToUint(unpackHalf2x16(hb << 16).y), floatBitsToUint(mantissa) ^ uint(e),
+                floatBitsToUint(ldexp(mantissa, e)));
+#ifdef CG_LOWERED
+    // Rounding and half subnormals, which GL leaves to a native builtin's driver: held to nearest-even only below
+    // compute, where a GL 4.0 or 3.3 context runs the polyfills.
+    vec2 r = uintBitsToFloat((uvec2(x, y) & 0x807FFFFFu) | ((100u + uvec2(y, x) % 32u) << 23));
+    o.h = uvec4(packHalf2x16(r), floatBitsToUint(unpackHalf2x16((y & 0x83FFu) << 16).y), 0u, 0u);
+#else
+    o.h = uvec4(0u);
+#endif
+    BITS_WRITE(o);
+}
+

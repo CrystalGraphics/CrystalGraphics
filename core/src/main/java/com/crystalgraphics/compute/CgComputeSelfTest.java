@@ -38,7 +38,10 @@ import java.util.List;
  *
  * <ul>
  *   <li>It writes and reads back its own buffers and images, so it waits on the GPU: a diagnosis, never a frame's work.</li>
- *   <li>A kernel no tier can run must be refused where it is recorded; the test checks that refusal too.</li>
+ *   <li>A kernel some tier cannot run must be refused where it is recorded, on every machine; a {@code compute_only}
+ *       one below compute too. The test checks both refusals.</li>
+ *   <li>The builtins newer than GLSL 3.30 run polyfilled below 4.00 and 4.20, and must give the bits Java works
+ *       out.</li>
  * </ul>
  */
 public final class CgComputeSelfTest {
@@ -99,7 +102,7 @@ public final class CgComputeSelfTest {
         Result run() {
             giveBodies();
             StringBuilder forms = new StringBuilder();
-            for (String name : List.of("Map", "Gather", "Append", "Histogram", "Paint", "Bin", "Doubled")) {
+            for (String name : List.of("Map", "Gather", "Append", "Histogram", "Paint", "Bin", "Doubled", "Bits")) {
                 CgKernelForm form = kernels.kernel(name).form();
                 forms.append(' ').append(name).append('=').append(form.how())
                         .append(form.runs().name().equals(name) ? "" : "(" + form.runs().name() + ")");
@@ -124,6 +127,8 @@ public final class CgComputeSelfTest {
             int manyCount = buffer(new int[] {0xdead});
             int doubled = buffer(new int[COUNTED]);
             int after = buffer(new int[COUNTED]);
+            int only = buffer(new int[N]);
+            int bits = buffer(new int[N * BIT_WORDS]);
             CgFrameBuffer picture = image("picture", PICTURE, RGBA8, 0f, 0f, 0f, 1f);
             CgFrameBuffer accum = image("accum", ACCUM, RGBA32F, 0f, 0f, 0f, 0f);
             try {
@@ -145,6 +150,8 @@ public final class CgComputeSelfTest {
                 CgGraphBuffer gManyCount = CgGraphBuffer.imported("many-count", manyCount, 4);
                 CgGraphBuffer gDoubled = CgGraphBuffer.imported("doubled", doubled, COUNTED * 4L);
                 CgGraphBuffer gAfter = CgGraphBuffer.imported("after", after, COUNTED * 4L);
+                CgGraphBuffer gOnly = CgGraphBuffer.imported("only", only, N * 4L);
+                CgGraphBuffer gBits = CgGraphBuffer.imported("bits", bits, N * BIT_WORDS * 4L);
                 CgGraphTexture gPicture = CgGraphTexture.imported("picture", picture);
                 CgGraphTexture gAccum = CgGraphTexture.imported("accum", accum);
 
@@ -174,6 +181,9 @@ public final class CgComputeSelfTest {
                 pass.dispatch(kernels.kernel("Many"), BIG).bind("MANY", gMany).counter("MANY", gManyCount, 0);
                 pass.dispatch(kernels.kernel("Doubled"), COUNTED).bind("COUNTED", gCounted).bind("DOUBLED", gDoubled);
                 pass.dispatch(kernels.kernel("After"), COUNTED).bind("DOUBLED", gDoubled).bind("AFTER", gAfter);
+                boolean onlyRuns = expectOnly(pass);
+                if (onlyRuns) pass.dispatch(kernels.kernel("Only"), N).bind("ONLY", gOnly);
+                pass.dispatch(kernels.kernel("Bits"), N).bind("BITS", gBits);
                 pass.end();
                 CgImmediate.execute(rec);
 
@@ -198,13 +208,15 @@ public final class CgComputeSelfTest {
                 expectMany(read(manyCount, 1)[0], read(many, MANY));
                 expectWords("DOUBLED", read(doubled, COUNTED), words(COUNTED, i -> i < 128 ? 2 * (i + 100) : 0));
                 expectWords("AFTER", read(after, COUNTED), words(COUNTED, i -> (i < 128 ? 2 * (i + 100) : 0) + 1));
+                if (onlyRuns) expectWords("ONLY", read(only, N), words(N, i -> 5 * i + 1));
+                expectWords("BITS", read(bits, N * BIT_WORDS), bits(tier.equals("V") || tier.equals("G43")));
                 expectPicture(picture);
                 expectAccum(accum);
                 List<String> errors = drainErrors();
                 if (!errors.isEmpty()) failures.add("GL errors " + errors);
             } finally {
                 for (int b : new int[] {ints, floats, pairs, gathered, spawns, spawnCount, bins, mins, maxs, stored, counted,
-                        halves, args, big, many, manyCount, doubled, after}) {
+                        halves, args, big, many, manyCount, doubled, after, only, bits}) {
                     CgGL.glDeleteBuffers(b);
                 }
                 picture.delete();
@@ -307,6 +319,13 @@ public final class CgComputeSelfTest {
                 CgCpuBuffer in = d.buffer("DOUBLED"), out = d.buffer("AFTER");
                 for (int e = d.first(); e < d.end(); e++) out.setInt(e, in.getInt(e) + 1);
             });
+            kernels.kernel("Bits").cpu(d -> {
+                CgCpuBuffer out = d.buffer("BITS");
+                for (int e = d.first(); e < d.end(); e++) {
+                    int[] w = bitsOf(e);
+                    for (int k = 0; k < BIT_WORDS; k++) out.setInt(e, k, w[k]);
+                }
+            });
             kernels.kernel("Bin").cpu(d -> {
                 CgCpuBuffer halves = d.buffer("HALVES");
                 for (int e = d.first(); e < d.end(); e++) halves.addInt(e % 2, 1);
@@ -343,18 +362,35 @@ public final class CgComputeSelfTest {
             if (!want.equals(got)) failures.add("SPAWNS holds " + got + ", not " + want);
         }
 
-        /** A kernel that can run nowhere is refused where its dispatch is recorded, naming what stops it; on compute it runs. */
+        /**
+         * A kernel G40 cannot run is refused where its dispatch is recorded on every tier, this one's included, naming
+         * the tier and what stops it.
+         */
         private void expectStuck() {
-            boolean compute = tier.equals("V") || tier.equals("G43");
             CgComputePass probe = new CgRecording().compute("stuck");
             try {
                 probe.dispatch(kernels.kernel("Stuck"), N);
-                if (!compute) failures.add("Stuck was recorded at " + tier + ", where nothing can run it");
+                failures.add("Stuck was recorded at " + tier + ", though G40 can run it nowhere");
             } catch (IllegalStateException e) {
-                String want = tier.equals("CPU") ? "kernel.cpu" : "shared memory (stuck)";
-                if (compute) failures.add("Stuck was refused on compute: " + e.getMessage());
-                else if (!e.getMessage().contains(want)) failures.add("Stuck's refusal names no '" + want + "': " + e.getMessage());
+                for (String want : new String[] {"tier G40", "shared memory (stuck)", "compute_only"}) {
+                    if (!e.getMessage().contains(want)) failures.add("Stuck's refusal names no '" + want + "': " + e.getMessage());
+                }
             }
+        }
+
+        /** A compute_only kernel runs on compute; below it, kernel.runs() is false and a dispatch is refused by name. */
+        private boolean expectOnly(CgComputePass pass) {
+            boolean compute = tier.equals("V") || tier.equals("G43");
+            CgKernel kernel = kernels.kernel("Only");
+            if (kernel.runs() != compute) failures.add("Only.runs() is " + kernel.runs() + " at " + tier);
+            if (compute) return true;
+            try {
+                new CgRecording().compute("only").dispatch(kernel, N);
+                failures.add("Only was recorded at " + tier + ", below compute");
+            } catch (IllegalStateException e) {
+                if (!e.getMessage().contains("compute_only")) failures.add("Only's refusal names no compute_only: " + e.getMessage());
+            }
+            return false;
         }
 
         /** Every third element of BIG appended once: in element order on the CPU tier, in any order on the GPU. */
@@ -414,6 +450,98 @@ public final class CgComputeSelfTest {
                         + " (" + Float.intBitsToFloat(want[firstAt]) + ")");
             }
         }
+    }
+
+    /** Words in one {@code BitResults}: eight uvec4. */
+    private static final int BIT_WORDS = 32;
+    /** Where {@code BitResults.h} starts: rounding a native builtin leaves to its driver, zero on compute. */
+    private static final int DRIVER_ROUNDED = 28;
+
+    private static int[] bits(boolean compute) {
+        int[] w = new int[N * BIT_WORDS];
+        for (int i = 0; i < N; i++) {
+            System.arraycopy(bitsOf(i), 0, w, i * BIT_WORDS, compute ? DRIVER_ROUNDED : BIT_WORDS);
+        }
+        return w;
+    }
+
+    /** What {@code Bits} writes for element {@code i} below compute, each builtin as GLSL defines it. */
+    private static int[] bitsOf(int i) {
+        int x = i * (int) 2654435761L + 12345;
+        int y = (x ^ (x >>> 13)) * 1540483477;
+        int insert = ((1 << 13) - 1) << 7;
+        long sum = (x & 0xFFFFFFFFL) + (y & 0xFFFFFFFFL);
+        long unsigned = (x & 0xFFFFFFFFL) * (y & 0xFFFFFFFFL);
+        long signed = (long) x * (long) y;
+        int[] src = {x, x >>> 8, y, y >>> 8};
+        float[] v = new float[4];
+        for (int c = 0; c < 4; c++) v[c] = (((src[c] & 0xFF) | 1) - 128) * 0.015625f;
+        int unorm4 = 0, snorm4 = 0;
+        for (int c = 0; c < 4; c++) {
+            unorm4 |= Math.round(clamp(v[c], 0f, 1f) * 255f) << (8 * c);
+            snorm4 |= (Math.round(clamp(v[c], -1f, 1f) * 127f) & 0xFF) << (8 * c);
+        }
+        int unorm2 = Math.round(clamp(v[0], 0f, 1f) * 65535f) | Math.round(clamp(v[1], 0f, 1f) * 65535f) << 16;
+        int snorm2 = (Math.round(clamp(v[2], -1f, 1f) * 32767f) & 0xFFFF) | (Math.round(clamp(v[3], -1f, 1f) * 32767f) & 0xFFFF) << 16;
+        int snormTrip4 = 0;
+        for (int c = 0; c < 4; c++) snormTrip4 |= (Math.max((byte) (y >>> (8 * c)), -127) & 0xFF) << (8 * c);
+        int snormTrip2 = (Math.max((short) y, -32767) & 0xFFFF) | (Math.max((short) (y >>> 16), -32767) & 0xFFFF) << 16;
+        float hx = Float.intBitsToFloat((x & 0x807FE000) | ((113 + Integer.remainderUnsigned(y, 30)) << 23));
+        float hy = Float.intBitsToFloat((y & 0x807FE000) | ((113 + Integer.remainderUnsigned(x, 30)) << 23));
+        int half = ((y >>> 16) & 0x83FF) | ((1 + Integer.remainderUnsigned(x >>> 8, 30)) << 10);
+        int hb = Float.floatToRawIntBits(hx);
+        int exponent = ((hb >>> 23) & 0xFF) - 126;
+        int mantissa = (hb & 0x807FFFFF) | 0x3F000000;
+        float rx = Float.intBitsToFloat((x & 0x807FFFFF) | ((100 + Integer.remainderUnsigned(y, 32)) << 23));
+        float ry = Float.intBitsToFloat((y & 0x807FFFFF) | ((100 + Integer.remainderUnsigned(x, 32)) << 23));
+        return new int[] {
+                (x >>> 5) & ((1 << 11) - 1), (x << 20) >> 23, (x & ~insert) | ((y << 7) & insert), Integer.reverse(x),
+                Integer.bitCount(x), findLsb(x), findMsb(x), y < 0 ? findMsb(~y) : findMsb(y),
+                (int) sum, x - y, (int) (sum >>> 32) | (Integer.compareUnsigned(x, y) < 0 ? 2 : 0), (int) (unsigned >>> 32),
+                x * y, (int) (signed >> 32), x * y, Float.floatToRawIntBits(i * 3f + 1f),
+                unorm4, snorm4, unorm2, snorm2,
+                x, snormTrip4, x, snormTrip2,
+                halfBits(hx) | halfBits(hy) << 16, Float.floatToRawIntBits(halfFloat(half)), mantissa ^ exponent, hb,
+                halfBits(rx) | halfBits(ry) << 16, Float.floatToRawIntBits(halfFloat(y & 0x83FF)), 0, 0};
+    }
+
+    private static float clamp(float v, float lo, float hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    private static int findLsb(int v) {
+        return v == 0 ? -1 : Integer.numberOfTrailingZeros(v);
+    }
+
+    private static int findMsb(int v) {
+        return v == 0 ? -1 : 31 - Integer.numberOfLeadingZeros(v);
+    }
+
+    /** A float as half-float bits, rounded to nearest even: what packHalf2x16 holds. Java 8 has no Float.floatToFloat16. */
+    private static int halfBits(float f) {
+        int x = Float.floatToRawIntBits(f);
+        int sign = (x >>> 16) & 0x8000, e = (x >>> 23) & 0xFF, m = x & 0x7FFFFF;
+        if (e == 0xFF) return sign | 0x7C00 | (m != 0 ? 0x200 | (m >>> 13) : 0);
+        int ex = e - 112;
+        if (ex >= 31) return sign | 0x7C00;
+        if (ex <= 0) {
+            if (ex < -10) return sign;
+            m |= 0x800000;
+            int shift = 14 - ex;
+            int h = m >>> shift, rest = m & ((1 << shift) - 1), half = 1 << (shift - 1);
+            if (rest > half || (rest == half && (h & 1) != 0)) h++;
+            return sign | h;
+        }
+        int h = (ex << 10) | (m >>> 13), rest = m & 0x1FFF;
+        if (rest > 0x1000 || (rest == 0x1000 && (h & 1) != 0)) h++;
+        return sign | h;
+    }
+
+    private static float halfFloat(int h) {
+        int sign = (h & 0x8000) << 16, e = (h >>> 10) & 0x1F, m = h & 0x3FF;
+        if (e == 0) return m == 0 ? Float.intBitsToFloat(sign) : (sign != 0 ? -1f : 1f) * m * 5.9604644775390625e-8f;
+        if (e == 31) return Float.intBitsToFloat(sign | 0x7F800000 | (m << 13));
+        return Float.intBitsToFloat(sign | ((e + 112) << 23) | (m << 13));
     }
 
     /** Whether every component is within {@code tolerance}: a unorm store may round either way. */

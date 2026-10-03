@@ -30,6 +30,12 @@ import java.util.TreeSet;
  * CgKernel simulate = particles.kernel("Simulate").cpu(d -> { ... });   // every keyword set shares it
  * CgKernelForm form = simulate.form();                                  // COMPUTE, LOWERED or CPU, on this context
  * }</pre>
+ *
+ * <p>Every tier a player may have is asked of a kernel the first time it is recorded or its program is made, on any
+ * machine ({@link #check}). A kernel meant for compute alone is declared {@code #pragma compute_only} and asked first:</p>
+ * <pre>{@code
+ * if (sort.runs()) recording.compute(pass -> pass.dispatch(sort, ...));   // false below compute, unless it has a body
+ * }</pre>
  */
 public final class CgKernel {
 
@@ -42,6 +48,8 @@ public final class CgKernel {
     /** The form last chosen, and what it was chosen under: the file's generation, the bodies given, the tier. */
     private volatile CgKernelForm form;
     private volatile long formKey = Long.MIN_VALUE;
+    /** What the every-tier check last passed under: the file's generation and the bodies given. */
+    private volatile long checkedKey = Long.MIN_VALUE;
 
     CgKernel(CgCompute compute, String name, Set<String> keywords) {
         this.compute = compute;
@@ -72,6 +80,7 @@ public final class CgKernel {
 
     /** Its program for the current context, compiled the first time. Render thread. */
     public CgKernelProgram program() {
+        check();
         CgKernelProgram held = program;
         if (held != null && programGeneration == compute.generation() && !held.isDeleted()) return held;
         int generation = compute.generation();
@@ -105,6 +114,32 @@ public final class CgKernel {
         form = held;
         formKey = key;
         return held;
+    }
+
+    /**
+     * Asks every tier a player's context may be at whether it can run this kernel, as {@link CgKernelForm#check}
+     * does, once per file generation and body given. Any thread.
+     *
+     * @throws IllegalStateException naming the tier and what stops it
+     */
+    public void check() {
+        long key = ((long) compute.generation() << 32) ^ compute.bodiesGiven();
+        if (checkedKey == key) return;
+        CgKernelForm.check(compute.source(), decl(), n -> compute.cpuBody(n) != null);
+        checkedKey = key;
+    }
+
+    /**
+     * Whether the current context runs this kernel: false for a {@code compute_only} kernel below compute with no
+     * Java body, which a feature built on it asks before it is offered. Render thread, or once capabilities are known.
+     */
+    public boolean runs() {
+        try {
+            form();
+            return true;
+        } catch (IllegalStateException e) {
+            return false;
+        }
     }
 
     /** Its lowered form for the current context, built the first time: the kernel, or its fallback. Render thread. */
