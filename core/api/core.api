@@ -2638,6 +2638,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static openConnections ()I
   method public,static playerJoined (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
   method public,static playerLeft (Ljava/util/UUID;)V
+  method public,static serverStarting (Ljava/lang/Object;)V
   method public,static serverTick ()V
 com/crystalgraphics/net/CgPeer
   access public,final
@@ -2649,6 +2650,38 @@ com/crystalgraphics/net/CgPeer
   method public name ()Ljava/lang/String;
   method public player ()Ljava/lang/Object;
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/net/CgReplicated
+  access public,final
+  extends java/lang/Object
+  method public create (Ljava/lang/Object;DDDLjava/lang/Object;)Lcom/crystalgraphics/net/CgReplicated$Handle;
+  method public forEach (Ljava/util/function/Consumer;)V
+  method public name ()Ljava/lang/String;
+  method public onClient (Lcom/crystalgraphics/net/CgReplicated$View;)Lcom/crystalgraphics/net/CgReplicated;
+  method public persisted ()Lcom/crystalgraphics/net/CgReplicated;
+  method public size ()I
+  method public visible ()Ljava/util/Map;
+  method public visibleWithin (D)Lcom/crystalgraphics/net/CgReplicated;
+  method public,static define (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgReplicated;
+com/crystalgraphics/net/CgReplicated$Handle
+  access public,final
+  extends java/lang/Object
+  method public dimension ()Ljava/lang/String;
+  method public id ()J
+  method public isRemoved ()Z
+  method public moveTo (DDD)V
+  method public remove ()V
+  method public set (Ljava/lang/Object;)V
+  method public update (Ljava/util/function/UnaryOperator;)V
+  method public value ()Ljava/lang/Object;
+  method public x ()D
+  method public y ()D
+  method public z ()D
+com/crystalgraphics/net/CgReplicated$View
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract added (JLjava/lang/Object;)V
+  method public,abstract changed (JLjava/lang/Object;)V
+  method public,abstract removed (J)V
 com/crystalgraphics/net/CgTransport
   access public,abstract,interface
   extends java/lang/Object

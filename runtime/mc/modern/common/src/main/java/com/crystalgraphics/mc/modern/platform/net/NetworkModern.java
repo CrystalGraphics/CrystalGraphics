@@ -9,6 +9,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 
@@ -38,6 +39,10 @@ public final class NetworkModern {
     public static void playerLeft(@Nullable ServerPlayer player) {
         UUID id = idOf(player);
         if (id != null) CgNetwork.playerLeft(id);
+    }
+
+    public static void serverStarting(MinecraftServer server) {
+        CgNetwork.serverStarting(server);
     }
 
     public static void serverTick() {

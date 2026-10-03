@@ -1,5 +1,6 @@
 package com.crystalgraphics.net;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -64,6 +65,11 @@ public class CgAudienceTest {
         @Override
         public void trackingEntity(Object entity, Consumer<UUID> out) {
             ((Body) entity).tracking.forEach(out);
+        }
+
+        @Override
+        public Path saveDirectory(Object handle) {
+            return null;
         }
     }
 

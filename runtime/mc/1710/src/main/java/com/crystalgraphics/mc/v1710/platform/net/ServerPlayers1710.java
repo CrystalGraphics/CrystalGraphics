@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.net;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -10,6 +12,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.DimensionManager;
 
 /**
  * {@link CgServerPlayers} over 1.7.10's server worlds; installed by {@link Network1710}. The host's own entity tracker
@@ -50,6 +53,12 @@ final class ServerPlayers1710 implements CgServerPlayers {
                 out.accept(id);
             }
         }
+    }
+
+    @Override
+    public Path saveDirectory(Object handle) {
+        File root = DimensionManager.getCurrentSaveRootDirectory();
+        return root == null ? null : root.toPath().toAbsolutePath().normalize();
     }
 
     @Override

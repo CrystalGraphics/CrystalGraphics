@@ -2,12 +2,13 @@ package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.platform.CgService;
 
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
  * Answers the server's questions about its players: which dimension a level, entity or player is in, where an entity
- * is, and whose client has a chunk or an entity loaded. What {@code CgAudience} composes its audiences from; a mod
+ * is, whose client has a chunk or an entity loaded, and where the world is saved. What {@code CgAudience} composes its audiences from; a mod
  * reaches it through those rather than here.
  *
  * <pre>{@code
@@ -36,6 +37,7 @@ public interface CgServerPlayers {
         @Override public UUID playerId(Object entity) { return null; }
         @Override public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) { }
         @Override public void trackingEntity(Object entity, Consumer<UUID> out) { }
+        @Override public Path saveDirectory(Object handle) { return null; }
     };
 
     CgService<CgServerPlayers> SERVICE = CgService.of("crystalgraphics:server_players", NONE);
@@ -57,6 +59,12 @@ public interface CgServerPlayers {
 
     /** Hands {@code out} each player whose client has {@code entity} loaded, never the entity itself. */
     void trackingEntity(Object entity, Consumer<UUID> out);
+
+    /**
+     * The root directory of the world a level, entity or player belongs to, where anything saved with it goes; null
+     * without a running server.
+     */
+    Path saveDirectory(Object handle);
 
     /** The id of a numbered dimension: vanilla's three by their modern names, any other {@code "legacy:dim<n>"}. */
     static String dimensionId(int dimension) {

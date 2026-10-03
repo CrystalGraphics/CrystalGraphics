@@ -40,6 +40,11 @@ public final class NetworkLegacy {
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 
+    /** The server is starting, its worlds loaded. A mod-lifecycle event, from the mod's own handler. */
+    public static void serverStarting() {
+        CgNetwork.serverStarting(null);
+    }
+
     /** The server is stopping. A mod-lifecycle event, so it arrives from the mod's own handler. */
     public static void serverStopping() {
         CgNetwork.closeAll("server stopping");

@@ -26,6 +26,7 @@ public final class CrystalGraphicsLegacy implements VariantEntry {
             PlatformServiceLegacy.register(FMLCommonHandler.instance().getSide().isClient());
         });
         events.on("FMLInitializationEvent", event -> NetworkLegacy.install());
+        events.on("FMLServerStartingEvent", event -> NetworkLegacy.serverStarting());
         events.on("FMLServerStoppingEvent", event -> NetworkLegacy.serverStopping());
     }
 }

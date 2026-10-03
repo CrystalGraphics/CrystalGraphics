@@ -22,11 +22,14 @@ import net.minecraftforge.event.entity.player.PlayerEvent;
 /*import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 *///?}
 //? if >=1.18 {
+import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 //?} elif >=1.17 {
-/*import net.minecraftforge.fmlserverevents.FMLServerStoppingEvent;
+/*import net.minecraftforge.fmlserverevents.FMLServerAboutToStartEvent;
+import net.minecraftforge.fmlserverevents.FMLServerStoppingEvent;
 *///?} else {
-/*import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
+/*import net.minecraftforge.fml.event.server.FMLServerAboutToStartEvent;
+import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
 *///?}
 //? if >=1.20.2 {
 /*import net.minecraftforge.network.PacketDistributor;
@@ -456,11 +459,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         static void register() {
             //? if >=1.21.6 {
-            /*ServerStoppingEvent.BUS.addListener(event -> NetworkModern.serverStopping());
+            /*ServerAboutToStartEvent.BUS.addListener(event -> NetworkModern.serverStarting(event.getServer()));
+            ServerStoppingEvent.BUS.addListener(event -> NetworkModern.serverStopping());
             TickEvent.ServerTickEvent.Post.BUS.addListener(event -> NetworkModern.serverTick());
             PlayerEvent.PlayerLoggedInEvent.BUS.addListener(ServerEvents::onPlayerJoin);
             PlayerEvent.PlayerLoggedOutEvent.BUS.addListener(ServerEvents::onPlayerLeave);
             *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStarting);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStopping);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerTick);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerJoin);
@@ -469,11 +474,19 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
 
         //? if >=1.18 {
+        private static void onServerStarting(ServerAboutToStartEvent event) {
+            NetworkModern.serverStarting(event.getServer());
+        }
+
         private static void onServerStopping(ServerStoppingEvent event) {
             NetworkModern.serverStopping();
         }
         //?} else {
-        /*private static void onServerStopping(FMLServerStoppingEvent event) {
+        /*private static void onServerStarting(FMLServerAboutToStartEvent event) {
+            NetworkModern.serverStarting(event.getServer());
+        }
+
+        private static void onServerStopping(FMLServerStoppingEvent event) {
             NetworkModern.serverStopping();
         }
         *///?}

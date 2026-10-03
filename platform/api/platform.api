@@ -2654,6 +2654,7 @@ com/crystalgraphics/platform/service/CgServerPlayers
   method public,abstract dimension (Ljava/lang/Object;)Ljava/lang/String;
   method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
   method public,abstract position (Ljava/lang/Object;[D)Z
+  method public,abstract saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
   method public,abstract trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
   method public,abstract trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
   method public,static dimensionId (I)Ljava/lang/String;
