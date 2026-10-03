@@ -481,7 +481,8 @@ public final class CgExecutor {
             if (d.images[i] == null) continue;
             CgTexture color = storage(d.images[i]).getColorTexture(0);
             int level = d.levels[i];
-            b.image(i, color.getId(), CgGL.GL_TEXTURE_2D, level, d.layers[i], Math.max(1, color.getWidth() >> level),
+            b.image(i, color.getId(), CgGL.GL_TEXTURE_2D, level, color.getLevels(), d.layers[i],
+                    Math.max(1, color.getWidth() >> level),
                     Math.max(1, color.getHeight() >> level), 1);
         }
         switch (d.form) {
@@ -886,7 +887,8 @@ public final class CgExecutor {
             // At a requested texture's first use; made again later, the picture it held was lost.
             CgTrace.add(CgChannels.GL, "graph.requested.made", 1);
             CgTextureDesc desc = texture.desc();
-            storage = CgFrameBuffer.createOwned("cg_graph_" + texture.name(), desc.width(), desc.height(), desc.format());
+            storage = CgFrameBuffer.createOwned("cg_graph_" + texture.name(), desc.width(), desc.height(), desc.format(),
+                    desc.levels());
             texture.resolve(storage);
         }
         if (storage == null) throw new IllegalStateException(texture + " has no storage in this pass");

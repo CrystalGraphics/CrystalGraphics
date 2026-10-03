@@ -1,6 +1,8 @@
 package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgComputeSelfTest;
+import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
@@ -18,7 +20,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
-//import com.crystalgraphics.gl.debug.CgDebugBlit;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -390,6 +391,10 @@ public final class CgGraphicsLifecycle {
             CgFontRegistry.get().tickFrame(frameCounter);
             CgSettings.tickFrame();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+            if (initialized) {
+                CgComputeSelfTest.runIfAsked();
+                CgGpuOpsCheck.runIfAsked();
+            }
 
             // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
             // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.
@@ -513,10 +518,6 @@ public final class CgGraphicsLifecycle {
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
-
-
-        // Step 10: Debug utilities (lazy singleton — no-op if never used).
-//        CgDebugBlit.dispose();
 
         // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
         // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.

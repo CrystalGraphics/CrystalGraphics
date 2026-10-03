@@ -82,7 +82,9 @@ public final class CgDispatch {
         this.z = z;
         this.args = args;
         this.argsOffset = argsOffset;
-        // A kernel this context cannot run fails here, at the caller's line, not in the frame that executes it.
+        // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
+        // too, not in the frame that executes it.
+        kernel.check();
         if (CgCapabilities.detected() != null) kernel.form();
         int n = source.buffers().size(), m = source.images().size();
         buffers = new CgGraphBuffer[n];
@@ -157,6 +159,10 @@ public final class CgDispatch {
         if (image == null) throw new IllegalArgumentException(source.path() + " declares no image '" + name + "'");
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("a kernel binds named storage; the current target has none");
+        }
+        if (level < 0 || level >= texture.getLevels()) {
+            throw new IllegalArgumentException(name + " binds level " + level + " of " + texture + ", which has "
+                    + texture.getLevels());
         }
         if (layer >= 0 && image.dimension() != CgImageDimension.D2) {
             throw new IllegalArgumentException(name + " is " + image.dimension().token + ": it binds every layer");

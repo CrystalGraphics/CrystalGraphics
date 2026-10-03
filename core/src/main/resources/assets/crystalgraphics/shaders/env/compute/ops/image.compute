@@ -1,0 +1,163 @@
+// CgGpuOps' image ops (gpu-compute C7): a mip level from the level above it, and one axis of a Gaussian blur. An image
+// is declared in one format, so each op is a kernel per format; a dispatch is the target level's size.
+#pragma kernel DownsampleRgba8 8 8 image
+#pragma kernel DownsampleRgba16f 8 8 image
+#pragma kernel DownsampleR16f 8 8 image
+#pragma kernel DownsampleR32f 8 8 image
+#pragma kernel BlurRgba8 8 8 image
+#pragma kernel BlurRgba16f 8 8 image
+#pragma kernel BlurR16f 8 8 image
+#pragma kernel BlurR32f 8 8 image
+#pragma cg_feature MIN
+#pragma cg_feature MAX
+#pragma cg_feature VERTICAL
+
+Properties {
+    _Radius ("Blur taps each side",        int)   = 0
+    _Sigma  ("Blur sigma, in texels",      float) = 1
+}
+
+Images {
+    SRC_RGBA8   ("Source", rgba8,   readonly)
+    DST_RGBA8   ("Target", rgba8,   writeonly)
+    SRC_RGBA16F ("Source", rgba16f, readonly)
+    DST_RGBA16F ("Target", rgba16f, writeonly)
+    SRC_R16F    ("Source", r16f,    readonly)
+    DST_R16F    ("Target", r16f,    writeonly)
+    SRC_R32F    ("Source", r32f,    readonly)
+    DST_R32F    ("Target", r32f,    writeonly)
+}
+
+// The share of source texels 2t, 2t+1 and 2t+2 in target texel t, along an axis of n source texels: the box the target
+// texel covers. Even: two halves. Odd: three, the outer two partly, so a 5-texel row halves to 2.5 texels each.
+vec3 boxWeights(int t, int n) {
+    if (n == 1) return vec3(1.0, 0.0, 0.0);
+    if ((n & 1) == 0) return vec3(0.5, 0.5, 0.0);
+    int d = n >> 1;
+    return vec3(float(d - t), float(d), float(t + 1)) / float(n);
+}
+
+// Folds tap v of weight w into acc: the weighted sum, or with MIN or MAX every texel the box touches.
+vec4 fold(vec4 acc, vec4 v, float w) {
+#if defined(MIN)
+    return min(acc, v);
+#elif defined(MAX)
+    return max(acc, v);
+#else
+    return acc + v * w;
+#endif
+}
+
+vec4 first(vec4 v, float w) {
+#if defined(MIN) || defined(MAX)
+    return v;
+#else
+    return v * w;
+#endif
+}
+
+// Tap k texels from t along the blur's axis, clamped to the edge.
+ivec2 tap(ivec2 t, int k, ivec2 n) {
+#ifdef VERTICAL
+    return ivec2(t.x, clamp(t.y + k, 0, n.y - 1));
+#else
+    return ivec2(clamp(t.x + k, 0, n.x - 1), t.y);
+#endif
+}
+
+float gaussian(int k) {
+    return exp(-0.5 * float(k * k) / (_Sigma * _Sigma));
+}
+
+void DownsampleRgba8() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA8_SIZE();
+    vec3 wx = boxWeights(t.x, n.x), wy = boxWeights(t.y, n.y);
+    vec4 acc = first(SRC_RGBA8_LOAD(2 * t), wx[0] * wy[0]);
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) {
+        float w = wx[i] * wy[j];
+        if (i + j > 0 && w > 0.0) acc = fold(acc, SRC_RGBA8_LOAD(2 * t + ivec2(i, j)), w);
+    }
+    DST_RGBA8_WRITE(acc);
+}
+
+void DownsampleRgba16f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA16F_SIZE();
+    vec3 wx = boxWeights(t.x, n.x), wy = boxWeights(t.y, n.y);
+    vec4 acc = first(SRC_RGBA16F_LOAD(2 * t), wx[0] * wy[0]);
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) {
+        float w = wx[i] * wy[j];
+        if (i + j > 0 && w > 0.0) acc = fold(acc, SRC_RGBA16F_LOAD(2 * t + ivec2(i, j)), w);
+    }
+    DST_RGBA16F_WRITE(acc);
+}
+
+void DownsampleR16f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_R16F_SIZE();
+    vec3 wx = boxWeights(t.x, n.x), wy = boxWeights(t.y, n.y);
+    vec4 acc = first(SRC_R16F_LOAD(2 * t), wx[0] * wy[0]);
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) {
+        float w = wx[i] * wy[j];
+        if (i + j > 0 && w > 0.0) acc = fold(acc, SRC_R16F_LOAD(2 * t + ivec2(i, j)), w);
+    }
+    DST_R16F_WRITE(acc);
+}
+
+void DownsampleR32f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_R32F_SIZE();
+    vec3 wx = boxWeights(t.x, n.x), wy = boxWeights(t.y, n.y);
+    vec4 acc = first(SRC_R32F_LOAD(2 * t), wx[0] * wy[0]);
+    for (int j = 0; j < 3; j++) for (int i = 0; i < 3; i++) {
+        float w = wx[i] * wy[j];
+        if (i + j > 0 && w > 0.0) acc = fold(acc, SRC_R32F_LOAD(2 * t + ivec2(i, j)), w);
+    }
+    DST_R32F_WRITE(acc);
+}
+
+// One axis: the taps within _Radius of the texel, weighted by the Gaussian and normalised.
+void BlurRgba8() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA8_SIZE();
+    vec4 sum = SRC_RGBA8_LOAD(t);
+    float total = 1.0;
+    for (int k = 1; k <= _Radius; k++) {
+        float w = gaussian(k);
+        sum += (SRC_RGBA8_LOAD(tap(t, -k, n)) + SRC_RGBA8_LOAD(tap(t, k, n))) * w;
+        total += 2.0 * w;
+    }
+    DST_RGBA8_WRITE(sum / total);
+}
+
+void BlurRgba16f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_RGBA16F_SIZE();
+    vec4 sum = SRC_RGBA16F_LOAD(t);
+    float total = 1.0;
+    for (int k = 1; k <= _Radius; k++) {
+        float w = gaussian(k);
+        sum += (SRC_RGBA16F_LOAD(tap(t, -k, n)) + SRC_RGBA16F_LOAD(tap(t, k, n))) * w;
+        total += 2.0 * w;
+    }
+    DST_RGBA16F_WRITE(sum / total);
+}
+
+void BlurR16f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_R16F_SIZE();
+    vec4 sum = SRC_R16F_LOAD(t);
+    float total = 1.0;
+    for (int k = 1; k <= _Radius; k++) {
+        float w = gaussian(k);
+        sum += (SRC_R16F_LOAD(tap(t, -k, n)) + SRC_R16F_LOAD(tap(t, k, n))) * w;
+        total += 2.0 * w;
+    }
+    DST_R16F_WRITE(sum / total);
+}
+
+void BlurR32f() {
+    ivec2 t = CG_TEXEL.xy, n = SRC_R32F_SIZE();
+    vec4 sum = SRC_R32F_LOAD(t);
+    float total = 1.0;
+    for (int k = 1; k <= _Radius; k++) {
+        float w = gaussian(k);
+        sum += (SRC_R32F_LOAD(tap(t, -k, n)) + SRC_R32F_LOAD(tap(t, k, n))) * w;
+        total += 2.0 * w;
+    }
+    DST_R32F_WRITE(sum / total);
+}

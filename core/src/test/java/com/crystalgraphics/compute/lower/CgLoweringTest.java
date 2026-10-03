@@ -4,6 +4,7 @@ import com.crystalgraphics.compute.lower.CgLowering.Kind;
 import com.crystalgraphics.compute.lower.CgLowering.Op;
 import com.crystalgraphics.compute.lower.CgLowering.Pass;
 import com.crystalgraphics.compute.parse.CgComputeParser;
+import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import org.junit.Test;
 
@@ -26,6 +27,7 @@ public class CgLoweringTest {
                 + "    IN    (\"In\",    float, readonly)\n"
                 + "    OUT   (\"Out\",   vec4,  readwrite)\n"
                 + "    WIDE  (\"Wide\",  Wide,  writeonly)\n"
+                + "    WSPAWN (\"WSpawn\", Wide, append)\n"
                 + "    SPAWN (\"Spawn\", uvec2, append)\n"
                 + "    BINS  (\"Bins\",  uint,  counter)\n"
                 + "    VALS  (\"Vals\",  float, readwrite)\n"
@@ -53,12 +55,11 @@ public class CgLoweringTest {
     // ── Passes ────────────────────────────────────────────────────────────────
 
     @Test
-    public void map_capturesEachWrittenBuffer() {
-        List<Pass> p = passes("map", "OUT_WRITE(OUT(CG_ELEMENT) * IN(CG_ELEMENT)); VALS_WRITE(1.0);");
-        assertEquals(2, p.size());
-        assertEquals(Kind.OUTPUT, p.get(0).kind());
-        assertEquals("OUT", p.get(0).buffer().name());
-        assertEquals("VALS", p.get(1).buffer().name());
+    public void map_drawsBuffersOfOneLayoutInOnePass() {
+        List<Pass> p = passes("map", "OUT_WRITE(OUT(CG_ELEMENT) * IN(CG_ELEMENT)); VALS_WRITE(1.0); Wide w; WIDE_WRITE(w);");
+        assertEquals(List.of(Kind.OUTPUT, Kind.OUTPUT), p.stream().map(Pass::kind).toList());
+        assertEquals(List.of("OUT", "VALS"), p.get(0).buffers().stream().map(CgBufferDecl::name).toList());
+        assertEquals("a struct of 17 texels an element is a pass of its own", "WIDE", p.get(1).buffer().name());
     }
 
     @Test
@@ -119,9 +120,9 @@ public class CgLoweringTest {
     }
 
     @Test
-    public void elementWiderThanOneCapture_isRefused() {
-        String why = refusal("map", "Wide w; WIDE_WRITE(w);");
-        assertTrue(why, why.contains("WIDE") && why.contains("64 words"));
+    public void appendWiderThanOneCapture_isRefused() {
+        String why = refusal("append", "Wide w; WSPAWN_APPEND(w);");
+        assertTrue(why, why.contains("WSPAWN") && why.contains("64 words"));
     }
 
     @Test
@@ -137,10 +138,10 @@ public class CgLoweringTest {
         CgComputeSource s = parse("append", "VALS_WRITE(IN(CG_ELEMENT)); SPAWN_APPEND(uvec2(1u));");
         List<Pass> p = CgLowering.passes(s, s.kernel("K"));
         CgLoweredEmitter.Stages output = CgLoweredEmitter.emit(s, s.kernel("K"), Set.of(), p.get(0), CgLoweredTarget.GL33);
-        assertNull("an output pass is a vertex stage alone", output.geometry());
-        assertNull(output.fragment());
-        assertTrue(output.vertex().startsWith("#version 330 core\n"));
-        assertArrayEquals(CgLoweredEmitter.captures(p.get(0).buffer()), output.varyings());
+        assertNull("an output pass is a fragment stage over its targets", output.geometry());
+        assertNull(output.varyings());
+        assertEquals(CgLoweredEmitter.FULLSCREEN_VERTEX, output.vertex());
+        assertTrue(output.fragment().startsWith("#version 330 core\n"));
 
         CgLoweredEmitter.Stages append = CgLoweredEmitter.emit(s, s.kernel("K"), Set.of(), p.get(1), CgLoweredTarget.GL33);
         assertNotNull("an append pass emits from a geometry stage", append.geometry());

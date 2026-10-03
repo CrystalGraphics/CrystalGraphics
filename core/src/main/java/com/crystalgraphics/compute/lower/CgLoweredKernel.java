@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * One kernel and keyword set lowered below compute (gpu-compute C5), compiled for the current context and wired: a
@@ -54,10 +55,11 @@ import java.util.Set;
  * }</pre>
  *
  * <ul>
- *   <li>Every pass reads what the bound buffers and images held before the dispatch; what the passes write lands
- *       after the last, so a pass never sees another's output.</li>
+ *   <li>Every pass reads what the bound buffers and images held before the dispatch; what the passes write to buffers
+ *       is held in render targets and read back into them after the last, so a pass never sees another's output.</li>
  *   <li>A frame graph binds the property block and sampler properties itself and calls {@link #dispatchBound}.</li>
- *   <li>No memory barrier is needed or issued: transform feedback and rendering are ordinary GL writes.</li>
+ *   <li>No memory barrier is needed or issued: rendering, transform feedback and reading pixels into a buffer are
+ *       ordinary GL writes.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
@@ -169,7 +171,7 @@ public final class CgLoweredKernel {
         try {
             program = CgShaderProgram.compileCapture(vertex, geometry, fragment, stages.varyings());
         } catch (IllegalStateException e) {
-            String kernelStage = pass.kind() == Kind.OUTPUT ? vertex : pass.kind() == Kind.IMAGE ? fragment : geometry;
+            String kernelStage = pass.kind() == Kind.OUTPUT || pass.kind() == Kind.IMAGE ? fragment : geometry;
             throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + " lowered for "
                     + describe(pass) + ": " + e.getMessage() + "\n--- emitted ---\n" + numbered(kernelStage), e);
         }
@@ -270,65 +272,79 @@ public final class CgLoweredKernel {
         CgGL.glColorMask(true, true, true, true);
         CgGL.glPointSize(1f);
         sizeIndirect(b);
-        copyCount = 0;
         CgTexelTarget scatter = null;
-        for (int p = 0; p < passes.size(); p++) {
-            PassProgram pass = passes.get(p);
-            CgTrace.add(CgChannels.GL, LOWERED_PASSES, 1);
-            switch (pass.pass().kind()) {
-                case OUTPUT -> output(pass, b, elements);
-                case APPEND -> append(pass, b, elements);
-                case SCATTER -> {
-                    CgBufferDecl buffer = pass.pass().buffer();
-                    if (scatter == null) scatter = scatterTarget(buffer, pass.pass().floats(), b);
-                    scatterPass(pass, b, elements, scatter);
-                    boolean last = p + 1 == passes.size() || passes.get(p + 1).pass().buffer() != buffer
-                            || passes.get(p + 1).pass().kind() != Kind.SCATTER;
-                    if (last) {
-                        resolve(scatter, buffer, pass.pass().floats(), b);
-                        CgLoweredResources.release(scatter);
-                        scatter = null;
+        try {
+            for (int p = 0; p < passes.size(); p++) {
+                PassProgram pass = passes.get(p);
+                CgTrace.add(CgChannels.GL, LOWERED_PASSES, 1);
+                switch (pass.pass().kind()) {
+                    case OUTPUT -> output(pass, b, elements);
+                    case APPEND -> append(pass, b, elements);
+                    case SCATTER -> {
+                        CgBufferDecl buffer = pass.pass().buffer();
+                        if (scatter == null) scatter = scatterTarget(buffer, pass.pass().floats(), b);
+                        scatterPass(pass, b, elements, scatter);
+                        boolean last = p + 1 == passes.size() || passes.get(p + 1).pass().kind() != Kind.SCATTER
+                                || passes.get(p + 1).pass().buffer() != buffer;
+                        if (last) {
+                            CgTexelTarget resolved = scatter;
+                            scatter = null;
+                            resolve(resolved, buffer, pass.pass().floats(), b);
+                        }
                     }
+                    case IMAGE -> image(pass, b);
                 }
-                case IMAGE -> image(pass, b);
             }
+        } catch (RuntimeException e) {
+            if (scatter != null) CgLoweredResources.release(scatter);
+            for (int p = 0; p < landCount; p++) CgLoweredResources.release(landing[p]);
+            landCount = 0;
+            throw e;
         }
         CgGL.glDisable(CgGL.GL_BLEND);
         if (command != 0) CgLoweredResources.release(command, 16);
-        for (int c = 0; c < copyCount; c++) {
-            int from = (int) copies[c * 4], to = (int) copies[c * 4 + 1];
-            long at = copies[c * 4 + 2], bytes = copies[c * 4 + 3];
-            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
-            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
-            CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, 0, at, bytes);
-            CgLoweredResources.release(from, bytes);
-            CgLoweredResources.written(to);
-        }
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
+        land();
         CgGL.glBindVertexArray(0);
     }
 
     // ── Passes ────────────────────────────────────────────────────────────────
 
+    /**
+     * The pass's buffers, a render target each, laid out as their words are: texel {@code t} of a target is texel
+     * {@code t} of the view, so it reads back into the buffer whole.
+     */
     private void output(PassProgram pass, CgDispatchBindings b, long elements) {
-        CgBufferDecl o = pass.pass().buffer();
-        int i = o.index();
-        long length = b.bytes(i) / o.stride();
-        long n = b.isIndirect() ? length : Math.min(elements, length);
-        if (n <= 0) return;
-        long bytes = n * o.stride();
-        int scratch = CgLoweredResources.scratch(bytes);
-        discardTarget();
+        List<CgBufferDecl> buffers = pass.pass().buffers();
+        int k = CgLoweredEmitter.texelsPerElement(pass.pass().buffer());
+        long covered = 0;
+        for (CgBufferDecl o : buffers) covered = Math.max(covered, writtenElements(o, b, elements));
+        if (covered <= 0) return;
+        long texels = covered * k;
+        int width = width(texels), height = height(texels, width, pass.pass().buffer());
+        // A new target binds its own framebuffer, so every one is taken before the outputs are bound.
+        for (int n = 0; n < buffers.size(); n++) outputs[n] = CgLoweredResources.target(texelType(buffers.get(n)), width, height);
+        CgLoweredResources.bindOutputs(buffers.size());
+        for (int n = 0; n < buffers.size(); n++) {
+            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0 + n, CgGL.GL_TEXTURE_2D,
+                    outputs[n].texture(), 0);
+        }
+        CgGL.glViewport(0, 0, width, rows(texels, width));
+        CgGL.glDisable(CgGL.GL_BLEND);
         use(pass, b);
-        CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, scratch, 0, bytes);
-        CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);
-        CgGL.glDrawArrays(CgGL.GL_POINTS, 0, (int) n);
-        CgGL.glEndTransformFeedback();
-        CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0);
-        copy(scratch, b.buffer(i), b.offset(i), bytes);
+        CgGL.glUniform1i(pass.texelsX(), width);
+        CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        for (int n = 0; n < buffers.size(); n++) {
+            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0 + n, CgGL.GL_TEXTURE_2D, 0, 0);
+            CgBufferDecl o = buffers.get(n);
+            landLater(outputs[n], b.buffer(o.index()), b.offset(o.index()), writtenElements(o, b, elements) * k);
+            outputs[n] = null;
+        }
+    }
+
+    /** The elements of buffer {@code o} a dispatch writes back: its view, cut to the dispatch where that is known. */
+    private static long writtenElements(CgBufferDecl o, CgDispatchBindings b, long elements) {
+        long length = b.bytes(o.index()) / o.stride();
+        return b.isIndirect() ? length : Math.min(elements, length);
     }
 
     private void append(PassProgram pass, CgDispatchBindings b, long elements) {
@@ -358,7 +374,9 @@ public final class CgLoweredKernel {
             place(a, capture, b);
             CgLoweredResources.release(capture, viewBytes);
         }
-        int sum = CgLoweredResources.scratch(4);
+        CgTexelTarget sum = CgLoweredResources.target(CgTextureType.R32UI, 1, 1);
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, sum.framebuffer());
+        CgGL.glViewport(0, 0, 1, 1);
         CgLoweredPrograms.Helper add = CgLoweredPrograms.counterAdd();
         add.use();
         CgLoweredResources.bindTextureBuffer(samplers, HELPER_SLOT, CgGL.GL_R32UI, b.counter(i));
@@ -366,14 +384,8 @@ public final class CgLoweredKernel {
         add.set("_cg_counter", samplers);
         add.set("_cg_count", samplers + 1);
         add.set("_cg_at", (int) (b.counterOffset(i) / 4));
-        CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, sum, 0, 4);
-        CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);
-        CgGL.glDrawArrays(CgGL.GL_POINTS, 0, 1);
-        CgGL.glEndTransformFeedback();
-        CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0);
-        copy(sum, b.counter(i), b.counterOffset(i), 4);
+        CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        landLater(sum, b.counter(i), b.counterOffset(i), 1);
     }
 
     /** Appended elements captured at zero, moved to their counter in the buffer through its scatter target. */
@@ -400,31 +412,25 @@ public final class CgLoweredKernel {
         place.set("_cg_height", t.height());
         CgGL.glDrawArrays(CgGL.GL_POINTS, 0, length * k);
         resolve(t, a, false, b);
-        CgLoweredResources.release(t);
     }
 
     /** A scatter target holding buffer {@code buffer}'s view: its words, or its scalars as floats. */
     private CgTexelTarget scatterTarget(CgBufferDecl buffer, boolean floats, CgDispatchBindings b) {
         int i = buffer.index();
         int k = CgLoweredEmitter.texelsPerElement(buffer);
-        int texels = (int) (b.bytes(i) / buffer.stride()) * k;
-        int width = Math.max(1, Math.min(texels, target.maxTextureSize()));
-        int height = Math.max(1, (texels + width - 1) / width);
-        if (height > target.maxTextureSize()) {
-            throw new IllegalStateException(buffer.name() + " holds " + texels + " texels: below compute a scattered buffer "
-                    + "is a texture, at most " + target.maxTextureSize() + " square");
-        }
+        long texels = b.bytes(i) / buffer.stride() * k;
+        int width = width(texels), height = height(texels, width, buffer);
         CgTextureType type = floats ? CgTextureType.R32F : texelType(buffer);
         CgTexelTarget t = CgLoweredResources.target(type, width, height);
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, t.framebuffer());
-        CgGL.glViewport(0, 0, width, height);
+        CgGL.glViewport(0, 0, width, rows(texels, width));
         CgGL.glDisable(CgGL.GL_BLEND);
         CgLoweredPrograms.Helper init = CgLoweredPrograms.scatterInit(floats, buffer.element());
         init.use();
         CgLoweredResources.bindTextureBuffer(samplers, HELPER_SLOT, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
         init.set("_cg_src", samplers);
         init.set("_cg_first", (int) (b.offset(i) / buffer.stride()) * k);
-        init.set("_cg_count", texels);
+        init.set("_cg_count", (int) texels);
         init.set("_cg_width", width);
         CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
         return t;
@@ -441,27 +447,33 @@ public final class CgLoweredKernel {
         CgGL.glDisable(CgGL.GL_BLEND);
     }
 
-    /** A scatter target back into its buffer's words, captured, and queued to be copied over the view. */
+    /**
+     * A scatter target, owned from here, to land in its buffer's view: as it is when it holds the words, else its floats
+     * first drawn back into the element's bits.
+     */
     private void resolve(CgTexelTarget t, CgBufferDecl buffer, boolean floats, CgDispatchBindings b) {
         int i = buffer.index();
-        int k = CgLoweredEmitter.texelsPerElement(buffer);
-        long length = b.bytes(i) / buffer.stride();
-        long bytes = length * buffer.stride();
-        int scratch = CgLoweredResources.scratch(bytes);
-        CgLoweredPrograms.Helper resolve = CgLoweredPrograms.scatterResolve(floats, buffer.element(),
-                CgLoweredEmitter.texelWords(buffer));
-        resolve.use();
+        long texels = b.bytes(i) / buffer.stride() * CgLoweredEmitter.texelsPerElement(buffer);
+        if (!floats) {
+            landLater(t, b.buffer(i), b.offset(i), texels);
+            return;
+        }
+        CgTexelTarget bits = CgLoweredResources.target(CgTextureType.R32UI, t.width(), t.height());
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, bits.framebuffer());
+        CgGL.glViewport(0, 0, t.width(), rows(texels, t.width()));
+        CgGL.glDisable(CgGL.GL_BLEND);
+        CgLoweredPrograms.Helper toBits = CgLoweredPrograms.scatterBits(buffer.element());
+        toBits.use();
         texture(samplers, CgGL.GL_TEXTURE_2D, t.texture());
-        resolve.set("_cg_texels", samplers);
-        resolve.set("_cg_width", t.width());
-        CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, scratch, 0, bytes);
-        CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);
-        CgGL.glDrawArrays(CgGL.GL_POINTS, 0, (int) (length * k));
-        CgGL.glEndTransformFeedback();
-        CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
-        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 0);
-        copy(scratch, b.buffer(i), b.offset(i), bytes);
+        CgLoweredResources.bindTextureBuffer(samplers + 1, HELPER_SLOT, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+        toBits.set("_cg_texels", samplers);
+        toBits.set("_cg_src", samplers + 1);
+        toBits.set("_cg_first", (int) (b.offset(i) / buffer.stride()));
+        toBits.set("_cg_count", (int) texels);
+        toBits.set("_cg_width", t.width());
+        CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        CgLoweredResources.release(t);
+        landLater(bits, b.buffer(i), b.offset(i), texels);
     }
 
     private void image(PassProgram pass, CgDispatchBindings b) {
@@ -487,12 +499,50 @@ public final class CgLoweredKernel {
             use(pass, b);
             if (copy != null) texture(imageUnit[i], CgGL.GL_TEXTURE_2D, copy.texture());
             if (copy != null && pass.level()[i] >= 0) CgGL.glUniform1i(pass.level()[i], 0);
+            pinLevels(pass, b, i);
             CgGL.glUniform1i(pass.layer(), layered ? z : 0);
             CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
         }
         CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, 0, 0);
         discardTarget();
         if (copy != null) CgLoweredResources.release(copy);
+        unpinLevels(b, i);
+    }
+
+    /**
+     * Where the pass reads another level of the texture it draws into, that texture samples only the level read
+     * (GL's rule against a feedback loop: the drawn level must lie outside base to max), and the read is at its base.
+     */
+    private void pinLevels(PassProgram pass, CgDispatchBindings b, int written) {
+        int pinned = -1;
+        for (CgImageDecl image : source.images()) {
+            int r = image.index();
+            if (r == written || imageUnit[r] < 0 || b.image(r) != b.image(written)) continue;
+            if (b.level(r) == b.level(written)) {
+                throw new IllegalStateException(kernel.name() + " reads " + image.name() + " at the level it writes: "
+                        + "below compute, bind one image to read and write it");
+            }
+            if (pinned >= 0 && pinned != b.level(r)) {
+                throw new IllegalStateException(kernel.name() + " reads two levels of the texture it writes: below "
+                        + "compute a pass reads one");
+            }
+            pinned = b.level(r);
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + imageUnit[r]);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_BASE_LEVEL, pinned);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_MAX_LEVEL, pinned);
+            CgGL.glUniform1i(pass.level()[r], 0);
+        }
+    }
+
+    private void unpinLevels(CgDispatchBindings b, int written) {
+        for (CgImageDecl image : source.images()) {
+            int r = image.index();
+            if (r == written || imageUnit[r] < 0 || b.image(r) != b.image(written)) continue;
+            texture(imageUnit[r], b.imageTarget(r), b.image(r));
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_BASE_LEVEL, 0);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_MAX_LEVEL, b.levels(r) - 1);
+            return;
+        }
     }
 
     /** What image {@code image} holds now, for a kernel that loads the image it writes. */
@@ -607,17 +657,80 @@ public final class CgLoweredKernel {
     private int command;
     private long readCount;
     private final int[] groups = new int[3];
-    /** Scratch copied over a view once every pass has read what the buffers held: from, to, at, bytes. */
-    private long[] copies = new long[4 * 4];
-    private int copyCount;
+    private final CgTexelTarget[] outputs = new CgTexelTarget[CgLowering.MAX_TARGETS];
+    /** Targets read back into a buffer once every pass has read what the buffers held, and per target buffer, at, texels. */
+    private CgTexelTarget[] landing = new CgTexelTarget[8];
+    private long[] landingAt = new long[8 * 3];
+    private int landCount;
 
-    private void copy(int from, int to, long at, long bytes) {
-        if (copyCount * 4 == copies.length) copies = Arrays.copyOf(copies, copies.length * 2);
-        copies[copyCount * 4] = from;
-        copies[copyCount * 4 + 1] = to;
-        copies[copyCount * 4 + 2] = at;
-        copies[copyCount * 4 + 3] = bytes;
-        copyCount++;
+    /** Queues target {@code t}'s first {@code texels} to land at byte {@code at} of {@code buffer}; owns it from here. */
+    private void landLater(CgTexelTarget t, int buffer, long at, long texels) {
+        if (texels <= 0) {
+            CgLoweredResources.release(t);
+            return;
+        }
+        if (landCount == landing.length) {
+            landing = Arrays.copyOf(landing, landCount * 2);
+            landingAt = Arrays.copyOf(landingAt, landCount * 6);
+        }
+        landing[landCount] = t;
+        landingAt[landCount * 3] = buffer;
+        landingAt[landCount * 3 + 1] = at;
+        landingAt[landCount * 3 + 2] = texels;
+        landCount++;
+    }
+
+    /**
+     * Every queued target read into its buffer, whole rows then what is left of the last. A target of more than one
+     * row is the widest texture, so a row's bytes are a multiple of 8 and no pack alignment pads them; the pack row
+     * length and skips are the host's zeros, as for every readback here.
+     */
+    private void land() {
+        for (int p = 0; p < landCount; p++) {
+            CgTexelTarget t = landing[p];
+            int buffer = (int) landingAt[p * 3];
+            long at = landingAt[p * 3 + 1], texels = landingAt[p * 3 + 2];
+            int words = t.type() == CgTextureType.R32UI ? 1 : t.type() == CgTextureType.RG32UI ? 2 : 4;
+            int format = words == 1 ? CgGL.GL_RED_INTEGER : words == 2 ? CgGL.GL_RG_INTEGER : CgGL.GL_RGBA_INTEGER;
+            long row = (long) t.width() * words * 4;
+            int rows = (int) (texels / t.width()), rest = (int) (texels % t.width());
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, t.framebuffer());
+            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, buffer);
+            if (rows > 0) CgGL.glReadPixels(0, 0, t.width(), rows, format, CgGL.GL_UNSIGNED_INT, at);
+            if (rest > 0) CgGL.glReadPixels(0, rows, rest, 1, format, CgGL.GL_UNSIGNED_INT, at + rows * row);
+            CgLoweredResources.written(buffer);
+            CgLoweredResources.release(t);
+            landing[p] = null;
+        }
+        if (landCount > 0) CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
+        landCount = 0;
+    }
+
+    /**
+     * The width of a target holding {@code texels}: one row a power of two wide, or rows as wide as a texture may be.
+     * Sizes in powers of two keep the pool to a few targets however a dispatch's count moves.
+     */
+    private int width(long texels) {
+        int widest = Integer.highestOneBit(target.maxTextureSize());
+        return texels >= widest ? widest : (int) powerOfTwo(texels);
+    }
+
+    private int height(long texels, int width, CgBufferDecl buffer) {
+        long rows = rows(texels, width);
+        if (rows > target.maxTextureSize()) {
+            throw new IllegalStateException(buffer.name() + " holds " + texels + " texels: below compute a buffer written "
+                    + "is a texture, at most " + target.maxTextureSize() + " square");
+        }
+        return (int) Math.min(target.maxTextureSize(), powerOfTwo(rows));
+    }
+
+    /** The rows {@code texels} fill of a target {@code width} wide. */
+    private static int rows(long texels, int width) {
+        return (int) Math.max(1, (texels + width - 1) / width);
+    }
+
+    private static long powerOfTwo(long n) {
+        return n <= 1 ? 1 : Long.highestOneBit(n - 1) << 1;
     }
 
     /**
@@ -666,7 +779,7 @@ public final class CgLoweredKernel {
 
     private static String describe(Pass pass) {
         return switch (pass.kind()) {
-            case OUTPUT -> "its writes of " + pass.buffer().name();
+            case OUTPUT -> "its writes of " + pass.buffers().stream().map(CgBufferDecl::name).collect(Collectors.joining(", "));
             case APPEND -> "its appends to " + pass.buffer().name();
             case SCATTER -> "its " + pass.op().name().toLowerCase() + "s into " + pass.buffer().name();
             case IMAGE -> "its writes of " + pass.image().name();

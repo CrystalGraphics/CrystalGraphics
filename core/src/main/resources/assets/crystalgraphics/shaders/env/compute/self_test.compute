@@ -1,0 +1,210 @@
+// CgComputeSelfTest's kernels: one per shape, each checked against values worked out in Java, so every tier (V, G43,
+// G40, G33, CPU) must give the same buffers and images.
+#pragma kernel Map map
+#pragma kernel Pairs map
+#pragma kernel Gather gather
+#pragma kernel Append append
+#pragma kernel Histogram scatter
+#pragma kernel Extremes scatter
+#pragma kernel Store scatter
+#pragma kernel Paint 8 8 image
+#pragma kernel Accumulate 8 8 image
+#pragma kernel Counted map
+#pragma kernel Bin general
+#pragma kernel BinLowered scatter
+#pragma kernel Big map
+#pragma kernel Many append
+#pragma kernel Doubled general
+#pragma kernel After map
+#pragma kernel Stuck general
+#pragma kernel Only general
+#pragma kernel Bits map
+#pragma fallback Bin BinLowered
+#pragma compute_only Only
+
+struct Pair { vec4 a; uvec4 b; };
+struct BitResults { uvec4 a; uvec4 b; uvec4 c; uvec4 d; uvec4 e; uvec4 f; uvec4 g; uvec4 h; };
+
+Buffers {
+    INTS     ("Ints",      int,   readonly)
+    FLOATS   ("Floats",    vec2,  readwrite)
+    PAIRS    ("Pairs",     Pair,  readwrite)
+    GATHERED ("Gathered",  float, writeonly)
+    SPAWNS   ("Spawned",   uvec2, append)
+    BINS     ("Bins",      uint,  counter)
+    MINS     ("Minima",    float, readwrite)
+    MAXS     ("Maxima",    int,   readwrite)
+    STORED   ("Stored",    uvec4, writeonly)
+    COUNTED  ("Counted",   uint,  readwrite)
+    HALVES   ("Halves",    uint,  counter)
+    BIG      ("Big",       uint,  writeonly)
+    MANY     ("Many",      uint,  append)
+    DOUBLED  ("Doubled",   uint,  readwrite)
+    AFTER    ("After",     uint,  writeonly)
+    ONLY     ("Only",      uint,  writeonly)
+    BITS     ("Bits",      BitResults, writeonly)
+}
+
+Images {
+    PICTURE ("Picture", rgba8,   writeonly)
+    ACCUM   ("Accum",   rgba32f, readwrite)
+}
+
+shared uint halves[2];
+shared uint doubled[64];
+shared uint stuck[64];
+shared uint only[64];
+
+// Every element but each fifth doubles x and adds its int to y: an element left alone keeps what it held.
+void Map() {
+    int i = CG_ELEMENT;
+    if (i % 5 == 0) return;
+    vec2 f = FLOATS(i);
+    FLOATS_WRITE(vec2(f.x * 2.0, f.y + float(INTS(i))));
+}
+
+void Pairs() {
+    Pair p = PAIRS(CG_ELEMENT);
+    p.a = p.a * 2.0 + vec4(1.0);
+    p.b = p.b + uvec4(uint(CG_ELEMENT));
+    PAIRS_WRITE(p);
+}
+
+void Gather() {
+    int i = CG_ELEMENT;
+    GATHERED_WRITE(float(INTS((i * 7) % INTS_LENGTH()) + INTS(i)));
+}
+
+// Every third element appends itself and its square; every ninth appends once more.
+void Append() {
+    uint i = uint(CG_ELEMENT);
+    if (i % 3u == 0u) SPAWNS_APPEND(uvec2(i, i * i));
+    if (i % 9u == 0u) SPAWNS_APPEND(uvec2(i + 1000u, 0u));
+}
+
+void Histogram() {
+    BINS_INC(CG_ELEMENT % 8);
+    BINS_ADD(CG_ELEMENT % 8, 2u);
+}
+
+void Extremes() {
+    MINS_MIN(CG_ELEMENT % 4, float(CG_ELEMENT) - 10.0);
+    MAXS_MAX(CG_ELEMENT % 4, CG_ELEMENT * 2);
+}
+
+void Store() {
+    uint i = uint(CG_ELEMENT);
+    STORED_STORE(STORED_LENGTH() - 1 - CG_ELEMENT, uvec4(i, i + 1u, i + 2u, 7u));
+}
+
+// A checkerboard of written texels: the others keep what the image held.
+void Paint() {
+    ivec2 p = CG_TEXEL.xy;
+    if ((p.x + p.y) % 2 == 0) PICTURE_WRITE(vec4(float(p.x) / 63.0, float(p.y) / 63.0, 1.0, 1.0));
+}
+
+void Accumulate() {
+    ivec2 p = CG_TEXEL.xy;
+    ACCUM_WRITE(ACCUM_LOAD(p) + vec4(1.0, float(p.x), float(p.y), 0.0));
+}
+
+void Counted() {
+    COUNTED_WRITE(uint(CG_ELEMENT) + 100u);
+}
+
+// Halves counted through shared memory: general, so below compute its fallback runs.
+void Bin() {
+    if (CG_LOCAL_INDEX < 2) halves[CG_LOCAL_INDEX] = 0u;
+    barrier();
+    if (CG_IN_RANGE) atomicAdd(halves[CG_ELEMENT % 2], 1u);
+    barrier();
+    if (CG_LOCAL_INDEX < 2) HALVES_ADD(CG_LOCAL_INDEX, halves[CG_LOCAL_INDEX]);
+}
+
+void BinLowered() {
+    HALVES_INC(CG_ELEMENT % 2);
+}
+
+// Enough elements that the CPU tier runs them as many ranges at once.
+void Big() {
+    BIG_WRITE(uint(CG_ELEMENT) * 3u + 1u);
+}
+
+void Many() {
+    if (CG_ELEMENT % 3 == 0) MANY_APPEND(uint(CG_ELEMENT));
+}
+
+// General with no fallback: below compute only its Java body runs it, between lowered kernels that write what it reads
+// and read what it writes.
+void Doubled() {
+    doubled[CG_LOCAL_INDEX] = COUNTED(CG_ELEMENT) * 2u;
+    barrier();
+    DOUBLED_WRITE(doubled[CG_LOCAL_INDEX]);
+}
+
+void After() {
+    AFTER_WRITE(DOUBLED(CG_ELEMENT) + 1u);
+}
+
+// General, with no fallback and no Java body: below compute it can run nowhere, and recording it says why.
+void Stuck() {
+    stuck[CG_LOCAL_INDEX] = 1u;
+    barrier();
+    if (CG_LOCAL_INDEX == 0) HALVES_ADD(0, stuck[0]);
+}
+
+// Compute alone, declared so: below compute it is refused by name, and kernel.runs() answers false.
+void Only() {
+    only[CG_LOCAL_INDEX] = uint(CG_ELEMENT) * 5u;
+    barrier();
+    ONLY_WRITE(only[CG_LOCAL_INDEX] + 1u);
+}
+
+uint bytesOf(ivec4 b) {
+    return uint(b.x & 255) | uint(b.y & 255) << 8 | uint(b.z & 255) << 16 | uint(b.w & 255) << 24;
+}
+
+uint shortsOf(ivec2 s) {
+    return uint(s.x & 65535) | uint(s.y & 65535) << 16;
+}
+
+// Every builtin newer than GLSL 3.30 that has a polyfill: below 4.00 and 4.20 the polyfills run, and every tier must
+// give the bits CgComputeSelfTest works out.
+void Bits() {
+    uint x = uint(CG_ELEMENT) * 2654435761u + 12345u;
+    uint y = (x ^ (x >> 13)) * 1540483477u;
+    BitResults o;
+    o.a = uvec4(bitfieldExtract(x, 5, 11), uint(bitfieldExtract(int(x), 3, 9)), bitfieldInsert(x, y, 7, 13),
+                bitfieldReverse(x));
+    o.b = uvec4(uint(bitCount(x)), uint(findLSB(x)), uint(findMSB(x)), uint(findMSB(int(y))));
+    uint carry, borrow, hi, lo;
+    int ihi, ilo;
+    uint sum = uaddCarry(x, y, carry);
+    uint difference = usubBorrow(x, y, borrow);
+    umulExtended(x, y, hi, lo);
+    imulExtended(int(x), int(y), ihi, ilo);
+    o.c = uvec4(sum, difference, carry | (borrow << 1), hi);
+    o.d = uvec4(lo, uint(ihi), uint(ilo), floatBitsToUint(fma(float(CG_ELEMENT), 3.0, 1.0)));
+    vec4 v = vec4(ivec4(uvec4(x, x >> 8, y, y >> 8) & 0xFFu | 1u) - 128) * 0.015625;
+    o.e = uvec4(packUnorm4x8(v), packSnorm4x8(v), packUnorm2x16(v.xy), packSnorm2x16(v.zw));
+    // Unpacked and scaled back by hand: a driver may fold pack(unpack(v)) into v, which skips snorm's clamp of -128.
+    o.f = uvec4(bytesOf(ivec4(round(unpackUnorm4x8(x) * 255.0))), bytesOf(ivec4(round(unpackSnorm4x8(y) * 127.0))),
+                shortsOf(ivec2(round(unpackUnorm2x16(x) * 65535.0))), shortsOf(ivec2(round(unpackSnorm2x16(y) * 32767.0))));
+    // Halves a half holds exactly, and normal half bits: what every driver packs and unpacks alike.
+    vec2 h = uintBitsToFloat((uvec2(x, y) & 0x807FE000u) | ((113u + uvec2(y, x) % 30u) << 23));
+    uint hb = ((y >> 16) & 0x83FFu) | ((1u + (x >> 8) % 30u) << 10);
+    int e;
+    float mantissa = frexp(h.x, e);
+    o.g = uvec4(packHalf2x16(h), floatBitsToUint(unpackHalf2x16(hb << 16).y), floatBitsToUint(mantissa) ^ uint(e),
+                floatBitsToUint(ldexp(mantissa, e)));
+#ifdef CG_LOWERED
+    // Rounding and half subnormals, which GL leaves to a native builtin's driver: held to nearest-even only below
+    // compute, where a GL 4.0 or 3.3 context runs the polyfills.
+    vec2 r = uintBitsToFloat((uvec2(x, y) & 0x807FFFFFu) | ((100u + uvec2(y, x) % 32u) << 23));
+    o.h = uvec4(packHalf2x16(r), floatBitsToUint(unpackHalf2x16((y & 0x83FFu) << 16).y), 0u, 0u);
+#else
+    o.h = uvec4(0u);
+#endif
+    BITS_WRITE(o);
+}
+

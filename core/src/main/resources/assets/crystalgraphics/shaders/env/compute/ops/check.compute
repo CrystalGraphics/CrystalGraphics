@@ -1,0 +1,16 @@
+// What CgGpuOpsCheck runs beside the ops themselves: the random numbers a kernel draws, which its Java body must draw
+// too.
+#pragma kernel Rng map
+#include "crystalgraphics:shaders/lib/rng.glsl"
+
+Properties {
+    _Seed ("Seed", int) = 0
+}
+
+Buffers {
+    DRAWN ("Four words an element", uvec4, readwrite)
+}
+
+void Rng() {
+    DRAWN_WRITE(cg_rng4(uint(_Seed), uint(CG_ELEMENT), 3u, 1u));
+}

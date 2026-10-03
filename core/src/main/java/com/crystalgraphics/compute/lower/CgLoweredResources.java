@@ -3,9 +3,11 @@ package com.crystalgraphics.compute.lower;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.cpu.CgCpuMirrors;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -18,7 +20,7 @@ import java.util.List;
  *
  * <pre>{@code
  * int scratch = CgLoweredResources.scratch(bytes);
- * ... capture into it, copy it out ...
+ * ... capture appended elements into it, place them ...
  * CgLoweredResources.release(scratch, bytes);
  * }</pre>
  */
@@ -36,7 +38,9 @@ public final class CgLoweredResources {
     private static long zeroedFrame = Long.MIN_VALUE;
     private static int[] created = new int[16];
     private static int createdCount;
-    private static int vertexArray, empty, framebuffer;
+    private static int vertexArray, empty, framebuffer, outputs, outputsDrawn;
+    /** Per count of targets, the draw-buffer list naming that many attachments. */
+    private static final IntBuffer[] DRAW_BUFFERS = new IntBuffer[CgLowering.MAX_TARGETS + 1];
     private static CgTexelTarget count;
 
     private CgLoweredResources() {}
@@ -128,6 +132,23 @@ public final class CgLoweredResources {
         return framebuffer;
     }
 
+    /**
+     * Binds the framebuffer an output pass attaches its targets to, drawing into its first {@code targets}
+     * attachments. The caller detaches what it attached.
+     */
+    public static void bindOutputs(int targets) {
+        if (outputs == 0) outputs = CgGL.glGenFramebuffers();
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, outputs);
+        if (outputsDrawn == targets) return;
+        if (DRAW_BUFFERS[targets] == null) {
+            IntBuffer list = CgBufferUtils.createIntBuffer(targets);
+            for (int n = 0; n < targets; n++) list.put(n, CgGL.GL_COLOR_ATTACHMENT0 + n);
+            DRAW_BUFFERS[targets] = list;
+        }
+        CgGL.glDrawBuffers(DRAW_BUFFERS[targets]);
+        outputsDrawn = targets;
+    }
+
     /** Sixteen zero bytes: what an unbound buffer texture reads. */
     public static int empty() {
         if (empty == 0) {
@@ -193,9 +214,12 @@ public final class CgLoweredResources {
         if (vertexArray != 0) CgGL.glDeleteVertexArrays(vertexArray);
         if (empty != 0) CgGL.glDeleteBuffers(empty);
         if (framebuffer != 0) CgGL.glDeleteFramebuffers(framebuffer);
+        if (outputs != 0) CgGL.glDeleteFramebuffers(outputs);
         vertexArray = 0;
         empty = 0;
         framebuffer = 0;
+        outputs = 0;
+        outputsDrawn = 0;
         CgLoweredPrograms.releaseAll();
     }
 }

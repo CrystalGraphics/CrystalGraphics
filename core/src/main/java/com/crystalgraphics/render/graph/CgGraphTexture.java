@@ -130,6 +130,12 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return framebuffer != null ? framebuffer.getHeight() : desc != null ? desc.height() : 0;
     }
 
+    /** Its colour's mip levels: the description's, or an imported framebuffer's. */
+    @Override
+    public int getLevels() {
+        return desc != null ? desc.levels() : framebuffer != null ? framebuffer.getColorLevels() : 1;
+    }
+
     @Override
     public int getTarget() {
         CgTexture color = color();

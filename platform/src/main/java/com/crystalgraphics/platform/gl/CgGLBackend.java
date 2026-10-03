@@ -286,6 +286,7 @@ public abstract class CgGLBackend {
     protected final void fillBySubData(int target, long offset, long size, int value) {
         if (fillPattern == null || fillValue != value) {
             if (fillPattern == null) fillPattern = ByteBuffer.allocateDirect(64 * 1024).order(ByteOrder.nativeOrder());
+            fillPattern.clear();
             for (int i = 0; i < fillPattern.capacity(); i += 4) fillPattern.putInt(i, value);
             fillValue = value;
         }

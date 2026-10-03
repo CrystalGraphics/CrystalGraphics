@@ -24,7 +24,7 @@ final class CgTexturePool {
         Entry entry = bucket == null ? null : bucket.pollLast();
         if (entry != null) return entry.framebuffer;
         return CgFrameBuffer.createOwned("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++,
-                desc.width(), desc.height(), desc.format());
+                desc.width(), desc.height(), desc.format(), desc.levels());
     }
 
     void release(CgTextureDesc desc, CgFrameBuffer framebuffer) {
