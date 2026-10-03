@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.fabric;
 
-import com.crystalgraphics.mc.modern.net.NetworkModern;
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.shared.CrashVariant;
