@@ -32,6 +32,9 @@ Properties {
     _Roughness ("Roughness",    float)     = 0.5
 }
 
+struct Spark { vec4 positionLife; vec4 velocitySeed; };
+Buffers { SPARKS ("Sparks", Spark, readonly) }   // a buffer a kernel wrote, read as SPARKS(i) (see below)
+
 struct v2f { vec2 uv; vec3 worldPos; };
 
 Pass {
@@ -298,6 +301,56 @@ the provider class's static init (which would allocate against `CgBindingPoints`
 Like `cg_feature`, `cg_use` lines are stripped and never reach generated GLSL, and are only read
 from the material-level preamble (never from inside a `Pass` body).
 
+### Reading a kernel's buffers
+
+A material reads buffers a kernel wrote by declaring them in a `Buffers { }` block as a kernel does, every one
+`readonly`, and reads element `i` as `NAME(i)` in either stage:
+
+```glsl
+#type none
+Queue = "Geometry"
+
+struct Spark { vec4 positionLife; vec4 velocitySeed; };   // declared before Buffers { }
+
+Buffers {
+    SPARKS ("Sparks", Spark, readonly)
+    LIVE   ("Live",   uint,  readonly)                     // the live sparks' indices, compacted
+}
+
+Pass {
+    struct v2f { float life; };
+    void vertex(out v2f o) {
+        Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));          // quad n draws the nth live spark
+        vec3 p = s.positionLife.xyz + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
+        o.life = s.positionLife.w;
+        gl_Position = CG_MATRIX_MVP * vec4(p, 1.0);
+    }
+    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0, 0.6, 0.2, 1.0) * clamp(i.life, 0.0, 1.0); }
+}
+```
+
+```java
+sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // graph buffers; any thread
+world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
+```
+
+| Context | A buffer is read as | Bound at |
+|---|---|---|
+| storage blocks (GL 4.3, the Vulkan device) | a `readonly` storage block | `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i` |
+| without (macOS's 4.1, GL 3.3) | a `usamplerBuffer`, a texel per 16 bytes of a struct | texture unit `samplers + i`, after the material's own |
+
+- **The kernel's grammar and element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of
+  `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
+- **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph
+  orders each draw after the pass writing the buffer. A history buffer reads its newest version.
+- **Recorded draws only**: `captureBindings` (the world renderer, `CgImmediate`, a chunk) binds them; `bind()` binds
+  none. Every declared buffer is bound before the first capture, which throws naming one that is not.
+- **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
+- **Without storage blocks**, samplers and buffers share the units below the engine's scene samplers, and a material
+  needing more is refused at compile; a buffer of more texels than the context reads as one texture
+  (`GL_MAX_TEXTURE_BUFFER_SIZE`, at least 65536) throws at capture.
+- A vertex stage reading a buffer keeps its body in the generated depth and shadow passes.
+
 ---
 
 ### Passes, LightMode Routing, and MRTs
@@ -550,6 +603,7 @@ CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
     pass.end();
 });
 
+sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // what the material's Buffers { } reads
 world.draw(CgMesh.quads(CAPACITY), sparkMaterial)
      .indirect(count, 0, CgIndirect.INDICES, 6)              // six indices per spark the GPU counted
      .at(x, y, z).bounds(box).submit();
@@ -562,7 +616,8 @@ world.draw(CgMesh.quads(CAPACITY), sparkMaterial)
   buffer is both without a race. `sparks.previous()` is the version before.
 - **The count is persistent** because the draw may execute in another stage's frame (a transparent material draws in
   `WORLD_TRANSPARENT`); the transients last one frame of one stage.
-- **What the material reads of each spark** is the open question: see [Drawing what a kernel wrote](#drawing-what-a-kernel-wrote).
+- **The material reads the sparks** through its own `Buffers { }`, quad n placed at spark `SPARKS(LIVE(n))`: the
+  material is [Reading a kernel's buffers](#reading-a-kernels-buffers)'s example.
 
 ### The file
 
@@ -812,7 +867,7 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 |---|---|---|
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
 | an image | the graph texture, sampled by a material | every tier |
-| a buffer of records | not from a `.shader` yet | none |
+| a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
 
 ```java
 // A count: a quad per live spark, or a mesh instanced once per element
@@ -831,10 +886,8 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 - `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the
   range count × factor times, each instance reading the draw's one object record, and `CG_DRAW_INSTANCE` is which
   element it is.
-- **A buffer of records**: a draw's binding snapshot can bind a graph buffer as a storage block
-  (`rec.bindings().begin().storage(point, buffer).end()`), which the graph orders after the kernel writing it, but a
-  `.shader` has no declaration that reads one, and a context below G43 has no storage blocks. Per-element data
-  reaches a draw through an image until materials can declare a kernel's buffer.
+- **A buffer of records** is [Reading a kernel's buffers](#reading-a-kernels-buffers): the material declares it as the
+  kernel does, `readonly`, and the graph orders the draw after the pass writing it.
 
 ### Every tier
 

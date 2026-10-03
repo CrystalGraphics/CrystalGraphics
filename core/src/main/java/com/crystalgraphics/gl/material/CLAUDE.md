@@ -33,7 +33,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 |------|------|
 | `CgShaderParser` | Public parse facade. `parse(String)` / `parse(String, String)` → `CgParsedShader`. `parseV2fFields(CgParsedPass)` → `List<V2fField>`. Nested `V2fField` record. |
 | `CgShaderParseException` | `RuntimeException` thrown on any `.shader` format violation. Messages include `[resourcePath]` prefix. |
-| `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `castShadows`, `passes`. `getPassByName(String)` / `getPassByLightMode(String)` convenience accessors. Per-pass data lives on `CgParsedPass`. |
+| `CgParsedShader` | `@Desugar record` result of `CgShaderParser.parse()`. Fields: `shaderType`, `properties`, `featureNames`, `renderQueue`, `renderType`, `castShadows`, `passes`, `buffers`, `bufferStructs`. `getPassByName(String)` / `getPassByLightMode(String)` convenience accessors. Per-pass data lives on `CgParsedPass`. |
 | `CgParsedPass` | `@Desugar record` per-pass parse result. Fields: `lightMode`, `name`, `renderState`, `v2fStructBody`, `globalDecls`, `vertexBody`, `fragmentBody`, `fragOutput`. |
 | `CgMaterialShaderCompiler` | Static compiler. Canonical: `compile(CgParsedShader, CgParsedPass, List<CgAttachedBuffer>, CgUniformBuffer, CompileConfig)` → `CompiledSource`. `compileShadowAutoGen(shader, forwardPass, ...)` → shadow `CompiledSource`. `compileDepthAutoGen(shader, forwardPass, ...)` → depth-prepass `CompiledSource` (3 cases: simple-vertex/complex-vertex/alpha-clip). |
 | `CgMaterialShaderCompiler.CompiledSource` | `@Desugar record`: `vertexSource`, `fragmentSource`, `vertexFormat` — complete sources ready for `CgShaderPreprocessor` then `CgShaderFactory`. `vertexFormat` passed to `CgShaderFactory.fromSource()` for attribute binding. |
@@ -52,6 +52,7 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
 8. User-attached SSBO/TBO buffers (emitted by `CgGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
+8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgLoweredEmitter.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`, or a `usamplerBuffer` on the unit after the samplers (`materialBufferUnit`). The fragment stage the same
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)
