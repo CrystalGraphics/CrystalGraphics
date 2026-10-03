@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute.lower;
 
+import com.crystalgraphics.compute.emit.CgGlslBuiltins;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
 import com.crystalgraphics.compute.lower.CgLowering.Kind;
 import com.crystalgraphics.compute.lower.CgLowering.Op;
@@ -180,9 +181,12 @@ public final class CgLoweredEmitter {
                     : CgGlslEmitter.emitTbo(buffer.getFormat(), buffer.getName(), provider.macroName()));
             if (provider.envPath() != null) include(sb, provider.envPath());
         }
+        sb.append(CgGlslBuiltins.polyfills(kernel.builtins(), target.glsl()));
         for (CgSourcePart part : source.parts()) {
-            if (part instanceof CgSourcePart.Text t) sb.append(t.text());
-            else if (part instanceof CgSourcePart.Function f) { if (kernel.functions().contains(f.name())) sb.append(f.text()); }
+            if (part instanceof CgSourcePart.Text t) sb.append(CgKernelEmitter.code(t.text(), kernel, target.glsl()));
+            else if (part instanceof CgSourcePart.Function f) {
+                if (kernel.functions().contains(f.name())) sb.append(CgKernelEmitter.code(f.text(), kernel, target.glsl()));
+            }
             else if (part instanceof CgSourcePart.Buffers) buffers(sb, source, kernel, pass);
             else if (part instanceof CgSourcePart.Images) images(sb, source, kernel, pass);
         }

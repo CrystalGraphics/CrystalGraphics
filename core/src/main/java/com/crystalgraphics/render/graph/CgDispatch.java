@@ -82,7 +82,9 @@ public final class CgDispatch {
         this.z = z;
         this.args = args;
         this.argsOffset = argsOffset;
-        // A kernel this context cannot run fails here, at the caller's line, not in the frame that executes it.
+        // A kernel some tier cannot run fails here, at the caller's line, on any machine; one this context cannot run
+        // too, not in the frame that executes it.
+        kernel.check();
         if (CgCapabilities.detected() != null) kernel.form();
         int n = source.buffers().size(), m = source.images().size();
         buffers = new CgGraphBuffer[n];

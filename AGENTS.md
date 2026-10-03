@@ -866,8 +866,10 @@ try (CgGlScope scope = CgKernelProgram.scope()) {
   group through shared memory where not; a kernel never branches on support.
 - **Every tier runs it**: as compute on V and G43; below compute (G40, G33) every shape but `general` is lowered to
   draws (transform feedback, blended points, fragment passes), and a general kernel runs its `#pragma fallback`; on
-  the CPU tier, or wherever nothing else can, a Java body given with `kernel.cpu(...)`. A kernel that can run nowhere
-  throws where its dispatch is recorded, naming the construct.
+  the CPU tier, or wherever nothing else can, a Java body given with `kernel.cpu(...)`. A kernel some tier cannot
+  run throws where its first dispatch is recorded **on every machine**, naming the tier and the construct, so the
+  author's GPU finds what a Mac's would. One that needs compute says `#pragma compute_only`, and its caller asks
+  `kernel.runs()`. A builtin newer than GLSL 3.30 is polyfilled exactly where a tier lacks it, or refused.
 
 ```java
 particles.kernel("Simulate").cpu(d -> {

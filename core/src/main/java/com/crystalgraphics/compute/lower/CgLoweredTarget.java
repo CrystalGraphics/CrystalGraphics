@@ -13,14 +13,16 @@ import com.crystalgraphics.platform.gl.CgGL;
  * }</pre>
  *
  * @param drawsGpuCounts an indirect draw takes its count from a buffer ({@code ARB_draw_indirect}, and not tier G33)
+ * @param tierGlsl       the lowest GLSL of the context's tier: 400 at G40, 330 at G33, so a tier forced on a newer
+ *                       context compiles as its weakest would
  */
 public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int maxGeometryVertices,
                               int maxGeometryComponents, int maxTextureSize, int maxTextureBufferSize,
-                              boolean drawsGpuCounts) {
+                              boolean drawsGpuCounts, int tierGlsl) {
 
     /** GL 3.3's guaranteed limits, buffers as textures, no indirect draws. */
     public static final CgLoweredTarget GL33 = new CgLoweredTarget(CgCapabilities.ShaderBufferPath.TBO, 256, 1024, 1024,
-            65536, false);
+            65536, false, 330);
 
     /** The current context's. */
     public static CgLoweredTarget current() {
@@ -28,7 +30,7 @@ public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int ma
         boolean g33 = caps.computeTier() == CgCapabilities.ComputeTier.G33;
         return new CgLoweredTarget(caps.shaderBufferPath(), CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_OUTPUT_VERTICES),
                 CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS), CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE),
-                CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_BUFFER_SIZE), caps.drawIndirect() && !g33);
+                CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_BUFFER_SIZE), caps.drawIndirect() && !g33, g33 ? 330 : 400);
     }
 
     /** Engine buffers as storage blocks, as on a context with them; else as buffer textures. */
@@ -36,13 +38,16 @@ public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int ma
         return bufferPath != CgCapabilities.ShaderBufferPath.TBO;
     }
 
+    /** The GLSL a lowered stage compiles at: its tier's, or 4.30 where engine buffers are storage blocks. */
+    public int glsl() {
+        return bufferPath == CgCapabilities.ShaderBufferPath.SSBO_GL43 ? 430 : tierGlsl;
+    }
+
     /** The {@code #version} line, with the storage-buffer extension where blocks need it below GL 4.3. */
     String version() {
-        return switch (bufferPath) {
-            case SSBO_GL43 -> "#version 430 core\n";
-            case SSBO_ARB -> "#version 330 core\n#extension GL_ARB_shader_storage_buffer_object : require\n";
-            default -> "#version 330 core\n";
-        };
+        String version = "#version " + glsl() + " core\n";
+        return bufferPath == CgCapabilities.ShaderBufferPath.SSBO_ARB
+                ? version + "#extension GL_ARB_shader_storage_buffer_object : require\n" : version;
     }
 
     /** What a geometry stage emitting {@code words} captured words and a position may emit per invocation. */
