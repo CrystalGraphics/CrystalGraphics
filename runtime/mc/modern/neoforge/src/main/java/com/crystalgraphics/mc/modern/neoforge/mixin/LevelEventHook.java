@@ -11,8 +11,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // A block broken, for CgWorldEvents: the client level's level event 2001, from the server or the local player. Named
-// with its descriptor, since the name has an overload. NeoForge 1.21.6-1.21.11 only, the nodes that pin a mixin
-// plugin; the others have no hook for it.
+// with its descriptor, since the name has an overload. NeoForge from 1.21.6, the nodes that pin a mixin plugin; the
+// older ones have no hook for it.
 @Mixin(value = ClientLevel.class, remap = false)
 public abstract class LevelEventHook {
 

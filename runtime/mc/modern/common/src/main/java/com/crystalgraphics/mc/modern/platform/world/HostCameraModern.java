@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.service.CgHostCamera;
  */
 public final class HostCameraModern implements CgHostCamera {
 
-    private static float yaw, pitch, roll, fovScale = 1f;
+    private static float yaw, pitch, roll, fovScale = 1f, eventRoll;
     private static volatile int capabilities;
     /** The parts whose hook has run: render thread only, like the hooks. */
     private static int applied;
@@ -60,7 +60,15 @@ public final class HostCameraModern implements CgHostCamera {
 
     public static float roll(float base) {
         applied |= ROLL;
-        return base + roll;
+        return eventRoll = base + roll;
+    }
+
+    /**
+     * The roll the loader's camera event ended with, degrees, as our offset left it: 0 where no event rolls (Fabric).
+     * Below 1.21.6 Minecraft keeps it only in the pose stack, so the host's view composes it from here.
+     */
+    public static float eventRoll() {
+        return eventRoll;
     }
 
     public static double fov(double base) {

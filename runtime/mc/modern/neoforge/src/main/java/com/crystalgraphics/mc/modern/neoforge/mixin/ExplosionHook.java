@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // An explosion the client learned of, for CgWorldEvents: the tail of the packet handler, reached only on the client
-// thread. NeoForge 1.21.6-1.21.11 only, the nodes that pin a mixin plugin; the others have no hook for it.
+// thread. NeoForge from 1.21.6, the nodes that pin a mixin plugin; the older ones have no hook for it.
 @Mixin(value = ClientPacketListener.class, remap = false)
 public abstract class ExplosionHook {
 

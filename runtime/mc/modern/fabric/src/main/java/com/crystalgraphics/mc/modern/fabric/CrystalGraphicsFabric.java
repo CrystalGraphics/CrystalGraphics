@@ -37,9 +37,10 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     @Override
     public void start(Object context) {
         Events.register();
-        // What the node mixins apply and report: CameraHook to 1.21.10, FovHook to 1.21.11, ExplosionHook on every
-        // version, LevelEventHook from 1.15. No roll: Fabric's setRotation takes two angles.
-        //? if <1.21.11 {
+        // What the node mixins apply and report: CameraHook 1.15 to 1.21.10 (1.14.4 turns its view from elsewhere, so
+        // the hook changes nothing seen), FovHook to 1.21.11, ExplosionHook on every version, LevelEventHook from
+        // 1.15. No roll: Fabric's setRotation takes two angles.
+        //? if >=1.15 <1.21.11 {
         HostCameraModern.declare(CgHostCamera.ROTATION);
         //?}
         //? if <26.1 {
