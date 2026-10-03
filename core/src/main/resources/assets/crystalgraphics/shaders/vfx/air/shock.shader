@@ -6,11 +6,13 @@
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
-Tags { "RenderType" = "Transparent" }
+// The bend reaches _Strength times the intensity, at most about 0.05 of the height.
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.05" }
 Queue = "Transparent"
 
 Properties {
     _Strength ("Bend at full intensity, share of the screen's height", float) = 0.04
+    _Reference ("Within this many blocks the bend is _Strength; farther it shrinks as the front does on screen", float) = 6
     _Band     ("How far in from the silhouette the band reaches, as facing 0..1", float) = 0.45
 }
 
@@ -41,7 +43,9 @@ Pass {
         // Outward on screen, along the normal as the eye sees it.
         vec2 dir = normalize((mat3(cg_ViewMatrix) * n).xy + 1.0e-5);
         vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
-        vec2 bent = uv + dir * _Strength * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
+        // Perspective: a far front moves the scene behind it as little as it covers.
+        float far = min(1.0, _Reference / max(distance(FX_CAMERA, i.world), 1.0e-3));
+        vec2 bent = uv + dir * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
         fragColor = vec4(CG_SCENE_COLOR(bent).rgb, smoothstep(0.0, 0.15, strength));
     }
 }
