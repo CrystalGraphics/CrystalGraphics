@@ -34,6 +34,17 @@ public interface CgGlslCompiler {
     /** A compute stage, every binding assigned as {@link #compile} assigns them. @throws CgShaderModule.CompileException */
     ComputeProgram compileCompute(String glsl, String label);
 
+    /** What GL's program queries read, from either kind of program. */
+    sealed interface Reflection permits Program, ComputeProgram {
+        List<Block> uniformBlocks();
+
+        List<Block> storageBlocks();
+
+        List<Sampler> samplers();
+
+        List<Uniform> uniforms();
+    }
+
     /** A vertex input and the location it reads. */
     record Attribute(String name, int location, int glType) {}
 
@@ -63,7 +74,7 @@ public interface CgGlslCompiler {
                    List<Sampler> samplers, List<Uniform> uniforms,
                    int vertexUniformBinding, int vertexUniformSize,
                    int fragmentUniformBinding, int fragmentUniformSize,
-                   List<CgBindingLayout.Slot> slots) {}
+                   List<CgBindingLayout.Slot> slots) implements Reflection {}
 
     /**
      * A compiled compute stage. Its loose uniforms are in one block, {@link #uniformBinding}, each at its
@@ -74,5 +85,6 @@ public interface CgGlslCompiler {
      */
     record ComputeProgram(ByteBuffer spirv, int[] localSize, List<Block> uniformBlocks, List<Block> storageBlocks,
                           List<Sampler> samplers, List<Image> images, List<Uniform> uniforms,
-                          int uniformBinding, int uniformSize, List<CgBindingLayout.Slot> slots) {}
+                          int uniformBinding, int uniformSize, List<CgBindingLayout.Slot> slots)
+            implements Reflection {}
 }

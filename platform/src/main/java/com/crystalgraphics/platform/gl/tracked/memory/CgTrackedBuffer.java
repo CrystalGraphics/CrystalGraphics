@@ -44,10 +44,13 @@ public final class CgTrackedBuffer {
         if (initial != null) subData(0, initial);
     }
 
-    /** {@code glBufferStorage}: immutable, host-visible storage. A persistent one is mapped for good and never renamed. */
-    public void storage(long size, ByteBuffer initial, boolean persistentMapping) {
+    /**
+     * {@code glBufferStorage}: immutable storage, host-visible where the CPU maps it. A persistent one is mapped for
+     * good and never renamed.
+     */
+    public void storage(long size, ByteBuffer initial, boolean hostVisible, boolean persistentMapping) {
         if (persistent) throw new IllegalStateException(label + " has immutable storage");
-        replace(tracker.allocate(size, true, label));
+        replace(tracker.allocate(size, hostVisible, label));
         if (initial != null) subData(0, initial);
         persistent = persistentMapping;
     }

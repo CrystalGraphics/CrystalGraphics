@@ -368,23 +368,23 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
-        public void bufferBarrier(CgGpuBuffer buffer, CgAccess from, CgAccess to) {
+        public void bufferBarrier(CgGpuBuffer buffer, int from, int to) {
             outsidePass("bufferBarrier");
             use(buffer);
-            record("bufferBarrier " + ref(buffer) + " " + from + " " + to);
+            record("bufferBarrier " + ref(buffer) + " " + CgAccess.names(from) + " " + CgAccess.names(to));
         }
 
         @Override
-        public void imageBarrier(CgGpuTexture texture, CgAccess from, CgAccess to) {
+        public void imageBarrier(CgGpuTexture texture, int from, int to) {
             outsidePass("imageBarrier");
             use(texture);
-            record("imageBarrier " + ref(texture) + " " + from + " " + to);
+            record("imageBarrier " + ref(texture) + " " + CgAccess.names(from) + " " + CgAccess.names(to));
         }
 
         @Override
-        public void memoryBarrier(CgAccess from, CgAccess to) {
+        public void memoryBarrier(int from, int to) {
             outsidePass("memoryBarrier");
-            record("memoryBarrier " + from + " " + to);
+            record("memoryBarrier " + CgAccess.names(from) + " " + CgAccess.names(to));
         }
 
         @Override

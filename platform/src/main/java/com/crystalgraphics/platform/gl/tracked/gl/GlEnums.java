@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.format.CgCompare;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -98,6 +99,23 @@ public final class GlEnums {
             case CgGL.GL_TRIANGLE_FAN:   return CgPipelineDesc.Topology.TRIANGLE_FAN;
             default: throw bad("draw mode (a core profile has no quads or line loops here)", mode);
         }
+    }
+
+    /** {@code glMemoryBarrier}'s bits: the {@link CgAccess} uses that then see a kernel's writes. */
+    public static int accesses(int barriers) {
+        int to = 0;
+        if ((barriers & CgGL.GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT) != 0) to |= CgAccess.VERTEX_INPUT;
+        if ((barriers & CgGL.GL_ELEMENT_ARRAY_BARRIER_BIT) != 0) to |= CgAccess.INDEX_INPUT;
+        if ((barriers & CgGL.GL_UNIFORM_BARRIER_BIT) != 0) to |= CgAccess.UNIFORM_READ;
+        if ((barriers & CgGL.GL_TEXTURE_FETCH_BARRIER_BIT) != 0) to |= CgAccess.SAMPLED_READ;
+        if ((barriers & (CgGL.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | CgGL.GL_SHADER_STORAGE_BARRIER_BIT
+                | CgGL.GL_ATOMIC_COUNTER_BARRIER_BIT)) != 0) to |= CgAccess.STORAGE;
+        if ((barriers & CgGL.GL_COMMAND_BARRIER_BIT) != 0) to |= CgAccess.INDIRECT;
+        if ((barriers & (CgGL.GL_PIXEL_BUFFER_BARRIER_BIT | CgGL.GL_TEXTURE_UPDATE_BARRIER_BIT
+                | CgGL.GL_BUFFER_UPDATE_BARRIER_BIT)) != 0) to |= CgAccess.COPY_READ | CgAccess.COPY_WRITE;
+        if ((barriers & CgGL.GL_FRAMEBUFFER_BARRIER_BIT) != 0) to |= CgAccess.COLOR_WRITE;
+        if ((barriers & CgGL.GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT) != 0) to |= CgAccess.HOST_READ;
+        return to;
     }
 
     static IllegalArgumentException bad(String what, int value) {
