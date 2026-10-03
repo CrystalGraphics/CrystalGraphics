@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute;
 
+import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
@@ -50,7 +51,10 @@ public final class CgCompute {
     private final String path;
     private final boolean generated;
     private volatile CgComputeSource source;
+    private volatile CgPropertyBlock properties;
     private volatile String text;
+    /** Counts every release: a kernel holding a program from before asks again. */
+    private volatile int generation;
     private final Map<String, CgKernelProgram> programs = new HashMap<>();
 
     private CgCompute(String path, String text, boolean generated) {
@@ -58,6 +62,7 @@ public final class CgCompute {
         this.generated = generated;
         this.text = text;
         this.source = CgComputeParser.parse(text, path);
+        this.properties = CgPropertyBlock.of(source.properties());
     }
 
     /**
@@ -95,6 +100,15 @@ public final class CgCompute {
         return path;
     }
 
+    /** Where its {@code Properties} values sit in the block, and their defaults. */
+    public CgPropertyBlock properties() {
+        return properties;
+    }
+
+    int generation() {
+        return generation;
+    }
+
     /** The compiled program for {@code kernel}, compiled and cached on the first call. Render thread. */
     synchronized CgKernelProgram program(CgKernel kernel) {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
@@ -117,12 +131,14 @@ public final class CgCompute {
         release();
         text = latest;
         source = parsed;
+        properties = CgPropertyBlock.of(parsed.properties());
     }
 
     /** Deletes every program; the parsed source stays, and the next use compiles again. Render thread. */
     public synchronized void release() {
         for (CgKernelProgram program : programs.values()) program.delete();
         programs.clear();
+        generation++;
     }
 
     /** Every loaded file read again: what F3+T does. A file that no longer parses keeps its last good version. */

@@ -553,6 +553,26 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        GLCapabilities caps = GL.getCapabilities();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            if (caps.glClearNamedBufferSubData != 0L) {   // GL 4.5: no binding touched
+                GL45C.glClearNamedBufferSubData(buffer, GL30C.GL_R32UI, offset, size, GL30C.GL_RED_INTEGER,
+                        GL11C.GL_UNSIGNED_INT, stack.ints(value));
+                return;
+            }
+            GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, buffer);
+            if (caps.glClearBufferSubData != 0L) {          // GL 4.3 or ARB_clear_buffer_object, one entry point
+                GL43C.glClearBufferSubData(GL31C.GL_COPY_WRITE_BUFFER, GL30C.GL_R32UI, offset, size,
+                        GL30C.GL_RED_INTEGER, GL11C.GL_UNSIGNED_INT, stack.ints(value));
+            } else {
+                fillBySubData(GL31C.GL_COPY_WRITE_BUFFER, offset, size, value);
+            }
+            GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, 0);
+        }
+    }
+
+    @Override
     public void glMemoryBarrier(int barriers) {
         GL42C.glMemoryBarrier(barriers);
     }

@@ -399,6 +399,15 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
+        public void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value) {
+            outsidePass("fillBuffer");
+            use(dst);
+            ByteBuffer to = ((Buffer) dst).memory.duplicate().order(ByteOrder.nativeOrder());
+            for (long at = dstOffset; at < dstOffset + size; at += 4) to.putInt((int) at, value);
+            record("fillBuffer " + ref(dst) + "+" + dstOffset + " " + size);
+        }
+
+        @Override
         public void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size) {
             outsidePass("copyBuffer");
             use(src, dst);

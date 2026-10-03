@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import org.lwjgl.opengl.*;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
@@ -495,6 +496,27 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     public void glDispatchComputeIndirect(long offset) {
         GL43.glDispatchComputeIndirect(offset);
     }
+
+    @Override
+    public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        ContextCapabilities caps = GLContext.getCapabilities();
+        GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, buffer);
+        if (caps.OpenGL43 || caps.GL_ARB_clear_buffer_object) {
+            fillWord.putInt(0, value);
+            if (caps.OpenGL43) {
+                GL43.glClearBufferSubData(GL31.GL_COPY_WRITE_BUFFER, GL30.GL_R32UI, offset, size, GL30.GL_RED_INTEGER,
+                        GL11.GL_UNSIGNED_INT, fillWord);
+            } else {
+                ARBClearBufferObject.glClearBufferSubData(GL31.GL_COPY_WRITE_BUFFER, GL30.GL_R32UI, offset, size,
+                        GL30.GL_RED_INTEGER, GL11.GL_UNSIGNED_INT, fillWord);
+            }
+        } else {
+            fillBySubData(GL31.GL_COPY_WRITE_BUFFER, offset, size, value);
+        }
+        GL15.glBindBuffer(GL31.GL_COPY_WRITE_BUFFER, 0);
+    }
+
+    private final ByteBuffer fillWord = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
 
     @Override
     public void glMemoryBarrier(int barriers) {

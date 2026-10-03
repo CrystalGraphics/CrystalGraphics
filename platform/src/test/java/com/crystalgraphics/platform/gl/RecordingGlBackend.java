@@ -29,12 +29,14 @@ public final class RecordingGlBackend extends CgGLBackend {
     public final List<Double> clearDepths = new ArrayList<>();
     /** Every glPolygonOffset as {factor, units}, in order. */
     public final List<List<Float>> polygonOffsets = new ArrayList<>();
+    /** Every glMemoryBarrier's bits, in order. */
+    public final List<Integer> memoryBarriers = new ArrayList<>();
 
     private void record(String name) { calls.add(name); }
 
     public List<String> calls() { return calls; }
 
-    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); }
+    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); memoryBarriers.clear(); }
 
     public int countOf(String name) {
         int n = 0;
@@ -145,7 +147,8 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawElementsIndirectCount"); }
     @Override public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) { record("glDispatchCompute"); }
     @Override public void glDispatchComputeIndirect(long offset) { record("glDispatchComputeIndirect"); }
-    @Override public void glMemoryBarrier(int barriers) { record("glMemoryBarrier"); }
+    @Override public void glMemoryBarrier(int barriers) { record("glMemoryBarrier"); memoryBarriers.add(barriers); }
+    @Override public void cgFillBuffer(int buffer, long offset, long size, int value) { record("cgFillBuffer"); }
     @Override public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) { record("glBindImageTexture"); }
     @Override public void glEnable(int cap) { record("glEnable"); }
     @Override public void glDisable(int cap) { record("glDisable"); }

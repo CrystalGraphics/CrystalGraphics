@@ -25,6 +25,9 @@ public final class CgKernel {
     private final CgCompute compute;
     private final String name;
     private final Set<String> keywords;
+    /** The program last answered, while its file has not released it. */
+    private volatile CgKernelProgram program;
+    private volatile int programGeneration = -1;
 
     CgKernel(CgCompute compute, String name, Set<String> keywords) {
         this.compute = compute;
@@ -55,7 +58,13 @@ public final class CgKernel {
 
     /** Its program for the current context, compiled the first time. Render thread. */
     public CgKernelProgram program() {
-        return compute.program(this);
+        CgKernelProgram held = program;
+        if (held != null && programGeneration == compute.generation() && !held.isDeleted()) return held;
+        int generation = compute.generation();
+        held = compute.program(this);
+        program = held;
+        programGeneration = generation;
+        return held;
     }
 
     /** The GLSL it compiles from on the current context, includes unexpanded: what to read when it misbehaves. */

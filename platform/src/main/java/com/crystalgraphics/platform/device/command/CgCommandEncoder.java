@@ -40,6 +40,9 @@ public interface CgCommandEncoder {
 
     void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size);
 
+    /** {@code value} into every four bytes of a range: offset and size multiples of 4. Outside a render pass. */
+    void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value);
+
     /** Writes tightly packed texels in {@code dst}'s format; {@code data}'s remaining bytes must fill the region. */
     void writeTexture(CgGpuTexture dst, CgTextureRegion region, ByteBuffer data);
 

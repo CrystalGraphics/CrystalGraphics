@@ -859,7 +859,9 @@ try (CgGlScope scope = CgKernelProgram.scope()) {
 - **Subgroups** (`CG_SUBGROUP_ADD` and the rest) are the device's operations where it has them all and the work
   group through shared memory where not; a kernel never branches on support.
 
-Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what is easy to get wrong.
+In a frame a kernel runs in a graph's compute pass (`recording.compute(...)`), on `CgGraphBuffer`s and storage images,
+every barrier derived by the executor. Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what
+is easy to get wrong; `render/graph/AGENTS.md` the graph's half.
 
 ---
 
@@ -1558,6 +1560,10 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # frame ring: one build, both paths, for comparing them
 -Dcrystalgraphics.mesh.editStacks=true               # each mesh edit records its stack, which the [cg-mesh]
                                                      # report of a mesh edited every frame prints
+
+# Frame graph
+-Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
+                                                     # validation must catch on --mode=compute-graph
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in

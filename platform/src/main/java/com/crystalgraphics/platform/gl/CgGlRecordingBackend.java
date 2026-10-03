@@ -42,7 +42,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
             MULTI_DRAW_ARRAYS_INDIRECT = 108, MULTI_DRAW_ELEMENTS_INDIRECT = 109,
             MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
-            CG_IMAGE_BARRIER = 117;
+            CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -240,6 +240,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case BIND_IMAGE_TEXTURE: CgGL.glBindImageTexture(ri(), ri(), ri(), rz(), ri(), ri(), ri()); break;
                 case CG_BUFFER_BARRIER: CgGL.cgBufferBarrier(ri(), ri(), ri()); break;
                 case CG_IMAGE_BARRIER: CgGL.cgImageBarrier(ri(), ri(), ri()); break;
+                case CG_FILL_BUFFER: CgGL.cgFillBuffer(ri(), rl(), rl(), ri()); break;
                 case ENABLE: CgGL.glEnable(ri()); break;
                 case DISABLE: CgGL.glDisable(ri()); break;
                 case BLEND_FUNC: CgGL.glBlendFunc(ri(), ri()); break;
@@ -728,6 +729,9 @@ final class CgGlRecordingBackend extends CgGLBackend {
     /** Taped as named, so the backend it replays on decides what the barrier is. */
     @Override public void cgBufferBarrier(int buffer, int from, int to) { op(CG_BUFFER_BARRIER); i(buffer); i(from); i(to); }
     @Override public void cgImageBarrier(int texture, int from, int to) { op(CG_IMAGE_BARRIER); i(texture); i(from); i(to); }
+    @Override public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        op(CG_FILL_BUFFER); i(buffer); l(offset); l(size); i(value);
+    }
 
     // ── State ─────────────────────────────────────────────────────────────────
 

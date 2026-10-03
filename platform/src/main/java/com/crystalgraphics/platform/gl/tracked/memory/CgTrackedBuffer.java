@@ -91,6 +91,19 @@ public final class CgTrackedBuffer {
         subData(dstOffset, bytes.slice());
     }
 
+    /** {@code cgFillBuffer}: a device fill into device-local storage, the CPU's into host-visible storage. */
+    public void fill(long offset, long size, int value) {
+        CgAllocation a = require();
+        if (!a.hostVisible()) {
+            tracker.transfer().fillBuffer(a.buffer, a.offset + offset, size, value);
+            tracker.markUsed(a);
+            return;
+        }
+        if (!persistent && !tracker.writable(a)) a = rename(true);
+        ByteBuffer to = a.memory().order(ByteOrder.nativeOrder());
+        for (long at = offset; at < offset + size; at += 4) to.putInt((int) at, value);
+    }
+
     /**
      * {@code glMapBufferRange}: the bytes to write, or to read once the GPU has written them.
      *

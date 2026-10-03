@@ -16,7 +16,8 @@ import java.util.Arrays;
  * A recording's binding snapshots: what a draw reads besides its instances, interned by content so two draws that
  * read the same things share an id, and a batch can hold both. Uniform blocks are copied when recorded; textures
  * and buffers are held as handles and resolved when bound. At execution every block is uploaded in one ring write
- * and bound by range.
+ * and bound by range. A {@link CgBufferHandle} — a frame graph's buffer — binds as a storage block at the point given,
+ * and the graph orders the draw after whatever wrote it.
  *
  * <pre>{@code
  * int bindings = table.begin()
@@ -37,8 +38,8 @@ import java.util.Arrays;
  *       growing glyph atlas needs. Its <em>content</em> is ordered by the frame graph's versions.</li>
  *   <li>{@link #upload} after the last {@link #end()} and before the first {@link #bind}: a block's place in the
  *       ring is only known once every block is.</li>
- *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks and {@value #MAX_BUFFERS} buffers
- *       per snapshot.</li>
+ *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers and
+ *       {@value #MAX_STORAGE} storage handles per snapshot.</li>
  *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
  *       recording is handed over. {@link #upload} and {@link #bind} touch GL; the table owns no GL object.</li>
  * </ul>
@@ -48,15 +49,21 @@ public final class CgBindingTable {
     public static final int MAX_TEXTURES = 8;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
+    public static final int MAX_STORAGE = 4;
 
-    /** Per entry: texture, block and buffer counts, a unit per texture, (binding, offset, floats) per block. */
-    private static final int HEADER = 3;
+    /**
+     * Per entry: texture, block, buffer and storage counts, a unit per texture, (binding, offset, floats) per block,
+     * a binding point per storage handle.
+     */
+    private static final int HEADER = 4;
     private static final int BLOCK_INTS = 3;
     private static final int BLOCKS_AT = HEADER + MAX_TEXTURES;
-    private static final int ENTRY_INTS = BLOCKS_AT + MAX_BLOCKS * BLOCK_INTS;
+    private static final int STORAGE_AT = BLOCKS_AT + MAX_BLOCKS * BLOCK_INTS;
+    private static final int ENTRY_INTS = STORAGE_AT + MAX_STORAGE;
 
-    /** Per entry: the textures, then the buffers. */
-    private static final int ENTRY_REFS = MAX_TEXTURES + MAX_BUFFERS;
+    /** Per entry: the textures, the buffers, then the storage handles. */
+    private static final int STORAGE_REFS = MAX_TEXTURES + MAX_BUFFERS;
+    private static final int ENTRY_REFS = STORAGE_REFS + MAX_STORAGE;
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
     private static final int BLOCK_ALIGNMENT = 256;
@@ -97,6 +104,7 @@ public final class CgBindingTable {
         entries[e] = 0;
         entries[e + 1] = 0;
         entries[e + 2] = 0;
+        entries[e + 3] = 0;
         return this;
     }
 
@@ -140,6 +148,17 @@ public final class CgBindingTable {
         return this;
     }
 
+    /** {@code buffer} bound as the storage block at {@code point} for the draw, resolved when the draw executes. */
+    public CgBindingTable storage(int point, CgBufferHandle buffer) {
+        int e = building * ENTRY_INTS;
+        int n = entries[e + 3];
+        if (n == MAX_STORAGE) throw new IllegalStateException("more than " + MAX_STORAGE + " storage handles in one snapshot");
+        entries[e + STORAGE_AT + n] = point;
+        refs[building * ENTRY_REFS + STORAGE_REFS + n] = buffer;
+        entries[e + 3] = n + 1;
+        return this;
+    }
+
     /** Ends the snapshot and answers its id: an earlier snapshot's when the content is equal. */
     public int end() {
         int id = building;
@@ -178,6 +197,9 @@ public final class CgBindingTable {
             block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
         }
         for (int b = 0; b < from.entries[e + 2]; b++) buffer((CgShaderBuffer) from.refs[r + MAX_TEXTURES + b]);
+        for (int b = 0; b < from.entries[e + 3]; b++) {
+            storage(from.entries[e + STORAGE_AT + b], (CgBufferHandle) from.refs[r + STORAGE_REFS + b]);
+        }
         return end();
     }
 
@@ -195,6 +217,7 @@ public final class CgBindingTable {
             block(entries[block], floats, entries[block + 1], entries[block + 2]);
         }
         for (int b = 0; b < entries[e + 2]; b++) buffer((CgShaderBuffer) refs[r + MAX_TEXTURES + b]);
+        for (int b = 0; b < entries[e + 3]; b++) storage(entries[e + STORAGE_AT + b], (CgBufferHandle) refs[r + STORAGE_REFS + b]);
         return end();
     }
 
@@ -239,6 +262,21 @@ public final class CgBindingTable {
     public float[] blockFloats(int id, int k) {
         int block = id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS;
         return Arrays.copyOfRange(floats, entries[block + 1], entries[block + 1] + entries[block + 2]);
+    }
+
+    /** How many storage handles snapshot {@code id} binds. */
+    public int storages(int id) {
+        return entries[id * ENTRY_INTS + 3];
+    }
+
+    /** Snapshot {@code id}'s {@code i}th storage handle. */
+    public CgBufferHandle storage(int id, int i) {
+        return (CgBufferHandle) refs[id * ENTRY_REFS + STORAGE_REFS + i];
+    }
+
+    /** The binding point snapshot {@code id}'s {@code i}th storage handle binds at. */
+    public int storagePoint(int id, int i) {
+        return entries[id * ENTRY_INTS + STORAGE_AT + i];
     }
 
     /** How many buffers snapshot {@code id} binds. */
@@ -304,6 +342,10 @@ public final class CgBindingTable {
                     ringOffsets[id * MAX_BLOCKS + b], size);
         }
         for (int b = 0; b < entries[e + 2]; b++) ((CgShaderBuffer) refs[r + MAX_TEXTURES + b]).bind();
+        for (int b = 0; b < entries[e + 3]; b++) {
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, entries[e + STORAGE_AT + b],
+                    ((CgBufferHandle) refs[r + STORAGE_REFS + b]).bufferId());
+        }
     }
 
     private static int align(int bytes) {
@@ -313,7 +355,7 @@ public final class CgBindingTable {
     private int hash(int id) {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
-        int h = (entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2];
+        int h = ((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3];
         for (int t = 0; t < entries[e]; t++) h = (h * 31 + entries[e + HEADER + t]) * 31 + System.identityHashCode(refs[r + t]);
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
@@ -322,6 +364,9 @@ public final class CgBindingTable {
             for (int f = 0; f < entries[block + 2]; f++) h = h * 31 + Float.floatToRawIntBits(floats[from + f]);
         }
         for (int b = 0; b < entries[e + 2]; b++) h = h * 31 + System.identityHashCode(refs[r + MAX_TEXTURES + b]);
+        for (int b = 0; b < entries[e + 3]; b++) {
+            h = (h * 31 + entries[e + STORAGE_AT + b]) * 31 + System.identityHashCode(refs[r + STORAGE_REFS + b]);
+        }
         return h ^ (h >>> 16);
     }
 
@@ -342,6 +387,10 @@ public final class CgBindingTable {
         }
         for (int k = 0; k < entries[ea + 2]; k++) {
             if (refs[ra + MAX_TEXTURES + k] != refs[rb + MAX_TEXTURES + k]) return false;
+        }
+        for (int k = 0; k < entries[ea + 3]; k++) {
+            if (entries[ea + STORAGE_AT + k] != entries[eb + STORAGE_AT + k]
+                    || refs[ra + STORAGE_REFS + k] != refs[rb + STORAGE_REFS + k]) return false;
         }
         return true;
     }
