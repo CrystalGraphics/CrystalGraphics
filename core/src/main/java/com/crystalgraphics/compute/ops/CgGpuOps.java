@@ -1,12 +1,17 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -14,8 +19,9 @@ import java.util.List;
 
 /**
  * What every GPU-driven consumer otherwise writes for itself (gpu-compute C7): fills, sequences, copies, reductions,
- * scans, compaction, sorting, histograms and bounds, dispatched into the caller's compute pass and run on every tier
- * (as compute, lowered below it, or by Java bodies on the CPU tier) with the same answer on each.
+ * scans, compaction, sorting, histograms and bounds over buffers, and mip chains and blurs over textures, dispatched
+ * into the caller's compute pass and run on every tier (as compute, lowered below it, or by Java bodies on the CPU
+ * tier) with the same answer on each.
  *
  * <pre>{@code
  * CgComputePass pass = recording.compute("particles");
@@ -38,6 +44,8 @@ import java.util.List;
  *   <li>A float sum folds sixteen at a time, left to right, a level at a time: the same order on every tier, so the
  *       same bits, though not the bits a plain loop would add to.</li>
  *   <li>An op never writes what it reads; it throws when handed one buffer for both.</li>
+ *   <li>The image ops take graph textures of the {@link #IMAGE_TYPES}, and answer within a rounding of the format
+ *       rather than in the same bits.</li>
  * </ul>
  */
 public final class CgGpuOps {
@@ -53,6 +61,16 @@ public final class CgGpuOps {
 
     /** Which way a sort runs. */
     public enum Order { ASCENDING, DESCENDING }
+
+    /**
+     * What a mip texel holds of the texels it covers: their area-weighted mean, or the least or greatest of every one
+     * it touches (a depth pyramid's nearest or farthest).
+     */
+    public enum Filter { AVERAGE, MIN, MAX }
+
+    /** The colour formats the image ops take. */
+    public static final List<CgTextureType> IMAGE_TYPES =
+            List.of(CgTextureType.RGBA8, CgTextureType.RGBA16F, CgTextureType.R16F, CgTextureType.R32F);
 
     /** What one element of a level folds of the level below it. */
     static final int BLOCK = 16;
@@ -71,6 +89,23 @@ public final class CgGpuOps {
     private static final String[] SORT_KERNELS = {"RadixCount", "RadixScatter", "RadixScatterKeys"};
     private static final CgKernel[][] SORT_VARIANTS = new CgKernel[SORT_KERNELS.length][3 * 2];
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
+    private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
+    /** Per image type: its kernels and images in image.compute. */
+    static final String[] DOWNSAMPLE_KERNELS = {"DownsampleRgba8", "DownsampleRgba16f", "DownsampleR16f", "DownsampleR32f"},
+            BLUR_KERNELS = {"BlurRgba8", "BlurRgba16f", "BlurR16f", "BlurR32f"},
+            SOURCES = {"SRC_RGBA8", "SRC_RGBA16F", "SRC_R16F", "SRC_R32F"},
+            TARGETS = {"DST_RGBA8", "DST_RGBA16F", "DST_R16F", "DST_R32F"};
+    /** A blur's scratch, per image type. */
+    private static final CgFrameBufferFormat[] SCRATCH = new CgFrameBufferFormat[IMAGE_TYPES.size()];
+    private static final CgKernel[][] DOWNSAMPLE_VARIANTS = new CgKernel[IMAGE_TYPES.size()][Filter.values().length];
+    private static final CgKernel[][] BLUR_VARIANTS = new CgKernel[IMAGE_TYPES.size()][2];
+
+    static {
+        for (int f = 0; f < SCRATCH.length; f++) {
+            CgTextureType type = IMAGE_TYPES.get(f);
+            SCRATCH[f] = CgFrameBufferFormat.builder("cg_ops_" + type.name().toLowerCase()).color(0, type).build();
+        }
+    }
 
     private CgGpuOps() {}
 
@@ -290,6 +325,119 @@ public final class CgGpuOps {
         }
     }
 
+    // ── Mip chains, blur ─────────────────────────────────────────────────────
+
+    /**
+     * Fills every level of {@code texture} below 0 from the one above it: each texel of level l + 1 folds the texels
+     * of level l it covers, two by two, or up to three by three where an odd size halves.
+     *
+     * <pre>{@code
+     * CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
+     * // ... level 0 drawn or written ...
+     * CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);      // levels 1 down to 1x1, and bloom samples trilinearly
+     * CgGpuOps.downsample(pass, depthPyramid, Filter.MAX);   // each texel the farthest depth it covers
+     * }</pre>
+     *
+     * <p>Throws for a texture of one level: describe it {@link CgTextureDesc#withMips()}.</p>
+     */
+    public static void downsample(CgComputePass pass, CgGraphTexture texture, Filter filter) {
+        downsample(pass, texture, 0, texture.getLevels() - 1, filter);
+    }
+
+    /** Fills levels {@code from + 1} to {@code to} of {@code texture}, each from the one above it. */
+    public static void downsample(CgComputePass pass, CgGraphTexture texture, int from, int to, Filter filter) {
+        if (from < 0 || from >= to || to >= texture.getLevels()) {
+            throw new IllegalArgumentException("levels " + from + " to " + to + " of " + texture + ", which has "
+                    + texture.getLevels() + (texture.getLevels() == 1 ? ": describe it withMips()" : ""));
+        }
+        int f = imageType(texture);
+        CgKernel kernel = downsampleKernel(f, filter);
+        for (int l = from; l < to; l++) {
+            pass.dispatch(kernel, size(texture.getWidth(), l + 1), size(texture.getHeight(), l + 1), 1)
+                    .image(SOURCES[f], texture, l, -1).image(TARGETS[f], texture, l + 1, -1);
+        }
+    }
+
+    /**
+     * A Gaussian blur of {@code sigma} texels from level 0 of {@code source} into level 0 of {@code target}: across,
+     * into scratch, then down. One texture for both blurs it in place.
+     *
+     * <pre>{@code
+     * CgGpuOps.blur(pass, scene, glow, 4f);
+     * CgGpuOps.blur(pass, glow, glow, 2f);                   // in place
+     * }</pre>
+     *
+     * <p>A texel reads {@code 2 * ceil(3 * sigma) + 1} texels an axis, so a wide blur is cheaper at a smaller level:
+     * downsample, then blur level l by {@code sigma / 2^l}.</p>
+     */
+    public static void blur(CgComputePass pass, CgGraphTexture source, CgGraphTexture target, float sigma) {
+        blur(pass, source, 0, target, 0, sigma);
+    }
+
+    /**
+     * A Gaussian blur from level {@code sourceLevel} of {@code source} into level {@code targetLevel} of
+     * {@code target}, which must be its size and format.
+     *
+     * <pre>{@code
+     * CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);
+     * CgGpuOps.blur(pass, bloom, 3, bloom, 3, 2f);           // a sixty-fourth of the texels: about a sigma of 16 at 0
+     * }</pre>
+     */
+    public static void blur(CgComputePass pass, CgGraphTexture source, int sourceLevel, CgGraphTexture target,
+                            int targetLevel, float sigma) {
+        if (!(sigma > 0f) || Float.isInfinite(sigma)) throw new IllegalArgumentException("a sigma of " + sigma);
+        int f = imageType(source);
+        if (imageType(target) != f) throw new IllegalArgumentException(source + " and " + target + " differ in format");
+        int w = size(source.getWidth(), sourceLevel), h = size(source.getHeight(), sourceLevel);
+        if (sourceLevel < 0 || sourceLevel >= source.getLevels() || targetLevel < 0 || targetLevel >= target.getLevels()
+                || size(target.getWidth(), targetLevel) != w || size(target.getHeight(), targetLevel) != h) {
+            throw new IllegalArgumentException("level " + sourceLevel + " of " + source + " and level " + targetLevel
+                    + " of " + target + " are not one size");
+        }
+        int radius = (int) Math.ceil(3 * sigma);
+        CgGraphTexture across = CgGraphTexture.transientTexture("ops.blur", new CgTextureDesc(w, h, SCRATCH[f]));
+        pass.dispatch(blurKernel(f, false), w, h, 1).image(SOURCES[f], source, sourceLevel, -1)
+                .image(TARGETS[f], across).set("_Radius", radius).set("_Sigma", sigma);
+        pass.dispatch(blurKernel(f, true), w, h, 1).image(SOURCES[f], across)
+                .image(TARGETS[f], target, targetLevel, -1).set("_Radius", radius).set("_Sigma", sigma);
+    }
+
+    /** Level {@code level}'s extent of an axis of {@code size} texels at level 0. */
+    private static int size(int size, int level) {
+        return Math.max(1, size >> level);
+    }
+
+    /** Its colour format's index in {@link #IMAGE_TYPES}. */
+    private static int imageType(CgGraphTexture texture) {
+        CgTextureDesc desc = texture.desc();
+        CgFrameBuffer framebuffer = texture.framebuffer();
+        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        CgTextureType type = format == null ? null : format.getColorSlot(0);
+        int f = IMAGE_TYPES.indexOf(type);
+        if (f < 0) throw new IllegalArgumentException(texture + " is " + type + ": the image ops take " + IMAGE_TYPES);
+        return f;
+    }
+
+    private static CgKernel downsampleKernel(int type, Filter filter) {
+        CgKernel k = DOWNSAMPLE_VARIANTS[type][filter.ordinal()];
+        if (k == null) {
+            k = Files.image().kernel(DOWNSAMPLE_KERNELS[type]);
+            if (filter != Filter.AVERAGE) k = k.withKeywords(filter.name());
+            DOWNSAMPLE_VARIANTS[type][filter.ordinal()] = k;
+        }
+        return k;
+    }
+
+    private static CgKernel blurKernel(int type, boolean vertical) {
+        CgKernel k = BLUR_VARIANTS[type][vertical ? 1 : 0];
+        if (k == null) {
+            k = Files.image().kernel(BLUR_KERNELS[type]);
+            if (vertical) k = k.withKeywords("VERTICAL");
+            BLUR_VARIANTS[type][vertical ? 1 : 0] = k;
+        }
+        return k;
+    }
+
     // ── Counts, scratch, kernels ─────────────────────────────────────────────
 
     /**
@@ -347,7 +495,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded with its Java bodies the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram;
+        private static volatile CgCompute fill, scan, sort, histogram, image;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -382,6 +530,15 @@ public final class CgGpuOps {
             synchronized (Files.class) {
                 if (histogram == null) histogram = CgGpuOpsBodies.histogram(CgCompute.load(HISTOGRAM_PATH));
                 return histogram;
+            }
+        }
+
+        static CgCompute image() {
+            CgCompute f = image;
+            if (f != null) return f;
+            synchronized (Files.class) {
+                if (image == null) image = CgGpuOpsBodies.image(CgCompute.load(IMAGE_PATH));
+                return image;
             }
         }
     }

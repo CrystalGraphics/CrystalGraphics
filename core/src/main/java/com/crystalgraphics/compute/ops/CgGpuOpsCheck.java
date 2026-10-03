@@ -1,11 +1,16 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.cpu.CgCpuBuffer;
 import com.crystalgraphics.compute.ops.CgGpuOps.Element;
+import com.crystalgraphics.compute.ops.CgGpuOps.Filter;
 import com.crystalgraphics.compute.ops.CgGpuOps.Fold;
 import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
+import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -13,6 +18,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,7 +33,9 @@ import java.util.function.IntBinaryOperator;
 
 /**
  * Runs every {@link CgGpuOps} op on this context, at counts from none to tens of thousands, fixed and read from the
- * GPU, and checks each answer against Java bit for bit: floats included, since every tier folds in the same order.
+ * GPU, and checks each answer against Java bit for bit: floats included, since every tier folds in the same order. The
+ * image ops run on every format they take at odd and even sizes, each level checked against Java from the level above
+ * as the GPU wrote it, within a rounding of the format.
  *
  * <pre>{@code
  * CgGpuOpsCheck.Result result = CgGpuOpsCheck.run();   // render thread, a live context
@@ -49,6 +57,8 @@ public final class CgGpuOpsCheck {
     /** Words past every buffer's capacity, which nothing may write. */
     private static final int PAD = 16;
     private static final int SENTINEL = 0xC0FFEE11, DRAWN = 1000, SEED = 0x1234567, RESULTS = 16, BINS = 50;
+    private static final int[][] IMAGE_SIZES = {{16, 16}, {13, 7}, {1, 9}, {37, 64}};
+    private static final float SIGMA = 1.6f, LEVEL_SIGMA = 0.8f;
     private static boolean ran;
 
     /**
@@ -89,6 +99,8 @@ public final class CgGpuOpsCheck {
                 cases.add(new Case("gpu " + n, n, n + 37, n));
             }
             cases.add(new Case("gpu clamped", 300, 300, 350));
+            List<ImageCase> images = new ArrayList<>();
+            for (CgTextureType type : CgGpuOps.IMAGE_TYPES) for (int[] size : IMAGE_SIZES) images.add(new ImageCase(type, size[0], size[1]));
             CgCompute check = CgCompute.load(PATH);
             check.kernel("Rng").cpu(d -> {
                 CgCpuBuffer drawn = d.buffer("DRAWN");
@@ -105,12 +117,14 @@ public final class CgGpuOpsCheck {
                 CgRecording rec = new CgRecording();
                 CgComputePass pass = rec.compute("ops-check");
                 for (Case c : cases) c.record(pass);
+                for (ImageCase c : images) c.record(pass);
                 pass.dispatch(check.kernel("Rng"), DRAWN).bind("DRAWN", CgGraphBuffer.imported("drawn", drawn, DRAWN * 16L))
                         .set("_Seed", SEED);
                 pass.end();
                 CgImmediate.execute(rec);
 
                 for (Case c : cases) c.expect(failures);
+                for (ImageCase c : images) c.expect(failures);
                 int[] r = new int[4], want = new int[DRAWN * 4];
                 for (int e = 0; e < DRAWN; e++) {
                     CgRng.rng4(SEED, e, 3, 1, r);
@@ -122,6 +136,7 @@ public final class CgGpuOpsCheck {
             } finally {
                 CgGL.glDeleteBuffers(drawn);
                 for (Case c : cases) c.delete();
+                for (ImageCase c : images) c.delete();
             }
             return new Result(CgCapabilities.detect().computeTier().name(), List.copyOf(failures));
         }
@@ -316,6 +331,169 @@ public final class CgGpuOpsCheck {
                     cellKeys, cellValues, bins}) {
                 CgGL.glDeleteBuffers(b);
             }
+        }
+    }
+
+    /**
+     * One format at one size: a chain per filter, a blur into another texture, and level 1 of a chain blurred in place.
+     * Inputs are read back as stored, so an expectation starts from the format's own values.
+     */
+    private static final class ImageCase {
+        final String name;
+        final CgTextureType type;
+        final int w, h, channels;
+        /** One rounding to the format, at a value of 1: a texel may differ by it per write. */
+        final double ulp;
+        final CgFrameBuffer[] chains = new CgFrameBuffer[Filter.values().length];
+        final CgFrameBuffer blurSource, blurTarget, levelBlur;
+
+        ImageCase(CgTextureType type, int w, int h) {
+            this.type = type;
+            this.w = w;
+            this.h = h;
+            name = type + " " + w + "x" + h;
+            channels = type == CgTextureType.R16F || type == CgTextureType.R32F ? 1 : 4;
+            ulp = type == CgTextureType.RGBA8 ? 1.0 / 255 : type == CgTextureType.R32F ? 1e-5 : 1.0 / 1024;
+            CgFrameBufferFormat format = CgFrameBufferFormat.builder("cg_ops_check_" + type.name().toLowerCase())
+                    .color(0, type).build();
+            float[] data = new float[w * h * 4];
+            for (int i = 0; i < data.length; i++) {
+                float unit = (CgRng.rng(w * 131 + h, i, 2, type.ordinal()) >>> 8) / (float) (1 << 24);
+                data[i] = type == CgTextureType.RGBA8 ? unit : unit * 8f - 2f;
+            }
+            int full = CgTexture.fullChain(w, h);
+            for (int f = 0; f < chains.length; f++) chains[f] = texture(format, full, data);
+            blurSource = texture(format, 1, data);
+            blurTarget = texture(format, 1, data);
+            levelBlur = texture(format, full, data);
+        }
+
+        CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data) {
+            CgFrameBuffer fb = CgFrameBuffer.createOwned("ops-check " + name, w, h, format, levels);
+            ByteBuffer pixels = ByteBuffer.allocateDirect(data.length * 4).order(ByteOrder.nativeOrder());
+            for (float v : data) pixels.putFloat(v);
+            pixels.flip();
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, fb.getColorTexture(0).getId());
+            CgGL.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, w, h, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
+            return fb;
+        }
+
+        void record(CgComputePass pass) {
+            for (Filter filter : Filter.values()) {
+                CgGpuOps.downsample(pass, CgGraphTexture.imported("chain", chains[filter.ordinal()]), filter);
+            }
+            CgGpuOps.blur(pass, CgGraphTexture.imported("blur source", blurSource),
+                    CgGraphTexture.imported("blur target", blurTarget), SIGMA);
+            CgGraphTexture level = CgGraphTexture.imported("level blur", levelBlur);
+            CgGpuOps.downsample(pass, level, 0, 1, Filter.AVERAGE);
+            CgGpuOps.blur(pass, level, 1, level, 1, LEVEL_SIGMA);
+        }
+
+        void expect(List<String> failures) {
+            for (Filter filter : Filter.values()) {
+                CgFrameBuffer chain = chains[filter.ordinal()];
+                float[] above = read(chain, 0);
+                for (int l = 1; l < chain.getColorLevels(); l++) {
+                    float[] made = read(chain, l);
+                    compare(failures, filter + " level " + l, made, downsample(above, l - 1, filter), l, 1);
+                    above = made;
+                }
+            }
+            float[] source = read(blurSource, 0);
+            compare(failures, "blur", read(blurTarget, 0), blur(blur(source, 0, SIGMA, false), 0, SIGMA, true), 0, 2);
+            float[] half = downsample(read(levelBlur, 0), 0, Filter.AVERAGE);
+            compare(failures, "blur level 1 in place", read(levelBlur, 1),
+                    blur(blur(half, 1, LEVEL_SIGMA, false), 1, LEVEL_SIGMA, true), 1, 3);
+        }
+
+        /** Level {@code level + 1} from {@code src}, level {@code level}, as image.compute folds it. */
+        float[] downsample(float[] src, int level, Filter filter) {
+            int n = size(w, level), m = size(h, level), tw = size(w, level + 1), th = size(h, level + 1);
+            float[] out = new float[tw * th * 4];
+            for (int y = 0; y < th; y++) {
+                for (int x = 0; x < tw; x++) {
+                    double[] wx = weights(x, n), wy = weights(y, m);
+                    for (int c = 0; c < 4; c++) {
+                        double acc = filter == Filter.MIN ? Double.MAX_VALUE : filter == Filter.MAX ? -Double.MAX_VALUE : 0;
+                        for (int j = 0; j < 3; j++) {
+                            for (int i = 0; i < 3; i++) {
+                                double weight = wx[i] * wy[j];
+                                if (weight <= 0) continue;
+                                double v = src[((2 * y + j) * n + 2 * x + i) * 4 + c];
+                                acc = filter == Filter.MIN ? Math.min(acc, v) : filter == Filter.MAX ? Math.max(acc, v) : acc + v * weight;
+                            }
+                        }
+                        out[(y * tw + x) * 4 + c] = (float) acc;
+                    }
+                }
+            }
+            return out;
+        }
+
+        static double[] weights(int t, int n) {
+            if (n == 1) return new double[] {1, 0, 0};
+            if ((n & 1) == 0) return new double[] {0.5, 0.5, 0};
+            int half = n >> 1;
+            return new double[] {(double) (half - t) / n, (double) half / n, (double) (t + 1) / n};
+        }
+
+        /** One axis of the Gaussian at level {@code level}'s size, edges clamped. */
+        float[] blur(float[] src, int level, float sigma, boolean vertical) {
+            int n = size(w, level), m = size(h, level), radius = (int) Math.ceil(3 * sigma);
+            float[] out = new float[src.length];
+            for (int y = 0; y < m; y++) {
+                for (int x = 0; x < n; x++) {
+                    for (int c = 0; c < 4; c++) {
+                        double sum = 0, total = 0;
+                        for (int k = -radius; k <= radius; k++) {
+                            double weight = Math.exp(-0.5 * k * k / ((double) sigma * sigma));
+                            int sx = vertical ? x : Math.max(0, Math.min(x + k, n - 1)), sy = vertical ? Math.max(0, Math.min(y + k, m - 1)) : y;
+                            sum += src[(sy * n + sx) * 4 + c] * weight;
+                            total += weight;
+                        }
+                        out[(y * n + x) * 4 + c] = (float) (sum / total);
+                    }
+                }
+            }
+            return out;
+        }
+
+        /** Every texel's channels within {@code roundings} of the format's rounding, scaled to the value's size. */
+        void compare(List<String> failures, String op, float[] made, float[] want, int level, int roundings) {
+            int n = size(w, level), wrong = 0, firstAt = -1;
+            for (int i = 0; i < want.length; i++) {
+                if (i % 4 >= channels) continue;
+                double tolerance = roundings * ulp * Math.max(1, Math.abs(want[i])) + 1e-6;
+                if (!(Math.abs(made[i] - want[i]) <= tolerance) && wrong++ == 0) firstAt = i;
+            }
+            if (wrong > 0) {
+                int texel = firstAt / 4;
+                failures.add(name + " " + op + " differs in " + wrong + " of " + want.length / 4 * channels
+                        + " channels, the first at (" + texel % n + ", " + texel / n + ")." + firstAt % 4 + ": "
+                        + made[firstAt] + ", not " + want[firstAt]);
+            }
+        }
+
+        /** Level {@code level} of the colour, as RGBA floats. */
+        float[] read(CgFrameBuffer fb, int level) {
+            int n = size(w, level) * size(h, level) * 4;
+            ByteBuffer pixels = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder());
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, fb.getColorTexture(0).getId());
+            CgGL.glGetTexImage(CgGL.GL_TEXTURE_2D, level, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
+            float[] out = new float[n];
+            for (int i = 0; i < n; i++) out[i] = pixels.getFloat(i * 4);
+            return out;
+        }
+
+        static int size(int size, int level) {
+            return Math.max(1, size >> level);
+        }
+
+        void delete() {
+            for (CgFrameBuffer chain : chains) chain.delete();
+            blurSource.delete();
+            blurTarget.delete();
+            levelBlur.delete();
         }
     }
 

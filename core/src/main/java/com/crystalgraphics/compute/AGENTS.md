@@ -39,7 +39,7 @@ try (CgImmediate.Compute run = CgImmediate.compute("bake")) {     // outside a g
 | `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
 | `lower` | A kernel below compute (C5): `CgLowering` (the passes a shape lowers to, or the construct that stops it; GL-free), `CgLoweredEmitter` (each pass's stages), `CgLoweredTarget`, `CgLoweredKernel` (the passes compiled, and its dispatch), `CgLoweredPrograms` (the helper programs), `CgLoweredResources` (scratch, texel targets, zeroed counters), `CgTexelTarget` |
 | `cpu` | The CPU tier (C6): `CgCpuBody` (a kernel's Java body), `CgCpuDispatch`, `CgCpuBuffer`, `CgCpuImage` (what a body sees), `CgCpuRunner` (runs one), `CgCpuMirrors` (the CPU copies of GL buffers) |
-| `ops` | The library of GPU operations (C7): `CgGpuOps` (fill, iota, copy, dispatch arguments, reduce, bounds, scan, compact, sort, histogram), `CgGpuCount` (a count fixed or on the GPU), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
+| `ops` | The library of GPU operations (C7): `CgGpuOps` (fill, iota, copy, dispatch arguments, reduce, bounds, scan, compact, sort, histogram; downsample and blur over a texture's levels), `CgGpuCount` (a count fixed or on the GPU), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
 
 The frame graph's compute pass is `render/graph`'s (gpu-compute C3); the primitives and readback take `ops` and
 `readback` here as they land. The engine's own kernels are
@@ -174,9 +174,24 @@ pass.end();
   with four-bit digits, counting each block of 32 and ranking within it. Each kernel has a Java body.
 - **Every tier gives the same bits**: integers exactly, a float sum in the same tree order, a sort stable everywhere.
   Below compute an add is a float blend, so a histogram bin is exact to 2^24.
+- **Mip chains and blurs** are image kernels, one per format (`CgGpuOps.IMAGE_TYPES`: RGBA8, RGBA16F, R16F, R32F),
+  on a graph texture described with levels (`CgTextureDesc.withMips()`):
+
+  ```java
+  CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
+  CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);    // each level from the one above, odd sizes weighted by area
+  CgGpuOps.blur(pass, bloom, 3, bloom, 3, 2f);         // in place, at an eighth the size
+  CgGpuOps.downsample(pass, depth, Filter.MAX);        // a depth pyramid: each texel the farthest it covers
+  ```
+
+  They answer within a rounding of the format, not in the same bits. A blur reads `2 * ceil(3 * sigma) + 1` texels an
+  axis, so a wide one belongs at a smaller level. Below compute, a kernel reading one level of the texture it writes
+  another of samples it with the base and max level pinned to the level read, which keeps the draw from being a
+  feedback loop; reading two levels of the texture it writes is refused.
 - **`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, with `CgRng` giving
   the same bits in Java. Key an element by an id it carries, never its slot.
-- **`CgGpuOpsCheck`** runs every op at counts from 0 to 70,000, fixed and from the GPU, against Java; the harness's
+- **`CgGpuOpsCheck`** runs every op at counts from 0 to 70,000, fixed and from the GPU, and every image op on each
+  format at odd and even sizes, against Java; the harness's
   `gpu-ops` scene runs it, and `-Dcrystalgraphics.compute.selfTest=true` logs it beside the compute self-test.
 
 ## Easy to get wrong

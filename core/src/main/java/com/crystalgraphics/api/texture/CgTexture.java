@@ -77,6 +77,16 @@ public interface CgTexture {
      */
     default void reload() {}
 
+    /** The mip levels its storage holds: 1 for none. Level {@code l} is {@code max(1, size >> l)} on each axis. */
+    default int getLevels() {
+        return 1;
+    }
+
+    /** Levels in a full mip chain of a {@code width} by {@code height} texture, down to 1x1. */
+    static int fullChain(int width, int height) {
+        return 32 - Integer.numberOfLeadingZeros(Math.max(1, Math.max(width, height)));
+    }
+
     // ── Static helpers ────────────────────────────────────────────────────
 
     /** @return the normalized ID of the active texture unit, between 0-31.

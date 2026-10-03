@@ -3,6 +3,7 @@ package com.crystalgraphics.compute.ops;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.cpu.CgCpuBuffer;
 import com.crystalgraphics.compute.cpu.CgCpuDispatch;
+import com.crystalgraphics.compute.cpu.CgCpuImage;
 
 /**
  * The CPU tier's twin of each {@link CgGpuOps} kernel, line for line: the same blocks of sixteen, the same order, and
@@ -133,6 +134,73 @@ final class CgGpuOpsBodies {
             }
         });
         return file;
+    }
+
+    static CgCompute image(CgCompute file) {
+        for (int f = 0; f < CgGpuOps.SOURCES.length; f++) {
+            String source = CgGpuOps.SOURCES[f], target = CgGpuOps.TARGETS[f];
+            file.kernel(CgGpuOps.DOWNSAMPLE_KERNELS[f]).cpu(d -> downsample(d, d.image(source), d.image(target)));
+            file.kernel(CgGpuOps.BLUR_KERNELS[f]).cpu(d -> blur(d, d.image(source), d.image(target)));
+        }
+        return file;
+    }
+
+    private static void downsample(CgCpuDispatch d, CgCpuImage src, CgCpuImage dst) {
+        int fold = d.keyword("MIN") ? MIN : d.keyword("MAX") ? MAX : SUM;
+        float[] wx = new float[3], wy = new float[3], acc = new float[4];
+        for (int e = d.first(); e < d.end(); e++) {
+            int x = d.x(e), y = d.y(e);
+            boxWeights(x, src.width(), wx);
+            boxWeights(y, src.height(), wy);
+            for (int j = 0; j < 3; j++) {
+                for (int i = 0; i < 3; i++) {
+                    float w = wx[i] * wy[j];
+                    if (i + j > 0 && !(w > 0f)) continue;
+                    for (int c = 0; c < 4; c++) {
+                        float v = src.loadFloat(2 * x + i, 2 * y + j, 0, c);
+                        acc[c] = i + j == 0 ? (fold == SUM ? v * w : v)
+                                : fold == MIN ? Math.min(acc[c], v) : fold == MAX ? Math.max(acc[c], v) : acc[c] + v * w;
+                    }
+                }
+            }
+            dst.store(x, y, 0, acc[0], acc[1], acc[2], acc[3]);
+        }
+    }
+
+    /** image.compute's {@code boxWeights}: the shares of source texels 2t, 2t+1 and 2t+2 in target texel t. */
+    private static void boxWeights(int t, int n, float[] w) {
+        if (n == 1) {
+            w[0] = 1f;
+            w[1] = w[2] = 0f;
+        } else if ((n & 1) == 0) {
+            w[0] = w[1] = 0.5f;
+            w[2] = 0f;
+        } else {
+            int half = n >> 1;
+            w[0] = (float) (half - t) / n;
+            w[1] = (float) half / n;
+            w[2] = (float) (t + 1) / n;
+        }
+    }
+
+    private static void blur(CgCpuDispatch d, CgCpuImage src, CgCpuImage dst) {
+        int radius = d.propertyInt("_Radius");
+        float sigma = d.property("_Sigma");
+        boolean vertical = d.keyword("VERTICAL");
+        float[] sum = new float[4];
+        for (int e = d.first(); e < d.end(); e++) {
+            int x = d.x(e), y = d.y(e);
+            for (int c = 0; c < 4; c++) sum[c] = src.loadFloat(x, y, 0, c);
+            float total = 1f;
+            for (int k = 1; k <= radius; k++) {
+                float w = (float) Math.exp(-0.5f * (k * k) / (sigma * sigma));
+                int ax = vertical ? x : Math.max(0, x - k), ay = vertical ? Math.max(0, y - k) : y;
+                int bx = vertical ? x : Math.min(src.width() - 1, x + k), by = vertical ? Math.min(src.height() - 1, y + k) : y;
+                for (int c = 0; c < 4; c++) sum[c] += (src.loadFloat(ax, ay, 0, c) + src.loadFloat(bx, by, 0, c)) * w;
+                total += 2f * w;
+            }
+            dst.store(x, y, 0, sum[0] / total, sum[1] / total, sum[2] / total, sum[3] / total);
+        }
     }
 
     /** The capacity when fixed ({@code _CountAt} below 0), else {@code min(COUNT(_CountAt), uint(_Capacity))}. */
