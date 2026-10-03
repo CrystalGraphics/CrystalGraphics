@@ -2829,6 +2829,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public recompile ()V
+  method public sceneColorMargin ()F
   method public submitRecompile ()V
   method public submitRecompile (Z)V
   method public usesEngineBuffer (Ljava/lang/String;)Z
@@ -2896,7 +2897,7 @@ com/crystalgraphics/gl/material/parse/CgParsedPass
 com/crystalgraphics/gl/material/parse/CgParsedShader
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZLjava/util/List;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZFLjava/util/List;)V
   method public castShadows ()Z
   method public engineBuffers ()Ljava/util/List;
   method public featureNames ()Ljava/util/List;
@@ -2906,6 +2907,7 @@ com/crystalgraphics/gl/material/parse/CgParsedShader
   method public properties ()Ljava/util/List;
   method public renderQueue ()I
   method public renderType ()Ljava/lang/String;
+  method public sceneColorMargin ()F
   method public shaderType ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -3658,6 +3660,7 @@ com/crystalgraphics/render/draw/CgBatcher
   method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIFFFFJI)V
   method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIIZIIFFFFJI)V
   method public batchBinding (I)I
+  method public batchBounds (I[F)I
   method public batchEnd (I)I
   method public batchKind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public batchMesh (I)Ljava/lang/Object;
@@ -3805,6 +3808,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public time (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public write ([FI)V
   method public,static height ([F)F
+  method public,static width ([F)F
 com/crystalgraphics/render/draw/CgPipeline
   access public,final
   extends java/lang/Object
@@ -4014,6 +4018,8 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public damage (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public end ()V
   method public noScissor ()Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public sceneColor (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public sceneDepth (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIFFFF)I
   method public scissor (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIIII)I
@@ -4330,6 +4336,19 @@ com/crystalgraphics/render/stage/CgStageRenderer
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract render (Lcom/crystalgraphics/render/stage/CgStageFrame;)V
+com/crystalgraphics/render/world/CgSortLayer
+  access public,final
+  extends java/lang/Object
+  field public,static,final BACKGROUND Lcom/crystalgraphics/render/world/CgSortLayer;
+  field public,static,final DEFAULT Lcom/crystalgraphics/render/world/CgSortLayer;
+  field public,static,final EFFECTS Lcom/crystalgraphics/render/world/CgSortLayer;
+  field public,static,final MAX I
+  field public,static,final OVERLAY Lcom/crystalgraphics/render/world/CgSortLayer;
+  method public id ()Ljava/lang/String;
+  method public rank ()I
+  method public toString ()Ljava/lang/String;
+  method public,static after (Ljava/lang/String;Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgSortLayer;
+  method public,static before (Ljava/lang/String;Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgSortLayer;
 com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
@@ -4347,10 +4366,12 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public group (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public order (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
-  method public priority (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public submesh (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public submit ()V
@@ -4474,6 +4495,70 @@ com/crystalgraphics/serialization/CgStateMap
   method public putRaw (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgStateMap;
   method public putString (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgStateMap;
   method public putStringIfNot (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgStateMap;
+com/crystalgraphics/settings/CgGraphicsSettings
+  access public,final
+  extends java/lang/Object
+  field public,static,final DENSITY Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final FILE Lcom/crystalgraphics/settings/CgSettings;
+  field public,static,final FOLLOW_MINECRAFT_PARTICLES Lcom/crystalgraphics/settings/CgSetting$Toggle;
+  field public,static,final FOV_KICK Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final QUALITY Lcom/crystalgraphics/settings/CgSetting$Choice;
+  field public,static,final SHAKE Lcom/crystalgraphics/settings/CgSetting$Number;
+com/crystalgraphics/settings/CgQuality
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final HIGH Lcom/crystalgraphics/settings/CgQuality;
+  field public,static,final LOW Lcom/crystalgraphics/settings/CgQuality;
+  field public,static,final MEDIUM Lcom/crystalgraphics/settings/CgQuality;
+  field public,static,final ULTRA Lcom/crystalgraphics/settings/CgQuality;
+  method public atLeast (Lcom/crystalgraphics/settings/CgQuality;)Z
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/settings/CgQuality;
+  method public,static values ()[Lcom/crystalgraphics/settings/CgQuality;
+com/crystalgraphics/settings/CgSetting
+  access public,abstract
+  extends java/lang/Object
+  method public,abstract reset ()V
+  method public,final description ()Ljava/lang/String;
+  method public,final id ()Ljava/lang/String;
+  method public,final key ()Ljava/lang/String;
+  method public,final label ()Ljava/lang/String;
+  method public,final section ()Ljava/lang/String;
+com/crystalgraphics/settings/CgSetting$Choice
+  access public,final
+  extends com/crystalgraphics/settings/CgSetting
+  method public defaultValue ()Ljava/lang/Enum;
+  method public get ()Ljava/lang/Enum;
+  method public options ()[Ljava/lang/Enum;
+  method public reset ()V
+  method public set (Ljava/lang/Enum;)V
+com/crystalgraphics/settings/CgSetting$Number
+  access public,final
+  extends com/crystalgraphics/settings/CgSetting
+  method public defaultValue ()F
+  method public get ()F
+  method public max ()F
+  method public min ()F
+  method public reset ()V
+  method public set (F)V
+  method public step ()F
+com/crystalgraphics/settings/CgSetting$Toggle
+  access public,final
+  extends com/crystalgraphics/settings/CgSetting
+  method public defaultValue ()Z
+  method public get ()Z
+  method public reset ()V
+  method public set (Z)V
+com/crystalgraphics/settings/CgSettings
+  access public,final
+  extends java/lang/Object
+  method public choice (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Enum;)Lcom/crystalgraphics/settings/CgSetting$Choice;
+  method public name ()Ljava/lang/String;
+  method public number (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;FFFF)Lcom/crystalgraphics/settings/CgSetting$Number;
+  method public path ()Ljava/nio/file/Path;
+  method public settings ()Ljava/util/List;
+  method public toggle (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lcom/crystalgraphics/settings/CgSetting$Toggle;
+  method public,static file (Ljava/lang/String;)Lcom/crystalgraphics/settings/CgSettings;
+  method public,static tickFrame ()V
 com/crystalgraphics/shadergraph/CgBuiltinShaderNodes
   access public,final
   extends java/lang/Object
@@ -5901,8 +5986,11 @@ com/crystalgraphics/vfx/CgVfxEffect
   method protected,final air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
   method protected,final die ()V
   method protected,final groundHeight ()F
+  method protected,final holdShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFF)V
   method protected,final moment (Ljava/lang/String;FFFF)V
   method protected,final momentsHeard ()Z
+  method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)V
+  method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFFFF)V
   method protected,final tick (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public kill ()V
   method public stop ()V
@@ -5915,6 +6003,8 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam;F)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final shake (Lcom/crystalgraphics/vfx/look/CgVfxParam;)Lcom/crystalgraphics/vfx/camera/CgCameraShake;
   method public,final state ()Lcom/crystalgraphics/vfx/CgVfxEffect$State;
   method public,final values ()Lcom/crystalgraphics/vfx/look/CgVfxValues;
 com/crystalgraphics/vfx/CgVfxEffect$State
@@ -5951,27 +6041,84 @@ com/crystalgraphics/vfx/CgVfxSystem
   method public effects ()Ljava/util/List;
   method public onMoment (Lcom/crystalgraphics/vfx/CgVfxMomentListener;)V
   method public play (Lcom/crystalgraphics/vfx/CgVfxEffect;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public quality ()Lcom/crystalgraphics/settings/CgQuality;
+  method public spawnShare (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)F
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;)V
   method public update (D)V
+  method public,static pace (Lcom/crystalgraphics/render/stage/CgHostEnvironment;)F
+com/crystalgraphics/vfx/camera/CgCameraShake
+  access public,final
+  extends java/lang/Object
+  field public,static,final DECAY F
+  method public hold ()Lcom/crystalgraphics/vfx/camera/CgCameraShake$Held;
+  method public play (DDD)V
+  method public play (DDDDDDF)V
+  method public play (DDDF)V
+  method public toBuilder ()Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public,static active ()Z
+  method public,static builder ()Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public,static trauma ()F
+com/crystalgraphics/vfx/camera/CgCameraShake$Builder
+  access public,final
+  extends java/lang/Object
+  method public arrives (FFLcom/crystalgraphics/easing/CgEasing;)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public atOnce ()Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public build ()Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+  method public falloff (F)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public kick (FF)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public punch (F)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public radii (FF)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public trauma (F)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+  method public tremor (FF)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Builder;
+com/crystalgraphics/vfx/camera/CgCameraShake$Held
+  access public,final
+  extends java/lang/Object
+  method public at (DDD)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Held;
+  method public close ()V
+  method public level (F)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Held;
+  method public scale (F)Lcom/crystalgraphics/vfx/camera/CgCameraShake$Held;
+  method public shake ()Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+com/crystalgraphics/vfx/camera/CgCameraShakes
+  access public,final
+  extends java/lang/Object
+  field public,static,final EXPLOSION Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+  field public,static,final IMPACT Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+  field public,static,final RECOIL Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+  field public,static,final RUMBLE Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+com/crystalgraphics/vfx/effect/air/CgVfxHeatHaze
+  access public,final
+  extends com/crystalgraphics/vfx/CgVfxEffect
+  field public,static,final FADE F
+  field public,static,final INTENSITY Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
+  field public,static,final SLOT_HAZE Ljava/lang/String;
+  method public <init> (Lcom/crystalgraphics/vfx/look/CgVfxLook;DDD)V
+  method public stop ()V
+  method public,static standard ()Lcom/crystalgraphics/vfx/look/CgVfxLook;
 com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   access public,final
   extends com/crystalgraphics/vfx/CgVfxEffect
   field public,static,final BLAST Lcom/crystalgraphics/vfx/element/CgVfxExplosion;
   field public,static,final BLAST_GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_TIME Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final CHARGE_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final CHARGE_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final CHARGE_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final CHARGE_TIME Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final CORE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final CORE_RIM Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final DEBUG Lcom/crystalgraphics/vfx/look/CgVfxLayer;
+  field public,static,final FIRING_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final FLASH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final FLASH_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final HEAD_LENGTH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final HEAD_WIDTH Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final HIT_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final IMPACT_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final IMPACT_RING_PERIOD Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final LAUNCH Lcom/crystalgraphics/vfx/look/CgVfxParam;
@@ -5997,6 +6144,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final NAVIGATION Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final PULSE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final RELEASE_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final RING_SPACING Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final ROOT_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
@@ -6007,12 +6155,15 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final SLOT_ARCS Ljava/lang/String;
   field public,static,final SLOT_BLAST Ljava/lang/String;
   field public,static,final SLOT_BLAST_GLOW Ljava/lang/String;
+  field public,static,final SLOT_BLAST_SHOCK Ljava/lang/String;
   field public,static,final SLOT_BODY_ARCS Ljava/lang/String;
   field public,static,final SLOT_CHARGE Ljava/lang/String;
+  field public,static,final SLOT_CHARGE_HAZE Ljava/lang/String;
   field public,static,final SLOT_DEBRIS Ljava/lang/String;
   field public,static,final SLOT_FLASH Ljava/lang/String;
   field public,static,final SLOT_HEAD Ljava/lang/String;
   field public,static,final SLOT_IMPACT Ljava/lang/String;
+  field public,static,final SLOT_IMPACT_HAZE Ljava/lang/String;
   field public,static,final SLOT_IMPACT_RING Ljava/lang/String;
   field public,static,final SLOT_SHOCK Ljava/lang/String;
   field public,static,final SLOT_SPLASH Ljava/lang/String;
@@ -6065,18 +6216,20 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
 com/crystalgraphics/vfx/look/CgVfxLayer
   access public,final
   extends java/lang/Object
-  field public,static,final PRIORITY_BANDS I
-  field public,static,final PRIORITY_CORE I
-  field public,static,final PRIORITY_LIGHT I
-  field public,static,final PRIORITY_SMOKE I
-  field public,static,final PRIORITY_SURFACE I
-  field public,static,final PRIORITY_VOLUME I
+  field public,static,final ORDER_BANDS I
+  field public,static,final ORDER_CORE I
+  field public,static,final ORDER_DISTORTION I
+  field public,static,final ORDER_LIGHT I
+  field public,static,final ORDER_SMOKE I
+  field public,static,final ORDER_SURFACE I
+  field public,static,final ORDER_VOLUME I
   field public,static,final SLOT_BODY Ljava/lang/String;
   method public colorA ()Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public colorB ()Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  method public from ()Lcom/crystalgraphics/settings/CgQuality;
   method public isVolume ()Z
+  method public order ()I
   method public parameter ()F
-  method public priority ()I
   method public properties ()Ljava/util/function/Consumer;
   method public radius ()F
   method public shader ()Ljava/lang/String;
@@ -6087,8 +6240,9 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Builder
   extends java/lang/Object
   method public build ()Lcom/crystalgraphics/vfx/look/CgVfxLayer;
   method public colors (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/vfx/look/CgVfxParam;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public from (Lcom/crystalgraphics/settings/CgQuality;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public order (I)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public parameter (F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
-  method public priority (I)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public properties (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public radius (F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public slot (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
@@ -6115,6 +6269,7 @@ com/crystalgraphics/vfx/look/CgVfxLook$Builder
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;F)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
+  method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
 com/crystalgraphics/vfx/look/CgVfxLook$Part
   access public,abstract,interface
   extends java/lang/Object
@@ -6123,6 +6278,7 @@ com/crystalgraphics/vfx/look/CgVfxParam
   access public,final
   extends java/lang/Object
   method public isCurve ()Z
+  method public isShake ()Z
   method public name ()Ljava/lang/String;
   method public size ()I
   method public toString ()Ljava/lang/String;
@@ -6134,6 +6290,7 @@ com/crystalgraphics/vfx/look/CgVfxSchema
   method public curve (Ljava/lang/String;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public params ()Ljava/util/List;
   method public scalar (Ljava/lang/String;F)Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  method public shake (Ljava/lang/String;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public width ()I
 com/crystalgraphics/vfx/look/CgVfxValues
   access public,final
@@ -6146,6 +6303,8 @@ com/crystalgraphics/vfx/look/CgVfxValues
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;F)Lcom/crystalgraphics/vfx/look/CgVfxValues;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)Lcom/crystalgraphics/vfx/look/CgVfxValues;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/look/CgVfxValues;
+  method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/look/CgVfxValues;
+  method public shake (Lcom/crystalgraphics/vfx/look/CgVfxParam;)Lcom/crystalgraphics/vfx/camera/CgCameraShake;
 com/crystalgraphics/vfx/particle/CgVfxAir
   access public,final
   extends java/lang/Object
@@ -6168,6 +6327,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public modules ()Ljava/util/List;
   method public name ()Ljava/lang/String;
   method public opacityAt (F)F
+  method public optional ()Z
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public sizeAt (F)F
   method public toBuilder ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -6186,6 +6346,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public module (Lcom/crystalgraphics/vfx/particle/CgVfxModule;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public name (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public opacity (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public optional ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public rate (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public renderer (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public shape (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -6215,6 +6376,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originY ()D
   method public originZ ()D
   method public particles ()Lcom/crystalgraphics/vfx/particle/CgVfxParticleSet;
+  method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
@@ -6435,13 +6597,6 @@ com/crystalgraphics/vfx/sim/CgVfxStream
   method public tick (FFFF)V
   method public via (FFF)V
   method public viaReached ()Z
-com/crystalgraphics/world/CgCameraShake
-  access public,final
-  extends java/lang/Object
-  field public,static,final MAX I
-  method public,static active ()Z
-  method public,static kick (FF)V
-  method public,static shake (DDDFFF)V
 com/crystalgraphics/world/CgEntityAttachments
   access public,final
   extends java/lang/Object

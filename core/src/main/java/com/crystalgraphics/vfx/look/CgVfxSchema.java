@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -14,6 +15,7 @@ import java.util.List;
  * static final CgVfxSchema SCHEMA = new CgVfxSchema();
  * public static final CgVfxParam SPEED = SCHEMA.scalar("speed", 40f);
  * public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.2f, 0.45f, 1.4f, 1f);
+ * public static final CgVfxParam BLAST_SHAKE = SCHEMA.shake("blastShake", CgCameraShakes.EXPLOSION);
  * }</pre>
  *
  * <ul>
@@ -25,7 +27,8 @@ public final class CgVfxSchema {
 
     private final List<CgVfxParam> params = new ArrayList<>();
     private float[] defaults = new float[0];
-    private final List<CgKeyframes> curves = new ArrayList<>();
+    // Curves and shakes, by a parameter's offset.
+    private final List<Object> objects = new ArrayList<>();
 
     public CgVfxParam scalar(String name, float value) {
         CgVfxParam param = declare(name, 1);
@@ -45,11 +48,12 @@ public final class CgVfxSchema {
 
     /** A value over time, read with {@code CgVfxValues.curve}. */
     public CgVfxParam curve(String name, CgKeyframes value) {
-        unique(name);
-        CgVfxParam param = new CgVfxParam(this, name, curves.size(), 0);
-        curves.add(value);
-        params.add(param);
-        return param;
+        return object(name, value, 0);
+    }
+
+    /** A camera shake the effect plays, read with {@code CgVfxValues.shake}: how a look changes what its moments feel like. */
+    public CgVfxParam shake(String name, CgCameraShake value) {
+        return object(name, value, -1);
     }
 
     public List<CgVfxParam> params() {
@@ -65,14 +69,22 @@ public final class CgVfxSchema {
         return defaults.clone();
     }
 
-    CgKeyframes[] defaultCurves() {
-        return curves.toArray(new CgKeyframes[0]);
+    Object[] defaultObjects() {
+        return objects.toArray();
     }
 
     private void unique(String name) {
         for (CgVfxParam existing : params) {
             if (existing.name.equals(name)) throw new IllegalArgumentException("Parameter '" + name + "' is already declared");
         }
+    }
+
+    private CgVfxParam object(String name, Object value, int size) {
+        unique(name);
+        CgVfxParam param = new CgVfxParam(this, name, objects.size(), size);
+        objects.add(value);
+        params.add(param);
+        return param;
     }
 
     private CgVfxParam declare(String name, int size) {
