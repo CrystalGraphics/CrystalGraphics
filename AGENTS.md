@@ -360,8 +360,8 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
-| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured via one `glBlitFramebuffer` from MC's main render target at the start of each world stage whose materials read it: an opaque material sees the host's world, a transparent one the world renderer's opaque draws as well. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
-| `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The scene's colour, taken the same way and at the same moments as `cg_DepthBuffer`, only for a stage whose drawn materials read it: in a transparent pass the host's world and the world renderer's opaque draws. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
+| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | The target's depth as it stands at the draw, in its own depth format: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/AGENTS.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+| `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
 
 Convenience macros over the frame block:
 
@@ -770,10 +770,9 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
-- `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
-  with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` a snapshot of its own (again only
-  for a reader, holding the opaque draws) and the transparent pass. Every world pass binds the snapshot as a
-  pass texture.
+- `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
+  `WORLD_TRANSPARENT` the transparent pass. Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
+  for a reader only where one draws.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
