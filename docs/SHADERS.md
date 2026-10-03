@@ -966,8 +966,9 @@ particles.kernel("Simulate").cpu(d -> {                     // every keyword set
 
 ### Ops: `CgGpuOps`
 
-What every GPU-driven consumer would otherwise write: dispatched into the caller's compute pass, with scratch as graph
-transients, the same answer on every tier.
+What every GPU-driven consumer would otherwise write: dispatched into the caller's compute pass, the same answer on
+every tier. Scratch is graph transients from the pass's recording (`CgRecording.scratch`), the same handles each frame
+a recording is reused, so a stage's ops make none after its first frame.
 
 ```java
 CgComputePass pass = recording.compute("particles");
