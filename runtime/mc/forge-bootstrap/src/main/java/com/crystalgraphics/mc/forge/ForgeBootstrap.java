@@ -19,7 +19,7 @@ import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
  * each forwards to the variant. Modern Forge never calls them, and a parameter type it lacks is harmless
  * while nothing links it.</p>
  */
-@Mod(value = ForgeBootstrap.MODID, modid = ForgeBootstrap.MODID)
+@Mod(value = ForgeBootstrap.MODID, modid = ForgeBootstrap.MODID, acceptableRemoteVersions = "*")
 public final class ForgeBootstrap {
 
     public static final String MODID = "crystalgraphics";

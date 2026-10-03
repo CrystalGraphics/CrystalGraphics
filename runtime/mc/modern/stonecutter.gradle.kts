@@ -16,6 +16,11 @@ stonecutter parameters {
     replacements.string(current.parsed >= "1.21.9") {
         replace("getWindow().getWindow()", "getWindow().handle()")
     }
+    // 1.21.9 (authlib 7): GameProfile is a record.
+    replacements.string(current.parsed >= "1.21.9") {
+        replace("getGameProfile().getId()", "getGameProfile().id()")
+        replace("getGameProfile().getName()", "getGameProfile().name()")
+    }
     // 1.21.11: ResourceLocation became Identifier, package unchanged.
     replacements.string(current.parsed >= "1.21.11") {
         replace("ResourceLocation", "Identifier")

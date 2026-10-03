@@ -1,12 +1,45 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgNetworkChannel;
+import java.util.function.BiConsumer;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
+//? if >=1.21.7 {
+/*import net.neoforged.neoforge.client.network.ClientPacketDistributor;
+import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
+*///?}
+//? if >=1.20.5 {
+/*import io.netty.buffer.ByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
+import net.minecraft.network.codec.StreamCodec;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
+*///?} elif >=1.20.4 {
+/*import net.minecraft.network.FriendlyByteBuf;
+import net.neoforged.neoforge.network.event.RegisterPayloadHandlerEvent;
+import net.neoforged.neoforge.network.handling.PlayPayloadContext;
+*///?} else {
+import net.minecraft.network.FriendlyByteBuf;
+import net.neoforged.neoforge.network.NetworkEvent;
+import net.neoforged.neoforge.network.NetworkRegistry;
+import net.neoforged.neoforge.network.simple.SimpleChannel;
+//?}
 import com.mojang.logging.LogUtils;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
@@ -31,8 +64,7 @@ import net.neoforged.neoforge.event.GameShuttingDownEvent;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 //? if >=1.21.4 {
-/*import com.crystalgraphics.mc.modern.platform.ResourceIds;
-import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+/*import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 *///?} else {
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 //?}
@@ -50,7 +82,7 @@ import java.util.concurrent.Executor;
 import static com.crystalgraphics.mc.modern.platform.CrystalGraphics.MODID;
 
 /**
- * Everything NeoForge — the mod entry point and its {@link Events} subscriptions.
+ * Everything NeoForge — the mod entry point, its {@link Network} transport and its {@link Events} subscriptions.
  *
  * <p>Registration only: which event, and which stage of it. What the engine then does is
  * {@code LifecycleModern}'s, shared with Forge and Fabric.</p>
@@ -66,6 +98,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         CgPlatform.register(PlatformServiceModern.getInstance());
+        NetworkModern.install(Network.get());
         Events.register((IEventBus) context);
     }
 
@@ -83,9 +116,48 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             NeoForge.EVENT_BUS.addListener(Events::onFrameEnd);
             NeoForge.EVENT_BUS.addListener(Events::onGameShuttingDown);
 
+            // The connection lifecycle's server half: a dedicated server opens connections too.
+            //? if >=1.20.4 {
+            /*modBus.addListener(Network::register);
+            *///?} else {
+            Network.register();
+            //?}
+            NeoForge.EVENT_BUS.addListener(Events::onServerStarting);
+            NeoForge.EVENT_BUS.addListener(Events::onServerStopping);
+            NeoForge.EVENT_BUS.addListener(Events::onServerTick);
+            NeoForge.EVENT_BUS.addListener(Events::onPlayerJoin);
+            NeoForge.EVENT_BUS.addListener(Events::onPlayerLeave);
+
             // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
             // Events would resolve it when a dedicated server links this class.
             if (FmlSide.isClient(FMLLoader.class)) ModBus.register(modBus);
+        }
+
+        private static void onServerStarting(ServerAboutToStartEvent event) {
+            NetworkModern.serverStarting(event.getServer());
+        }
+
+        private static void onServerStopping(ServerStoppingEvent event) {
+            NetworkModern.serverStopping();
+        }
+
+        // 1.20.5 split the tick events by phase into classes of their own.
+        //? if >=1.20.5 {
+        /*private static void onServerTick(ServerTickEvent.Post event) {
+            NetworkModern.serverTick();
+        }
+        *///?} else {
+        private static void onServerTick(TickEvent.ServerTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) NetworkModern.serverTick();
+        }
+        //?}
+
+        private static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+            if (event.getEntity() instanceof ServerPlayer player) NetworkModern.playerJoined(player);
+        }
+
+        private static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+            if (event.getEntity() instanceof ServerPlayer player) NetworkModern.playerLeft(player);
         }
 
         // -- MOD bus ----------------------------------------------------------------
@@ -103,6 +175,13 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
                 // The world events, once a client tick and as entities join and leave the client level.
                 NeoForge.EVENT_BUS.addListener(ModBus::onClientTick);
+                NeoForge.EVENT_BUS.addListener(ModBus::onLoggedIn);
+                NeoForge.EVENT_BUS.addListener(ModBus::onLoggedOut);
+                // NeoForge 21.7 refuses a clientbound payload with no client-side handler, and the common
+                // registrar's no longer counts as one.
+                //? if >=1.21.7 {
+                /*modBus.addListener(ModBus::onRegisterClientPayloads);
+                *///?}
                 NeoForge.EVENT_BUS.addListener(ModBus::onEntityJoin);
                 NeoForge.EVENT_BUS.addListener(ModBus::onEntityLeave);
                 // ExplosionHook and LevelEventHook, the node mixins that report them.
@@ -136,6 +215,20 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             private static void onEntityLeave(EntityLeaveLevelEvent event) {
                 if (event.getLevel().isClientSide()) LifecycleModern.entityLeft(event.getEntity());
             }
+
+            private static void onLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
+                NetworkModern.clientConnected();
+            }
+
+            private static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+                NetworkModern.clientDisconnected();
+            }
+
+            //? if >=1.21.7 {
+            /*private static void onRegisterClientPayloads(RegisterClientPayloadHandlersEvent event) {
+                event.register(Network.Frame.TYPE, Network::receive);
+            }
+            *///?}
 
             // TickEvent's client tick at END, ClientTickEvent.Post from NeoForge 20.6.
             //? if >=1.20.6 {
@@ -254,6 +347,157 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
 
         private static void onGameShuttingDown(GameShuttingDownEvent event) {
             LifecycleModern.shutdown();
+        }
+    }
+
+    // -- Network ----------------------------------------------------------------
+
+    /**
+     * The NeoForge transport: bytes in, bytes out. Framing and routing are {@code net.wire}'s.
+     *
+     * <p>Three payload APIs: 20.2-20.3's Forge-shaped {@code SimpleChannel}, 1.20.4's registrar keyed on
+     * an id, and 1.20.5's typed payloads with a {@code StreamCodec}. NeoForge splits an oversized payload
+     * itself on all three, so one frame may exceed vanilla's 32 KiB serverbound cap.</p>
+     */
+    public static final class Network implements CgNetworkChannel {
+
+        private static final String VERSION = "1";
+        private static final ResourceLocation ID = ResourceIds.of(MODID, "wire");
+
+        /** Under the payload split threshold, so one frame stays one packet. */
+        private static final int MAX_FRAME_BYTES = 900_000;
+
+        private static final Network INSTANCE = new Network();
+
+        private volatile BiConsumer<Object, byte[]> inbound = (sender, frame) -> { };
+
+        private Network() {}
+
+        public static Network get() {
+            return INSTANCE;
+        }
+
+        //? if >=1.20.5 {
+        /*public record Frame(byte[] bytes) implements CustomPacketPayload {
+
+            static final CustomPacketPayload.Type<Frame> TYPE = new CustomPacketPayload.Type<>(ID);
+            static final StreamCodec<ByteBuf, Frame> CODEC = ByteBufCodecs.BYTE_ARRAY.map(Frame::new, Frame::bytes);
+
+            @Override
+            public CustomPacketPayload.Type<Frame> type() {
+                return TYPE;
+            }
+        }
+
+        public static void register(RegisterPayloadHandlersEvent event) {
+            event.registrar(VERSION).optional().playBidirectional(Frame.TYPE, Frame.CODEC, Network::receive);
+        }
+
+        private static void receive(Frame frame, IPayloadContext context) {
+            context.enqueueWork(() -> {
+                ServerPlayer sender = context.player() instanceof ServerPlayer p ? p : null;
+                INSTANCE.inbound.accept(sender, frame.bytes());
+            });
+        }
+        *///?} elif >=1.20.4 {
+        /*// One payload carrying a frame.
+        public record Frame(byte[] bytes) implements CustomPacketPayload {
+
+            public Frame(FriendlyByteBuf buf) {
+                this(buf.readByteArray());
+            }
+
+            @Override
+            public void write(FriendlyByteBuf buf) {
+                buf.writeByteArray(bytes);
+            }
+
+            @Override
+            public ResourceLocation id() {
+                return ID;
+            }
+        }
+
+        // Wired to RegisterPayloadHandlerEvent on the mod bus.
+        public static void register(RegisterPayloadHandlerEvent event) {
+            event.registrar(MODID)
+                    .versioned(VERSION)
+                    .optional()
+                    .play(ID, Frame::new, handler -> handler
+                            .client(Network::receive)
+                            .server(Network::receive));
+        }
+
+        private static void receive(Frame frame, PlayPayloadContext context) {
+            // enqueueWork: the handler runs on the network thread and inbound is the game thread's.
+            context.workHandler().submitAsync(() -> {
+                ServerPlayer sender = context.player().filter(p -> p instanceof ServerPlayer)
+                        .map(p -> (ServerPlayer) p).orElse(null);
+                INSTANCE.inbound.accept(sender, frame.bytes());
+            });
+        }
+        *///?} else {
+        private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
+                .named(ID)
+                .networkProtocolVersion(() -> VERSION)
+                .clientAcceptedVersions(NetworkRegistry.acceptMissingOr(VERSION))
+                .serverAcceptedVersions(NetworkRegistry.acceptMissingOr(VERSION))
+                .simpleChannel();
+
+        /** Called once from the entry point, before anything can send: 20.2 has no registration event. */
+        public static void register() {
+            CHANNEL.registerMessage(0, byte[].class,
+                    (frame, buf) -> buf.writeByteArray(frame),
+                    FriendlyByteBuf::readByteArray,
+                    Network::receive);
+        }
+
+        private static void receive(byte[] frame, NetworkEvent.Context ctx) {
+            // enqueueWork: the handler runs on the network thread, and inbound is the game thread's.
+            ctx.enqueueWork(() -> INSTANCE.inbound.accept(ctx.getSender(), frame));
+            ctx.setPacketHandled(true);
+        }
+        //?}
+
+        @Override
+        public int maxFrameBytes() {
+            return MAX_FRAME_BYTES;
+        }
+
+        @Override
+        public void sendToServer(byte[] frame) {
+            // NeoForge 21.7 moved the client's send to a client-only class.
+            //? if >=1.21.7 {
+            /*ClientPacketDistributor.sendToServer(new Frame(frame));
+            *///?} elif >=1.20.5 {
+            /*PacketDistributor.sendToServer(new Frame(frame));
+            *///?} elif >=1.20.4 {
+            /*PacketDistributor.SERVER.noArg().send(new Frame(frame));
+            *///?} else {
+            CHANNEL.sendToServer(frame);
+            //?}
+        }
+
+        @Override
+        public void sendToPlayer(Object player, byte[] frame) {
+            if (!(player instanceof ServerPlayer serverPlayer)) return;
+            //? if >=1.20.5 {
+            /*PacketDistributor.sendToPlayer(serverPlayer, new Frame(frame));
+            *///?} elif >=1.20.4 {
+            /*PacketDistributor.PLAYER.with(serverPlayer).send(new Frame(frame));
+            *///?} else {
+            CHANNEL.send(PacketDistributor.PLAYER.with(() -> serverPlayer), frame);
+            //?}
+        }
+
+        @Override
+        public void setInboundHandler(BiConsumer<Object, byte[]> handler) {
+            inbound = handler == null ? (sender, frame) -> { } : handler;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
         }
     }
 }
