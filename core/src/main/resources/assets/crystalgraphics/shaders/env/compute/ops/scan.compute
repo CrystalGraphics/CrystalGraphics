@@ -1,0 +1,147 @@
+// CgGpuOps' reduce, scan and compact (gpu-compute C7), in shapes every tier runs. Values are folded in blocks of
+// sixteen, a level at a time: element j of level k+1 folds elements 16j to 16j+15 of level k, left to right, so every
+// tier and the Java bodies combine floats in the same order. A scan folds each block's prefix from the scanned block
+// sums of the level above. A count is read from COUNT; level k holds ceil(count / 16^k) elements.
+#pragma kernel ReduceStep map
+#pragma kernel ReduceLast scatter
+#pragma kernel ScanBlock map
+#pragma kernel CompactIndices scatter
+#pragma kernel CompactValues scatter
+#pragma kernel CompactCount scatter
+#pragma cg_feature FLOAT
+#pragma cg_feature INT
+#pragma cg_feature MIN
+#pragma cg_feature MAX
+#pragma cg_feature FLAGS
+#pragma cg_feature INCLUSIVE
+
+Properties {
+    _CountAt   ("The count's word in COUNT, -1 for none", int) = -1
+    _Capacity  ("Elements of level 0",                    int) = 0
+    _Level     ("The level SRC holds",                    int) = 0
+    _HasPrefix ("Whether PREFIX holds block prefixes",    int) = 0
+    _At        ("Word the result lands at",               int) = 0
+    _Stride    ("Words between elements of SRC",          int) = 1
+    _Offset    ("The element's word in its record",       int) = 0
+}
+
+Buffers {
+    COUNT  ("The count",                      uint, readonly)
+    SRC    ("Values at this level, or flags", uint, readonly)
+    PREFIX ("Each block's prefix",            uint, readonly)
+    VALUES ("What compact keeps",             uint, readonly)
+    DST    ("The result",                     uint, readwrite)
+}
+
+// A value's bits as the type the keywords name, and the fold: a sum, a minimum or a maximum.
+#if defined(FLOAT)
+#define VALUE float
+#define LOAD(b) uintBitsToFloat(b)
+#define BITS(v) floatBitsToUint(v)
+#define LOWEST uintBitsToFloat(0xFF800000u)
+#define HIGHEST uintBitsToFloat(0x7F800000u)
+#elif defined(INT)
+#define VALUE int
+#define LOAD(b) int(b)
+#define BITS(v) uint(v)
+#define LOWEST (-2147483647 - 1)
+#define HIGHEST 2147483647
+#else
+#define VALUE uint
+#define LOAD(b) (b)
+#define BITS(v) (v)
+#define LOWEST 0u
+#define HIGHEST 0xFFFFFFFFu
+#endif
+
+#if defined(MIN)
+#define IDENTITY HIGHEST
+#define COMBINE(a, b) min(a, b)
+#elif defined(MAX)
+#define IDENTITY LOWEST
+#define COMBINE(a, b) max(a, b)
+#else
+#define IDENTITY VALUE(0)
+#define COMBINE(a, b) ((a) + (b))
+#endif
+
+#ifdef INCLUSIVE
+#define SCAN_END(i) ((i) + 1u)
+#else
+#define SCAN_END(i) (i)
+#endif
+
+// The count: the capacity itself when fixed (_CountAt below 0), else the word a kernel wrote, at most the capacity.
+uint count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+// Elements at level k: ceil(n / 16^k).
+uint levelCount(int level) {
+    int shift = 4 * level;
+    return (count() + (1u << shift) - 1u) >> shift;
+}
+
+// Element e of SRC: a word of a record at level 0, a flag as 1 or 0.
+VALUE element(uint e) {
+    uint bits = SRC(e * uint(_Stride) + uint(_Offset));
+#ifdef FLAGS
+    return VALUE(bits != 0u ? 1u : 0u);
+#else
+    return LOAD(bits);
+#endif
+}
+
+VALUE fold(uint first, uint end) {
+    VALUE acc = IDENTITY;
+    for (uint k = 0u; k < 16u; k++) {
+        uint e = first + k;
+        if (e < end) acc = COMBINE(acc, element(e));
+    }
+    return acc;
+}
+
+// Element j of the level above: the fold of block j of this one.
+void ReduceStep() {
+    uint j = uint(CG_ELEMENT);
+    if (j >= levelCount(_Level + 1)) return;
+    DST_WRITE(BITS(fold(j * 16u, levelCount(_Level))));
+}
+
+// The whole of a level of at most sixteen, at word _At.
+void ReduceLast() {
+    if (CG_ELEMENT != 0) return;
+    DST_STORE(_At, BITS(fold(0u, levelCount(_Level))));
+}
+
+// Element i of the scan: its block's prefix, then the elements of the block before it (and itself, inclusive).
+void ScanBlock() {
+    uint i = uint(CG_ELEMENT);
+    if (i >= levelCount(_Level)) return;
+    uint first = i & ~15u;
+    VALUE acc = _HasPrefix != 0 ? LOAD(PREFIX(i >> 4u)) : IDENTITY;
+    for (uint k = 0u; k < 16u; k++) {
+        uint e = first + k;
+        if (e < SCAN_END(i)) acc = COMBINE(acc, element(e));
+    }
+    DST_WRITE(BITS(acc));
+}
+
+// PREFIX is the exclusive scan of the flags: where each kept element lands.
+void CompactIndices() {
+    uint i = uint(CG_ELEMENT);
+    if (i < count() && SRC(i) != 0u) DST_STORE(PREFIX(i), i);
+}
+
+void CompactValues() {
+    uint i = uint(CG_ELEMENT);
+    if (i < count() && SRC(i) != 0u) DST_STORE(PREFIX(i), VALUES(i));
+}
+
+// How many were kept, at word _At.
+void CompactCount() {
+    if (CG_ELEMENT != 0) return;
+    uint n = count();
+    uint kept = n == 0u ? 0u : PREFIX(n - 1u) + (SRC(n - 1u) != 0u ? 1u : 0u);
+    DST_STORE(_At, kept);
+}

@@ -454,6 +454,11 @@ public final class CgLoweredKernel {
         texture(samplers, CgGL.GL_TEXTURE_2D, t.texture());
         resolve.set("_cg_texels", samplers);
         resolve.set("_cg_width", t.width());
+        if (floats) {
+            CgLoweredResources.bindTextureBuffer(samplers + 1, HELPER_SLOT, CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+            resolve.set("_cg_src", samplers + 1);
+            resolve.set("_cg_first", (int) (b.offset(i) / buffer.stride()) * k);
+        }
         CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, scratch, 0, bytes);
         CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
         CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);

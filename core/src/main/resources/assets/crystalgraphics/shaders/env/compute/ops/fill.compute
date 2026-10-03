@@ -1,0 +1,44 @@
+// CgGpuOps' fills, sequences, copies and dispatch arguments (gpu-compute C7). Past the count nothing is written.
+#pragma kernel Fill map
+#pragma kernel Iota map
+#pragma kernel Copy map
+#pragma kernel DispatchArgs 4 scatter
+
+Properties {
+    _CountAt  ("The count's word in COUNT, -1 for none", int) = -1
+    _Capacity ("Elements dispatched",                    int) = 0
+    _Value    ("Fill value, or iota's first",            int) = 0
+    _Step     ("Iota's step",                            int) = 1
+    _At       ("The arguments' first word",              int) = 0
+    _Group    ("Elements a work group takes",            int) = 64
+}
+
+Buffers {
+    COUNT ("The count",   uint, readonly)
+    SRC   ("Source",      uint, readonly)
+    DST   ("Destination", uint, readwrite)
+}
+
+// The count: the capacity itself when fixed (_CountAt below 0), else the word a kernel wrote, at most the capacity.
+uint count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+void Fill() {
+    if (uint(CG_ELEMENT) < count()) DST_WRITE(uint(_Value));
+}
+
+void Iota() {
+    if (uint(CG_ELEMENT) < count()) DST_WRITE(uint(_Value) + uint(CG_ELEMENT) * uint(_Step));
+}
+
+void Copy() {
+    if (uint(CG_ELEMENT) < count()) DST_WRITE(SRC(CG_ELEMENT));
+}
+
+// What dispatchIndirect reads: the groups the count needs, then 1, 1.
+void DispatchArgs() {
+    if (CG_ELEMENT > 2) return;
+    uint groups = (count() + uint(_Group) - 1u) / uint(_Group);
+    DST_STORE(_At + CG_ELEMENT, CG_ELEMENT == 0 ? groups : 1u);
+}
