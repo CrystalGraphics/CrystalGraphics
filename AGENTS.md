@@ -1292,6 +1292,16 @@ reload, or GL state shared with Minecraft and other mods. Each host's classes: i
 `CgGL.fromHost()` and close it with `toHost()`, and a host's own bracket around them nests.
 Nothing on GL; the platform guide's *Host sections* has the rules.
 
+## Connections — `CgNetwork`
+
+Every host installs one channel, `crystalgraphics:wire` (`crystalgraphics` on 1.7.10 and legacy Forge), and
+forwards join, leave, both ticks, the client's connect and disconnect, and server stopping into
+`com.crystalgraphics.net.CgNetwork`, which holds one connection per player by profile UUID and one to the server.
+The forwards are `NetworkModern` (each loader's entry class), `NetworkLegacy` and `Network1710`, registered at init
+on both sides. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
+talks over a connection contributes to `CgProtocols` at init and asks `CgNetwork.forPlayer`/`client`.
+CrystalGUI's `docs/CGUI_NETWORKING_PRIMER.md` is the guide.
+
 ## 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading

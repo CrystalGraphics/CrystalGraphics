@@ -21,8 +21,8 @@ import javax.annotation.Nullable;
  * events into a few calls and gets the rest for free:</p>
  *
  * <pre>{@code
- * connections.open(playerUuid, frame -> sendToThatPlayer(frame), player);  // they joined
- * connections.receive(playerUuid, incomingFrame);                          // a frame arrived
+ * connections.open(playerUuid, peer, frame -> sendToThatPlayer(frame));    // they joined
+ * connections.route(playerUuid, incomingFrame);                            // a frame arrived
  * connections.tick();                                                      // every server tick
  * connections.close(playerUuid, "logged out");                             // they left
  * }</pre>
@@ -48,7 +48,6 @@ import javax.annotation.Nullable;
  */
 public final class CgConnections {
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
-
 
     /** Where a frame goes. Supplied per peer, because only the host knows how to reach one. */
     @FunctionalInterface
