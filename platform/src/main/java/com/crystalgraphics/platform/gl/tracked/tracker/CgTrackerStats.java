@@ -7,6 +7,9 @@ package com.crystalgraphics.platform.gl.tracked.tracker;
 public final class CgTrackerStats {
 
     public long draws;
+    public long dispatches;
+    /** Compute passes: consecutive dispatches share one. */
+    public long computePasses;
     public long passes;
     /** Passes ended by a transfer rather than by a change of target, each resumed with {@code LOAD}. */
     public long passBreaks;
@@ -19,7 +22,7 @@ public final class CgTrackerStats {
 
     @Override
     public String toString() {
-        return "draws=" + draws + " passes=" + passes + " breaks=" + passBreaks + " loadClears=" + clearsAsLoadOps
+        return "draws=" + draws + " dispatches=" + dispatches + " computePasses=" + computePasses + " passes=" + passes + " breaks=" + passBreaks + " loadClears=" + clearsAsLoadOps
                 + " passClears=" + clearsInPass + " pipelineBinds=" + pipelineBinds + " misses=" + pipelineMisses
                 + " renames=" + renames;
     }

@@ -10,7 +10,10 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -30,6 +33,10 @@ import java.util.Map;
  * store.upload();                           // once, before the first raster pass
  * pipeline.bind();
  * store.draw(mesh, pipeline, instances);    // in the pass
+ *
+ * // An indirect draw: its command is written on the GPU from what range() answers, before the pass
+ * store.range(mesh, submesh, first, count, range);
+ * store.drawIndirect(mesh, pipeline, submesh, args, offset);
  * }</pre>
  *
  * <ul>
@@ -37,16 +44,17 @@ import java.util.Map;
  *       last frame that drew it has retired, as is a released mesh's.</li>
  *   <li>The bytes are copied out of the mesh when it is placed, so an edit afterwards waits for the next frame.</li>
  *   <li>An upload is a copy from the frame ring into the slab: on Vulkan a transfer before the pass, never inside it.</li>
- *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: its bytes go into the frame ring each frame it is placed, and
- *       it draws from there with base-vertex calls. It holds nothing between frames, so it needs no release, and is
- *       forgotten after a frame it is not drawn in. {@code -Dcrystalgraphics.mesh.frameRing=false} places it in a
- *       slab as any other.</li>
+ *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: each frame it is placed, its bytes are written straight into
+ *       a page of the frame ring ({@link CgMeshRing}), and it draws from there with base-vertex calls. It holds
+ *       nothing between frames, so it needs no release, and is forgotten after a frame it is not drawn in.
+ *       {@code -Dcrystalgraphics.mesh.frameRing=false} places it in a slab as any other.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
 public final class CgMeshStore {
 
     private static final CgMeshStore STORE = new CgMeshStore();
+    private static final Logger LOGGER = LogManager.getLogger("CgMeshStore");
     private static final int STAGING_START = 1 << 20;
 
     private static final int UPLOADS = CgTrace.name("mesh.uploads");
@@ -54,11 +62,15 @@ public final class CgMeshStore {
     private static final int PLACED = CgTrace.name("mesh.placed");
     private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
     private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
+    private static final int DRAWN_INDIRECT = CgTrace.name("mesh.indirect-draws");
     private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
+    private static final int EDITED_EVERY_FRAME = CgTrace.name("mesh.edited-every-frame");
+
+    /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
+    private static final int EVERY_FRAME = 60;
 
     /** {@code -Dcrystalgraphics.mesh.frameRing=false}: FRAME meshes take slab ranges, as before the ring path. */
     private static final boolean FRAME_RING = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.frameRing"));
-    private static final int RING_START = 256 << 10;
 
     private long drawing, drawn;
 
@@ -79,13 +91,16 @@ public final class CgMeshStore {
         int baseVertex, firstIndex, vertexCount, indexCount, mode;
         int revision, releases;
         long lastUse;
+        /** The last frame its bytes changed, how many frames in a row they have, and whether that was reported. */
+        long editedFrame;
+        int editStreak;
+        boolean editReported;
         /** Placed in this upload batch, its bytes not yet copied: nothing may be copied out of it yet. */
         boolean pending;
-        /** A FRAME mesh on the ring: its offsets are this frame's, and {@link #placedFrame} says which frame. */
+        /** A FRAME mesh on the ring: its page and offsets are this frame's, and {@link #placedFrame} says which frame. */
         boolean ring;
         long placedFrame;
-        /** Where its vertices and indices sit in {@link #ringCpu} until the upload. */
-        int cpuVertexAt, cpuIndexAt;
+        int ringPage;
         int[] submeshes = new int[4];
         int submeshCount;
     }
@@ -104,16 +119,9 @@ public final class CgMeshStore {
     private CgStreamBuffer staging;
 
     /** Where FRAME meshes' bytes go, valid for the frame that wrote them. */
-    private CgStreamBuffer ring;
+    private CgMeshRing ring;
     /** Ring placements, forgotten when a frame passes without them. */
     private final ArrayList<Placement> ringLive = new ArrayList<>();
-    /**
-     * Ring placements staged this frame. Their bytes land in one region at the upload: the ring may replace its
-     * storage when it grows, which would lose a region written earlier in the frame.
-     */
-    private final ArrayList<Placement> ringBatch = new ArrayList<>();
-    private ByteBuffer ringCpu = ByteBuffer.allocate(64 << 10).order(ByteOrder.nativeOrder());
-    private int ringPad;
 
     private final CgMeshChanges changes = new CgMeshChanges();
     private final int[] nodes = new int[2], submesh = new int[4];
@@ -154,6 +162,7 @@ public final class CgMeshStore {
                 mesh.changesSince(0, changes);
             }
             Placement next = allocate(mesh);
+            countEdit(p, next);
             if (p == null || changes.all || p.pending || p.slab == null) {
                 stage(next, 0, next.vertexCount, 0, next.indexCount);
                 mesh.dropCpuCopy();   // a GPU_ONLY mesh's bytes are in the staging now
@@ -169,7 +178,25 @@ public final class CgMeshStore {
         CgTrace.add(CgChannels.GL, PLACED, 1);
     }
 
-    /** Stages a FRAME mesh's bytes for this frame's ring region, once a frame however often it draws. */
+    /**
+     * A mesh that takes a new range every frame pays for one, and for copying what it kept, every frame: counted, and
+     * reported once, since {@link CgMesh.Usage#FRAME} writes it into the frame ring instead.
+     */
+    private void countEdit(Placement previous, Placement next) {
+        next.editedFrame = frame;
+        next.editStreak = previous != null && previous.editedFrame == frame - 1 ? previous.editStreak + 1 : 1;
+        next.editReported = previous != null && previous.editReported;
+        if (next.editStreak < EVERY_FRAME || next.mesh.usage() == CgMesh.Usage.FRAME) return;
+        CgTrace.add(CgChannels.GL, EDITED_EVERY_FRAME, 1);
+        if (next.editReported) return;
+        next.editReported = true;
+        Throwable site = next.mesh.editSite();
+        LOGGER.warn("[cg-mesh] {} was edited in each of the last {} frames: give it Usage.FRAME, which writes it into "
+                + "the frame ring with no range of its own.{}", next.mesh, EVERY_FRAME,
+                site == null ? " -Dcrystalgraphics.mesh.editStacks=true names where." : " The last edit:", site);
+    }
+
+    /** Writes a FRAME mesh's bytes into the ring, once a frame however often it draws. */
     private void placeOnRing(CgMesh mesh) {
         Placement p = placements.get(mesh);
         if (p != null && p.placedFrame == frame) return;
@@ -184,7 +211,7 @@ public final class CgMeshStore {
         }
         p.placedFrame = frame;
         p.lastUse = frame;
-        if (ring == null) ring = CgStreamBuffer.create(CgGL.GL_ARRAY_BUFFER, RING_START);
+        if (ring == null) ring = new CgMeshRing(pools.values());
         pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
         int stride = mesh.format().getStride();
         synchronized (mesh) {
@@ -193,24 +220,20 @@ public final class CgMeshStore {
             p.indexCount = mesh.indexCount();
             describe(p, mesh);
             int vertexBytes = stride > 0 ? p.vertexCount * stride : 0, indexBytes = p.indexCount * 4;
-            ringCpu = room(ringCpu, vertexBytes + indexBytes);
-            p.cpuVertexAt = ringCpu.position();
-            if (vertexBytes > 0) mesh.readVertices(0, p.vertexCount, ringCpu);
-            p.cpuIndexAt = ringCpu.position();
-            if (indexBytes > 0) mesh.readIndices(0, p.indexCount, ringCpu);
-            ringPad += Math.max(stride - 1, 0) + 3;
+            p.ringPage = -1;
+            p.baseVertex = p.firstIndex = 0;
+            if (vertexBytes + indexBytes > 0) {
+                ByteBuffer out = ring.reserve(vertexBytes, stride, indexBytes);
+                if (vertexBytes > 0) mesh.readVertices(0, p.vertexCount, out);
+                out.position(ring.indexPosition);
+                if (indexBytes > 0) mesh.readIndices(0, p.indexCount, out);
+                p.ringPage = ring.page;
+                p.baseVertex = ring.baseVertex;
+                p.firstIndex = ring.firstIndex;
+                CgTrace.add(CgChannels.GL, RING_BYTES, vertexBytes + indexBytes);
+            }
         }
-        ringBatch.add(p);
         CgTrace.add(CgChannels.GL, PLACED, 1);
-    }
-
-    private static ByteBuffer room(ByteBuffer buffer, int bytes) {
-        if (buffer.remaining() >= bytes) return buffer;
-        ByteBuffer grown = ByteBuffer.allocate(Math.max(buffer.capacity() * 2, buffer.position() + bytes))
-                .order(ByteOrder.nativeOrder());
-        buffer.flip();
-        grown.put(buffer);
-        return grown;
     }
 
     /** A placement for {@code mesh} as it is now, its ranges allocated. Under the mesh's lock. */
@@ -322,7 +345,11 @@ public final class CgMeshStore {
      * what changed meshes kept from their old ranges. Before the frame's first raster pass.
      */
     public void upload() {
-        if (!ringBatch.isEmpty()) uploadRing();
+        if (ring != null) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "mesh.commitRing")) {
+                ring.commit();
+            }
+        }
         if (copyCount == 0) {
             batch.clear();
             return;
@@ -359,48 +386,6 @@ public final class CgMeshStore {
         batch.clear();
     }
 
-    /**
-     * This frame's FRAME bytes into one ring region: each mesh's vertices at an offset that is a multiple of its
-     * stride, so a base-vertex draw reaches them, and its indices at a multiple of four.
-     */
-    private void uploadRing() {
-        int staged = ringCpu.position();
-        if (staged == 0) {
-            for (int i = 0; i < ringBatch.size(); i++) ringBatch.get(i).baseVertex = ringBatch.get(i).firstIndex = 0;
-            ringBatch.clear();
-            ringPad = 0;
-            return;
-        }
-        ByteBuffer out = ring.map(staged + ringPad);
-        int base = ring.mappedOffset(), at = 0;
-        byte[] bytes = ringCpu.array();
-        for (int i = 0; i < ringBatch.size(); i++) {
-            Placement p = ringBatch.get(i);
-            int stride = p.mesh.format().getStride();
-            int vertexBytes = p.cpuIndexAt - p.cpuVertexAt, indexBytes = p.indexCount * 4;
-            p.baseVertex = 0;
-            if (vertexBytes > 0) {
-                at = (base + at + stride - 1) / stride * stride - base;
-                out.position(at);
-                out.put(bytes, p.cpuVertexAt, vertexBytes);
-                p.baseVertex = (base + at) / stride;
-                at += vertexBytes;
-            }
-            if (indexBytes > 0) {
-                at = (base + at + 3) / 4 * 4 - base;
-                out.position(at);
-                out.put(bytes, p.cpuIndexAt, indexBytes);
-                p.firstIndex = (base + at) / 4;
-                at += indexBytes;
-            }
-        }
-        ring.commit(at);
-        CgTrace.add(CgChannels.GL, RING_BYTES, staged);
-        ringCpu.clear();
-        ringPad = 0;
-        ringBatch.clear();
-    }
-
     // ── Drawing ────────────────────────────────────────────────────────────────
 
     /**
@@ -418,20 +403,9 @@ public final class CgMeshStore {
      * every submesh whole. The base vertex, and so {@code CG_VERTEX_ID}, is the submesh's whatever the range.
      */
     public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
-        beginFrame();   // a frame executed again draws in a later frame than it was placed in
-        Placement p = placements.get(mesh);
-        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
-            // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
-            place(mesh);
-            upload();
-            p = placements.get(mesh);
-        }
-        if (p == null || (p.slab == null && !p.ring)) return;
-        p.lastUse = frame;
-        boolean onRing = p.ring;
-        CgGL.glBindVertexArray(onRing ? pools.get(mesh.format()).ringVertexArray(ring) : p.slab.vao);
-        // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
-        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, onRing ? ring.getGlBufferId() : p.slab.indexBuffer);
+        Placement p = placed(mesh);
+        if (p == null) return;
+        bind(p, mesh);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
         for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
@@ -451,6 +425,78 @@ public final class CgMeshStore {
                 CgGL.glDrawArraysInstanced(p.mode, base + start, n, instances);
             }
         }
+    }
+
+    /**
+     * What an indirect draw of a range of {@code mesh} composes its command from, into {@code out}: where the range
+     * starts (in the indices the slab draws from, or a vertex for a mesh without), how many it holds, its base vertex,
+     * and 1 when it is drawn by indices. A range as {@link #draw}'s, of one submesh ({@code submesh} -1 is the first).
+     * False, writing nothing, when the mesh has nothing to draw.
+     */
+    public boolean range(CgMesh mesh, int submesh, int first, int count, int[] out) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return false;
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
+        int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
+        int base = p.baseVertex + firstVertex;
+        int total = indexCount > 0 ? indexCount : vertexCount;
+        int start = Math.min(first, total);
+        out[0] = indexCount > 0 ? p.firstIndex + firstIndex + start : base + start;
+        out[1] = count < 0 ? total - start : Math.min(count, total - start);
+        out[2] = base;
+        out[3] = indexCount > 0 ? 1 : 0;
+        return true;
+    }
+
+    /**
+     * Draws a range of {@code mesh} by the command at byte {@code offset} in buffer {@code args}, written from what
+     * {@link #range} answered for it. Sets what {@code CG_VERTEX_ID} subtracts, and leaves the slab's vertex array
+     * bound, as {@link #draw} does.
+     */
+    public void drawIndirect(CgMesh mesh, CgPipeline pipeline, int submesh, int args, long offset) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return;
+        bind(p, mesh);
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        pipeline.vertexBase(p.baseVertex + p.submeshes[s * 4 + 2]);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+        if (p.submeshes[s * 4 + 1] > 0) CgGL.glDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset);
+        else CgGL.glDrawArraysIndirect(p.mode, offset);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
+    }
+
+    /** {@code mesh}'s placement this frame, placed now if it was not placed with the frame; null with nothing to draw. */
+    @Nullable
+    private Placement placed(CgMesh mesh) {
+        beginFrame();   // a frame executed again draws in a later frame than it was placed in
+        Placement p = placements.get(mesh);
+        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
+            // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
+            place(mesh);
+            upload();
+            p = placements.get(mesh);
+        }
+        if (p == null || (p.slab == null && !p.ring)) return null;
+        p.lastUse = frame;
+        return p;
+    }
+
+    /** Binds the vertex array and indices {@code p} draws from. */
+    private void bind(Placement p, CgMesh mesh) {
+        int vao, elements;
+        if (p.ring) {
+            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
+            vao = pools.get(mesh.format()).ringVertexArray(Math.max(p.ringPage, 0), page);
+            elements = page != null ? page.getGlBufferId() : 0;
+        } else {
+            vao = p.slab.vao;
+            elements = p.slab.indexBuffer;
+        }
+        CgGL.glBindVertexArray(vao);
+        // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elements);
     }
 
     // ── Frames, releases, teardown ─────────────────────────────────────────────
@@ -523,9 +569,6 @@ public final class CgMeshStore {
         if (ring != null) ring.delete();
         ring = null;
         ringLive.clear();
-        ringBatch.clear();
-        ringCpu.clear();
-        ringPad = 0;
         slabBytes = 0;
         frame = Long.MIN_VALUE;
     }

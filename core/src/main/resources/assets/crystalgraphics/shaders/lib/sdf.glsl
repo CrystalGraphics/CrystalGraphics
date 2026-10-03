@@ -275,19 +275,13 @@ float sdf_triangle(vec2 p, vec2 p0, vec2 p1, vec2 p2) {
 // 1.0 inside the shape, 0.0 outside, antialiased across ~1px at the edge using screen-space
 // derivatives. `dist` is an `sdf_*` distance (negative inside, per the convention above).
 //
-// FRAGMENT-ONLY. `fwidth` is a derivative builtin and does not exist in the vertex stage. This lib
-// gets included at material scope, and the compiler hoists every material-scope `#` line into BOTH
-// generated stages -- so without this guard the function lands in the vertex shader. NVIDIA compiles
-// it anyway; AMD correctly refuses, and the whole material fails with
-// "ERROR: 'fwidth' : no matching overloaded function found".
-//
-// The polarity is deliberate: `#ifndef CG_VERTEX_STAGE`, NOT `#ifdef CG_FRAGMENT_STAGE`. Raw
-// .vert/.frag files go through CgShaderPreprocessor with no stage defines at all, so an `#ifdef`
-// would silently delete this function from every one of them. `#ifndef` keeps it everywhere except
-// the one stage that cannot have it.
+// FRAGMENT-ONLY: `fwidth` does not exist in the vertex or compute stage, and a material-scope
+// include reaches both generated stages (NVIDIA accepts it in a vertex shader; AMD refuses).
+// Guarded by naming the stages that cannot have it, never `#ifdef CG_FRAGMENT_STAGE`: raw
+// .vert/.frag get no stage defines, and would lose the function.
 //
 // Everything above this line is pure maths and stays available to vertex shaders.
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 float sdf_coverage(float dist) {
     float aa = fwidth(dist) * 0.5;
     return 1.0 - smoothstep(-aa, aa, dist);

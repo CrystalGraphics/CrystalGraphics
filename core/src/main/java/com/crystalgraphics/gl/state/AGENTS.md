@@ -190,6 +190,21 @@ that default was elided. Two consequences are easy to get wrong:
 `reissue` still suspends deduplication (`forcing`) for a domain that is not wholly trusted, so a restore
 re-establishes every field. A domain nobody disturbed takes the normal path and usually emits nothing.
 
+### Bindings captured at first write
+
+`STORAGE_BUFFERS` (indexed SSBO points 0–31), `IMAGES` (image units 0–7) and `INDIRECT_BUFFERS` (the draw,
+dispatch and parameter buffers) have many binding points and are rarely written, so they are never adopted:
+
+- A scope declaring one reads nothing when it opens. The first write of a point inside it saves the point into
+  every open scope declaring the domain that has not saved it yet, reading it through
+  `CgGlStateProvider.readBinding` only when the shadow does not know it. A scope restores only the points it saved.
+- Trust is per point. The shadow keeps these across host sections unless `CgGlStateProvider.hostBinds(slot)`
+  says the host binds them itself — no by default, since vanilla Minecraft binds none on any version. A shader
+  pack's loader does, and a host running one answers yes.
+- Storage points from 32 up are the engine's reserved ones (`CgBindingPoints` counts down from the driver's
+  maximum): issued and never restored, since no host binds there.
+- The round trip checks only points our code has bound.
+
 ## Diagnostics — reach for these before reasoning
 
 Reasoning from symptoms produced a wrong answer three times in this subsystem's history; each of these gave

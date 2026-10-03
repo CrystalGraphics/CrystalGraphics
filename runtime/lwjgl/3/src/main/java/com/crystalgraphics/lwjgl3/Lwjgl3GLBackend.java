@@ -498,6 +498,106 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     // -------------------------------------------------------------------------
+    // Indirect draws and compute. The ARB extensions behind them name their functions as core does, so one call
+    // serves both; only indirect counts are spelled differently.
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void glDrawArraysIndirect(int mode, long offset) {
+        GL40C.glDrawArraysIndirect(mode, offset);
+    }
+
+    @Override
+    public void glDrawElementsIndirect(int mode, int type, long offset) {
+        GL40C.glDrawElementsIndirect(mode, type, offset);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirect(int mode, long offset, int drawCount, int stride) {
+        GL43C.glMultiDrawArraysIndirect(mode, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirect(int mode, int type, long offset, int drawCount, int stride) {
+        GL43C.glMultiDrawElementsIndirect(mode, type, offset, drawCount, stride);
+    }
+
+    @Override
+    public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) {
+        if (GL.getCapabilities().glMultiDrawArraysIndirectCount != 0L) {
+            GL46C.glMultiDrawArraysIndirectCount(mode, offset, countOffset, maxDrawCount, stride);
+        } else {
+            ARBIndirectParameters.glMultiDrawArraysIndirectCountARB(mode, offset, countOffset, maxDrawCount, stride);
+        }
+    }
+
+    @Override
+    public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount,
+                                                 int stride) {
+        if (GL.getCapabilities().glMultiDrawElementsIndirectCount != 0L) {
+            GL46C.glMultiDrawElementsIndirectCount(mode, type, offset, countOffset, maxDrawCount, stride);
+        } else {
+            ARBIndirectParameters.glMultiDrawElementsIndirectCountARB(mode, type, offset, countOffset, maxDrawCount,
+                    stride);
+        }
+    }
+
+    @Override
+    public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
+        GL43C.glDispatchCompute(groupsX, groupsY, groupsZ);
+    }
+
+    @Override
+    public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        GL30C.glTransformFeedbackVaryings(program, varyings, bufferMode);
+    }
+
+    @Override
+    public void glBeginTransformFeedback(int primitiveMode) {
+        GL30C.glBeginTransformFeedback(primitiveMode);
+    }
+
+    @Override
+    public void glEndTransformFeedback() {
+        GL30C.glEndTransformFeedback();
+    }
+
+    @Override
+    public void glDispatchComputeIndirect(long offset) {
+        GL43C.glDispatchComputeIndirect(offset);
+    }
+
+    @Override
+    public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        GLCapabilities caps = GL.getCapabilities();
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            if (caps.glClearNamedBufferSubData != 0L) {   // GL 4.5: no binding touched
+                GL45C.glClearNamedBufferSubData(buffer, GL30C.GL_R32UI, offset, size, GL30C.GL_RED_INTEGER,
+                        GL11C.GL_UNSIGNED_INT, stack.ints(value));
+                return;
+            }
+            GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, buffer);
+            if (caps.glClearBufferSubData != 0L) {          // GL 4.3 or ARB_clear_buffer_object, one entry point
+                GL43C.glClearBufferSubData(GL31C.GL_COPY_WRITE_BUFFER, GL30C.GL_R32UI, offset, size,
+                        GL30C.GL_RED_INTEGER, GL11C.GL_UNSIGNED_INT, stack.ints(value));
+            } else {
+                fillBySubData(GL31C.GL_COPY_WRITE_BUFFER, offset, size, value);
+            }
+            GL15C.glBindBuffer(GL31C.GL_COPY_WRITE_BUFFER, 0);
+        }
+    }
+
+    @Override
+    public void glMemoryBarrier(int barriers) {
+        GL42C.glMemoryBarrier(barriers);
+    }
+
+    @Override
+    public void glBindImageTexture(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        GL42C.glBindImageTexture(unit, texture, level, layered, layer, access, format);
+    }
+
+    // -------------------------------------------------------------------------
     // GL state — Tier 1 (RenderSystem) and Tier 3 (raw GL) where no Tier 1/2 exists
     // -------------------------------------------------------------------------
 
@@ -672,6 +772,22 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     @Override
     public void glGetInteger(int pname, IntBuffer params) {
         GL11C.glGetIntegerv(pname, params);
+    }
+
+    @Override
+    public String glGetString(int name) {
+        return GL11C.glGetString(name);
+    }
+
+    @Override
+    public String glGetStringi(int name, int index) {
+        return GL30C.glGetStringi(name, index);
+    }
+
+    @Override
+    public int glGetIntegeri(int target, int index) {
+        GL30C.nglGetIntegeri_v(target, index, SCRATCH_ADDRESS);
+        return MemoryUtil.memGetInt(SCRATCH_ADDRESS);
     }
 
     @Override

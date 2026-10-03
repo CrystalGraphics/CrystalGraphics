@@ -41,11 +41,13 @@ com/crystalgraphics/platform/device/CgDevice
   method public toHost ()V
   method public,abstract createBindingLayout (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
   method public,abstract createBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;
+  method public,abstract createComputePipeline (Ljava/lang/String;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;)Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;
   method public,abstract createPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;)Lcom/crystalgraphics/platform/device/pipeline/CgPipeline;
   method public,abstract createSampler (Lcom/crystalgraphics/platform/device/resource/CgGpuSampler$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
   method public,abstract createShaderModule (Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;Ljava/nio/ByteBuffer;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
   method public,abstract createTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;
   method public,abstract createTimerQuery (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;
+  method public,abstract describe (Ljava/util/function/BiConsumer;)V
   method public,abstract encoder ()Lcom/crystalgraphics/platform/device/command/CgCommandEncoder;
   method public,abstract endFrame ()V
   method public,abstract frameIndex ()J
@@ -62,10 +64,13 @@ com/crystalgraphics/platform/device/CgDevice
 com/crystalgraphics/platform/device/CgDeviceInfo
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZ)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZZ)V
   method public anisotropy ()Z
   method public driver ()Ljava/lang/String;
+  method public indirectCount ()Z
+  method public indirectFirstInstance ()Z
   method public limits ()Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;
+  method public multiDrawIndirect ()Z
   method public name ()Ljava/lang/String;
   method public nonSolidFill ()Z
   method public timestamps ()Z
@@ -73,10 +78,29 @@ com/crystalgraphics/platform/device/CgDeviceInfo
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/CgDeviceInfo$Compute
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final MINIMUM Lcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;
+  method public <init> (IIIIIIIIII)V
+  method public countX ()I
+  method public countY ()I
+  method public countZ ()I
+  method public invocations ()I
+  method public sharedMemory ()I
+  method public sizeX ()I
+  method public sizeY ()I
+  method public sizeZ ()I
+  method public subgroupOperations ()I
+  method public subgroupSize ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/platform/device/CgDeviceInfo$Limits
   access public,final,record
   extends java/lang/Record
-  method public <init> (IIIIIIIIIIIIIIIF)V
+  method public <init> (IIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;)V
+  method public compute ()Lcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;
   method public max3DTextureSize ()I
   method public maxAnisotropy ()F
   method public maxArrayLayers ()I
@@ -100,21 +124,54 @@ com/crystalgraphics/platform/device/CgDeviceObject
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract label ()Ljava/lang/String;
+com/crystalgraphics/platform/device/command/CgAccess
+  access public,final
+  extends java/lang/Object
+  field public,static,final COLOR_WRITE I
+  field public,static,final COMPUTE_READ I
+  field public,static,final COMPUTE_WRITE I
+  field public,static,final COPY_READ I
+  field public,static,final COPY_WRITE I
+  field public,static,final FRAGMENT_READ I
+  field public,static,final GRAPHICS I
+  field public,static,final HOST_READ I
+  field public,static,final INDEX_INPUT I
+  field public,static,final INDIRECT I
+  field public,static,final SAMPLED_READ I
+  field public,static,final STORAGE I
+  field public,static,final UNIFORM_READ I
+  field public,static,final VERTEX_INPUT I
+  field public,static,final VERTEX_READ I
+  method public,static names (I)Ljava/lang/String;
 com/crystalgraphics/platform/device/command/CgCommandEncoder
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract beginCompute (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/command/CgComputePass;
   method public,abstract beginPass (Lcom/crystalgraphics/platform/device/command/CgPassDesc;)Lcom/crystalgraphics/platform/device/command/CgRenderPass;
   method public,abstract beginTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
   method public,abstract blit (Lcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgGpuSampler$Filter;)V
+  method public,abstract bufferBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;II)V
   method public,abstract copyBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)V
   method public,abstract copyTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;)V
   method public,abstract copyTextureToBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
   method public,abstract endTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
+  method public,abstract fillBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJI)V
   method public,abstract generateMipmaps (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)V
+  method public,abstract imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;II)V
+  method public,abstract memoryBarrier (II)V
+  method public,abstract readBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLjava/nio/ByteBuffer;)V
   method public,abstract readTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
   method public,abstract resolve (Lcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgTextureView;)V
   method public,abstract writeBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLjava/nio/ByteBuffer;)V
   method public,abstract writeTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
+com/crystalgraphics/platform/device/command/CgComputePass
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract dispatch (III)V
+  method public,abstract dispatchIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
+  method public,abstract end ()V
+  method public,abstract pushBindings (Lcom/crystalgraphics/platform/device/pipeline/CgBindings;)V
+  method public,abstract setPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;)V
 com/crystalgraphics/platform/device/command/CgPassDesc
   access public,final,record
   extends java/lang/Record
@@ -177,6 +234,10 @@ com/crystalgraphics/platform/device/command/CgRenderPass
   method public,abstract clearDepthStencil (ZFZIIIII)V
   method public,abstract draw (IIII)V
   method public,abstract drawIndexed (IIIII)V
+  method public,abstract drawIndexedIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndexedIndirectCount (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndirect (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
+  method public,abstract drawIndirectCount (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JII)V
   method public,abstract end ()V
   method public,abstract pushBindings (Lcom/crystalgraphics/platform/device/pipeline/CgBindings;)V
   method public,abstract setDepthBias (FF)V
@@ -330,6 +391,7 @@ com/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type
   extends java/lang/Enum
   field public,static,final SAMPLED_TEXTURE Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final STORAGE_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
+  field public,static,final STORAGE_IMAGE Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final TEXEL_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   field public,static,final UNIFORM_BUFFER Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
@@ -343,6 +405,7 @@ com/crystalgraphics/platform/device/pipeline/CgBindings
   method public buffer (ILcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public clear ()Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public count ()I
+  method public image (ILcom/crystalgraphics/platform/device/resource/CgTextureView;)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public indexOf (I)I
   method public offset (I)J
   method public sampler (I)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
@@ -352,6 +415,12 @@ com/crystalgraphics/platform/device/pipeline/CgBindings
   method public texture (ILcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;)Lcom/crystalgraphics/platform/device/pipeline/CgBindings;
   method public type (I)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout$Type;
   method public view (I)Lcom/crystalgraphics/platform/device/resource/CgTextureView;
+com/crystalgraphics/platform/device/pipeline/CgComputePipeline
+  access public,abstract,interface
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/device/CgDeviceObject
+  method public,abstract layout ()Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
+  method public,abstract module ()Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
 com/crystalgraphics/platform/device/pipeline/CgPipeline
   access public,abstract,interface
   extends java/lang/Object
@@ -547,11 +616,13 @@ com/crystalgraphics/platform/device/recording/CgRecordingDevice
   method public <init> (IIIZ)V
   method public createBindingLayout (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
   method public createBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;
+  method public createComputePipeline (Ljava/lang/String;Lcom/crystalgraphics/platform/device/shader/CgShaderModule;Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;)Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;
   method public createPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc;)Lcom/crystalgraphics/platform/device/pipeline/CgPipeline;
   method public createSampler (Lcom/crystalgraphics/platform/device/resource/CgGpuSampler$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuSampler;
   method public createShaderModule (Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;Ljava/nio/ByteBuffer;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule;
   method public createTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Desc;)Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;
   method public createTimerQuery (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;
+  method public describe (Ljava/util/function/BiConsumer;)V
   method public draws ()I
   method public encoder ()Lcom/crystalgraphics/platform/device/command/CgCommandEncoder;
   method public endFrame ()V
@@ -602,6 +673,7 @@ com/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage
   field public,static,final COPY_DST Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final COPY_SRC Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final INDEX Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
+  field public,static,final INDIRECT Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final STORAGE Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final TEXEL Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
   field public,static,final UNIFORM Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer$Usage;
@@ -695,6 +767,7 @@ com/crystalgraphics/platform/device/resource/CgGpuTexture$Usage
   field public,static,final COPY_SRC Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   field public,static,final SAMPLED Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   field public,static,final SAMPLED_UPLOADED Ljava/util/Set;
+  field public,static,final STORAGE Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
   method public,static values ()[Lcom/crystalgraphics/platform/device/resource/CgGpuTexture$Usage;
 com/crystalgraphics/platform/device/resource/CgTextureRegion
@@ -738,6 +811,7 @@ com/crystalgraphics/platform/device/shader/CgGlslCompiler
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract compile (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$Program;
+  method public,abstract compileCompute (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$ComputeProgram;
 com/crystalgraphics/platform/device/shader/CgGlslCompiler$Attribute
   access public,final,record
   extends java/lang/Record
@@ -757,9 +831,38 @@ com/crystalgraphics/platform/device/shader/CgGlslCompiler$Block
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/shader/CgGlslCompiler$ComputeProgram
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/platform/device/shader/CgGlslCompiler$Reflection
+  method public <init> (Ljava/nio/ByteBuffer;[ILjava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;IILjava/util/List;)V
+  method public images ()Ljava/util/List;
+  method public localSize ()[I
+  method public samplers ()Ljava/util/List;
+  method public slots ()Ljava/util/List;
+  method public spirv ()Ljava/nio/ByteBuffer;
+  method public storageBlocks ()Ljava/util/List;
+  method public uniformBinding ()I
+  method public uniformBlocks ()Ljava/util/List;
+  method public uniformSize ()I
+  method public uniforms ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/shader/CgGlslCompiler$Image
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;II)V
+  method public binding ()I
+  method public glType ()I
+  method public name ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/platform/device/shader/CgGlslCompiler$Program
   access public,final,record
   extends java/lang/Record
+  implements com/crystalgraphics/platform/device/shader/CgGlslCompiler$Reflection
   method public <init> (Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/nio/ByteBuffer;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;IIIILjava/util/List;)V
   method public attributes ()Ljava/util/List;
   method public fragment ()Ljava/nio/ByteBuffer;
@@ -777,6 +880,13 @@ com/crystalgraphics/platform/device/shader/CgGlslCompiler$Program
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/shader/CgGlslCompiler$Reflection
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract samplers ()Ljava/util/List;
+  method public,abstract storageBlocks ()Ljava/util/List;
+  method public,abstract uniformBlocks ()Ljava/util/List;
+  method public,abstract uniforms ()Ljava/util/List;
 com/crystalgraphics/platform/device/shader/CgGlslCompiler$Sampler
   access public,final,record
   extends java/lang/Record
@@ -817,6 +927,7 @@ com/crystalgraphics/platform/device/shader/CgShaderModule$CompileException
 com/crystalgraphics/platform/device/shader/CgShaderModule$Stage
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final COMPUTE Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   field public,static,final FRAGMENT Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   field public,static,final VERTEX Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/shader/CgShaderModule$Stage;
@@ -824,6 +935,19 @@ com/crystalgraphics/platform/device/shader/CgShaderModule$Stage
 com/crystalgraphics/platform/gl/CgCapabilities
   access public,final
   extends java/lang/Object
+  field public,static,final SUBGROUP_ARITHMETIC I
+  field public,static,final SUBGROUP_BALLOT I
+  field public,static,final SUBGROUP_BASIC I
+  field public,static,final SUBGROUP_SHUFFLE I
+  field public,static,final SUBGROUP_VOTE I
+  method public asyncCompute ()Z
+  method public bindless ()Z
+  method public compute ()Z
+  method public computeTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  method public drawIndirect ()Z
+  method public drawParameters ()Z
+  method public feedbackCount ()Z
+  method public floatAtomics ()Z
   method public getMaxColorAttachments ()I
   method public getMaxDrawBuffers ()I
   method public getMaxRenderbufferSize ()I
@@ -835,6 +959,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public getMaxVertexAttribs ()I
   method public hasDepth ()Z
   method public hasStencil ()Z
+  method public indirectCount ()Z
   method public isArbSync ()Z
   method public isBufferStorageSupported ()Z
   method public isCopyImageSubDataSupported ()Z
@@ -846,16 +971,37 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public isShaderStorageBufferArb ()Z
   method public isShaderStorageBufferCore ()Z
   method public isTextureBufferMaterialPath ()Z
+  method public maxComputeInvocations ()I
+  method public maxComputeSharedMemory ()I
+  method public maxComputeWorkGroupCount (I)I
+  method public maxComputeWorkGroupSize (I)I
+  method public multiDrawIndirect ()Z
   method public shaderBufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   method public shaderStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
+  method public storageImages ()Z
+  method public storageOffsetAlignment ()I
+  method public subgroupOperations ()I
+  method public subgroupSize ()I
+  method public subgroups ()Z
   method public vertexStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static clearCache ()V
   method public,static detect ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
   method public,static detectUncached ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
+  method public,static detected ()Lcom/crystalgraphics/platform/gl/CgCapabilities;
   method public,static getContext ()Lcom/crystalgraphics/platform/gl/CgGLContext;
   method public,static init (Lcom/crystalgraphics/platform/gl/CgGLContext;)V
   method public,static parseGLVersion (Ljava/lang/String;)[I
   method public,static setHostTextureUnitCeiling (I)V
+com/crystalgraphics/platform/gl/CgCapabilities$ComputeTier
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CPU Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  field public,static,final G33 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  field public,static,final G40 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  field public,static,final G43 Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  field public,static,final V Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  method public,static values ()[Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
 com/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath
   access public,final,enum
   extends java/lang/Enum
@@ -883,6 +1029,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_ACTIVE_UNIFORMS I
   field public,static,final GL_ACTIVE_UNIFORM_BLOCKS I
   field public,static,final GL_ACTIVE_UNIFORM_MAX_LENGTH I
+  field public,static,final GL_ALL_BARRIER_BITS I
   field public,static,final GL_ALPHA I
   field public,static,final GL_ALPHA_TEST I
   field public,static,final GL_ALPHA_TEST_FUNC I
@@ -891,6 +1038,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_ALWAYS I
   field public,static,final GL_ARRAY_BUFFER I
   field public,static,final GL_ARRAY_BUFFER_BINDING I
+  field public,static,final GL_ATOMIC_COUNTER_BARRIER_BIT I
   field public,static,final GL_BACK I
   field public,static,final GL_BLEND I
   field public,static,final GL_BLEND_DST_ALPHA I
@@ -900,10 +1048,12 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_BLEND_EQUATION_RGB I
   field public,static,final GL_BLEND_SRC_ALPHA I
   field public,static,final GL_BLEND_SRC_RGB I
+  field public,static,final GL_BUFFER_UPDATE_BARRIER_BIT I
   field public,static,final GL_BYTE I
   field public,static,final GL_CCW I
   field public,static,final GL_CLAMP_TO_BORDER I
   field public,static,final GL_CLAMP_TO_EDGE I
+  field public,static,final GL_CLIENT_MAPPED_BUFFER_BARRIER_BIT I
   field public,static,final GL_COLOR_ATTACHMENT0 I
   field public,static,final GL_COLOR_ATTACHMENT1 I
   field public,static,final GL_COLOR_ATTACHMENT10 I
@@ -922,10 +1072,13 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_COLOR_ATTACHMENT9 I
   field public,static,final GL_COLOR_BUFFER_BIT I
   field public,static,final GL_COLOR_WRITEMASK I
+  field public,static,final GL_COMMAND_BARRIER_BIT I
   field public,static,final GL_COMPARE_R_TO_TEXTURE I
   field public,static,final GL_COMPILE_STATUS I
   field public,static,final GL_COMPLETION_STATUS_KHR I
+  field public,static,final GL_COMPUTE_SHADER I
   field public,static,final GL_CONDITION_SATISFIED I
+  field public,static,final GL_CONTEXT_PROFILE_MASK I
   field public,static,final GL_COPY_READ_BUFFER I
   field public,static,final GL_COPY_WRITE_BUFFER I
   field public,static,final GL_CULL_FACE I
@@ -949,17 +1102,23 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_DEPTH_STENCIL_ATTACHMENT I
   field public,static,final GL_DEPTH_TEST I
   field public,static,final GL_DEPTH_WRITEMASK I
+  field public,static,final GL_DISPATCH_INDIRECT_BUFFER I
+  field public,static,final GL_DISPATCH_INDIRECT_BUFFER_BINDING I
   field public,static,final GL_DOUBLE I
   field public,static,final GL_DRAW_FRAMEBUFFER I
   field public,static,final GL_DRAW_FRAMEBUFFER_BINDING I
+  field public,static,final GL_DRAW_INDIRECT_BUFFER I
+  field public,static,final GL_DRAW_INDIRECT_BUFFER_BINDING I
   field public,static,final GL_DST_ALPHA I
   field public,static,final GL_DST_COLOR I
   field public,static,final GL_DYNAMIC_COPY I
   field public,static,final GL_DYNAMIC_DRAW I
   field public,static,final GL_DYNAMIC_READ I
+  field public,static,final GL_ELEMENT_ARRAY_BARRIER_BIT I
   field public,static,final GL_ELEMENT_ARRAY_BUFFER I
   field public,static,final GL_ELEMENT_ARRAY_BUFFER_BINDING I
   field public,static,final GL_EQUAL I
+  field public,static,final GL_EXTENSIONS I
   field public,static,final GL_FALSE I
   field public,static,final GL_FILL I
   field public,static,final GL_FLOAT I
@@ -969,6 +1128,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE I
   field public,static,final GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE I
   field public,static,final GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE I
+  field public,static,final GL_FRAMEBUFFER_BARRIER_BIT I
   field public,static,final GL_FRAMEBUFFER_BINDING I
   field public,static,final GL_FRAMEBUFFER_COMPLETE I
   field public,static,final GL_FRONT I
@@ -981,10 +1141,17 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_GEQUAL I
   field public,static,final GL_GREATER I
   field public,static,final GL_HALF_FLOAT I
+  field public,static,final GL_IMAGE_BINDING_ACCESS I
+  field public,static,final GL_IMAGE_BINDING_FORMAT I
+  field public,static,final GL_IMAGE_BINDING_LAYER I
+  field public,static,final GL_IMAGE_BINDING_LAYERED I
+  field public,static,final GL_IMAGE_BINDING_LEVEL I
+  field public,static,final GL_IMAGE_BINDING_NAME I
   field public,static,final GL_INCR I
   field public,static,final GL_INCR_WRAP I
   field public,static,final GL_INFO_LOG_LENGTH I
   field public,static,final GL_INT I
+  field public,static,final GL_INTERLEAVED_ATTRIBS I
   field public,static,final GL_INVALID_ENUM I
   field public,static,final GL_INVALID_FRAMEBUFFER_OPERATION I
   field public,static,final GL_INVALID_INDEX I
@@ -1006,6 +1173,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_LINK_STATUS I
   field public,static,final GL_LUMINANCE I
   field public,static,final GL_LUMINANCE_ALPHA I
+  field public,static,final GL_MAJOR_VERSION I
   field public,static,final GL_MAP_COHERENT_BIT I
   field public,static,final GL_MAP_FLUSH_EXPLICIT_BIT I
   field public,static,final GL_MAP_INVALIDATE_BUFFER_BIT I
@@ -1019,16 +1187,30 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_MAX_ARRAY_TEXTURE_LAYERS I
   field public,static,final GL_MAX_COLOR_TEXTURE_SAMPLES I
   field public,static,final GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS I
+  field public,static,final GL_MAX_COMPUTE_SHARED_MEMORY_SIZE I
+  field public,static,final GL_MAX_COMPUTE_WORK_GROUP_COUNT I
+  field public,static,final GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS I
+  field public,static,final GL_MAX_COMPUTE_WORK_GROUP_SIZE I
   field public,static,final GL_MAX_DEPTH_TEXTURE_SAMPLES I
   field public,static,final GL_MAX_DRAW_BUFFERS I
+  field public,static,final GL_MAX_GEOMETRY_OUTPUT_VERTICES I
+  field public,static,final GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS I
+  field public,static,final GL_MAX_IMAGE_UNITS I
   field public,static,final GL_MAX_SAMPLES I
+  field public,static,final GL_MAX_SHADER_STORAGE_BLOCK_SIZE I
   field public,static,final GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS I
+  field public,static,final GL_MAX_TEXTURE_BUFFER_SIZE I
   field public,static,final GL_MAX_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_TEXTURE_SIZE I
   field public,static,final GL_MAX_TEXTURE_UNITS I
+  field public,static,final GL_MAX_TRANSFORM_FEEDBACK_BUFFERS I
+  field public,static,final GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS I
+  field public,static,final GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS I
+  field public,static,final GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS I
   field public,static,final GL_MAX_UNIFORM_BUFFER_BINDINGS I
   field public,static,final GL_MAX_VERTEX_ATTRIBS I
   field public,static,final GL_MIN I
+  field public,static,final GL_MINOR_VERSION I
   field public,static,final GL_MIRRORED_REPEAT I
   field public,static,final GL_MULTISAMPLE I
   field public,static,final GL_NEAREST I
@@ -1038,6 +1220,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_NONE I
   field public,static,final GL_NOTEQUAL I
   field public,static,final GL_NO_ERROR I
+  field public,static,final GL_NUM_EXTENSIONS I
   field public,static,final GL_ONE I
   field public,static,final GL_ONE_MINUS_DST_ALPHA I
   field public,static,final GL_ONE_MINUS_DST_COLOR I
@@ -1045,6 +1228,9 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_ONE_MINUS_SRC_COLOR I
   field public,static,final GL_OUT_OF_MEMORY I
   field public,static,final GL_PACK_ALIGNMENT I
+  field public,static,final GL_PARAMETER_BUFFER I
+  field public,static,final GL_PARAMETER_BUFFER_BINDING I
+  field public,static,final GL_PIXEL_BUFFER_BARRIER_BIT I
   field public,static,final GL_PIXEL_PACK_BUFFER I
   field public,static,final GL_PIXEL_UNPACK_BUFFER I
   field public,static,final GL_POINT I
@@ -1070,11 +1256,15 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_R8I I
   field public,static,final GL_R8UI I
   field public,static,final GL_R8_SNORM I
+  field public,static,final GL_RASTERIZER_DISCARD I
   field public,static,final GL_READ_FRAMEBUFFER I
   field public,static,final GL_READ_FRAMEBUFFER_BINDING I
+  field public,static,final GL_READ_ONLY I
+  field public,static,final GL_READ_WRITE I
   field public,static,final GL_RED I
   field public,static,final GL_RED_INTEGER I
   field public,static,final GL_RENDERBUFFER I
+  field public,static,final GL_RENDERER I
   field public,static,final GL_REPEAT I
   field public,static,final GL_REPLACE I
   field public,static,final GL_RG I
@@ -1111,9 +1301,16 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_RG_INTEGER I
   field public,static,final GL_SCISSOR_BOX I
   field public,static,final GL_SCISSOR_TEST I
+  field public,static,final GL_SEPARATE_ATTRIBS I
+  field public,static,final GL_SHADER_IMAGE_ACCESS_BARRIER_BIT I
+  field public,static,final GL_SHADER_STORAGE_BARRIER_BIT I
   field public,static,final GL_SHADER_STORAGE_BLOCK I
   field public,static,final GL_SHADER_STORAGE_BUFFER I
   field public,static,final GL_SHADER_STORAGE_BUFFER_BINDING I
+  field public,static,final GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT I
+  field public,static,final GL_SHADER_STORAGE_BUFFER_SIZE I
+  field public,static,final GL_SHADER_STORAGE_BUFFER_START I
+  field public,static,final GL_SHADING_LANGUAGE_VERSION I
   field public,static,final GL_SHORT I
   field public,static,final GL_SRC_ALPHA I
   field public,static,final GL_SRC_ALPHA_SATURATE I
@@ -1140,6 +1337,9 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_STREAM_COPY I
   field public,static,final GL_STREAM_DRAW I
   field public,static,final GL_STREAM_READ I
+  field public,static,final GL_SUBGROUP_SIZE_KHR I
+  field public,static,final GL_SUBGROUP_SUPPORTED_FEATURES_KHR I
+  field public,static,final GL_SUBGROUP_SUPPORTED_STAGES_KHR I
   field public,static,final GL_SYNC_FLUSH_COMMANDS_BIT I
   field public,static,final GL_SYNC_GPU_COMMANDS_COMPLETE I
   field public,static,final GL_TEXTURE0 I
@@ -1191,20 +1391,28 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_TEXTURE_CUBE_MAP_POSITIVE_X I
   field public,static,final GL_TEXTURE_CUBE_MAP_POSITIVE_Y I
   field public,static,final GL_TEXTURE_CUBE_MAP_POSITIVE_Z I
+  field public,static,final GL_TEXTURE_FETCH_BARRIER_BIT I
   field public,static,final GL_TEXTURE_MAG_FILTER I
   field public,static,final GL_TEXTURE_MAX_LEVEL I
   field public,static,final GL_TEXTURE_MAX_LOD I
   field public,static,final GL_TEXTURE_MIN_FILTER I
   field public,static,final GL_TEXTURE_MIN_LOD I
+  field public,static,final GL_TEXTURE_UPDATE_BARRIER_BIT I
   field public,static,final GL_TEXTURE_WRAP_R I
   field public,static,final GL_TEXTURE_WRAP_S I
   field public,static,final GL_TEXTURE_WRAP_T I
   field public,static,final GL_TIMEOUT_EXPIRED I
   field public,static,final GL_TIME_ELAPSED I
+  field public,static,final GL_TRANSFORM_FEEDBACK_BARRIER_BIT I
+  field public,static,final GL_TRANSFORM_FEEDBACK_BUFFER I
+  field public,static,final GL_TRANSFORM_FEEDBACK_BUFFER_BINDING I
+  field public,static,final GL_TRANSFORM_FEEDBACK_BUFFER_SIZE I
+  field public,static,final GL_TRANSFORM_FEEDBACK_BUFFER_START I
   field public,static,final GL_TRIANGLES I
   field public,static,final GL_TRIANGLE_FAN I
   field public,static,final GL_TRIANGLE_STRIP I
   field public,static,final GL_TRUE I
+  field public,static,final GL_UNIFORM_BARRIER_BIT I
   field public,static,final GL_UNIFORM_BLOCK_BINDING I
   field public,static,final GL_UNIFORM_BLOCK_DATA_SIZE I
   field public,static,final GL_UNIFORM_BUFFER I
@@ -1221,14 +1429,21 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_UNSIGNED_INT_24_8 I
   field public,static,final GL_UNSIGNED_INT_2_10_10_10_REV I
   field public,static,final GL_UNSIGNED_SHORT I
+  field public,static,final GL_VENDOR I
+  field public,static,final GL_VERSION I
   field public,static,final GL_VERTEX_ARRAY_BINDING I
+  field public,static,final GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT I
   field public,static,final GL_VERTEX_ATTRIB_ARRAY_DIVISOR I
   field public,static,final GL_VERTEX_PROGRAM_POINT_SIZE I
   field public,static,final GL_VERTEX_SHADER I
   field public,static,final GL_VIEWPORT I
   field public,static,final GL_WAIT_FAILED I
+  field public,static,final GL_WRITE_ONLY I
   field public,static,final GL_ZERO I
   method public,static assertNoGlError (Ljava/lang/String;)V
+  method public,static cgBufferBarrier (III)V
+  method public,static cgFillBuffer (IJJI)V
+  method public,static cgImageBarrier (III)V
   method public,static drainErrors ()Ljava/util/List;
   method public,static enterGlFree (Ljava/lang/String;)V
   method public,static exitGlFree ()V
@@ -1237,11 +1452,13 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glAlphaFunc (IF)V
   method public,static glAttachShader (II)V
   method public,static glBeginTimeElapsedQuery (I)V
+  method public,static glBeginTransformFeedback (I)V
   method public,static glBindAttribLocation (IILjava/lang/CharSequence;)V
   method public,static glBindBuffer (II)V
   method public,static glBindBufferBase (III)V
   method public,static glBindBufferRange (IIIJJ)V
   method public,static glBindFramebuffer (II)V
+  method public,static glBindImageTexture (IIIZIII)V
   method public,static glBindRenderbuffer (II)V
   method public,static glBindSampler (II)V
   method public,static glBindTexture (II)V
@@ -1282,16 +1499,21 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glDepthMask (Z)V
   method public,static glDetachShader (II)V
   method public,static glDisable (I)V
+  method public,static glDispatchCompute (III)V
+  method public,static glDispatchComputeIndirect (J)V
   method public,static glDrawArrays (III)V
+  method public,static glDrawArraysIndirect (IJ)V
   method public,static glDrawArraysInstanced (IIII)V
   method public,static glDrawBuffer (I)V
   method public,static glDrawBuffers (Ljava/nio/IntBuffer;)V
   method public,static glDrawElements (IIIJ)V
+  method public,static glDrawElementsIndirect (IIJ)V
   method public,static glDrawElementsInstanced (IIIJI)V
   method public,static glDrawElementsInstancedBaseVertex (IIIJII)V
   method public,static glEnable (I)V
   method public,static glEnableVertexAttribArray (I)V
   method public,static glEndTimeElapsedQuery ()V
+  method public,static glEndTransformFeedback ()V
   method public,static glFenceSync (II)J
   method public,static glFlushMappedBufferRange (IJJ)V
   method public,static glFramebufferRenderbuffer (IIII)V
@@ -1315,12 +1537,15 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glGetFramebufferAttachmentParameteriv (III)I
   method public,static glGetInteger (I)I
   method public,static glGetInteger (ILjava/nio/IntBuffer;)V
+  method public,static glGetIntegeri (II)I
   method public,static glGetProgramInfoLog (II)Ljava/lang/String;
   method public,static glGetProgramResourceIndex (IILjava/lang/CharSequence;)I
   method public,static glGetProgrami (II)I
   method public,static glGetQueryResultNanos (I)J
   method public,static glGetShaderInfoLog (II)Ljava/lang/String;
   method public,static glGetShaderi (II)I
+  method public,static glGetString (I)Ljava/lang/String;
+  method public,static glGetStringi (II)Ljava/lang/String;
   method public,static glGetTexImage (IIIILjava/nio/ByteBuffer;)V
   method public,static glGetUniformBlockIndex (ILjava/lang/CharSequence;)I
   method public,static glGetUniformLocation (ILjava/lang/CharSequence;)I
@@ -1328,6 +1553,11 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glLineWidth (F)V
   method public,static glLinkProgram (I)V
   method public,static glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public,static glMemoryBarrier (I)V
+  method public,static glMultiDrawArraysIndirect (IJII)V
+  method public,static glMultiDrawArraysIndirectCount (IJJII)V
+  method public,static glMultiDrawElementsIndirect (IIJII)V
+  method public,static glMultiDrawElementsIndirectCount (IIJJII)V
   method public,static glPixelStorei (II)V
   method public,static glPointSize (F)V
   method public,static glPolygonMode (II)V
@@ -1355,6 +1585,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
+  method public,static glTransformFeedbackVaryings (I[Ljava/lang/String;I)V
   method public,static glUniform1 (ILjava/nio/FloatBuffer;)V
   method public,static glUniform1 (ILjava/nio/IntBuffer;)V
   method public,static glUniform1f (IF)V
@@ -1388,11 +1619,15 @@ com/crystalgraphics/platform/gl/CgGL
 com/crystalgraphics/platform/gl/CgGLBackend
   access public,abstract
   extends java/lang/Object
+  method protected,final fillBySubData (IJJI)V
   method public <init> ()V
+  method public cgBufferBarrier (III)V
+  method public cgImageBarrier (III)V
   method public copyImageSubData (IIIIIIIIIIIIIII)V
   method public framebufferTextureLayer (IIIII)V
   method public,abstract bindFramebuffer (II)V
   method public,abstract blitFramebuffer (IIIIIIIIII)V
+  method public,abstract cgFillBuffer (IJJI)V
   method public,abstract checkFramebufferStatus (I)I
   method public,abstract deleteFramebuffers (I)V
   method public,abstract drawBuffers (Ljava/nio/IntBuffer;)V
@@ -1405,10 +1640,12 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glAlphaFunc (IF)V
   method public,abstract glAttachShader (II)V
   method public,abstract glBeginTimeElapsedQuery (I)V
+  method public,abstract glBeginTransformFeedback (I)V
   method public,abstract glBindAttribLocation (IILjava/lang/CharSequence;)V
   method public,abstract glBindBuffer (II)V
   method public,abstract glBindBufferBase (III)V
   method public,abstract glBindBufferRange (IIIJJ)V
+  method public,abstract glBindImageTexture (IIIZIII)V
   method public,abstract glBindRenderbuffer (II)V
   method public,abstract glBindSampler (II)V
   method public,abstract glBindTexture (II)V
@@ -1445,15 +1682,20 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glDepthMask (Z)V
   method public,abstract glDetachShader (II)V
   method public,abstract glDisable (I)V
+  method public,abstract glDispatchCompute (III)V
+  method public,abstract glDispatchComputeIndirect (J)V
   method public,abstract glDrawArrays (III)V
+  method public,abstract glDrawArraysIndirect (IJ)V
   method public,abstract glDrawArraysInstanced (IIII)V
   method public,abstract glDrawBuffer (I)V
   method public,abstract glDrawElements (IIIJ)V
+  method public,abstract glDrawElementsIndirect (IIJ)V
   method public,abstract glDrawElementsInstanced (IIIJI)V
   method public,abstract glDrawElementsInstancedBaseVertex (IIIJII)V
   method public,abstract glEnable (I)V
   method public,abstract glEnableVertexAttribArray (I)V
   method public,abstract glEndTimeElapsedQuery ()V
+  method public,abstract glEndTransformFeedback ()V
   method public,abstract glFenceSync (II)J
   method public,abstract glFlushMappedBufferRange (IJJ)V
   method public,abstract glFramebufferRenderbuffer (IIII)V
@@ -1473,12 +1715,15 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glGetFloat (ILjava/nio/FloatBuffer;)V
   method public,abstract glGetInteger (I)I
   method public,abstract glGetInteger (ILjava/nio/IntBuffer;)V
+  method public,abstract glGetIntegeri (II)I
   method public,abstract glGetProgramInfoLog (II)Ljava/lang/String;
   method public,abstract glGetProgramResourceIndex (IILjava/lang/CharSequence;)I
   method public,abstract glGetProgrami (II)I
   method public,abstract glGetQueryResultNanos (I)J
   method public,abstract glGetShaderInfoLog (II)Ljava/lang/String;
   method public,abstract glGetShaderi (II)I
+  method public,abstract glGetString (I)Ljava/lang/String;
+  method public,abstract glGetStringi (II)Ljava/lang/String;
   method public,abstract glGetTexImage (IIIILjava/nio/ByteBuffer;)V
   method public,abstract glGetUniformBlockIndex (ILjava/lang/CharSequence;)I
   method public,abstract glGetUniformLocation (ILjava/lang/CharSequence;)I
@@ -1486,6 +1731,11 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glLineWidth (F)V
   method public,abstract glLinkProgram (I)V
   method public,abstract glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public,abstract glMemoryBarrier (I)V
+  method public,abstract glMultiDrawArraysIndirect (IJII)V
+  method public,abstract glMultiDrawArraysIndirectCount (IJJII)V
+  method public,abstract glMultiDrawElementsIndirect (IIJII)V
+  method public,abstract glMultiDrawElementsIndirectCount (IIJJII)V
   method public,abstract glPixelStorei (II)V
   method public,abstract glPointSize (F)V
   method public,abstract glPolygonMode (II)V
@@ -1513,6 +1763,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
+  method public,abstract glTransformFeedbackVaryings (I[Ljava/lang/String;I)V
   method public,abstract glUniform1 (ILjava/nio/FloatBuffer;)V
   method public,abstract glUniform1 (ILjava/nio/IntBuffer;)V
   method public,abstract glUniform1f (IF)V
@@ -1539,20 +1790,32 @@ com/crystalgraphics/platform/gl/CgGLBackend
 com/crystalgraphics/platform/gl/CgGLContext
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract GL_ARB_bindless_texture ()Z
   method public,abstract GL_ARB_buffer_storage ()Z
+  method public,abstract GL_ARB_compute_shader ()Z
+  method public,abstract GL_ARB_draw_indirect ()Z
   method public,abstract GL_ARB_explicit_attrib_location ()Z
+  method public,abstract GL_ARB_indirect_parameters ()Z
   method public,abstract GL_ARB_instanced_arrays ()Z
   method public,abstract GL_ARB_map_buffer_range ()Z
+  method public,abstract GL_ARB_multi_draw_indirect ()Z
   method public,abstract GL_ARB_sampler_objects ()Z
+  method public,abstract GL_ARB_shader_draw_parameters ()Z
+  method public,abstract GL_ARB_shader_image_load_store ()Z
   method public,abstract GL_ARB_shader_storage_buffer_object ()Z
   method public,abstract GL_ARB_sync ()Z
   method public,abstract GL_ARB_timer_query ()Z
+  method public,abstract GL_ARB_transform_feedback2 ()Z
+  method public,abstract GL_KHR_shader_subgroup ()Z
+  method public,abstract GL_NV_shader_atomic_float ()Z
   method public,abstract OpenGL30 ()Z
   method public,abstract OpenGL32 ()Z
   method public,abstract OpenGL33 ()Z
   method public,abstract OpenGL40 ()Z
+  method public,abstract OpenGL42 ()Z
   method public,abstract OpenGL43 ()Z
   method public,abstract OpenGL44 ()Z
+  method public,abstract OpenGL46 ()Z
   method public,abstract mappingIsFree ()Z
   method public,abstract parallelShaderCompile ()Z
   method public,abstract probe ()V
@@ -1588,11 +1851,13 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public depthFuncChanged (I)Z
   method public depthMaskChanged (Z)Z
   method public fboChanged (II)Z
+  method public feedbackBindingChanged (IIJJ)Z
   method public framebufferDeleted (I)V
   method public frontFaceChanged (I)Z
   method public handOver ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public hostForeign (Ljava/lang/Runnable;[Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public hostForeign ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Lcom/crystalgraphics/platform/gl/state/CgGlScope;
+  method public imageBindingChanged (IIIIII)Z
   method public invalidate ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public invalidateAll ()V
   method public isTrusted (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Z
@@ -1610,6 +1875,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   method public stencilFuncChanged (III)Z
   method public stencilMaskChanged (I)Z
   method public stencilOpChanged (III)Z
+  method public storageBindingChanged (IIJJ)Z
   method public textureChanged (II)Z
   method public textureDeleted (I)V
   method public verifyAgainst (Lcom/crystalgraphics/platform/gl/state/CgGlStateProvider;)V
@@ -1622,6 +1888,21 @@ com/crystalgraphics/platform/gl/CgGlStateManager$Frame
   implements com/crystalgraphics/platform/gl/state/CgGlScope
   method public close ()V
   method public restore ()V
+com/crystalgraphics/platform/gl/CgGpuReport
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/util/Map;)V
+  method public api ()Ljava/lang/String;
+  method public fact (Ljava/lang/String;)Ljava/lang/String;
+  method public facts ()Ljava/util/Map;
+  method public line ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static bitNames (I[Ljava/lang/String;)Ljava/lang/String;
+  method public,static current ()Lcom/crystalgraphics/platform/gl/CgGpuReport;
+  method public,static log ()V
+  method public,static subgroupOps (I)Ljava/lang/String;
 com/crystalgraphics/platform/gl/state/CgGlCensus
   access public,final
   extends java/lang/Object
@@ -1634,6 +1915,7 @@ com/crystalgraphics/platform/gl/state/CgGlGetProvider
   method protected bool (I)Z
   method protected booleans (ILjava/nio/ByteBuffer;)V
   method protected integer (I)I
+  method protected integerAt (II)I
   method protected integers (ILjava/nio/IntBuffer;)V
   method protected readAlpha (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method protected readBlend (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
@@ -1652,6 +1934,7 @@ com/crystalgraphics/platform/gl/state/CgGlGetProvider
   method protected real (I)F
   method public <init> ()V
   method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
+  method public readBinding (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;ILcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public readTextures (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)V
 com/crystalgraphics/platform/gl/state/CgGlScope
   access public,abstract,interface
@@ -1669,6 +1952,8 @@ com/crystalgraphics/platform/gl/state/CgGlSlot
   field public,static,final CULL Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final DEPTH Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final FBO Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
+  field public,static,final IMAGES Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
+  field public,static,final INDIRECT_BUFFERS Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final LINE_WIDTH Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final POINT_SIZE Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final POLYGON_MODE Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
@@ -1676,7 +1961,9 @@ com/crystalgraphics/platform/gl/state/CgGlSlot
   field public,static,final PROGRAM Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final SCISSOR Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final STENCIL Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
+  field public,static,final STORAGE_BUFFERS Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final TEXTURES Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
+  field public,static,final TRANSFORM_FEEDBACK Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final VERTEX_INPUT Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   field public,static,final VIEWPORT Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/state/CgGlSlot;
@@ -1699,7 +1986,9 @@ com/crystalgraphics/platform/gl/state/CgGlState
 com/crystalgraphics/platform/gl/state/CgGlStateProvider
   access public,abstract,interface
   extends java/lang/Object
+  method public hostBinds (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)Z
   method public isFree ()Z
+  method public readBinding (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;ILcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public,abstract read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public,static glGet ()Lcom/crystalgraphics/platform/gl/state/CgGlStateProvider;
 com/crystalgraphics/platform/gl/state/CgGlStateProvider$GlGetHolder
@@ -1739,6 +2028,7 @@ com/crystalgraphics/platform/gl/state/CgGlStateShadow
   field public polygonOffsetPoint Z
   field public polygonOffsetUnits F
   field public programId I
+  field public rasterizerDiscard Z
   field public readFbo I
   field public scissorH I
   field public scissorTest Z
@@ -1759,12 +2049,32 @@ com/crystalgraphics/platform/gl/state/CgGlStateShadow
   field public viewportX I
   field public viewportY I
   field public,final boundTexture2D [I
+  field public,final feedbackBuffer [I
+  field public,final feedbackOffset [J
+  field public,final feedbackSize [J
+  field public,final imageAccess [I
+  field public,final imageFormat [I
+  field public,final imageLayer [I
+  field public,final imageLevel [I
+  field public,final imageTexture [I
+  field public,final indirectBuffer [I
+  field public,final storageBuffer [I
+  field public,final storageOffset [J
+  field public,final storageSize [J
+  field public,static,final INDIRECT_BINDINGS [I
+  field public,static,final INDIRECT_TARGETS [I
+  field public,static,final MAX_FEEDBACK_BINDINGS I
+  field public,static,final MAX_IMAGE_UNITS I
+  field public,static,final MAX_STORAGE_BINDINGS I
   field public,static,final MAX_TEXTURE_UNITS I
+  field public,static,final RASTERIZER_DISCARD_POINT I
   field public,static,final UNKNOWN_BINDING I
   method public <init> ()V
+  method public copyBinding (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;ILcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public copyFrom (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
   method public differences (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)Ljava/lang/String;
   method public differences (Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;I)Ljava/lang/String;
+  method public,static indirectIndex (I)I
 com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   access public,final
   extends com/crystalgraphics/platform/gl/CgGLBackend
@@ -1773,9 +2083,13 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public blitFramebuffer (IIIIIIIIII)V
   method public bufferObjects ()Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;
   method public buildPipeline (I)V
+  method public cgBufferBarrier (III)V
+  method public cgFillBuffer (IJJI)V
+  method public cgImageBarrier (III)V
   method public checkFramebufferStatus (I)I
   method public copyImageSubData (IIIIIIIIIIIIIII)V
   method public deleteFramebuffers (I)V
+  method public device ()Lcom/crystalgraphics/platform/device/CgDevice;
   method public drawBuffers (Ljava/nio/IntBuffer;)V
   method public endFrame ()V
   method public framebufferTexture2D (IIIII)V
@@ -1788,10 +2102,12 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glAlphaFunc (IF)V
   method public glAttachShader (II)V
   method public glBeginTimeElapsedQuery (I)V
+  method public glBeginTransformFeedback (I)V
   method public glBindAttribLocation (IILjava/lang/CharSequence;)V
   method public glBindBuffer (II)V
   method public glBindBufferBase (III)V
   method public glBindBufferRange (IIIJJ)V
+  method public glBindImageTexture (IIIZIII)V
   method public glBindRenderbuffer (II)V
   method public glBindSampler (II)V
   method public glBindTexture (II)V
@@ -1828,15 +2144,20 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glDepthMask (Z)V
   method public glDetachShader (II)V
   method public glDisable (I)V
+  method public glDispatchCompute (III)V
+  method public glDispatchComputeIndirect (J)V
   method public glDrawArrays (III)V
+  method public glDrawArraysIndirect (IJ)V
   method public glDrawArraysInstanced (IIII)V
   method public glDrawBuffer (I)V
   method public glDrawElements (IIIJ)V
+  method public glDrawElementsIndirect (IIJ)V
   method public glDrawElementsInstanced (IIIJI)V
   method public glDrawElementsInstancedBaseVertex (IIIJII)V
   method public glEnable (I)V
   method public glEnableVertexAttribArray (I)V
   method public glEndTimeElapsedQuery ()V
+  method public glEndTransformFeedback ()V
   method public glFenceSync (II)J
   method public glFlushMappedBufferRange (IJJ)V
   method public glFramebufferRenderbuffer (IIII)V
@@ -1856,12 +2177,15 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glGetFloat (ILjava/nio/FloatBuffer;)V
   method public glGetInteger (I)I
   method public glGetInteger (ILjava/nio/IntBuffer;)V
+  method public glGetIntegeri (II)I
   method public glGetProgramInfoLog (II)Ljava/lang/String;
   method public glGetProgramResourceIndex (IILjava/lang/CharSequence;)I
   method public glGetProgrami (II)I
   method public glGetQueryResultNanos (I)J
   method public glGetShaderInfoLog (II)Ljava/lang/String;
   method public glGetShaderi (II)I
+  method public glGetString (I)Ljava/lang/String;
+  method public glGetStringi (II)Ljava/lang/String;
   method public glGetTexImage (IIIILjava/nio/ByteBuffer;)V
   method public glGetUniformBlockIndex (ILjava/lang/CharSequence;)I
   method public glGetUniformLocation (ILjava/lang/CharSequence;)I
@@ -1869,6 +2193,11 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glLineWidth (F)V
   method public glLinkProgram (I)V
   method public glMapBufferRange (IJJILjava/nio/ByteBuffer;)Ljava/nio/ByteBuffer;
+  method public glMemoryBarrier (I)V
+  method public glMultiDrawArraysIndirect (IJII)V
+  method public glMultiDrawArraysIndirectCount (IJJII)V
+  method public glMultiDrawElementsIndirect (IIJII)V
+  method public glMultiDrawElementsIndirectCount (IIJJII)V
   method public glPixelStorei (II)V
   method public glPointSize (F)V
   method public glPolygonMode (II)V
@@ -1896,6 +2225,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
+  method public glTransformFeedbackVaryings (I[Ljava/lang/String;I)V
   method public glUniform1 (ILjava/nio/FloatBuffer;)V
   method public glUniform1 (ILjava/nio/IntBuffer;)V
   method public glUniform1f (IF)V
@@ -1927,20 +2257,32 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLContext
   extends java/lang/Object
   implements com/crystalgraphics/platform/gl/CgGLContext
   method public <init> ()V
+  method public GL_ARB_bindless_texture ()Z
   method public GL_ARB_buffer_storage ()Z
+  method public GL_ARB_compute_shader ()Z
+  method public GL_ARB_draw_indirect ()Z
   method public GL_ARB_explicit_attrib_location ()Z
+  method public GL_ARB_indirect_parameters ()Z
   method public GL_ARB_instanced_arrays ()Z
   method public GL_ARB_map_buffer_range ()Z
+  method public GL_ARB_multi_draw_indirect ()Z
   method public GL_ARB_sampler_objects ()Z
+  method public GL_ARB_shader_draw_parameters ()Z
+  method public GL_ARB_shader_image_load_store ()Z
   method public GL_ARB_shader_storage_buffer_object ()Z
   method public GL_ARB_sync ()Z
   method public GL_ARB_timer_query ()Z
+  method public GL_ARB_transform_feedback2 ()Z
+  method public GL_KHR_shader_subgroup ()Z
+  method public GL_NV_shader_atomic_float ()Z
   method public OpenGL30 ()Z
   method public OpenGL32 ()Z
   method public OpenGL33 ()Z
   method public OpenGL40 ()Z
+  method public OpenGL42 ()Z
   method public OpenGL43 ()Z
   method public OpenGL44 ()Z
+  method public OpenGL46 ()Z
   method public mappingIsFree ()Z
   method public parallelShaderCompile ()Z
   method public probe ()V
@@ -1950,9 +2292,11 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedStateProvider
   implements com/crystalgraphics/platform/gl/state/CgGlStateProvider
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend;)V
   method public read (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
+  method public readBinding (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;ILcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
 com/crystalgraphics/platform/gl/tracked/gl/GlEnums
   access public,final
   extends java/lang/Object
+  method public,static accesses (I)I
   method public,static topology (I)Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;
 com/crystalgraphics/platform/gl/tracked/gl/GlNames
   access public,final
@@ -1970,11 +2314,17 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers
   field public array I
   field public copyRead I
   field public copyWrite I
+  field public dispatchIndirect I
+  field public drawIndirect I
+  field public parameter I
   field public pixelPack I
   field public pixelUnpack I
   field public storage I
   field public texture I
   field public uniform I
+  field public,final storageName [I
+  field public,final storageOffset [J
+  field public,final storageSize [J
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedVertexArrays;)V
   method public bind (II)V
   method public bindIndexed (IIIJJ)V
@@ -2035,6 +2385,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors;)V
   method public activeUniform (IIILjava/nio/IntBuffer;)Ljava/lang/String;
   method public apply (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms$Samplers;)V
+  method public applyCompute (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms$Samplers;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms$Images;)Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;
   method public applyProgram (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;)V
   method public attach (II)V
   method public attachedShaders (ILjava/nio/IntBuffer;Ljava/nio/IntBuffer;)V
@@ -2141,13 +2492,16 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedTextures
   extends java/lang/Object
   field public,final pack Lcom/crystalgraphics/platform/gl/tracked/gl/GlPixels$Store;
   field public,final unpack Lcom/crystalgraphics/platform/gl/tracked/gl/GlPixels$Store;
+  implements com/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms$Images
   implements com/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms$Samplers
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedGlErrors;Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;)V
   method public active (I)V
   method public activeUnit ()I
   method public adopt (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)I
   method public bind (II)V
+  method public bind (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$Image;I)V
   method public bind (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;Lcom/crystalgraphics/platform/device/shader/CgGlslCompiler$Sampler;I)V
+  method public bindImage (IIIZIII)V
   method public bindSampler (II)V
   method public bound2D (I)I
   method public delete (I)V
@@ -2155,6 +2509,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedTextures
   method public generateMipmap (I)V
   method public get (I)Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedTextures$GlTexture;
   method public image (IIIIIIIILjava/nio/ByteBuffer;)V
+  method public imageUnit (I)[I
   method public multisample (IIIII)V
   method public parameter (III)V
   method public pixelStore (II)V
@@ -2211,10 +2566,11 @@ com/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer
   method public allocation ()Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public copyFrom (Lcom/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer;JJJ)V
   method public data (JLjava/nio/ByteBuffer;Z)V
+  method public fill (JJI)V
   method public map (JJZZZ)Ljava/nio/ByteBuffer;
   method public release ()V
   method public size ()J
-  method public storage (JLjava/nio/ByteBuffer;Z)V
+  method public storage (JLjava/nio/ByteBuffer;ZZ)V
   method public subData (JLjava/nio/ByteBuffer;)V
   method public unmap ()V
 com/crystalgraphics/platform/gl/tracked/tracker/CgDrawState
@@ -2244,6 +2600,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgDrawState
   method public <init> ()V
   method public bindingAllocation (I)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public clearBindings ()Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
+  method public image (ILcom/crystalgraphics/platform/device/resource/CgTextureView;)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   method public indexBuffer (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JZ)V
   method public storage (ILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JJ)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   method public texel (ILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JJLcom/crystalgraphics/platform/device/format/CgFormat;)Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
@@ -2278,17 +2635,23 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;Z)V
   method public allocate (JZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public bindTarget (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;)V
+  method public bufferBarrier (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;II)V
   method public buildPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;)V
   method public clear (ZFFFFZFZI)V
   method public device ()Lcom/crystalgraphics/platform/device/CgDevice;
+  method public dispatch (Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;III)V
+  method public dispatchIndirect (Lcom/crystalgraphics/platform/device/pipeline/CgComputePipeline;Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;J)V
   method public draw (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;IIII)V
   method public drawIndexed (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;IIIII)V
+  method public drawIndirect (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;ZLcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JIILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;J)V
   method public endFrame ()V
   method public forgetPipelines (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram;)V
   method public frameAllocate (J)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public free (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
   method public fromHost ()V
+  method public imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;II)V
   method public markUsed (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
+  method public memoryBarrier (II)V
   method public release (Lcom/crystalgraphics/platform/device/CgDeviceObject;)V
   method public setClearPrograms (Ljava/util/function/IntFunction;)V
   method public setZeroToOneClip (Z)V
@@ -2303,6 +2666,8 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats
   extends java/lang/Object
   field public clearsAsLoadOps J
   field public clearsInPass J
+  field public computePasses J
+  field public dispatches J
   field public draws J
   field public passBreaks J
   field public passes J

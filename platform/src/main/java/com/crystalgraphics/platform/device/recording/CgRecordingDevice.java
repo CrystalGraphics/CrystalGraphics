@@ -3,12 +3,15 @@ package com.crystalgraphics.platform.device.recording;
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.device.CgDeviceObject;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
+import com.crystalgraphics.platform.device.command.CgComputePass;
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.pipeline.CgBindings;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
@@ -26,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
 
 /**
  * A {@link CgDevice} with no GPU: it keeps buffer contents, logs every command, and refuses what a Vulkan
@@ -55,7 +59,7 @@ public final class CgRecordingDevice implements CgDevice {
 
     private static final CgDeviceInfo INFO = new CgDeviceInfo("recording", "CrystalGraphics", "0",
             new CgDeviceInfo.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
-                    256, 256, 16, 16384, 16f), true, true, true);
+                    256, 256, 16, 16384, 16f, CgDeviceInfo.Compute.MINIMUM), true, true, true, true, true, true);
 
     private final List<String> log = new ArrayList<>();
     private final List<CgPassDesc> passes = new ArrayList<>();
@@ -72,6 +76,7 @@ public final class CgRecordingDevice implements CgDevice {
     private int draws;
     private boolean logging = true;
     private Pass open;
+    private ComputePass openCompute;
     private Texture surfaceColor, surfaceDepth;
 
     public CgRecordingDevice(int width, int height) {
@@ -139,6 +144,8 @@ public final class CgRecordingDevice implements CgDevice {
 
     @Override public CgDeviceInfo info() { return INFO; }
 
+    @Override public void describe(BiConsumer<String, String> fact) { fact.accept("version", "recording"); }
+
     @Override public boolean supports(CgFormat format, CgGpuTexture.Usage usage) { return true; }
 
     @Override public boolean ownedByCurrentThread() { return Thread.currentThread() == owner; }
@@ -190,6 +197,16 @@ public final class CgRecordingDevice implements CgDevice {
         use(desc.layout(), desc.vertex(), desc.fragment());
         Pipeline p = new Pipeline(desc);
         record("createPipeline #" + p.id + " " + desc.label());
+        return p;
+    }
+
+    @Override
+    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
+        use(layout, module);
+        if (module.stage() != CgShaderModule.Stage.COMPUTE)
+            throw new IllegalArgumentException(label + ": a compute pipeline from a " + module.stage() + " module");
+        ComputePipeline p = new ComputePipeline(label, module, layout);
+        record("createComputePipeline #" + p.id + " " + label);
         return p;
     }
 
@@ -268,6 +285,52 @@ public final class CgRecordingDevice implements CgDevice {
         if (open != null) throw new IllegalStateException(what + " inside pass '" + open.desc.label() + "'");
     }
 
+    private void noCompute(String what) {
+        if (openCompute != null) throw new IllegalStateException(what + " inside compute pass '" + openCompute.label + "'");
+    }
+
+    /** {@code from} copied into {@code into}, every resource checked live; the bindings as a log line. */
+    private String push(CgBindings from, CgBindings into) {
+        into.clear();
+        StringBuilder s = new StringBuilder("pushBindings");
+        for (int i = 0; i < from.count(); i++) {
+            s.append(' ').append(from.binding(i)).append(':');
+            switch (from.type(i)) {
+                case SAMPLED_TEXTURE -> {
+                    use(from.view(i).texture(), from.sampler(i));
+                    into.texture(from.binding(i), from.view(i), from.sampler(i));
+                    s.append(ref(from.view(i).texture()));
+                }
+                case STORAGE_IMAGE -> {
+                    use(from.view(i).texture());
+                    into.image(from.binding(i), from.view(i));
+                    s.append(ref(from.view(i).texture()));
+                }
+                case TEXEL_BUFFER -> {
+                    use(from.buffer(i));
+                    into.texel(from.binding(i), from.buffer(i), from.offset(i), from.size(i), from.texelFormat(i));
+                    s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
+                }
+                default -> {
+                    use(from.buffer(i));
+                    into.buffer(from.binding(i), from.type(i), from.buffer(i), from.offset(i), from.size(i));
+                    s.append(ref(from.buffer(i))).append('+').append(from.offset(i));
+                }
+            }
+        }
+        return s.toString();
+    }
+
+    /** Every slot of {@code layout} pushed with its type. */
+    private static void pushedAll(String label, CgBindingLayout layout, CgBindings pushed) {
+        for (CgBindingLayout.Slot slot : layout.slots()) {
+            int i = pushed.indexOf(slot.binding());
+            if (i < 0 || pushed.type(i) != slot.type())
+                throw new IllegalStateException(label + " reads binding " + slot.binding() + " (" + slot.type()
+                        + "), which was not pushed");
+        }
+    }
+
     private static String ref(CgDeviceObject o) { return o == null ? "-" : "#" + ((Obj) o).id; }
 
     // ── the encoder and the pass ───────────────────────────────────────────────
@@ -277,6 +340,7 @@ public final class CgRecordingDevice implements CgDevice {
         @Override
         public CgRenderPass beginPass(CgPassDesc desc) {
             outsidePass("beginPass");
+            noCompute("beginPass");
             StringBuilder s = new StringBuilder("beginPass ").append(desc.label()).append(" colors=[");
             for (int i = 0; i < desc.colors().size(); i++) {
                 CgPassDesc.Color c = desc.colors().get(i);
@@ -295,6 +359,35 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
+        public CgComputePass beginCompute(String label) {
+            outsidePass("beginCompute");
+            noCompute("beginCompute");
+            openCompute = new ComputePass(label);
+            record("beginCompute " + label);
+            return openCompute;
+        }
+
+        @Override
+        public void bufferBarrier(CgGpuBuffer buffer, int from, int to) {
+            outsidePass("bufferBarrier");
+            use(buffer);
+            record("bufferBarrier " + ref(buffer) + " " + CgAccess.names(from) + " " + CgAccess.names(to));
+        }
+
+        @Override
+        public void imageBarrier(CgGpuTexture texture, int from, int to) {
+            outsidePass("imageBarrier");
+            use(texture);
+            record("imageBarrier " + ref(texture) + " " + CgAccess.names(from) + " " + CgAccess.names(to));
+        }
+
+        @Override
+        public void memoryBarrier(int from, int to) {
+            outsidePass("memoryBarrier");
+            record("memoryBarrier " + CgAccess.names(from) + " " + CgAccess.names(to));
+        }
+
+        @Override
         public void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data) {
             outsidePass("writeBuffer");
             use(dst);
@@ -303,6 +396,15 @@ public final class CgRecordingDevice implements CgDevice {
             to.position((int) dstOffset);
             to.put(data.duplicate());
             record("writeBuffer " + ref(dst) + "+" + dstOffset + " " + n);
+        }
+
+        @Override
+        public void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value) {
+            outsidePass("fillBuffer");
+            use(dst);
+            ByteBuffer to = ((Buffer) dst).memory.duplicate().order(ByteOrder.nativeOrder());
+            for (long at = dstOffset; at < dstOffset + size; at += 4) to.putInt((int) at, value);
+            record("fillBuffer " + ref(dst) + "+" + dstOffset + " " + size);
         }
 
         @Override
@@ -365,6 +467,18 @@ public final class CgRecordingDevice implements CgDevice {
             ByteBuffer o = out.duplicate();
             while (o.hasRemaining()) o.put((byte) 0);
             record("readTexture " + ref(src) + " " + region(r));
+        }
+
+        @Override
+        public void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out) {
+            outsidePass("readBuffer");
+            use(src);
+            ByteBuffer from = ((Buffer) src).memory.duplicate();
+            from.limit((int) (srcOffset + out.remaining()));
+            from.position((int) srcOffset);
+            int size = from.remaining();
+            out.put(from);
+            record("readBuffer " + ref(src) + "+" + srcOffset + " " + size);
         }
 
         @Override
@@ -432,29 +546,7 @@ public final class CgRecordingDevice implements CgDevice {
         @Override
         public void pushBindings(CgBindings b) {
             live();
-            pushed.clear();
-            StringBuilder s = new StringBuilder("pushBindings");
-            for (int i = 0; i < b.count(); i++) {
-                s.append(' ').append(b.binding(i)).append(':');
-                switch (b.type(i)) {
-                    case SAMPLED_TEXTURE -> {
-                        use(b.view(i).texture(), b.sampler(i));
-                        pushed.texture(b.binding(i), b.view(i), b.sampler(i));
-                        s.append(ref(b.view(i).texture()));
-                    }
-                    case TEXEL_BUFFER -> {
-                        use(b.buffer(i));
-                        pushed.texel(b.binding(i), b.buffer(i), b.offset(i), b.size(i), b.texelFormat(i));
-                        s.append(ref(b.buffer(i))).append('+').append(b.offset(i));
-                    }
-                    default -> {
-                        use(b.buffer(i));
-                        pushed.buffer(b.binding(i), b.type(i), b.buffer(i), b.offset(i), b.size(i));
-                        s.append(ref(b.buffer(i))).append('+').append(b.offset(i));
-                    }
-                }
-            }
-            record(s.toString());
+            record(push(b, pushed));
         }
 
         @Override
@@ -530,16 +622,49 @@ public final class CgRecordingDevice implements CgDevice {
             record("drawIndexed " + indexCount + " " + instanceCount + " " + firstIndex + " " + baseVertex + " " + firstInstance);
         }
 
+        @Override
+        public void drawIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+            drawable();
+            use(buffer);
+            draws++;
+            record("drawIndirect " + ref(buffer) + "+" + offset + " " + drawCount + " " + stride);
+        }
+
+        @Override
+        public void drawIndexedIndirect(CgGpuBuffer buffer, long offset, int drawCount, int stride) {
+            drawable();
+            if (indexBuffer == null) throw new IllegalStateException("drawIndexedIndirect with no index buffer");
+            use(buffer, indexBuffer);
+            draws++;
+            record("drawIndexedIndirect " + ref(buffer) + "+" + offset + " " + drawCount + " " + stride);
+        }
+
+        @Override
+        public void drawIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset, int maxDraws,
+                                      int stride) {
+            drawable();
+            use(buffer, count);
+            draws++;
+            record("drawIndirectCount " + ref(buffer) + "+" + offset + " " + ref(count) + "+" + countOffset + " "
+                    + maxDraws + " " + stride);
+        }
+
+        @Override
+        public void drawIndexedIndirectCount(CgGpuBuffer buffer, long offset, CgGpuBuffer count, long countOffset,
+                                             int maxDraws, int stride) {
+            drawable();
+            if (indexBuffer == null) throw new IllegalStateException("drawIndexedIndirectCount with no index buffer");
+            use(buffer, count, indexBuffer);
+            draws++;
+            record("drawIndexedIndirectCount " + ref(buffer) + "+" + offset + " " + ref(count) + "+" + countOffset + " "
+                    + maxDraws + " " + stride);
+        }
+
         private void drawable() {
             live();
             if (pipeline == null) throw new IllegalStateException("Draw with no pipeline in '" + desc.label() + "'");
             use(pipeline);
-            for (CgBindingLayout.Slot slot : pipeline.desc().layout().slots()) {
-                int i = pushed.indexOf(slot.binding());
-                if (i < 0 || pushed.type(i) != slot.type())
-                    throw new IllegalStateException(pipeline.desc().label() + " reads binding " + slot.binding()
-                            + " (" + slot.type() + "), which was not pushed");
-            }
+            pushedAll(pipeline.desc().label(), pipeline.desc().layout(), pushed);
             for (CgPipelineDesc.VertexBuffer vb : pipeline.desc().vertexBuffers()) {
                 Buffer b = vertexBuffers.get(vb.binding());
                 if (b == null) throw new IllegalStateException(pipeline.desc().label() + " reads vertex binding "
@@ -649,6 +774,75 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override public CgPipelineDesc desc() { return desc; }
+    }
+
+    private final class ComputePass implements CgComputePass {
+        final String label;
+        final CgBindings pushed = new CgBindings();
+        ComputePipeline pipeline;
+        boolean ended;
+
+        ComputePass(String label) { this.label = label; }
+
+        private void live() {
+            if (ended || openCompute != this) throw new IllegalStateException("Compute pass '" + label + "' has ended");
+        }
+
+        @Override
+        public void setPipeline(CgComputePipeline p) {
+            live();
+            use(p);
+            pipeline = (ComputePipeline) p;
+            record("setComputePipeline " + ref(p));
+        }
+
+        @Override
+        public void pushBindings(CgBindings b) {
+            live();
+            record(push(b, pushed));
+        }
+
+        @Override
+        public void dispatch(int groupsX, int groupsY, int groupsZ) {
+            dispatchable();
+            record("dispatch " + groupsX + " " + groupsY + " " + groupsZ);
+        }
+
+        @Override
+        public void dispatchIndirect(CgGpuBuffer buffer, long offset) {
+            dispatchable();
+            use(buffer);
+            record("dispatchIndirect " + ref(buffer) + "+" + offset);
+        }
+
+        private void dispatchable() {
+            live();
+            if (pipeline == null) throw new IllegalStateException("Dispatch with no pipeline in '" + label + "'");
+            use(pipeline);
+            pushedAll(pipeline.label(), pipeline.layout, pushed);
+        }
+
+        @Override
+        public void end() {
+            live();
+            ended = true;
+            openCompute = null;
+            record("endCompute");
+        }
+    }
+
+    private final class ComputePipeline extends Obj implements CgComputePipeline {
+        final CgShaderModule module;
+        final CgBindingLayout layout;
+
+        ComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
+            super(label);
+            this.module = module;
+            this.layout = layout;
+        }
+
+        @Override public CgShaderModule module() { return module; }
+        @Override public CgBindingLayout layout() { return layout; }
     }
 
     private final class Timer extends Obj implements CgTimerQuery {

@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.device.CgDeviceObject;
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
@@ -18,6 +19,7 @@ import com.crystalgraphics.vulkan.format.VulkanCheck;
 import com.crystalgraphics.vulkan.format.VulkanFormats;
 import com.crystalgraphics.vulkan.resource.VulkanBindingLayout;
 import com.crystalgraphics.vulkan.resource.VulkanBuffer;
+import com.crystalgraphics.vulkan.resource.VulkanComputePipeline;
 import com.crystalgraphics.vulkan.resource.VulkanPipeline;
 import com.crystalgraphics.vulkan.resource.VulkanSampler;
 import com.crystalgraphics.vulkan.resource.VulkanShaderModule;
@@ -32,6 +34,7 @@ import org.lwjgl.util.vma.VmaAllocationInfo;
 import org.lwjgl.util.vma.VmaAllocatorCreateInfo;
 import org.lwjgl.util.vma.VmaVulkanFunctions;
 import org.lwjgl.vulkan.VkBufferCreateInfo;
+import org.lwjgl.vulkan.VkComputePipelineCreateInfo;
 import org.lwjgl.vulkan.VkBufferViewCreateInfo;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutBinding;
 import org.lwjgl.vulkan.VkDescriptorSetLayoutCreateInfo;
@@ -40,6 +43,7 @@ import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
 import org.lwjgl.vulkan.VkImageCreateInfo;
 import org.lwjgl.vulkan.VkPhysicalDeviceLimits;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
+import org.lwjgl.vulkan.VkPhysicalDeviceSubgroupProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDevicePushDescriptorPropertiesKHR;
 import org.lwjgl.vulkan.VkPipelineCacheCreateInfo;
@@ -75,6 +79,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -145,20 +150,23 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
 
             VkPhysicalDevicePushDescriptorPropertiesKHR push = VkPhysicalDevicePushDescriptorPropertiesKHR.calloc(stack)
                     .sType$Default();
+            VkPhysicalDeviceSubgroupProperties subgroups = VkPhysicalDeviceSubgroupProperties.calloc(stack)
+                    .sType$Default().pNext(push.address());
             VkPhysicalDeviceProperties2 props2 = VkPhysicalDeviceProperties2.calloc(stack).sType$Default()
-                    .pNext(push.address());
+                    .pNext(subgroups.address());
             vkGetPhysicalDeviceProperties2(host.physicalDevice(), props2);
             maxPushDescriptors = push.maxPushDescriptors();
             VkPhysicalDeviceProperties props = props2.properties();
             timestampPeriod = props.limits().timestampPeriod();
-            info = info(props);
+            info = info(props, subgroups, host);
         }
         staging = new VulkanStaging(this);
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
 
-    private static CgDeviceInfo info(VkPhysicalDeviceProperties props) {
+    private static CgDeviceInfo info(VkPhysicalDeviceProperties props, VkPhysicalDeviceSubgroupProperties subgroups,
+                                     CgVulkanHost host) {
         VkPhysicalDeviceLimits l = props.limits();
         int samples = Integer.highestOneBit(l.framebufferColorSampleCounts() & l.framebufferDepthSampleCounts());
         // Binding counts at GL's scale: the tracker sizes its tables by them, and Vulkan's are in the millions.
@@ -168,11 +176,22 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                 Math.min(24, l.maxPerStageDescriptorUniformBuffers()), Math.min(16, l.maxPerStageDescriptorStorageBuffers()),
                 l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
-                l.maxViewportDimensions(0), l.maxSamplerAnisotropy());
+                l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgDeviceInfo.Compute(
+                        l.maxComputeSharedMemorySize(), l.maxComputeWorkGroupInvocations(),
+                        l.maxComputeWorkGroupSize(0), l.maxComputeWorkGroupSize(1), l.maxComputeWorkGroupSize(2),
+                        l.maxComputeWorkGroupCount(0), l.maxComputeWorkGroupCount(1), l.maxComputeWorkGroupCount(2),
+                        subgroups.subgroupSize(), (subgroups.supportedStages() & VK_SHADER_STAGE_COMPUTE_BIT) != 0
+                                ? subgroups.supportedOperations() : 0));
         int v = props.driverVersion();
         return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
-                l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true);
+                l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
+                host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance());
+    }
+
+    @Override
+    public void describe(BiConsumer<String, String> fact) {
+        VulkanReport.describe(host, fact);
     }
 
     // ── what the encoder and pass reach ────────────────────────────────────────
@@ -225,6 +244,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         int f = formats.features(formats.vk(format));
         switch (usage) {
             case SAMPLED: return (f & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0;
+            case STORAGE: return (f & VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0;
             case ATTACHMENT: return (f & (format.aspect() == CgFormat.Aspect.COLOR ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
                     : VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0;
             default: return (f & (VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) != 0;
@@ -242,6 +262,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     case UNIFORM: usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
                     case STORAGE: usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; break;
                     case TEXEL: usage |= VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT; break;
+                    case INDIRECT: usage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT; break;
                     case COPY_SRC: usage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT; break;
                     case COPY_DST: usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT; break;
                 }
@@ -273,6 +294,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
         int usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         if (desc.usage().contains(CgGpuTexture.Usage.SAMPLED)) usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+        if (desc.usage().contains(CgGpuTexture.Usage.STORAGE)) {
+            if (desc.samples() > 1 || !supports(desc.format(), CgGpuTexture.Usage.STORAGE))
+                throw new IllegalArgumentException(desc.label() + ": " + desc.format() + " x" + desc.samples()
+                        + " cannot be a storage image on " + info.name());
+            usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+        }
         if (desc.usage().contains(CgGpuTexture.Usage.ATTACHMENT))
             usage |= depth ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         boolean volume = desc.kind() == CgGpuTexture.Kind.D3;
@@ -367,7 +394,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             VkDescriptorSetLayoutBinding.Buffer bindings = VkDescriptorSetLayoutBinding.calloc(slots.size(), stack);
             for (int i = 0; i < slots.size(); i++) {
                 bindings.get(i).binding(slots.get(i).binding()).descriptorType(descriptorType(slots.get(i).type()))
-                        .descriptorCount(1).stageFlags(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+                        .descriptorCount(1).stageFlags(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
+                                | VK_SHADER_STAGE_COMPUTE_BIT);
             }
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateDescriptorSetLayout(device, VkDescriptorSetLayoutCreateInfo.calloc(stack).sType$Default()
@@ -387,7 +415,23 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             case UNIFORM_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             case STORAGE_BUFFER: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             case TEXEL_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER;
+            case STORAGE_IMAGE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
             default: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        }
+    }
+
+    @Override
+    public CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout) {
+        try (MemoryStack stack = stackPush()) {
+            VkComputePipelineCreateInfo.Buffer ci = VkComputePipelineCreateInfo.calloc(1, stack).sType$Default()
+                    .layout(((VulkanBindingLayout) layout).pipelineLayout);
+            ci.get(0).stage().sType$Default().stage(VK_SHADER_STAGE_COMPUTE_BIT)
+                    .module(((VulkanShaderModule) module).module).pName(stack.UTF8("main"));
+            LongBuffer lp = stack.mallocLong(1);
+            check(vkCreateComputePipelines(device, pipelineCache, ci, null, lp), "vkCreateComputePipelines " + label);
+            VulkanComputePipeline p = new VulkanComputePipeline(label, module, layout, lp.get(0));
+            live.add(p);
+            return p;
         }
     }
 
@@ -531,6 +575,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             vkDestroyPipelineLayout(device, l.pipelineLayout, null);
             vkDestroyDescriptorSetLayout(device, l.setLayout, null);
         } else if (o instanceof VulkanPipeline p) {
+            vkDestroyPipeline(device, p.pipeline, null);
+        } else if (o instanceof VulkanComputePipeline p) {
             vkDestroyPipeline(device, p.pipeline, null);
         } else if (o instanceof VulkanTimerQuery q) {
             vkDestroyQueryPool(device, q.pool, null);

@@ -49,6 +49,8 @@ public final class CgBatcher {
     private int[] ranges = new int[256 * 3];
     private int[] domains = new int[256];
     private int[] scissors = new int[256];
+    /** Per draw: it batches with nothing, as an indirect draw's command is its own. */
+    private boolean[] alone = new boolean[256];
 
     private int batchCount;
     private int[] batchPipeline = new int[64];
@@ -58,6 +60,7 @@ public final class CgBatcher {
     private int[] batchRange = new int[64 * 3];
     private int[] batchDomain = new int[64];
     private int[] batchScissor = new int[64];
+    private boolean[] batchAlone = new boolean[64];
     private float[] batchUnion = new float[64 * 4];
     private int[] batchHead = new int[64];
     private int[] batchTail = new int[64];
@@ -81,12 +84,15 @@ public final class CgBatcher {
     /** Adds the pass's next draw; {@code ref} is the caller's handle for it, given back in batch order. */
     public void add(int pipeline, int binding, CgInstanceKind kind, Object mesh, int domain, int scissor,
                     float x0, float y0, float x1, float y1, long sortKey, int ref) {
-        add(pipeline, binding, kind, mesh, -1, 0, -1, domain, scissor, x0, y0, x1, y1, sortKey, ref);
+        add(pipeline, binding, kind, mesh, -1, 0, -1, false, domain, scissor, x0, y0, x1, y1, sortKey, ref);
     }
 
-    /** As the shorter form, for a mesh draw of a range (submesh, first, count): draws of other ranges never batch. */
+    /**
+     * As the shorter form, for a mesh draw of a range (submesh, first, count): draws of other ranges never batch. A
+     * draw {@code alone} is a batch of its own.
+     */
     public void add(int pipeline, int binding, CgInstanceKind kind, Object mesh, int submesh, int first, int count,
-                    int domain, int scissor, float x0, float y0, float x1, float y1, long sortKey, int ref) {
+                    boolean alone, int domain, int scissor, float x0, float y0, float x1, float y1, long sortKey, int ref) {
         if (draws == refs.length) growDraws();
         int d = draws++;
         refs[d] = ref;
@@ -105,6 +111,7 @@ public final class CgBatcher {
         ranges[d * 3 + 2] = count;
         domains[d] = domain;
         scissors[d] = scissor;
+        this.alone[d] = alone;
         if (order == CgOrder.LOOKBACK) lookback(d);
     }
 
@@ -224,7 +231,7 @@ public final class CgBatcher {
     }
 
     private boolean sameKey(int b, int d) {
-        return batchPipeline[b] == pipelines[d] && batchBinding[b] == bindings[d] && batchKind[b] == kinds[d]
+        return !alone[d] && !batchAlone[b] && batchPipeline[b] == pipelines[d] && batchBinding[b] == bindings[d] && batchKind[b] == kinds[d]
                 && batchMesh[b] == meshes[d] && batchScissor[b] == scissors[d] && batchRange[b * 3] == ranges[d * 3]
                 && batchRange[b * 3 + 1] == ranges[d * 3 + 1] && batchRange[b * 3 + 2] == ranges[d * 3 + 2];
     }
@@ -239,6 +246,7 @@ public final class CgBatcher {
         System.arraycopy(ranges, d * 3, batchRange, b * 3, 3);
         batchDomain[b] = domains[d];
         batchScissor[b] = scissors[d];
+        batchAlone[b] = alone[d];
         System.arraycopy(rects, d * 4, batchUnion, b * 4, 4);
         batchHead[b] = d;
         batchTail[b] = d;
@@ -283,6 +291,7 @@ public final class CgBatcher {
         ranges = Arrays.copyOf(ranges, n * 3);
         domains = Arrays.copyOf(domains, n);
         scissors = Arrays.copyOf(scissors, n);
+        alone = Arrays.copyOf(alone, n);
     }
 
     private void growBatches() {
@@ -294,6 +303,7 @@ public final class CgBatcher {
         batchRange = Arrays.copyOf(batchRange, n * 3);
         batchDomain = Arrays.copyOf(batchDomain, n);
         batchScissor = Arrays.copyOf(batchScissor, n);
+        batchAlone = Arrays.copyOf(batchAlone, n);
         batchUnion = Arrays.copyOf(batchUnion, n * 4);
         batchHead = Arrays.copyOf(batchHead, n);
         batchTail = Arrays.copyOf(batchTail, n);

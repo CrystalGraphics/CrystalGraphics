@@ -169,6 +169,14 @@ Rules that follow:
   flipped between them (`TraceCostProbe` in `harness-scenes` is the pattern) — drift cancels.
 - Across runs: back to back, on a quiet machine, each at least twice. **A difference smaller than twice the
   run-to-run spread is not a finding** — say so rather than report it.
+- **A spike no zone explains is the machine until a bare window says otherwise.** A stall of tens of
+  milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`,
+  `stage.parkSamplers`), the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any
+  engine theory, run a bare GLFW window (clear and swap, nothing of ours) for two minutes with `nvidia-smi`
+  sampling beside it: if it stalls too, the machine is part of it -- and readbacks make those stalls worse
+  (below, *A readback's time*). The recipe, the script and what it found
+  (on 2026-10-01 a background utility froze every OpenGL window on this machine for seconds) are in
+  `plan/gl-gpu-stalls-notes.md`, from its line *If the freezes come back, start here*.
 
 ---
 
@@ -357,14 +365,24 @@ CrystalGraphics' zones, by package — **before adding one, look here and in the
 | Shader graph | shadergraph, gpu | `shadergraph.emit`, `.previewEmit`; `preview.renderPending/render/draw`, `mainPreview.render/draw` — recording only: the passes execute inside the frame that records them, so their GPU time is that frame's; counters for what drew, was unchanged, is animated or still compiling, and `mainPreview.fallback` for a frame the main preview drew flat white | `shadergraph/CgShaderEmitter`, `CgPreviewEmitter`, `CgPreviewRenderer`, `CgMainPreviewRenderer` |
 | Batching | gl; gl.detail | `batch.*`, `quadRenderer.flush`, `curveRenderer.flush`, `frameRing.wait`; on gl.detail their `upload`/`bindBuffer`/`drawInstanced` and stream buffer `map`/`write`/`commit` | `gl/render/*`, `gl/buffer/*` |
 | Texture arrays | gl | uploads, growth | `gl/texture/CgTexture2DArray` |
-| World | world, gpu | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent` | `render/stage/CgRenderStage`, `render/world/CgWorldRenderer` |
+| World | world, gpu; gl | a stage's whole firing as its path (`world.opaque`, `world.transparent`), the world renderer's recording inside it (`world.recordOpaque/recordTransparent`), `world.opaqueDraws/transparentDraws` counts; `gpu:world.opaque/transparent`; on gl `stage.parkSamplers/unparkSamplers`, the host's sampler bindings read and put back around every firing | `render/stage/CgRenderStage`, `CgStageFrame`, `render/world/CgWorldRenderer` |
 | Culling | gl | frustum tests | `render/CgViewFrustum` |
-| Frame graph | gl | counters `graph.passes`, `.batches`, `.draws`, `.snapshots`, `.instances` per build; `graph.batches.skipped` (a pipeline with no program: its draws are missing that frame) and `graph.requested.made` (a requested texture's storage made -- at first use, or again after its picture was lost) per execution; `graph.passes.undamaged` and `graph.damage-kpx` (passes cut to their damage); `graph.again.requested-kept`/`-drawn` (a frame executed again: passes into kept textures skipped, or drawn whole) | `render/graph/CgFrameBuilder`, `CgExecutor` |
+| Frame graph | gl | `graph.build`, `graph.execute`, and inside it `graph.deferrals` (deferred texture work, the frame's pool) and `graph.placeMeshes`; counters `graph.passes`, `.batches`, `.draws`, `.snapshots`, `.instances` per build; `graph.batches.skipped` (a pipeline with no program: its draws are missing that frame) and `graph.requested.made` (a requested texture's storage made -- at first use, or again after its picture was lost) per execution; `graph.passes.undamaged` and `graph.damage-kpx` (passes cut to their damage); `graph.again.requested-kept`/`-drawn` (a frame executed again: passes into kept textures skipped, or drawn whole) | `render/graph/CgFrameBuilder`, `CgExecutor` |
+| Meshes | gl | `mesh.commitRing` (the frame ring's pages unmapped before the first pass; FRAME meshes are written at placement, inside `graph.placeMeshes`); counters `mesh.placed`, `.uploads`, `.upload-bytes`, `.ring-bytes`, `.slab-kb`, `.drawn-vertices`, and `mesh.edited-every-frame` (meshes not FRAME edited 60 frames running) | `render/mesh/CgMeshStore` |
 
-**Not instrumented** — zone these before any question that touches them: the frame graph's build and
-execution of a world stage beyond its whole firing (`render/graph/CgFrameBuilder`, `CgExecutor`), mesh placement and loading beyond the store's counters (`render/mesh/CgMeshStore`, `api/mesh/CgMeshLoader`), framebuffer creation and blits beyond the
+**Not instrumented** — zone these before any question that touches them: the executor's passes one by one
+(`render/graph/CgExecutor`), mesh loading (`api/mesh/CgMeshLoader`), framebuffer creation and blits beyond the
 depth snapshot, texture loading (`CgTextureManager`, `CgTextureIO`), raw `CgShader` compiles outside a
 material, hot reload, and every host's own hooks (`runtime/mc/**`).
+
+**A readback's time is not always its own either.** A `glGet` waits for the driver's own thread to drain what was
+queued, so the first readback of a stage (`stage.parkSamplers`, `glState.adopt`) takes a stall from anywhere: another
+process on the GPU, a present still pending. **And the reads make it worse**: a bare GLFW window making the reads a
+frame here makes (two sampler parks, 60 more `glGet`s) had three times the frames over 20 ms of the same window
+without them, 28-33 against 9-10 in two minutes, up to 96 ms against 41, with the time inside the reads
+(`BareGets.java`, `plan/gl-gpu-stalls-notes.md`). So a spike in `stage.parkSamplers` or `glState.adopt` is the
+machine's hiccup paid synchronously, at a price these reads set. Compare spike counts over interleaved runs, never
+one run.
 
 **A GPU zone's time is not always its own.** The first GPU zone of a frame absorbs whatever the GPU was still
 finishing: in the shader graph, the main preview's GPU zone once read 9 ms, and with that draw switched off the

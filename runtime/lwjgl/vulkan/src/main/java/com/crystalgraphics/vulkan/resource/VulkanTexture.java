@@ -67,6 +67,7 @@ public final class VulkanTexture implements CgGpuTexture {
     private static int restingFor(Desc desc, int aspect) {
         boolean depth = (aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0;
         return desc.usage().contains(Usage.SAMPLED) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                : desc.usage().contains(Usage.STORAGE) ? VK_IMAGE_LAYOUT_GENERAL
                 : desc.usage().contains(Usage.ATTACHMENT)
                 ? (depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
                 : VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -114,6 +115,19 @@ public final class VulkanTexture implements CgGpuTexture {
         return transition(cmd, 0, desc.mips(), 0, layers, layout, dstStage, dstAccess);
     }
 
+    /**
+     * The last use at {@code srcStage}/{@code srcAccess} made visible to the next, in {@code layout}: a dependency
+     * alone where every subresource is in it already, a transition where not.
+     *
+     * @return barriers recorded
+     */
+    public int barrier(VkCommandBuffer cmd, int layout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
+        if (!allIn(layout)) return transitionAll(cmd, layout, dstStage, dstAccess);
+        VulkanBarriers.image(cmd, image, aspect, 0, desc.mips(), 0, layers, layout, layout, srcStage, srcAccess,
+                dstStage, dstAccess);
+        return 1;
+    }
+
     /** What the last use of a subresource in {@code layout} might still be doing. */
     private static int srcStage(int layout) {
         switch (layout) {
@@ -123,7 +137,8 @@ public final class VulkanTexture implements CgGpuTexture {
             case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
                 return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-            default: return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            default: return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+                    | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
         }
     }
 
@@ -132,6 +147,7 @@ public final class VulkanTexture implements CgGpuTexture {
             case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_ACCESS_TRANSFER_WRITE_BIT;
             case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
             case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            case VK_IMAGE_LAYOUT_GENERAL: return VK_ACCESS_SHADER_WRITE_BIT;   // a storage image a kernel wrote
             default: return 0;                          // a read: nothing to make visible, only to wait for
         }
     }

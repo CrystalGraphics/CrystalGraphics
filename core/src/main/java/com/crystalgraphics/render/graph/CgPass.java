@@ -5,16 +5,17 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import javax.annotation.Nullable;
 
 /**
- * One unit of graph work, made through a {@link CgRecording}: a raster pass ({@link CgRasterPass}), or a copy, an
- * upload, a callback, a compile or a release. Ordered by what it reads and writes, not by when it was made.
+ * One unit of graph work, made through a {@link CgRecording}: a raster pass ({@link CgRasterPass}), a compute pass
+ * ({@link CgComputePass}), or a copy, an upload, a fill, a callback, a compile or a release. Ordered by what it reads
+ * and writes, not by when it was made.
  *
  * <ul>
- *   <li>A pass with an effect beyond the frame — writing a texture that is not transient, or carrying a
+ *   <li>A pass with an effect beyond the frame — writing a resource that is not transient, or carrying a
  *       {@link CgRequest} — always runs; any other runs only if something that runs reads what it writes.</li>
  * </ul>
  */
-public abstract sealed class CgPass permits CgRasterPass, CgPass.Copy, CgPass.Upload, CgPass.Callback, CgPass.Compile,
-        CgPass.Release {
+public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Callback,
+        CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease {
 
     final String name;
     @Nullable
@@ -97,6 +98,65 @@ public abstract sealed class CgPass permits CgRasterPass, CgPass.Copy, CgPass.Up
         Compile(CgPipeline pipeline, CgRequest request) {
             super("compile " + pipeline, null, request);
             this.pipeline = pipeline;
+        }
+    }
+
+    /** A buffer range set to one 32-bit value. */
+    static final class Fill extends CgPass {
+        final CgGraphBuffer buffer;
+        final long offset, size;
+        final int value;
+
+        Fill(CgGraphBuffer buffer, long offset, long size, int value) {
+            super("fill " + buffer.name(), null, null);
+            this.buffer = buffer;
+            this.offset = offset;
+            this.size = size;
+            this.value = value;
+        }
+    }
+
+    /** Bytes into a buffer, copied when recorded. */
+    static final class Update extends CgPass {
+        final CgGraphBuffer buffer;
+        final long offset;
+        final byte[] bytes;
+
+        Update(CgGraphBuffer buffer, long offset, byte[] bytes) {
+            super("update " + buffer.name(), null, null);
+            this.buffer = buffer;
+            this.offset = offset;
+            this.bytes = bytes;
+        }
+    }
+
+    /** A range of one buffer into another. */
+    static final class BufferCopy extends CgPass {
+        final CgGraphBuffer from, to;
+        final long fromOffset, toOffset, size;
+
+        BufferCopy(CgGraphBuffer from, long fromOffset, CgGraphBuffer to, long toOffset, long size) {
+            super("copy " + from.name() + " -> " + to.name(), null, null);
+            this.from = from;
+            this.fromOffset = fromOffset;
+            this.to = to;
+            this.toOffset = toOffset;
+            this.size = size;
+        }
+    }
+
+    /** A persistent or history buffer's storage freed, after its last use. */
+    static final class BufferRelease extends CgPass {
+        final CgGraphBuffer buffer;
+
+        BufferRelease(CgGraphBuffer buffer) {
+            super("release " + buffer.name(), null, null);
+            this.buffer = buffer;
+        }
+
+        @Override
+        boolean sideEffect() {
+            return true;
         }
     }
 

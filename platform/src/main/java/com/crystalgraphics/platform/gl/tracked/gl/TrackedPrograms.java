@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceObject;
 import com.crystalgraphics.platform.device.format.CgAttribFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
@@ -23,9 +24,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Shaders and programs. A compile keeps the source; the link compiles both stages through a {@link CgGlslCompiler}
- * and answers every later GL query from its table. Loose uniforms are written into a CPU copy of each stage's
- * block and uploaded at a draw only when they changed.
+ * Shaders and programs. A compile keeps the source; the link compiles the program's stages through a
+ * {@link CgGlslCompiler} and answers every later GL query from its table. Loose uniforms are written into a CPU copy
+ * of each stage's block and uploaded at a draw only when they changed. A compute program's pipeline is made at link,
+ * since nothing of GL's state goes into it.
  */
 public final class TrackedPrograms {
 
@@ -52,15 +54,19 @@ public final class TrackedPrograms {
         final Map<String, Integer> attribBindings = new HashMap<>();
         boolean linked, deleteRequested;
         String log = "";
-        CgGlslCompiler.Program table;
+        CgGlslCompiler.Reflection table;
+        /** A graphics program's; a compute program has {@link #pipeline} instead. */
         CgTrackedProgram tracked;
-        CgShaderModule vertexGl, vertexZero, fragment;
+        CgComputePipeline pipeline;
+        /** What the link made, released when the program is linked again or deleted. */
+        final List<CgDeviceObject> objects = new ArrayList<>();
+        /** A kernel's loose uniforms are in {@code vertexData}, at their vertex offsets. */
         ByteBuffer vertexData, fragmentData;
         boolean vertexDirty, fragmentDirty;
         CgAllocation vertexUpload, fragmentUpload;
         long vertexFrame = -1, fragmentFrame = -1;
-        int[] blockBinding, storageBinding, samplerUnit;
-        final List<int[]> locations = new ArrayList<>();          // {0 uniform | 1 sampler, index, element}
+        int[] blockBinding, storageBinding, samplerUnit, imageUnit;
+        final List<int[]> locations = new ArrayList<>();          // {0 uniform | 1 sampler | 2 image, index, element}
         final Map<String, Integer> locationByName = new HashMap<>();
 
         Program(int name) { this.name = name; }
@@ -69,6 +75,11 @@ public final class TrackedPrograms {
     /** Resolves a sampler's texture unit to what a draw binds. The texture domain answers it. */
     interface Samplers {
         void bind(CgDrawState state, CgGlslCompiler.Sampler sampler, int unit);
+    }
+
+    /** Resolves a storage image's image unit to what a dispatch binds. The texture domain answers it. */
+    interface Images {
+        void bind(CgDrawState state, CgGlslCompiler.Image image, int unit);
     }
 
     private final CgTracker tracker;
@@ -91,7 +102,7 @@ public final class TrackedPrograms {
     // ── shaders ────────────────────────────────────────────────────────────────
 
     public int createShader(int type) {
-        if (type != CgGL.GL_VERTEX_SHADER && type != CgGL.GL_FRAGMENT_SHADER) {
+        if (type != CgGL.GL_VERTEX_SHADER && type != CgGL.GL_FRAGMENT_SHADER && type != CgGL.GL_COMPUTE_SHADER) {
             errors.invalidEnum("glCreateShader", type);
             return 0;
         }
@@ -153,41 +164,77 @@ public final class TrackedPrograms {
 
     public void link(int program) {
         Program p = program(program);
-        Shader vs = null, fs = null;
+        Shader vs = null, fs = null, cs = null;
         for (int s : p.attached) {
             Shader sh = shader(s);
             if (sh.type == CgGL.GL_VERTEX_SHADER) vs = sh;
+            else if (sh.type == CgGL.GL_COMPUTE_SHADER) cs = sh;
             else fs = sh;
         }
-        if (vs == null || fs == null) {
-            p.linked = false;
-            p.log = "A program needs a vertex and a fragment shader";
+        String label = "program " + program;
+        if (cs != null) {
+            if (vs != null || fs != null) fail(p, "A compute shader links alone");
+            else linkCompute(p, cs, label);
             return;
         }
-        String label = "program " + program;
+        if (vs == null || fs == null) {
+            fail(p, "A program needs a vertex and a fragment shader");
+            return;
+        }
         CgGlslCompiler.Program t;
         try {
             t = compiler.compile(vs.source, fs.source, p.attribBindings, label);
         } catch (CgShaderModule.CompileException e) {
-            p.linked = false;
-            p.log = e.getMessage();
+            fail(p, e.getMessage());
             return;
         }
         releaseLinked(p);
         CgBindingLayout layout = device.createBindingLayout(label, t.slots());
-        p.vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
-        p.vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
-        p.fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
-        p.tracked = new CgTrackedProgram(label, layout, p.vertexGl, p.vertexZero, p.fragment);
+        CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
+        CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
+        CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
+        p.objects.addAll(List.of(vertexGl, vertexZero, fragment, layout));
+        p.tracked = new CgTrackedProgram(label, layout, vertexGl, vertexZero, fragment);
+        p.vertexData = uniformBlock(t.vertexUniformBinding(), t.vertexUniformSize());
+        p.fragmentData = uniformBlock(t.fragmentUniformBinding(), t.fragmentUniformSize());
+        linked(p, t);
+    }
+
+    private void linkCompute(Program p, Shader cs, String label) {
+        CgGlslCompiler.ComputeProgram t;
+        try {
+            t = compiler.compileCompute(cs.source, label);
+        } catch (CgShaderModule.CompileException e) {
+            fail(p, e.getMessage());
+            return;
+        }
+        releaseLinked(p);
+        CgBindingLayout layout = device.createBindingLayout(label, t.slots());
+        CgShaderModule module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
+        p.pipeline = device.createComputePipeline(label, module, layout);
+        p.objects.addAll(List.of(p.pipeline, module, layout));
+        p.vertexData = uniformBlock(t.uniformBinding(), t.uniformSize());
+        p.fragmentData = null;
+        linked(p, t);
+    }
+
+    private static void fail(Program p, String log) {
+        p.linked = false;
+        p.log = log;
+    }
+
+    private static ByteBuffer uniformBlock(int binding, int size) {
+        return binding < 0 ? null : ByteBuffer.allocateDirect(size).order(ByteOrder.nativeOrder());
+    }
+
+    /** The table every GL query answers from, and a location per uniform element, sampler and image. */
+    private static void linked(Program p, CgGlslCompiler.Reflection t) {
         p.table = t;
-        p.vertexData = t.vertexUniformBinding() < 0 ? null
-                : ByteBuffer.allocateDirect(t.vertexUniformSize()).order(ByteOrder.nativeOrder());
-        p.fragmentData = t.fragmentUniformBinding() < 0 ? null
-                : ByteBuffer.allocateDirect(t.fragmentUniformSize()).order(ByteOrder.nativeOrder());
         p.vertexDirty = p.fragmentDirty = true;
         p.blockBinding = new int[t.uniformBlocks().size()];
         p.storageBinding = new int[t.storageBlocks().size()];
         p.samplerUnit = new int[t.samplers().size()];
+        p.imageUnit = new int[images(t).size()];
         p.locations.clear();
         p.locationByName.clear();
         for (int i = 0; i < t.uniforms().size(); i++) {
@@ -203,27 +250,36 @@ public final class TrackedPrograms {
             p.locationByName.put(t.samplers().get(i).name(), p.locations.size());
             p.locations.add(new int[] {1, i, 0});
         }
+        for (int i = 0; i < images(t).size(); i++) {
+            p.locationByName.put(images(t).get(i).name(), p.locations.size());
+            p.locations.add(new int[] {2, i, 0});
+        }
         p.linked = true;
         p.log = "";
     }
 
+    private static List<CgGlslCompiler.Image> images(CgGlslCompiler.Reflection t) {
+        return t instanceof CgGlslCompiler.ComputeProgram c ? c.images() : List.of();
+    }
+
     public int programi(int program, int pname) {
         Program p = program(program);
-        CgGlslCompiler.Program t = p.table;
+        CgGlslCompiler.Reflection t = p.table;
         switch (pname) {
             case CgGL.GL_LINK_STATUS: return p.linked ? CgGL.GL_TRUE : CgGL.GL_FALSE;
             case CgGL.GL_INFO_LOG_LENGTH: return p.log.isEmpty() ? 0 : p.log.length() + 1;
             case GL_VALIDATE_STATUS: return CgGL.GL_TRUE;
             case GL_DELETE_STATUS: return p.deleteRequested ? 1 : 0;
             case GL_ATTACHED_SHADERS: return p.attached.size();
-            case CgGL.GL_ACTIVE_UNIFORMS: return t == null ? 0 : t.uniforms().size() + t.samplers().size();
-            case CgGL.GL_ACTIVE_ATTRIBUTES: return t == null ? 0 : t.attributes().size();
+            case CgGL.GL_ACTIVE_UNIFORMS: return t == null ? 0 : t.uniforms().size() + t.samplers().size() + images(t).size();
+            case CgGL.GL_ACTIVE_ATTRIBUTES: return t instanceof CgGlslCompiler.Program g ? g.attributes().size() : 0;
             case CgGL.GL_ACTIVE_UNIFORM_BLOCKS: return t == null ? 0 : t.uniformBlocks().size();
             case CgGL.GL_ACTIVE_UNIFORM_MAX_LENGTH: {
                 int max = 0;
                 if (t != null) {
                     for (CgGlslCompiler.Uniform u : t.uniforms()) max = Math.max(max, u.name().length() + 4);
                     for (CgGlslCompiler.Sampler s : t.samplers()) max = Math.max(max, s.name().length() + 1);
+                    for (CgGlslCompiler.Image i : images(t)) max = Math.max(max, i.name().length() + 1);
                 }
                 return max;
             }
@@ -258,7 +314,7 @@ public final class TrackedPrograms {
 
     /** {@code glGetActiveUniform}: the name, with {@code sizeType[0]} its count and {@code [1]} its GL type. */
     public String activeUniform(int program, int index, int maxLength, IntBuffer sizeType) {
-        CgGlslCompiler.Program t = program(program).table;
+        CgGlslCompiler.Reflection t = program(program).table;
         String name;
         int size, type;
         if (index < t.uniforms().size()) {
@@ -266,11 +322,16 @@ public final class TrackedPrograms {
             name = u.count() > 1 ? u.name() + "[0]" : u.name();
             size = u.count();
             type = u.glType();
-        } else {
+        } else if (index < t.uniforms().size() + t.samplers().size()) {
             CgGlslCompiler.Sampler s = t.samplers().get(index - t.uniforms().size());
             name = s.name();
             size = 1;
             type = s.glType();
+        } else {
+            CgGlslCompiler.Image i = images(t).get(index - t.uniforms().size() - t.samplers().size());
+            name = i.name();
+            size = 1;
+            type = i.glType();
         }
         sizeType.put(sizeType.position(), size);
         sizeType.put(sizeType.position() + 1, type);
@@ -304,19 +365,19 @@ public final class TrackedPrograms {
         Program p = writable(location);
         if (p == null) return;
         int[] l = p.locations.get(location);
-        if (l[0] == 1) { errors.invalidOperation("glUniformf on a sampler"); return; }
+        if (l[0] != 0) { errors.invalidOperation("glUniformf on a sampler or an image"); return; }
         CgGlslCompiler.Uniform u = p.table.uniforms().get(l[1]);
         float[] v = {x, y, z, w};
         for (int r = 0; r < Math.min(n, u.rows()); r++) put(p, u, l[2], 0, r, v[r]);
     }
 
-    /** {@code glUniform1i}: a sampler's unit, or an integer uniform. */
+    /** {@code glUniform1i}: a sampler's texture unit, an image's image unit, or an integer uniform. */
     public void int1(int location, int v) {
         Program p = writable(location);
         if (p == null) return;
         int[] l = p.locations.get(location);
-        if (l[0] == 1) {
-            p.samplerUnit[l[1]] = v;
+        if (l[0] != 0) {
+            unit(p, l, v);
             return;
         }
         CgGlslCompiler.Uniform u = p.table.uniforms().get(l[1]);
@@ -329,17 +390,18 @@ public final class TrackedPrograms {
         Program p = writable(location);
         if (p == null) return;
         int[] l = p.locations.get(location);
+        if (l[0] != 0) { errors.invalidOperation("glUniform1fv on a sampler or an image"); return; }
         CgGlslCompiler.Uniform u = p.table.uniforms().get(l[1]);
         for (int i = 0; i < values.remaining() && l[2] + i < u.count(); i++) put(p, u, l[2] + i, 0, 0, values.get(values.position() + i));
     }
 
-    /** {@code glUniform1iv}: consecutive integer elements, or one sampler's unit. */
+    /** {@code glUniform1iv}: consecutive integer elements, or one sampler's or image's unit. */
     public void intArray(int location, IntBuffer values) {
         Program p = writable(location);
         if (p == null) return;
         int[] l = p.locations.get(location);
-        if (l[0] == 1) {
-            p.samplerUnit[l[1]] = values.get(values.position());
+        if (l[0] != 0) {
+            unit(p, l, values.get(values.position()));
             return;
         }
         CgGlslCompiler.Uniform u = p.table.uniforms().get(l[1]);
@@ -351,6 +413,7 @@ public final class TrackedPrograms {
         Program p = writable(location);
         if (p == null) return;
         int[] l = p.locations.get(location);
+        if (l[0] != 0) { errors.invalidOperation("glUniformMatrix" + n + "fv on a sampler or an image"); return; }
         CgGlslCompiler.Uniform u = p.table.uniforms().get(l[1]);
         if (u.columns() != n || u.rows() != n) { errors.invalidOperation("glUniformMatrix" + n + "fv on a different type"); return; }
         int elements = values.remaining() / (n * n);
@@ -362,6 +425,11 @@ public final class TrackedPrograms {
                 }
             }
         }
+    }
+
+    private static void unit(Program p, int[] location, int unit) {
+        if (location[0] == 1) p.samplerUnit[location[1]] = unit;
+        else p.imageUnit[location[1]] = unit;
     }
 
     private Program writable(int location) {
@@ -395,21 +463,13 @@ public final class TrackedPrograms {
 
     /** Puts the current program and everything it reads into {@code state}. */
     public void apply(CgDrawState state, TrackedBuffers buffers, Samplers samplers) {
+        CgGlslCompiler.Program t = graphics("Draw");
         Program p = current;
-        if (p == null || !p.linked) throw new IllegalStateException("Draw with no linked program in use");
-        CgGlslCompiler.Program t = p.table;
         state.program = p.tracked;
         state.clearBindings();
-        long frame = device.frameIndex();
-        if (p.vertexData != null) {
-            if (p.vertexDirty || p.vertexFrame != frame) {
-                p.vertexUpload = upload(p.vertexData);
-                p.vertexFrame = frame;
-                p.vertexDirty = false;
-            }
-            state.uniform(t.vertexUniformBinding(), p.vertexUpload, 0, t.vertexUniformSize());
-        }
+        if (p.vertexData != null) state.uniform(t.vertexUniformBinding(), vertexUpload(p), 0, t.vertexUniformSize());
         if (p.fragmentData != null) {
+            long frame = device.frameIndex();
             if (p.fragmentDirty || p.fragmentFrame != frame) {
                 p.fragmentUpload = upload(p.fragmentData);
                 p.fragmentFrame = frame;
@@ -417,6 +477,44 @@ public final class TrackedPrograms {
             }
             state.uniform(t.fragmentUniformBinding(), p.fragmentUpload, 0, t.fragmentUniformSize());
         }
+        blocks(state, buffers, p, t);
+        for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
+    }
+
+    /** Puts the current compute program's bindings into {@code state}, and answers the pipeline to dispatch. */
+    public CgComputePipeline applyCompute(CgDrawState state, TrackedBuffers buffers, Samplers samplers, Images images) {
+        Program p = current;
+        if (p == null || !p.linked || !(p.table instanceof CgGlslCompiler.ComputeProgram t))
+            throw new IllegalStateException("glDispatchCompute with no linked compute program in use");
+        state.clearBindings();
+        if (p.vertexData != null) state.uniform(t.uniformBinding(), vertexUpload(p), 0, t.uniformSize());
+        blocks(state, buffers, p, t);
+        for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
+        for (int i = 0; i < t.images().size(); i++) images.bind(state, t.images().get(i), p.imageUnit[i]);
+        return p.pipeline;
+    }
+
+    /** The current program's table, which must be a graphics program's. */
+    private CgGlslCompiler.Program graphics(String what) {
+        Program p = current;
+        if (p == null || !p.linked) throw new IllegalStateException(what + " with no linked program in use");
+        if (!(p.table instanceof CgGlslCompiler.Program t))
+            throw new IllegalStateException(what + " with compute program " + p.name + " in use: dispatch it");
+        return t;
+    }
+
+    private CgAllocation vertexUpload(Program p) {
+        long frame = device.frameIndex();
+        if (p.vertexDirty || p.vertexFrame != frame) {
+            p.vertexUpload = upload(p.vertexData);
+            p.vertexFrame = frame;
+            p.vertexDirty = false;
+        }
+        return p.vertexUpload;
+    }
+
+    /** The uniform and storage blocks, from the buffers at their binding points. */
+    private static void blocks(CgDrawState state, TrackedBuffers buffers, Program p, CgGlslCompiler.Reflection t) {
         for (int i = 0; i < t.uniformBlocks().size(); i++) {
             int point = p.blockBinding[i];
             CgAllocation a = boundStorage(buffers, buffers.uniformName[point], t.uniformBlocks().get(i).name(), point, p);
@@ -431,14 +529,12 @@ public final class TrackedPrograms {
             long size = buffers.storageSize[point] < 0 ? a.size() - offset : buffers.storageSize[point];
             state.storage(t.storageBlocks().get(i).binding(), a, offset, size);
         }
-        for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
     }
 
     /** The current program alone into {@code state}, with nothing it reads bound: enough to build its pipeline. */
     public void applyProgram(CgDrawState state) {
-        Program p = current;
-        if (p == null || !p.linked) throw new IllegalStateException("No linked program in use");
-        state.program = p.tracked;
+        graphics("A pipeline");
+        state.program = current.tracked;
     }
 
     /**
@@ -451,7 +547,7 @@ public final class TrackedPrograms {
             for (CgPipelineDesc.VertexAttrib a : vb.attribs()) provided[a.location()] = true;
         }
         List<CgPipelineDesc.VertexAttrib> constants = null;
-        for (CgGlslCompiler.Attribute a : current.table.attributes()) {
+        for (CgGlslCompiler.Attribute a : ((CgGlslCompiler.Program) current.table).attributes()) {
             if (a.location() < provided.length && provided[a.location()]) continue;
             if (constants == null) constants = new ArrayList<>();
             CgAttribFormat f = constantFormat(a.glType());
@@ -506,10 +602,11 @@ public final class TrackedPrograms {
     }
 
     private void releaseLinked(Program p) {
-        if (p.tracked == null) return;
-        tracker.forgetPipelines(p.tracked);
-        for (CgDeviceObject o : List.of(p.vertexGl, p.vertexZero, p.fragment, p.tracked.layout)) tracker.release(o);
+        if (p.tracked != null) tracker.forgetPipelines(p.tracked);
+        for (CgDeviceObject o : p.objects) tracker.release(o);
+        p.objects.clear();
         p.tracked = null;
+        p.pipeline = null;
     }
 
     private static int indexOf(List<CgGlslCompiler.Block> blocks, String name) {

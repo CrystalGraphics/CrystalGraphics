@@ -18,9 +18,9 @@ import java.util.List;
  */
 public interface CgBindingLayout extends CgDeviceObject {
 
-    enum Type { UNIFORM_BUFFER, STORAGE_BUFFER, TEXEL_BUFFER, SAMPLED_TEXTURE }
+    enum Type { UNIFORM_BUFFER, STORAGE_BUFFER, TEXEL_BUFFER, SAMPLED_TEXTURE, STORAGE_IMAGE }
 
-    /** Visible to both stages: a program's bindings are few, and splitting them buys nothing. */
+    /** Visible to every stage of the pipeline: a program's bindings are few, and splitting them buys nothing. */
     record Slot(int binding, Type type) {}
 
     List<Slot> slots();

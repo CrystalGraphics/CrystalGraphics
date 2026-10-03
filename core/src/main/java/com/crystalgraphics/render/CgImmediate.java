@@ -1,15 +1,19 @@
 package com.crystalgraphics.render;
 
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgFrame;
 import com.crystalgraphics.render.graph.CgFrameBuilder;
 import com.crystalgraphics.render.graph.CgFrameGraph;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
@@ -38,6 +42,15 @@ import java.util.List;
  *
  * <p>A caller recording a frame of its own hands its renderers a {@code CgPassRecorder} as their sink, and executes the
  * recording with {@link #execute(CgRecording)} when it is done.</p>
+ *
+ * <p>Kernels, the same way, on buffers the caller owns:</p>
+ * <pre>{@code
+ * CgGraphBuffer cells = CgGraphBuffer.imported("cells", glBuffer, bytes);
+ * try (CgImmediate.Compute run = CgImmediate.compute("bake")) {
+ *     run.dispatch(bake, count).bind("CELLS", cells);
+ * }                                  // executed: barriers derived as in a graph, GL state restored
+ * CgGL.cgBufferBarrier(glBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // a reader outside the graph
+ * }</pre>
  *
  * <ul>
  *   <li>Render thread only, inside a frame. Nested ones close in reverse order, as try-with-resources does.</li>
@@ -133,6 +146,51 @@ public final class CgImmediate implements AutoCloseable {
         immediate.recording.reset();
         immediate.pass = immediate.recording.raster(CgGraphTexture.current(), CgLoad.load(), constants, state, order);
         return immediate;
+    }
+
+    /**
+     * A compute pass executed when closed, as a graph of its own. Render thread, inside a frame. What it writes must
+     * outlive it — an imported, persistent or history buffer — or it is culled, as in any graph.
+     */
+    public static Compute compute(String name) {
+        return new Compute(name);
+    }
+
+    /** A compute pass run now. @see #compute(String) */
+    public static final class Compute implements AutoCloseable {
+        private final CgRecording recording = new CgRecording();
+        private final CgComputePass pass;
+
+        private Compute(String name) {
+            pass = recording.compute(name);
+        }
+
+        public CgDispatch dispatch(CgKernel kernel, int count) {
+            return pass.dispatch(kernel, count);
+        }
+
+        public CgDispatch dispatch(CgKernel kernel, int x, int y, int z) {
+            return pass.dispatch(kernel, x, y, z);
+        }
+
+        public CgDispatch dispatchGroups(CgKernel kernel, int x, int y, int z) {
+            return pass.dispatchGroups(kernel, x, y, z);
+        }
+
+        public CgDispatch dispatchIndirect(CgKernel kernel, CgGraphBuffer args, long offset) {
+            return pass.dispatchIndirect(kernel, args, offset);
+        }
+
+        /** Its recording: a fill or an update before the dispatches, ordered like any write. */
+        public CgRecording recording() {
+            return recording;
+        }
+
+        @Override
+        public void close() {
+            pass.end();
+            execute(recording);
+        }
     }
 
     private void execute(boolean restoreState) {

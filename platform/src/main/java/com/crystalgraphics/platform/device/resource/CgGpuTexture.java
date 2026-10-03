@@ -20,7 +20,7 @@ public interface CgGpuTexture extends CgDeviceObject {
     enum Kind { D2, D2_ARRAY, D3, CUBE }
 
     enum Usage {
-        SAMPLED, ATTACHMENT, COPY_SRC, COPY_DST;
+        SAMPLED, ATTACHMENT, STORAGE, COPY_SRC, COPY_DST;
 
         public static final Set<Usage> SAMPLED_UPLOADED = EnumSet.of(SAMPLED, COPY_SRC, COPY_DST);
         public static final Set<Usage> ALL = EnumSet.allOf(Usage.class);

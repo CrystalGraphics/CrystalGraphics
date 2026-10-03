@@ -50,5 +50,20 @@ public enum CgGlSlot {
     /** Rasterised line width. */
     LINE_WIDTH,
     /** Rasterised point size. */
-    POINT_SIZE
+    POINT_SIZE,
+
+    // ── Captured at first write ───────────────────────────────────────────────
+    // A scope declaring these reads nothing when it opens: each binding point is saved the first time it is
+    // written inside the scope, and only those points are restored. See CgGlStateManager.
+    /** Indexed {@code GL_SHADER_STORAGE_BUFFER} bindings: buffer, offset and size per point. */
+    STORAGE_BUFFERS,
+    /** Image units, as {@code glBindImageTexture} sets them. */
+    IMAGES,
+    /** The {@code GL_DRAW_INDIRECT_BUFFER}, {@code GL_DISPATCH_INDIRECT_BUFFER} and {@code GL_PARAMETER_BUFFER} bindings. */
+    INDIRECT_BUFFERS,
+    /**
+     * Indexed {@code GL_TRANSFORM_FEEDBACK_BUFFER} bindings, points 0 to 3, and {@code GL_RASTERIZER_DISCARD}, point 4:
+     * what a kernel lowered below compute changes.
+     */
+    TRANSFORM_FEEDBACK
 }

@@ -39,4 +39,9 @@ public final class FakeGlslCompiler implements CgGlslCompiler {
         return new Program(CgRecordingDevice.emptySpirv(), CgRecordingDevice.emptySpirv(), CgRecordingDevice.emptySpirv(),
                 attributes, uniformBlocks, List.of(), samplers, uniforms, vertexUniformBinding, vertexUniformSize, -1, 0, slots);
     }
+
+    @Override
+    public ComputeProgram compileCompute(String glsl, String label) {
+        throw new UnsupportedOperationException("FakeGlslCompiler compiles no compute stage");
+    }
 }

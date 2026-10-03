@@ -22,8 +22,8 @@
 // to do the blend. `rect` is the quad's texel rectangle (uv0, uv1 in texels): the taps are held inside
 // it, so a sprite in an atlas never reads its neighbour.
 //
-// fwidth is fragment-only, hence the stage guard -- cg_env is compiled into both stages.
-#ifndef CG_VERTEX_STAGE
+// fwidth is fragment-only, hence the stage guard -- cg_env is compiled into every stage.
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 vec2 cg_texel_aa_position(vec2 texel, vec4 rect, float filterPx) {
     vec2 width = max(fwidth(texel), vec2(1.0e-6));
     // Pivot on the nearest texel BOUNDARY: further than half a screen pixel from it the sample sits on

@@ -4,7 +4,8 @@ import com.crystalgraphics.platform.gl.CgGLContext;
 
 /**
  * The tracked backend's capabilities: a GL 4.4 core profile, so every feature gate in {@code CgCapabilities} takes
- * its best path — SSBOs, the persistent frame ring, {@code glCopyImageSubData}.
+ * its best path — SSBOs, the persistent frame ring, {@code glCopyImageSubData}. What depends on the device, such as
+ * indirect counts, {@code CgCapabilities} asks the device.
  */
 public final class CgTrackedGLContext implements CgGLContext {
 
@@ -18,9 +19,13 @@ public final class CgTrackedGLContext implements CgGLContext {
 
     @Override public boolean OpenGL40() { return true; }
 
+    @Override public boolean OpenGL42() { return true; }
+
     @Override public boolean OpenGL43() { return true; }
 
     @Override public boolean OpenGL44() { return true; }
+
+    @Override public boolean OpenGL46() { return false; }
 
     @Override public boolean GL_ARB_map_buffer_range() { return true; }
 
@@ -42,4 +47,25 @@ public final class CgTrackedGLContext implements CgGLContext {
 
     /** A compile here is shaderc on the calling thread: finished when {@code glCompileShader} returns. */
     @Override public boolean parallelShaderCompile() { return false; }
+
+    @Override public boolean GL_ARB_compute_shader() { return true; }
+
+    @Override public boolean GL_ARB_shader_image_load_store() { return true; }
+
+    @Override public boolean GL_ARB_draw_indirect() { return true; }
+
+    @Override public boolean GL_ARB_multi_draw_indirect() { return true; }
+
+    @Override public boolean GL_ARB_indirect_parameters() { return true; }
+
+    @Override public boolean GL_ARB_shader_draw_parameters() { return false; }
+
+    /** Transform feedback is not carried: a device has compute instead. */
+    @Override public boolean GL_ARB_transform_feedback2() { return false; }
+
+    @Override public boolean GL_KHR_shader_subgroup() { return true; }
+
+    @Override public boolean GL_NV_shader_atomic_float() { return false; }
+
+    @Override public boolean GL_ARB_bindless_texture() { return false; }
 }

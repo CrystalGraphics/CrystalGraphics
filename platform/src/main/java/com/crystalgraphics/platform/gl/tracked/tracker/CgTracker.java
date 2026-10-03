@@ -2,14 +2,18 @@ package com.crystalgraphics.platform.gl.tracked.tracker;
 
 import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.CgDeviceObject;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
+import com.crystalgraphics.platform.device.command.CgComputePass;
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgAttribFormat;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
@@ -37,7 +41,10 @@ import java.util.function.IntFunction;
  *
  * <ul>
  *   <li>A pass begins at the first draw after its target is bound, and ends at a draw into another target, a
- *       transfer ({@link #transfer()}), a host section or the end of the frame.</li>
+ *       transfer ({@link #transfer()}), a dispatch, a barrier, a host section or the end of the frame.</li>
+ *   <li>Consecutive dispatches share a compute pass, which barriers do not end. The first dispatch after a draw
+ *       waits for the draws before it, as GL orders a kernel; a draw reading what a kernel wrote waits only for the
+ *       barrier GL asks for too ({@link #memoryBarrier}).</li>
  *   <li>A clear before a pass's first draw, over the whole target, is its load op; any other is an attachment
  *       clear inside the pass. A colour clear under a partial write mask is drawn, through the mask, since a
  *       device's clear writes every channel; a partial stencil mask still clears every bit, with one warning.</li>
@@ -68,6 +75,10 @@ public final class CgTracker {
     private CgTarget target;
     private CgRenderPass pass;
     private CgTarget passTarget;
+
+    private CgComputePass compute;
+    private CgComputePipeline computePipeline;
+    private boolean drawnSinceCompute = true;
 
     private int pendingColors;
     private float clearR, clearG, clearB, clearA;
@@ -229,6 +240,32 @@ public final class CgTracker {
         stats.draws++;
     }
 
+    /**
+     * {@code glDrawArraysIndirect} and its kin: {@code draws} argument records {@code stride} bytes apart at
+     * {@code offset} in {@code args}, as many as {@code count} holds at {@code countOffset} when it is not null.
+     */
+    public void drawIndirect(CgPipelineDesc.Topology topology, boolean indexed, CgAllocation args, long offset,
+                             int draws, int stride, CgAllocation count, long countOffset) {
+        if (indexed && state.index == null) throw new IllegalStateException("An indexed indirect draw with no element buffer");
+        prepareDraw(topology);
+        if (indexed) {
+            pass.setIndexBuffer(state.index.buffer, state.index.offset + state.indexOffset, state.wideIndex);
+            markUsed(state.index);
+        }
+        markUsed(args);
+        long at = args.offset + offset;
+        if (count == null) {
+            if (indexed) pass.drawIndexedIndirect(args.buffer, at, draws, stride);
+            else pass.drawIndirect(args.buffer, at, draws, stride);
+        } else {
+            markUsed(count);
+            long countAt = count.offset + countOffset;
+            if (indexed) pass.drawIndexedIndirectCount(args.buffer, at, count.buffer, countAt, draws, stride);
+            else pass.drawIndirectCount(args.buffer, at, count.buffer, countAt, draws, stride);
+        }
+        stats.draws++;
+    }
+
     private void prepareDraw(CgPipelineDesc.Topology topology) {
         if (state.program == null) throw new IllegalStateException("Draw with no program");
         ensurePass();
@@ -352,6 +389,91 @@ public final class CgTracker {
         passPipeline = null;
     }
 
+    // ── compute ────────────────────────────────────────────────────────────────
+
+    /** {@code glDispatchCompute}, reading the bindings in {@link #state}. */
+    public void dispatch(CgComputePipeline pipeline, int groupsX, int groupsY, int groupsZ) {
+        prepareDispatch(pipeline).dispatch(groupsX, groupsY, groupsZ);
+        stats.dispatches++;
+    }
+
+    /** {@code glDispatchComputeIndirect}: three group counts at {@code offset} in {@code args}. */
+    public void dispatchIndirect(CgComputePipeline pipeline, CgAllocation args, long offset) {
+        CgComputePass c = prepareDispatch(pipeline);
+        markUsed(args);
+        c.dispatchIndirect(args.buffer, args.offset + offset);
+        stats.dispatches++;
+    }
+
+    private CgComputePass prepareDispatch(CgComputePipeline pipeline) {
+        outsideRenderPass();
+        if (compute == null) {
+            if (drawnSinceCompute) {
+                device.encoder().memoryBarrier(CgAccess.GRAPHICS, CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE);
+                drawnSinceCompute = false;
+            }
+            compute = device.encoder().beginCompute("dispatch");
+            computePipeline = null;
+            stats.computePasses++;
+        }
+        if (pipeline != computePipeline) {
+            compute.setPipeline(pipeline);
+            computePipeline = pipeline;
+        }
+        for (int i = 0; i < state.bindings.count(); i++) {
+            CgBindingLayout.Type type = state.bindings.type(i);
+            if (type == CgBindingLayout.Type.SAMPLED_TEXTURE) {
+                if (debug && stores(state.bindings.view(i).texture()))
+                    throw new IllegalStateException("A dispatch samples '" + state.bindings.view(i).texture().label()
+                            + "', which it also writes as an image");
+            } else if (type != CgBindingLayout.Type.STORAGE_IMAGE) {
+                markUsed(state.bindingAllocation(i));
+            }
+        }
+        compute.pushBindings(state.bindings);
+        return compute;
+    }
+
+    private boolean stores(CgGpuTexture texture) {
+        for (int i = 0; i < state.bindings.count(); i++) {
+            if (state.bindings.type(i) == CgBindingLayout.Type.STORAGE_IMAGE && state.bindings.view(i).texture() == texture)
+                return true;
+        }
+        return false;
+    }
+
+    /** {@code glMemoryBarrier}: every resource's uses at {@code from} before {@code to}, as {@link CgAccess} bits. */
+    public void memoryBarrier(int from, int to) {
+        outsideRenderPass();
+        device.encoder().memoryBarrier(from, to);
+    }
+
+    public void bufferBarrier(CgAllocation a, int from, int to) {
+        outsideRenderPass();
+        markUsed(a);
+        device.encoder().bufferBarrier(a.buffer, from, to);
+    }
+
+    public void imageBarrier(CgGpuTexture texture, int from, int to) {
+        outsideRenderPass();
+        device.encoder().imageBarrier(texture, from, to);
+    }
+
+    /** Writes out a clear still pending and ends the render pass; a compute pass stays open. */
+    private void outsideRenderPass() {
+        flushPendingClears();
+        if (pass != null) {
+            endPass();
+            stats.passBreaks++;
+        }
+    }
+
+    private void endCompute() {
+        if (compute == null) return;
+        compute.end();
+        compute = null;
+    }
+
     // ── passes ─────────────────────────────────────────────────────────────────
 
     /**
@@ -359,11 +481,8 @@ public final class CgTracker {
      * a readback. The next draw begins a new pass that loads what this one stored.
      */
     public CgCommandEncoder transfer() {
-        flushPendingClears();
-        if (pass != null) {
-            endPass();
-            stats.passBreaks++;
-        }
+        outsideRenderPass();
+        endCompute();
         return device.encoder();
     }
 
@@ -374,6 +493,7 @@ public final class CgTracker {
     public void toHost() {
         flushPendingClears();
         if (pass != null) endPass();
+        endCompute();
         device.toHost();
     }
 
@@ -385,6 +505,7 @@ public final class CgTracker {
     public void endFrame() {
         flushPendingClears();
         if (pass != null) endPass();
+        endCompute();
         device.endFrame();
         keyPipeline = null;
     }
@@ -409,6 +530,8 @@ public final class CgTracker {
     }
 
     private void beginPass() {
+        endCompute();
+        drawnSinceCompute = true;
         List<CgPassDesc.Color> colors = new ArrayList<>(target.colors().size());
         for (int i = 0; i < target.colors().size(); i++) {
             boolean clear = (pendingColors & (1 << i)) != 0;

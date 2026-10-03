@@ -13,15 +13,17 @@ import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Texture objects, texture units and samplers. A texture's image is made when level 0 is specified, with room for
- * its whole mip chain; a draw samples the levels specified so far, and a texture with none samples as GL's
- * incomplete texture does, black and opaque.
+ * Texture objects, texture units, image units and samplers. A texture's image is made when level 0 is specified,
+ * with room for its whole mip chain; a draw samples the levels specified so far, and a texture with none samples as
+ * GL's incomplete texture does, black and opaque.
  */
-public final class TrackedTextures implements TrackedPrograms.Samplers {
+public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedPrograms.Images {
 
     static final int KIND_2D = 0, KIND_ARRAY = 1, KIND_3D = 2, KIND_CUBE = 3, KIND_MS = 4, KIND_BUFFER = 5, KINDS = 6;
     private static final int GL_TEXTURE_BINDING_2D_ARRAY = 0x8C1D, GL_TEXTURE_BINDING_3D = 0x806A;
@@ -29,6 +31,10 @@ public final class TrackedTextures implements TrackedPrograms.Samplers {
     private static final int GL_SAMPLER_BINDING = 0x8919;
     private static final int GL_TEXTURE_LOD_BIAS = 0x8501, GL_TEXTURE_SWIZZLE_R = 0x8E42, GL_TEXTURE_SWIZZLE_A = 0x8E45;
     private static final int GL_TEXTURE_MAX_ANISOTROPY = 0x84FE;
+    /** GL's guaranteed minimum. */
+    static final int IMAGE_UNITS = 8;
+    /** GL binds any texture as an image; a device needs the usage when the image is made, where its format allows. */
+    private static final Set<CgGpuTexture.Usage> NOT_STORAGE = EnumSet.complementOf(EnumSet.of(CgGpuTexture.Usage.STORAGE));
 
     /** One GL texture object. */
     public static final class GlTexture {
@@ -60,6 +66,9 @@ public final class TrackedTextures implements TrackedPrograms.Samplers {
     private final Map<CgGpuSampler.Desc, CgGpuSampler> samplers = new HashMap<>();
     private final int[][] units;
     private final CgTextureView[] incomplete = new CgTextureView[KINDS];
+    /** Per image unit: texture, level, layer (-1: every layer), format, access. */
+    private final int[][] imageUnits = new int[IMAGE_UNITS][5];
+    private final CgTextureView[] imageViews = new CgTextureView[IMAGE_UNITS];
     public final GlPixels.Store unpack = new GlPixels.Store(), pack = new GlPixels.Store();
     private int active;
 
@@ -119,6 +128,33 @@ public final class TrackedTextures implements TrackedPrograms.Samplers {
         if (t == null) return;
         if (t.image != null && !t.imported) tracker.release(t.image);
         for (int[] unit : units) for (int k = 0; k < KINDS; k++) if (unit[k] == name) unit[k] = 0;
+        for (int u = 0; u < IMAGE_UNITS; u++) {
+            if (imageUnits[u][0] == name) {
+                imageUnits[u][0] = 0;
+                imageViews[u] = null;
+            }
+        }
+    }
+
+    /** {@code glBindImageTexture}. The access is kept for queries; a device binds every image read-write. */
+    public void bindImage(int unit, int texture, int level, boolean layered, int layer, int access, int format) {
+        if (unit < 0 || unit >= IMAGE_UNITS) { errors.invalidValue("glBindImageTexture unit " + unit); return; }
+        if (texture != 0 && !names.exists(texture)) {
+            errors.invalidValue("glBindImageTexture: texture " + texture + " was never generated");
+            return;
+        }
+        int[] u = imageUnits[unit];
+        u[0] = texture;
+        u[1] = level;
+        u[2] = layered ? -1 : layer;
+        u[3] = format;
+        u[4] = access;
+        imageViews[unit] = null;
+    }
+
+    /** Image unit {@code unit}: texture, level, layer (-1: every layer), format, access. */
+    public int[] imageUnit(int unit) {
+        return imageUnits[unit];
     }
 
     /** {@code glTexImage2D}/{@code 3D}: specifies a level; level 0 of a new size or format makes a new image. */
@@ -246,6 +282,26 @@ public final class TrackedTextures implements TrackedPrograms.Samplers {
         state.texture(sampler.binding(), view(t), sampler(t));
     }
 
+    @Override
+    public void bind(CgDrawState state, CgGlslCompiler.Image image, int unit) {
+        int[] u = unit >= 0 && unit < IMAGE_UNITS ? imageUnits[unit] : null;
+        GlTexture t = u == null ? null : get(u[0]);
+        if (t == null || t.image == null)
+            throw new IllegalStateException(image.name() + " reads image unit " + unit + ", which has no texture");
+        if (!t.image.desc().usage().contains(CgGpuTexture.Usage.STORAGE))
+            throw new UnsupportedOperationException("Texture " + t.name + ": " + t.format + " cannot be a storage image here");
+        if (GlPixels.device(u[3]) != t.format)
+            throw new UnsupportedOperationException("Texture " + t.name + " bound as an image in a format other than its own");
+        if (t.kind == KIND_3D && u[2] >= 0)
+            throw new UnsupportedOperationException("One slice of a 3D texture as an image: bind it layered");
+        CgTextureView v = imageViews[unit];
+        if (v == null || v.texture() != t.image) {
+            v = imageViews[unit] = u[2] < 0 ? new CgTextureView(t.image, u[1], 1, 0, t.kind == KIND_3D ? 1 : t.depth)
+                    : new CgTextureView(t.image, u[1], 1, u[2], 1);
+        }
+        state.image(image.binding(), v);
+    }
+
     private CgTextureView view(GlTexture t) {
         if (t.view == null) {
             boolean mipmapped = t.minFilter != CgGL.GL_NEAREST && t.minFilter != CgGL.GL_LINEAR;
@@ -303,8 +359,10 @@ public final class TrackedTextures implements TrackedPrograms.Samplers {
         t.format = format;
         t.width = width; t.height = height; t.depth = layers; t.samples = samples;
         t.mips = samples > 1 ? 1 : chain;
+        Set<CgGpuTexture.Usage> usage = samples == 1 && tracker.device().supports(format, CgGpuTexture.Usage.STORAGE)
+                ? CgGpuTexture.Usage.ALL : NOT_STORAGE;
         t.image = tracker.device().createTexture(new CgGpuTexture.Desc("texture " + t.name, kind, format, width, height,
-                layers, t.mips, samples, CgGpuTexture.Usage.ALL));
+                layers, t.mips, samples, usage));
         t.specifiedLevels = 0;
         t.imported = false;
         t.view = null;

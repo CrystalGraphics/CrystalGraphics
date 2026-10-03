@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
+import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
@@ -16,6 +17,7 @@ import com.crystalgraphics.platform.device.shader.CgShaderModule;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * What the tracked backend drives: objects, the current frame's commands, and frames in flight. Implemented
@@ -43,6 +45,12 @@ public interface CgDevice {
 
     CgDeviceInfo info();
 
+    /**
+     * What the device can do beyond {@link #info()}, as {@code CgGpuReport} facts under its keys: features
+     * ({@code compute}, {@code subgroups}, {@code indirectCount}), limits ({@code computeInvocations}) and queues.
+     */
+    void describe(BiConsumer<String, String> fact);
+
     boolean supports(CgFormat format, CgGpuTexture.Usage usage);
 
     /** Whether the calling thread may record: the device's owner, hosted or owned. */
@@ -62,6 +70,8 @@ public interface CgDevice {
     CgBindingLayout createBindingLayout(String label, List<CgBindingLayout.Slot> slots);
 
     CgPipeline createPipeline(CgPipelineDesc desc);
+
+    CgComputePipeline createComputePipeline(String label, CgShaderModule module, CgBindingLayout layout);
 
     CgTimerQuery createTimerQuery(String label);
 

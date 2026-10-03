@@ -6,9 +6,9 @@
 // not declare the pragma never sees any of this, which is the point: only a minority of
 // shaders draw through the renderer, and cg_env.glsl is included by all of them.
 //
-// Compiled into BOTH stages, like everything cg_env pulls in. Fragment-only code guards itself
-// with `#ifndef CG_VERTEX_STAGE` -- never `#ifdef CG_FRAGMENT_STAGE`, which raw .vert/.frag
-// get neither of.
+// Compiled into every stage, like everything cg_env pulls in. Fragment-only code guards itself
+// with `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)` -- never
+// `#ifdef CG_FRAGMENT_STAGE`, which raw .vert/.frag get none of.
 #pragma once
 
 // -- CgVectorRenderer convenience macros --------------------------------------

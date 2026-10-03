@@ -35,11 +35,17 @@ public interface CgGLContext {
     /** @return {@code true} if the context is OpenGL 4.0 or later */
     boolean OpenGL40();
 
+    /** @return {@code true} if the context is OpenGL 4.2 or later */
+    boolean OpenGL42();
+
     /** @return {@code true} if the context is OpenGL 4.3 or later */
     boolean OpenGL43();
 
     /** @return {@code true} if the context is OpenGL 4.4 or later */
     boolean OpenGL44();
+
+    /** @return {@code true} if the context is OpenGL 4.6 or later */
+    boolean OpenGL46();
 
     // ── Streaming: what CgStreamBuffer's tiers are chosen from ────────────────
 
@@ -87,5 +93,32 @@ public interface CgGLContext {
      *         supported: a program's {@code GL_COMPLETION_STATUS_KHR} can be asked without waiting for its compile
      */
     boolean parallelShaderCompile();
+
+    // ── Compute and GPU-driven draws: what CgCapabilities' compute tiers are chosen from ────────────
+    //
+    // Each extension apart from its core version: CgCapabilities joins the two.
+
+    boolean GL_ARB_compute_shader();
+
+    boolean GL_ARB_shader_image_load_store();
+
+    boolean GL_ARB_draw_indirect();
+
+    boolean GL_ARB_multi_draw_indirect();
+
+    boolean GL_ARB_indirect_parameters();
+
+    /** {@code gl_DrawID} and the base vertex and instance in a shader. */
+    boolean GL_ARB_shader_draw_parameters();
+
+    /** A transform-feedback stream drawn with its captured count. */
+    boolean GL_ARB_transform_feedback2();
+
+    boolean GL_KHR_shader_subgroup();
+
+    /** Atomic adds on floats in storage buffers and images. */
+    boolean GL_NV_shader_atomic_float();
+
+    boolean GL_ARB_bindless_texture();
 
 }
