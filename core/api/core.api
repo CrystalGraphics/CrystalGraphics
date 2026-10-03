@@ -6,6 +6,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static CURVE_RENDERER Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static DEPTH_TEXTURE_UNIT I
   field public,static FRAME_DATA_UBO I
+  field public,static LIGHTMAP_TEXTURE_UNIT I
   field public,static MATERIAL_PROPERTIES_UBO I
   field public,static OBJECT_DATA Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static PALETTE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
@@ -16,6 +17,7 @@ com/crystalgraphics/api/CgBindingPoints
   field public,static SHAPE_TABLE Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   field public,static TEXT_DATA_UBO I
   field public,static,final DEPTH_TEXTURE_UNIFORM Ljava/lang/String;
+  field public,static,final LIGHTMAP_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final SCENE_COLOR_TEXTURE_UNIFORM Ljava/lang/String;
   field public,static,final USER_START_SSBO I
   field public,static,final USER_START_TBO I
@@ -513,6 +515,7 @@ com/crystalgraphics/api/material/CgMaterial
   method public getShader ()Lcom/crystalgraphics/api/shader/CgShader;
   method public hasCompiledDepthPass ()Z
   method public hasDepthPass ()Z
+  method public hasEmissivePass ()Z
   method public hasShadowCasterPass ()Z
   method public isKeywordEnabled (Ljava/lang/String;)Z
   method public lastCompileError ()Ljava/lang/String;
@@ -554,6 +557,7 @@ com/crystalgraphics/api/material/CgRenderPassVariant
   access public,final,enum
   extends java/lang/Enum
   field public,static,final DEPTH Lcom/crystalgraphics/api/material/CgRenderPassVariant;
+  field public,static,final EMISSIVE Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   field public,static,final FORWARD Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   field public,static,final SHADOW Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   method public lightModeName ()Ljava/lang/String;
@@ -1823,8 +1827,8 @@ com/crystalgraphics/compute/lower/CgLoweredPrograms
   method public,static command ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
   method public,static counterAdd ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
   method public,static place ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+  method public,static scatterBits (Ljava/lang/String;)Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
   method public,static scatterInit (ZLjava/lang/String;)Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
-  method public,static scatterResolve (ZLjava/lang/String;I)Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
 com/crystalgraphics/compute/lower/CgLoweredPrograms$Helper
   access public,final
   extends java/lang/Object
@@ -1833,6 +1837,7 @@ com/crystalgraphics/compute/lower/CgLoweredPrograms$Helper
 com/crystalgraphics/compute/lower/CgLoweredResources
   access public,final
   extends java/lang/Object
+  method public,static bindOutputs (I)V
   method public,static bindTextureBuffer (IIII)V
   method public,static count ()Lcom/crystalgraphics/compute/lower/CgTexelTarget;
   method public,static empty ()I
@@ -1870,6 +1875,7 @@ com/crystalgraphics/compute/lower/CgLowering
   access public,final
   extends java/lang/Object
   field public,static,final MAX_CAPTURED_WORDS I
+  field public,static,final MAX_TARGETS I
   method public,static passes (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;)Ljava/util/List;
   method public,static refusal (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;)Ljava/lang/String;
   method public,static touches (Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/compute/source/CgBufferDecl;)Z
@@ -1897,8 +1903,9 @@ com/crystalgraphics/compute/lower/CgLowering$Op
 com/crystalgraphics/compute/lower/CgLowering$Pass
   access public,final,record
   extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/compute/lower/CgLowering$Kind;Lcom/crystalgraphics/compute/source/CgBufferDecl;Lcom/crystalgraphics/compute/source/CgImageDecl;Lcom/crystalgraphics/compute/lower/CgLowering$Op;Z)V
+  method public <init> (Lcom/crystalgraphics/compute/lower/CgLowering$Kind;Ljava/util/List;Lcom/crystalgraphics/compute/source/CgImageDecl;Lcom/crystalgraphics/compute/lower/CgLowering$Op;Z)V
   method public buffer ()Lcom/crystalgraphics/compute/source/CgBufferDecl;
+  method public buffers ()Ljava/util/List;
   method public floats ()Z
   method public image ()Lcom/crystalgraphics/compute/source/CgImageDecl;
   method public kind ()Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
@@ -2552,7 +2559,7 @@ com/crystalgraphics/gl/buffer/shader/CgParticleBuffer
   method public,static begin (I)V
   method public,static buffer ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
   method public,static end ()V
-  method public,static put (FFFFFFFFFFFF)V
+  method public,static put (FFFFFFFFFFFFI)V
 com/crystalgraphics/gl/buffer/shader/CgShaderBuffer
   access public,abstract
   extends java/lang/Object
@@ -3033,18 +3040,23 @@ com/crystalgraphics/gl/material/parse/CgParsedPass
 com/crystalgraphics/gl/material/parse/CgParsedShader
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZFLjava/util/List;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;ILjava/lang/String;ZFZZLjava/util/List;)V
   method public castShadows ()Z
   method public engineBuffers ()Ljava/util/List;
   method public featureNames ()Ljava/util/List;
+  method public fogged ()Z
   method public getPassByLightMode (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/parse/CgParsedPass;
   method public getPassByName (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/parse/CgParsedPass;
+  method public lit ()Z
   method public passes ()Ljava/util/List;
   method public properties ()Ljava/util/List;
+  method public readsObjectRecord ()Z
   method public renderQueue ()I
   method public renderType ()Ljava/lang/String;
   method public sceneColorMargin ()F
   method public shaderType ()Ljava/lang/String;
+  method public unfogged ()Z
+  method public unlit ()Z
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -3939,10 +3951,14 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public camera (FFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public cameraFromView ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public capture (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
+  method public defaultSun ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depth (ZZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public fog (FFFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public read ([FI)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public resolution (FF)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public sun (FFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public time (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public write ([FI)V
   method public,static height ([F)F
@@ -4159,6 +4175,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public noScissor ()Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public sceneColor (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public sceneDepth (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public sceneDepth (ILcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIFFFF)I
   method public scissor (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIIII)I
@@ -4428,6 +4445,7 @@ com/crystalgraphics/render/stage/CgHostTextures
   method public lightmap ()I
   method public lightmap (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public lightmapHeight ()I
+  method public lightmapTexture ()Lcom/crystalgraphics/api/texture/CgTexture;
   method public lightmapWidth ()I
   method public set (Lcom/crystalgraphics/render/stage/CgHostTextures;)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public version ()I
@@ -4478,6 +4496,10 @@ com/crystalgraphics/render/stage/CgStageRenderer
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract render (Lcom/crystalgraphics/render/stage/CgStageFrame;)V
+com/crystalgraphics/render/stage/CgWorldAtmosphere
+  access public,final
+  extends java/lang/Object
+  method public,static apply (Lcom/crystalgraphics/render/stage/CgHostEnvironment;Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
 com/crystalgraphics/render/world/CgSortLayer
   access public,final
   extends java/lang/Object
@@ -4491,10 +4513,19 @@ com/crystalgraphics/render/world/CgSortLayer
   method public toString ()Ljava/lang/String;
   method public,static after (Ljava/lang/String;Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgSortLayer;
   method public,static before (Ljava/lang/String;Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgSortLayer;
+com/crystalgraphics/render/world/CgWorldLight
+  access public,final
+  extends java/lang/Object
+  field public,static,final FULL I
+  method public,static at (DDD)I
+  method public,static block (I)F
+  method public,static sky (I)F
 com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
+  method public bloom (F)V
+  method public bloomScale (F)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public install ()V
@@ -4508,10 +4539,12 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public fullBright ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public group (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public light (FF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public order (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
@@ -6298,6 +6331,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final SLOT_BLAST Ljava/lang/String;
   field public,static,final SLOT_BLAST_GLOW Ljava/lang/String;
   field public,static,final SLOT_BLAST_SHOCK Ljava/lang/String;
+  field public,static,final SLOT_BLAST_SKY Ljava/lang/String;
   field public,static,final SLOT_BODY_ARCS Ljava/lang/String;
   field public,static,final SLOT_CHARGE Ljava/lang/String;
   field public,static,final SLOT_CHARGE_HAZE Ljava/lang/String;
