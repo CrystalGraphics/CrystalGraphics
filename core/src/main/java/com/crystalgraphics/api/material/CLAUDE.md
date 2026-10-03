@@ -271,6 +271,12 @@ The engine object buffer TBO uses texture unit 0 (`CgBindingPoints.TBO_ENGINE_UN
 the engine-managed TBO slot. The old `DEFAULT_TBO_TEXTURE_UNIT = 7` constant was removed — the
 texture unit is now derived from `bindingLocation` directly.
 
+**The sampler budget.** A material's samplers take units 0 up, by declaration order, and the engine reserves the
+units from `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` up (lightmap, depth, scene colour, its TBOs). A shader declaring
+more samplers than fit below that fails to load with a `CgShaderParseException` naming the count and what the GPU
+leaves. A material's own TBOs (`attach` on the TBO path) are not counted yet: they take units from
+`CgBindingPoints.USER_START_TBO` (5) up, so on the TBO path a sixth sampler beside one collides silently.
+
 ## Ownership Rules
 
 - `CgMaterialRegistry` owns all `CgMaterial` instances it creates. Call `CgMaterialRegistry.get().deleteAll()` to free them.
