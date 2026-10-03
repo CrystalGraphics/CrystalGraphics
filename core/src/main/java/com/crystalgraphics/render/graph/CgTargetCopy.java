@@ -69,9 +69,11 @@ final class CgTargetCopy {
                 currentDepthMask = type == null ? 0 : CgFrameBuffer.optimalDepthBlitMask(source);
                 probedSource = source;
             }
-            CgGL.glGetInteger(CgGL.GL_VIEWPORT, VIEWPORT);
-            width = VIEWPORT.get(2);
-            height = VIEWPORT.get(3);
+            if (width <= 0 || height <= 0) {
+                CgGL.glGetInteger(CgGL.GL_VIEWPORT, VIEWPORT);
+                width = VIEWPORT.get(2);
+                height = VIEWPORT.get(3);
+            }
             format = currentFormat;
             depthMask = currentDepthMask;
         } else {
@@ -105,6 +107,21 @@ final class CgTargetCopy {
         }
         return colorMask == 0 ? 0L : (long) (x1 - x0) * (y1 - y0);
     }
+
+    /**
+     * Copies framebuffer {@code source}'s depth whole, for a pass reading another target's
+     * ({@link CgRasterPass#sceneDepth(int, CgGraphTexture)}): the current target, {@code width} x {@code height}, when
+     * {@code sourceFormat} is null. Throws, naming {@code pass}, where the source has no depth.
+     */
+    void copyDepth(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, CgPass pass,
+                   CgTexturePool pool) {
+        boolean depth = sourceFormat != null ? sourceFormat.hasDepth()
+                : source == probedSource ? currentDepthMask != 0 : CgFrameBuffer.depthTypeOf(source) != null;
+        if (!depth) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
+        copy(source, sourceFormat, width, height, DEPTH, WHOLE, 0, pool);
+    }
+
+    private static final int[] WHOLE = {0, 0, -1, -1};
 
     /** Blits {@code mask} from {@code source} into the same rect of the copy. */
     private void blit(int source, int mask, int x0, int y0, int x1, int y1) {
