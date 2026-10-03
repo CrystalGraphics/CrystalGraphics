@@ -948,6 +948,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public drawParameters ()Z
   method public feedbackCount ()Z
   method public floatAtomics ()Z
+  method public getGlslVersion ()I
   method public getMaxColorAttachments ()I
   method public getMaxDrawBuffers ()I
   method public getMaxRenderbufferSize ()I
@@ -957,6 +958,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public getMaxTextureUnits ()I
   method public getMaxUniformBufferBindings ()I
   method public getMaxVertexAttribs ()I
+  method public glslVersion ()I
   method public hasDepth ()Z
   method public hasStencil ()Z
   method public indirectCount ()Z
@@ -1020,6 +1022,12 @@ com/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier
   field public,static,final SUBDATA Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static values ()[Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
+com/crystalgraphics/platform/gl/CgDisabledExtensions
+  access public,final
+  extends java/lang/Object
+  method public,static all ()Ljava/util/Set;
+  method public,static filter (Lcom/crystalgraphics/platform/gl/CgGLContext;)Lcom/crystalgraphics/platform/gl/CgGLContext;
+  method public,static has (Ljava/lang/String;)Z
 com/crystalgraphics/platform/gl/CgGL
   access public,final
   extends java/lang/Object
@@ -2959,6 +2967,12 @@ com/crystalgraphics/platform/service/CgEntityQuery
   method public,abstract localPlayer ()I
   method public,abstract pose (IF[D)Z
   method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
+com/crystalgraphics/platform/service/CgGameDirectory
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract get ()Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgHostCamera
   access public,abstract,interface
   extends java/lang/Object

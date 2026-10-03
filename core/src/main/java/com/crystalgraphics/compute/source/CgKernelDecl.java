@@ -10,6 +10,7 @@ import java.util.Set;
  * #pragma kernel Blur 8 8 image     // name Blur, local size 8x8x1, two dimensions, shape image
  * #pragma kernel Bin 256 general
  * #pragma fallback Bin BinScatter   // a tier without compute runs BinScatter instead
+ * #pragma compute_only Sort         // runs only where compute does; kernel.runs() asks
  * }</pre>
  *
  * @param dimensions  how many sizes the pragma gave: 1 for an unsized kernel, which takes {@link #DEFAULT_SIZE}
@@ -19,10 +20,12 @@ import java.util.Set;
  * @param accessors   the generated names those functions use: {@code STATE}, {@code STATE_WRITE}, {@code BINS_INC}
  * @param subgroups   the {@code CG_SUBGROUP_*} macros those functions use
  * @param sharedBytes what {@code shared} holds, or -1 where an array's size is not a constant this compiler reads
+ * @param builtins    the builtins newer than GLSL 3.30 those functions name ({@code CgGlslBuiltins})
+ * @param computeOnly declared {@code #pragma compute_only}: never lowered, and no tier below compute is asked of it
  */
 public record CgKernelDecl(String name, int sizeX, int sizeY, int sizeZ, int dimensions, CgKernelShape shape,
                            String fallback, Set<String> functions, Set<String> shared, Set<String> accessors,
-                           Set<String> subgroups, int sharedBytes) {
+                           Set<String> subgroups, int sharedBytes, Set<String> builtins, boolean computeOnly) {
 
     /**
      * An unsized kernel's local size: a multiple of every vendor's subgroup (32 on NVIDIA, 32 or 64 on AMD, 8 to 32

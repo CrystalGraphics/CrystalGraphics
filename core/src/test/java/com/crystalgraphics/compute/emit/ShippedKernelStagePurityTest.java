@@ -68,7 +68,7 @@ public class ShippedKernelStagePurityTest {
             + "|CompSwap)|subgroup\\w*)\\b");
     private static final CgLoweredTarget[] LOWERED = {
             CgLoweredTarget.GL33,
-            new CgLoweredTarget(CgCapabilities.ShaderBufferPath.SSBO_GL43, 256, 1024, 16384, 1 << 27, true),
+            new CgLoweredTarget(CgCapabilities.ShaderBufferPath.SSBO_GL43, 256, 1024, 16384, 1 << 27, true, 400),
     };
 
     @Test

@@ -8,8 +8,8 @@ import java.util.Map;
 
 /**
  * The engine's own small programs a lowered dispatch runs around a kernel's passes (gpu-compute C5), compiled once per
- * variant: copying a buffer into a scatter target and back, placing appended elements at their counter, adding to a
- * counter, and turning a dispatch's group counts into a draw command. Render thread.
+ * variant: drawing a buffer into a scatter target and its floats back into bits, placing appended elements at their
+ * counter, adding to a counter, and turning a dispatch's group counts into a draw command. Render thread.
  *
  * <pre>{@code
  * CgLoweredPrograms.Helper add = CgLoweredPrograms.counterAdd();
@@ -98,28 +98,31 @@ public final class CgLoweredPrograms {
     }
 
     /**
-     * A scatter target back into words, a vertex per texel, captured in order: the target's words, or the float
-     * converted back to the element's type. Uniforms {@code _cg_texels} (a unit), {@code _cg_width}.
+     * A float scatter target drawn into a target of the element's bits, one triangle over it: a float still equal to
+     * its seed keeps the view's own word, so a word the blends never touched comes back exactly, above 2^24 too.
+     * Uniforms {@code _cg_texels}, {@code _cg_src} (units: the float target, the view), {@code _cg_first} (the view's
+     * first texel), {@code _cg_count} (texels), {@code _cg_width}.
      *
-     * @param words a texel's words: 1, 2 or 4
+     * @param scalar the element's type: float, int or uint
      */
-    public static Helper scatterResolve(boolean floats, String scalar, int words) {
-        String key = "resolve/" + floats + "/" + scalar + "/" + words;
-        String type = CgLoweredEmitter.uintType(words);
-        String swizzle = words == 1 ? ".r" : words == 2 ? ".rg" : "";
-        String out = floats ? fromFloat(scalar, "v.r") : "v" + swizzle;
-        return HELPERS.computeIfAbsent(key, k -> capture("""
+    public static Helper scatterBits(String scalar) {
+        return HELPERS.computeIfAbsent("bits/" + scalar, k -> draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
                 #version 330 core
-                uniform %s _cg_texels;
+                uniform sampler2D _cg_texels;
+                uniform usamplerBuffer _cg_src;
+                uniform int _cg_first;
+                uniform int _cg_count;
                 uniform int _cg_width;
-                flat out %s _cg_w;
+                out uint _cg_o;
                 void main() {
-                    int t = gl_VertexID;
-                    %s v = texelFetch(_cg_texels, ivec2(t %% _cg_width, t / _cg_width), 0);
-                    _cg_w = %s;
-                    gl_Position = vec4(0.0);
+                    ivec2 p = ivec2(gl_FragCoord.xy);
+                    int t = p.y * _cg_width + p.x;
+                    if (t >= _cg_count) discard;
+                    float v = texelFetch(_cg_texels, p, 0).r;
+                    uint seed = texelFetch(_cg_src, _cg_first + t).r;
+                    _cg_o = v == %s ? seed : %s;
                 }
-                """.formatted(floats ? "sampler2D" : "usampler2D", type, floats ? "vec4" : "uvec4", out), "_cg_w"));
+                """.formatted(toFloat(scalar, "seed"), fromFloat(scalar, "v"))));
     }
 
     /**
@@ -157,21 +160,20 @@ public final class CgLoweredPrograms {
     }
 
     /**
-     * A counter plus the count texel, captured as one word. Uniforms {@code _cg_counter}, {@code _cg_count} (units),
-     * {@code _cg_at} (the counter's word).
+     * A counter plus the count texel, drawn into a 1x1 target of one word. Uniforms {@code _cg_counter},
+     * {@code _cg_count} (units), {@code _cg_at} (the counter's word).
      */
     public static Helper counterAdd() {
-        return HELPERS.computeIfAbsent("counterAdd", k -> capture("""
+        return HELPERS.computeIfAbsent("counterAdd", k -> draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
                 #version 330 core
                 uniform usamplerBuffer _cg_counter;
                 uniform sampler2D _cg_count;
                 uniform int _cg_at;
-                flat out uint _cg_sum;
+                out uint _cg_o;
                 void main() {
-                    _cg_sum = texelFetch(_cg_counter, _cg_at).r + uint(texelFetch(_cg_count, ivec2(0), 0).r + 0.5);
-                    gl_Position = vec4(0.0);
+                    _cg_o = texelFetch(_cg_counter, _cg_at).r + uint(texelFetch(_cg_count, ivec2(0), 0).r + 0.5);
                 }
-                """, "_cg_sum"));
+                """));
     }
 
     static String toFloat(String scalar, String bits) {

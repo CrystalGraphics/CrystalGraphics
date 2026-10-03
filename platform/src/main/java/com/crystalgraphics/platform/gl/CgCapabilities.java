@@ -85,9 +85,9 @@ public final class CgCapabilities {
         V,
         /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
         G43,
-        /** No compute: kernels lowered to vertex programs under transform feedback, counts drawn from the stream. */
+        /** No compute: kernels lowered to draws (transform feedback, blended points, fragment passes); counts stay on the GPU. */
         G40,
-        /** As {@code G40} with no stream count: a draw takes its whole capacity. */
+        /** As {@code G40}, but a count a kernel wrote is read back before the draw that takes it: a stall. */
         G33,
         /** Kernels' Java bodies on worker threads. */
         CPU;
@@ -215,6 +215,7 @@ public final class CgCapabilities {
     /** Whether the current context is a core profile. Fixed-function state
      *  such as {@code GL_ALPHA_TEST} is unavailable in core profile contexts. */
     boolean coreProfile;
+    int glslVersion;
 
     // ── Compute and GPU-driven draws ──────────────────────────────────────────
     // Each answers what a consumer needs, joined from a core version, its ARB extension and, on the tracked
@@ -298,8 +299,8 @@ public final class CgCapabilities {
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        CgGLContext gl = context;
-        if (gl == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
+        if (context == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
+        CgGLContext gl = CgDisabledExtensions.filter(context);
         boolean threeThreeByExtension = gl.OpenGL32() && gl.GL_ARB_instanced_arrays() && gl.GL_ARB_sampler_objects()
                 && gl.GL_ARB_explicit_attrib_location() && gl.GL_ARB_timer_query();
         if (!gl.OpenGL33() && !threeThreeByExtension) {
@@ -346,6 +347,8 @@ public final class CgCapabilities {
 
         // ── Compute and GPU-driven draws ──────────────────────────────────────
         CgDeviceInfo device = CgGL.backend() instanceof CgTrackedGLBackend tracked ? tracked.device().info() : null;
+        caps.glslVersion = device != null ? 450 : gl.OpenGL46() ? 460 : gl.OpenGL44() ? 440 : gl.OpenGL43() ? 430
+                : gl.OpenGL42() ? 420 : gl.OpenGL40() ? 400 : 330;
         boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
         caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
         caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
@@ -503,6 +506,9 @@ public final class CgCapabilities {
 
     /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */
     public boolean bindless() { return bindless; }
+
+    /** The GLSL version the context compiles: 330 to 460, 450 on a device. */
+    public int glslVersion() { return glslVersion; }
 
     /** Bytes of {@code shared} memory one work group may declare. */
     public int maxComputeSharedMemory() { return maxComputeSharedMemory; }

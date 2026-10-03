@@ -11,19 +11,21 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
  * String noSubgroups = CgKernelEmitter.emit(source, kernel, Set.of(), CgKernelTarget.GL43.withSubgroups(0));
  * }</pre>
  *
- * @param arb                {@code #version 330} with the ARB compute extensions, for a context below GL 4.3
+ * @param arb                the ARB compute extensions, for a context below GL 4.3
  * @param subgroupOperations {@link CgCapabilities#subgroupOperations()}'s bits
  * @param floatAtomics       {@code atomicAdd} on a float buffer element ({@code NV_shader_atomic_float})
+ * @param glsl               the GLSL version kernels compile at: 430, or 420 with the ARB extensions
  */
 public record CgKernelTarget(boolean arb, int subgroupOperations, boolean floatAtomics, int maxSharedMemory,
-                             int maxInvocations, int maxSizeX, int maxSizeY, int maxSizeZ) {
+                             int maxInvocations, int maxSizeX, int maxSizeY, int maxSizeZ, int glsl) {
 
     /** The operations {@code CG_SUBGROUP_*} maps onto; a device short of any runs every one emulated. */
     public static final int NATIVE_SUBGROUPS = CgCapabilities.SUBGROUP_BASIC | CgCapabilities.SUBGROUP_VOTE
             | CgCapabilities.SUBGROUP_ARITHMETIC | CgCapabilities.SUBGROUP_BALLOT | CgCapabilities.SUBGROUP_SHUFFLE;
 
     /** GL 4.3's guaranteed limits, with every subgroup operation and no float atomics. */
-    public static final CgKernelTarget GL43 = new CgKernelTarget(false, NATIVE_SUBGROUPS, false, 32768, 1024, 1024, 1024, 64);
+    public static final CgKernelTarget GL43 = new CgKernelTarget(false, NATIVE_SUBGROUPS, false, 32768, 1024, 1024, 1024, 64,
+            430);
 
     /** The current context's. */
     public static CgKernelTarget current() {
@@ -32,10 +34,10 @@ public record CgKernelTarget(boolean arb, int subgroupOperations, boolean floatA
             throw new IllegalStateException("this context runs no compute shaders: kernels run at tier "
                     + caps.computeTier());
         }
-        return new CgKernelTarget(caps.shaderBufferPath() == CgCapabilities.ShaderBufferPath.SSBO_ARB,
-                caps.subgroupOperations(), caps.floatAtomics(), caps.maxComputeSharedMemory(),
+        boolean arb = caps.shaderBufferPath() == CgCapabilities.ShaderBufferPath.SSBO_ARB;
+        return new CgKernelTarget(arb, caps.subgroupOperations(), caps.floatAtomics(), caps.maxComputeSharedMemory(),
                 caps.maxComputeInvocations(), caps.maxComputeWorkGroupSize(0), caps.maxComputeWorkGroupSize(1),
-                caps.maxComputeWorkGroupSize(2));
+                caps.maxComputeWorkGroupSize(2), arb ? Math.min(420, caps.glslVersion()) : 430);
     }
 
     /** {@code CG_SUBGROUP_*} as the device's own operations, not the work-group emulation. */
@@ -45,17 +47,23 @@ public record CgKernelTarget(boolean arb, int subgroupOperations, boolean floatA
 
     public CgKernelTarget withSubgroups(int operations) {
         return new CgKernelTarget(arb, operations, floatAtomics, maxSharedMemory, maxInvocations, maxSizeX, maxSizeY,
-                maxSizeZ);
+                maxSizeZ, glsl);
     }
 
+    /** The ARB extensions at GLSL 4.20, or core 4.30. */
     public CgKernelTarget withArb(boolean arb) {
         return new CgKernelTarget(arb, subgroupOperations, floatAtomics, maxSharedMemory, maxInvocations, maxSizeX,
-                maxSizeY, maxSizeZ);
+                maxSizeY, maxSizeZ, arb ? 420 : 430);
     }
 
     public CgKernelTarget withFloatAtomics(boolean floatAtomics) {
         return new CgKernelTarget(arb, subgroupOperations, floatAtomics, maxSharedMemory, maxInvocations, maxSizeX,
-                maxSizeY, maxSizeZ);
+                maxSizeY, maxSizeZ, glsl);
+    }
+
+    public CgKernelTarget withGlsl(int glsl) {
+        return new CgKernelTarget(arb, subgroupOperations, floatAtomics, maxSharedMemory, maxInvocations, maxSizeX,
+                maxSizeY, maxSizeZ, glsl);
     }
 
     /** The largest size along {@code axis}, 0 to 2. */

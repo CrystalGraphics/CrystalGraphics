@@ -126,6 +126,10 @@ public class CgFrameBuffer {
 
     /** Depth/stencil attachment, or {@code null} if the format has no depth. */
     protected Attachment depthAttachment;
+
+    /** Mip levels of each colour texture, at most its full chain at the current size. */
+    @Getter
+    private int colorLevels = 1;
     
      // ── Lazily cached GPU limit ────────────────────────────────────────────────
 
@@ -211,6 +215,11 @@ public class CgFrameBuffer {
      * @throws UnsupportedOperationException if the format asks for more colour slots than the GPU has
      */
     static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format) {
+        return createInternal(name, width, height, format, 1);
+    }
+
+    private static CgFrameBuffer createInternal(String name, int width, int height, CgFrameBufferFormat format,
+                                                int colorLevels) {
         if (width <= 0 || height <= 0) 
             throw new IllegalArgumentException("Framebuffer dimensions must be positive: " + width + "x" + height);
         if (format == null) 
@@ -224,7 +233,12 @@ public class CgFrameBuffer {
                 throw new UnsupportedOperationException("CgFrameBuffer '" + name + "': color slot " + slot + " exceeds GPU max draw buffers (" + maxSlots + ")");
             
 
+        if (colorLevels < 1) throw new IllegalArgumentException("a colour texture of " + colorLevels + " levels");
+        if (colorLevels > 1 && format.isMultisampled()) {
+            throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a multisampled colour slot has no mip levels");
+        }
         CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
+        fbo.colorLevels = colorLevels;
         fbo.initGl(width, height, format);
         return fbo;
     }
@@ -247,7 +261,22 @@ public class CgFrameBuffer {
      * @return a new, independently-owned {@code CgFrameBuffer}
      */
     public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format) {
-        return createInternal(name, width, height, format);
+        return createInternal(name, width, height, format, 1);
+    }
+
+    /**
+     * {@link #createOwned(String, int, int, CgFrameBufferFormat)} with {@code colorLevels} mip levels in every colour
+     * texture. Draws and blits address level 0; a kernel or a pass attached to another level fills it.
+     *
+     * <pre>{@code
+     * CgFrameBuffer bloom = CgFrameBuffer.createOwned("bloom", w, h, format, CgTexture.fullChain(w, h));
+     * }</pre>
+     *
+     * <p>A resize keeps the count, cut to the new size's full chain. A colour renderbuffer has one level; depth has one.</p>
+     */
+    public static CgFrameBuffer createOwned(String name, int width, int height, CgFrameBufferFormat format,
+                                            int colorLevels) {
+        return createInternal(name, width, height, format, colorLevels);
     }
 
     /**
@@ -333,7 +362,8 @@ public class CgFrameBuffer {
                             + "but declared as a sampleable texture. Use colorRenderbuffer(...) and "
                             + "resolve with blitFrom(...), which is what a sampler2D can read.");
                 } else {
-                    CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec());
+                    CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec(),
+                            Math.min(colorLevels, CgTexture.fullChain(w, h)));
                     doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
                     a.setTexture(tex);
                 }

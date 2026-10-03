@@ -186,6 +186,14 @@ public class CgComputeParserTest {
     }
 
     @Test
+    public void computeOnly_namesAKernel_andTakesNoFallback() {
+        assertTrue(parse("#pragma kernel A general\n#pragma compute_only A", "void A() {}").kernel("A").computeOnly());
+        assertTrue(refusal("#pragma kernel A general\n#pragma compute_only B", "void A() {}").contains("names no kernel 'B'"));
+        assertTrue(refusal("#pragma kernel A general\n#pragma kernel L scatter\n#pragma fallback A L\n#pragma compute_only A",
+                "void A() {}\nvoid L() {}").contains("compute_only and names a #pragma fallback"));
+    }
+
+    @Test
     public void fallbackToAGeneralKernel_isRefused() {
         assertTrue(refusal("#pragma kernel A general\n#pragma kernel B general\n#pragma fallback A B",
                 "void A() {}\nvoid B() {}").contains("a fallback is lowerable"));

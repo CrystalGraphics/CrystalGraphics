@@ -1,0 +1,315 @@
+// CgGpuOps' sort (gpu-compute C7): least significant digit first, four bits a pass, stable, in two forms that put
+// every key in the same place.
+//
+// Every tier: a pass counts the digits of each block of 32 elements (RadixCount), scans those counts digit-major with
+// scan.compute, and moves each element to its digit's offset for its block plus its rank among the block's earlier
+// elements of the same digit (RadixScatter).
+//
+// Compute only, ported from AMD's FidelityFX Parallel Sort: each work group counts the digits of its run of 512-key
+// blocks (SortCount), the counts are scanned digit-major in two levels (SortReduce, SortScan, SortScanAdd), and each
+// group sorts each 128 keys of its run by the digit in shared memory, two bits at a time, before writing them out in
+// order (SortScatter). Copyright (c) 2020 Advanced Micro Devices, Inc., MIT: the licence is in META-INF/NOTICE.md.
+//
+// Keys are compared as sortable uints; the stored key is the original.
+#pragma kernel RadixCount map
+#pragma kernel RadixScatter scatter
+#pragma kernel RadixScatterKeys scatter
+#pragma kernel SortCount 128 general
+#pragma kernel SortReduce 128 general
+#pragma kernel SortScan 128 general
+#pragma kernel SortScanAdd 128 general
+#pragma kernel SortScatter 128 general
+#pragma kernel SortScatterKeys 128 general
+#pragma compute_only SortCount SortReduce SortScan SortScanAdd SortScatter SortScatterKeys
+#pragma cg_feature INT
+#pragma cg_feature FLOAT
+#pragma cg_feature DESCENDING
+
+Properties {
+    _CountAt      ("The count's word in COUNT, -1 for none",           int) = -1
+    _Capacity     ("Elements at most",                                 int) = 0
+    _Shift        ("The digit's lowest bit",                           int) = 0
+    _Blocks       ("Blocks of 32 at the capacity",                     int) = 0
+    _Groups       ("Work groups counting and scattering",              int) = 1
+    _GroupBlocks  ("Blocks of 512 each of them takes",                 int) = 1
+    _ExtraGroups  ("How many of them, the last, take one block more",  int) = 0
+    _ReduceGroups ("Work groups reducing each digit's counts",         int) = 1
+}
+
+Buffers {
+    COUNT      ("The count",                                       uint, readonly)
+    KEYS       ("Keys in",                                         uint, readonly)
+    VALUES_IN  ("Values in",                                       uint, readonly)
+    CELLS      ("Each block's count of each digit, digit-major",   uint, readwrite)
+    OFFSETS    ("CELLS, scanned",                                  uint, readonly)
+    KEYS_OUT   ("Keys out",                                        uint, readwrite)
+    VALUES_OUT ("Values out",                                      uint, readwrite)
+    TABLE      ("Each group's count of each digit, then scanned",  uint, readwrite)
+    REDUCED    ("TABLE summed per 512 groups of a digit, scanned", uint, readwrite)
+}
+
+// The count: the capacity itself when fixed (_CountAt below 0), else the word a kernel wrote, at most the capacity.
+uint count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+// A key's bits in an order uints compare in.
+uint sortable(uint k) {
+#if defined(FLOAT)
+    k = (k & 0x80000000u) != 0u ? ~k : k ^ 0x80000000u;
+#elif defined(INT)
+    k ^= 0x80000000u;
+#endif
+#ifdef DESCENDING
+    k = ~k;
+#endif
+    return k;
+}
+
+uint digitOf(uint key) {
+    return (sortable(key) >> uint(_Shift)) & 15u;
+}
+
+uint digit(uint e) {
+    return digitOf(KEYS(e));
+}
+
+// ── Every tier ──────────────────────────────────────────────────────────────
+
+// Cell (digit, block): how many of the block's elements have the digit.
+void RadixCount() {
+    uint cell = uint(CG_ELEMENT), blocks = uint(_Blocks);
+    if (cell >= 16u * blocks) return;
+    uint d = cell / blocks, first = (cell - d * blocks) * 32u, end = min(first + 32u, count()), n = 0u;
+    for (uint e = first; e < end; e++) {
+        if (digit(e) == d) n++;
+    }
+    CELLS_WRITE(n);
+}
+
+// Where element i lands: its digit's offset for its block, then the block's earlier elements of that digit.
+uint place(uint i) {
+    uint d = digit(i), rank = 0u;
+    for (uint e = i & ~31u; e < i; e++) {
+        if (digit(e) == d) rank++;
+    }
+    return OFFSETS(d * uint(_Blocks) + (i >> 5u)) + rank;
+}
+
+void RadixScatter() {
+    uint i = uint(CG_ELEMENT);
+    if (i >= count()) return;
+    uint at = place(i);
+    KEYS_OUT_STORE(at, KEYS(i));
+    VALUES_OUT_STORE(at, VALUES_IN(i));
+}
+
+void RadixScatterKeys() {
+    uint i = uint(CG_ELEMENT);
+    if (i < count()) KEYS_OUT_STORE(place(i), KEYS(i));
+}
+
+// ── Compute only ────────────────────────────────────────────────────────────
+
+// A block is 128 invocations' four keys each, key i of invocation l at 128 i + l.
+const uint SORT_BLOCK = 512u;
+
+shared uint sortHistogram[16 * 128];
+shared uint sortPartial[128];
+shared uint sortScratch[SORT_BLOCK];
+shared uint sortOffsets[16];
+shared uint sortChunkCounts[16];
+shared uint sortChunkStarts[16];
+shared uint sortTotal;
+shared uint sortKeys[128];
+shared uint sortValues[128];
+shared uint sortDigits[128];
+
+// This group's first key and its number of blocks: _GroupBlocks each, and one more for the last _ExtraGroups.
+uvec2 groupRun() {
+    uint group = uint(CG_GROUP_ID.x), groups = uint(_Groups), extra = uint(_ExtraGroups);
+    uint first = SORT_BLOCK * uint(_GroupBlocks) * group, blocks = uint(_GroupBlocks);
+    if (group >= groups - extra) {
+        first += (group - (groups - extra)) * SORT_BLOCK;
+        blocks++;
+    }
+    return uvec2(first, blocks);
+}
+
+// This invocation's place in groupPrefix's order: subgroup by subgroup, whatever local index the device gave it.
+uint lane() {
+    return uint(CG_SUBGROUP_INDEX * CG_SUBGROUP_SIZE + CG_SUBGROUP_INVOCATION);
+}
+
+// The work group's sum of v, in every invocation.
+uint groupSum(uint v) {
+    uint s = CG_SUBGROUP_ADD(v);
+    if (CG_SUBGROUP_ELECT()) sortPartial[CG_SUBGROUP_INDEX] = s;
+    barrier();
+    uint total = 0u;
+    for (int i = 0; i < CG_SUBGROUP_COUNT; i++) total += sortPartial[i];
+    barrier();
+    return total;
+}
+
+// The sum of v over the work group's invocations before this one in lane() order.
+uint groupPrefix(uint v) {
+    uint p = CG_SUBGROUP_EXCLUSIVE_ADD(v);
+    if (CG_SUBGROUP_INVOCATION == CG_SUBGROUP_SIZE - 1) sortPartial[CG_SUBGROUP_INDEX] = p + v;
+    barrier();
+    for (int i = 0; i < CG_SUBGROUP_INDEX; i++) p += sortPartial[i];
+    barrier();
+    return p;
+}
+
+// TABLE[d * _Groups + group]: how many of the group's run have digit d. Each invocation counts into its own column.
+void SortCount() {
+    uint local = uint(CG_LOCAL_INDEX), n = count();
+    for (uint d = 0u; d < 16u; d++) sortHistogram[d * 128u + local] = 0u;
+    barrier();
+    uvec2 run = groupRun();
+    uint at = run.x + local;
+    for (uint b = 0u; b < run.y; b++, at += SORT_BLOCK) {
+        for (uint i = 0u; i < 4u; i++) {
+            uint e = at + i * 128u;
+            if (e < n) sortHistogram[digit(e) * 128u + local]++;
+        }
+    }
+    barrier();
+    if (local < 16u) {
+        uint sum = 0u;
+        for (uint i = 0u; i < 128u; i++) sum += sortHistogram[local * 128u + i];
+        TABLE_STORE(local * uint(_Groups) + uint(CG_GROUP_ID.x), sum);
+    }
+}
+
+// REDUCED[group]: the sum of one digit's TABLE row over a chunk of 512 groups, _ReduceGroups chunks a digit.
+void SortReduce() {
+    uint local = uint(CG_LOCAL_INDEX), group = uint(CG_GROUP_ID.x), groups = uint(_Groups);
+    uint d = group / uint(_ReduceGroups), first = (group - d * uint(_ReduceGroups)) * SORT_BLOCK, sum = 0u;
+    for (uint i = 0u; i < 4u; i++) {
+        uint g = first + i * 128u + local;
+        if (g < groups) sum += TABLE(d * groups + g);
+    }
+    sum = groupSum(sum);
+    if (local == 0u) REDUCED_STORE(group, sum);
+}
+
+// The exclusive prefix of sortScratch's 512 words, in place: four consecutive words an invocation. Answers the total.
+uint scanScratch() {
+    uint local = lane(), sum = 0u;
+    for (uint i = 0u; i < 4u; i++) {
+        uint v = sortScratch[local * 4u + i];
+        sortScratch[local * 4u + i] = sum;
+        sum += v;
+    }
+    uint prefix = groupPrefix(sum);
+    for (uint i = 0u; i < 4u; i++) sortScratch[local * 4u + i] += prefix;
+    barrier();
+    return prefix + sum;
+}
+
+// REDUCED, its exclusive prefix in place: 16 _ReduceGroups words, at most 512. One work group.
+void SortScan() {
+    uint local = uint(CG_LOCAL_INDEX), n = 16u * uint(_ReduceGroups);
+    for (uint i = 0u; i < 4u; i++) {
+        uint k = i * 128u + local;
+        sortScratch[k] = k < n ? REDUCED(k) : 0u;
+    }
+    barrier();
+    scanScratch();
+    for (uint i = 0u; i < 4u; i++) {
+        uint k = i * 128u + local;
+        if (k < n) REDUCED_STORE(k, sortScratch[k]);
+    }
+}
+
+// TABLE, its digit-major exclusive prefix in place: each chunk scanned, then its REDUCED prefix added.
+void SortScanAdd() {
+    uint local = uint(CG_LOCAL_INDEX), group = uint(CG_GROUP_ID.x), groups = uint(_Groups);
+    uint d = group / uint(_ReduceGroups), first = (group - d * uint(_ReduceGroups)) * SORT_BLOCK;
+    for (uint i = 0u; i < 4u; i++) {
+        uint k = i * 128u + local, g = first + k;
+        sortScratch[k] = g < groups ? TABLE(d * groups + g) : 0u;
+    }
+    barrier();
+    scanScratch();
+    uint base = REDUCED(group);
+    for (uint i = 0u; i < 4u; i++) {
+        uint k = i * 128u + local, g = first + k;
+        if (g < groups) TABLE_STORE(d * groups + g, sortScratch[k] + base);
+    }
+}
+
+const uint NOWHERE = 0xFFFFFFFFu;
+
+// This group's offset for each digit, from the scanned counts. Every invocation calls it, before the first chunk.
+void loadOffsets() {
+    uint local = lane();
+    if (local < 16u) sortOffsets[local] = TABLE(local * uint(_Groups) + uint(CG_GROUP_ID.x));
+    barrier();
+}
+
+// One chunk of 128 keys, sorted by digit d in shared memory two bits at a time (a value carried along when asked):
+// answers where the key this invocation now holds goes, or NOWHERE for one past the count, which takes digit 16 and so
+// sorts last. Every invocation calls it, chunk by chunk in order.
+uint sortChunk(inout uint key, inout uint value, uint d, bool carry) {
+    uint local = lane();
+    if (local < 16u) sortChunkCounts[local] = 0u;
+    for (uint bit = 0u; bit < 4u; bit += 2u) {
+        // A rank is the count of lower two-bit values plus this value's own before it: four eight-bit counts in a word.
+        uint two = (min(d, 15u) >> bit) & 3u;
+        uint one = 1u << (two * 8u);
+        uint before = groupPrefix(one);
+        if (local == 127u) sortTotal = before + one;
+        barrier();
+        uint total = sortTotal;
+        uint rank = ((before + (total << 8u) + (total << 16u) + (total << 24u)) >> (two * 8u)) & 255u;
+        sortKeys[rank] = key;
+        sortDigits[rank] = d;
+        if (carry) sortValues[rank] = value;
+        barrier();
+        key = sortKeys[local];
+        d = sortDigits[local];
+        if (carry) value = sortValues[local];
+        barrier();
+    }
+    if (d < 16u) atomicAdd(sortChunkCounts[d], 1u);
+    barrier();
+    if (local < 16u) {
+        uint start = 0u;
+        for (uint j = 0u; j < local; j++) start += sortChunkCounts[j];
+        sortChunkStarts[local] = start;
+    }
+    barrier();
+    uint to = d < 16u ? sortOffsets[d] + local - sortChunkStarts[d] : NOWHERE;
+    barrier();
+    if (local < 16u) sortOffsets[local] += sortChunkCounts[local];
+    return to;
+}
+
+// Each 128 keys of the group's run, in order, sorted by digit and written from each digit's next place.
+void SortScatter() {
+    uint n = count();
+    uvec2 run = groupRun();
+    loadOffsets();
+    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {
+        uint key = e < n ? KEYS(e) : 0u, value = e < n ? VALUES_IN(e) : 0u;
+        uint to = sortChunk(key, value, e < n ? digitOf(key) : 16u, true);
+        if (to != NOWHERE) {
+            KEYS_OUT_STORE(to, key);
+            VALUES_OUT_STORE(to, value);
+        }
+    }
+}
+
+void SortScatterKeys() {
+    uint n = count();
+    uvec2 run = groupRun();
+    loadOffsets();
+    for (uint e = run.x + lane(); e < run.x + run.y * SORT_BLOCK; e += 128u) {
+        uint key = e < n ? KEYS(e) : 0u, value = 0u;
+        uint to = sortChunk(key, value, e < n ? digitOf(key) : 16u, false);
+        if (to != NOWHERE) KEYS_OUT_STORE(to, key);
+    }
+}
