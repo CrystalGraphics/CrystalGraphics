@@ -405,6 +405,12 @@ public final class CgFrameBuilder {
         }
         if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
         if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
+        if (pass.depthFrom() != null) {
+            constants.texture(pass.depthFromUnit(), pass.depthFromCopy().depth);
+            frame.readsCurrentDepth |= pass.depthFrom().kind() == CgGraphTexture.Kind.CURRENT;
+        }
+        if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) frame.rastersCurrent = true;
+        else frame.rastersOther = true;
         packed.constants = constants.end();
     }
 

@@ -47,6 +47,8 @@ import javax.annotation.Nullable;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -117,6 +119,10 @@ public final class CgExecutor {
     /** Per file, what its dispatches below compute bind: lowered, or run by a Java body. */
     private final Map<CgComputeSource, CgDispatchBindings> belowCompute = new IdentityHashMap<>();
     private final int[] range = new int[4];
+    /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
+    private int startFramebuffer;
+    private boolean startNoted, otherBound;
+    private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
 
     private CgExecutor(int depth) {
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 64 * 1024);
@@ -210,6 +216,13 @@ public final class CgExecutor {
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
+        // The current target, noted before any pass binds its own: rebound for a pass into it after one into another.
+        startNoted = frame.readsCurrentDepth || frame.rastersCurrent && frame.rastersOther;
+        otherBound = false;
+        if (startNoted) {
+            startFramebuffer = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+            CgGL.glGetInteger(CgGL.GL_VIEWPORT, startViewport);
+        }
         frame.bindings.upload(ring);
         for (int k = 0; k < KINDS; k++) {
             if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
@@ -382,10 +395,12 @@ public final class CgExecutor {
                 upload.writer.upload(storage(upload.target));
                 upload.request.complete();
             } else if (pass instanceof CgPass.Callback callback) {
+                boolean bound = otherBound;   // the scope restores the binding it found
                 try (CgGlScope ignored = CgGlState.saveAll()) {
                     bindTarget(callback.target);
                     callback.body.run();
                 }
+                otherBound = bound;
                 callback.request.complete();
             } else if (pass instanceof CgPass.Compile compile) {
                 if (compile.pipeline.prepare()) {
@@ -710,6 +725,7 @@ public final class CgExecutor {
         boolean usable = false;
         int slot = 0;
         try {
+            if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
                 int command = packed.counts[b] != null ? slot++ : -1;
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
@@ -758,8 +774,23 @@ public final class CgExecutor {
             }
         } finally {
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
+            if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
+    }
+
+    /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
+    private void copyDepthFrom(CgRasterPass pass) {
+        CgGraphTexture from = pass.depthFrom();
+        CgTargetCopy copy = pass.depthFromCopy();
+        if (from.kind() == CgGraphTexture.Kind.CURRENT) {
+            copy.copyDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass, POOL);
+        } else {
+            CgFrameBuffer storage = storage(from);
+            copy.copyDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass, POOL);
+        }
+        copy.depth.bind(pass.depthFromUnit());
+        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
     /**
@@ -872,12 +903,23 @@ public final class CgExecutor {
         CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
     }
 
-    /** Binds a pass's target and its viewport; the current target is left as it is. */
-    private static void bindTarget(CgGraphTexture target) {
-        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) return;
+    /**
+     * Binds a pass's target and its viewport. The current target is left as it is, unless a pass of this execution
+     * bound another: then what was bound when it began is bound again.
+     */
+    private void bindTarget(CgGraphTexture target) {
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
+            if (otherBound) {
+                CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
+                CgGL.glViewport(startViewport.get(0), startViewport.get(1), startViewport.get(2), startViewport.get(3));
+                otherBound = false;
+            }
+            return;
+        }
         CgFrameBuffer storage = storage(target);
         storage.bind();
         CgGL.glViewport(0, 0, storage.getWidth(), storage.getHeight());
+        otherBound = startNoted;
     }
 
     /** A texture's storage now: a requested one's is made on first use. */

@@ -84,6 +84,20 @@ CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, Cg
 - Sort order decides what a reader sees: it bends what sorted before it. The world renderer's groups and orders
   place a haze after what it should bend (`render/world/AGENTS.md`).
 
+**Another target's depth** (`sceneDepth(unit, from)`): a pass into a target of its own (a bloom target, any size)
+reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
+Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The world's bloom is the user (`render/world/CLAUDE.md`).
+
+```java
+recording.raster(glow, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED)
+        .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
+```
+
+- **`CgGraphTexture.current()` is the framebuffer and viewport bound when the execution began**, not whatever is
+  bound now: after a pass into another target the executor binds it back, so a pass into `current()` after a bloom
+  pass draws onto the host's target rather than the bloom's.
+- Give the pass the host's depth convention (`CgStageFrame.defaults`), or the eye depths disagree.
+
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect

@@ -14,7 +14,7 @@ import javax.annotation.Nullable;
  * CgGraphTexture main  = CgGraphTexture.imported("mc_main", mainTarget);          // the host's, as it is
  * CgGraphTexture layer = CgGraphTexture.transientTexture("layer", new CgTextureDesc(w, h, CgTextureDesc.RGBA8));
  * CgGraphTexture view  = CgGraphTexture.requested("preview", desc);               // kept across frames
- * CgGraphTexture here  = CgGraphTexture.current();                                // whatever is bound at execution
+ * CgGraphTexture here  = CgGraphTexture.current();                                // what is bound when execution begins
  * }</pre>
  *
  * <ul>
@@ -52,7 +52,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return new CgGraphTexture(Kind.IMPORTED, name, null, framebuffer);
     }
 
-    /** Whatever framebuffer and viewport are bound when the pass executes. */
+    /** The framebuffer and viewport bound when the frame's execution began, kept across passes into other targets. */
     public static CgGraphTexture current() {
         return CURRENT;
     }
