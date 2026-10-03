@@ -5,6 +5,8 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgServerPlayers;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -34,6 +36,7 @@ public final class Network1710 {
         installed = true;
         CgNetwork.install(NetworkChannel1710.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
+        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayers1710());
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 

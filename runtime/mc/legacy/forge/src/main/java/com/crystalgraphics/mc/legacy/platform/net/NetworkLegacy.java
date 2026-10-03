@@ -5,6 +5,8 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgServerPlayers;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -34,6 +36,7 @@ public final class NetworkLegacy {
         installed = true;
         CgNetwork.install(NetworkChannelLegacy.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
+        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersLegacy());
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 

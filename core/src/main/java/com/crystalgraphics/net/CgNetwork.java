@@ -141,6 +141,16 @@ public final class CgNetwork {
         }
     }
 
+    /** Hands each connected player's peer to {@code out}. Server side; what the dimension and radius audiences read. */
+    static void forEachPeer(Consumer<CgPeer> out) {
+        CgConnections table = server;
+        if (table == null) return;
+        for (Object key : table.keys()) {
+            CgProtocolConnection<Object> connection = table.get(key);
+            if (connection != null && connection.peer() instanceof CgPeer) out.accept((CgPeer) connection.peer());
+        }
+    }
+
     /** How many connections are open, both sides. Diagnostics, and what a leak shows up in. */
     public static int openConnections() {
         CgConnections s = server;

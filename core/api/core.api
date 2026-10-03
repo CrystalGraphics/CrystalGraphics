@@ -2579,7 +2579,13 @@ com/crystalgraphics/net/CgAudience
   extends java/lang/Object
   method public,abstract forEach (Ljava/util/function/Consumer;)V
   method public,static all ()Lcom/crystalgraphics/net/CgAudience;
+  method public,static dimension (Ljava/lang/Object;)Lcom/crystalgraphics/net/CgAudience;
+  method public,static except (Lcom/crystalgraphics/net/CgAudience;Ljava/util/UUID;)Lcom/crystalgraphics/net/CgAudience;
+  method public,static near (Ljava/lang/Object;DDDD)Lcom/crystalgraphics/net/CgAudience;
   method public,static player (Ljava/util/UUID;)Lcom/crystalgraphics/net/CgAudience;
+  method public,static tracking (Ljava/lang/Object;)Lcom/crystalgraphics/net/CgAudience;
+  method public,static tracking (Ljava/lang/Object;II)Lcom/crystalgraphics/net/CgAudience;
+  method public,static trackingAndSelf (Ljava/lang/Object;)Lcom/crystalgraphics/net/CgAudience;
 com/crystalgraphics/net/CgInMemoryTransport
   access public,final
   extends java/lang/Object
