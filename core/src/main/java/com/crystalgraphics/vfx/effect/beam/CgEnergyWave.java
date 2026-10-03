@@ -64,9 +64,9 @@ import java.util.List;
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
- *   <li>It shakes the camera ({@link CgCameraShake}), by distance: a tremor growing over the charge, a jolt and a kick
- *       of the field of view at the release, a rumble while it fires and while it hits, and the blast's, when its shock
- *       front reaches the camera.</li>
+ *   <li>It shakes the camera ({@link CgCameraShake}), by distance: a tremor growing over the charge, a jolt, a recoil
+ *       and a kick of the field of view at the release, a rumble while it fires and while it hits, and the blast's
+ *       shake and shove when its shock front reaches the camera.</li>
  * </ul>
  */
 public final class CgEnergyWave extends CgVfxEffect {
@@ -277,9 +277,13 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
     /** Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius. */
-    private static final float SHOCK_SECONDS = 1.2f, SHOCK_REACH = 2.6f;
+    private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
     /** Trauma: the charge's tremor at its peak, the release's jolt, the recoil while firing, the rumble while hitting. */
-    private static final float CHARGE_TREMOR = 0.35f, RELEASE_JOLT = 0.55f, FIRING_RECOIL = 0.12f, HIT_RUMBLE = 0.3f;
+    private static final float CHARGE_TREMOR = 0.4f, RELEASE_JOLT = 0.7f, FIRING_RECOIL = 0.2f, HIT_RUMBLE = 0.3f;
+    /** Punch strength: the release's recoil, back along the aim, and the blast's shove away from its heart. */
+    private static final float RELEASE_PUNCH = 0.7f, BLAST_PUNCH = 1.5f;
+    /** The blast's tremor after its front arrives: the trauma it starts at, and the seconds it tapers to nothing over. */
+    private static final float BLAST_TREMOR = 0.85f, BLAST_TREMOR_SECONDS = 4f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
@@ -422,7 +426,9 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (since < SHOCK_SECONDS && CgCameraShake.camera(camera).distance(bx, by, bz) > shockFront(since)) return;
         blastFelt = true;
         CgCameraShake.shake(bx, by, bz, 1f, reach, reach * 5f);
-        CgCameraShake.kick(bx, by, bz, 0.1f, 0.45f, reach, reach * 4f);
+        CgCameraShake.punch(bx, by, bz, BLAST_PUNCH, reach, reach * 5f);
+        CgCameraShake.tremor(bx, by, bz, BLAST_TREMOR, BLAST_TREMOR_SECONDS, reach, reach * 5f);
+        CgCameraShake.kick(bx, by, bz, 0.14f, 0.5f, reach, reach * 4f);
     }
 
     /** How far the blast's shock front has come, in blocks, {@code since} seconds after the burst. */
@@ -440,7 +446,8 @@ public final class CgEnergyWave extends CgVfxEffect {
             if (!released) {
                 released = true;
                 CgCameraShake.shake(originX, originY, originZ, RELEASE_JOLT, 3f, 30f);
-                CgCameraShake.kick(originX, originY, originZ, 0.08f, 0.35f, 3f, 30f);
+                CgCameraShake.punch(originX, originY, originZ, -aimX, -aimY, -aimZ, RELEASE_PUNCH, 3f, 30f);
+                CgCameraShake.kick(originX, originY, originZ, 0.1f, 0.35f, 3f, 30f);
             }
             muzzle().level(FIRING_RECOIL);
         }
