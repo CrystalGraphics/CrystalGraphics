@@ -1,5 +1,9 @@
 package com.crystalgraphics.compute.parse;
 
+import com.crystalgraphics.compute.source.CgElementField;
+
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -72,6 +76,34 @@ final class Std430 {
             align = Math.max(align, layout.align());
         }
         return new Layout((offset + align - 1) / align * align, align);
+    }
+
+    /**
+     * Where each field of {@code type} sits: a struct's members in order, or one unnamed field for any other type.
+     * Null where {@link #of} is.
+     */
+    List<CgElementField> fieldsOf(String type) {
+        String body = structBodies.get(type);
+        List<CgElementField> out = new ArrayList<>();
+        if (body == null) {
+            Layout whole = of(type);
+            if (whole == null) return null;
+            out.add(new CgElementField("", type, 0, whole.size()));
+            return out;
+        }
+        int offset = 0;
+        for (String statement : body.split(";")) {
+            String field = GlslText.squash(statement);
+            if (field.isEmpty()) continue;
+            Matcher f = FIELD.matcher(field);
+            if (!f.matches()) return null;
+            Layout layout = array(f.group(1), f.group(3));
+            if (layout == null) return null;
+            offset = (offset + layout.align() - 1) / layout.align() * layout.align();
+            out.add(new CgElementField(f.group(2), f.group(1), offset, layout.size()));
+            offset += layout.size();
+        }
+        return out;
     }
 
     /** {@code type} under array dimensions such as {@code [4][CG_GROUP_SIZE]}: the element's layout without any. */

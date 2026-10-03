@@ -1,11 +1,15 @@
 package com.crystalgraphics.compute.emit;
 
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
+import com.crystalgraphics.compute.lower.CgLoweredEmitter;
+import com.crystalgraphics.compute.lower.CgLoweredTarget;
+import com.crystalgraphics.compute.lower.CgLowering;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.material.parse.ShippedShaderStagePurityTest;
 import com.crystalgraphics.api.shader.CgShaderStages;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.Test;
 
@@ -51,6 +55,42 @@ public class ShippedKernelStagePurityTest {
                         String offender = offender(glsl, path);
                         assertNull(path + " kernel " + kernel.name() + keywords + " on " + target + " reaches '"
                                 + offender + "', which a compute shader does not have", offender);
+                    }
+                }
+            }
+        }
+    }
+
+    /** What a vertex, geometry or fragment stage below compute has none of. */
+    private static final Pattern NOT_BELOW_COMPUTE = Pattern.compile("\\b(gl_GlobalInvocationID|gl_LocalInvocationID"
+            + "|gl_WorkGroupID|gl_NumWorkGroups|gl_LocalInvocationIndex|gl_WorkGroupSize|barrier|memoryBarrier\\w*"
+            + "|groupMemoryBarrier|shared|imageLoad|imageStore|imageAtomic\\w*|atomic(Add|Min|Max|And|Or|Xor|Exchange"
+            + "|CompSwap)|subgroup\\w*)\\b");
+    private static final CgLoweredTarget[] LOWERED = {
+            CgLoweredTarget.GL33,
+            new CgLoweredTarget(CgCapabilities.ShaderBufferPath.SSBO_GL43, 256, 1024, 16384, 1 << 27, true),
+    };
+
+    @Test
+    public void shippedKernels_lowered_reachNothingBelowComputeLacks() {
+        for (String path : CgIO.list("crystalgraphics", "shaders", ".compute")) {
+            CgComputeSource source = CgComputeParser.parse(CgIO.loadSource(path), path);
+            for (CgKernelDecl kernel : source.kernels()) {
+                if (CgLowering.refusal(source, kernel) != null) continue;
+                for (Set<String> keywords : keywordSets(source.features())) {
+                    for (CgLoweredTarget target : LOWERED) {
+                        for (CgLowering.Pass pass : CgLowering.passes(source, kernel)) {
+                            CgLoweredEmitter.Stages stages = CgLoweredEmitter.emit(source, kernel, keywords, pass, target);
+                            for (String stage : new String[]{stages.vertex(), stages.geometry(), stages.fragment()}) {
+                                if (stage == null) continue;
+                                String code = CgShaderStages.reachable(ShippedShaderStagePurityTest.stripComments(
+                                        new CgShaderPreprocessor().process(stage, path)), CgShaderStages.Stage.COMPUTE);
+                                Matcher m = NOT_BELOW_COMPUTE.matcher(code);
+                                assertFalse(path + " kernel " + kernel.name() + keywords + ", " + pass.kind() + " pass on "
+                                        + target.bufferPath() + ", reaches '" + (m.find(0) ? m.group(1) : "") + "'",
+                                        m.find(0));
+                            }
+                        }
                     }
                 }
             }

@@ -13,6 +13,8 @@ import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.platform.device.command.CgAccess;
 
+import com.crystalgraphics.platform.gl.CgCapabilities;
+
 import javax.annotation.Nullable;
 
 /**
@@ -80,6 +82,8 @@ public final class CgDispatch {
         this.z = z;
         this.args = args;
         this.argsOffset = argsOffset;
+        // A kernel this context cannot run fails here, at the caller's line, not in the frame that executes it.
+        if (CgCapabilities.detected() != null) kernel.form();
         int n = source.buffers().size(), m = source.images().size();
         buffers = new CgGraphBuffer[n];
         offsets = new long[n];

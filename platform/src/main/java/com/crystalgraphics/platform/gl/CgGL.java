@@ -297,6 +297,7 @@ public final class CgGL {
     public static final int GL_DISPATCH_INDIRECT_BUFFER = 0x90EE;
     /** Where an indirect draw's count is read: GL 4.6, and {@code GL_PARAMETER_BUFFER_ARB} has the same value. */
     public static final int GL_PARAMETER_BUFFER         = 0x80EE;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER = 0x8C8E;
 
     // --- Buffer usages -------------------------------------------------------
     public static final int GL_STATIC_DRAW = 0x88E4, 
@@ -328,6 +329,9 @@ public final class CgGL {
     public static final int GL_DRAW_INDIRECT_BUFFER_BINDING     = 0x8F43;
     public static final int GL_DISPATCH_INDIRECT_BUFFER_BINDING = 0x90EF;
     public static final int GL_PARAMETER_BUFFER_BINDING         = 0x80EF;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_BINDING = 0x8C8F;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_START   = 0x8C84;
+    public static final int GL_TRANSFORM_FEEDBACK_BUFFER_SIZE    = 0x8C85;
 
     // --- Framebuffer ---------------------------------------------------------
     public static final int GL_FRAMEBUFFER          = 0x8D40;
@@ -531,6 +535,9 @@ public final class CgGL {
     public static final int GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS = 0x8C8A;
     public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS     = 0x8C8B;
     public static final int GL_MAX_TRANSFORM_FEEDBACK_BUFFERS              = 0x8E70;
+    public static final int GL_INTERLEAVED_ATTRIBS                         = 0x8C8C;
+    public static final int GL_SEPARATE_ATTRIBS                            = 0x8C8D;
+    public static final int GL_RASTERIZER_DISCARD                          = 0x8C89;
     public static final int GL_MAX_3D_TEXTURE_SIZE              = 0x8073;
     public static final int GL_MAX_ARRAY_TEXTURE_LAYERS         = 0x88FF;
     public static final int GL_MAX_TEXTURE_IMAGE_UNITS          = 0x8872;
@@ -900,11 +907,13 @@ public final class CgGL {
 
     public static void glBindBufferBase(int target, int index, int buffer) {
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, 0, 0)) return;
+        if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, 0, 0)) return;
         gl().glBindBufferBase(target, index, buffer);
     }
 
     public static void glBindBufferRange(int target, int index, int buffer, long offset, long size) {
         if (target == GL_SHADER_STORAGE_BUFFER && !state().storageBindingChanged(index, buffer, offset, size)) return;
+        if (target == GL_TRANSFORM_FEEDBACK_BUFFER && !state().feedbackBindingChanged(index, buffer, offset, size)) return;
         gl().glBindBufferRange(target, index, buffer, offset, size);
     }
 
@@ -1123,6 +1132,35 @@ public final class CgGL {
      * CgGL.cgBufferBarrier(particles, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // before the draw reading them
      * }</pre>
      */
+    /**
+     * The vertex or geometry outputs {@code program} captures into the bound {@code GL_TRANSFORM_FEEDBACK_BUFFER}s, as
+     * {@link #GL_INTERLEAVED_ATTRIBS} into point 0 or {@link #GL_SEPARATE_ATTRIBS} one point each. Before linking.
+     * GL 3.0; a device has none, and refuses it.
+     *
+     * <pre>{@code
+     * CgGL.glTransformFeedbackVaryings(program, new String[]{"_cg_c0", "_cg_c1"}, CgGL.GL_INTERLEAVED_ATTRIBS);
+     * CgGL.glLinkProgram(program);
+     * CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, out, 0, bytes);
+     * CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+     * CgGL.glBeginTransformFeedback(CgGL.GL_POINTS);
+     * CgGL.glDrawArrays(CgGL.GL_POINTS, 0, count);
+     * CgGL.glEndTransformFeedback();
+     * CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+     * }</pre>
+     */
+    public static void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        gl().glTransformFeedbackVaryings(program, varyings, bufferMode);
+    }
+
+    /** Starts capturing {@code primitiveMode} ({@code GL_POINTS}, {@code GL_LINES} or {@code GL_TRIANGLES}). */
+    public static void glBeginTransformFeedback(int primitiveMode) {
+        gl().glBeginTransformFeedback(primitiveMode);
+    }
+
+    public static void glEndTransformFeedback() {
+        gl().glEndTransformFeedback();
+    }
+
     public static void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
         gl().glDispatchCompute(groupsX, groupsY, groupsZ);
     }

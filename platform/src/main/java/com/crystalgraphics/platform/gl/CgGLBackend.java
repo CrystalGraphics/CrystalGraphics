@@ -251,6 +251,13 @@ public abstract class CgGLBackend {
     // Compute: GL 4.3 or ARB_compute_shader; images and barriers GL 4.2 or ARB_shader_image_load_store
     // -------------------------------------------------------------------------
 
+    /** GL 3.0. @see CgGL#glTransformFeedbackVaryings */
+    public abstract void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode);
+
+    public abstract void glBeginTransformFeedback(int primitiveMode);
+
+    public abstract void glEndTransformFeedback();
+
     public abstract void glDispatchCompute(int groupsX, int groupsY, int groupsZ);
     /** The group counts at {@code offset} in the bound {@code GL_DISPATCH_INDIRECT_BUFFER}. */
     public abstract void glDispatchComputeIndirect(long offset);

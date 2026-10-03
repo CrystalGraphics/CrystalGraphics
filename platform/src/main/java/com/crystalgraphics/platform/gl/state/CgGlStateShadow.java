@@ -42,6 +42,10 @@ public final class CgGlStateShadow {
             CgGL.GL_PARAMETER_BUFFER};
     public static final int[] INDIRECT_BINDINGS = {CgGL.GL_DRAW_INDIRECT_BUFFER_BINDING,
             CgGL.GL_DISPATCH_INDIRECT_BUFFER_BINDING, CgGL.GL_PARAMETER_BUFFER_BINDING};
+    /** Transform-feedback buffer points a scope restores: GL 3.0's four separate captures. */
+    public static final int MAX_FEEDBACK_BINDINGS = 4;
+    /** {@link CgGlSlot#TRANSFORM_FEEDBACK}'s point for {@code GL_RASTERIZER_DISCARD}, after the buffer points. */
+    public static final int RASTERIZER_DISCARD_POINT = MAX_FEEDBACK_BINDINGS;
 
     // ── Blend ─────────────────────────────────────────────────────────────────
     public boolean blendEnabled;
@@ -139,6 +143,11 @@ public final class CgGlStateShadow {
     /** Per {@link #INDIRECT_TARGETS} entry. */
     public final int[] indirectBuffer = new int[INDIRECT_TARGETS.length];
 
+    /** Per point, as {@link #storageBuffer} is. */
+    public final int[] feedbackBuffer = new int[MAX_FEEDBACK_BINDINGS];
+    public final long[] feedbackOffset = new long[MAX_FEEDBACK_BINDINGS], feedbackSize = new long[MAX_FEEDBACK_BINDINGS];
+    public boolean rasterizerDiscard;
+
     /** The {@link #INDIRECT_TARGETS} index of {@code target}, or -1. */
     public static int indirectIndex(int target) {
         for (int i = 0; i < INDIRECT_TARGETS.length; i++) if (INDIRECT_TARGETS[i] == target) return i;
@@ -162,6 +171,15 @@ public final class CgGlStateShadow {
                 break;
             case INDIRECT_BUFFERS:
                 indirectBuffer[index] = o.indirectBuffer[index];
+                break;
+            case TRANSFORM_FEEDBACK:
+                if (index == RASTERIZER_DISCARD_POINT) {
+                    rasterizerDiscard = o.rasterizerDiscard;
+                } else {
+                    feedbackBuffer[index] = o.feedbackBuffer[index];
+                    feedbackOffset[index] = o.feedbackOffset[index];
+                    feedbackSize[index] = o.feedbackSize[index];
+                }
                 break;
             default: throw new IllegalArgumentException(slot + " has no binding points");
         }
@@ -220,6 +238,10 @@ public final class CgGlStateShadow {
         System.arraycopy(o.imageAccess, 0, imageAccess, 0, MAX_IMAGE_UNITS);
         System.arraycopy(o.imageFormat, 0, imageFormat, 0, MAX_IMAGE_UNITS);
         System.arraycopy(o.indirectBuffer, 0, indirectBuffer, 0, indirectBuffer.length);
+        System.arraycopy(o.feedbackBuffer, 0, feedbackBuffer, 0, MAX_FEEDBACK_BINDINGS);
+        System.arraycopy(o.feedbackOffset, 0, feedbackOffset, 0, MAX_FEEDBACK_BINDINGS);
+        System.arraycopy(o.feedbackSize, 0, feedbackSize, 0, MAX_FEEDBACK_BINDINGS);
+        rasterizerDiscard = o.rasterizerDiscard;
     }
 
     /**
@@ -296,6 +318,7 @@ public final class CgGlStateShadow {
         if (n.startsWith("storage")) return CgGlSlot.STORAGE_BUFFERS;
         if (n.startsWith("image")) return CgGlSlot.IMAGES;
         if (n.equals("indirectBuffer")) return CgGlSlot.INDIRECT_BUFFERS;
+        if (n.startsWith("feedback") || n.equals("rasterizerDiscard")) return CgGlSlot.TRANSFORM_FEEDBACK;
         throw new IllegalStateException("CgGlStateShadow." + n + " belongs to no CgGlSlot; add it to slotOf");
     }
 }

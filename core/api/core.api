@@ -864,6 +864,7 @@ com/crystalgraphics/api/shader/CgShaderProgram
   method public submitLink (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)V
   method public unbind ()V
   method public,static compile (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/api/shader/CgShaderProgram;
+  method public,static compileCapture (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)Lcom/crystalgraphics/api/shader/CgShaderProgram;
   method public,static compileCompute (Ljava/lang/String;)Lcom/crystalgraphics/api/shader/CgShaderProgram;
   method public,static create ()Lcom/crystalgraphics/api/shader/CgShaderProgram;
 com/crystalgraphics/api/shader/CgShaderStages
@@ -1538,6 +1539,7 @@ com/crystalgraphics/api/vertex/CgVertexTransformUtil
 com/crystalgraphics/compute/CgCompute
   access public,final
   extends java/lang/Object
+  method public cpuBody (Ljava/lang/String;)Lcom/crystalgraphics/compute/cpu/CgCpuBody;
   method public kernel (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgKernel;
   method public path ()Ljava/lang/String;
   method public properties ()Lcom/crystalgraphics/compute/emit/CgPropertyBlock;
@@ -1548,19 +1550,144 @@ com/crystalgraphics/compute/CgCompute
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
   method public,static releaseAll ()V
   method public,static reloadAll ()V
+com/crystalgraphics/compute/CgDispatchBindings
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/compute/source/CgComputeSource;)V
+  method public args ()I
+  method public argsOffset ()J
+  method public buffer (I)I
+  method public buffer (IIJJ)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public bytes (I)J
+  method public counter (I)I
+  method public counter (IIJ)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public counterOffset (I)J
+  method public depth (I)I
+  method public elements (III)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public frame ()J
+  method public frame (J)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public height (I)I
+  method public image (I)I
+  method public image (IIIIIIII)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public imageTarget (I)I
+  method public indirect (IJ)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public isIndirect ()Z
+  method public layer (I)I
+  method public level (I)I
+  method public offset (I)J
+  method public width (I)I
+  method public x ()I
+  method public y ()I
+  method public z ()I
 com/crystalgraphics/compute/CgKernel
   access public,final
   extends java/lang/Object
   method public compute ()Lcom/crystalgraphics/compute/CgCompute;
+  method public cpu (Lcom/crystalgraphics/compute/cpu/CgCpuBody;)Lcom/crystalgraphics/compute/CgKernel;
   method public decl ()Lcom/crystalgraphics/compute/source/CgKernelDecl;
   method public equals (Ljava/lang/Object;)Z
+  method public form ()Lcom/crystalgraphics/compute/CgKernelForm;
   method public glsl ()Ljava/lang/String;
   method public hashCode ()I
   method public keywords ()Ljava/util/Set;
+  method public lowered ()Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
   method public name ()Ljava/lang/String;
   method public program ()Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public toString ()Ljava/lang/String;
   method public withKeywords ([Ljava/lang/String;)Lcom/crystalgraphics/compute/CgKernel;
+com/crystalgraphics/compute/CgKernelForm
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/compute/CgKernelForm$How;Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;Lcom/crystalgraphics/compute/source/CgKernelDecl;)V
+  method public how ()Lcom/crystalgraphics/compute/CgKernelForm$How;
+  method public runs ()Lcom/crystalgraphics/compute/source/CgKernelDecl;
+  method public tier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static choose (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/platform/gl/CgCapabilities$ComputeTier;Ljava/util/function/Predicate;)Lcom/crystalgraphics/compute/CgKernelForm;
+com/crystalgraphics/compute/CgKernelForm$How
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COMPUTE Lcom/crystalgraphics/compute/CgKernelForm$How;
+  field public,static,final CPU Lcom/crystalgraphics/compute/CgKernelForm$How;
+  field public,static,final LOWERED Lcom/crystalgraphics/compute/CgKernelForm$How;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgKernelForm$How;
+  method public,static values ()[Lcom/crystalgraphics/compute/CgKernelForm$How;
+com/crystalgraphics/compute/cpu/CgCpuBody
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract run (Lcom/crystalgraphics/compute/cpu/CgCpuDispatch;)V
+com/crystalgraphics/compute/cpu/CgCpuBuffer
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/compute/source/CgBufferDecl;[III)V
+  method public addFloat (IF)V
+  method public addInt (II)I
+  method public decl ()Lcom/crystalgraphics/compute/source/CgBufferDecl;
+  method public field (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgElementField;
+  method public getFloat (I)F
+  method public getFloat (II)F
+  method public getInt (I)I
+  method public getInt (II)I
+  method public length ()I
+  method public maxFloat (IF)V
+  method public maxInt (II)V
+  method public maxUint (II)V
+  method public minFloat (IF)V
+  method public minInt (II)V
+  method public minUint (II)V
+  method public setFloat (IF)V
+  method public setFloat (IIF)V
+  method public setInt (II)V
+  method public setInt (III)V
+  method public stride ()I
+com/crystalgraphics/compute/cpu/CgCpuDispatch
+  access public,final
+  extends java/lang/Object
+  method public append (Ljava/lang/String;)I
+  method public appendCount (Ljava/lang/String;)I
+  method public appended (Ljava/lang/String;)Lcom/crystalgraphics/compute/cpu/CgCpuBuffer;
+  method public buffer (Ljava/lang/String;)Lcom/crystalgraphics/compute/cpu/CgCpuBuffer;
+  method public count (I)I
+  method public end ()I
+  method public first ()I
+  method public image (Ljava/lang/String;)Lcom/crystalgraphics/compute/cpu/CgCpuImage;
+  method public kernel ()Lcom/crystalgraphics/compute/source/CgKernelDecl;
+  method public keyword (Ljava/lang/String;)Z
+  method public property (Ljava/lang/String;)F
+  method public property (Ljava/lang/String;I)F
+  method public propertyInt (Ljava/lang/String;)I
+  method public time ()F
+  method public x (I)I
+  method public y (I)I
+  method public z (I)I
+com/crystalgraphics/compute/cpu/CgCpuImage
+  access public,final
+  extends java/lang/Object
+  method public decl ()Lcom/crystalgraphics/compute/source/CgImageDecl;
+  method public depth ()I
+  method public height ()I
+  method public loadFloat (IIII)F
+  method public loadInt (IIII)I
+  method public store (IIIFFFF)V
+  method public storeInt (IIIIIII)V
+  method public width ()I
+com/crystalgraphics/compute/cpu/CgCpuMirrors
+  access public,final
+  extends java/lang/Object
+  method public,static endFrame ()V
+  method public,static external (I)V
+  method public,static forget (I)V
+  method public,static releaseAll ()V
+  method public,static upload (III)V
+  method public,static word (IJ)J
+  method public,static words (IJ)[I
+com/crystalgraphics/compute/cpu/CgCpuRunner
+  access public,final
+  extends java/lang/Object
+  method public,static dispatch (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/cpu/CgCpuBody;Lcom/crystalgraphics/compute/CgDispatchBindings;[F[FLcom/crystalgraphics/compute/emit/CgPropertyBlock;)V
+  method public,static releaseAll ()V
 com/crystalgraphics/compute/emit/CgKernelEmitter
   access public,final
   extends java/lang/Object
@@ -1570,6 +1697,7 @@ com/crystalgraphics/compute/emit/CgKernelEmitter
   method public,static bufferBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static counterBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static emit (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Ljava/lang/String;
+  method public,static properties (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgComputeSource;)V
 com/crystalgraphics/compute/emit/CgKernelTarget
   access public,final,record
   extends java/lang/Record
@@ -1601,13 +1729,158 @@ com/crystalgraphics/compute/emit/CgPropertyBlock
   method public format ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
   method public hasValues ()Z
   method public isInteger (Ljava/lang/String;)Z
+  method public offset (Ljava/lang/String;)I
   method public offset (Ljava/lang/String;I)I
   method public samplerUnit (Ljava/lang/String;)I
   method public samplers ()Ljava/util/List;
   method public,static of (Ljava/util/List;)Lcom/crystalgraphics/compute/emit/CgPropertyBlock;
+com/crystalgraphics/compute/lower/CgLoweredEmitter
+  access public,final
+  extends java/lang/Object
+  field public,static,final ARGS Ljava/lang/String;
+  field public,static,final ARGS_AT Ljava/lang/String;
+  field public,static,final LAYER Ljava/lang/String;
+  field public,static,final TEXELS_X Ljava/lang/String;
+  field public,static,final TEXELS_Y Ljava/lang/String;
+  method public,static base (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static captures (Lcom/crystalgraphics/compute/source/CgBufferDecl;)[Ljava/lang/String;
+  method public,static counterAt (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static counterTbo (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static emit (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/lower/CgLowering$Pass;Lcom/crystalgraphics/compute/lower/CgLoweredTarget;)Lcom/crystalgraphics/compute/lower/CgLoweredEmitter$Stages;
+  method public,static length (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static level (Lcom/crystalgraphics/compute/source/CgImageDecl;)Ljava/lang/String;
+  method public,static sampler (Lcom/crystalgraphics/compute/source/CgImageDecl;)Ljava/lang/String;
+  method public,static samplerType (Lcom/crystalgraphics/compute/source/CgImageDecl;)Ljava/lang/String;
+  method public,static tbo (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static texelFormat (Lcom/crystalgraphics/compute/source/CgBufferDecl;)I
+  method public,static texelWords (Lcom/crystalgraphics/compute/source/CgBufferDecl;)I
+  method public,static texelsPerElement (Lcom/crystalgraphics/compute/source/CgBufferDecl;)I
+com/crystalgraphics/compute/lower/CgLoweredEmitter$Stages
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;)V
+  method public fragment ()Ljava/lang/String;
+  method public geometry ()Ljava/lang/String;
+  method public varyings ()[Ljava/lang/String;
+  method public vertex ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/compute/lower/CgLoweredKernel
+  access public,final
+  extends java/lang/Object
+  method public delete ()V
+  method public dispatch (Lcom/crystalgraphics/compute/CgDispatchBindings;)V
+  method public dispatchBound (Lcom/crystalgraphics/compute/CgDispatchBindings;)V
+  method public frame (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
+  method public isDeleted ()Z
+  method public kernel ()Lcom/crystalgraphics/compute/source/CgKernelDecl;
+  method public keywords ()Ljava/util/Set;
+  method public properties ()Lcom/crystalgraphics/api/shader/CgShaderBindings;
+  method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;)Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
+  method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/lower/CgLoweredTarget;)Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
+  method public,static scope ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
+com/crystalgraphics/compute/lower/CgLoweredPrograms
+  access public,final
+  extends java/lang/Object
+  method public,static command ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+  method public,static counterAdd ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+  method public,static place ()Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+  method public,static scatterInit (ZLjava/lang/String;)Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+  method public,static scatterResolve (ZLjava/lang/String;I)Lcom/crystalgraphics/compute/lower/CgLoweredPrograms$Helper;
+com/crystalgraphics/compute/lower/CgLoweredPrograms$Helper
+  access public,final
+  extends java/lang/Object
+  method public set (Ljava/lang/String;I)V
+  method public use ()V
+com/crystalgraphics/compute/lower/CgLoweredResources
+  access public,final
+  extends java/lang/Object
+  method public,static bindTextureBuffer (IIII)V
+  method public,static count ()Lcom/crystalgraphics/compute/lower/CgTexelTarget;
+  method public,static empty ()I
+  method public,static framebuffer ()I
+  method public,static isZero (IJJ)Z
+  method public,static release (IJ)V
+  method public,static release (Lcom/crystalgraphics/compute/lower/CgTexelTarget;)V
+  method public,static releaseAll ()V
+  method public,static scratch (J)I
+  method public,static target (Lcom/crystalgraphics/api/texture/CgTextureType;II)Lcom/crystalgraphics/compute/lower/CgTexelTarget;
+  method public,static textureBuffer (I)I
+  method public,static vertexArray ()I
+  method public,static written (I)V
+  method public,static zeroed (IJJJ)V
+com/crystalgraphics/compute/lower/CgLoweredTarget
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final GL33 Lcom/crystalgraphics/compute/lower/CgLoweredTarget;
+  method public <init> (Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;IIIIZ)V
+  method public bufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
+  method public drawsGpuCounts ()Z
+  method public geometryVertices (I)I
+  method public maxGeometryComponents ()I
+  method public maxGeometryVertices ()I
+  method public maxTextureBufferSize ()I
+  method public maxTextureSize ()I
+  method public storageBlocks ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static current ()Lcom/crystalgraphics/compute/lower/CgLoweredTarget;
+com/crystalgraphics/compute/lower/CgLowering
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_CAPTURED_WORDS I
+  method public,static passes (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;)Ljava/util/List;
+  method public,static refusal (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;)Ljava/lang/String;
+  method public,static touches (Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/compute/source/CgBufferDecl;)Z
+  method public,static touches (Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/compute/source/CgImageDecl;)Z
+  method public,static uses (Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/compute/source/CgBufferDecl;Lcom/crystalgraphics/compute/source/CgBufferAccessor;)Z
+  method public,static uses (Lcom/crystalgraphics/compute/source/CgKernelDecl;Lcom/crystalgraphics/compute/source/CgImageDecl;Lcom/crystalgraphics/compute/source/CgImageAccessor;)Z
+com/crystalgraphics/compute/lower/CgLowering$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final APPEND Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  field public,static,final IMAGE Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  field public,static,final OUTPUT Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  field public,static,final SCATTER Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  method public,static values ()[Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+com/crystalgraphics/compute/lower/CgLowering$Op
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADD Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  field public,static,final MAX Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  field public,static,final MIN Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  field public,static,final STORE Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  method public,static values ()[Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+com/crystalgraphics/compute/lower/CgLowering$Pass
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/compute/lower/CgLowering$Kind;Lcom/crystalgraphics/compute/source/CgBufferDecl;Lcom/crystalgraphics/compute/source/CgImageDecl;Lcom/crystalgraphics/compute/lower/CgLowering$Op;Z)V
+  method public buffer ()Lcom/crystalgraphics/compute/source/CgBufferDecl;
+  method public floats ()Z
+  method public image ()Lcom/crystalgraphics/compute/source/CgImageDecl;
+  method public kind ()Lcom/crystalgraphics/compute/lower/CgLowering$Kind;
+  method public op ()Lcom/crystalgraphics/compute/lower/CgLowering$Op;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/compute/lower/CgTexelTarget
+  access public,final
+  extends java/lang/Object
+  method public delete ()V
+  method public framebuffer ()I
+  method public height ()I
+  method public texture ()I
+  method public type ()Lcom/crystalgraphics/api/texture/CgTextureType;
+  method public width ()I
+  method public,static create (Lcom/crystalgraphics/api/texture/CgTextureType;II)Lcom/crystalgraphics/compute/lower/CgTexelTarget;
 com/crystalgraphics/compute/parse/CgComputeParser
   access public,final
   extends java/lang/Object
+  method public,static generalOnly (Ljava/lang/String;)Ljava/lang/String;
   method public,static parse (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgComputeSource;
 com/crystalgraphics/compute/program/CgKernelProgram
   access public,final
@@ -1673,16 +1946,19 @@ com/crystalgraphics/compute/source/CgBufferAccessor
 com/crystalgraphics/compute/source/CgBufferDecl
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgBufferAccess;IZZI)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgBufferAccess;IZZILjava/util/List;)V
   method public access ()Lcom/crystalgraphics/compute/source/CgBufferAccess;
   method public array ()Ljava/lang/String;
   method public display ()Ljava/lang/String;
   method public element ()Ljava/lang/String;
+  method public field (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgElementField;
+  method public fields ()Ljava/util/List;
   method public index ()I
   method public lowerable ()Z
   method public name ()Ljava/lang/String;
   method public scalar ()Z
   method public stride ()I
+  method public struct ()Z
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -1702,6 +1978,19 @@ com/crystalgraphics/compute/source/CgComputeSource
   method public parts ()Ljava/util/List;
   method public path ()Ljava/lang/String;
   method public properties ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/compute/source/CgElementField
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;II)V
+  method public name ()Ljava/lang/String;
+  method public offset ()I
+  method public size ()I
+  method public type ()Ljava/lang/String;
+  method public word ()I
+  method public words ()I
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -1805,6 +2094,7 @@ com/crystalgraphics/compute/source/CgImageFormat
   field public,static,final RGBA8_SNORM Lcom/crystalgraphics/compute/source/CgImageFormat;
   method public atomics ()Z
   method public qualifier ()Ljava/lang/String;
+  method public renderable ()Z
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgImageFormat;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgImageFormat;
   method public,static values ()[Lcom/crystalgraphics/compute/source/CgImageFormat;
@@ -2026,6 +2316,11 @@ com/crystalgraphics/easing/CgPiecewiseLinear
   method public getSegmentCount ()I
   method public getXStops ()[D
   method public getYValues ()[D
+com/crystalgraphics/gl/buffer/CgBufferReadback
+  access public,final
+  extends java/lang/Object
+  method public,static readWords (IJ[III)V
+  method public,static release ()V
 com/crystalgraphics/gl/buffer/CgFrameRing
   access public,final
   extends java/lang/Object
@@ -2556,6 +2851,7 @@ com/crystalgraphics/gl/material/parse/CgGlslEmitter
   extends java/lang/Object
   method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;)Ljava/lang/String;
+  method public,static emitTbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public,static emitTbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Ljava/lang/String;

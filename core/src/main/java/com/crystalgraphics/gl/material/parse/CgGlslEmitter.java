@@ -126,7 +126,7 @@ public final class CgGlslEmitter {
      * @throws CgPreprocessorException if any field type is not TBO-compatible, or if
      *                                  {@code format.getStride() % 16 != 0}
      */
-    static String emitTbo(CgBufferFormat format, String bufferName, String macroName)
+    public static String emitTbo(CgBufferFormat format, String bufferName, String macroName)
             throws CgPreprocessorException {
         // 1. Field type compatibility check
         for (int i = 0; i < format.getFieldCount(); i++) {

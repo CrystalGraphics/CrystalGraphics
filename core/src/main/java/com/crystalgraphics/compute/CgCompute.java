@@ -1,10 +1,16 @@
 package com.crystalgraphics.compute;
 
+import com.crystalgraphics.compute.cpu.CgCpuBody;
+import com.crystalgraphics.compute.cpu.CgCpuMirrors;
+import com.crystalgraphics.compute.cpu.CgCpuRunner;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
+import com.crystalgraphics.compute.lower.CgLoweredKernel;
+import com.crystalgraphics.compute.lower.CgLoweredResources;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
+import com.crystalgraphics.gl.buffer.CgBufferReadback;
 import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,6 +40,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * CgCompute graph = CgCompute.fromSource("shadergraph:" + id, generatedText);   // same text: the same instance
  * }</pre>
  *
+ * <p>Below compute a kernel runs lowered ({@link CgKernel#lowered()}) or by a Java body it is given
+ * ({@link CgKernel#cpu}); {@link CgKernel#form()} says which, and the frame graph runs whichever it is.</p>
+ *
  * <ul>
  *   <li>A file that fails to parse throws {@code CgShaderParseException} from {@link #load}, naming the file, the
  *       kernel and the line; one that parses but exceeds the device throws from {@link CgKernel#program()}.</li>
@@ -56,6 +65,11 @@ public final class CgCompute {
     /** Counts every release: a kernel holding a program from before asks again. */
     private volatile int generation;
     private final Map<String, CgKernelProgram> programs = new HashMap<>();
+    private final Map<String, CgLoweredKernel> lowered = new HashMap<>();
+    /** Java bodies by kernel name, kept across reloads. */
+    private final Map<String, CgCpuBody> bodies = new ConcurrentHashMap<>();
+    /** Counts every body given: a kernel's form chosen before one may change. */
+    private volatile int bodiesGiven;
 
     private CgCompute(String path, String text, boolean generated) {
         this.path = path;
@@ -123,6 +137,31 @@ public final class CgCompute {
         return program;
     }
 
+    /** The lowered form of {@code kernel}, running {@code runs} (itself or its fallback), built the first time. */
+    synchronized CgLoweredKernel lowered(CgKernel kernel, CgKernelDecl runs) {
+        String key = runs.name() + kernel.keywords();
+        CgLoweredKernel built = lowered.get(key);
+        if (built == null || built.isDeleted()) {
+            built = CgLoweredKernel.build(source, runs, kernel.keywords());
+            lowered.put(key, built);
+        }
+        return built;
+    }
+
+    void cpu(String kernel, CgCpuBody body) {
+        bodies.put(kernel, body);
+        bodiesGiven++;
+    }
+
+    /** The Java body kernel {@code name} was given, or null. */
+    public CgCpuBody cpuBody(String name) {
+        return bodies.get(name);
+    }
+
+    int bodiesGiven() {
+        return bodiesGiven;
+    }
+
     /** Re-reads the file and drops its programs, which the next use compiles from the new text. */
     public synchronized void reload() {
         if (generated) return;
@@ -138,6 +177,8 @@ public final class CgCompute {
     public synchronized void release() {
         for (CgKernelProgram program : programs.values()) program.delete();
         programs.clear();
+        for (CgLoweredKernel kernel : lowered.values()) kernel.delete();
+        lowered.clear();
         generation++;
     }
 
@@ -152,11 +193,15 @@ public final class CgCompute {
         }
     }
 
-    /** Every program of every file, at context teardown. */
+    /** Every program of every file, and what lowered dispatches share, at context teardown. */
     public static void releaseAll() {
         for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
         for (CgCompute compute : LOADED.values()) compute.release();
         for (CgCompute compute : GENERATED.values()) compute.release();
+        CgLoweredResources.releaseAll();
+        CgCpuMirrors.releaseAll();
+        CgCpuRunner.releaseAll();
+        CgBufferReadback.release();
     }
 
     private List<String> kernelNames() {

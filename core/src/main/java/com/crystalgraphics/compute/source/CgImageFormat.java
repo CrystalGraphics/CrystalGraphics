@@ -44,6 +44,9 @@ public enum CgImageFormat {
     /** The layout qualifier: {@code r11f_g11f_b10f}. */
     public String qualifier() { return name().toLowerCase(); }
 
+    /** A colour target a fragment pass can write: every format but the SNORM ones, which GL 3 need not render. */
+    public boolean renderable() { return !name().endsWith("_SNORM"); }
+
     /** Image atomics need a 32-bit integer format. */
     public boolean atomics() { return this == R32I || this == R32UI; }
 

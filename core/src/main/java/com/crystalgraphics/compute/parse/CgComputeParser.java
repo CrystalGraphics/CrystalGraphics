@@ -274,14 +274,15 @@ public final class CgComputeParser {
         if (struct != null && struct.start() > blockStart) {
             throw fail(at, name + "'s element " + element + " is declared after Buffers { }: declare it before");
         }
-        Std430.Layout layout = new Std430(structBodies, e -> ConstantInt.eval(e, constantDefines)).of(element);
+        Std430 std430 = new Std430(structBodies, e -> ConstantInt.eval(e, constantDefines));
+        Std430.Layout layout = std430.of(element);
         if (layout == null) throw fail(at, name + ": '" + element + "' is no type this compiler lays out: a scalar, "
                 + "vector, matrix or struct declared above, its arrays sized by integers");
         if (access == CgBufferAccess.COUNTER && !element.equals("uint") && !element.equals("int")) {
             throw fail(at, name + " is a counter buffer, whose element is uint or int");
         }
         return new CgBufferDecl(name, m.group(2), element, access, layout.stride(), lowerable(element),
-                SCALARS.contains(element), buffers.size());
+                SCALARS.contains(element), buffers.size(), List.copyOf(std430.fieldsOf(element)));
     }
 
     private CgImageDecl image(Matcher m, int at) {
@@ -301,7 +302,7 @@ public final class CgComputeParser {
         String body = structBodies.get(element);
         String[][] fields = body == null ? null : Std430.fields(body);
         if (fields == null || fields.length == 0) return false;
-        for (String[] field : fields) if (!SIXTEEN_BYTES.contains(field[0])) return false;
+        for (String[] field : fields) if (!SIXTEEN_BYTES.contains(field[0]) || !field[1].isEmpty()) return false;
         return true;
     }
 
@@ -421,7 +422,8 @@ public final class CgComputeParser {
                 Collections.unmodifiableSet(accessors), Collections.unmodifiableSet(subgroups), sharedBytes(k, shared));
     }
 
-    private static String generalOnly(String id) {
+    /** Why only a general kernel may name {@code id}, or null when any kernel may: what a refusal names. */
+    public static String generalOnly(String id) {
         String why = GENERAL_ONLY.get(id);
         if (why != null) return why;
         if (id.startsWith("_cg_")) return "is the engine's own";

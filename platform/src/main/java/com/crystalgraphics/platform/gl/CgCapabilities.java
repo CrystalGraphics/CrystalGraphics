@@ -97,7 +97,8 @@ public final class CgCapabilities {
             switch (this) {
                 case V:   return device ? null : "a device (the tracked backend)";
                 case G43: return caps.compute && caps.storageImages ? null : "compute shaders and storage images (GL 4.3)";
-                case G40: return caps.feedbackCount ? null : "transform feedback 2 (GL 4.0), which a device does not carry";
+                case G40: return device ? "transform feedback, which a device does not carry"
+                        : caps.feedbackCount ? null : "transform feedback 2 (GL 4.0)";
                 case G33: return device ? "transform feedback, which a device does not carry" : null;
                 default:  return null;
             }
@@ -277,6 +278,9 @@ public final class CgCapabilities {
      */
     public static void clearCache() { cachedCaps = null; }
 
+    /** The current context's capabilities where something has detected them, else null. Any thread; probes nothing. */
+    public static CgCapabilities detected() { return cachedCaps; }
+
     // ─────────────────────────────────────────────────────────────────────────
     //  Detection
     // ─────────────────────────────────────────────────────────────────────────
@@ -370,12 +374,30 @@ public final class CgCapabilities {
         }
         caps.subgroups = (caps.subgroupOperations & SUBGROUP_BASIC) != 0;
 
-        if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
-        else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
-        else if (caps.textureBufferMaterialPath) caps.shaderBufferPath = ShaderBufferPath.TBO;
-        else                                     caps.shaderBufferPath = ShaderBufferPath.NONE;
-
+        caps.shaderBufferPath = shaderBufferPath(caps);
         return caps;
+    }
+
+    /** The best path, or {@code -Dcrystalgraphics.shaderBuffer.tier}'s where this context has it. */
+    private static ShaderBufferPath shaderBufferPath(CgCapabilities caps) {
+        ShaderBufferPath best = caps.shaderStorageBufferCore ? ShaderBufferPath.SSBO_GL43
+                : caps.shaderStorageBufferArb ? ShaderBufferPath.SSBO_ARB
+                : caps.textureBufferMaterialPath ? ShaderBufferPath.TBO
+                : ShaderBufferPath.NONE;
+        String property = System.getProperty("crystalgraphics.shaderBuffer.tier");
+        if (property == null) return best;
+        ShaderBufferPath forced = ShaderBufferPath.valueOf(property.trim().toUpperCase(Locale.ROOT));
+        boolean has = switch (forced) {
+            case SSBO_GL43 -> caps.shaderStorageBufferCore;
+            case SSBO_ARB -> caps.shaderStorageBufferArb;
+            case TBO -> true;                                  // core since 3.1, below the floor
+            case NONE -> false;
+        };
+        if (!has) {
+            throw new IllegalStateException("-Dcrystalgraphics.shaderBuffer.tier=" + forced
+                    + " is not a path this context has; the best it supports is " + best);
+        }
+        return forced;
     }
 
     private static ComputeTier computeTier(CgCapabilities caps, boolean device) {
@@ -387,7 +409,7 @@ public final class CgCapabilities {
         String missing = forced.missing(caps, device);
         if (missing != null) {
             throw new IllegalStateException("-Dcrystalgraphics.compute.tier=" + forced + " needs " + missing
-                    + ", which this context lacks; the best it supports is " + best);
+                    + "; the best this context supports is " + best);
         }
         return forced;
     }

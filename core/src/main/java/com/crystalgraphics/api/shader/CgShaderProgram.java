@@ -10,6 +10,7 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
 
+import javax.annotation.Nullable;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -41,6 +42,11 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  * <p>A compute program, for a kernel:</p>
  * <pre>{@code
  * CgShaderProgram kernel = CgShaderProgram.compileCompute(computeSource);
+ * }</pre>
+ *
+ * <p>A capture program, for a kernel lowered below compute: its outputs written to a transform feedback buffer:</p>
+ * <pre>{@code
+ * CgShaderProgram capture = CgShaderProgram.compileCapture(vertex, geometry, null, new String[]{"_cg_c0", "_cg_c1"});
  * }</pre>
  *
  * <ul>
@@ -98,6 +104,54 @@ public final class CgShaderProgram {
             throw e;
         }
         return program;
+    }
+
+    /**
+     * Compiles a vertex shader, with a geometry and a fragment shader where given, and links them; {@code varyings},
+     * outputs of the last stage before rasterising, are captured interleaved into transform feedback buffer 0.
+     * Synchronous.
+     *
+     * @param varyings the outputs to capture, or null for none
+     * @throws IllegalStateException if a stage fails to compile or the program to link, with the driver's log
+     */
+    public static CgShaderProgram compileCapture(String vertex, @Nullable String geometry, @Nullable String fragment,
+                                                 @Nullable String[] varyings) {
+        CgShaderProgram program = create();
+        int id = program.programId;
+        int[] stages = new int[3];
+        try {
+            stages[0] = stage(CgGL.GL_VERTEX_SHADER, vertex, "Vertex");
+            if (geometry != null) stages[1] = stage(CgGL.GL_GEOMETRY_SHADER, geometry, "Geometry");
+            if (fragment != null) stages[2] = stage(CgGL.GL_FRAGMENT_SHADER, fragment, "Fragment");
+            for (int s : stages) if (s != 0) CgGL.glAttachShader(id, s);
+            if (varyings != null) CgGL.glTransformFeedbackVaryings(id, varyings, CgGL.GL_INTERLEAVED_ATTRIBS);
+            CgGL.glLinkProgram(id);
+            if (CgGL.glGetProgrami(id, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Capture program link failed: " + CgGL.glGetProgramInfoLog(id, 4096));
+            }
+        } catch (IllegalStateException e) {
+            program.delete();
+            throw e;
+        } finally {
+            for (int s : stages) {
+                if (s == 0) continue;
+                if (!program.deleted) CgGL.glDetachShader(id, s);
+                CgGL.glDeleteShader(s);
+            }
+        }
+        return program;
+    }
+
+    private static int stage(int type, String source, String name) {
+        int shader = CgGL.glCreateShader(type);
+        CgGL.glShaderSource(shader, source);
+        CgGL.glCompileShader(shader);
+        if (CgGL.glGetShaderi(shader, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+            String log = CgGL.glGetShaderInfoLog(shader, 4096);
+            CgGL.glDeleteShader(shader);
+            throw new IllegalStateException(name + " shader compile failed: " + log);
+        }
+        return shader;
     }
 
     /** A program with nothing linked yet, for a {@link #submitLink} to fill. */

@@ -448,6 +448,16 @@ public final class VulkanEncoder implements CgCommandEncoder {
     }
 
     @Override
+    public void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out) {
+        outsidePass("readBuffer");
+        int size = out.remaining();
+        VulkanStaging.Region r = device.staging().take(size, 16);
+        copyBuffer(src, srcOffset, r.buffer(), r.offset(), size);
+        device.host().submitAndWait();
+        out.put(r.bytes());
+    }
+
+    @Override
     public void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion region, CgGpuBuffer dst, long dstOffset) {
         outsidePass("copyTextureToBuffer");
         copyOut((VulkanTexture) src, region, (VulkanBuffer) dst, dstOffset);

@@ -76,6 +76,13 @@ public final class CgPropertyBlock {
      *
      * @throws IllegalArgumentException for a name that is no value property, or a write of the wrong width
      */
+    /** Where value property {@code name} starts, whatever its width: a CPU body reading one component of it. */
+    public int offset(String name) {
+        CgBufferField field = field(name);
+        if (field == null) throw new IllegalArgumentException("no value property '" + name + "'");
+        return field.getFloatOffset();
+    }
+
     public int offset(String name, int components) {
         CgBufferField field = field(name);
         if (field == null) throw new IllegalArgumentException("no value property '" + name + "'");

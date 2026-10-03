@@ -100,6 +100,9 @@ public final class CgTrackedStateProvider implements CgGlStateProvider {
             case INDIRECT_BUFFERS:
                 for (int i = 0; i < CgGlStateShadow.INDIRECT_TARGETS.length; i++) readBinding(slot, i, t);
                 break;
+            case TRANSFORM_FEEDBACK:
+                for (int i = 0; i <= CgGlStateShadow.RASTERIZER_DISCARD_POINT; i++) readBinding(slot, i, t);
+                break;
             default:
                 throw new IllegalArgumentException("No tracked state for " + slot);
         }
@@ -125,6 +128,15 @@ public final class CgTrackedStateProvider implements CgGlStateProvider {
             }
             case INDIRECT_BUFFERS:
                 t.indirectBuffer[index] = index == 0 ? b.drawIndirect : index == 1 ? b.dispatchIndirect : b.parameter;
+                break;
+            case TRANSFORM_FEEDBACK:   // a device has no transform feedback: never bound, never discarding
+                if (index == CgGlStateShadow.RASTERIZER_DISCARD_POINT) {
+                    t.rasterizerDiscard = false;
+                } else {
+                    t.feedbackBuffer[index] = 0;
+                    t.feedbackOffset[index] = 0;
+                    t.feedbackSize[index] = 0;
+                }
                 break;
             default:
                 throw new IllegalArgumentException(slot + " is read whole: read");

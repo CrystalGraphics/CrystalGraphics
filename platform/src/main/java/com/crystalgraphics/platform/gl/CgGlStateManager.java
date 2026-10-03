@@ -59,7 +59,8 @@ import java.util.regex.Pattern;
  * frame, or each outermost scope in it pays a {@code glGet} per declared domain.</p>
  *
  * <h2>Bindings captured at first write</h2>
- * <p>{@link CgGlSlot#STORAGE_BUFFERS}, {@link CgGlSlot#IMAGES} and {@link CgGlSlot#INDIRECT_BUFFERS} have many
+ * <p>{@link CgGlSlot#STORAGE_BUFFERS}, {@link CgGlSlot#IMAGES}, {@link CgGlSlot#INDIRECT_BUFFERS} and
+ * {@link CgGlSlot#TRANSFORM_FEEDBACK} have many
  * binding points and are rarely written, so a scope declaring them reads nothing when it opens. The first write of a
  * point inside it saves the point's value into every open scope declaring the domain, read from the provider only
  * when the shadow does not know it, and a scope restores only the points it saved. The shadow keeps them across host
@@ -113,13 +114,16 @@ public final class CgGlStateManager {
             F_ELEMENT_BUFFER = 1L << 33;
     private static final long ALL_FIELDS = (1L << 34) - 1;
     /** The captured domains' fields, past ALL_FIELDS: their trust is per binding point, so these name leaks only. */
-    private static final long F_STORAGE_BINDING = 1L << 34, F_IMAGE_UNIT = 1L << 35, F_INDIRECT_BUFFER = 1L << 36;
-    private static final CgGlSlot[] CAPTURED = {CgGlSlot.STORAGE_BUFFERS, CgGlSlot.IMAGES, CgGlSlot.INDIRECT_BUFFERS};
+    private static final long F_STORAGE_BINDING = 1L << 34, F_IMAGE_UNIT = 1L << 35, F_INDIRECT_BUFFER = 1L << 36,
+            F_FEEDBACK = 1L << 37;
+    private static final CgGlSlot[] CAPTURED = {CgGlSlot.STORAGE_BUFFERS, CgGlSlot.IMAGES, CgGlSlot.INDIRECT_BUFFERS,
+            CgGlSlot.TRANSFORM_FEEDBACK};
     private static final int CAPTURED_SLOTS = (1 << CgGlSlot.STORAGE_BUFFERS.ordinal())
-            | (1 << CgGlSlot.IMAGES.ordinal()) | (1 << CgGlSlot.INDIRECT_BUFFERS.ordinal());
+            | (1 << CgGlSlot.IMAGES.ordinal()) | (1 << CgGlSlot.INDIRECT_BUFFERS.ordinal())
+            | (1 << CgGlSlot.TRANSFORM_FEEDBACK.ordinal());
     /** How many binding points each captured domain restores, in {@link #CAPTURED}'s order. */
     private static final int[] POINTS = {CgGlStateShadow.MAX_STORAGE_BINDINGS, CgGlStateShadow.MAX_IMAGE_UNITS,
-            CgGlStateShadow.INDIRECT_TARGETS.length};
+            CgGlStateShadow.INDIRECT_TARGETS.length, CgGlStateShadow.RASTERIZER_DISCARD_POINT + 1};
     /** Each unit's {@code GL_TEXTURE_2D} binding is a field of its own, kept in a separate mask. */
     private static final int ALL_UNITS = -1;
 
@@ -150,6 +154,7 @@ public final class CgGlStateManager {
             case STORAGE_BUFFERS: return F_STORAGE_BINDING;
             case IMAGES:          return F_IMAGE_UNIT;
             case INDIRECT_BUFFERS: return F_INDIRECT_BUFFER;
+            case TRANSFORM_FEEDBACK: return F_FEEDBACK;
             default: throw new IllegalStateException("No fields for slot " + slot);
         }
     }
@@ -483,6 +488,13 @@ public final class CgGlStateManager {
             { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_LINE, current.polygonOffsetLine, enable)) return false; current.polygonOffsetLine = enable; return issue(F_OFFSET_LINE); }
         if (cap == CgGL.GL_POLYGON_OFFSET_POINT)
             { if (!flagChanged(CgGlSlot.POLYGON_OFFSET, F_OFFSET_POINT, current.polygonOffsetPoint, enable)) return false; current.polygonOffsetPoint = enable; return issue(F_OFFSET_POINT); }
+        if (cap == CgGL.GL_RASTERIZER_DISCARD) {
+            int point = CgGlStateShadow.RASTERIZER_DISCARD_POINT;
+            capture(CgGlSlot.TRANSFORM_FEEDBACK, point);
+            if (same(CgGlSlot.TRANSFORM_FEEDBACK, point) && current.rasterizerDiscard == enable) return skip();
+            current.rasterizerDiscard = enable;
+            return issueCaptured(CgGlSlot.TRANSFORM_FEEDBACK, point, F_FEEDBACK);
+        }
         // An untracked capability. Always issue — we cannot say whether it is redundant, and guessing that
         // it is would drop a real call.
         return true;
@@ -710,6 +722,7 @@ public final class CgGlStateManager {
         if (current.elementArrayBuffer == buffer) current.elementArrayBuffer = 0;
         forgetPoints(CgGlSlot.STORAGE_BUFFERS, current.storageBuffer, buffer);
         forgetPoints(CgGlSlot.INDIRECT_BUFFERS, current.indirectBuffer, buffer);
+        forgetPoints(CgGlSlot.TRANSFORM_FEEDBACK, current.feedbackBuffer, buffer);
     }
 
     /** @see #textureDeleted */
@@ -814,6 +827,20 @@ public final class CgGlStateManager {
         return issueCaptured(CgGlSlot.STORAGE_BUFFERS, index, F_STORAGE_BINDING);
     }
 
+    /** {@code glBindBufferBase} ({@code size} 0) or {@code glBindBufferRange} on {@code GL_TRANSFORM_FEEDBACK_BUFFER}. */
+    public boolean feedbackBindingChanged(int index, int buffer, long offset, long size) {
+        assertOwner();
+        if (!tracked(index, CgGlStateShadow.MAX_FEEDBACK_BINDINGS)) return true;
+        capture(CgGlSlot.TRANSFORM_FEEDBACK, index);
+        CgGlStateShadow c = current;
+        if (same(CgGlSlot.TRANSFORM_FEEDBACK, index) && c.feedbackBuffer[index] == buffer && c.feedbackOffset[index] == offset
+                && c.feedbackSize[index] == size) return skip();
+        c.feedbackBuffer[index] = buffer;
+        c.feedbackOffset[index] = offset;
+        c.feedbackSize[index] = size;
+        return issueCaptured(CgGlSlot.TRANSFORM_FEEDBACK, index, F_FEEDBACK);
+    }
+
     /** {@code glBindImageTexture}, with {@code layer} -1 for a layered binding. */
     public boolean imageBindingChanged(int unit, int texture, int level, int layer, int access, int format) {
         assertOwner();
@@ -886,7 +913,8 @@ public final class CgGlStateManager {
 
     /** {@code slot}'s index in {@link #CAPTURED}. */
     private static int captured(CgGlSlot slot) {
-        return slot == CgGlSlot.STORAGE_BUFFERS ? 0 : slot == CgGlSlot.IMAGES ? 1 : 2;
+        return slot == CgGlSlot.STORAGE_BUFFERS ? 0 : slot == CgGlSlot.IMAGES ? 1
+                : slot == CgGlSlot.INDIRECT_BUFFERS ? 2 : 3;
     }
 
     /** Re-binds the points {@code f} saved, through {@link CgGL}. */
@@ -905,8 +933,19 @@ public final class CgGlStateManager {
                     CgGL.glBindImageTexture(i, s.imageTexture[i], s.imageLevel[i], s.imageLayer[i] < 0,
                             Math.max(0, s.imageLayer[i]), s.imageAccess[i], s.imageFormat[i]);
                     break;
-                default:
+                case INDIRECT_BUFFERS:
                     CgGL.glBindBuffer(CgGlStateShadow.INDIRECT_TARGETS[i], s.indirectBuffer[i]);
+                    break;
+                default:
+                    if (i == CgGlStateShadow.RASTERIZER_DISCARD_POINT) {
+                        if (s.rasterizerDiscard) CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+                        else CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+                    } else if (s.feedbackSize[i] == 0) {
+                        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, i, s.feedbackBuffer[i]);
+                    } else {
+                        CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, i, s.feedbackBuffer[i],
+                                s.feedbackOffset[i], s.feedbackSize[i]);
+                    }
             }
         }
     }
@@ -1563,7 +1602,7 @@ public final class CgGlStateManager {
                 "polygonOffsetFill", "polygonOffsetLine", "polygonOffsetPoint", "polygonOffset",
                 "polygonModeFront", "polygonModeBack", "lineWidth", "pointSize", "program", "drawFbo", "readFbo",
                 "texture", "vertexArray", "arrayBuffer", "elementBuffer", "storageBuffer", "imageUnit",
-                "indirectBuffer"};
+                "indirectBuffer", "transformFeedback"};
 
         private String fieldNames(long fields) {
             StringBuilder out = new StringBuilder();

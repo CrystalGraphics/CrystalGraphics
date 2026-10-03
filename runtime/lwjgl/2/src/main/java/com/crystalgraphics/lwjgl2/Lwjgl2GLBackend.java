@@ -493,6 +493,21 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        GL30.glTransformFeedbackVaryings(program, varyings, bufferMode);
+    }
+
+    @Override
+    public void glBeginTransformFeedback(int primitiveMode) {
+        GL30.glBeginTransformFeedback(primitiveMode);
+    }
+
+    @Override
+    public void glEndTransformFeedback() {
+        GL30.glEndTransformFeedback();
+    }
+
+    @Override
     public void glDispatchComputeIndirect(long offset) {
         GL43.glDispatchComputeIndirect(offset);
     }

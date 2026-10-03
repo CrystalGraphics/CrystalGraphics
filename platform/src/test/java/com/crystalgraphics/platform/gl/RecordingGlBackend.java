@@ -146,6 +146,9 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glMultiDrawArraysIndirectCount(int mode, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawArraysIndirectCount"); }
     @Override public void glMultiDrawElementsIndirectCount(int mode, int type, long offset, long countOffset, int maxDrawCount, int stride) { record("glMultiDrawElementsIndirectCount"); }
     @Override public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) { record("glDispatchCompute"); }
+    @Override public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) { record("glTransformFeedbackVaryings"); }
+    @Override public void glBeginTransformFeedback(int primitiveMode) { record("glBeginTransformFeedback"); }
+    @Override public void glEndTransformFeedback() { record("glEndTransformFeedback"); }
     @Override public void glDispatchComputeIndirect(long offset) { record("glDispatchComputeIndirect"); }
     @Override public void glMemoryBarrier(int barriers) { record("glMemoryBarrier"); memoryBarriers.add(barriers); }
     @Override public void cgFillBuffer(int buffer, long offset, long size, int value) { record("cgFillBuffer"); }

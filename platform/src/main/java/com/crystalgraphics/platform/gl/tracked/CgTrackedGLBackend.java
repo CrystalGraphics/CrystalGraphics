@@ -841,6 +841,22 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     // ── compute ────────────────────────────────────────────────────────────────
 
+    /** Kernels lower to transform feedback only below compute; a device runs them as compute (tier V). */
+    @Override
+    public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
+    @Override
+    public void glBeginTransformFeedback(int primitiveMode) {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
+    @Override
+    public void glEndTransformFeedback() {
+        throw new UnsupportedOperationException("transform feedback: a device has none, and runs kernels as compute");
+    }
+
     @Override
     public void glDispatchCompute(int groupsX, int groupsY, int groupsZ) {
         CgComputePipeline p = programs.applyCompute(tracker.state, buffers, textures, textures);

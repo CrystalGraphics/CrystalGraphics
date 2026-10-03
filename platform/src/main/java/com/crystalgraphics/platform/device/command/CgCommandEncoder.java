@@ -65,6 +65,9 @@ public interface CgCommandEncoder {
     /** Reads texels back, tightly packed; waits for the GPU. */
     void readTexture(CgGpuTexture src, CgTextureRegion region, ByteBuffer out);
 
+    /** Reads {@code out.remaining()} bytes from {@code srcOffset} back into {@code out}; waits for the GPU. */
+    void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out);
+
     /** Copies texels into a buffer, tightly packed, without waiting. */
     void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion region, CgGpuBuffer dst, long dstOffset);
 
