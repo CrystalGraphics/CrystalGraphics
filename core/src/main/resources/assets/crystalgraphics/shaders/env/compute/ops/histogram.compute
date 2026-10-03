@@ -1,12 +1,19 @@
 // CgGpuOps' histogram (gpu-compute C7): each key counted into bin min(key >> _Shift, _Bins - 1). Counts are exact to
 // 2^24 a bin below compute, where adds are blends.
+//
+// Every tier: one global add per key (Histogram). Compute only, for up to 1024 bins: each work group counts its share
+// of the keys into bins in shared memory and adds each bin it saw once (HistogramGroups), so keys falling in a few bins
+// contend in shared memory rather than on the same global words.
 #pragma kernel Histogram scatter
+#pragma kernel HistogramGroups 256 general
+#pragma compute_only HistogramGroups
 
 Properties {
     _CountAt  ("The count's word in COUNT, -1 for none", int) = -1
     _Capacity ("Elements at most",                       int) = 0
     _Shift    ("Low bits a bin ignores",                 int) = 0
     _Bins     ("Bins",                                   int) = 1
+    _Groups   ("Work groups sharing the keys",           int) = 1
 }
 
 Buffers {
@@ -19,6 +26,25 @@ uint count() {
     return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
 }
 
+uint bin(uint key) {
+    return min(key >> uint(_Shift), uint(_Bins) - 1u);
+}
+
 void Histogram() {
-    if (uint(CG_ELEMENT) < count()) BINS_ADD(min(KEYS(CG_ELEMENT) >> uint(_Shift), uint(_Bins) - 1u), 1u);
+    if (uint(CG_ELEMENT) < count()) BINS_ADD(bin(KEYS(CG_ELEMENT)), 1u);
+}
+
+shared uint groupBins[1024];
+
+void HistogramGroups() {
+    uint local = uint(CG_LOCAL_INDEX), size = uint(CG_GROUP_SIZE), bins = uint(_Bins), n = count();
+    for (uint b = local; b < bins; b += size) groupBins[b] = 0u;
+    barrier();
+    for (uint e = uint(CG_GROUP_ID.x) * size + local; e < n; e += uint(_Groups) * size) {
+        atomicAdd(groupBins[bin(KEYS(e))], 1u);
+    }
+    barrier();
+    for (uint b = local; b < bins; b += size) {
+        if (groupBins[b] != 0u) BINS_ADD(b, groupBins[b]);
+    }
 }
