@@ -12,9 +12,9 @@ Queue = "Transparent"
 
 Properties {
     _FxPath   ("Path rings", sampler2D) = "black"
-    _Strength ("Shimmer at full intensity, share of the screen's height", float) = 0.005
+    _Strength ("Shimmer at full intensity, share of the screen's height", float) = 0.01
     _Scale    ("Shimmer frequency, a block", float) = 1.6
-    _Rise     ("Rising speed, blocks a second", float) = 1.5
+    _Rise     ("Rising speed, blocks a second", float) = 0.7
 }
 
 struct v2f { vec3 world; vec3 axis; vec3 tangent; vec2 time; };
