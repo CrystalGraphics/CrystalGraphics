@@ -99,27 +99,45 @@ public final class CgLoweredPrograms {
 
     /**
      * A scatter target back into words, a vertex per texel, captured in order: the target's words, or the float
-     * converted back to the element's type. Uniforms {@code _cg_texels} (a unit), {@code _cg_width}.
+     * converted back to the element's type. A float still equal to its seed keeps the view's own word, so a word the
+     * blends never touched comes back exactly, above 2^24 too. Uniforms {@code _cg_texels} (a unit), {@code _cg_width},
+     * and for floats {@code _cg_src} (the view, a unit) and {@code _cg_first} (its first texel).
      *
      * @param words a texel's words: 1, 2 or 4
      */
     public static Helper scatterResolve(boolean floats, String scalar, int words) {
         String key = "resolve/" + floats + "/" + scalar + "/" + words;
+        if (floats) {
+            return HELPERS.computeIfAbsent(key, k -> capture("""
+                    #version 330 core
+                    uniform sampler2D _cg_texels;
+                    uniform usamplerBuffer _cg_src;
+                    uniform int _cg_first;
+                    uniform int _cg_width;
+                    flat out uint _cg_w;
+                    void main() {
+                        int t = gl_VertexID;
+                        float v = texelFetch(_cg_texels, ivec2(t %% _cg_width, t / _cg_width), 0).r;
+                        uint seed = texelFetch(_cg_src, _cg_first + t).r;
+                        _cg_w = v == %s ? seed : %s;
+                        gl_Position = vec4(0.0);
+                    }
+                    """.formatted(toFloat(scalar, "seed"), fromFloat(scalar, "v")), "_cg_w"));
+        }
         String type = CgLoweredEmitter.uintType(words);
         String swizzle = words == 1 ? ".r" : words == 2 ? ".rg" : "";
-        String out = floats ? fromFloat(scalar, "v.r") : "v" + swizzle;
         return HELPERS.computeIfAbsent(key, k -> capture("""
                 #version 330 core
-                uniform %s _cg_texels;
+                uniform usampler2D _cg_texels;
                 uniform int _cg_width;
                 flat out %s _cg_w;
                 void main() {
                     int t = gl_VertexID;
-                    %s v = texelFetch(_cg_texels, ivec2(t %% _cg_width, t / _cg_width), 0);
-                    _cg_w = %s;
+                    uvec4 v = texelFetch(_cg_texels, ivec2(t %% _cg_width, t / _cg_width), 0);
+                    _cg_w = v%s;
                     gl_Position = vec4(0.0);
                 }
-                """.formatted(floats ? "sampler2D" : "usampler2D", type, floats ? "vec4" : "uvec4", out), "_cg_w"));
+                """.formatted(type, swizzle), "_cg_w"));
     }
 
     /**

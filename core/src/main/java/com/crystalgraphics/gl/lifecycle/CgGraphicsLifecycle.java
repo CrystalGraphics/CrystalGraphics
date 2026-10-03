@@ -2,6 +2,7 @@ package com.crystalgraphics.gl.lifecycle;
 
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
+import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
@@ -391,7 +392,10 @@ public final class CgGraphicsLifecycle {
             CgFontRegistry.get().tickFrame(frameCounter);
             CgSettings.tickFrame();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
-            if (initialized) CgComputeSelfTest.runIfAsked();
+            if (initialized) {
+                CgComputeSelfTest.runIfAsked();
+                CgGpuOpsCheck.runIfAsked();
+            }
 
             // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
             // wrote lands after the invalidation above — leaving the shadow stale for the rest of the frame.

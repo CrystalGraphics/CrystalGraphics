@@ -1,0 +1,24 @@
+// CgGpuOps' histogram (gpu-compute C7): each key counted into bin min(key >> _Shift, _Bins - 1). Counts are exact to
+// 2^24 a bin below compute, where adds are blends.
+#pragma kernel Histogram scatter
+
+Properties {
+    _CountAt  ("The count's word in COUNT, -1 for none", int) = -1
+    _Capacity ("Elements at most",                       int) = 0
+    _Shift    ("Low bits a bin ignores",                 int) = 0
+    _Bins     ("Bins",                                   int) = 1
+}
+
+Buffers {
+    COUNT ("The count", uint, readonly)
+    KEYS  ("Keys",      uint, readonly)
+    BINS  ("Counts",    uint, readwrite)
+}
+
+uint count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+void Histogram() {
+    if (uint(CG_ELEMENT) < count()) BINS_ADD(min(KEYS(CG_ELEMENT) >> uint(_Shift), uint(_Bins) - 1u), 1u);
+}

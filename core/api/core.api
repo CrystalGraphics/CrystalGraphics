@@ -1913,6 +1913,86 @@ com/crystalgraphics/compute/lower/CgTexelTarget
   method public type ()Lcom/crystalgraphics/api/texture/CgTextureType;
   method public width ()I
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureType;II)Lcom/crystalgraphics/compute/lower/CgTexelTarget;
+com/crystalgraphics/compute/ops/CgGpuCount
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (ILcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public buffer ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public capacity ()I
+  method public onGpu ()Z
+  method public word ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static at (Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)Lcom/crystalgraphics/compute/ops/CgGpuCount;
+  method public,static of (I)Lcom/crystalgraphics/compute/ops/CgGpuCount;
+com/crystalgraphics/compute/ops/CgGpuOps
+  access public,final
+  extends java/lang/Object
+  method public,static bounds (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public,static compact (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public,static copy (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static dispatchArgs (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuCount;ILcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public,static fill (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static histogram (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)V
+  method public,static iota (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static reduce (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public,static scan (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
+  method public,static sort (Lcom/crystalgraphics/render/graph/CgComputePass;ILcom/crystalgraphics/compute/ops/CgGpuOps$Order;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static sort (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+com/crystalgraphics/compute/ops/CgGpuOps$Element
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FLOAT Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;
+  field public,static,final INT Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;
+  field public,static,final UINT Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;
+  method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;
+com/crystalgraphics/compute/ops/CgGpuOps$Fold
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final MAX Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;
+  field public,static,final MIN Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;
+  field public,static,final SUM Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;
+  method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;
+com/crystalgraphics/compute/ops/CgGpuOps$Order
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ASCENDING Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
+  field public,static,final DESCENDING Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
+  method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
+com/crystalgraphics/compute/ops/CgGpuOps$Scan
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final EXCLUSIVE Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;
+  field public,static,final INCLUSIVE Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;
+  method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;
+com/crystalgraphics/compute/ops/CgGpuOpsCheck
+  access public,final
+  extends java/lang/Object
+  method public,static run ()Lcom/crystalgraphics/compute/ops/CgGpuOpsCheck$Result;
+  method public,static runIfAsked ()V
+com/crystalgraphics/compute/ops/CgGpuOpsCheck$Result
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/util/List;)V
+  method public failures ()Ljava/util/List;
+  method public passed ()Z
+  method public tier ()Ljava/lang/String;
+  method public verdict ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/compute/ops/CgRng
+  access public,final
+  extends java/lang/Object
+  method public,static direction (II[F)[F
+  method public,static rng (IIII)I
+  method public,static rng4 (IIII[I)[I
+  method public,static unit (I)F
 com/crystalgraphics/compute/parse/CgComputeParser
   access public,final
   extends java/lang/Object

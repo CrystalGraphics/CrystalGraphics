@@ -1,0 +1,82 @@
+// CgGpuOps' sort (gpu-compute C7): least significant digit first, four bits a pass, stable, in shapes every tier runs.
+// A pass counts the digits of each block of 32 elements (RadixCount), scans those counts digit-major with scan.compute,
+// and moves each element to its digit's offset for its block plus its rank among the block's earlier elements of the
+// same digit (RadixScatter). Keys are compared as sortable uints; the stored key is the original.
+#pragma kernel RadixCount map
+#pragma kernel RadixScatter scatter
+#pragma kernel RadixScatterKeys scatter
+#pragma cg_feature INT
+#pragma cg_feature FLOAT
+#pragma cg_feature DESCENDING
+
+Properties {
+    _CountAt  ("The count's word in COUNT, -1 for none", int) = -1
+    _Capacity ("Elements at most",                       int) = 0
+    _Shift    ("The digit's lowest bit",                 int) = 0
+    _Blocks   ("Blocks of 32 at the capacity",           int) = 0
+}
+
+Buffers {
+    COUNT      ("The count",                                     uint, readonly)
+    KEYS       ("Keys in",                                       uint, readonly)
+    VALUES_IN  ("Values in",                                     uint, readonly)
+    CELLS      ("Each block's count of each digit, digit-major", uint, readwrite)
+    OFFSETS    ("CELLS, scanned",                                uint, readonly)
+    KEYS_OUT   ("Keys out",                                      uint, readwrite)
+    VALUES_OUT ("Values out",                                    uint, readwrite)
+}
+
+// The count: the capacity itself when fixed (_CountAt below 0), else the word a kernel wrote, at most the capacity.
+uint count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+// A key's bits in an order uints compare in.
+uint sortable(uint k) {
+#if defined(FLOAT)
+    k = (k & 0x80000000u) != 0u ? ~k : k ^ 0x80000000u;
+#elif defined(INT)
+    k ^= 0x80000000u;
+#endif
+#ifdef DESCENDING
+    k = ~k;
+#endif
+    return k;
+}
+
+uint digit(uint e) {
+    return (sortable(KEYS(e)) >> uint(_Shift)) & 15u;
+}
+
+// Cell (digit, block): how many of the block's elements have the digit.
+void RadixCount() {
+    uint cell = uint(CG_ELEMENT), blocks = uint(_Blocks);
+    if (cell >= 16u * blocks) return;
+    uint d = cell / blocks, first = (cell - d * blocks) * 32u, end = min(first + 32u, count()), n = 0u;
+    for (uint e = first; e < end; e++) {
+        if (digit(e) == d) n++;
+    }
+    CELLS_WRITE(n);
+}
+
+// Where element i lands: its digit's offset for its block, then the block's earlier elements of that digit.
+uint place(uint i) {
+    uint d = digit(i), rank = 0u;
+    for (uint e = i & ~31u; e < i; e++) {
+        if (digit(e) == d) rank++;
+    }
+    return OFFSETS(d * uint(_Blocks) + (i >> 5u)) + rank;
+}
+
+void RadixScatter() {
+    uint i = uint(CG_ELEMENT);
+    if (i >= count()) return;
+    uint at = place(i);
+    KEYS_OUT_STORE(at, KEYS(i));
+    VALUES_OUT_STORE(at, VALUES_IN(i));
+}
+
+void RadixScatterKeys() {
+    uint i = uint(CG_ELEMENT);
+    if (i < count()) KEYS_OUT_STORE(place(i), KEYS(i));
+}
