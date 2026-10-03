@@ -20,7 +20,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
-//import com.crystalgraphics.gl.debug.CgDebugBlit;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -519,10 +518,6 @@ public final class CgGraphicsLifecycle {
 
         // Step 9: All owned framebuffers — must be first.
         CgFrameBufferRegistry.get().deleteAll();
-
-
-        // Step 10: Debug utilities (lazy singleton — no-op if never used).
-//        CgDebugBlit.dispose();
 
         // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
         // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.

@@ -53,7 +53,7 @@ public final class CgFontDemo {
     private CgTextRenderer demoTextRenderer;
 
     // Raw GL handles are acceptable here: this class is a self-contained diagnostic
-    // utility that owns its own VAO/VBO pair, analogous to CgDebugBlit.
+    // utility that owns its own VAO/VBO pair.
     private CgShader diagAtlasShader;
     private int diagAtlasVao;
     private int diagAtlasVbo;
