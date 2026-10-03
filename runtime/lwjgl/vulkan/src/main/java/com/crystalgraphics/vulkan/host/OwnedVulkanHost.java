@@ -26,6 +26,8 @@ import org.lwjgl.vulkan.VkFenceCreateInfo;
 import org.lwjgl.vulkan.VkImageBlit;
 import org.lwjgl.vulkan.VkInstance;
 import org.lwjgl.vulkan.VkInstanceCreateInfo;
+import org.lwjgl.vulkan.VkLayerSettingEXT;
+import org.lwjgl.vulkan.VkLayerSettingsCreateInfoEXT;
 import org.lwjgl.vulkan.VkLayerProperties;
 import org.lwjgl.vulkan.VkPhysicalDevice;
 import org.lwjgl.vulkan.VkPhysicalDeviceDynamicRenderingFeaturesKHR;
@@ -55,6 +57,8 @@ import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.EXTDebugUtils.*;
 import static org.lwjgl.vulkan.EXTLineRasterization.VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME;
+import static org.lwjgl.vulkan.EXTLayerSettings.VK_EXT_LAYER_SETTINGS_EXTENSION_NAME;
+import static org.lwjgl.vulkan.EXTLayerSettings.VK_LAYER_SETTING_TYPE_BOOL32_EXT;
 import static org.lwjgl.vulkan.KHRDynamicRendering.VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 import static org.lwjgl.vulkan.KHRPortabilityEnumeration.VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME;
@@ -81,7 +85,10 @@ import static org.lwjgl.vulkan.VK12.VK_API_VERSION_1_2;
  *
  * <ul>
  *   <li>Validation needs {@code VK_LAYER_KHRONOS_validation} (the Vulkan SDK, or {@code VK_LAYER_PATH}); asked for
- *       without it, the host says so once and runs unvalidated. Errors are counted, {@link #validationErrors()}.</li>
+ *       without it, the host says so once and runs unvalidated. Errors are counted, {@link #validationErrors()}.
+ *       {@code -Dcrystalgraphics.vulkan.syncValidation=true} adds the layer's synchronization checks: a missing
+ *       or wrong barrier between passes, which the default checks do not see. Its shader-access analysis is on
+ *       with it, since without it the layer cannot see a shader's accesses through pushed descriptors.</li>
  *   <li>The frame is presented the right way up: {@link #endFrame} flips it, the one flip there is.</li>
  *   <li>Close the device before the host, and the host before the window.</li>
  * </ul>
@@ -90,6 +97,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
     public static final int FRAMES = 3;
     private static final String VALIDATION = "VK_LAYER_KHRONOS_validation";
+    private static final boolean SYNC_VALIDATION = Boolean.getBoolean("crystalgraphics.vulkan.syncValidation");
 
     private final long window;
     private final VkInstance instance;
@@ -476,9 +484,11 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         PointerBuffer required = GLFWVulkan.glfwGetRequiredInstanceExtensions();
         if (required == null) throw new IllegalStateException("GLFW finds no Vulkan: no loader or no Vulkan driver");
         boolean mac = Platform.get() == Platform.MACOSX;
-        PointerBuffer extensions = stack.mallocPointer(required.remaining() + 2);
+        boolean sync = validate && SYNC_VALIDATION;
+        PointerBuffer extensions = stack.mallocPointer(required.remaining() + 3);
         extensions.put(required);
         if (validate) extensions.put(stack.UTF8(VK_EXT_DEBUG_UTILS_EXTENSION_NAME));
+        if (sync) extensions.put(stack.UTF8(VK_EXT_LAYER_SETTINGS_EXTENSION_NAME));
         if (mac) extensions.put(stack.UTF8(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME));
         extensions.flip();
         VkApplicationInfo app = VkApplicationInfo.calloc(stack).sType$Default()
@@ -488,6 +498,15 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 .ppEnabledExtensionNames(extensions)
                 .flags(mac ? VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR : 0);
         if (validate) ci.ppEnabledLayerNames(stack.pointers(stack.UTF8(VALIDATION)));
+        if (sync) {
+            VkLayerSettingEXT.Buffer settings = VkLayerSettingEXT.calloc(2, stack);
+            String[] names = {"validate_sync", "syncval_shader_accesses_heuristic"};
+            for (int i = 0; i < names.length; i++) {
+                settings.get(i).pLayerName(stack.UTF8(VALIDATION)).pSettingName(stack.UTF8(names[i]))
+                        .type(VK_LAYER_SETTING_TYPE_BOOL32_EXT).valueCount(1).pValues(stack.malloc(4).putInt(0, VK_TRUE));
+            }
+            ci.pNext(VkLayerSettingsCreateInfoEXT.calloc(stack).sType$Default().pSettings(settings));
+        }
         PointerBuffer pp = stack.mallocPointer(1);
         check(vkCreateInstance(ci, null, pp), "vkCreateInstance");
         return new VkInstance(pp.get(0), ci);
