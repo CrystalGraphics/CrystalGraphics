@@ -1890,12 +1890,6 @@ com/crystalgraphics/gl/buffer/staging/CgVertexWriter
   method public vertex (FF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public vertex (FFF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public,static forBuffer (Ljava/nio/ByteBuffer;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/buffer/staging/CgVertexWriter;
-com/crystalgraphics/gl/debug/CgDebugBlit
-  access public,final
-  extends java/lang/Object
-  method public,static depth (IFF)V
-  method public,static dispose ()V
-  method public,static rgba (I)V
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   access public
   extends java/lang/Object
@@ -2580,6 +2574,215 @@ com/crystalgraphics/gpu/CgDeferral
   method public run (Ljava/nio/ByteBuffer;Ljava/util/function/Consumer;)V
   method public run (Ljava/nio/FloatBuffer;Ljava/util/function/Consumer;)V
   method public,static applyAll ()V
+com/crystalgraphics/net/CgInMemoryTransport
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/net/CgTransport
+  method public clearSent ()V
+  method public corruptNext (Ljava/util/function/UnaryOperator;)V
+  method public deliver ()I
+  method public dropNext (I)V
+  method public pending ()I
+  method public send (Ljava/lang/Object;)V
+  method public sent ()Ljava/util/List;
+  method public setReceiver (Ljava/util/function/Consumer;)V
+  method public,static pair ()[Lcom/crystalgraphics/net/CgInMemoryTransport;
+com/crystalgraphics/net/CgTransport
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract send (Ljava/lang/Object;)V
+  method public,abstract setReceiver (Ljava/util/function/Consumer;)V
+com/crystalgraphics/net/protocol/CgCall
+  access public,abstract,interface
+  extends java/lang/Object
+com/crystalgraphics/net/protocol/CgCall$Handler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract invoke (Lcom/crystalgraphics/serialization/CgStateMap;Lcom/crystalgraphics/net/protocol/CgCall$Responder;)V
+com/crystalgraphics/net/protocol/CgCall$Responder
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract fail (Ljava/lang/String;)V
+  method public,abstract ok (Lcom/crystalgraphics/serialization/CgStateMap;)V
+com/crystalgraphics/net/protocol/CgConnections
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/String;IZ)V
+  method public close (Ljava/lang/Object;Ljava/lang/String;)Z
+  method public closeAll (Ljava/lang/String;)V
+  method public get (Ljava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public onPeerClosed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgConnections;
+  method public open (Ljava/lang/Object;Ljava/lang/Object;Lcom/crystalgraphics/net/protocol/CgConnections$Outbound;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public route (Ljava/lang/Object;[B)V
+  method public size ()I
+  method public tick ()V
+com/crystalgraphics/net/protocol/CgConnections$Outbound
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract send ([B)V
+com/crystalgraphics/net/protocol/CgEnvelope
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NO_ID I
+com/crystalgraphics/net/protocol/CgEnvelope$Cancel
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/net/protocol/CgEnvelope
+  method public <init> (I)V
+  method public id ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/net/protocol/CgEnvelope$Notification
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/net/protocol/CgEnvelope
+  method public <init> (Ljava/lang/String;Ljava/lang/Object;)V
+  method public method ()Ljava/lang/String;
+  method public payload ()Ljava/lang/Object;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/net/protocol/CgEnvelope$Request
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/net/protocol/CgEnvelope
+  method public <init> (ILjava/lang/String;Ljava/lang/Object;)V
+  method public id ()I
+  method public method ()Ljava/lang/String;
+  method public payload ()Ljava/lang/Object;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/net/protocol/CgEnvelope$Response
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/net/protocol/CgEnvelope
+  method public <init> (IZLjava/lang/Object;Ljava/lang/String;)V
+  method public error ()Ljava/lang/String;
+  method public id ()I
+  method public ok ()Z
+  method public payload ()Ljava/lang/Object;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static failed (ILjava/lang/String;)Lcom/crystalgraphics/net/protocol/CgEnvelope$Response;
+  method public,static ok (ILjava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgEnvelope$Response;
+com/crystalgraphics/net/protocol/CgEnvelopeCodec
+  access public,final
+  extends java/lang/Object
+  field public,static,final VERSION I
+  method public,static decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgEnvelope;
+  method public,static encode (Lcom/crystalgraphics/serialization/CgDynamicOps;Lcom/crystalgraphics/net/protocol/CgEnvelope;)Ljava/lang/Object;
+com/crystalgraphics/net/protocol/CgMessageRouter
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/util/function/Consumer;)V
+  method public accept (Lcom/crystalgraphics/net/protocol/CgEnvelope;)V
+  method public cancel (I)V
+  method public failAllPending (Ljava/lang/String;)V
+  method public notify (Ljava/lang/String;Ljava/lang/Object;)V
+  method public offNotify (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgMessageRouter$NotificationHandler;)Z
+  method public offRequest (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgMessageRouter$RequestHandler;)Z
+  method public onNotify (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgMessageRouter$NotificationHandler;)Lcom/crystalgraphics/net/protocol/CgMessageRouter;
+  method public onRequest (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgMessageRouter$RequestHandler;)Lcom/crystalgraphics/net/protocol/CgMessageRouter;
+  method public pendingRequests ()I
+  method public request (Ljava/lang/String;Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)I
+  method public request (Ljava/lang/String;Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;J)I
+  method public tickTimeouts (J)I
+com/crystalgraphics/net/protocol/CgMessageRouter$NotificationHandler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract handle (Ljava/lang/Object;)V
+com/crystalgraphics/net/protocol/CgMessageRouter$RequestHandler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract handle (Ljava/lang/Object;Lcom/crystalgraphics/net/protocol/CgMessageRouter$Responder;)V
+com/crystalgraphics/net/protocol/CgMessageRouter$Responder
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract fail (Ljava/lang/String;)V
+  method public,abstract ok (Ljava/lang/Object;)V
+com/crystalgraphics/net/protocol/CgProtocolConnection
+  access public,final
+  extends java/lang/Object
+  method public attachment (Ljava/lang/Class;Ljava/util/function/Function;)Ljava/lang/Object;
+  method public call (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgStateMap;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)V
+  method public close (Ljava/lang/String;)V
+  method public hasAttachment (Ljava/lang/Class;)Z
+  method public isClosed ()Z
+  method public notify (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgStateMap;)V
+  method public onClosed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public onNotify (Ljava/lang/String;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public onRequest (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgCall$Handler;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public onTick (Ljava/lang/Runnable;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public ops ()Lcom/crystalgraphics/serialization/CgDynamicOps;
+  method public peer ()Ljava/lang/Object;
+  method public router ()Lcom/crystalgraphics/net/protocol/CgMessageRouter;
+  method public setCallTimeoutMillis (J)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public tick ()I
+com/crystalgraphics/net/protocol/CgProtocolErrors
+  access public,final
+  extends java/lang/Object
+  field public,static,final CANCELLED Ljava/lang/String;
+  field public,static,final HANDLER_FAILED Ljava/lang/String;
+  field public,static,final METHOD_NOT_FOUND Ljava/lang/String;
+  field public,static,final TIMEOUT Ljava/lang/String;
+com/crystalgraphics/net/protocol/CgProtocols
+  access public,final
+  extends java/lang/Object
+  method public,static client (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgProtocols$Contributor;)V
+  method public,static contribute (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgProtocols$Contributor;)V
+  method public,static contributors ()Ljava/util/Set;
+  method public,static open (Lcom/crystalgraphics/net/CgTransport;Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Runnable;Ljava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public,static resetForTesting ()V
+  method public,static server (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgProtocols$Contributor;)V
+com/crystalgraphics/net/protocol/CgProtocols$Contributor
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract bind (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;)V
+com/crystalgraphics/net/wire/CgFrameMultiplexer
+  access public,final
+  extends java/lang/Object
+  field public,static,final DEFAULT_WINDOW_BYTES I
+  field public,static,final MAX_REASSEMBLY_BYTES I
+  method public <init> (IZLcom/crystalgraphics/net/wire/CgFrameMultiplexer$FrameSink;)V
+  method public close ()V
+  method public flush ()V
+  method public fragmentingBytes ()J
+  method public isClosed ()Z
+  method public lastRefusal ()Ljava/lang/String;
+  method public onFrameReceived ([B)V
+  method public pendingOutboundMessages ()I
+  method public pump ()I
+  method public reassemblyBytes ()I
+  method public refusedStreams ()I
+  method public send ([B)V
+  method public sendCredit ()J
+  method public setMessageHandler (Ljava/util/function/Consumer;)V
+com/crystalgraphics/net/wire/CgFrameMultiplexer$FrameSink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract send ([B)V
+com/crystalgraphics/net/wire/CgStreamRefused
+  access public
+  extends com/crystalgraphics/serialization/CgCodecException
+  method public <init> (Ljava/lang/String;)V
+com/crystalgraphics/net/wire/CgWireTransport
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/net/CgTransport
+  method public <init> (Lcom/crystalgraphics/net/wire/CgFrameMultiplexer;)V
+  method public frames ()Lcom/crystalgraphics/net/wire/CgFrameMultiplexer;
+  method public pump ()I
+  method public send (Ljava/lang/Object;)V
+  method public setReceiver (Ljava/util/function/Consumer;)V
+com/crystalgraphics/probe/CgWorldProbe
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENABLED Z
+  method public,static installIfEnabled ()V
+  method public,static running ()Z
 com/crystalgraphics/render/CgFrameClock
   access public,final
   extends java/lang/Object
@@ -3121,6 +3324,8 @@ com/crystalgraphics/render/stage/CgHostTextures
   method public blockAtlas (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public blockAtlasHeight ()I
   method public blockAtlasWidth ()I
+  method public importedBlockAtlas (III)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public importedLightmap (III)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public lightmap ()I
   method public lightmap (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public lightmapHeight ()I
@@ -3202,6 +3407,121 @@ com/crystalgraphics/render/world/CgWorldRenderer$FrameListener
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract frame (Lcom/crystalgraphics/render/stage/CgHostView;)V
+com/crystalgraphics/serialization/CgBinaryFormat
+  access public,final
+  extends java/lang/Object
+  method public,static decode ([B)Ljava/lang/Object;
+  method public,static encode (Ljava/lang/Object;)[B
+  method public,static readFrom (Ljava/io/InputStream;)Ljava/lang/Object;
+  method public,static writeTo (Ljava/io/OutputStream;Ljava/lang/Object;)V
+com/crystalgraphics/serialization/CgCodec
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract decode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,abstract encode (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/Object;
+com/crystalgraphics/serialization/CgCodecException
+  access public
+  extends java/lang/RuntimeException
+  method public <init> (Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+com/crystalgraphics/serialization/CgCodecs
+  access public,final
+  extends java/lang/Object
+  field public,static,final BOOL Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final DOUBLE Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final FLOAT Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final INT Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final LONG Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final STRING Lcom/crystalgraphics/serialization/CgCodec;
+  method public,static enumOf (Ljava/lang/Class;)Lcom/crystalgraphics/serialization/CgCodec;
+  method public,static listOf (Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/serialization/CgCodec;
+  method public,static map (Lcom/crystalgraphics/serialization/CgDynamicOps;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
+  method public,static read (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecReader;
+  method public,static xmap (Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/function/Function;Ljava/util/function/Function;)Lcom/crystalgraphics/serialization/CgCodec;
+com/crystalgraphics/serialization/CgCodecs$MapCodecBuilder
+  access public,final
+  extends java/lang/Object
+  method public build ()Ljava/lang/Object;
+  method public field (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
+  method public optional (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
+  method public optionalList (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/List;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
+  method public raw (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgCodecs$MapCodecBuilder;
+com/crystalgraphics/serialization/CgCodecs$MapCodecReader
+  access public,final
+  extends java/lang/Object
+  method public field (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
+  method public has (Ljava/lang/String;)Z
+  method public optional (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public optionalList (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/util/List;
+  method public raw (Ljava/lang/String;)Ljava/lang/Object;
+com/crystalgraphics/serialization/CgContentHash
+  access public,final
+  extends java/lang/Object
+  method public,static canonicalBytes (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)[B
+  method public,static of (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)Ljava/lang/String;
+com/crystalgraphics/serialization/CgDynamicOps
+  access public,abstract,interface
+  extends java/lang/Object
+  method public createBytes ([B)Ljava/lang/Object;
+  method public getBytesValue (Ljava/lang/Object;)[B
+  method public,abstract createBoolean (Z)Ljava/lang/Object;
+  method public,abstract createList (Ljava/util/List;)Ljava/lang/Object;
+  method public,abstract createMap (Ljava/util/Map;)Ljava/lang/Object;
+  method public,abstract createNumber (Ljava/lang/Number;)Ljava/lang/Object;
+  method public,abstract createString (Ljava/lang/String;)Ljava/lang/Object;
+  method public,abstract empty ()Ljava/lang/Object;
+  method public,abstract getBooleanValue (Ljava/lang/Object;)Z
+  method public,abstract getListValue (Ljava/lang/Object;)Ljava/util/List;
+  method public,abstract getMapValue (Ljava/lang/Object;)Ljava/util/Map;
+  method public,abstract getNumberValue (Ljava/lang/Object;)Ljava/lang/Number;
+  method public,abstract getStringValue (Ljava/lang/Object;)Ljava/lang/String;
+com/crystalgraphics/serialization/CgPlainOps
+  access public,final
+  extends java/lang/Object
+  field public,static,final INSTANCE Lcom/crystalgraphics/serialization/CgPlainOps;
+  implements com/crystalgraphics/serialization/CgDynamicOps
+  method public createBoolean (Z)Ljava/lang/Object;
+  method public createBytes ([B)Ljava/lang/Object;
+  method public createList (Ljava/util/List;)Ljava/lang/Object;
+  method public createMap (Ljava/util/Map;)Ljava/lang/Object;
+  method public createNumber (Ljava/lang/Number;)Ljava/lang/Object;
+  method public createString (Ljava/lang/String;)Ljava/lang/Object;
+  method public empty ()Ljava/lang/Object;
+  method public getBooleanValue (Ljava/lang/Object;)Z
+  method public getBytesValue (Ljava/lang/Object;)[B
+  method public getListValue (Ljava/lang/Object;)Ljava/util/List;
+  method public getMapValue (Ljava/lang/Object;)Ljava/util/Map;
+  method public getNumberValue (Ljava/lang/Object;)Ljava/lang/Number;
+  method public getStringValue (Ljava/lang/Object;)Ljava/lang/String;
+com/crystalgraphics/serialization/CgStateMap
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/serialization/CgDynamicOps;)V
+  method public <init> (Lcom/crystalgraphics/serialization/CgDynamicOps;Ljava/lang/Object;)V
+  method public encode ()Ljava/lang/Object;
+  method public getBool (Ljava/lang/String;Z)Z
+  method public getBytes (Ljava/lang/String;)[B
+  method public getDouble (Ljava/lang/String;D)D
+  method public getEnum (Ljava/lang/String;Ljava/lang/Class;Ljava/lang/Enum;)Ljava/lang/Enum;
+  method public getFloat (Ljava/lang/String;F)F
+  method public getInt (Ljava/lang/String;I)I
+  method public getList (Ljava/lang/String;Ljava/util/function/Function;)Ljava/util/List;
+  method public getRaw (Ljava/lang/String;)Ljava/lang/Object;
+  method public getString (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  method public has (Ljava/lang/String;)Z
+  method public isEmpty ()Z
+  method public ops ()Lcom/crystalgraphics/serialization/CgDynamicOps;
+  method public putBool (Ljava/lang/String;Z)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putBoolIfNot (Ljava/lang/String;ZZ)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putBytes (Ljava/lang/String;[B)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putDouble (Ljava/lang/String;D)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putEnum (Ljava/lang/String;Ljava/lang/Enum;)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putFloat (Ljava/lang/String;F)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putInt (Ljava/lang/String;I)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putList (Ljava/lang/String;Ljava/util/List;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putRaw (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putString (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public putStringIfNot (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/CgStateMap;
 com/crystalgraphics/shadergraph/CgBuiltinShaderNodes
   access public,final
   extends java/lang/Object
@@ -5121,10 +5441,20 @@ com/crystalgraphics/vfx/render/CgVfxRibbons
   access public,final
   extends java/lang/Object
   field public,static,final COUNT I
-  field public,static,final INDICES I
   field public,static,final SEGMENTS I
   field public,static,final VERTICES I
   method public,static mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
+com/crystalgraphics/vfx/render/CgVfxTrail
+  access public,final
+  extends java/lang/Object
+  method public <init> (I)V
+  method public clear ()V
+  method public count ()I
+  method public push (DDDF)V
+  method public release ()V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)V
+  method public widest ()F
+  method public writeTo (Lcom/crystalgraphics/api/mesh/CgMeshWriter;DDD)V
 com/crystalgraphics/vfx/render/CgVfxTube
   access public,final
   extends java/lang/Object
@@ -5156,6 +5486,7 @@ com/crystalgraphics/world/CgCameraShake
   access public,final
   extends java/lang/Object
   field public,static,final MAX I
+  method public,static active ()Z
   method public,static kick (FF)V
   method public,static shake (DDDFFF)V
 com/crystalgraphics/world/CgEntityAttachments

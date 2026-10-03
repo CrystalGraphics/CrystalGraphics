@@ -2597,8 +2597,13 @@ com/crystalgraphics/platform/service/CgEntityQuery
 com/crystalgraphics/platform/service/CgHostCamera
   access public,abstract,interface
   extends java/lang/Object
+  field public,static,final FOV I
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostCamera;
+  field public,static,final ROLL I
+  field public,static,final ROTATION I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public applied ()I
+  method public capabilities ()I
   method public,abstract offset (FFFFFFF)V
 com/crystalgraphics/platform/service/CgInputService
   access public,abstract,interface
@@ -2618,6 +2623,16 @@ com/crystalgraphics/platform/service/CgLifecycleService
   method public,abstract onContextInit (II)V
   method public,abstract onFrameRendered ()V
   method public,abstract onResize (II)V
+com/crystalgraphics/platform/service/CgNetworkChannel
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final SAFE_FLOOR_BYTES I
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract isAvailable ()Z
+  method public,abstract maxFrameBytes ()I
+  method public,abstract sendToPlayer (Ljava/lang/Object;[B)V
+  method public,abstract sendToServer ([B)V
+  method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
 com/crystalgraphics/platform/service/CgReloadService
   access public,abstract,interface
   extends java/lang/Object
@@ -2638,7 +2653,14 @@ com/crystalgraphics/platform/service/CgSoundService
 com/crystalgraphics/platform/service/CgWorldEvents
   access public,final
   extends java/lang/Object
+  field public,static,final BLOCK_BROKEN I
+  field public,static,final ENTITY_DIED I
+  field public,static,final ENTITY_HURT I
+  field public,static,final EXPLOSION I
+  field public,static,final LIGHTNING I
   method public,static blockBroken (IIIII)V
+  method public,static declare (I)V
+  method public,static declared ()I
   method public,static entityDied (IDDD)V
   method public,static entityHurt (IDDD)V
   method public,static explosion (DDDF)V
@@ -2714,6 +2736,15 @@ com/crystalgraphics/platform/service/CgWorldSound
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldSound;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract play (Ljava/lang/String;DDDFF)V
+com/crystalgraphics/platform/service/CgWorldStimulus
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldStimulus;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract breakBlock (III)Z
+  method public,abstract explode (DDD)Z
+  method public,abstract keepRunning ()V
+  method public,abstract lightning (DDD)Z
 com/crystalgraphics/trace/CgFrameImages
   access public,final
   extends java/lang/Object
