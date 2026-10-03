@@ -99,8 +99,9 @@ public class CgTrackedScopeSuiteTest {
     @Test
     public void everySlotIsRestored() {
         Map<CgGlSlot, Runnable> changes = changes();
-        assertEquals("a change for every slot", CgGlSlot.values().length, changes.size());
-        for (CgGlSlot slot : CgGlSlot.values()) {
+        // A device has no transform feedback: kernels run there as compute, never lowered.
+        assertEquals("a change for every slot a device carries", CgGlSlot.values().length - 1, changes.size());
+        for (CgGlSlot slot : changes.keySet()) {
             CgGlStateShadow before = snapshot();
             try (CgGlScope ignored = CgGlState.save(slot)) {
                 changes.get(slot).run();

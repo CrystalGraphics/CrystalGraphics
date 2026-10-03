@@ -1,8 +1,8 @@
 // An indirect draw's command, written on the GPU (gpu-compute C4): the count a kernel wrote, scaled, and the range of
-// the mesh as the store placed it, which only the render thread knows. One invocation a draw, dispatched by the frame
-// graph's executor before the draw's raster pass (render/graph/CgIndirectArgs), with ARGS bound to its command alone:
-// so two of them write nothing in common.
-#pragma kernel DrawArgs 1 scatter
+// the mesh as the store placed it, which only the render thread knows. Five elements a draw, one a word, dispatched by
+// the frame graph's executor before the draw's raster pass (render/graph/CgIndirectArgs) with ARGS bound to its
+// command alone, so two of them write nothing in common. A map, so a tier below compute captures it in one pass.
+#pragma kernel DrawArgs 8 map
 
 Properties {
     _Count     ("The count's uint",          int) = 0
@@ -27,9 +27,10 @@ void DrawArgs() {
     uint n = COUNT(_Count) * uint(_Factor);
     uint elements = uint(_Elements);
     bool instances = _Mode == 0;
-    ARGS_STORE(0, instances ? elements : min(n, elements));
-    ARGS_STORE(1, instances ? n : uint(_Instances));
-    ARGS_STORE(2, uint(_First));
-    ARGS_STORE(3, _Indexed != 0 ? uint(_Base) : 0u);
-    ARGS_STORE(4, 0u);
+    uint word = 0u;
+    if (CG_ELEMENT == 0) word = instances ? elements : min(n, elements);
+    else if (CG_ELEMENT == 1) word = instances ? n : uint(_Instances);
+    else if (CG_ELEMENT == 2) word = uint(_First);
+    else if (CG_ELEMENT == 3) word = _Indexed != 0 ? uint(_Base) : 0u;
+    ARGS_WRITE(word);
 }

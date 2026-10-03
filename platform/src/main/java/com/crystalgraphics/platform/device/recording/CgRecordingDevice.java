@@ -470,6 +470,18 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
+        public void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out) {
+            outsidePass("readBuffer");
+            use(src);
+            ByteBuffer from = ((Buffer) src).memory.duplicate();
+            from.limit((int) (srcOffset + out.remaining()));
+            from.position((int) srcOffset);
+            int size = from.remaining();
+            out.put(from);
+            record("readBuffer " + ref(src) + "+" + srcOffset + " " + size);
+        }
+
+        @Override
         public void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion r, CgGpuBuffer dst, long dstOffset) {
             outsidePass("copyTextureToBuffer");
             use(src, dst);

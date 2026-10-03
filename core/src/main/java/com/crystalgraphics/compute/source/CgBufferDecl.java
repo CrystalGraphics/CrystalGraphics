@@ -1,5 +1,7 @@
 package com.crystalgraphics.compute.source;
 
+import java.util.List;
+
 /**
  * A buffer a {@code .compute} declares in {@code Buffers { }}. Its kernels reach it through macros named after it, and
  * it is bound at storage binding point {@code index}, its place in the block.
@@ -18,10 +20,22 @@ package com.crystalgraphics.compute.source;
  *                  or vector, or a struct of only 16-byte vectors
  * @param scalar    whether the element is one {@code float}, {@code int} or {@code uint}: what {@code NAME_ADD},
  *                  {@code NAME_MIN} and {@code NAME_MAX} take
+ * @param fields    where each field of the element sits, in declaration order; one unnamed field for a non-struct
  */
 public record CgBufferDecl(String name, String display, String element, CgBufferAccess access, int stride,
-                           boolean lowerable, boolean scalar, int index) {
+                           boolean lowerable, boolean scalar, int index, List<CgElementField> fields) {
 
     /** {@code _cg_STATE}: the array the generated accessors index. */
     public String array() { return "_cg_" + name; }
+
+    /** The field of that name, or null. */
+    public CgElementField field(String name) {
+        for (CgElementField f : fields) if (f.name().equals(name)) return f;
+        return null;
+    }
+
+    /** Whether the element is a struct the file declares, not a scalar, vector or matrix. */
+    public boolean struct() {
+        return fields.size() != 1 || !fields.get(0).name().isEmpty();
+    }
 }

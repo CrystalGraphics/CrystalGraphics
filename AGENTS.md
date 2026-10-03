@@ -860,9 +860,20 @@ try (CgGlScope scope = CgKernelProgram.scope()) {
 - **Buffers and images are declared, not written**: the engine writes each kernel's declarations and accessors
   (`NAME(i)`, `NAME_WRITE`, `NAME_STORE`, `NAME_ADD`, `NAME_APPEND`, `NAME_INC`; `NAME_LOAD`, `NAME_WRITE` on an
   image) and assigns every binding.
-- **Each kernel's source carries only the functions and `shared` variables it reaches.**
+- **Each kernel's source carries only the functions, `shared` variables, buffers and images it reaches.**
 - **Subgroups** (`CG_SUBGROUP_ADD` and the rest) are the device's operations where it has them all and the work
   group through shared memory where not; a kernel never branches on support.
+- **Every tier runs it**: as compute on V and G43; below compute (G40, G33) every shape but `general` is lowered to
+  draws (transform feedback, blended points, fragment passes), and a general kernel runs its `#pragma fallback`; on
+  the CPU tier, or wherever nothing else can, a Java body given with `kernel.cpu(...)`. A kernel that can run nowhere
+  throws where its dispatch is recorded, naming the construct.
+
+```java
+particles.kernel("Simulate").cpu(d -> {
+    CgCpuBuffer state = d.buffer("STATE");
+    for (int e = d.first(); e < d.end(); e++) state.setFloat(e, 3, state.getFloat(e, 3) - d.time());
+});
+```
 
 In a frame a kernel runs in a graph's compute pass (`recording.compute(...)`), on `CgGraphBuffer`s and storage images,
 every barrier derived by the executor. Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what
@@ -1093,7 +1104,7 @@ CgGlState.saveAll()       // → every slot (used by CgExecutor around a frame)
 
 ## Capabilities
 
-`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()` — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
+`CgCapabilities.detect()` — cached per context; **throws below OpenGL 3.3**. Above the floor it answers `shaderBufferPath()` (SSBO → TBO, forceable with `-Dcrystalgraphics.shaderBuffer.tier=<path>`), `vertexStreamTier()` / `shaderStreamTier()` (the stream-buffer waterfall, see `gl/buffer/AGENTS.md`), `isCopyImageSubDataSupported()`, the limits (`getMaxDrawBuffers()`, `getMaxTextureUnits()`, …) and `isCoreProfile()`. For compute and GPU-driven draws it answers what a consumer needs — `compute()`, `storageImages()`, `subgroups()`, `floatAtomics()`, `drawIndirect()`, `multiDrawIndirect()`, `indirectCount()`, `drawParameters()`, `feedbackCount()`, `asyncCompute()`, `bindless()` — each joined from a core version, its ARB extension and, on the tracked backend, the device; and `computeTier()` (`V` · `G43` · `G40` · `G33` · `CPU`), forceable with `-Dcrystalgraphics.compute.tier=<tier>`, which throws naming what a context lacks.
 
 **`CgGpuReport`** is the full answer, for diagnosis rather than decisions: every feature a compute or draw tier is chosen
 from (`core`, the extension that gives it, or `no`) and the limits that bound it, from the driver on GL and from
@@ -1569,6 +1580,12 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
 # Frame graph
 -Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
                                                      # validation must catch on --mode=compute-graph
+
+# Compute tiers (compute/AGENTS.md § Three forms)
+-Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
+                                                     # context has what it needs; refused, naming it, where not
+-Dcrystalgraphics.shaderBuffer.tier=TBO              # SSBO_GL43|SSBO_ARB|TBO: engine buffers read as buffer textures,
+                                                     # GLSL 3.30, as a 3.3 context runs them; with G33, that context
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in

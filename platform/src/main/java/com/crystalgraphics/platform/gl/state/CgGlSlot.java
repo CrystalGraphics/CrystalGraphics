@@ -60,5 +60,10 @@ public enum CgGlSlot {
     /** Image units, as {@code glBindImageTexture} sets them. */
     IMAGES,
     /** The {@code GL_DRAW_INDIRECT_BUFFER}, {@code GL_DISPATCH_INDIRECT_BUFFER} and {@code GL_PARAMETER_BUFFER} bindings. */
-    INDIRECT_BUFFERS
+    INDIRECT_BUFFERS,
+    /**
+     * Indexed {@code GL_TRANSFORM_FEEDBACK_BUFFER} bindings, points 0 to 3, and {@code GL_RASTERIZER_DISCARD}, point 4:
+     * what a kernel lowered below compute changes.
+     */
+    TRANSFORM_FEEDBACK
 }

@@ -52,7 +52,7 @@ public class CgGlGetProvider implements CgGlStateProvider {
             case FBO:            readFbo(t);           break;
             case TEXTURES:       readTextures(t);      break;
             case VERTEX_INPUT:   readVertexInput(t);   break;
-            case STORAGE_BUFFERS, IMAGES, INDIRECT_BUFFERS:
+            case STORAGE_BUFFERS, IMAGES, INDIRECT_BUFFERS, TRANSFORM_FEEDBACK:
                 // Whole, these would read every point, some through queries the context may not have.
                 throw new IllegalArgumentException(slot + " is captured a point at a time: readBinding");
             default:
@@ -231,6 +231,15 @@ public class CgGlGetProvider implements CgGlStateProvider {
                 break;
             case INDIRECT_BUFFERS:
                 t.indirectBuffer[index] = integer(CgGlStateShadow.INDIRECT_BINDINGS[index]);
+                break;
+            case TRANSFORM_FEEDBACK:
+                if (index == CgGlStateShadow.RASTERIZER_DISCARD_POINT) {
+                    t.rasterizerDiscard = bool(CgGL.GL_RASTERIZER_DISCARD);
+                } else {
+                    t.feedbackBuffer[index] = integerAt(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER_BINDING, index);
+                    t.feedbackOffset[index] = integerAt(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER_START, index);
+                    t.feedbackSize[index] = integerAt(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER_SIZE, index);
+                }
                 break;
             default:
                 throw new IllegalArgumentException(slot + " is read whole: read");

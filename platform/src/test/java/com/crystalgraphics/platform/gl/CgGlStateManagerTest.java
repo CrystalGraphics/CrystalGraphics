@@ -559,6 +559,18 @@ public class CgGlStateManagerTest {
     }
 
     @Test
+    public void aFeedbackScopePutsBackItsCaptureBindingAndRasterizerDiscard() {
+        CgGL.glBindBufferBase(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 4);
+        CgGL.glDisable(CgGL.GL_RASTERIZER_DISCARD);
+        try (CgGlScope s = CgGlState.save(CgGlSlot.TRANSFORM_FEEDBACK)) {
+            CgGL.glBindBufferRange(CgGL.GL_TRANSFORM_FEEDBACK_BUFFER, 0, 7, 16, 64);
+            CgGL.glEnable(CgGL.GL_RASTERIZER_DISCARD);
+        }
+        assertFalse(mgr.feedbackBindingChanged(0, 4, 0, 0));
+        assertFalse(mgr.capabilityChanged(CgGL.GL_RASTERIZER_DISCARD, false));
+    }
+
+    @Test
     public void anEnclosingScopeSavesAPointBeforeANestedScopeWritesIt() {
         CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, 1, 5);
         try (CgGlScope outer = CgGlState.save(CgGlSlot.STORAGE_BUFFERS)) {

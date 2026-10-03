@@ -69,14 +69,16 @@ public class CgKernelEmitterTest {
     }
 
     @Test
-    public void accessors_areTheOnesTheKernelUses() {
+    public void accessorsAndBlocks_areTheOnesTheKernelReaches() {
         String integrate = emit("Integrate", CgKernelTarget.GL43);
         assertTrue(integrate.contains("Particle STATE(int i)"));
         assertTrue(integrate.contains("void STATE_WRITE(Particle v)"));
         assertFalse(integrate.contains("STATE_STORE"));
-        assertTrue(integrate.contains("layout(std430) buffer CgBuffer_SPAWNED"));
-        assertTrue(integrate.contains("layout(std430) buffer CgCounter_SPAWNED"));
-        assertFalse(integrate.contains("void SPAWNED_APPEND"));
+        assertFalse("a stage holds few storage blocks: one the kernel never reaches is not declared",
+                integrate.contains("CgBuffer_SPAWNED") || integrate.contains("CgCounter_SPAWNED"));
+        String spawn = emit("Spawn", CgKernelTarget.GL43);
+        assertTrue(spawn.contains("layout(std430) buffer CgBuffer_SPAWNED"));
+        assertTrue(spawn.contains("layout(std430) buffer CgCounter_SPAWNED"));
     }
 
     @Test

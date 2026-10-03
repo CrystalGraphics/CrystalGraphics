@@ -156,7 +156,8 @@ public final class CgKernelEmitter {
         sb.append("#include \"").append(path).append("\"\n");
     }
 
-    private static void properties(StringBuilder sb, CgComputeSource source) {
+    /** The {@code Properties} declarations every stage a kernel is emitted as carries: samplers and the block. */
+    public static void properties(StringBuilder sb, CgComputeSource source) {
         CgMaterialProperties properties = new CgMaterialProperties(source.properties());
         for (CgMaterialProperty p : properties.all()) {
             if (p.getType().isSampler()) sb.append("uniform ").append(p.getGlslType()).append(' ').append(p.getName()).append(";\n");
@@ -167,8 +168,9 @@ public final class CgKernelEmitter {
     // ── Buffers ───────────────────────────────────────────────────────────────
 
     private static void buffers(StringBuilder sb, CgComputeSource source, CgKernelDecl kernel, boolean nativeFloatAdd) {
-        sb.append("// Buffers { }, generated\n");
+        sb.append("// Buffers { }, generated: those this kernel reaches, since a stage holds few blocks\n");
         for (CgBufferDecl b : source.buffers()) {
+            if (!reaches(kernel, b)) continue;
             String e = b.element();
             String a = b.array();
             String qualifier = b.access() == CgBufferAccess.READONLY ? "readonly " : b.access() == CgBufferAccess.WRITEONLY ? "writeonly " : "";
@@ -185,6 +187,11 @@ public final class CgKernelEmitter {
                 if (uses(kernel, b, accessor)) accessor(sb, b, accessor, nativeFloatAdd);
             }
         }
+    }
+
+    private static boolean reaches(CgKernelDecl kernel, CgBufferDecl b) {
+        for (CgBufferAccessor a : CgBufferAccessor.values()) if (uses(kernel, b, a)) return true;
+        return false;
     }
 
     private static boolean uses(CgKernelDecl kernel, CgBufferDecl b, CgBufferAccessor accessor) {
@@ -230,8 +237,11 @@ public final class CgKernelEmitter {
     // ── Images ────────────────────────────────────────────────────────────────
 
     private static void images(StringBuilder sb, CgComputeSource source, CgKernelDecl kernel) {
-        sb.append("// Images { }, generated\n");
+        sb.append("// Images { }, generated: those this kernel reaches\n");
         for (CgImageDecl image : source.images()) {
+            boolean reached = false;
+            for (CgImageAccessor a : CgImageAccessor.values()) reached |= kernel.accessors().contains(image.name() + a.suffix);
+            if (!reached) continue;
             String qualifier = image.access() == CgImageAccess.READONLY ? "readonly " : image.access() == CgImageAccess.WRITEONLY ? "writeonly " : "";
             sb.append("layout(").append(image.format().qualifier()).append(") uniform ").append(qualifier)
               .append(image.glslType()).append(' ').append(image.uniform()).append(";\n");

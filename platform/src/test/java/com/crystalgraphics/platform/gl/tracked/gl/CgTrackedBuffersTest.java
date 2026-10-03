@@ -104,7 +104,7 @@ public class CgTrackedBuffersTest {
     }
 
     @Test
-    public void aCopyIntoDeviceLocalStorageIsADeviceCopyAndBetweenHostVisibleOnesTheCpus() {
+    public void aCopyIntoDeviceLocalStorageIsADeviceCopy_BetweenHostVisibleOnesTheCpus_OutOfDeviceLocalAReadBack() {
         int staging = buffer(CgGL.GL_ARRAY_BUFFER, 16, 0x88E0 /* GL_STREAM_DRAW */);
         gl.glBufferSubData(CgGL.GL_ARRAY_BUFFER, 0, ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder()).putInt(0, 7));
         int local = buffer(CgGL.GL_ARRAY_BUFFER, 32, CgGL.GL_STATIC_DRAW);
@@ -121,11 +121,11 @@ public class CgTrackedBuffersTest {
         CgAllocation to = gl.bufferObjects().get(visible).storage.allocation();
         assertEquals(7, to.memory().getInt(8));
 
-        try {
-            copy(local, visible, 0, 8);
-            fail("a device-local source into a host-visible buffer is a readback");
-        } catch (UnsupportedOperationException expected) {
-        }
+        mark = device.log().size();
+        copy(local, visible, 0, 8);
+        assertTrue("device-local into host-visible is a read back, waited for",
+                device.logSince(mark).stream().anyMatch(line -> line.startsWith("readBuffer")));
+        assertEquals(7, gl.bufferObjects().get(visible).storage.allocation().memory().getInt(0));
     }
 
     private void copy(int from, int to, long writeOffset, long size) {

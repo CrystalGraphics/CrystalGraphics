@@ -42,7 +42,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
             MULTI_DRAW_ARRAYS_INDIRECT = 108, MULTI_DRAW_ELEMENTS_INDIRECT = 109,
             MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
-            CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118;
+            CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118, BEGIN_TRANSFORM_FEEDBACK = 119,
+            END_TRANSFORM_FEEDBACK = 120;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -241,6 +242,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case CG_BUFFER_BARRIER: CgGL.cgBufferBarrier(ri(), ri(), ri()); break;
                 case CG_IMAGE_BARRIER: CgGL.cgImageBarrier(ri(), ri(), ri()); break;
                 case CG_FILL_BUFFER: CgGL.cgFillBuffer(ri(), rl(), rl(), ri()); break;
+                case BEGIN_TRANSFORM_FEEDBACK: CgGL.glBeginTransformFeedback(ri()); break;
+                case END_TRANSFORM_FEEDBACK: CgGL.glEndTransformFeedback(); break;
                 case ENABLE: CgGL.glEnable(ri()); break;
                 case DISABLE: CgGL.glDisable(ri()); break;
                 case BLEND_FUNC: CgGL.glBlendFunc(ri(), ri()); break;
@@ -718,6 +721,11 @@ final class CgGlRecordingBackend extends CgGLBackend {
     // ── Compute ───────────────────────────────────────────────────────────────
 
     @Override public void glDispatchCompute(int x, int y, int z) { op(DISPATCH_COMPUTE); i(x); i(y); i(z); }
+    @Override public void glTransformFeedbackVaryings(int program, String[] varyings, int bufferMode) {
+        throw refused("glTransformFeedbackVaryings", COMPILES);
+    }
+    @Override public void glBeginTransformFeedback(int primitiveMode) { op(BEGIN_TRANSFORM_FEEDBACK); i(primitiveMode); }
+    @Override public void glEndTransformFeedback() { op(END_TRANSFORM_FEEDBACK); }
     @Override public void glDispatchComputeIndirect(long offset) { op(DISPATCH_COMPUTE_INDIRECT); l(offset); }
     @Override public void glMemoryBarrier(int barriers) { op(MEMORY_BARRIER); i(barriers); }
 
