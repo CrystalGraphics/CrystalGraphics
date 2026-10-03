@@ -42,3 +42,6 @@ Pass {
         fragColor = vec4(col * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (1.0 - smoothstep(0.98, 1.0, r)), 1.0);
     }
 }
+
+// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
+Pass { Tags { "LightMode" = "Emissive" } }
