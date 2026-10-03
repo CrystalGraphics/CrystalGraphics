@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -8,10 +9,15 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -20,12 +26,17 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -39,6 +50,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -73,6 +85,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
  *   <li>A material is lit by the host's lightmap at {@code CG_OBJECT_LIGHT} and fogged unless its shader is tagged
  *       {@code "Lighting" = "Unlit"}. The light is the world's at {@link Draw#at}, read at {@link Draw#submit}.</li>
+ *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: after the transparent pass that pass is drawn
+ *       into a smaller target ({@link #bloomScale}), where the scene's depth hides it, blurred, and added over the
+ *       world ({@link #bloom}).</li>
  * </ul>
  */
 public final class CgWorldRenderer {
@@ -87,6 +102,20 @@ public final class CgWorldRenderer {
             .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
     private static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
+    /**
+     * Emissive passes add into the bloom target, which has no depth: the scene hides them by its copied depth. ONE ONE,
+     * since emitted light is written with an alpha of 0.
+     */
+    private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
+            .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
+                    CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD)).build();
+    private static final CgFrameBufferFormat BLOOM_FORMAT = CgFrameBufferFormat.builder("cg_bloom")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final String BLOOM_SHADER = "crystalgraphics:shaders/bloom.shader";
+    /** The deepest mip level bloom blurs and sums (bloom.shader reads 1 to 5), and each level's blur in its texels. */
+    private static final int BLOOM_LEVELS = 5;
+    private static final float BLOOM_SIGMA = 1.5f;
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
     @FunctionalInterface
@@ -142,6 +171,17 @@ public final class CgWorldRenderer {
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
 
+    // Bloom: the target Emissive passes draw into, its constants, and the material adding it back.
+    private boolean[] emits = new boolean[64];
+    private float bloomIntensity = 1f, bloomScale = 0.5f;
+    private CgGraphTexture bloomTarget;
+    private CgMaterial bloomMaterial;
+    private boolean bloomStale = true;
+    private final CgPassConstants bloomConstants = new CgPassConstants();
+    private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
+    private final Consumer<CgShaderBindings> bloomProperties =
+            b -> b.sampler("_Bloom", 0, bloomTarget).set1f("_Intensity", bloomIntensity);
+
     private boolean installed;
     private boolean irisWarned;
 
@@ -165,6 +205,33 @@ public final class CgWorldRenderer {
         clear();
         frame = -1;
         depthOnly.clear();
+        bloomMaterial = null;   // the material registry frees it with the context
+        bloomStale = true;
+    }
+
+    /**
+     * How strongly what Emissive passes draw blooms over the scene: 1 by default, 0 for none. Bloom also needs the
+     * player's quality at Medium or above.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().bloom(1.5f);   // a brighter glow round every emissive thing
+     * }</pre>
+     */
+    public void bloom(float intensity) {
+        if (intensity != bloomIntensity) bloomStale = true;
+        bloomIntensity = Math.max(0f, intensity);
+    }
+
+    /**
+     * The bloom target's size as a share of the world's: 0.5 by default; 1 for a tighter glow at four times the cost.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().bloomScale(1f);
+     * }</pre>
+     */
+    public void bloomScale(float scale) {
+        if (!(scale > 0f && scale <= 1f)) throw new IllegalArgumentException("a bloom scale of " + scale + ": 0 to 1");
+        bloomScale = scale;
     }
 
     /** Calls {@code listener} once a frame, before the first world stage records. Closing the registration stops it. */
@@ -503,14 +570,98 @@ public final class CgWorldRenderer {
                 prepass |= p == FORWARD_AND_PREPASS;
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
-            if (drawn == 0) return;
 
             CgRecording recording = stage.recording();
             CgPassConstants constants = stage.constants();
             bindings.clear();
-            if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
-            recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+            if (drawn > 0) {
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
+                recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+            }
+            if (which == TRANSPARENT) recordBloom(stage, recording, view);
         }
+    }
+
+    /**
+     * Every visible draw with an Emissive pass, opaque or transparent, into the bloom target hidden by the stage's
+     * depth; its levels each downsampled from the blurred one above and blurred; and their sum added onto the stage's
+     * target by {@code bloom.shader}. After the transparent pass, so it glows over everything.
+     */
+    private void recordBloom(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        if (bloomIntensity <= 0f || !CgGraphicsSettings.QUALITY.get().atLeast(CgQuality.MEDIUM)) return;
+        if (emits.length < meshes.length) emits = new boolean[meshes.length];
+        int emitting = 0;
+        for (int i = 0; i < count; i++) {
+            int queue = queues[i];
+            // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
+            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emitsLight(materials[i])
+                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
+            emits[i] = e;
+            if (e) emitting++;
+        }
+        CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        if (emitting == 0) return;
+
+        int w = Math.max(1, (int) (targetWidth * bloomScale)), h = Math.max(1, (int) (targetHeight * bloomScale));
+        if (bloomTarget == null || bloomTarget.getWidth() != w || bloomTarget.getHeight() != h) {
+            bloomTarget = CgGraphTexture.transientTexture("cg_bloom", new CgTextureDesc(w, h, BLOOM_FORMAT).withMips());
+            bloomStale = true;
+        }
+        stage.constants().write(constantsBlock, 0);
+        bloomConstants.read(constantsBlock, 0).resolution(w, h);
+
+        CgRasterPass glow = recording.raster(bloomTarget, CgLoad.clear(0f, 0f, 0f, 0f), bloomConstants, EMISSIVE_STATE,
+                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target());
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!emits[i]) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (!link.hasEmissivePass()) continue;
+                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                writeInstance(chunks, i);
+            }
+        }
+        glow.add(chunks.end());
+        glow.end();
+
+        int last = Math.min(BLOOM_LEVELS, bloomTarget.getLevels() - 1);
+        if (last >= 1) {
+            CgComputePass blur = recording.compute("world.bloom", bloomConstants);
+            for (int l = 1; l <= last; l++) {
+                CgGpuOps.downsample(blur, bloomTarget, l - 1, l, CgGpuOps.Filter.AVERAGE);
+                CgGpuOps.blur(blur, bloomTarget, l, bloomTarget, l, BLOOM_SIGMA);
+            }
+            blur.end();
+        }
+
+        if (bloomMaterial == null) {
+            bloomMaterial = CgMaterial.load(BLOOM_SHADER);
+            bloomStale = true;
+        }
+        if (bloomStale) {
+            bloomMaterial.applyProperties(bloomProperties);
+            bloomStale = false;
+        }
+        CgPipeline add = bloomMaterial.pipeline(CgInstanceKind.OBJECT);
+        if (add == null) return;
+        CgRasterPass composite = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED);
+        chunks = recording.chunks().begin();
+        chunks.draw(add, bindingOf(bloomMaterial, recording), FULLSCREEN);
+        chunks.instance();
+        composite.add(chunks.end());
+        composite.end();
+    }
+
+    /** Whether any link of a material chain has an Emissive pass. */
+    private static boolean emitsLight(CgMaterial material) {
+        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
+            if (link.hasEmissivePass()) return true;
+        }
+        return false;
     }
 
     /** The frustum, the eye and its forward, in the view's camera-relative space. */

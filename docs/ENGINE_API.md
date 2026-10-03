@@ -98,6 +98,10 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
   it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
   (`CgWorldAtmosphere`, from `CgHostEnvironment`).
+- **Bloom**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
+  transparent pass that pass is drawn into a smaller target, hidden by the scene's depth, blurred and added over the
+  world. `world.bloom(intensity)` sets the strength (1; 0 for none), `world.bloomScale(scale)` the target's share of
+  the world's size (0.5; 1 for a tighter glow at four times the cost). Off below `CgQuality.MEDIUM`.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 

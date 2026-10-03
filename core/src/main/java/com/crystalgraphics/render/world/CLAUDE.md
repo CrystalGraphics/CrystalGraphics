@@ -24,3 +24,10 @@
   stage comes from a renderer registered below `ORDER` recording a compute pass into the stage's frame.
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.
+- **Bloom** (`recordBloom`, after the transparent pass): every visible draw whose chain has an Emissive pass draws
+  that pass into a transient RGBA16F target with mips, `bloomScale` of the target's size, reading the stage target's
+  depth through `sceneDepth(unit, from)`. A compute pass downsamples and blurs five levels, and `bloom.shader` adds
+  their sum over the target. It is skipped below `CgQuality.MEDIUM`, at intensity 0, and when nothing emits. Its gate
+  is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at bloom scales 1 and 0.5, on gl and vulkan.
+- **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
+  alpha of 0, which ADDITIVE multiplies away.
