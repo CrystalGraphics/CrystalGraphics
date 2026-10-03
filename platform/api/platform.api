@@ -1020,6 +1020,12 @@ com/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier
   field public,static,final SUBDATA Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static values ()[Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
+com/crystalgraphics/platform/gl/CgDisabledExtensions
+  access public,final
+  extends java/lang/Object
+  method public,static all ()Ljava/util/Set;
+  method public,static filter (Lcom/crystalgraphics/platform/gl/CgGLContext;)Lcom/crystalgraphics/platform/gl/CgGLContext;
+  method public,static has (Ljava/lang/String;)Z
 com/crystalgraphics/platform/gl/CgGL
   access public,final
   extends java/lang/Object

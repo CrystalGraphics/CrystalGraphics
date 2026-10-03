@@ -85,9 +85,9 @@ public final class CgCapabilities {
         V,
         /** GL compute shaders and storage images, with indirect counts and subgroups where the context lists them. */
         G43,
-        /** No compute: kernels lowered to vertex programs under transform feedback, counts drawn from the stream. */
+        /** No compute: kernels lowered to draws (transform feedback, blended points, fragment passes); counts stay on the GPU. */
         G40,
-        /** As {@code G40} with no stream count: a draw takes its whole capacity. */
+        /** As {@code G40}, but a count a kernel wrote is read back before the draw that takes it: a stall. */
         G33,
         /** Kernels' Java bodies on worker threads. */
         CPU;
@@ -298,8 +298,8 @@ public final class CgCapabilities {
      * @see #detect()
      */
     public static CgCapabilities detectUncached() {
-        CgGLContext gl = context;
-        if (gl == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
+        if (context == null) throw new IllegalStateException("CgGLContext not initialised — call CgCapabilities.init() before detect()");
+        CgGLContext gl = CgDisabledExtensions.filter(context);
         boolean threeThreeByExtension = gl.OpenGL32() && gl.GL_ARB_instanced_arrays() && gl.GL_ARB_sampler_objects()
                 && gl.GL_ARB_explicit_attrib_location() && gl.GL_ARB_timer_query();
         if (!gl.OpenGL33() && !threeThreeByExtension) {
