@@ -5,6 +5,8 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 
 import net.minecraft.server.level.ServerPlayer;
@@ -22,6 +24,7 @@ public final class NetworkModern {
     /** Mod init, both sides. */
     public static void install(CgNetworkChannel channel) {
         CgNetwork.install(channel, player -> player instanceof ServerPlayer ? idOf((ServerPlayer) player) : null);
+        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersModern());
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {

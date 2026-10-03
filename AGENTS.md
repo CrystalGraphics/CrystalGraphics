@@ -1308,6 +1308,12 @@ Each connection opens with `cg/hello`: the client says which message namespaces 
 answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
 skipped and counted rather than sent.
 
+**Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
+`except`. All but the first two and the last ask the `CgServerPlayers` slot (`platform.service`), which each host
+fills beside its channel (`ServerPlayersModern`, `ServerPlayersLegacy`, `ServerPlayers1710`) with facts only:
+dimension, position, profile id, and who has a chunk or an entity loaded. Modern Minecraft has no public answer to
+the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
+
 ## 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading

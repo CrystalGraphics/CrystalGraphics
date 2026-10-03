@@ -2646,6 +2646,17 @@ com/crystalgraphics/platform/service/CgResourceService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
+com/crystalgraphics/platform/service/CgServerPlayers
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgServerPlayers;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract dimension (Ljava/lang/Object;)Ljava/lang/String;
+  method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,abstract position (Ljava/lang/Object;[D)Z
+  method public,abstract trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
+  method public,abstract trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
+  method public,static dimensionId (I)Ljava/lang/String;
 com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object
