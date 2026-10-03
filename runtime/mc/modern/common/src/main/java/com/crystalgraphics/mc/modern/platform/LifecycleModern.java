@@ -14,6 +14,7 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
 import org.apache.logging.log4j.LogManager;
 import org.joml.Matrix4fc;
 //? if <26.3 {
@@ -185,6 +186,25 @@ public final class LifecycleModern {
      */
     public static void clientTick() {
         WorldEventsModern.tick(Minecraft.getInstance());
+    }
+
+    /**
+     * An entity joined the client level. Loaders call it for client levels only: in single player the integrated
+     * server's levels post the same event.
+     *
+     * <pre>{@code
+     * // Forge, NeoForge: EntityJoinLevelEvent (EntityJoinWorldEvent to 1.18.2), when event.getLevel().isClientSide()
+     * // Fabric: ClientEntityEvents.ENTITY_LOAD
+     * LifecycleModern.entityJoined(entity);
+     * }</pre>
+     */
+    public static void entityJoined(Entity entity) {
+        WorldEventsModern.joined(entity);
+    }
+
+    /** An entity left the client level: {@link #entityJoined}'s pair, from the matching leave event. */
+    public static void entityLeft(Entity entity) {
+        WorldEventsModern.left(entity);
     }
 
     /**

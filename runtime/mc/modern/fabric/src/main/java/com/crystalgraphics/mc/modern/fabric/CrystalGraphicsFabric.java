@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgWorldEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 //? if >=26.1 {
@@ -64,8 +65,10 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             registerReload();
             registerRenderFrame();
             registerShutdown();
-            // The world events, once a client tick.
+            // The world events, once a client tick and as entities join and leave the client level.
             ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
+            ClientEntityEvents.ENTITY_LOAD.register((entity, level) -> LifecycleModern.entityJoined(entity));
+            ClientEntityEvents.ENTITY_UNLOAD.register((entity, level) -> LifecycleModern.entityLeft(entity));
         }
 
         // -- Asset reload -----------------------------------------------------------

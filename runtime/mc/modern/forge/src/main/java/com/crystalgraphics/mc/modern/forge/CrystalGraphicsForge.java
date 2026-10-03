@@ -59,6 +59,15 @@ import net.minecraftforge.client.event.ViewportEvent;
 //?} else {
 /*import net.minecraftforge.client.event.EntityViewRenderEvent;
 *///?}
+//? if >=1.19 {
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.EntityLeaveLevelEvent;
+//?} elif >=1.16.5 {
+/*import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+import net.minecraftforge.event.entity.EntityLeaveWorldEvent;
+*///?} else {
+/*import net.minecraftforge.event.entity.EntityJoinWorldEvent;
+*///?}
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -156,6 +165,16 @@ public final class CrystalGraphicsForge implements VariantEntry {
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(Events::onClientTick);
             //?}
+            // And as entities join and leave the client level: Forge has no leave event before 1.16.5.
+            //? if >=1.21.6 {
+            /*EntityJoinLevelEvent.BUS.addListener(Events::onEntityJoin);
+            EntityLeaveLevelEvent.BUS.addListener(Events::onEntityLeave);
+            *///?} elif >=1.16.5 {
+            MinecraftForge.EVENT_BUS.addListener(Events::onEntityJoin);
+            MinecraftForge.EVENT_BUS.addListener(Events::onEntityLeave);
+            //?} else {
+            /*MinecraftForge.EVENT_BUS.addListener(Events::onEntityJoin);
+            *///?}
             // The camera hooks a shake and an FOV kick are added at (HostCameraModern).
             //? if >=1.21.6 {
             /*ViewportEvent.ComputeCameraAngles.BUS.addListener(Events::onCameraAngles);
@@ -277,6 +296,29 @@ public final class CrystalGraphicsForge implements VariantEntry {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
         }
         //?}
+
+        // Client levels only: in single player the integrated server's levels post these too.
+        //? if >=1.19 {
+        private static void onEntityJoin(EntityJoinLevelEvent event) {
+            if (event.getLevel().isClientSide()) LifecycleModern.entityJoined(event.getEntity());
+        }
+
+        private static void onEntityLeave(EntityLeaveLevelEvent event) {
+            if (event.getLevel().isClientSide()) LifecycleModern.entityLeft(event.getEntity());
+        }
+        //?} elif >=1.16.5 {
+        /*private static void onEntityJoin(EntityJoinWorldEvent event) {
+            if (event.getWorld().isClientSide()) LifecycleModern.entityJoined(event.getEntity());
+        }
+
+        private static void onEntityLeave(EntityLeaveWorldEvent event) {
+            if (event.getWorld().isClientSide()) LifecycleModern.entityLeft(event.getEntity());
+        }
+        *///?} else {
+        /*private static void onEntityJoin(EntityJoinWorldEvent event) {
+            if (event.getWorld().isClientSide()) LifecycleModern.entityJoined(event.getEntity());
+        }
+        *///?}
 
         //? if >=1.20.4 {
         /*private static void onClientTick(TickEvent.ClientTickEvent.Post event) {
