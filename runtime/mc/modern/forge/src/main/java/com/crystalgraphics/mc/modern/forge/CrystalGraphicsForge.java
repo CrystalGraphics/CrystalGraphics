@@ -158,7 +158,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onCameraAngles);
             MinecraftForge.EVENT_BUS.addListener(Events::onFov);
             //?}
+            // Forge 26.1.1 to 26.2 post the camera-angle event after renderLevel has taken the view, so its angles
+            // reach nothing drawn: only the FOV applies there.
+            //? if >=26.1 <26.3 {
+            /*HostCameraModern.declare(CgHostCamera.FOV);
+            *///?} else {
             HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+            //?}
             // ExplosionHook and LevelEventHook, the node mixins that report them.
             //? if >=1.21.3 {
             /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
