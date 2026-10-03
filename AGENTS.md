@@ -376,11 +376,6 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `text/msdf/CLAUDE.md` | Distance-field generation logic |
 | `text/render/CLAUDE.md` | Draw-time orchestration |
 
-### Debug
-| Path | What it covers |
-|---|---|
-| `gl/debug/AGENTS.md` | `CgDebugBlit` — fullscreen texture blit, covering-triangle, no VBO |
-
 ### Platform SPI and hosts (outside `core/`)
 | Path | What it covers |
 |---|---|

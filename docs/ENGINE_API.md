@@ -391,7 +391,6 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
-| 10 | `CgDebugBlit.dispose()` | Debug blit utility (no-op if never used) |
 
 > A slab deletes its VAO **before** its buffers: a VAO naming deleted buffers is stale GPU state.
 

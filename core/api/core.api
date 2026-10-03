@@ -2705,12 +2705,6 @@ com/crystalgraphics/gl/buffer/staging/CgVertexWriter
   method public vertex (FF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public vertex (FFF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public,static forBuffer (Ljava/nio/ByteBuffer;Lcom/crystalgraphics/api/vertex/CgVertexFormat;)Lcom/crystalgraphics/gl/buffer/staging/CgVertexWriter;
-com/crystalgraphics/gl/debug/CgDebugBlit
-  access public,final
-  extends java/lang/Object
-  method public,static depth (IFF)V
-  method public,static dispose ()V
-  method public,static rgba (I)V
 com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   access public
   extends java/lang/Object
