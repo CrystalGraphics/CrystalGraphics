@@ -38,6 +38,12 @@ public final class CgVfxLayer {
     public static final int PRIORITY_LIGHT = 2, PRIORITY_VOLUME = 3, PRIORITY_SURFACE = 4, PRIORITY_BANDS = 5, PRIORITY_CORE = 6;
     /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
     public static final int PRIORITY_SMOKE = 1;
+    /**
+     * Layers that bend the scene behind them (heat haze, a shock front), first of all: they redraw what is behind them
+     * from {@code cg_SceneColor}, which holds the world but none of this pass, so anything drawn before them would be
+     * painted over.
+     */
+    public static final int PRIORITY_DISTORTION = 0;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";
 
