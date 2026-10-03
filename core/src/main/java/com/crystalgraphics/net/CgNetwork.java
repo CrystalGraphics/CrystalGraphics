@@ -194,11 +194,22 @@ public final class CgNetwork {
         if (table != null && table.close(CLIENT, "disconnected")) {
             LOGGER.info("[cg-net] client connection closed");
         }
+        CgReplicated.clientClosedAll();
+    }
+
+    /**
+     * The server is starting: what {@link CgReplicated} persists is loaded, before any mod's own start handler or
+     * player. {@code server} is anything the host's {@code CgServerPlayers.saveDirectory} accepts.
+     */
+    public static void serverStarting(@Nullable Object server) {
+        CgReplicated.serverStarting(server);
     }
 
     public static void serverTick() {
         CgConnections table = server;
-        if (table != null) table.tick();
+        if (table == null) return;
+        CgReplicated.serverTickAll();
+        table.tick();
     }
 
     public static void clientTick() {
@@ -206,13 +217,18 @@ public final class CgNetwork {
         if (table != null) table.tick();
     }
 
-    /** Fails everything outstanding now, rather than leaving each caller to wait out its timeout. */
+    /**
+     * The server is stopping: fails everything outstanding now, rather than leaving each caller to wait out its timeout,
+     * and saves what {@link CgReplicated} persists.
+     */
     public static void closeAll(String reason) {
         int had = openConnections();
         CgConnections s = server;
         CgConnections c = client;
         if (s != null) s.closeAll(reason);
         if (c != null) c.closeAll(reason);
+        CgReplicated.serverStopped();
+        CgReplicated.clientClosedAll();
         if (had > 0) LOGGER.info("[cg-net] closed {} connection(s): {}", had, reason);
     }
 
@@ -231,6 +247,7 @@ public final class CgNetwork {
 
     private static void closed(Object peer) {
         if (!(peer instanceof CgPeer)) return;
+        CgReplicated.peerClosed(((CgPeer) peer).id());
         for (Consumer<CgPeer> listener : CLOSED) {
             try {
                 listener.accept((CgPeer) peer);

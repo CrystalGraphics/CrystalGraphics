@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 //? if >=1.21.7 {
@@ -121,6 +122,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             *///?} else {
             Network.register();
             //?}
+            NeoForge.EVENT_BUS.addListener(Events::onServerStarting);
             NeoForge.EVENT_BUS.addListener(Events::onServerStopping);
             NeoForge.EVENT_BUS.addListener(Events::onServerTick);
             NeoForge.EVENT_BUS.addListener(Events::onPlayerJoin);
@@ -129,6 +131,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
             // Events would resolve it when a dedicated server links this class.
             if (FmlSide.isClient(FMLLoader.class)) ModBus.register(modBus);
+        }
+
+        private static void onServerStarting(ServerAboutToStartEvent event) {
+            NetworkModern.serverStarting(event.getServer());
         }
 
         private static void onServerStopping(ServerStoppingEvent event) {

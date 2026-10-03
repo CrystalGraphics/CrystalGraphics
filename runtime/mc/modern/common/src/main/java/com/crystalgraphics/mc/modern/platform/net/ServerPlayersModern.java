@@ -1,10 +1,12 @@
 package com.crystalgraphics.mc.modern.platform.net;
 
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.platform.service.CgServerPlayers;
 
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -12,7 +14,9 @@ import net.minecraft.world.level.Level;
 //? if >=1.14 {
 import net.minecraft.world.level.ChunkPos;
 //?}
-//? if <1.16 {
+//? if >=1.16 {
+import net.minecraft.world.level.storage.LevelResource;
+//?} else {
 /*import net.minecraft.world.level.dimension.DimensionType;
 *///?}
 
@@ -90,6 +94,19 @@ final class ServerPlayersModern implements CgServerPlayers {
             UUID id = playerId(player);
             if (id != null && dx * dx + dz * dz <= limit) out.accept(id);
         });
+    }
+
+    @Override
+    public Path saveDirectory(Object handle) {
+        Level level = handle instanceof Level ? (Level) handle : handle instanceof Entity ? levelOf((Entity) handle) : null;
+        MinecraftServer server = handle instanceof MinecraftServer ? (MinecraftServer) handle
+                : level == null ? null : level.getServer();
+        if (server == null) return null;
+        //? if >=1.16 {
+        return server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
+        //?} else {
+        /*return server.getStorageSource().getFile(server.getLevelIdName(), "").toPath().toAbsolutePath().normalize();
+        *///?}
     }
 
     private static void chunkPlayers(ServerLevel level, int chunkX, int chunkZ, Consumer<ServerPlayer> out) {

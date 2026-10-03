@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.net;
 
+import java.io.File;
+import java.nio.file.Path;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -10,6 +12,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
+import net.minecraftforge.common.DimensionManager;
 
 /**
  * {@link CgServerPlayers} over Forge 1.8–1.12.2's server worlds; installed by {@link NetworkLegacy}. The host's own
@@ -58,6 +61,12 @@ final class ServerPlayersLegacy implements CgServerPlayers {
             UUID id = playerId(player);
             if (watching && id != null) out.accept(id);
         }
+    }
+
+    @Override
+    public Path saveDirectory(Object handle) {
+        File root = DimensionManager.getCurrentSaveRootDirectory();
+        return root == null ? null : root.toPath().toAbsolutePath().normalize();
     }
 
     @Override

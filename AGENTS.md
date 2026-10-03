@@ -1314,6 +1314,11 @@ fills beside its channel (`ServerPlayersModern`, `ServerPlayersLegacy`, `ServerP
 dimension, position, profile id, and who has a chunk or an entity loaded. Modern Minecraft has no public answer to
 the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
 
+**`CgReplicated`** is a server-owned object mirrored to the clients that can see it: changes coalesce to one a
+tick, a player coming into view is sent the current value, and `persisted()` saves under the world's directory
+(`crystalgraphics/replicated/`) at stop and every five minutes. Hosts forward the server starting too
+(`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
+
 ## 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading

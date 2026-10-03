@@ -58,6 +58,7 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
 
     /** The connection lifecycle's server half. Both sides: a dedicated server opens connections too. */
     private static void registerServerEvents() {
+        ServerLifecycleEvents.SERVER_STARTING.register(NetworkModern::serverStarting);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> NetworkModern.serverStopping());
         ServerTickEvents.END_SERVER_TICK.register(server -> NetworkModern.serverTick());
         // getPlayer() arrived in 1.17; before it the handler exposes the field.

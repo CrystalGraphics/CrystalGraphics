@@ -9,6 +9,7 @@ import cpw.mods.fml.common.ICrashCallable;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -109,6 +110,12 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onPostInit(FMLPostInitializationEvent event) {
         LOGGER.info("{}: postInit", NAME);
+    }
+
+    /** Loads what persists with the world, its worlds now loaded. */
+    @Mod.EventHandler
+    public void onServerStarting(FMLServerStartingEvent event) {
+        Network1710.serverStarting();
     }
 
     /** Closes every connection, so no caller is left waiting out a timeout for a stopped server. */
