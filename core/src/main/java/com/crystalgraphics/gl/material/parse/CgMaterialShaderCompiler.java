@@ -10,6 +10,7 @@ import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
+import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -424,6 +425,7 @@ public final class CgMaterialShaderCompiler {
         // guard evaluate identically in both stages, i.e. do nothing: that is how sdf.glsl's
         // fwidth() reached the vertex shader, which NVIDIA accepted and AMD correctly rejected.
         sb.append("#define CG_VERTEX_STAGE 1\n");
+        appendPassDefine(sb, pass);
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
@@ -504,6 +506,7 @@ public final class CgMaterialShaderCompiler {
         // Stage define — the symmetric counterpart of CG_VERTEX_STAGE, and like it, emitted before
         // the user directive block so a guard inside an included lib can actually see it.
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
+        appendPassDefine(sb, pass);
         sb.append("#define CG_FOG_MODE ").append(fogMode(pass)).append('\n');
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
@@ -710,8 +713,14 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
+    /** {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart. */
+    private static void appendPassDefine(StringBuilder sb, CgParsedPass pass) {
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
+    }
+
     /** How {@code cg_Fog} treats the pass's output: mixed toward the fog (0), premultiplied (1), added (2). */
     private static int fogMode(CgParsedPass pass) {
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) return 2;   // added onto the scene by bloom
         CgBlendState blend = pass.renderState().getBlend();
         if (blend == null || !blend.enabled()) return 0;
         if (blend.dstRgb() == CgGL.GL_ONE) return 2;
@@ -727,12 +736,21 @@ public final class CgMaterialShaderCompiler {
               .append(" = _cg_v2f.").append(f.name()).append(";\n");
         }
         if (shader.readsObjectRecord()) sb.append("  cg_Light = CG_OBJECT_LIGHT;\n");
+        boolean emissive = CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode());
+        CgDepthState depth = pass.renderState().getDepth();
+        if (emissive && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)) {
+            // The bloom target has no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
+            // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
+            sb.append("  if (cg_LinearEyeDepth(gl_FragCoord.z) > CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION)"
+                    + " * CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;\n");
+        }
         if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
-            // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise.
+            // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
+            // light is not lit, only faded by the fog.
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());
             if (forward && shader.lit()) sb.append("  _cg_fragColor = cg_Lit(_cg_fragColor);\n");
-            if (forward && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
+            if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

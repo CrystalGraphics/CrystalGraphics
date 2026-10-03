@@ -289,7 +289,7 @@ CgRenderState.DEFAULT          // blend OFF, depth TEST_WRITE, cull BACK, stenci
 CgDepthState.TEST_WRITE        // depth test LEQUAL + depth write ON
 CgDepthState.TEST_ONLY         // depth test LEQUAL + depth write OFF
 CgBlendState.ALPHA             // SRC_ALPHA / ONE_MINUS_SRC_ALPHA
-CgBlendState.ADDITIVE          // ONE / ONE
+CgBlendState.ADDITIVE          // SRC_ALPHA / ONE: adds nothing where alpha is 0
 CgCullState.BACK               // GL_BACK face culling
 ```
 

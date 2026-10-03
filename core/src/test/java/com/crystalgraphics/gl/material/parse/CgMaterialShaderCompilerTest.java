@@ -1,7 +1,10 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.api.state.CgDepthState;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -52,6 +55,84 @@ public class CgMaterialShaderCompilerTest {
 
     private static CgParsedShader parse(String src) {
         return CgShaderParser.parse(src, "test");
+    }
+
+    // ── Emissive pass ─────────────────────────────────────────────────────────
+
+    private static final String EMISSIVE =
+            "#type spatial\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n" +
+            "}\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Emissive\" \"Name\" = \"Glow\" }\n" +
+            "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(4.0, 2.0, 1.0, 0.0); }\n" +
+            "}\n";
+
+    @Test
+    public void emissivePass_isNamedByItsLightMode_andAddsWithoutDepth() {
+        CgParsedPass pass = parse(EMISSIVE).getPassByLightMode("Emissive");
+        assertNotNull(pass);
+        assertEquals("Emissive", pass.name());
+        CgBlendState blend = pass.renderState().getBlend();
+        assertTrue(blend.enabled());
+        assertEquals("ONE ONE: emitted light is written with an alpha of 0", CgGL.GL_ONE, blend.srcRgb());
+        assertEquals(CgGL.GL_ONE, blend.dstRgb());
+        assertSame(CgDepthState.NONE, pass.renderState().getDepth());
+    }
+
+    @Test
+    public void emissivePass_keepsAnAuthoredRenderState() {
+        String authored = EMISSIVE.replace("\"Name\" = \"Glow\" }\n",
+                "\"Name\" = \"Glow\" }\n    RenderState { Blend SRC_ALPHA ONE }\n");
+        CgParsedPass pass = parse(authored).getPassByLightMode("Emissive");
+        assertEquals(CgGL.GL_SRC_ALPHA, pass.renderState().getBlend().srcRgb());
+    }
+
+    @Test
+    public void emissivePass_discardsBehindTheScene_andIsFoggedNotLit() {
+        CgParsedShader shader = parse(EMISSIVE);
+        String frag = CgMaterialShaderCompiler.compile(shader, shader.getPassByLightMode("Emissive"), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        int discard = frag.indexOf("CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;");
+        assertTrue("the occlusion discard", discard >= 0);
+        assertTrue("before fragment()", discard < frag.indexOf("fragment(_v2f_local, _cg_fragColor);"));
+        assertTrue(frag.contains("_cg_fragColor = cg_Fog(_cg_fragColor);"));
+        assertFalse(frag.contains("cg_Lit(_cg_fragColor)"));
+        assertTrue(frag.contains("#define CG_FOG_MODE 2"));
+    }
+
+    @Test
+    public void emissivePass_withNoCode_drawsTheForwardPass() {
+        String src = MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE DepthTest ALWAYS Cull FRONT }\n")
+                + "Pass { Tags { \"LightMode\" = \"Emissive\" } }\n";
+        CgParsedShader shader = parse(src);
+        CgParsedPass forward = shader.passes().get(0), emissive = shader.getPassByLightMode("Emissive");
+        assertEquals("Emissive", emissive.name());
+        assertEquals(forward.fragmentBody(), emissive.fragmentBody());
+        assertSame(forward.renderState(), emissive.renderState());
+        String frag = CgMaterialShaderCompiler.compile(shader, emissive, NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertTrue(frag.contains("#define CG_EMISSIVE_PASS 1"));
+        assertFalse(CgMaterialShaderCompiler.compile(shader, NO_BUFFERS).fragmentSource().contains("CG_EMISSIVE_PASS"));
+    }
+
+    @Test(expected = CgShaderParseException.class)
+    public void emissivePass_withNoCode_needsAForwardPassBeforeIt() {
+        parse("#type spatial\nPass { Tags { \"LightMode\" = \"Emissive\" } }\n" + MINIMAL.substring(MINIMAL.indexOf("Pass")));
+    }
+
+    @Test
+    public void emissivePass_depthTestAlways_leavesOcclusionToTheShader() {
+        CgParsedShader shader = parse(EMISSIVE.replace("\"Name\" = \"Glow\" }\n",
+                "\"Name\" = \"Glow\" }\n    RenderState { Blend ONE ONE DepthTest ALWAYS }\n"));
+        String frag = CgMaterialShaderCompiler.compile(shader, shader.getPassByLightMode("Emissive"), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertFalse(frag.contains("CG_EMISSIVE_DEPTH_SLACK"));
     }
 
     // ── Version directive ─────────────────────────────────────────────────────

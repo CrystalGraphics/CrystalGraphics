@@ -341,8 +341,41 @@ Each `Pass { }` carries a `Tags { "LightMode" = "..." }` that routes it to the c
 | `Forward` | Standard forward-lit draw | Default when `LightMode` is absent |
 | `ShadowCaster` | Depth-from-light pass | Auto-generated for `RenderType=Opaque`, `castShadows=true`, `queue < 3000` |
 | `Depth` | Early depth pre-pass | Auto-generated for opaque materials |
+| `Emissive` | The world's bloom: light the material gives off, blurred over the scene | Never generated; at most one per shader. Below |
 
 The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache. Auto-assigned as `Pass0`, `Pass1`, … when absent.
+
+#### The Emissive pass
+
+What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` draws it into its bloom
+target after the transparent pass, blurs it and adds it over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*).
+Unity's and Godot's name for the same thing.
+
+```glsl
+// The Forward pass's code and render state again: what it draws, it also blooms
+Pass { Tags { "LightMode" = "Emissive" } }
+
+// Or its own: only the bright part blooms
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); o.uv = cg_TexCoord0; }
+    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_GlowColor.rgb * _GlowStrength, 0.0); }
+}
+```
+
+- **Write HDR colour with an alpha of 0.** It adds into a float target; the alpha is unused.
+- **Codeless**, it takes the first Forward pass's v2f, code and render state, and fails to parse when no Forward pass
+  comes before it. A `RenderState` of its own replaces the Forward pass's.
+- **With code and no `RenderState`**, it draws ONE ONE with no depth test and back faces culled. An authored state
+  replaces all of it, including the cull, so list everything. ONE ONE is not `CgBlendState.ADDITIVE`, which is
+  SRC_ALPHA ONE and adds nothing at alpha 0.
+- **Hidden by the scene, not by a depth test.** The bloom target has no depth, so the compiler discards a fragment
+  further than the scene's depth at its pixel, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`,
+  `CG_EMISSIVE_DEPTH_BIAS`, in `cg_env.glsl`). `DepthTest ALWAYS` turns that off for a shader that tests depth itself:
+  a volume drawn on its back faces.
+- Unlit and fogged additively whatever the material's tags. `CG_EMISSIVE_PASS` is defined in both stages, so a body
+  it shares with the Forward pass can tell them apart.
+- It takes the material's keywords, as the Forward pass does.
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

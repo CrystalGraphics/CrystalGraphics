@@ -54,7 +54,15 @@ public enum CgRenderPassVariant {
      * <p>{@code bindForPass(DEPTH)} silently no-ops if no Depth pass was compiled.</p>
      * <p>Keywords are always {@code emptySet()}.</p>
      */
-    DEPTH("Depth");
+    DEPTH("Depth"),
+
+    /**
+     * The light a surface emits, drawn into the world's bloom target and spread over the scene by it. Never
+     * auto-generated: a material blooms only where it authors a {@code Pass { Tags { "LightMode" = "Emissive" } }}.
+     * <p>Takes the material's keywords, like {@link #FORWARD}. Unlit and faded by fog; a fragment behind the
+     * scene's depth is discarded before its fragment function runs.</p>
+     */
+    EMISSIVE("Emissive");
 
     private final String lightModeName;
 
