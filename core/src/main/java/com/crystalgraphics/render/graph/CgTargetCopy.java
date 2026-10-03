@@ -20,7 +20,8 @@ import java.util.Map;
  * One raster pass's copy of its own target, for its draws reading {@code cg_SceneColor} or {@code cg_DepthBuffer}
  * ({@link CgRasterPass#sceneColor}, {@link CgRasterPass#sceneDepth}). The executor takes it where
  * {@link CgFrameBuilder} placed a copy, into one framebuffer from the graph's pool held for the pass and given back
- * when it ends: a later copy overwrites the earlier, which its readers no longer need.
+ * when it ends. A colour copy refreshes only the rect its readers sample, in place: a reader samples only what was
+ * copied for it, never what an earlier copy left. Depth is copied whole.
  *
  * <ul>
  *   <li>Render thread. A pass of its own each, so a nested execution or a pass of another size never moves what an
@@ -53,11 +54,12 @@ final class CgTargetCopy {
 
     /**
      * Copies what {@code bits} name from framebuffer {@code source}: the current target when {@code sourceFormat} is
-     * null, else a {@code width} x {@code height} target of that format. Leaves the framebuffer binding and scissor
-     * as found.
+     * null, else a {@code width} x {@code height} target of that format. Colour is copied in the rect at {@code at}
+     * of {@code rects}, GL pixels x0, y0, x1, y1, or whole where its x1 is below 0. Leaves the framebuffer binding and
+     * scissor as found. Answers the colour pixels copied.
      */
-    void copy(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, int bits,
-              CgTexturePool pool) {
+    long copy(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, int bits,
+              int[] rects, int at, CgTexturePool pool) {
         CgFrameBufferFormat format;
         int depthMask;
         if (sourceFormat == null) {
@@ -76,19 +78,37 @@ final class CgTargetCopy {
             format = FORMATS.computeIfAbsent(sourceFormat, f -> copyFormat(f.getColorSlot(0), f.getDepthType()));
             depthMask = sourceFormat.hasDepth() ? CgGL.GL_DEPTH_BUFFER_BIT : 0;
         }
-        int mask = ((bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0)
-                | ((bits & DEPTH) != 0 ? depthMask : 0);
-        if (mask == 0 || width <= 0 || height <= 0) return;
+        int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0;
+        if ((bits & DEPTH) == 0) depthMask = 0;
+        if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
         if (desc == null || desc.width() != width || desc.height() != height || !desc.format().equals(format)) {
             release(pool);
             desc = new CgTextureDesc(width, height, format);
             storage = pool.acquire(desc);
         }
+        int x0 = 0, y0 = 0, x1 = width, y1 = height;
+        if (rects[at + 2] >= 0) {
+            x0 = Math.max(0, rects[at]);
+            y0 = Math.max(0, rects[at + 1]);
+            x1 = Math.min(width, rects[at + 2]);
+            y1 = Math.min(height, rects[at + 3]);
+        }
+        if (x1 <= x0 || y1 <= y0) colorMask = 0;
         try (CgGlScope scope = CgGlState.save(CgGlSlot.SCISSOR)) {
             CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a blit is scissored
-            CgFrameBuffer.blitFrom(source, storage.getId(), 0, 0, width, height, 0, 0, width, height, mask,
-                    CgGL.GL_NEAREST);
+            if (x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
+                blit(source, colorMask | depthMask, 0, 0, width, height);
+            } else {
+                blit(source, depthMask, 0, 0, width, height);
+                blit(source, colorMask, x0, y0, x1, y1);
+            }
         }
+        return colorMask == 0 ? 0L : (long) (x1 - x0) * (y1 - y0);
+    }
+
+    /** Blits {@code mask} from {@code source} into the same rect of the copy. */
+    private void blit(int source, int mask, int x0, int y0, int x1, int y1) {
+        if (mask != 0) CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
     }
 
     /** Gives the copy's framebuffer back to the pool. When the pass ends. */

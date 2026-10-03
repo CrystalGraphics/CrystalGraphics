@@ -167,6 +167,15 @@ public final class CgBatcher {
         return batchScissor[batch];
     }
 
+    /**
+     * The union of {@code batch}'s draws' bounds, {@code out} as x0, y0, x1, y1 in their domain; infinite where a draw
+     * stated none. Answers the domain, or -1 for a batch holding draws of several.
+     */
+    public int batchBounds(int batch, float[] out) {
+        System.arraycopy(batchUnion, batch * 4, out, 0, 4);
+        return batchDomain[batch];
+    }
+
     /** The batch's first position in {@link #ref}. */
     public int batchStart(int batch) {
         return batchStart[batch];

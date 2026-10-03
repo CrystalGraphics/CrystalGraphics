@@ -307,6 +307,7 @@ public final class CgMaterialShader {
             }
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                 parsed = CgShaderParser.parse(source, resourcePath);
+                requireMargin(parsed, source);
             } catch (CgShaderParseException e) {
                 parseFailed = true;
                 LOGGER.error("Cannot parse '{}': {}", resourcePath, e.getMessage());
@@ -411,6 +412,7 @@ public final class CgMaterialShader {
             if (parsed == null || !source.equals(parsedSource)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                     parsed = CgShaderParser.parse(source, resourcePath);
+                    requireMargin(parsed, source);
                 } catch (CgShaderParseException e) {
                     if (isFirst) throw e;
                     LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
@@ -1080,6 +1082,24 @@ public final class CgMaterialShader {
     /** Whether the parsed source samples {@code cg_SceneColor}, directly or through {@code CG_SCENE_COLOR}; true until parsed. */
     public boolean readsSceneColor() {
         return parsedSource == null || sceneColor;
+    }
+
+    /**
+     * How far past its geometry it samples {@code cg_SceneColor}, a share of the target's height: its
+     * {@code "SceneColorMargin"} tag. NaN until parsed and for a shader that does not read it.
+     */
+    public float sceneColorMargin() {
+        CgParsedShader parsed = lastParsed;
+        return parsed == null ? Float.NaN : parsed.sceneColorMargin();
+    }
+
+    /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
+    private void requireMargin(CgParsedShader parsed, String source) {
+        if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
+            throw new CgShaderParseException("[" + resourcePath + "] samples cg_SceneColor without a SceneColorMargin: "
+                    + "add the share of the target's height it samples past its geometry to the top-level Tags, "
+                    + "e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }");
+        }
     }
 
     private boolean sceneColorIn(String source) {

@@ -128,6 +128,8 @@ public final class CgWorldRenderer {
     private final Vector3f forward = new Vector3f();
     private final Vector3f min = new Vector3f();
     private final Vector3f max = new Vector3f();
+    /** A box's corners in clip space: x, y, w. */
+    private final float[] clipX = new float[8], clipY = new float[8], clipW = new float[8];
     private final CgViewFrustum frustum = new CgViewFrustum();
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
@@ -420,9 +422,14 @@ public final class CgWorldRenderer {
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
     private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1;
+    /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
+    private static final float NEAR_W = 0.01f;
 
     private long[] keys = new long[64];
     private byte[] phase = new byte[64];
+    /** Per draw this stage: its box on screen, in target pixels from the top left; NaN first for none. */
+    private float[] screens = new float[64 * 4];
+    private float targetWidth, targetHeight;
 
     private void recordOpaque(CgStageFrame stage) {
         record(stage, OPAQUE);
@@ -451,6 +458,8 @@ public final class CgWorldRenderer {
                     + "remains valid.");
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.recordOpaque" : "world.recordTransparent")) {
+            targetWidth = stage.host().width();
+            targetHeight = stage.host().height();
             prepare(view);
             boolean prepass = false;
             int drawn = 0;
@@ -482,6 +491,7 @@ public final class CgWorldRenderer {
         if (keys.length < count) {
             keys = new long[meshes.length];
             phase = new byte[meshes.length];
+            screens = new float[meshes.length * 4];
         }
     }
 
@@ -504,6 +514,7 @@ public final class CgWorldRenderer {
             model.transformAab(bounds[0] - p, bounds[1] - p, bounds[2] - p, bounds[3] + p, bounds[4] + p, bounds[5] + p,
                     min, max);
             if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return SKIP;
+            screenOf(i);
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
             cz = (min.z + max.z) * 0.5f;
@@ -513,6 +524,7 @@ public final class CgWorldRenderer {
                 meshes[i] = level;
             }
         } else {
+            screens[i * 4] = Float.NaN;
             if (lods[i] != null) meshes[i] = lods[i].finest();
             cx = model.m30();
             cy = model.m31();
@@ -550,6 +562,52 @@ public final class CgWorldRenderer {
         return r * Math.abs(view.projection().m11()) / w;
     }
 
+    /**
+     * Draw {@code i}'s box {@code min}..{@code max} on screen, into {@link #screens}: what the frame graph cuts a copy
+     * of the target to. A box crossing the near plane is cut by it, its edges' crossings projected with the corners in
+     * front; NaN for a box wholly behind it.
+     */
+    private void screenOf(int i) {
+        Matrix4f m = viewProjection;
+        for (int c = 0; c < 8; c++) {
+            float x = (c & 1) == 0 ? min.x : max.x, y = (c & 2) == 0 ? min.y : max.y, z = (c & 4) == 0 ? min.z : max.z;
+            clipX[c] = m.m00() * x + m.m10() * y + m.m20() * z + m.m30();
+            clipY[c] = m.m01() * x + m.m11() * y + m.m21() * z + m.m31();
+            clipW[c] = m.m03() * x + m.m13() * y + m.m23() * z + m.m33();
+        }
+        float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY, x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY;
+        for (int c = 0; c < 8; c++) {
+            if (clipW[c] >= NEAR_W) {
+                float nx = clipX[c] / clipW[c], ny = clipY[c] / clipW[c];
+                x0 = Math.min(x0, nx);
+                x1 = Math.max(x1, nx);
+                y0 = Math.min(y0, ny);
+                y1 = Math.max(y1, ny);
+            }
+            for (int bit = 1; bit < 8; bit <<= 1) {
+                if ((c & bit) != 0) continue;
+                int d = c | bit;
+                if ((clipW[c] >= NEAR_W) == (clipW[d] >= NEAR_W)) continue;
+                // An edge through the near plane: where it crosses, in front of the eye.
+                float t = (NEAR_W - clipW[c]) / (clipW[d] - clipW[c]);
+                float nx = (clipX[c] + (clipX[d] - clipX[c]) * t) / NEAR_W;
+                float ny = (clipY[c] + (clipY[d] - clipY[c]) * t) / NEAR_W;
+                x0 = Math.min(x0, nx);
+                x1 = Math.max(x1, nx);
+                y0 = Math.min(y0, ny);
+                y1 = Math.max(y1, ny);
+            }
+        }
+        if (x0 > x1) {
+            screens[i * 4] = Float.NaN;
+            return;
+        }
+        screens[i * 4] = (x0 * 0.5f + 0.5f) * targetWidth;
+        screens[i * 4 + 1] = (0.5f - y1 * 0.5f) * targetHeight;
+        screens[i * 4 + 2] = (x1 * 0.5f + 0.5f) * targetWidth;
+        screens[i * 4 + 3] = (0.5f - y0 * 0.5f) * targetHeight;
+    }
+
     /** Draw {@code i}'s model matrix, camera-relative: its position minus the view's, in doubles, then its transform. */
     private void modelOf(int i, CgHostView view) {
         model.set(transforms, i * 16);
@@ -572,6 +630,7 @@ public final class CgWorldRenderer {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
                 if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
                 if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
                 int at = chunks.instance();

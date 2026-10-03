@@ -51,9 +51,14 @@ kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
 pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:
 colour by any draw with colour writes on, depth only by a depth write. The pass starts with neither copied, so its
 first reader always copies. A reader's own writes leave what it reads clean, so readers in a row share one copy and
-never see each other (Godot's screen-texture rule); past `MAX_TARGET_COPIES` (4) a pass's readers share its last
-copy, logged once. The executor blits before the batch, scissor off, and binds the copy at the pass's unit
-(`graph.target-copies`); a blit is ordered among draws by the backend, as any copy is.
+never see each other (Godot's screen-texture rule). There is no cap: a colour copy is cut to the union of its
+readers' screen bounds, each grown by its shader's `SceneColorMargin` tag (a share of the target's height: how far
+it samples past its geometry, required of every shader reading `cg_SceneColor`, which otherwise fails to parse), and
+refreshed in place in one texture per pass; a reader whose rect the last copy holds and no draw since wrote into
+takes none. Depth is copied whole. A world draw's bounds are its box projected to the screen, cut at the near plane,
+so only an eye inside the box covers the whole screen; a draw with none copies the whole target. The executor blits before the batch, scissor off, and binds the copy at the pass's
+unit (`graph.target-copies`, `graph.target-copy-pixels`); a blit is ordered among draws by the backend, as any copy
+is.
 
 ```java
 CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
