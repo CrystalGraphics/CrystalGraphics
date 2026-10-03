@@ -398,6 +398,7 @@ public final class CgGL {
     // --- SSBO ----------------------------------------------------------------
     public static final int GL_SHADER_STORAGE_BLOCK               = 0x92E6;
     public static final int GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS = 0x90DD;
+    public static final int GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF;
 
     // --- GL capability flags -------------------------------------------------
     public static final int GL_BLEND                     = 0x0BE2;

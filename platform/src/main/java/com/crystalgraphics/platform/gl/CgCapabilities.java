@@ -224,6 +224,8 @@ public final class CgCapabilities {
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
     /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
     @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
+    /** What a storage buffer bound from an offset aligns the offset to; 0 without storage buffers. */
+    @Getter(AccessLevel.NONE) int storageOffsetAlignment;
     @Getter(AccessLevel.NONE) final int[] maxComputeWorkGroupSize = new int[3], maxComputeWorkGroupCount = new int[3];
     @Getter(AccessLevel.NONE) int subgroupSize, subgroupOperations;
 
@@ -352,6 +354,7 @@ public final class CgCapabilities {
         caps.asyncCompute      = false;
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
         caps.computeTier       = computeTier(caps, device != null);
+        caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
         if (caps.compute) {
             caps.maxComputeSharedMemory = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
             caps.maxComputeInvocations = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
@@ -481,6 +484,9 @@ public final class CgCapabilities {
 
     /** Bytes of {@code shared} memory one work group may declare. */
     public int maxComputeSharedMemory() { return maxComputeSharedMemory; }
+
+    /** The multiple a storage buffer's offset must be when part of it is bound: 0 without storage buffers. */
+    public int storageOffsetAlignment() { return storageOffsetAlignment; }
 
     /** Invocations one work group may hold: the product of its size. */
     public int maxComputeInvocations() { return maxComputeInvocations; }

@@ -13,7 +13,9 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.render.CgViewFrustum;
+import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -53,6 +55,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * // A material's authored queue decides opaque or transparent; a draw may override it.
  * world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();
+ *
+ * // How much of the mesh draws comes from a count a kernel wrote this frame
+ * world.draw(CgMesh.quads(capacity), sparks).indirect(live, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
  * }</pre>
  *
  * <ul>
@@ -99,6 +104,11 @@ public final class CgWorldRenderer {
     private float[] drawBounds = new float[64 * 6];
     private boolean[] boundsStated = new boolean[64];
     private float[] pads = new float[64];
+    /** Per draw: the buffer an indirect draw's count is in, else null; the count's byte offset, mode and factor. */
+    private CgBufferHandle[] counts = new CgBufferHandle[64];
+    private long[] countOffsets = new long[64];
+    private CgIndirect[] countModes = new CgIndirect[64];
+    private int[] countFactors = new int[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
@@ -180,6 +190,10 @@ public final class CgWorldRenderer {
         private final float[] bounds = new float[6];
         private boolean boundsSet;
         private float pad;
+        private CgBufferHandle indirect;
+        private long indirectOffset;
+        private CgIndirect indirectMode;
+        private int indirectFactor;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -195,6 +209,7 @@ public final class CgWorldRenderer {
             count = -1;
             boundsSet = false;
             pad = 0f;
+            indirect = null;
             return this;
         }
 
@@ -231,6 +246,27 @@ public final class CgWorldRenderer {
             bounds[4] = maxY;
             bounds[5] = maxZ;
             boundsSet = true;
+            return this;
+        }
+
+        /**
+         * Draws as much of the mesh as a count written on the GPU says: the {@code uint} at byte {@code offset} in
+         * {@code count}, times {@code factor}, read as {@code mode}, within the range {@link #indices} or
+         * {@link #submesh} chose. A graph buffer's count is read after the pass that writes it in the stage's frame.
+         *
+         * <pre>{@code
+         * world.draw(CgMesh.quads(capacity), sparks).indirect(live, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
+         * world.draw(billow, smoke).indirect(live, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+         * }</pre>
+         *
+         * <p>Under {@code INSTANCES} every instance reads this draw's record, and the shader places each from
+         * {@code CG_DRAW_INSTANCE}. The count is unknown on the CPU, so cull by {@link #bounds} covering every element.</p>
+         */
+        public Draw indirect(CgBufferHandle count, long offset, CgIndirect mode, int factor) {
+            this.indirect = count;
+            this.indirectOffset = offset;
+            this.indirectMode = mode;
+            this.indirectFactor = factor;
             return this;
         }
 
@@ -304,6 +340,10 @@ public final class CgWorldRenderer {
         boundsStated[count] = d.boundsSet;
         if (d.boundsSet) System.arraycopy(d.bounds, 0, drawBounds, count * 6, 6);
         pads[count] = d.pad;
+        counts[count] = d.indirect;
+        countOffsets[count] = d.indirectOffset;
+        countModes[count] = d.indirectMode;
+        countFactors[count] = d.indirectFactor;
         count++;
     }
 
@@ -311,6 +351,7 @@ public final class CgWorldRenderer {
         Arrays.fill(meshes, 0, count, null);
         Arrays.fill(lods, 0, count, null);
         Arrays.fill(materials, 0, count, null);
+        Arrays.fill(counts, 0, count, null);
         count = 0;
     }
 
@@ -328,6 +369,10 @@ public final class CgWorldRenderer {
         drawBounds = Arrays.copyOf(drawBounds, n * 6);
         boundsStated = Arrays.copyOf(boundsStated, n);
         pads = Arrays.copyOf(pads, n);
+        counts = Arrays.copyOf(counts, n);
+        countOffsets = Arrays.copyOf(countOffsets, n);
+        countModes = Arrays.copyOf(countModes, n);
+        countFactors = Arrays.copyOf(countFactors, n);
     }
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
@@ -488,6 +533,7 @@ public final class CgWorldRenderer {
                 if (pipeline == null) continue;
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
                 if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
+                if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
                 int at = chunks.instance();
                 float[] data = chunks.data();
                 model.get(data, at);

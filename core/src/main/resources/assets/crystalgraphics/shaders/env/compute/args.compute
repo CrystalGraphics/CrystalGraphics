@@ -1,0 +1,35 @@
+// An indirect draw's command, written on the GPU (gpu-compute C4): the count a kernel wrote, scaled, and the range of
+// the mesh as the store placed it, which only the render thread knows. One invocation a draw, dispatched by the frame
+// graph's executor before the draw's raster pass (render/graph/CgIndirectArgs), with ARGS bound to its command alone:
+// so two of them write nothing in common.
+#pragma kernel DrawArgs 1 scatter
+
+Properties {
+    _Count     ("The count's uint",          int) = 0
+    _Mode      ("CgIndirect's ordinal",      int) = 0
+    _Factor    ("Count multiplier",          int) = 1
+    _First     ("First index, or vertex",    int) = 0
+    _Elements  ("The range's elements",      int) = 0
+    _Base      ("Base vertex",               int) = 0
+    _Instances ("Records, but for INSTANCES", int) = 1
+    _Indexed   ("Drawn by indices",          int) = 0
+}
+
+Buffers {
+    COUNT ("Counts",   uint, readonly)
+    ARGS  ("Commands", uint, writeonly)
+}
+
+// GL's DrawElementsIndirectCommand and DrawArraysIndirectCommand, which are Vulkan's byte for byte: count, instances,
+// first, then the base vertex for indices, then the first instance. That is always 0: CG_INSTANCE_ID adds
+// cg_InstanceBase on every device, and Vulkan's gl_InstanceIndex would count a first instance twice.
+void DrawArgs() {
+    uint n = COUNT(_Count) * uint(_Factor);
+    uint elements = uint(_Elements);
+    bool instances = _Mode == 0;
+    ARGS_STORE(0, instances ? elements : min(n, elements));
+    ARGS_STORE(1, instances ? n : uint(_Instances));
+    ARGS_STORE(2, uint(_First));
+    ARGS_STORE(3, _Indexed != 0 ? uint(_Base) : 0u);
+    ARGS_STORE(4, 0u);
+}

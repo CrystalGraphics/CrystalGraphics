@@ -337,7 +337,7 @@ public final class CgFrameBuilder {
                 refDraw[refs] = d;
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
                 batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
-                        chunk.rangeFirst(d), chunk.rangeCount(d), domain, scissor,
+                        chunk.rangeFirst(d), chunk.rangeCount(d), chunk.indirectCount(d) != null, domain, scissor,
                         domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
                 refs++;
             }
@@ -369,9 +369,16 @@ public final class CgFrameBuilder {
                 System.arraycopy(chunk.data(k), chunk.first(d) * floats, frame.instances[ki], frame.instanceFloats[ki], length);
                 frame.instanceFloats[ki] += length;
                 packed.instances[b] += chunk.instances(d);
+                if (chunk.indirectCount(d) != null) {
+                    packed.counts[b] = chunk.indirectCount(d);
+                    packed.countOffsets[b] = chunk.indirectOffset(d);
+                    packed.countModes[b] = chunk.indirectMode(d).ordinal() | chunk.indirectFactor(d) << 2;
+                    packed.indirects++;
+                }
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));

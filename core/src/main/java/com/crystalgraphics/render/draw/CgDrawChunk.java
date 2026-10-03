@@ -43,6 +43,12 @@ public final class CgDrawChunk {
     private final CgMesh[] meshes;
     @Nullable
     private final int[] ranges;
+    @Nullable
+    private final CgBufferHandle[] counts;
+    @Nullable
+    private final long[] countOffsets;
+    @Nullable
+    private final int[] countModes;
     private final float[] bounds;
     private final long[] sortKeys;
 
@@ -51,6 +57,7 @@ public final class CgDrawChunk {
 
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
+                @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
                 float[] bounds, long[] sortKeys, float[][] instances) {
         this.spatial = spatial;
         this.clip = clip;
@@ -64,6 +71,9 @@ public final class CgDrawChunk {
         this.instanceCounts = instanceCounts;
         this.meshes = meshes;
         this.ranges = ranges;
+        this.counts = counts;
+        this.countOffsets = countOffsets;
+        this.countModes = countModes;
         this.bounds = bounds;
         this.sortKeys = sortKeys;
         this.instances = instances;
@@ -136,6 +146,26 @@ public final class CgDrawChunk {
         return ranges == null ? -1 : ranges[draw * 3 + 2];
     }
 
+    /** The buffer an indirect draw's count is in; null for a direct draw. */
+    @Nullable
+    public CgBufferHandle indirectCount(int draw) {
+        return counts == null ? null : counts[draw];
+    }
+
+    /** The count's byte offset in {@link #indirectCount}. */
+    public long indirectOffset(int draw) {
+        return countOffsets[draw];
+    }
+
+    public CgIndirect indirectMode(int draw) {
+        return CgIndirect.values()[countModes[draw] & 3];
+    }
+
+    /** What the count is multiplied by. */
+    public int indirectFactor(int draw) {
+        return countModes[draw] >>> 2;
+    }
+
     public float x0(int draw) {
         return bounds[draw * 4];
     }
@@ -165,8 +195,8 @@ public final class CgDrawChunk {
     public CgDrawChunk with(int spatial, CgBindingTable bindings, @Nullable int[] bindingIds,
                             @Nullable float[][] instances) {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
-                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, bounds,
-                sortKeys, instances != null ? instances : this.instances);
+                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
+                countOffsets, countModes, bounds, sortKeys, instances != null ? instances : this.instances);
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */

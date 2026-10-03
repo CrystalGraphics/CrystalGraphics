@@ -13,6 +13,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -32,6 +33,10 @@ import java.util.Map;
  * store.upload();                           // once, before the first raster pass
  * pipeline.bind();
  * store.draw(mesh, pipeline, instances);    // in the pass
+ *
+ * // An indirect draw: its command is written on the GPU from what range() answers, before the pass
+ * store.range(mesh, submesh, first, count, range);
+ * store.drawIndirect(mesh, pipeline, submesh, args, offset);
  * }</pre>
  *
  * <ul>
@@ -57,6 +62,7 @@ public final class CgMeshStore {
     private static final int PLACED = CgTrace.name("mesh.placed");
     private static final int SLAB_KB = CgTrace.name("mesh.slab-kb");
     private static final int DRAWN = CgTrace.name("mesh.drawn-vertices");
+    private static final int DRAWN_INDIRECT = CgTrace.name("mesh.indirect-draws");
     private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
     private static final int EDITED_EVERY_FRAME = CgTrace.name("mesh.edited-every-frame");
 
@@ -397,28 +403,9 @@ public final class CgMeshStore {
      * every submesh whole. The base vertex, and so {@code CG_VERTEX_ID}, is the submesh's whatever the range.
      */
     public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
-        beginFrame();   // a frame executed again draws in a later frame than it was placed in
-        Placement p = placements.get(mesh);
-        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
-            // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
-            place(mesh);
-            upload();
-            p = placements.get(mesh);
-        }
-        if (p == null || (p.slab == null && !p.ring)) return;
-        p.lastUse = frame;
-        int vao, elements;
-        if (p.ring) {
-            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
-            vao = pools.get(mesh.format()).ringVertexArray(Math.max(p.ringPage, 0), page);
-            elements = page != null ? page.getGlBufferId() : 0;
-        } else {
-            vao = p.slab.vao;
-            elements = p.slab.indexBuffer;
-        }
-        CgGL.glBindVertexArray(vao);
-        // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
-        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elements);
+        Placement p = placed(mesh);
+        if (p == null) return;
+        bind(p, mesh);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
         for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
@@ -438,6 +425,78 @@ public final class CgMeshStore {
                 CgGL.glDrawArraysInstanced(p.mode, base + start, n, instances);
             }
         }
+    }
+
+    /**
+     * What an indirect draw of a range of {@code mesh} composes its command from, into {@code out}: where the range
+     * starts (in the indices the slab draws from, or a vertex for a mesh without), how many it holds, its base vertex,
+     * and 1 when it is drawn by indices. A range as {@link #draw}'s, of one submesh ({@code submesh} -1 is the first).
+     * False, writing nothing, when the mesh has nothing to draw.
+     */
+    public boolean range(CgMesh mesh, int submesh, int first, int count, int[] out) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return false;
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
+        int firstVertex = p.submeshes[s * 4 + 2], vertexCount = p.submeshes[s * 4 + 3];
+        int base = p.baseVertex + firstVertex;
+        int total = indexCount > 0 ? indexCount : vertexCount;
+        int start = Math.min(first, total);
+        out[0] = indexCount > 0 ? p.firstIndex + firstIndex + start : base + start;
+        out[1] = count < 0 ? total - start : Math.min(count, total - start);
+        out[2] = base;
+        out[3] = indexCount > 0 ? 1 : 0;
+        return true;
+    }
+
+    /**
+     * Draws a range of {@code mesh} by the command at byte {@code offset} in buffer {@code args}, written from what
+     * {@link #range} answered for it. Sets what {@code CG_VERTEX_ID} subtracts, and leaves the slab's vertex array
+     * bound, as {@link #draw} does.
+     */
+    public void drawIndirect(CgMesh mesh, CgPipeline pipeline, int submesh, int args, long offset) {
+        Placement p = placed(mesh);
+        if (p == null || p.submeshCount == 0) return;
+        bind(p, mesh);
+        int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
+        pipeline.vertexBase(p.baseVertex + p.submeshes[s * 4 + 2]);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+        if (p.submeshes[s * 4 + 1] > 0) CgGL.glDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset);
+        else CgGL.glDrawArraysIndirect(p.mode, offset);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
+    }
+
+    /** {@code mesh}'s placement this frame, placed now if it was not placed with the frame; null with nothing to draw. */
+    @Nullable
+    private Placement placed(CgMesh mesh) {
+        beginFrame();   // a frame executed again draws in a later frame than it was placed in
+        Placement p = placements.get(mesh);
+        if (p == null || p.releases != mesh.releases() || (p.ring && p.placedFrame != frame)) {
+            // Not placed with the frame: placed now, which on Vulkan breaks the pass for its upload.
+            place(mesh);
+            upload();
+            p = placements.get(mesh);
+        }
+        if (p == null || (p.slab == null && !p.ring)) return null;
+        p.lastUse = frame;
+        return p;
+    }
+
+    /** Binds the vertex array and indices {@code p} draws from. */
+    private void bind(Placement p, CgMesh mesh) {
+        int vao, elements;
+        if (p.ring) {
+            CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
+            vao = pools.get(mesh.format()).ringVertexArray(Math.max(p.ringPage, 0), page);
+            elements = page != null ? page.getGlBufferId() : 0;
+        } else {
+            vao = p.slab.vao;
+            elements = p.slab.indexBuffer;
+        }
+        CgGL.glBindVertexArray(vao);
+        // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
+        CgGL.glBindBuffer(CgGL.GL_ELEMENT_ARRAY_BUFFER, elements);
     }
 
     // ── Frames, releases, teardown ─────────────────────────────────────────────
