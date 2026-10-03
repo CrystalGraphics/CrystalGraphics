@@ -1,6 +1,9 @@
 package com.crystalgraphics.mc.modern.forge;
 
+import com.crystalgraphics.mc.modern.net.NetworkModern;
+import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.platform.service.CgHostCamera;
@@ -8,7 +11,43 @@ import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.VariantEntry;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgNetworkChannel;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.api.distmarker.Dist;
+//? if >=1.14.4 {
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+//?} else {
+/*import net.minecraftforge.fml.common.gameevent.PlayerEvent;
+*///?}
+//? if >=1.18 {
+import net.minecraftforge.event.server.ServerStoppingEvent;
+//?} elif >=1.17 {
+/*import net.minecraftforge.fmlserverevents.FMLServerStoppingEvent;
+*///?} else {
+/*import net.minecraftforge.fml.event.server.FMLServerStoppingEvent;
+*///?}
+//? if >=1.20.2 {
+/*import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.ChannelBuilder;
+import net.minecraftforge.network.SimpleChannel;
+*///?} elif >=1.18 {
+import net.minecraftforge.network.NetworkEvent;
+import net.minecraftforge.network.NetworkRegistry;
+import net.minecraftforge.network.PacketDistributor;
+import net.minecraftforge.network.simple.SimpleChannel;
+//?} elif >=1.17 {
+/*import net.minecraftforge.fmllegacy.network.PacketDistributor;
+import net.minecraftforge.fmllegacy.network.NetworkEvent;
+import net.minecraftforge.fmllegacy.network.NetworkRegistry;
+import net.minecraftforge.fmllegacy.network.simple.SimpleChannel;
+*///?} else {
+/*import net.minecraftforge.fml.network.PacketDistributor;
+import net.minecraftforge.fml.network.NetworkEvent;
+import net.minecraftforge.fml.network.NetworkRegistry;
+import net.minecraftforge.fml.network.simple.SimpleChannel;
+*///?}
 //? if >=1.14 {
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
@@ -71,9 +110,14 @@ import net.minecraftforge.event.entity.EntityLeaveWorldEvent;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.function.BiConsumer;
+//? if <1.20.2 {
+import java.util.function.Supplier;
+//?}
 
 /**
- * Everything Forge — the mod entry point and its {@link Events} subscriptions.
+ * Everything Forge — the mod entry point, its {@link Network} transport and its {@link Events} and
+ * {@link ServerEvents} subscriptions.
  *
  * <p>Registration only: which event, and which stage of it. What the engine then does is
  * {@code LifecycleModern}'s, shared with NeoForge and Fabric.</p>
@@ -111,6 +155,8 @@ public final class CrystalGraphicsForge implements VariantEntry {
                 })));
         *///?}
         CgPlatform.register(PlatformServiceModern.getInstance());
+        NetworkModern.install(Network.register());
+        ServerEvents.register();
 
         // EVERY subscription here is a render hook, so the whole of Events is client-only -- guarded
         // at the call site rather than inside, so a dedicated server never links one of those types.
@@ -164,6 +210,14 @@ public final class CrystalGraphicsForge implements VariantEntry {
             /*TickEvent.ClientTickEvent.Post.BUS.addListener(Events::onClientTick);
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(Events::onClientTick);
+            //?}
+            // The client connection. Forge 25-27 have no ClientPlayerNetworkEvent: onClientTick polls it there.
+            //? if >=1.21.6 {
+            /*ClientPlayerNetworkEvent.LoggingIn.BUS.addListener(Events::onLoggedIn);
+            ClientPlayerNetworkEvent.LoggingOut.BUS.addListener(Events::onLoggedOut);
+            *///?} elif >=1.14.4 {
+            MinecraftForge.EVENT_BUS.addListener(Events::onLoggedIn);
+            MinecraftForge.EVENT_BUS.addListener(Events::onLoggedOut);
             //?}
             // And as entities join and leave the client level: Forge has no leave event before 1.16.5.
             //? if >=1.21.6 {
@@ -320,15 +374,47 @@ public final class CrystalGraphicsForge implements VariantEntry {
         }
         *///?}
 
+        //? if >=1.19 {
+        private static void onLoggedIn(ClientPlayerNetworkEvent.LoggingIn event) {
+            NetworkModern.clientConnected();
+        }
+
+        private static void onLoggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
+            NetworkModern.clientDisconnected();
+        }
+        //?} elif >=1.14.4 {
+        /*private static void onLoggedIn(ClientPlayerNetworkEvent.LoggedInEvent event) {
+            NetworkModern.clientConnected();
+        }
+
+        private static void onLoggedOut(ClientPlayerNetworkEvent.LoggedOutEvent event) {
+            NetworkModern.clientDisconnected();
+        }
+        *///?}
+
         //? if >=1.20.4 {
         /*private static void onClientTick(TickEvent.ClientTickEvent.Post event) {
             LifecycleModern.clientTick();
         }
-        *///?} else {
+        *///?} elif >=1.14.4 {
         private static void onClientTick(TickEvent.ClientTickEvent event) {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.clientTick();
         }
-        //?}
+        //?} else {
+        /*private static boolean connected;
+
+        // getConnection() is the player's, so it appears where a logged-in event would fire.
+        private static void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase != TickEvent.Phase.END) return;
+            boolean now = Minecraft.getInstance().getConnection() != null;
+            if (now != connected) {
+                connected = now;
+                if (now) NetworkModern.clientConnected();
+                else NetworkModern.clientDisconnected();
+            }
+            LifecycleModern.clientTick();
+        }
+        *///?}
 
         //? if >=1.19 {
         private static void onCameraAngles(ViewportEvent.ComputeCameraAngles event) {
@@ -356,5 +442,184 @@ public final class CrystalGraphicsForge implements VariantEntry {
             LifecycleModern.shutdown();
         }
         //?}
+    }
+
+    // -- Server events ----------------------------------------------------------
+
+    /**
+     * The connection lifecycle's server half. Both sides: a dedicated server opens connections, and single player's
+     * integrated server is a server.
+     */
+    public static final class ServerEvents {
+
+        private ServerEvents() {}
+
+        static void register() {
+            //? if >=1.21.6 {
+            /*ServerStoppingEvent.BUS.addListener(event -> NetworkModern.serverStopping());
+            TickEvent.ServerTickEvent.Post.BUS.addListener(event -> NetworkModern.serverTick());
+            PlayerEvent.PlayerLoggedInEvent.BUS.addListener(ServerEvents::onPlayerJoin);
+            PlayerEvent.PlayerLoggedOutEvent.BUS.addListener(ServerEvents::onPlayerLeave);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerStopping);
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onServerTick);
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerJoin);
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerLeave);
+            //?}
+        }
+
+        //? if >=1.18 {
+        private static void onServerStopping(ServerStoppingEvent event) {
+            NetworkModern.serverStopping();
+        }
+        //?} else {
+        /*private static void onServerStopping(FMLServerStoppingEvent event) {
+            NetworkModern.serverStopping();
+        }
+        *///?}
+
+        //? if <1.21.6 {
+        private static void onServerTick(TickEvent.ServerTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) NetworkModern.serverTick();
+        }
+        //?}
+
+        // Forge 41 (1.19) renamed getPlayer to getEntity.
+        //? if >=1.19 {
+        private static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+            if (event.getEntity() instanceof ServerPlayer) NetworkModern.playerJoined((ServerPlayer) event.getEntity());
+        }
+
+        private static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+            if (event.getEntity() instanceof ServerPlayer) NetworkModern.playerLeft((ServerPlayer) event.getEntity());
+        }
+        //?} else {
+        /*private static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
+            if (event.getPlayer() instanceof ServerPlayer) NetworkModern.playerJoined((ServerPlayer) event.getPlayer());
+        }
+
+        private static void onPlayerLeave(PlayerEvent.PlayerLoggedOutEvent event) {
+            if (event.getPlayer() instanceof ServerPlayer) NetworkModern.playerLeft((ServerPlayer) event.getPlayer());
+        }
+        *///?}
+    }
+
+    // -- Network ----------------------------------------------------------------
+
+    /**
+     * The Forge transport: bytes in, bytes out. Framing and routing are {@code net.wire}'s. A peer without the
+     * channel is accepted; what it may be sent is the protocol's business.
+     */
+    public static final class Network implements CgNetworkChannel {
+
+        //? if >=1.20.2 {
+        /*// Forge 48+ rewrote networking and no payload split is measured there, so a frame stays under
+        // vanilla's 32767-byte serverbound cap.
+        private static final int MAX_FRAME_BYTES = 32_000;
+
+        private static final SimpleChannel CHANNEL = ChannelBuilder
+                .named(ResourceIds.of(CrystalGraphics.MODID, "wire"))
+                .networkProtocolVersion(1)
+                .optional()
+                .simpleChannel();
+        *///?} else {
+        private static final String VERSION = "1";
+
+        /**
+         * Forge splits a payload across partials above ~1 MB. Staying under it keeps one frame one packet,
+         * which is what the multiplexer above assumes when it sizes its chunks.
+         */
+        private static final int MAX_FRAME_BYTES = 900_000;
+
+        private static final SimpleChannel CHANNEL = NetworkRegistry.ChannelBuilder
+                .named(ResourceIds.of(CrystalGraphics.MODID, "wire"))
+                .networkProtocolVersion(() -> VERSION)
+                .clientAcceptedVersions(Network::accepts)
+                .serverAcceptedVersions(Network::accepts)
+                .simpleChannel();
+
+        // An absent peer is accepted. Forge 32 (1.16.5) added acceptMissingOr; before it the markers are compared.
+        private static boolean accepts(String remote) {
+            //? if >=1.16.5 {
+            return NetworkRegistry.acceptMissingOr(VERSION).test(remote);
+            //?} else {
+            /*return VERSION.equals(remote) || NetworkRegistry.ABSENT.equals(remote)
+                    || NetworkRegistry.ACCEPTVANILLA.equals(remote);
+            *///?}
+        }
+        //?}
+
+        private static final Network INSTANCE = new Network();
+
+        private volatile BiConsumer<Object, byte[]> inbound = (sender, frame) -> { };
+
+        private Network() {}
+
+        /** Called once from the mod entry point, before anything can send. */
+        static Network register() {
+            //? if >=1.20.2 {
+            /*// consumerMainThread: handlers run on the game thread. getSender() is null on the client.
+            CHANNEL.messageBuilder(byte[].class, 0)
+                    .encoder((frame, buf) -> buf.writeByteArray(frame))
+                    .decoder(buf -> buf.readByteArray())
+                    .consumerMainThread((frame, ctx) -> INSTANCE.inbound.accept(ctx.getSender(), frame))
+                    .add();
+            *///?} else {
+            CHANNEL.registerMessage(0, byte[].class,
+                    (frame, buf) -> buf.writeByteArray(frame),
+                    FriendlyByteBuf::readByteArray,
+                    Network::receive);
+            //?}
+            //? if >=1.20.6 {
+            /*CHANNEL.build();
+            *///?}
+            return INSTANCE;
+        }
+
+        //? if <1.20.2 {
+        private static void receive(byte[] frame, Supplier<NetworkEvent.Context> context) {
+            NetworkEvent.Context ctx = context.get();
+            // enqueueWork: the handler runs on the network thread; inbound is the game thread's.
+            ctx.enqueueWork(() -> {
+                ServerPlayer sender = ctx.getSender();   // null on the client
+                INSTANCE.inbound.accept(sender, frame);
+            });
+            ctx.setPacketHandled(true);
+        }
+        //?}
+
+        @Override
+        public int maxFrameBytes() {
+            return MAX_FRAME_BYTES;
+        }
+
+        @Override
+        public void sendToServer(byte[] frame) {
+            //? if >=1.20.2 {
+            /*CHANNEL.send(frame, PacketDistributor.SERVER.noArg());
+            *///?} else {
+            CHANNEL.sendToServer(frame);
+            //?}
+        }
+
+        @Override
+        public void sendToPlayer(Object player, byte[] frame) {
+            if (!(player instanceof ServerPlayer)) return;
+            //? if >=1.20.2 {
+            /*CHANNEL.send(frame, PacketDistributor.PLAYER.with((ServerPlayer) player));
+            *///?} else {
+            CHANNEL.send(PacketDistributor.PLAYER.with(() -> (ServerPlayer) player), frame);
+            //?}
+        }
+
+        @Override
+        public void setInboundHandler(BiConsumer<Object, byte[]> handler) {
+            inbound = handler == null ? (sender, frame) -> { } : handler;
+        }
+
+        @Override
+        public boolean isAvailable() {
+            return true;
+        }
     }
 }

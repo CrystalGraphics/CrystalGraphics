@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
@@ -186,6 +187,7 @@ public final class LifecycleModern {
      */
     public static void clientTick() {
         WorldEventsModern.tick(Minecraft.getInstance());
+        CgNetwork.clientTick();
     }
 
     /**

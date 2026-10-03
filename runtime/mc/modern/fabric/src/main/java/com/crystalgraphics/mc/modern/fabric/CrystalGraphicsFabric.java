@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.modern.fabric;
 
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
@@ -9,6 +10,7 @@ import com.crystalgraphics.platform.service.CgWorldEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 //? if >=26.1 {
 /*import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -69,6 +71,10 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
             ClientEntityEvents.ENTITY_LOAD.register((entity, level) -> LifecycleModern.entityJoined(entity));
             ClientEntityEvents.ENTITY_UNLOAD.register((entity, level) -> LifecycleModern.entityLeft(entity));
+            // The client connection; its tick is LifecycleModern.clientTick's.
+            CrystalGraphicsFabricCommon.Network.registerClientReceiver();
+            ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> NetworkModern.clientConnected());
+            ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> NetworkModern.clientDisconnected());
         }
 
         // -- Asset reload -----------------------------------------------------------
