@@ -25,8 +25,9 @@ import java.util.List;
  * }</pre>
  *
  * <ul>
- *   <li>A chunk whose bindings read a {@link CgGraphTexture}, or bind a {@link CgGraphBuffer} as storage, makes this
- *       pass read it as of {@link #add}: the graph runs the pass that wrote it first, whenever either was made.</li>
+ *   <li>A chunk whose bindings read a {@link CgGraphTexture}, or bind a {@link CgGraphBuffer} as storage, or whose
+ *       indirect draw takes its count from one, makes this pass read it as of {@link #add}: the graph runs the pass
+ *       that wrote it first, whenever either was made.</li>
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
@@ -93,6 +94,7 @@ public final class CgRasterPass extends CgPass {
         chunks.add(chunk);
         CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
+            if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgTexture texture = table.texture(id, t);

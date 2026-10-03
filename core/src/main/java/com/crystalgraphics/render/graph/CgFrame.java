@@ -6,6 +6,7 @@ import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
 import javax.annotation.Nullable;
@@ -279,6 +280,15 @@ public final class CgFrame {
         CgMesh[] mesh = new CgMesh[16];
         /** Per batch, the range of its mesh: submesh (-1 for all, whole), first, count (-1 to the end). */
         int[] submesh = new int[16], rangeFirst = new int[16], rangeCount = new int[16];
+        /**
+         * Per batch: the buffer an indirect batch's count is in, else null; the count's byte offset; its mode's ordinal
+         * with the factor above it. An indirect batch is one draw.
+         */
+        CgBufferHandle[] counts = new CgBufferHandle[16];
+        long[] countOffsets = new long[16];
+        int[] countModes = new int[16];
+        /** Its indirect batches: the commands the executor builds before the pass begins. */
+        int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
         /** Recorded draws its batches cover. */
@@ -302,11 +312,16 @@ public final class CgFrame {
                 submesh = new int[n];
                 rangeFirst = new int[n];
                 rangeCount = new int[n];
+                counts = new CgBufferHandle[n];
+                countOffsets = new long[n];
+                countModes = new int[n];
             } else {
                 Arrays.fill(mesh, 0, count, null);
+                Arrays.fill(counts, 0, count, null);
             }
             count = batches;
             kinds = 0;
+            indirects = 0;
             Arrays.fill(instances, 0, batches, 0);
         }
     }

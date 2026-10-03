@@ -21,6 +21,8 @@ import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.draw.CgBufferHandle;
+import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -34,6 +36,7 @@ import javax.annotation.Nullable;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntConsumer;
 
@@ -57,7 +60,8 @@ import java.util.function.IntConsumer;
  *   <li>Barriers come from each storage's accesses as executed, across frames and executions
  *       ({@code CgHazards}); {@code -Dcrystalgraphics.graph.barriers=false} records them and issues none, which
  *       synchronization validation must then report.</li>
- *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not.</li>
+ *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
+ *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
  * </ul>
  */
 public final class CgExecutor {
@@ -78,6 +82,7 @@ public final class CgExecutor {
     private static final boolean BARRIERS = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.graph.barriers"));
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
+    private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
      * kernel's later write, which the tracked backend's graphics-to-compute wait already orders; so a process that
@@ -90,6 +95,8 @@ public final class CgExecutor {
     private final CgStreamBuffer ring;
     private final CgShaderBuffer[] instanceBuffers = new CgShaderBuffer[KINDS];
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
+    private final CgIndirectArgs commands = new CgIndirectArgs();
+    private final int[] range = new int[4];
 
     private CgExecutor(int depth) {
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 64 * 1024);
@@ -163,7 +170,10 @@ public final class CgExecutor {
      * context teardown, before the framebuffer sweep.
      */
     public static void destroyAll() {
-        for (CgExecutor executor : BY_DEPTH) executor.ring.delete();
+        for (CgExecutor executor : BY_DEPTH) {
+            executor.ring.delete();
+            executor.commands.delete(FORGET_BUFFER);
+        }
         BY_DEPTH.clear();
         POOL.delete();
         BUFFERS.delete();
@@ -372,14 +382,18 @@ public final class CgExecutor {
     // ── Compute ──────────────────────────────────────────────────────────────
 
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
+        requireCompute(pass);
+        List<CgDispatch> dispatches = pass.dispatches();
+        for (int d = 0; d < dispatches.size(); d++) dispatch(frame, dispatches.get(d), packed.bindings[d]);
+        CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+    }
+
+    private static void requireCompute(CgPass pass) {
         CgCapabilities caps = CgCapabilities.detect();
         if (!caps.compute()) {
             throw new IllegalStateException(pass + ": this context runs no compute shaders; it runs kernels at tier "
                     + caps.computeTier() + ", lowered, which gpu-compute C5 brings");
         }
-        List<CgDispatch> dispatches = pass.dispatches();
-        for (int d = 0; d < dispatches.size(); d++) dispatch(frame, dispatches.get(d), packed.bindings[d]);
-        CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
     }
 
     private void dispatch(CgFrame frame, CgDispatch d, int bindings) {
@@ -552,6 +566,7 @@ public final class CgExecutor {
             return;
         }
         if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
+        if (packed.indirects > 0) writeCommands(pass, packed);   // a dispatch never sits inside a render pass
         bindTarget(pass.target);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
@@ -587,7 +602,9 @@ public final class CgExecutor {
         }
         CgPipeline pipeline = null;
         boolean usable = false;
+        int slot = 0;
         for (int b = 0; b < packed.count; b++) {
+            int command = packed.counts[b] != null ? slot++ : -1;
             if (packed.scissor[b] != boundScissor) {
                 boundScissor = packed.scissor[b];
                 if (boundScissor == CgRasterPass.NO_SCISSOR) {
@@ -611,16 +628,55 @@ public final class CgExecutor {
                 CgTrace.add(CgChannels.GL, "graph.batches.skipped", 1);
                 continue;
             }
-            pipeline.instanceBase(packed.first[b]);
+            if (command >= 0 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
+                pipeline.sharedInstance(packed.first[b]);
+            } else {
+                pipeline.instanceBase(packed.first[b]);
+            }
             if (packed.binding[b] != boundBinding) {
                 boundBinding = packed.binding[b];
                 frame.bindings.bind(boundBinding);
             }
             CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
-            CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
-                    packed.rangeCount[b]);
+            if (command >= 0) {
+                CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
+                        commands.offset(command));
+            } else {
+                CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
+                        packed.rangeCount[b]);
+            }
         }
         CgGL.glBindVertexArray(0);
+    }
+
+    /**
+     * The pass's indirect commands, one per indirect batch in batch order, written before the pass begins; each
+     * count's own barrier came with the pass's access list.
+     */
+    private void writeCommands(CgRasterPass pass, CgFrame.Raster packed) {
+        requireCompute(pass);
+        int args = commands.reserve(packed.indirects, FORGET_BUFFER);
+        barrier(true, args, CgAccess.COMPUTE_WRITE);
+        CgMeshStore store = CgMeshStore.get();
+        int slot = 0;
+        for (int b = 0; b < packed.count; b++) {
+            CgBufferHandle count = packed.counts[b];
+            if (count == null) continue;
+            int countId;
+            if (count instanceof CgGraphBuffer graph) {
+                countId = bufferStorage(graph, false);
+            } else {
+                countId = count.bufferId();
+                barrier(true, countId, CgAccess.COMPUTE_READ);
+            }
+            if (!store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range)) {
+                Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
+            }
+            commands.write(slot++, countId, packed.countOffsets[b], CgIndirect.values()[packed.countModes[b] & 3],
+                    packed.countModes[b] >>> 2, range, packed.instances[b]);
+        }
+        barrier(true, args, CgAccess.INDIRECT);
+        CgTrace.add(CgChannels.GL, COMMAND_COUNT, packed.indirects);
     }
 
     /** {@link #scissorRect} cut by a pass's damage. */

@@ -45,6 +45,27 @@ name, so pooled transients, a history's two versions and a buffer used across fr
 `-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
 fail `--mode=compute-graph`.
 
+**Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
+`CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
+count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
+draw's command with an engine kernel (`env/compute/args.compute`, `CgIndirectArgs`) from the count and the range the
+mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`.
+
+```java
+CgComputePass live = rec.compute("sparks.count");
+live.dispatch(compact, capacity).bind("STATE", state).counter("ALIVE", alive, 0);
+live.end();
+chunks.draw(pipeline, bindings, CgMesh.quads(capacity)).indirect(alive, 0, CgIndirect.INDICES, 6);   // a quad each
+chunks.instance();                                                                                      // its record
+```
+
+- `INDICES` and `VERTICES` draw count x factor of the range, never more than it holds; `INSTANCES` draws the range
+  count x factor times, every instance reading the draw's one record, and `CG_DRAW_INSTANCE` is which element it is.
+- An indirect draw is a batch of its own, and its command's first instance is 0 on every device: the instance base is
+  `cg_InstanceBase`, as for any draw.
+- Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
+  kernels writing them share nothing and need no barrier between them.
+
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
 pass writing a requested texture too. It is how a compositor moves something without a recording. A compute pass or buffer operation that writes
@@ -98,7 +119,8 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description
   (textures) or size class (buffers): two that never live at once share storage.
-- **A compute pass needs a context that runs compute**; elsewhere it throws naming the tier (lowering is C5's).
+- **A compute pass needs a context that runs compute**; elsewhere it throws naming the tier (lowering is C5's). So
+  does a raster pass holding an indirect draw.
 - **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
   pass that throws fails its request and the frame goes on.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
@@ -113,3 +135,5 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 on a worker thread; the three PNGs in its output directory must be byte-identical, on `--device=gl` and `vulkan`.
 `--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.
+`--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
+against a direct draw of what its count means, in a graph, executed again and through the world renderer.

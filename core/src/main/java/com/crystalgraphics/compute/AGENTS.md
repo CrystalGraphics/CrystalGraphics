@@ -39,7 +39,9 @@ try (CgImmediate.Compute run = CgImmediate.compute("bake")) {     // outside a g
 | `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
 
 The frame graph's compute pass is `render/graph`'s (gpu-compute C3); lowering below compute, the CPU tier, the
-primitives and readback take `lower`, `cpu`, `ops` and `readback` here as they land.
+primitives and readback take `lower`, `cpu`, `ops` and `readback` here as they land. The engine's own kernels are
+`.compute` files under `shaders/env/compute/`, beside what every kernel includes: `args.compute` writes an indirect
+draw's command (C4).
 
 ## The path
 

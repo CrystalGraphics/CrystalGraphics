@@ -978,6 +978,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public shaderBufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   method public shaderStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public storageImages ()Z
+  method public storageOffsetAlignment ()I
   method public subgroupOperations ()I
   method public subgroupSize ()I
   method public subgroups ()Z
@@ -1301,6 +1302,7 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_SHADER_STORAGE_BLOCK I
   field public,static,final GL_SHADER_STORAGE_BUFFER I
   field public,static,final GL_SHADER_STORAGE_BUFFER_BINDING I
+  field public,static,final GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT I
   field public,static,final GL_SHADER_STORAGE_BUFFER_SIZE I
   field public,static,final GL_SHADER_STORAGE_BUFFER_START I
   field public,static,final GL_SHADING_LANGUAGE_VERSION I

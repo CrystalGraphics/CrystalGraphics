@@ -18,5 +18,8 @@
 - **The snapshot is taken once a frame**, at the first world stage whose draws include a material reading
   `cg_DepthBuffer` (`CgMaterial.readsSceneDepth`).
 - **Material chains** (`setNextPass`) are drawn as further draws on the same instances, in the forward passes only.
+- **An indirect draw** (`.indirect(count, offset, mode, factor)`) carries its count into each pass's chunk. Its
+  culling is by the bounds it states: what the count will be is unknown when it is culled. A count written in the same
+  stage comes from a renderer registered below `ORDER` recording a compute pass into the stage's frame.
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.

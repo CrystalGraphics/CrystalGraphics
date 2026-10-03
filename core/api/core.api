@@ -3021,7 +3021,7 @@ com/crystalgraphics/render/draw/CgBatcher
   field public,static,final LOOKBACK I
   method public <init> ()V
   method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIFFFFJI)V
-  method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIIIIFFFFJI)V
+  method public add (IILcom/crystalgraphics/render/draw/CgInstanceKind;Ljava/lang/Object;IIIZIIFFFFJI)V
   method public batchBinding (I)I
   method public batchEnd (I)I
   method public batchKind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
@@ -3084,6 +3084,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;ILcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public end ()Lcom/crystalgraphics/render/draw/CgDrawChunk;
+  method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public range (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
@@ -3104,6 +3105,10 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public draws ()I
   method public effect ()I
   method public first (I)I
+  method public indirectCount (I)Lcom/crystalgraphics/render/draw/CgBufferHandle;
+  method public indirectFactor (I)I
+  method public indirectMode (I)Lcom/crystalgraphics/render/draw/CgIndirect;
+  method public indirectOffset (I)J
   method public instances (I)I
   method public kind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public mesh (I)Lcom/crystalgraphics/api/mesh/CgMesh;
@@ -3118,6 +3123,14 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public x1 (I)F
   method public y0 (I)F
   method public y1 (I)F
+com/crystalgraphics/render/draw/CgIndirect
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final INDICES Lcom/crystalgraphics/render/draw/CgIndirect;
+  field public,static,final INSTANCES Lcom/crystalgraphics/render/draw/CgIndirect;
+  field public,static,final VERTICES Lcom/crystalgraphics/render/draw/CgIndirect;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/draw/CgIndirect;
+  method public,static values ()[Lcom/crystalgraphics/render/draw/CgIndirect;
 com/crystalgraphics/render/draw/CgInstanceKind
   access public,final,enum
   extends java/lang/Enum
@@ -3169,6 +3182,7 @@ com/crystalgraphics/render/draw/CgPipeline
   method public prepare ()Z
   method public program ()Lcom/crystalgraphics/api/shader/CgShader;
   method public shader ()Lcom/crystalgraphics/gl/material/CgMaterialShader;
+  method public sharedInstance (I)V
   method public state ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public toString ()Ljava/lang/String;
   method public vertexBase (I)V
@@ -3474,8 +3488,10 @@ com/crystalgraphics/render/mesh/CgMeshStore
   extends java/lang/Object
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;I)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIII)V
+  method public drawIndirect (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIJ)V
   method public drawnVertices ()J
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
+  method public range (Lcom/crystalgraphics/api/mesh/CgMesh;III[I)Z
   method public releaseAll ()V
   method public upload ()V
   method public,static get ()Lcom/crystalgraphics/render/mesh/CgMeshStore;
@@ -3695,6 +3711,7 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public priority (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;

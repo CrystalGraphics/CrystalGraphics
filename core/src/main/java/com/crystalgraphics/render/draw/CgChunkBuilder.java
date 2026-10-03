@@ -51,6 +51,14 @@ public final class CgChunkBuilder {
     /** Per mesh draw: submesh (-1 for every one, whole), first, count (-1 to the end). Null until one is drawn. */
     @Nullable
     private int[] ranges;
+    /** Per draw: the buffer an indirect draw's count is in, null for a direct one. Null until one is drawn. */
+    @Nullable
+    private CgBufferHandle[] counts;
+    /** Per indirect draw: the count's byte offset; its mode's ordinal with the factor above it. */
+    @Nullable
+    private long[] countOffsets;
+    @Nullable
+    private int[] countModes;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
     private boolean boundsSet;
@@ -126,6 +134,7 @@ public final class CgChunkBuilder {
             ranges[d * 3 + 1] = 0;
             ranges[d * 3 + 2] = -1;
         }
+        if (counts != null) counts[d] = null;
         sortKeys[d] = 0;
         boundsSet = false;
         drawingFloats = pipeline.kind().floats();
@@ -209,6 +218,43 @@ public final class CgChunkBuilder {
         return this;
     }
 
+    /**
+     * Makes the open draw indirect: how much of its mesh it draws is the {@code uint} at byte {@code offset} in
+     * {@code count}, written on the GPU, times {@code factor}, read as {@code mode} says and never past the draw's
+     * range. A graph buffer's count is read after the pass that writes it in the frame.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, CgMesh.quads(1024)).indirect(live, 0, CgIndirect.INDICES, 6);   // a quad per element
+     * chunks.instance();                                                                                // its one record
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An {@link CgIndirect#INSTANCES} draw holds exactly one record, which every instance reads.</li>
+     *   <li>A mesh of several submeshes names one with {@link #range}.</li>
+     *   <li>An indirect draw never batches with another draw.</li>
+     * </ul>
+     */
+    public CgChunkBuilder indirect(CgBufferHandle count, long offset, CgIndirect mode, int factor) {
+        if (drawing < 0 || meshes == null || meshes[drawing] == null) {
+            throw new IllegalStateException("indirect() on a draw with no mesh");
+        }
+        if (offset < 0 || (offset & 3) != 0) throw new IllegalArgumentException("a count's offset is a whole uint's: " + offset);
+        if (factor < 1) throw new IllegalArgumentException("factor " + factor);
+        boolean indexed = meshes[drawing].isIndexed();
+        if (mode == CgIndirect.INDICES && !indexed || mode == CgIndirect.VERTICES && indexed) {
+            throw new IllegalArgumentException(mode + " on a mesh " + (indexed ? "with" : "without") + " indices");
+        }
+        if (counts == null) {
+            counts = new CgBufferHandle[pipelines.length];
+            countOffsets = new long[pipelines.length];
+            countModes = new int[pipelines.length];
+        }
+        counts[drawing] = count;
+        countOffsets[drawing] = offset;
+        countModes[drawing] = mode.ordinal() | factor << 2;
+        return this;
+    }
+
     /** What a sorted pass orders the open draw by, ascending. */
     public CgChunkBuilder sortKey(long key) {
         sortKeys[drawing] = key;
@@ -228,12 +274,14 @@ public final class CgChunkBuilder {
                 Arrays.copyOf(pipelines, count), Arrays.copyOf(bindingIds, count), Arrays.copyOf(kinds, count),
                 Arrays.copyOf(firsts, count), Arrays.copyOf(instanceCounts, count),
                 meshes == null ? null : Arrays.copyOf(meshes, count), ranges == null ? null : Arrays.copyOf(ranges, count * 3),
-                Arrays.copyOf(bounds, count * 4),
+                counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
+                counts == null ? null : Arrays.copyOf(countModes, count), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), kept);
         open = false;
         count = 0;
         Arrays.fill(records, 0);
         if (meshes != null) Arrays.fill(meshes, null);
+        if (counts != null) Arrays.fill(counts, null);
         return chunk;
     }
 
@@ -244,12 +292,14 @@ public final class CgChunkBuilder {
         count = 0;
         Arrays.fill(records, 0);
         if (meshes != null) Arrays.fill(meshes, null);
+        if (counts != null) Arrays.fill(counts, null);
     }
 
     /** Keeps the open draw if it has instances; a draw without bounds covers everything. */
     private void closeDraw() {
         if (drawing < 0) return;
         if (instanceCounts[drawing] > 0) {
+            if (counts != null && counts[drawing] != null) checkIndirect(drawing);
             if (!boundsSet) {
                 int b = drawing * 4;
                 bounds[b] = Float.NEGATIVE_INFINITY;
@@ -262,6 +312,17 @@ public final class CgChunkBuilder {
         drawing = -1;
     }
 
+    private void checkIndirect(int d) {
+        if ((countModes[d] & 3) == CgIndirect.INSTANCES.ordinal() && instanceCounts[d] != 1) {
+            throw new IllegalStateException("an INSTANCES indirect draw holds one record, which every instance reads; "
+                    + "this one holds " + instanceCounts[d]);
+        }
+        if (ranges[d * 3] < 0 && meshes[d].submeshCount() > 1) {
+            throw new IllegalStateException("an indirect draw of a mesh of " + meshes[d].submeshCount()
+                    + " submeshes names one with range()");
+        }
+    }
+
     private void grow() {
         int n = pipelines.length * 2;
         pipelines = Arrays.copyOf(pipelines, n);
@@ -272,6 +333,11 @@ public final class CgChunkBuilder {
         if (meshes != null) {
             meshes = Arrays.copyOf(meshes, n);
             ranges = Arrays.copyOf(ranges, n * 3);
+        }
+        if (counts != null) {
+            counts = Arrays.copyOf(counts, n);
+            countOffsets = Arrays.copyOf(countOffsets, n);
+            countModes = Arrays.copyOf(countModes, n);
         }
         bounds = Arrays.copyOf(bounds, n * 4);
         sortKeys = Arrays.copyOf(sortKeys, n);
