@@ -7,7 +7,7 @@
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {

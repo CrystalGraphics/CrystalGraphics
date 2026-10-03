@@ -5,6 +5,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
@@ -393,7 +394,15 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
-        for (int i = 0; i < pass.textureCount(); i++) constants.texture(pass.textureUnit(i), pass.texture(i));
+        boolean lightmap = false;
+        for (int i = 0; i < pass.textureCount(); i++) {
+            constants.texture(pass.textureUnit(i), pass.texture(i));
+            lightmap |= pass.textureUnit(i) == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        }
+        // A pass with no world lights nothing: cg_Lightmap reads white.
+        if (!lightmap && CgBindingPoints.LIGHTMAP_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_1x1 != null) {
+            constants.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, CgFallbackTextures.WHITE_1x1);
+        }
         if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
         if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
         packed.constants = constants.end();

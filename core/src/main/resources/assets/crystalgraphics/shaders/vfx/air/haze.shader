@@ -12,7 +12,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
 // The bend reaches _Strength times the intensity times the noise, at most about 0.08 of the height.
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.08" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.08" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {

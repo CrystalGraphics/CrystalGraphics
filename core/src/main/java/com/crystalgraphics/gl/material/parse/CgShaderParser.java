@@ -168,6 +168,15 @@ public final class CgShaderParser {
         // CastShadows is opt-out: absent or any value other than "Off" means true
         boolean castShadows = !"Off".equalsIgnoreCase(topTags.getOrDefault("CastShadows", "On"));
         float sceneColorMargin = sceneColorMargin(topTags.get("SceneColorMargin"), resourcePath);
+        String lighting = topTags.getOrDefault("Lighting", "Lit");
+        if (!"Lit".equals(lighting) && !"Unlit".equals(lighting)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Lighting is \"Lit\" or \"Unlit\", not \""
+                    + lighting + "\"");
+        }
+        String fog = topTags.getOrDefault("Fog", "On");
+        if (!"On".equals(fog) && !"Off".equals(fog)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Fog is \"On\" or \"Off\", not \"" + fog + "\"");
+        }
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -288,7 +297,8 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, castShadows, sceneColorMargin, Collections.unmodifiableList(passes));
+                renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
+                Collections.unmodifiableList(passes));
     }
 
     /** The {@code "SceneColorMargin"} tag: a share of the target's height, above 0; NaN when absent. */

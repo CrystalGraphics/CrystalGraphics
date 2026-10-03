@@ -57,15 +57,15 @@ public final class CgMasterNode implements CgShaderNode {
      * <h3>Why this list is so much shorter than Unity's</h3>
      * <p>Unity's Fragment block also carries Metallic, Smoothness, Ambient Occlusion, Emission and a
      * tangent-space Normal. <b>Every one of them is consumed by a lighting model, and this engine has
-     * none</b> — {@code CgFrameBlock} carries view, projection, time and resolution and not one light
-     * term, and {@code CgMaterialShader.SHADOWS_SUPPORTED} is false with "deferred to v2" written
+     * none</b> — its one light is the host's lightmap, which the compiler multiplies a world material's whole
+     * colour by, and {@code CgMaterialShader.SHADOWS_SUPPORTED} is false with "deferred to v2" written
      * beside it. A port whose only consumer does not exist accepts a wire, displays a value, changes no
      * pixel, and gives no clue which of those three it is failing at; that is strictly worse than not
      * offering it, because absence is at least legible.</p>
      *
-     * <p>Emission is the one worth spelling out, since it looks unlit-friendly: it means "colour added
-     * <em>after</em> lighting", and with no lighting everything is already emissive — Emission and
-     * BaseColor would be two ports summed with neither attenuated, which is the same port twice.</p>
+     * <p>Emission is the exception now: it means "colour added <em>after</em> lighting", and the lightmap is
+     * lighting, so it has a consumer and is the next port to return (with the material tagged
+     * {@code "Lighting" = "Unlit"} and Base Color lit through {@code cg_Lit}).</p>
      *
      * <p>{@link #ALPHA} and {@link #ALPHA_CLIP_THRESHOLD} are here precisely because they are the two that
      * <em>are</em> consumable today: a {@code .shader} can declare

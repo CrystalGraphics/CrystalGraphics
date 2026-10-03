@@ -1,6 +1,7 @@
 // A billow of smoke: one lit puff on a camera-facing quad (CgVfxFrame.billboard), shaded as a cauliflower-edged ball. Its
-// normal comes from the ball and the bumps on it; a key light from above leaves its top bright and its underside dark;
-// the fire it rose from glows into it from below while it is hot. Its edge is soft, and it fades where the scene is
+// normal comes from the ball and the bumps on it; the sun (or the moon) leaves its sunward side bright and the far side
+// dark, and the world's light where it is tints it, as Minecraft lights its blocks; the fire it rose from glows into it
+// from below while it is hot, lit by nothing. Its edge is soft, and it fades where the scene is
 // nearer than the ball's own surface, so it meets the ground in a curve rather than along the quad's flat cut; that
 // comparison is its depth test. Overlapping puffs, sorted back to front by the world renderer, make the cloud.
 // CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the smoke,
@@ -9,11 +10,10 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
-    _Light  ("Key light, toward it; w unused", vec4) = (0.55, 0.75, 0.3, 0.0)
     _Shadow ("Underside, share of the lit colour", float) = 0.12
     _Bumps  ("Billows on the ball, share of its radius", float) = 0.45
     _Spin   ("Turns over its life", float) = 0.15
@@ -71,12 +71,12 @@ Pass {
         vec2 slope = vec2(puffHeight(b + vec2(E, 0.0), life, seed) - h, puffHeight(b + vec2(0.0, E), life, seed) - h) / E;
         vec3 n = normalize(vec3(-slope, 1.0));
         vec3 normal = normalize(i.right * n.x + i.up * n.y + i.back * n.z);
-        // Lit from above, wrapped so the terminator is soft; deep folds darker.
-        float lit = clamp(dot(normal, normalize(_Light.xyz)) * 0.7 + 0.3, 0.0, 1.0);
+        // Lit by the sun, wrapped so the terminator is soft; deep folds darker.
+        float lit = clamp(dot(normal, CG_SUN_DIRECTION) * 0.7 + 0.3, 0.0, 1.0);
         lit *= lit;
         float fold = mix(0.55, 1.0, clamp(h / (1.0 + _Bumps), 0.0, 1.0));
         vec3 smoke = CG_OBJECT_CUSTOM2.rgb;
-        vec3 col = mix(smoke * _Shadow, smoke, lit) * fold;
+        vec3 col = mix(smoke * _Shadow, smoke, lit) * fold * CG_LIGHTMAP(cg_Light);
         // The fire beneath lights its underside and its thick heart while it is hot.
         float under = clamp(0.5 - 0.5 * normal.y, 0.0, 1.0);
         col += CG_OBJECT_CUSTOM3.rgb * hot * hot * (0.3 + 0.9 * under) * (0.4 + 0.6 * h) * 1.6;

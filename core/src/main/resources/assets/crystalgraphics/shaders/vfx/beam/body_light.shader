@@ -7,7 +7,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_light.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {

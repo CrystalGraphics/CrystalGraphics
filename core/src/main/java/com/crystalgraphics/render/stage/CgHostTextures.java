@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.Objects;
@@ -11,7 +14,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgHostTextures host = frame.host().textures();
- * if (host.lightmap() != 0) pass.texture(LIGHTMAP_UNIT, host.lightmap());   // lit exactly as Minecraft lights blocks
+ * pass.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, host.lightmapTexture());   // what cg_Lightmap reads
  *
  * // a host, with the camera, every frame: imported only when the texture object changes
  * CgRenderStage.WORLD_OPAQUE.host().textures().lightmap(lightTexture, 16, 16).blockAtlas(atlas, w, h);
@@ -31,10 +34,24 @@ public final class CgHostTextures {
     private int lightmap, atlas;
     private int lightmapWidth, lightmapHeight, atlasWidth, atlasHeight;
     private int version;
+    private CgTexture2D lightmapTexture;
 
     /** The lightmap's texture name: u is block light, v sky light, 0 to 15 each across it; 0 when absent. */
     public int lightmap() {
         return lightmap;
+    }
+
+    /**
+     * The lightmap as a texture to bind, the pass binding of {@code cg_Lightmap}: wrapped once per host texture, and
+     * white where the host gives none.
+     */
+    public CgTexture lightmapTexture() {
+        if (lightmap == 0) return CgFallbackTextures.WHITE_1x1;
+        if (lightmapTexture == null || lightmapTexture.getId() != lightmap) {
+            if (lightmapTexture != null) lightmapTexture.delete();
+            lightmapTexture = CgTexture2D.wrap(lightmap, Math.max(lightmapWidth, 1), Math.max(lightmapHeight, 1));
+        }
+        return lightmapTexture;
     }
 
     public int lightmapWidth() {

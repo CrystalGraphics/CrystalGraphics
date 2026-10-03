@@ -54,6 +54,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *          .submit();
  * });
  *
+ * // Lit by the world at its position unless told otherwise: a lamp's own glass, or a thing that glows
+ * world.draw(bulb, glass).at(x, y, z).light(15, skyLight).submit();
+ * world.draw(rune, sigil).at(x, y, z).fullBright().submit();
+ *
  * // A material's authored queue decides opaque or transparent; a draw may override it.
  * world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();
  *
@@ -67,6 +71,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>Shaders see camera-relative world space: {@code CG_CAMERA_WORLD_POS} is the origin, and
  *       {@code CG_ABSOLUTE_WORLD_POS(p)} adds the camera back for an effect that must not move with it.</li>
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
+ *   <li>A material is lit by the host's lightmap at {@code CG_OBJECT_LIGHT} and fogged unless its shader is tagged
+ *       {@code "Lighting" = "Unlit"}. The light is the world's at {@link Draw#at}, read at {@link Draw#submit}.</li>
  * </ul>
  */
 public final class CgWorldRenderer {
@@ -112,6 +118,8 @@ public final class CgWorldRenderer {
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
     private float[] customs = new float[64 * 16];
+    /** Per draw: block and sky light, 0 to 15. */
+    private float[] lights = new float[64 * 2];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
@@ -199,6 +207,8 @@ public final class CgWorldRenderer {
         private long indirectOffset;
         private CgIndirect indirectMode;
         private int indirectFactor;
+        /** Block and sky light; NaN block for the world's at its position. */
+        private float blockLight, skyLight;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -217,6 +227,7 @@ public final class CgWorldRenderer {
             boundsSet = false;
             pad = 0f;
             indirect = null;
+            blockLight = Float.NaN;
             return this;
         }
 
@@ -307,6 +318,18 @@ public final class CgWorldRenderer {
             return this;
         }
 
+        /** Lit by block and sky light {@code block} and {@code sky}, 0 to 15, in place of the world's at its position. */
+        public Draw light(float block, float sky) {
+            blockLight = block;
+            skyLight = sky;
+            return this;
+        }
+
+        /** Lit as if nothing shaded it: what a thing glowing on its own takes. */
+        public Draw fullBright() {
+            return light(15f, 15f);
+        }
+
         /** Overrides the material's authored queue: {@link CgRenderQueue} values. */
         public Draw queue(int queue) {
             this.queue = queue;
@@ -365,6 +388,14 @@ public final class CgWorldRenderer {
         positions[count * 3 + 2] = d.z;
         d.transform.get(transforms, count * 16);
         System.arraycopy(d.custom, 0, customs, count * 16, 16);
+        if (Float.isNaN(d.blockLight)) {
+            int light = CgWorldLight.at(d.x, d.y, d.z);
+            lights[count * 2] = CgWorldLight.block(light);
+            lights[count * 2 + 1] = CgWorldLight.sky(light);
+        } else {
+            lights[count * 2] = d.blockLight;
+            lights[count * 2 + 1] = d.skyLight;
+        }
         queues[count] = d.queue;
         orders[count] = d.order;
         layers[count] = d.layer;
@@ -404,6 +435,7 @@ public final class CgWorldRenderer {
         positions = Arrays.copyOf(positions, n * 3);
         transforms = Arrays.copyOf(transforms, n * 16);
         customs = Arrays.copyOf(customs, n * 16);
+        lights = Arrays.copyOf(lights, n * 2);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         layers = Arrays.copyOf(layers, n);
@@ -620,7 +652,8 @@ public final class CgWorldRenderer {
                             boolean depthOnlyPass, CgHostView view) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;
@@ -631,17 +664,24 @@ public final class CgWorldRenderer {
                 if (pipeline == null) continue;
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
                 if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
-                if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-                if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
-                int at = chunks.instance();
-                float[] data = chunks.data();
-                model.get(data, at);
-                normal.get(data, at + 16);
-                System.arraycopy(customs, i * 16, data, at + 32, 16);
+                writeInstance(chunks, i);
             }
         }
         pass.add(chunks.end());
         pass.end();
+    }
+
+    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
+    private void writeInstance(CgChunkBuilder chunks, int i) {
+        if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
+        if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
+        int at = chunks.instance();
+        float[] data = chunks.data();
+        model.get(data, at);
+        normal.get(data, at + 16);
+        data[at + 28] = lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
+        data[at + 29] = lights[i * 2 + 1];
+        System.arraycopy(customs, i * 16, data, at + 32, 16);
     }
 
     /** A material's depth pass, or its forward pass writing depth alone. */

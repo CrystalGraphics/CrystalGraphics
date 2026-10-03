@@ -13,7 +13,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
 
 // The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under 0.016 of the height.
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {

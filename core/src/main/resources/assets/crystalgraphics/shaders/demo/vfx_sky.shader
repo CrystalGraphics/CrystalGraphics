@@ -3,7 +3,7 @@
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_sky.glsl"
 
-Tags { "RenderType" = "Background" }
+Tags { "RenderType" = "Background" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Background"
 
 struct v2f { vec3 dir; };

@@ -65,6 +65,7 @@ world.onFrame(view -> {                                // once a frame, before t
          .at(x, y, z)                                  // absolute, in doubles
          .transform(rotationScale)                     // optional, about that position
          .custom(0, r, g, b, a)                        // CG_OBJECT_CUSTOM0
+         .light(15f, sky)                              // optional: the world's light at its position otherwise
          .submit();
 });
 world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
@@ -93,11 +94,15 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   for a reader only where one draws.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
+- **Lit by the world** (`docs/SHADERS.md` § *Lighting and fog*): each draw carries the block and sky light at its
+  position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
+  it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
+  (`CgWorldAtmosphere`, from `CgHostEnvironment`).
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
-shader reads its 3×3), `custom0`–`custom3` 32–47.
+shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`), `custom0`–`custom3` 32–47.
 
 **An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
 constants:

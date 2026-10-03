@@ -129,8 +129,8 @@ public final class CgLoweredKernel {
             imageUnit[i.index()] = reads ? next++ : -1;
         }
         argsUnit = next++;
-        int limit = Math.min(STAGE_UNITS, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT > 0
-                ? CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT : STAGE_UNITS);
+        int limit = Math.min(STAGE_UNITS, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT > 0
+                ? CgBindingPoints.LIGHTMAP_TEXTURE_UNIT : STAGE_UNITS);
         if (next > limit) {
             throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + " reads " + next
                     + " textures and buffers lowered; below compute a stage reads " + limit);
@@ -192,6 +192,7 @@ public final class CgLoweredKernel {
         }
         unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        unit(id, CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
         int n = source.buffers().size(), m = source.images().size();
         int[] base = new int[n], length = new int[n], counterAt = new int[n], level = new int[m];
         for (CgBufferDecl b : source.buffers()) {

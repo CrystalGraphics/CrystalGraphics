@@ -2,14 +2,15 @@
 // Voronoi noise pushes out, so every cell is a rounded lobe, with smaller domes on the lobes. Opaque, with a depth
 // prepass, so billows cut into each other and into the ground in three dimensions and hidden ones cost nothing. Styled as
 // Sparking Zero draws its blasts: a saturated body, a darker band only on the undersides, an irregular glowing core on
-// each lobe pushed toward a light that follows the eye, and dark contour strokes wherever the surface turns away from the
+// each lobe pushed toward a light that follows the eye while it burns and turns to the sun as it cools, the body taking
+// the world's light as it does, and dark contour strokes wherever the surface turns away from the
 // eye, so every lobe and every bump on it is drawn round its edge. All the noise is per vertex; a pixel only shades. It
 // erodes away at the end of its life, and as the camera comes near it, so a player inside a blast still sees out. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
 // x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
-Tags { "RenderType" = "Opaque" "CastShadows" = "Off" }
+Tags { "RenderType" = "Opaque" "CastShadows" = "Off" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
 Properties {
@@ -78,15 +79,20 @@ Pass {
         vec3 n = normalize(i.normal);
         vec3 eye = FX_CAMERA;
         vec3 toEye = normalize(eye - i.world);
-        // A light that follows the eye, offset up and to the left.
+        // A light that follows the eye, offset up and to the left, while it burns; the sun's once it is smoke.
         vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
         vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
-        float lit = dot(n, normalize(toEye * 0.75 + up * 0.6 - right * 0.35)) * 0.5 + 0.5;
+        vec3 eyeLight = normalize(toEye * 0.75 + up * 0.6 - right * 0.35);
+        vec3 key = normalize(mix(CG_SUN_DIRECTION, eyeLight, hot) + up * 1.0e-3);
+        float lit = dot(n, key) * 0.5 + 0.5;
         float core = hot * (0.6 + 0.4 * (1.0 - life));
         vec3 body = CG_OBJECT_CUSTOM2.rgb, coreColour = CG_OBJECT_CUSTOM3.rgb, deep = body * _Deep;
         // The body, darker in a band on the undersides only.
         float ld = fwidth(lit) + 0.01;
         vec3 col = mix(body * 0.62, body * (0.85 + 0.25 * lit), smoothstep(0.33 - ld, 0.33 + ld, lit));
+        vec3 world = mix(CG_LIGHTMAP(cg_Light), vec3(1.0), hot);
+        col *= world;
+        deep *= world;
         // An irregular core on each lobe, pushed toward the light; the small domes break its edge.
         float shape = i.lobe.x * (0.42 + 0.75 * lit) + (i.lobe.y - 0.5) * 0.18 + core * 0.15;
         float d = fwidth(shape) + 0.01;
