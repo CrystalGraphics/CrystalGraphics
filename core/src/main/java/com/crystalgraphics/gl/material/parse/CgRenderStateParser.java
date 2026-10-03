@@ -33,9 +33,14 @@ final class CgRenderStateParser {
      * Returns {@link CgRenderState#DEFAULT} when absent.
      */
     static CgRenderState parse(String source, String resourcePath) {
+        return parse(source, resourcePath, CgRenderState.DEFAULT);
+    }
+
+    /** As {@link #parse(String, String)}, answering {@code absent} when there is no block. */
+    static CgRenderState parse(String source, String resourcePath, CgRenderState absent) {
         int start = source.indexOf("RenderState {");
         if (start == -1) start = source.indexOf("RenderState{");
-        if (start == -1) return CgRenderState.DEFAULT;
+        if (start == -1) return absent;
 
         int braceOpen  = source.indexOf('{', start);
         int braceClose = CgStructureParser.matchBrace(source, braceOpen);

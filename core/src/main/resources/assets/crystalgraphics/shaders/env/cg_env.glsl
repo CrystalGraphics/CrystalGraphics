@@ -135,6 +135,11 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
+// How far behind the scene an Emissive pass's fragment may be and still bloom: an opaque emissive surface is at the
+// depth it wrote, give or take the depth buffer's precision. Eye units.
+#define CG_EMISSIVE_DEPTH_SLACK 1.002
+#define CG_EMISSIVE_DEPTH_BIAS  0.02
+
 // -- Sun and fog --------------------------------------------------------------
 #define CG_SUN_DIRECTION (cg_SunDirection.xyz)
 #define CG_DAYLIGHT      (cg_SunDirection.w)

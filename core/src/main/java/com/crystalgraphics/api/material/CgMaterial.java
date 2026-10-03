@@ -182,7 +182,7 @@ public final class CgMaterial {
     /** This instance's own contents for uniform blocks attached to the shared shader, read in their place. */
     private Map<CgShaderBuffer, CgBufferWriter> blockOverrides;
 
-    /** Forward pipelines by instance kind and keyword mask, for {@link #pipelinesParse}. */
+    /** Forward then Emissive pipelines by instance kind and keyword mask, for {@link #pipelinesParse}. */
     @Nullable
     private CgPipeline[] pipelines;
     @Nullable
@@ -821,34 +821,38 @@ public final class CgMaterial {
      */
     @Nullable
     public CgPipeline pipeline(CgInstanceKind kind) {
-        checkNotDeleted();
-        if (cgMaterialShader == null) return null;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null) return null;
-        List<String> declared = parsed.featureNames();
-        int mask = keywordMask(declared);
-        if (mask < 0) return pipeline(CgRenderPassVariant.FORWARD, kind);
-        int variants = 1 << declared.size();
-        if (pipelinesParse != parsed || pipelines == null) {
-            pipelines = new CgPipeline[CgInstanceKind.values().length * variants];
-            pipelinesParse = parsed;
-        }
-        int at = kind.ordinal() * variants + mask;
-        CgPipeline pipeline = pipelines[at];
-        if (pipeline == null) pipelines[at] = pipeline = pipeline(CgRenderPassVariant.FORWARD, kind);
-        return pipeline;
+        return pipeline(CgRenderPassVariant.FORWARD, kind);
     }
 
     /**
-     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD} only.
+     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD} and
+     * {@link CgRenderPassVariant#EMISSIVE} only.
      *
      * @return null when the shader does not parse
      */
     @Nullable
     public CgPipeline pipeline(CgRenderPassVariant pass, CgInstanceKind kind) {
         checkNotDeleted();
-        if (cgMaterialShader == null || cgMaterialShader.ensureParsed() == null) return null;
-        return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
+        if (cgMaterialShader == null) return null;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        if (parsed == null) return null;
+        boolean emissive = pass == CgRenderPassVariant.EMISSIVE;
+        List<String> declared = parsed.featureNames();
+        int mask = keywordMask(declared);
+        if ((pass != CgRenderPassVariant.FORWARD && !emissive) || mask < 0) {
+            return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
+        }
+        int kinds = CgInstanceKind.values().length, variants = 1 << declared.size();
+        if (pipelinesParse != parsed || pipelines == null) {
+            pipelines = new CgPipeline[2 * kinds * variants];
+            pipelinesParse = parsed;
+        }
+        int at = ((emissive ? kinds : 0) + kind.ordinal()) * variants + mask;
+        CgPipeline pipeline = pipelines[at];
+        if (pipeline == null) {
+            pipelines[at] = pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
+        }
+        return pipeline;
     }
 
     /**
@@ -1116,6 +1120,16 @@ public final class CgMaterial {
      */
     public boolean hasDepthPass() {
         return cgMaterialShader != null && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
+    }
+
+    /**
+     * Whether this material authors an Emissive pass: the world renderer then draws it into the bloom target too. A
+     * parse, never a compile, so it is answered on any thread.
+     */
+    public boolean hasEmissivePass() {
+        if (cgMaterialShader == null) return false;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
     }
 
     /**
