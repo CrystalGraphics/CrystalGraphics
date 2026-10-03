@@ -1319,6 +1319,10 @@ tick, a player coming into view is sent the current value, and `persisted()` sav
 (`crystalgraphics/replicated/`) at stop and every five minutes. Hosts forward the server starting too
 (`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
 
+**`CgRequest`** is a typed question with one answer (`toServer`/`toClient`, `onServer`/`onClient`, `ask`), over the
+router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
+mostly push: a `CgMessage` unless the asker needs the answer.
+
 ## 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading
