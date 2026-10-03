@@ -75,6 +75,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
@@ -173,6 +174,11 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true);
+    }
+
+    @Override
+    public void describe(BiConsumer<String, String> fact) {
+        VulkanReport.describe(host, fact);
     }
 
     // ── what the encoder and pass reach ────────────────────────────────────────

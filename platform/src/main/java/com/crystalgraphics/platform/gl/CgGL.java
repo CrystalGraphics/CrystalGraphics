@@ -459,7 +459,37 @@ public final class CgGL {
     public static final int GL_WAIT_FAILED                = 0x911D;
 
     // --- Queries / gets ------------------------------------------------------
+    public static final int GL_VENDOR                           = 0x1F00;
+    public static final int GL_RENDERER                         = 0x1F01;
+    public static final int GL_VERSION                          = 0x1F02;
+    public static final int GL_EXTENSIONS                       = 0x1F03;
+    public static final int GL_SHADING_LANGUAGE_VERSION         = 0x8B8C;
+    public static final int GL_MAJOR_VERSION                    = 0x821B;
+    public static final int GL_MINOR_VERSION                    = 0x821C;
+    public static final int GL_NUM_EXTENSIONS                   = 0x821D;
+    public static final int GL_CONTEXT_PROFILE_MASK             = 0x9126;
     public static final int GL_MAX_TEXTURE_SIZE                 = 0x0D33;
+    public static final int GL_MAX_TEXTURE_BUFFER_SIZE          = 0x8C2B;
+    public static final int GL_MAX_IMAGE_UNITS                  = 0x8F38;
+    public static final int GL_MAX_SHADER_STORAGE_BLOCK_SIZE    = 0x90DE;
+    public static final int GL_MAX_GEOMETRY_OUTPUT_VERTICES     = 0x8DE0;
+    public static final int GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS = 0x8DE1;
+
+    // --- Compute -------------------------------------------------------------
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_COUNT       = 0x91BE;
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_SIZE        = 0x91BF;
+    public static final int GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS = 0x90EB;
+    public static final int GL_MAX_COMPUTE_SHARED_MEMORY_SIZE     = 0x8262;
+    /** {@code KHR_shader_subgroup}: the invocations in a subgroup, the stages with subgroup operations, and which. */
+    public static final int GL_SUBGROUP_SIZE_KHR                  = 0x9532;
+    public static final int GL_SUBGROUP_SUPPORTED_STAGES_KHR      = 0x9533;
+    public static final int GL_SUBGROUP_SUPPORTED_FEATURES_KHR    = 0x9534;
+
+    // --- Transform feedback --------------------------------------------------
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_COMPONENTS   = 0x8C80;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS = 0x8C8A;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS     = 0x8C8B;
+    public static final int GL_MAX_TRANSFORM_FEEDBACK_BUFFERS              = 0x8E70;
     public static final int GL_MAX_3D_TEXTURE_SIZE              = 0x8073;
     public static final int GL_MAX_ARRAY_TEXTURE_LAYERS         = 0x88FF;
     public static final int GL_MAX_TEXTURE_IMAGE_UNITS          = 0x8872;
@@ -1258,6 +1288,29 @@ public final class CgGL {
 
     public static float glGetFloat(int pname) {
         return gl().glGetFloat(pname);
+    }
+
+    /** The context's {@code GL_VERSION}, {@code GL_VENDOR}, {@code GL_RENDERER} or {@code GL_SHADING_LANGUAGE_VERSION}. */
+    public static String glGetString(int name) {
+        return gl().glGetString(name);
+    }
+
+    /**
+     * One indexed string: every extension a core context lists, one at a time.
+     *
+     * <pre>{@code
+     * for (int i = 0, n = CgGL.glGetInteger(CgGL.GL_NUM_EXTENSIONS); i < n; i++) {
+     *     String name = CgGL.glGetStringi(CgGL.GL_EXTENSIONS, i);
+     * }
+     * }</pre>
+     */
+    public static String glGetStringi(int name, int index) {
+        return gl().glGetStringi(name, index);
+    }
+
+    /** One element of an indexed value: {@code glGetIntegeri(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1)} is the y count. */
+    public static int glGetIntegeri(int target, int index) {
+        return gl().glGetIntegeri(target, index);
     }
 
     // =========================================================================

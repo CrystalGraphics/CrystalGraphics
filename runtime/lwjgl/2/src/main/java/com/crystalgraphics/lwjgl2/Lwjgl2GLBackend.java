@@ -611,6 +611,21 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public String glGetString(int name) {
+        return GL11.glGetString(name);
+    }
+
+    @Override
+    public String glGetStringi(int name, int index) {
+        return GL30.glGetStringi(name, index);
+    }
+
+    @Override
+    public int glGetIntegeri(int target, int index) {
+        return GL30.glGetInteger(target, index);
+    }
+
+    @Override
     public boolean glGetBoolean(int pname) {
         return GL11.glGetBoolean(pname);
     }

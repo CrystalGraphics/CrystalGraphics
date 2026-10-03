@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
 
 /**
  * A {@link CgDevice} with no GPU: it keeps buffer contents, logs every command, and refuses what a Vulkan
@@ -138,6 +139,8 @@ public final class CgRecordingDevice implements CgDevice {
     // ── CgDevice ───────────────────────────────────────────────────────────────
 
     @Override public CgDeviceInfo info() { return INFO; }
+
+    @Override public void describe(BiConsumer<String, String> fact) { fact.accept("version", "recording"); }
 
     @Override public boolean supports(CgFormat format, CgGpuTexture.Usage usage) { return true; }
 

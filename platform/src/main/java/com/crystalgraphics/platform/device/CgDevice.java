@@ -16,6 +16,7 @@ import com.crystalgraphics.platform.device.shader.CgShaderModule;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.function.BiConsumer;
 
 /**
  * What the tracked backend drives: objects, the current frame's commands, and frames in flight. Implemented
@@ -42,6 +43,12 @@ import java.util.List;
 public interface CgDevice {
 
     CgDeviceInfo info();
+
+    /**
+     * What the device can do beyond {@link #info()}, as {@code CgGpuReport} facts under its keys: features
+     * ({@code compute}, {@code subgroups}, {@code indirectCount}), limits ({@code computeInvocations}) and queues.
+     */
+    void describe(BiConsumer<String, String> fact);
 
     boolean supports(CgFormat format, CgGpuTexture.Usage usage);
 

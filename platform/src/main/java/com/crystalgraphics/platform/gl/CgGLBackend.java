@@ -293,6 +293,12 @@ public abstract class CgGLBackend {
     public abstract void glGetFloat(int pname, FloatBuffer params);
     /** Returns a single float state value (e.g. {@code GL_LINE_WIDTH}, {@code GL_POINT_SIZE}). */
     public abstract float glGetFloat(int pname);
+    /** {@code glGetString}: the context's version, vendor, renderer or shading-language version. */
+    public abstract String glGetString(int name);
+    /** {@code glGetStringi}: the string at {@code index}, an extension's name for {@code GL_EXTENSIONS}. */
+    public abstract String glGetStringi(int name, int index);
+    /** {@code glGetIntegeri_v}: one element of an indexed value, such as a compute work group's dimension. */
+    public abstract int glGetIntegeri(int target, int index);
 
     // -------------------------------------------------------------------------
     // Samplers
