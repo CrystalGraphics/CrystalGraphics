@@ -24,7 +24,8 @@ downgraded to Java 8 because FML 1.7.10 reads every class in it with ASM 5. Deta
 ## Requirements
 
 - **JDK 25** — the one compiler (`dep.jdk.compiler`) and the Gradle daemon (`gradle/gradle-daemon-jvm.properties`).
-- **JDK 21, 17 and 8** installed for dev runs; Gradle's toolchain resolver finds them.
+- **JDK 21, 17 and 8** installed for dev runs; Gradle's toolchain resolver finds them. They are launchers
+  only: `--release`/source-target still decides each module's bytecode.
 - Gradle 9.5.1 (wrapper). **Configuration cache stays off** — ModDevGradle does not support it.
 - `-Xmx4g` (set in `gradle.properties`); decompiling a Minecraft needs it.
 
@@ -49,7 +50,8 @@ downgraded to Java 8 because FML 1.7.10 reads every class in it with ASM 5. Deta
 Java 8 copy that every consumer below 25 resolves automatically (`cgbuildlogic.abstractModule`). A node
 emits its Minecraft's Java (`nodeJava`: 17, or 21 from 1.20.5 via `java.version = 21`). The shipped jar is
 downgraded to 8 in one pass. **javac does not check the API**: a Java 9+ method is compiled happily and
-fails on a Java 8 instance unless jvmdg stubs it — Forge ≤1.16, legacy Forge and 1.7.10 run Java 8.
+fails on a Java 8 instance unless jvmdg stubs it — Forge ≤1.16, legacy Forge and 1.7.10 run Java 8. Never lower
+an abstract module's Java to suit a consumer.
 
 **Which nodes a build includes.** From this checkout or from inside CrystalGUI: all of them. Included
 by any other build (a consumer mod): one loader node and its `common` — the node claiming the

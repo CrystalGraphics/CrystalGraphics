@@ -37,6 +37,6 @@ inside `renderWorld`, and the frame tick at `updateCameraAndRender` TAIL) and `M
 ## Do not
 
 - Create GL objects in any FML event: mod loading runs on the splash screen's shared context, where a
-  VAO or FBO is named in a context nothing draws with (`AGENTS.md` § *GL-thread rule*).
+  VAO or FBO is named in a context nothing draws with (`docs/MINECRAFT_INTEGRATION.md` § *GL objects during mod loading*).
 - Construct a client-only class on a server path — `Lwjgl2CursorService` names `org.lwjgl.input.Mouse`.
 - Add a platform interface here; it belongs in `platform/`, and `core/` never imports this package.
