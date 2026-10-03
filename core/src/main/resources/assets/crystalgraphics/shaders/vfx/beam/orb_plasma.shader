@@ -8,7 +8,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {

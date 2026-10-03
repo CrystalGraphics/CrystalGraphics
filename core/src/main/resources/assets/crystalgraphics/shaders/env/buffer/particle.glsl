@@ -21,3 +21,5 @@
 #define CG_PARTICLE_SPIN(n) (PARTICLE_DATA(n).state.y)
 #define CG_PARTICLE_HEAT(n) (PARTICLE_DATA(n).state.z)
 #define CG_PARTICLE_OPACITY(n) (PARTICLE_DATA(n).state.w)
+// The world's block and sky light where it is, 0 to 15 each: what a lit particle sets cg_Light to.
+#define CG_PARTICLE_LIGHT(n) (PARTICLE_DATA(n).light.xy)

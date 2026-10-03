@@ -1,6 +1,6 @@
 // A debris speck: a small dark chunk, sliver or shard, each its own stretch and raggedness from its seed, turned by its
-// spin. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS). Colour A is the specks, A's
-// alpha a strength.
+// spin, lit by the world where it is. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS).
+// Colour A is the specks, A's alpha a strength.
 #type none
 #pragma cg_use particle
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
@@ -10,7 +10,7 @@
 Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
-struct v2f { vec3 world; vec4 speck; float opacity; };
+struct v2f { vec3 world; vec4 speck; float opacity; vec2 light; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -38,10 +38,12 @@ Pass {
         // where on it, its shape seed, how spiky its edge is
         o.speck = vec4(corner, seed * 40.0, mix(1.2, 4.0, m.y));
         o.opacity = CG_PARTICLE_OPACITY(i);
+        o.light = CG_PARTICLE_LIGHT(i);
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        cg_Light = i.light;
         vec2 q = i.speck.xy;
         float r = length(q);
         // A ragged chunk: its edge wanders with the angle, lumpy at low frequency and spiky at high.

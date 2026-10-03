@@ -38,7 +38,8 @@ import javax.annotation.Nullable;
  *
  * <h3>It is deliberately unlit</h3>
  * <p>Unity's preview ball is shaded. Ours cannot be, and the fact is the same one that keeps Metallic and
- * Smoothness off the Fragment block: {@code CgFrameBlock} carries no light term. Faking a headlight here
+ * Smoothness off the Fragment block: the only light is the host's lightmap, in a world pass, and a preview has
+ * none. Faking a headlight here
  * would be the worst available outcome — it looks the most finished, and it would have someone tuning a
  * shader against shading the pipeline cannot produce. A graph whose output varies with UV, position or
  * normal reads perfectly unlit; a constant colour renders flat, and a constant colour has nothing to show

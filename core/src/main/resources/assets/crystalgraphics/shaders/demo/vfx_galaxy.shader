@@ -9,7 +9,7 @@
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 
-Tags { "RenderType" = "Opaque" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
 struct v2f { vec3 worldPos; vec3 normalWs; };

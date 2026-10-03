@@ -5,7 +5,7 @@
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 #include "crystalgraphics:shaders/demo/vfx_fire.glsl"
 
-Tags { "RenderType" = "Opaque" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };

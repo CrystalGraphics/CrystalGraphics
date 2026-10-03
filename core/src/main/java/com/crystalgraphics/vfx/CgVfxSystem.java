@@ -7,6 +7,7 @@ import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -198,13 +199,16 @@ public final class CgVfxSystem {
             float ahead = alpha * TICK;
             CgParticleBuffer.begin(particleRecords);
             for (int k = 0; k < particleEmitters.size(); k++) {
-                CgVfxEmitter def = particleEmitters.get(k).emitter();
-                CgVfxParticleSet p = particleEmitters.get(k).particles();
+                CgVfxEmitterInstance emitter = particleEmitters.get(k);
+                CgVfxEmitter def = emitter.emitter();
+                CgVfxParticleSet p = emitter.particles();
                 for (int i = 0; i < p.count(); i++) {
                     float t = p.progress(i);
-                    CgParticleBuffer.put(p.x(i, alpha), p.y(i, alpha), p.z(i, alpha), p.size[i] * def.sizeAt(t),
+                    float x = p.x(i, alpha), y = p.y(i, alpha), z = p.z(i, alpha);
+                    int light = CgWorldLight.at(emitter.originX() + x, emitter.originY() + y, emitter.originZ() + z);
+                    CgParticleBuffer.put(x, y, z, p.size[i] * def.sizeAt(t),
                             p.vx[i], p.vy[i], p.vz[i], t,
-                            p.seed[i], p.spin[i] + p.spinRate[i] * ahead, p.heat[i], def.opacityAt(t));
+                            p.seed[i], p.spin[i] + p.spinRate[i] * ahead, p.heat[i], def.opacityAt(t), light);
                 }
             }
             CgParticleBuffer.end();

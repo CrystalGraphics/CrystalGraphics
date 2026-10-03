@@ -4,7 +4,7 @@
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_sky.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 struct v2f { vec3 dir; };

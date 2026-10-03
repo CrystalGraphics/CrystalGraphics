@@ -1107,7 +1107,7 @@ public final class CgMaterialShader {
     }
 
     /**
-     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries no light direction, shadow
+     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries the sun's direction but no shadow
      * matrix or shadow params, so an auto-generated shadow-caster pass names uniforms that do not exist. Turning
      * this on needs those three in the block in the same change; {@code CgShadowUniformContractTest} holds it.
      */
@@ -1127,12 +1127,14 @@ public final class CgMaterialShader {
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
     }
 
-    /** The scene snapshots' units, and each sampler property's: its index among the declared samplers. */
+    /** The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers. */
     private void wireShaderSamplers(CgShader shader) {
         int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        loc = shader.getUniformLocation(CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;
