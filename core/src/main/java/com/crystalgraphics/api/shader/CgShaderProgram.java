@@ -38,6 +38,11 @@ import static com.crystalgraphics.gl.shader.CgShaderFactory.JOML_BUFFER;
  * if (program.isLinkDone()) program.finishLink();   // throws as compile would
  * }</pre>
  *
+ * <p>A compute program, for a kernel:</p>
+ * <pre>{@code
+ * CgShaderProgram kernel = CgShaderProgram.compileCompute(computeSource);
+ * }</pre>
+ *
  * <ul>
  *   <li>Render thread only, as every GL object.</li>
  *   <li>The uniform setters act on the <em>bound</em> program: bind it first.</li>
@@ -51,9 +56,10 @@ public final class CgShaderProgram {
     private final int programId;
     private boolean deleted;
 
-    /** The shader objects of a {@link #submitLink} not yet finished; 0 when nothing is pending. */
+    /** The shader objects of a link not yet finished; 0 when nothing is pending. */
     private int pendingVert;
     private int pendingFrag;
+    private int pendingCompute;
 
     private CgShaderProgram(int programId) {
         this.programId = programId;
@@ -70,6 +76,23 @@ public final class CgShaderProgram {
         CgShaderProgram program = create();
         try {
             program.relink(vertexSource, fragmentSource, format);
+        } catch (IllegalStateException e) {
+            program.delete();
+            throw e;
+        }
+        return program;
+    }
+
+    /**
+     * Compiles a compute shader and links it alone.
+     *
+     * @throws IllegalStateException if it fails to compile or link, with the driver's log
+     */
+    public static CgShaderProgram compileCompute(String computeSource) {
+        CgShaderProgram program = create();
+        try {
+            program.submitComputeLink(computeSource);
+            program.finishLink();
         } catch (IllegalStateException e) {
             program.delete();
             throw e;
@@ -108,6 +131,10 @@ public final class CgShaderProgram {
             pendingVert = 0;
             pendingFrag = 0;
         }
+        if (pendingCompute != 0) {
+            CgGL.glDeleteShader(pendingCompute);
+            pendingCompute = 0;
+        }
         CgGL.glDeleteProgram(programId);
         deleted = true;
     }
@@ -138,15 +165,7 @@ public final class CgShaderProgram {
      */
     public void submitLink(String vertexSource, String fragmentSource, CgVertexFormat format) {
         finishPendingQuietly();
-        IntBuffer countBuf = CgBufferUtils.createIntBuffer(1);
-        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
-        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
-        int attached = countBuf.get(0);
-        for (int i = 0; i < attached; i++) {
-            int id = shadersBuf.get(i);
-            CgGL.glDetachShader(programId, id);
-            CgGL.glDeleteShader(id);
-        }
+        detachAll();
 
         pendingVert = CgGL.glCreateShader(CgGL.GL_VERTEX_SHADER);
         CgGL.glShaderSource(pendingVert, vertexSource);
@@ -164,9 +183,32 @@ public final class CgShaderProgram {
         CgGL.glLinkProgram(programId);
     }
 
+    /** {@link #submitLink} for a compute program: one compute shader, linked alone. */
+    public void submitComputeLink(String computeSource) {
+        finishPendingQuietly();
+        detachAll();
+        pendingCompute = CgGL.glCreateShader(CgGL.GL_COMPUTE_SHADER);
+        CgGL.glShaderSource(pendingCompute, computeSource);
+        CgGL.glCompileShader(pendingCompute);
+        CgGL.glAttachShader(programId, pendingCompute);
+        CgGL.glLinkProgram(programId);
+    }
+
+    private void detachAll() {
+        IntBuffer countBuf = CgBufferUtils.createIntBuffer(1);
+        IntBuffer shadersBuf = CgBufferUtils.createIntBuffer(16);
+        CgGL.glGetAttachedShaders(programId, countBuf, shadersBuf);
+        int attached = countBuf.get(0);
+        for (int i = 0; i < attached; i++) {
+            int id = shadersBuf.get(i);
+            CgGL.glDetachShader(programId, id);
+            CgGL.glDeleteShader(id);
+        }
+    }
+
     /** Whether {@link #finishLink} would return without waiting. True wherever the driver cannot say. */
     public boolean isLinkDone() {
-        return pendingVert == 0 || !CgCapabilities.detect().isParallelShaderCompile()
+        return pendingVert == 0 && pendingCompute == 0 || !CgCapabilities.detect().isParallelShaderCompile()
                 || CgGL.glGetProgrami(programId, CgGL.GL_COMPLETION_STATUS_KHR) == CgGL.GL_TRUE;
     }
 
@@ -175,6 +217,10 @@ public final class CgShaderProgram {
      * when nothing is pending.
      */
     public void finishLink() {
+        if (pendingCompute != 0) {
+            finishComputeLink();
+            return;
+        }
         if (pendingVert == 0) return;
         int vertId = pendingVert, fragId = pendingFrag;
         pendingVert = 0;
@@ -195,6 +241,22 @@ public final class CgShaderProgram {
             CgGL.glDetachShader(programId, fragId);
             CgGL.glDeleteShader(vertId);
             CgGL.glDeleteShader(fragId);
+        }
+    }
+
+    private void finishComputeLink() {
+        int computeId = pendingCompute;
+        pendingCompute = 0;
+        try {
+            if (CgGL.glGetShaderi(computeId, CgGL.GL_COMPILE_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Compute shader compile failed: " + CgGL.glGetShaderInfoLog(computeId, 4096));
+            }
+            if (CgGL.glGetProgrami(programId, CgGL.GL_LINK_STATUS) != CgGL.GL_TRUE) {
+                throw new IllegalStateException("Compute program link failed: " + CgGL.glGetProgramInfoLog(programId, 4096));
+            }
+        } finally {
+            CgGL.glDetachShader(programId, computeId);
+            CgGL.glDeleteShader(computeId);
         }
     }
 

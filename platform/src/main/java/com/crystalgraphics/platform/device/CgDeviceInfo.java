@@ -18,5 +18,19 @@ public record CgDeviceInfo(String name, String vendor, String driver, Limits lim
                          int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,
                          int maxUniformBufferBindings, int maxStorageBufferBindings, int maxTexelBufferElements,
                          int uniformOffsetAlignment, int storageOffsetAlignment, int texelOffsetAlignment,
-                         int maxViewportSize, float maxAnisotropy) {}
+                         int maxViewportSize, float maxAnisotropy, Compute compute) {}
+
+    /**
+     * What a kernel may ask for: shared memory in bytes, invocations in a work group, the work group's size and a
+     * dispatch's group count per axis, and the subgroup operations a compute stage has.
+     *
+     * @param subgroupOperations {@code VkSubgroupFeatureFlags} for the compute stage, the same bits as
+     *                           {@code GL_SUBGROUP_SUPPORTED_FEATURES_KHR}; 0 where compute has none
+     */
+    public record Compute(int sharedMemory, int invocations, int sizeX, int sizeY, int sizeZ, int countX, int countY,
+                          int countZ, int subgroupSize, int subgroupOperations) {
+
+        /** Vulkan's guaranteed minimums. */
+        public static final Compute MINIMUM = new Compute(16384, 128, 128, 128, 64, 65535, 65535, 65535, 1, 0x1);
+    }
 }

@@ -78,10 +78,29 @@ com/crystalgraphics/platform/device/CgDeviceInfo
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/platform/device/CgDeviceInfo$Compute
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final MINIMUM Lcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;
+  method public <init> (IIIIIIIIII)V
+  method public countX ()I
+  method public countY ()I
+  method public countZ ()I
+  method public invocations ()I
+  method public sharedMemory ()I
+  method public sizeX ()I
+  method public sizeY ()I
+  method public sizeZ ()I
+  method public subgroupOperations ()I
+  method public subgroupSize ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/platform/device/CgDeviceInfo$Limits
   access public,final,record
   extends java/lang/Record
-  method public <init> (IIIIIIIIIIIIIIIF)V
+  method public <init> (IIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;)V
+  method public compute ()Lcom/crystalgraphics/platform/device/CgDeviceInfo$Compute;
   method public max3DTextureSize ()I
   method public maxAnisotropy ()F
   method public maxArrayLayers ()I
@@ -914,6 +933,11 @@ com/crystalgraphics/platform/device/shader/CgShaderModule$Stage
 com/crystalgraphics/platform/gl/CgCapabilities
   access public,final
   extends java/lang/Object
+  field public,static,final SUBGROUP_ARITHMETIC I
+  field public,static,final SUBGROUP_BALLOT I
+  field public,static,final SUBGROUP_BASIC I
+  field public,static,final SUBGROUP_SHUFFLE I
+  field public,static,final SUBGROUP_VOTE I
   method public asyncCompute ()Z
   method public bindless ()Z
   method public compute ()Z
@@ -945,10 +969,16 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public isShaderStorageBufferArb ()Z
   method public isShaderStorageBufferCore ()Z
   method public isTextureBufferMaterialPath ()Z
+  method public maxComputeInvocations ()I
+  method public maxComputeSharedMemory ()I
+  method public maxComputeWorkGroupCount (I)I
+  method public maxComputeWorkGroupSize (I)I
   method public multiDrawIndirect ()Z
   method public shaderBufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   method public shaderStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public storageImages ()Z
+  method public subgroupOperations ()I
+  method public subgroupSize ()I
   method public subgroups ()Z
   method public vertexStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
   method public,static clearCache ()V

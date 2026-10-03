@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc;
 
+import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.shader.CgShaderManager;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
@@ -149,6 +150,7 @@ public final class CgAssetReloader {
         } catch (Exception e) {
             LOGGER.error("Failed to reload materials", e);
         }
+        CgCompute.reloadAll();
     }
 
     public static void trackShaderManager(CgShaderManager manager) {

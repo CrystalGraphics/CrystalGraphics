@@ -17,7 +17,7 @@
 #define CG_CLIP_MAX_DEPTH 4
 #define CG_CLIP_ROTATED_RAMP 1.5
 
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 float cg_clip_distance(vec2 local, vec4 rect, vec4 rx, vec4 ry) {
     return sdf_rounded_box(local - (rect.xy + rect.zw) * 0.5, (rect.zw - rect.xy) * 0.5, rx, ry);
 }

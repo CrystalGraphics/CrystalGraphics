@@ -2,7 +2,7 @@
 // node's opacity.
 //
 // INJECTED BY `#pragma cg_use palette`, which `quad`, `curve` and `clip` require, so their macros can read it -- a material
-// never declares it itself. Compiled into both stages; fragment-only code guards itself with #ifndef CG_VERTEX_STAGE.
+// never declares it itself. Compiled into every stage; fragment-only code guards itself against the vertex and compute stages.
 //
 // A record's `node` field packs both of its nodes: spatial + 4096 * effect (CgPalette.pack). Node 0 is the pass's own
 // space at opacity 1 and its entry is never read, so a record at the root costs one branch. The packed value is an
@@ -67,7 +67,7 @@ float cg_effect_opacity(float node) {
     return e == 0 ? 1.0 : PALETTE_DATA(e).effect.x;
 }
 
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // gl_FragCoord in spatial node s's own space: the target's rows flipped and the node's affine inverted.
 vec2 cg_spatial_from_fragment(int s) {
     vec4 r0 = PALETTE_DATA(s).fromFragment0;

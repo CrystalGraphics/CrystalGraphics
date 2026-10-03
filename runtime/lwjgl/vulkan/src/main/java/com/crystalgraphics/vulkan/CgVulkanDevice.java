@@ -43,6 +43,7 @@ import org.lwjgl.vulkan.VkGraphicsPipelineCreateInfo;
 import org.lwjgl.vulkan.VkImageCreateInfo;
 import org.lwjgl.vulkan.VkPhysicalDeviceLimits;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties2;
+import org.lwjgl.vulkan.VkPhysicalDeviceSubgroupProperties;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
 import org.lwjgl.vulkan.VkPhysicalDevicePushDescriptorPropertiesKHR;
 import org.lwjgl.vulkan.VkPipelineCacheCreateInfo;
@@ -149,20 +150,23 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
 
             VkPhysicalDevicePushDescriptorPropertiesKHR push = VkPhysicalDevicePushDescriptorPropertiesKHR.calloc(stack)
                     .sType$Default();
+            VkPhysicalDeviceSubgroupProperties subgroups = VkPhysicalDeviceSubgroupProperties.calloc(stack)
+                    .sType$Default().pNext(push.address());
             VkPhysicalDeviceProperties2 props2 = VkPhysicalDeviceProperties2.calloc(stack).sType$Default()
-                    .pNext(push.address());
+                    .pNext(subgroups.address());
             vkGetPhysicalDeviceProperties2(host.physicalDevice(), props2);
             maxPushDescriptors = push.maxPushDescriptors();
             VkPhysicalDeviceProperties props = props2.properties();
             timestampPeriod = props.limits().timestampPeriod();
-            info = info(props, host);
+            info = info(props, subgroups, host);
         }
         staging = new VulkanStaging(this);
         encoder = new VulkanEncoder(this);
         resize(width, height);
     }
 
-    private static CgDeviceInfo info(VkPhysicalDeviceProperties props, CgVulkanHost host) {
+    private static CgDeviceInfo info(VkPhysicalDeviceProperties props, VkPhysicalDeviceSubgroupProperties subgroups,
+                                     CgVulkanHost host) {
         VkPhysicalDeviceLimits l = props.limits();
         int samples = Integer.highestOneBit(l.framebufferColorSampleCounts() & l.framebufferDepthSampleCounts());
         // Binding counts at GL's scale: the tracker sizes its tables by them, and Vulkan's are in the millions.
@@ -172,7 +176,12 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                 Math.min(24, l.maxPerStageDescriptorUniformBuffers()), Math.min(16, l.maxPerStageDescriptorStorageBuffers()),
                 l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
-                l.maxViewportDimensions(0), l.maxSamplerAnisotropy());
+                l.maxViewportDimensions(0), l.maxSamplerAnisotropy(), new CgDeviceInfo.Compute(
+                        l.maxComputeSharedMemorySize(), l.maxComputeWorkGroupInvocations(),
+                        l.maxComputeWorkGroupSize(0), l.maxComputeWorkGroupSize(1), l.maxComputeWorkGroupSize(2),
+                        l.maxComputeWorkGroupCount(0), l.maxComputeWorkGroupCount(1), l.maxComputeWorkGroupCount(2),
+                        subgroups.subgroupSize(), (subgroups.supportedStages() & VK_SHADER_STAGE_COMPUTE_BIT) != 0
+                                ? subgroups.supportedOperations() : 0));
         int v = props.driverVersion();
         return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,

@@ -57,6 +57,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     private static final int GL_MAX_RENDERBUFFER_SIZE = 0x84E8, GL_MAX_COLOR_ATTACHMENTS = 0x8CDF;
     private static final int GL_MAX_UNIFORM_BLOCK_SIZE = 0x8A30, GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8A34;
+    private static final int GL_COMPUTE_SHADER_BIT = 0x20;
     private static final int GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF, GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT = 0x919F;
     private static final int GL_MAX_TEXTURE_BUFFER_SIZE = 0x8C2B, GL_MAX_VIEWPORT_DIMS = 0x0D3A;
     private static final int GL_MAX_TEXTURE_MAX_ANISOTROPY = 0x84FF;
@@ -202,6 +203,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             case GL_MAX_TEXTURE_BUFFER_SIZE:           return one(l.maxTexelBufferElements());
             case GL_MAX_VIEWPORT_DIMS:                 q[0] = q[1] = l.maxViewportSize(); return 2;
             case GL_MAX_TEXTURE_MAX_ANISOTROPY:        return one(l.maxAnisotropy());
+            case CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE:     return one(l.compute().sharedMemory());
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS: return one(l.compute().invocations());
+            case CgGL.GL_SUBGROUP_SIZE_KHR:                  return one(l.compute().subgroupSize());
+            case CgGL.GL_SUBGROUP_SUPPORTED_STAGES_KHR:      return one(l.compute().subgroupOperations() != 0 ? GL_COMPUTE_SHADER_BIT : 0);
+            case CgGL.GL_SUBGROUP_SUPPORTED_FEATURES_KHR:    return one(l.compute().subgroupOperations());
             case CgGL.GL_CONTEXT_PROFILE_MASK:         return one(1);
             case CgGL.GL_MAJOR_VERSION:                return one(4);
             case CgGL.GL_MINOR_VERSION:                return one(4);
@@ -269,6 +275,14 @@ public final class CgTrackedGLBackend extends CgGLBackend {
             case CgGL.GL_IMAGE_BINDING_LAYER:   return Math.max(0, textures.imageUnit(index)[2]);
             case CgGL.GL_IMAGE_BINDING_FORMAT:  return textures.imageUnit(index)[3];
             case CgGL.GL_IMAGE_BINDING_ACCESS:  return textures.imageUnit(index)[4];
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE: {
+                CgDeviceInfo.Compute c = device.info().limits().compute();
+                return index == 0 ? c.sizeX() : index == 1 ? c.sizeY() : c.sizeZ();
+            }
+            case CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT: {
+                CgDeviceInfo.Compute c = device.info().limits().compute();
+                return index == 0 ? c.countX() : index == 1 ? c.countY() : c.countZ();
+            }
             default:
                 throw new IllegalArgumentException("glGetIntegeri(0x" + Integer.toHexString(target) + ") is not modelled");
         }

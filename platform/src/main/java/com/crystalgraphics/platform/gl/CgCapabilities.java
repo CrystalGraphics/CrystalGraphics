@@ -222,6 +222,10 @@ public final class CgCapabilities {
     boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
             drawParameters, feedbackCount, asyncCompute, bindless;
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
+    /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
+    @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
+    @Getter(AccessLevel.NONE) final int[] maxComputeWorkGroupSize = new int[3], maxComputeWorkGroupCount = new int[3];
+    @Getter(AccessLevel.NONE) int subgroupSize, subgroupOperations;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Constructor
@@ -339,7 +343,6 @@ public final class CgCapabilities {
         boolean ssbo = caps.shaderStorageBufferCore || caps.shaderStorageBufferArb;
         caps.compute           = device != null || (gl.OpenGL43() || gl.GL_ARB_compute_shader()) && ssbo;
         caps.storageImages     = device != null || gl.OpenGL42() || gl.GL_ARB_shader_image_load_store();
-        caps.subgroups         = device != null || gl.GL_KHR_shader_subgroup();
         caps.floatAtomics      = device == null && gl.GL_NV_shader_atomic_float();
         caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
         caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
@@ -349,6 +352,20 @@ public final class CgCapabilities {
         caps.asyncCompute      = false;
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
         caps.computeTier       = computeTier(caps, device != null);
+        if (caps.compute) {
+            caps.maxComputeSharedMemory = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
+            caps.maxComputeInvocations = CgGL.glGetInteger(CgGL.GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
+            for (int axis = 0; axis < 3; axis++) {
+                caps.maxComputeWorkGroupSize[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_SIZE, axis);
+                caps.maxComputeWorkGroupCount[axis] = CgGL.glGetIntegeri(CgGL.GL_MAX_COMPUTE_WORK_GROUP_COUNT, axis);
+            }
+            if ((device != null || gl.GL_KHR_shader_subgroup())
+                    && (CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_STAGES_KHR) & GL_COMPUTE_SHADER_BIT) != 0) {
+                caps.subgroupSize = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SIZE_KHR);
+                caps.subgroupOperations = CgGL.glGetInteger(CgGL.GL_SUBGROUP_SUPPORTED_FEATURES_KHR);
+            }
+        }
+        caps.subgroups = (caps.subgroupOperations & SUBGROUP_BASIC) != 0;
 
         if      (caps.shaderStorageBufferCore)   caps.shaderBufferPath = ShaderBufferPath.SSBO_GL43;
         else if (caps.shaderStorageBufferArb)    caps.shaderBufferPath = ShaderBufferPath.SSBO_ARB;
@@ -424,8 +441,19 @@ public final class CgCapabilities {
     /** {@code imageLoad} and {@code imageStore}: GL 4.2 or {@code ARB_shader_image_load_store}; any device. */
     public boolean storageImages() { return storageImages; }
 
-    /** Subgroup operations: {@code KHR_shader_subgroup}; any device, at Vulkan 1.1's basic set in kernels. */
+    /** {@link #subgroupOperations()} bits, as {@code VkSubgroupFeatureFlags} and {@code KHR_shader_subgroup} name them. */
+    public static final int SUBGROUP_BASIC = 0x1, SUBGROUP_VOTE = 0x2, SUBGROUP_ARITHMETIC = 0x4, SUBGROUP_BALLOT = 0x8,
+            SUBGROUP_SHUFFLE = 0x10;
+    private static final int GL_COMPUTE_SHADER_BIT = 0x20;
+
+    /** Subgroup operations in kernels: {@code KHR_shader_subgroup} listing the compute stage; any device. */
     public boolean subgroups() { return subgroups; }
+
+    /** The invocations in a subgroup, or 0 without {@link #subgroups()}. */
+    public int subgroupSize() { return subgroupSize; }
+
+    /** What kernels may do across a subgroup: {@link #SUBGROUP_BASIC} and the rest, or 0. */
+    public int subgroupOperations() { return subgroupOperations; }
 
     /** Atomic adds on floats: {@code NV_shader_atomic_float}. No device enables its counterpart. */
     public boolean floatAtomics() { return floatAtomics; }
@@ -450,6 +478,18 @@ public final class CgCapabilities {
 
     /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */
     public boolean bindless() { return bindless; }
+
+    /** Bytes of {@code shared} memory one work group may declare. */
+    public int maxComputeSharedMemory() { return maxComputeSharedMemory; }
+
+    /** Invocations one work group may hold: the product of its size. */
+    public int maxComputeInvocations() { return maxComputeInvocations; }
+
+    /** A work group's largest size along {@code axis}, 0 to 2. */
+    public int maxComputeWorkGroupSize(int axis) { return maxComputeWorkGroupSize[axis]; }
+
+    /** The most work groups one dispatch may launch along {@code axis}, 0 to 2. */
+    public int maxComputeWorkGroupCount(int axis) { return maxComputeWorkGroupCount[axis]; }
 
     /** The highest tier this context runs kernels at, or {@code -Dcrystalgraphics.compute.tier}'s. */
     public ComputeTier computeTier() { return computeTier; }
