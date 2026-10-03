@@ -2574,6 +2574,12 @@ com/crystalgraphics/gpu/CgDeferral
   method public run (Ljava/nio/ByteBuffer;Ljava/util/function/Consumer;)V
   method public run (Ljava/nio/FloatBuffer;Ljava/util/function/Consumer;)V
   method public,static applyAll ()V
+com/crystalgraphics/net/CgAudience
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract forEach (Ljava/util/function/Consumer;)V
+  method public,static all ()Lcom/crystalgraphics/net/CgAudience;
+  method public,static player (Ljava/util/UUID;)Lcom/crystalgraphics/net/CgAudience;
 com/crystalgraphics/net/CgInMemoryTransport
   access public,final
   extends java/lang/Object
@@ -2587,6 +2593,29 @@ com/crystalgraphics/net/CgInMemoryTransport
   method public sent ()Ljava/util/List;
   method public setReceiver (Ljava/util/function/Consumer;)V
   method public,static pair ()[Lcom/crystalgraphics/net/CgInMemoryTransport;
+com/crystalgraphics/net/CgMessage
+  access public,final
+  extends java/lang/Object
+  method public direction ()Lcom/crystalgraphics/net/CgMessage$Direction;
+  method public name ()Ljava/lang/String;
+  method public onReceive (Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/CgMessage;
+  method public onReceiveFrom (Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/net/CgMessage;
+  method public send (Lcom/crystalgraphics/net/CgAudience;Ljava/lang/Object;)V
+  method public sendToServer (Ljava/lang/Object;)V
+  method public skipped ()J
+  method public toString ()Ljava/lang/String;
+  method public,static both (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgMessage;
+  method public,static toClients (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgMessage;
+  method public,static toServer (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgMessage;
+  method public,static version (Ljava/lang/String;I)V
+com/crystalgraphics/net/CgMessage$Direction
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOTH Lcom/crystalgraphics/net/CgMessage$Direction;
+  field public,static,final TO_CLIENTS Lcom/crystalgraphics/net/CgMessage$Direction;
+  field public,static,final TO_SERVER Lcom/crystalgraphics/net/CgMessage$Direction;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/CgMessage$Direction;
+  method public,static values ()[Lcom/crystalgraphics/net/CgMessage$Direction;
 com/crystalgraphics/net/CgNetwork
   access public,final
   extends java/lang/Object
@@ -2595,6 +2624,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static clientDisconnected ()V
   method public,static clientTick ()V
   method public,static closeAll (Ljava/lang/String;)V
+  method public,static forEachPlayer (Ljava/util/function/Consumer;)V
   method public,static forPlayer (Ljava/util/UUID;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public,static install (Lcom/crystalgraphics/platform/service/CgNetworkChannel;Ljava/util/function/Function;)Z
   method public,static isInstalled ()Z
@@ -2637,6 +2667,7 @@ com/crystalgraphics/net/protocol/CgConnections
   method public close (Ljava/lang/Object;Ljava/lang/String;)Z
   method public closeAll (Ljava/lang/String;)V
   method public get (Ljava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
+  method public keys ()Ljava/util/Set;
   method public onPeerClosed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgConnections;
   method public open (Ljava/lang/Object;Ljava/lang/Object;Lcom/crystalgraphics/net/protocol/CgConnections$Outbound;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public route (Ljava/lang/Object;[B)V

@@ -224,6 +224,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Draw 2D quads, curves or text through the renderers | [Instanced renderers](#instanced-renderers) | `gl/render/AGENTS.md` |
 | Load a resource file (shader source, config, image) | [Resource I/O](#resource-io--cgio-and-cgtextureio) | `util/io/CgIO` |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
+| Send something between client and server | [Connections](#connections--cgnetwork) | `CgMessage`'s javadoc |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
 
 ---
@@ -1301,6 +1302,11 @@ The forwards are `NetworkModern` (each loader's entry class), `NetworkLegacy` an
 on both sides. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
 talks over a connection contributes to `CgProtocols` at init and asks `CgNetwork.forPlayer`/`client`.
 CrystalGUI's `docs/CGUI_NETWORKING_PRIMER.md` is the guide.
+
+**A mod sends a typed `CgMessage`** (a name, a direction and a `CgCodec`, declared at init) to a `CgAudience`.
+Each connection opens with `cg/hello`: the client says which message namespaces it declared, until the server
+answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
+skipped and counted rather than sent.
 
 ## 1.7.10 — `runtime/mc/1710`
 
