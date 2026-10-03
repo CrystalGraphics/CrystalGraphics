@@ -562,13 +562,13 @@ public final class CgEnergyWave extends CgVfxEffect {
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
             drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
         }
-        // The shock front races out well ahead of the dust and is gone in a little over half a second.
-        float shockTime = since / 0.6f;
+        // The shock front races out well ahead of the dust, gone in a little over a second.
+        float shockTime = since / 1.2f;
         if (shockTime < 1f) {
             float front = radius * get(BLAST_RADIUS) * 2.6f * (float) CgEasings.OUT_CUBIC.ease(shockTime);
             placed.identity().scale(front);
             float left = 1f - shockTime;
-            drawAt(frame, layers, SLOT_BLAST_SHOCK, x, y, z, placed, front, front, left * (float) Math.sqrt(left), shockTime, false);
+            drawAt(frame, layers, SLOT_BLAST_SHOCK, x, y, z, placed, front, front, (float) Math.sqrt(left), shockTime, false);
         }
         float ringTime = Math.min(since / 0.7f, 1f);
         if (ringTime < 1f) {
