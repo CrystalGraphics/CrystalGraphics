@@ -1,6 +1,7 @@
 package com.crystalgraphics.net;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -100,12 +101,20 @@ public final class CgNetwork {
         if (!contributors.contains(CONTRIBUTOR)) {
             // The hello first: a typed send to a peer waits on it.
             CgProtocols.contribute(CONTRIBUTOR, connection -> {
-                CgHello.bind(connection, CgMessage::namespaces);
+                CgHello.bind(connection, CgNetwork::namespaces);
                 CgMessage.bindAll(connection);
+                CgRequest.bindAll(connection);
             });
         }
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
         return true;
+    }
+
+    /** What the hello says this side speaks: every message's and request's namespace. */
+    private static Map<String, Integer> namespaces() {
+        Map<String, Integer> out = CgMessage.namespaces();
+        out.putAll(CgRequest.namespaces());
+        return out;
     }
 
     /** Whether {@link #install} installed. A server with no networking otherwise boots and looks healthy. */

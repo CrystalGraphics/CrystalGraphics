@@ -2682,6 +2682,46 @@ com/crystalgraphics/net/CgReplicated$View
   method public,abstract added (JLjava/lang/Object;)V
   method public,abstract changed (JLjava/lang/Object;)V
   method public,abstract removed (J)V
+com/crystalgraphics/net/CgRequest
+  access public,final
+  extends java/lang/Object
+  field public,static,final DEFAULT_TIMEOUT_MILLIS J
+  field public,static,final UNSUPPORTED Ljava/lang/String;
+  method public ask (Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/CgRequest$Pending;
+  method public ask (Ljava/util/UUID;Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/CgRequest$Pending;
+  method public direction ()Lcom/crystalgraphics/net/CgRequest$Direction;
+  method public name ()Ljava/lang/String;
+  method public onClient (Lcom/crystalgraphics/net/CgRequest$ClientHandler;)Lcom/crystalgraphics/net/CgRequest;
+  method public onServer (Lcom/crystalgraphics/net/CgRequest$ServerHandler;)Lcom/crystalgraphics/net/CgRequest;
+  method public timeout (J)Lcom/crystalgraphics/net/CgRequest;
+  method public toString ()Ljava/lang/String;
+  method public,static toClient (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgRequest;
+  method public,static toServer (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/CgRequest;
+com/crystalgraphics/net/CgRequest$ClientHandler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract handle (Ljava/lang/Object;Lcom/crystalgraphics/net/CgRequest$Reply;)V
+com/crystalgraphics/net/CgRequest$Direction
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final TO_CLIENT Lcom/crystalgraphics/net/CgRequest$Direction;
+  field public,static,final TO_SERVER Lcom/crystalgraphics/net/CgRequest$Direction;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/CgRequest$Direction;
+  method public,static values ()[Lcom/crystalgraphics/net/CgRequest$Direction;
+com/crystalgraphics/net/CgRequest$Pending
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public cancel ()V
+com/crystalgraphics/net/CgRequest$Reply
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract fail (Ljava/lang/String;)V
+  method public,abstract ok (Ljava/lang/Object;)V
+com/crystalgraphics/net/CgRequest$ServerHandler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract handle (Lcom/crystalgraphics/net/CgPeer;Ljava/lang/Object;Lcom/crystalgraphics/net/CgRequest$Reply;)V
 com/crystalgraphics/net/CgTransport
   access public,abstract,interface
   extends java/lang/Object
