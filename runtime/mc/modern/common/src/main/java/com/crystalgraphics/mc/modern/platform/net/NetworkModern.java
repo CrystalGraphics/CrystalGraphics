@@ -1,4 +1,4 @@
-package com.crystalgraphics.mc.modern.net;
+package com.crystalgraphics.mc.modern.platform.net;
 
 import java.util.UUID;
 

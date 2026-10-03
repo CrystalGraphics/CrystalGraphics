@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.forge;
 
-import com.crystalgraphics.mc.modern.net.NetworkModern;
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
