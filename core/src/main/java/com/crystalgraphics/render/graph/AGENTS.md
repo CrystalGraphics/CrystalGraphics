@@ -21,9 +21,36 @@ CgExecutor.execute(frame);
 builder.recycle(frame);
 ```
 
+**Kernels and buffers** (gpu-compute C3): a compute pass runs kernels from `.compute` files (`compute/AGENTS.md`) on
+`CgGraphBuffer`s — the twin of `CgGraphTexture`: transient (pooled by size class), persistent, history (the newest two
+versions, every write making the next) or imported — and on graph textures as storage images. A dispatch's bindings
+say what it reads and writes, taken from the accessors its kernel uses, so ordering, culling and lifetimes come from
+them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write.
+
+```java
+CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));
+CgComputePass sim = rec.compute("particles.step", constants);
+sim.dispatch(step, n).bind("IN", state).bind("OUT", state).set("_Drag", 0.1f);   // reads the newest, writes the next
+sim.end();
+CgComputePass paint = rec.compute("particles.paint");
+paint.dispatchIndirect(draw, args, 0).bind("IN", state).bind("BEFORE", state.previous()).image("OUT", picture);
+paint.end();
+int bindings = rec.bindings().begin().storage(CELLS_POINT, state).end();   // a draw reading it as a storage block
+```
+
+**Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
+name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
+`cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's
+`glMemoryBarrier` bits on GL. Draws, copies and uploads among themselves stay the backend's to order, as they were.
+`-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
+fail `--mode=compute-graph`.
+
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
-pass writing a requested texture too. It is how a compositor moves something without a recording.
+pass writing a requested texture too. It is how a compositor moves something without a recording. A compute pass or buffer operation that writes
+anything outliving the frame is not taken twice — a frame shown again must not step a simulation — unless marked
+`again()`; one writing only transients runs again. A skipped pass whose transient a pass run again reads throws,
+naming both.
 
 `CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
 `CgImmediate.flush(chunk, order)` is what `CgQuadRenderer`/`CgVectorRenderer.flush()` call, under the frame block
@@ -67,9 +94,11 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'
   snapshots bind, as of `add`; it writes its target at `end`. A read sees the last write recorded before it — in its
   recording or one added to the graph earlier. Creation order only breaks ties.
-- **A pass nobody reads is culled** unless it writes a texture that outlives the frame (imported, current,
-  requested) or carries a request.
-- **Transients live from their first to their last use** in the executed order, from a pool keyed by description.
+- **A pass nobody reads is culled** unless it writes a resource that outlives the frame (an imported, current or
+  requested texture; an imported, persistent or history buffer) or carries a request.
+- **Transients live from their first to their last use** in the executed order, from a pool keyed by description
+  (textures) or size class (buffers): two that never live at once share storage.
+- **A compute pass needs a context that runs compute**; elsewhere it throws naming the tier (lowering is C5's).
 - **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
   pass that throws fails its request and the frame goes on.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
@@ -82,3 +111,5 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 
 `--mode=graph-executor-test` draws one picture through `CgQuadRenderer`, `CgImmediate`, and a frame recorded and built
 on a worker thread; the three PNGs in its output directory must be byte-identical, on `--device=gl` and `vulkan`.
+`--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
+built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.

@@ -249,6 +249,15 @@ public final class CgKernelProgram {
     public void dispatch(int x, int y, int z) {
         if (x <= 0 || y <= 0 || z <= 0) return;
         prepare();
+        dispatchBound(x, y, z);
+    }
+
+    /**
+     * {@link #dispatch(int, int, int)} with only what is bound now: a frame graph binds every block, sampler and
+     * buffer itself, and so skips this program's own {@link #properties()} and {@link #frame}. {@link #use} first.
+     */
+    public void dispatchBound(int x, int y, int z) {
+        if (x <= 0 || y <= 0 || z <= 0) return;
         int gx = groups(x, kernel.sizeX()), gy = groups(y, kernel.sizeY()), gz = groups(z, kernel.sizeZ());
         for (int bz = 0; bz < gz; bz += groupLimits[2]) {
             for (int by = 0; by < gy; by += groupLimits[1]) {
@@ -269,6 +278,11 @@ public final class CgKernelProgram {
     /** Group counts from three {@code uint}s at {@code offset} in {@code glBuffer}, written on the GPU. */
     public void dispatchIndirect(int glBuffer, long offset) {
         prepare();
+        dispatchIndirectBound(glBuffer, offset);
+    }
+
+    /** {@link #dispatchIndirect} with only what is bound now, as {@link #dispatchBound}. */
+    public void dispatchIndirectBound(int glBuffer, long offset) {
         setDispatch(0, 0, 0, -1, -1, -1);
         CgGL.glBindBuffer(CgGL.GL_DISPATCH_INDIRECT_BUFFER, glBuffer);
         CgGL.glDispatchComputeIndirect(offset);
@@ -310,6 +324,9 @@ public final class CgKernelProgram {
 
     /** The binding point of append buffer {@code name}'s count. */
     public int counterPoint(String name) { return counterPoints[buffer(name).index()]; }
+
+    /** The binding point of the count of the append buffer declared {@code index}-th; -1 for any other buffer. */
+    public int counterPoint(int index) { return counterPoints[index]; }
 
     public boolean isDeleted() { return program.isDeleted(); }
 

@@ -268,6 +268,30 @@ public abstract class CgGLBackend {
         if (bits != 0) glMemoryBarrier(bits);
     }
 
+    /**
+     * {@code value} into every four bytes of {@code buffer} from {@code offset} for {@code size} bytes, both multiples
+     * of 4: GL 4.3's {@code glClearBufferSubData} or {@code ARB_clear_buffer_object}, else {@link #fillBySubData}; a
+     * device fill on a device-backed backend.
+     */
+    public abstract void cgFillBuffer(int buffer, long offset, long size, int value);
+
+    /** {@link #cgFillBuffer} from the CPU, for a context with neither: the range written in 64 KB pieces. */
+    protected final void fillBySubData(int target, long offset, long size, int value) {
+        if (fillPattern == null || fillValue != value) {
+            if (fillPattern == null) fillPattern = ByteBuffer.allocateDirect(64 * 1024).order(ByteOrder.nativeOrder());
+            for (int i = 0; i < fillPattern.capacity(); i += 4) fillPattern.putInt(i, value);
+            fillValue = value;
+        }
+        for (long at = 0; at < size; at += fillPattern.capacity()) {
+            fillPattern.clear();
+            fillPattern.limit((int) Math.min(fillPattern.capacity(), size - at));
+            glBufferSubData(target, offset + at, fillPattern);
+        }
+    }
+
+    private ByteBuffer fillPattern;
+    private int fillValue;
+
     /** {@link #cgBufferBarrier} for a texture. */
     public void cgImageBarrier(int texture, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);

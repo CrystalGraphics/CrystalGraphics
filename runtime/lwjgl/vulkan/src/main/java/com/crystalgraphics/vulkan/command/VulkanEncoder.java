@@ -235,6 +235,15 @@ public final class VulkanEncoder implements CgCommandEncoder {
     }
 
     @Override
+    public void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value) {
+        outsidePass("fillBuffer");
+        VkCommandBuffer cmd = cmd();
+        before(cmd);
+        vkCmdFillBuffer(cmd, ((VulkanBuffer) dst).buffer, dstOffset, size, value);
+        after(cmd);
+    }
+
+    @Override
     public void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size) {
         outsidePass("copyBuffer");
         VkCommandBuffer cmd = cmd();

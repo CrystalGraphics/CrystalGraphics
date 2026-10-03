@@ -876,6 +876,21 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         tracker.bufferBarrier(b.storage.allocation(), from, to);
     }
 
+    /** A device fill where the buffer's storage is device-local. */
+    @Override
+    public void cgFillBuffer(int buffer, long offset, long size, int value) {
+        TrackedBuffers.GlBuffer b = buffers.get(buffer);
+        if (b == null || b.storage.allocation() == null) {
+            errors.invalidValue("cgFillBuffer on buffer " + buffer + ", which has no storage");
+            return;
+        }
+        if (offset < 0 || size < 0 || (offset | size) % 4 != 0 || offset + size > b.storage.size()) {
+            errors.invalidValue("cgFillBuffer of " + size + " bytes at " + offset + ": out of range or not whole words");
+            return;
+        }
+        b.storage.fill(offset, size, value);
+    }
+
     @Override
     public void cgImageBarrier(int texture, int from, int to) {
         TrackedTextures.GlTexture t = textures.get(texture);

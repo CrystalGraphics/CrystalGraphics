@@ -21,10 +21,11 @@ import javax.annotation.Nullable;
  *   <li><b>Transient</b>: storage from a pool for the passes between its first and last use in one frame; its
  *       contents do not survive the frame. Two that never live at once may share storage.</li>
  *   <li><b>Requested</b>: storage made on first use and kept until {@code recording.release(texture)}.</li>
+ *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's.</li>
  *   <li>Binding one outside the passes that resolve it binds nothing. {@link #delete()} refuses: the graph owns it.</li>
  * </ul>
  */
-public final class CgGraphTexture implements CgTexture {
+public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Where its storage comes from. */
     public enum Kind { IMPORTED, CURRENT, TRANSIENT, REQUESTED }
@@ -32,7 +33,6 @@ public final class CgGraphTexture implements CgTexture {
     private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.CURRENT, "current", null, null);
 
     private final Kind kind;
-    private final String name;
     @Nullable
     private final CgTextureDesc desc;
 
@@ -41,8 +41,8 @@ public final class CgGraphTexture implements CgTexture {
     private CgFrameBuffer framebuffer;
 
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer) {
+        super(name);
         this.kind = kind;
-        this.name = name;
         this.desc = desc;
         this.framebuffer = framebuffer;
     }
@@ -71,17 +71,18 @@ public final class CgGraphTexture implements CgTexture {
         return kind;
     }
 
-    public String name() {
-        return name;
-    }
-
     /** What the graph allocates for it; null for an imported or current texture. */
     @Nullable
     public CgTextureDesc desc() {
         return desc;
     }
 
-    /** Whether a pass writing it is an effect outside the frame, which no cull may remove. */
+    @Override
+    boolean isTransient() {
+        return kind == Kind.TRANSIENT;
+    }
+
+    @Override
     boolean outlivesFrame() {
         return kind != Kind.TRANSIENT;
     }

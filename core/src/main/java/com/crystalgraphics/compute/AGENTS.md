@@ -15,7 +15,18 @@ try (CgGlScope scope = CgKernelProgram.scope()) {
 CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // the reader's
 ```
 
-`.compute` files live under `shaders/`, beside the `.shader` that draws what they write.
+`.compute` files live under `shaders/`, beside the `.shader` that draws what they write. In a frame, kernels run in
+a graph's compute pass (`render/graph/AGENTS.md`), which binds, orders and fences them itself:
+
+```java
+CgComputePass sim = recording.compute("particles.simulate", constants);
+sim.dispatch(simulate, count).bind("STATE_IN", state).bind("STATE_OUT", state).set("_Drag", 0.1f);
+sim.end();
+
+try (CgImmediate.Compute run = CgImmediate.compute("bake")) {     // outside a graph: a graph of one pass
+    run.dispatch(bake, count).bind("CELLS", CgGraphBuffer.imported("cells", glBuffer, bytes));
+}
+```
 
 ## Packages
 
@@ -24,8 +35,8 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 | (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, a value: `program()`, `glsl()` |
 | `source` | What a `.compute` declares, as data, no GL: `CgComputeSource`, `CgKernelDecl` (size, shape, fallback, and what its code reaches), `CgBufferDecl`, `CgImageDecl`, `CgSourcePart` (the code, cut where kernels differ), the vocabularies `CgKernelShape`, `CgBufferAccess`, `CgImageAccess`, `CgImageFormat`, `CgImageDimension`, and the accessors `CgBufferAccessor`/`CgImageAccessor` with the rule for each |
 | `parse` | `CgComputeParser`, GL-free; package-private `TopLevel` (file scope, item by item), `GlslText`, `Std430`, `ConstantInt` |
-| `emit` | `CgKernelEmitter` (one kernel's GLSL for a target) and `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits) |
-| `program` | `CgKernelProgram`: a compiled, wired kernel, and its direct dispatch |
+| `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
+| `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
 
 The frame graph's compute pass is `render/graph`'s (gpu-compute C3); lowering below compute, the CPU tier, the
 primitives and readback take `lower`, `cpu`, `ops` and `readback` here as they land.
@@ -92,7 +103,9 @@ Wired by name after linking, so the source carries no `binding =`:
 - **An append buffer's count is a separate `uint` the caller binds and zeroes**; it can pass the buffer's length,
   and `NAME_COUNT()` clamps it.
 - **A direct dispatch orders nothing after it**: barrier what reads it. `use()` first; `scope()` saves what a
-  dispatch changes.
+  dispatch changes. A graph's dispatch is fenced by the executor, and a reader outside the graph barriers itself.
+- **A graph dispatch's access to each binding is what its kernel uses**: `STATE(i)` reads, `STATE_WRITE` writes. A
+  history is read through one binding and written through another; `previous()` is read-only.
 - **Limits are the device's, checked at `program()`**: size per axis, invocations, shared memory (unreadable array
   sizes are left to the driver). A dispatch past the group count limit runs as several, each from its own base.
 - `vec3` properties are refused, as a material's are: the block is std140.

@@ -1159,6 +1159,18 @@ public final class CgGL {
         gl().cgBufferBarrier(buffer, from, to);
     }
 
+    /**
+     * {@code value} into every four bytes of {@code buffer} from {@code offset} for {@code size} bytes, both multiples
+     * of 4: an append buffer's count zeroed, a histogram cleared. A device fill on the tracked backend.
+     *
+     * <pre>{@code
+     * CgGL.cgFillBuffer(counts, 0, 4L * bins, 0);
+     * }</pre>
+     */
+    public static void cgFillBuffer(int buffer, long offset, long size, int value) {
+        gl().cgFillBuffer(buffer, offset, size, value);
+    }
+
     /** {@link #cgBufferBarrier} for a texture: {@code cgImageBarrier(density, COMPUTE_WRITE, SAMPLED_READ)}. */
     public static void cgImageBarrier(int texture, int from, int to) {
         gl().cgImageBarrier(texture, from, to);

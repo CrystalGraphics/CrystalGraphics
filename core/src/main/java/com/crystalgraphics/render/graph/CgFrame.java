@@ -11,6 +11,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 
@@ -38,11 +39,21 @@ public final class CgFrame {
 
     CgPass[] steps = new CgPass[8];
     Raster[] rasters = new Raster[8];
+    Compute[] computes = new Compute[8];
     int stepCount;
     final CgBindingTable bindings = new CgBindingTable();
     final float[][] instances = new float[KINDS][];
     final int[] instanceFloats = new int[KINDS];
-    final List<CgGraphTexture> transients = new ArrayList<>();
+    final List<CgGraphResource> transients = new ArrayList<>();
+    /** Per step, from {@code accessFrom[s]} to {@code accessFrom[s + 1]}: what it accesses, once each, and how. */
+    int[] accessFrom = new int[9];
+    CgGraphResource[] accessView = new CgGraphResource[32];
+    int[] accessBits = new int[32];
+    int accessCount;
+    /** Per step, whether it writes what outlives the frame: a step a frame executed again does not take twice. */
+    boolean[] outlives = new boolean[8];
+    /** Whether a step runs a kernel or works on a graph buffer: from then on the executor keeps every access. */
+    boolean kernels;
     int[] acquireAt = new int[8];
     int[] releaseAfter = new int[8];
     int batches;
@@ -73,6 +84,9 @@ public final class CgFrame {
     void clear() {
         Arrays.fill(steps, 0, stepCount, null);
         stepCount = 0;
+        Arrays.fill(accessView, 0, accessCount, null);
+        accessCount = 0;
+        kernels = false;
         bindings.reset();
         Arrays.fill(instanceFloats, 0);
         transients.clear();
@@ -125,8 +139,39 @@ public final class CgFrame {
         if (steps.length < count) {
             steps = Arrays.copyOf(steps, Math.max(count, steps.length * 2));
             rasters = Arrays.copyOf(rasters, steps.length);
+            computes = Arrays.copyOf(computes, steps.length);
+            outlives = new boolean[steps.length];
         }
         stepCount = count;
+    }
+
+    /** Room for {@code steps} steps' access lists, emptied. */
+    void accessFrom(int steps) {
+        if (accessFrom.length < steps + 1) accessFrom = new int[Math.max(steps + 1, accessFrom.length * 2)];
+        accessCount = 0;
+    }
+
+    /** {@code bits} on {@code view} in the step whose list starts at {@code start}, joined with an earlier entry. */
+    void access(int start, CgGraphResource view, int bits) {
+        for (int i = start; i < accessCount; i++) {
+            if (accessView[i] == view) {
+                accessBits[i] |= bits;
+                return;
+            }
+        }
+        if (accessCount == accessView.length) {
+            accessView = Arrays.copyOf(accessView, accessCount * 2);
+            accessBits = Arrays.copyOf(accessBits, accessCount * 2);
+        }
+        accessView[accessCount] = view;
+        accessBits[accessCount++] = bits;
+    }
+
+    /** The packed form of compute step {@code s}, kept between frames. */
+    Compute compute(int s) {
+        Compute compute = computes[s];
+        if (compute == null) computes[s] = compute = new Compute();
+        return compute;
     }
 
     /** The packed form of step {@code s}, kept between frames. */
@@ -173,6 +218,51 @@ public final class CgFrame {
     /** The name of the pass at {@code step}, for tests and traces. */
     public String passName(int step) {
         return steps[step].name();
+    }
+
+    /** The pass at {@code step}. */
+    public CgPass pass(int step) {
+        return steps[step];
+    }
+
+    /** How many resources step {@code step} accesses. */
+    public int accesses(int step) {
+        return accessFrom[step + 1] - accessFrom[step];
+    }
+
+    /** Step {@code step}'s {@code i}th resource, as named: a history's previous version stays itself. */
+    public CgGraphResource accessed(int step, int i) {
+        return accessView[accessFrom[step] + i];
+    }
+
+    /** How step {@code step} accesses its {@code i}th resource: {@code CgAccess} bits. */
+    public int accessBits(int step, int i) {
+        return accessBits[accessFrom[step] + i];
+    }
+
+    /** Transients, in the order the executor takes their storage. */
+    public List<CgGraphResource> transients() {
+        return Collections.unmodifiableList(transients);
+    }
+
+    /** The step transient {@code i} takes its storage before, and the one it gives it back after. */
+    public int acquiredAt(int i) {
+        return acquireAt[i];
+    }
+
+    public int releasedAfter(int i) {
+        return releaseAfter[i];
+    }
+
+    /** A compute pass, packed: per dispatch, the frame's snapshot of its blocks and samplers. */
+    static final class Compute {
+        int[] bindings = new int[4];
+        int count;
+
+        void size(int dispatches) {
+            if (bindings.length < dispatches) bindings = new int[Math.max(dispatches, bindings.length * 2)];
+            count = dispatches;
+        }
     }
 
     /** A raster pass, packed: the snapshot of its constants, and per batch what to bind and which instances to draw. */
