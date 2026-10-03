@@ -5,7 +5,7 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 ## Minecraft Integration Glue
 
 The layer that wires CrystalGraphics into each Minecraft. Read it when debugging frame timing, hot
-reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `AGENTS.md`.
+reload, or GL state shared with Minecraft and other mods. Each host's classes: its own `CLAUDE.md`.
 
 **Every hook below is a host section's bracket**: `CgGraphicsLifecycle`'s entries open one with
 `CgGL.fromHost()` and close it with `toHost()`, and a host's own bracket around them nests.
@@ -44,7 +44,7 @@ mostly push: a `CgMessage` unless the asker needs the answer.
 ### 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading
-runs on the splash screen's shared context (see the GL-thread rule). It registers the platform
+runs on the splash screen's shared context (§ *GL objects during mod loading* below). It registers the platform
 (`PlatformService1710.onPreInit`/`onInit`) and the crash-report variant line. Other mods declare
 `required-after:crystalgraphics`. **There is no coremod** — the GL-redirect layer was deleted on
 2026-07-31; see [GL state](#gl-state--cgglstatemanager).
@@ -62,6 +62,24 @@ runs on the splash screen's shared context (see the GL-thread rule). It register
 
 **Never fire `WORLD_OPAQUE`/`WORLD_TRANSPARENT` from game code** on any host — each host's hooks fire them
 once per frame at the right moment. Register on them instead (`ENGINE_API.md` § *Render stages*).
+
+#### GL objects during mod loading: the right thread, the wrong context
+
+> **The right thread is not the right CONTEXT, and on 1.7.10 that distinction is load-bearing.** FML's
+> splash screen runs mod loading with a second, *shared* context of its own — so `FMLInitializationEvent`
+> is on the client thread and still not on the renderer's context. Buffers and textures are shared
+> between GL contexts; **container objects (VAO, FBO) are not.** A VAO built during mod loading is
+> therefore named in a context nothing will ever draw with, while the VBO and IBO it points at stay
+> valid, so the object reads as healthy from Java. `glGenVertexArrays` hands the same id to the next
+> caller on the first real frame: one VAO, two owners, and the second one's attribute pointers replace
+> the first's. Nothing errors — a mesh drawing another mesh's attributes at the wrong stride is
+> degenerate geometry, which rasterises nothing.
+>
+> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; the first render stage a host fires
+> initialises lazily, on a frame that genuinely owns the render context. A dev run cannot show the
+> failure (no splash in the way), so it appears only in an installed client. `CgMeshPool` warns
+> (`[cg-vao]`) when the driver returns a vertex array name this process still owns — the one cheap signal that two
+> contexts are in play. See CrystalGUI's `docs/CGUI_INVARIANTS.md` § *Rendering, GL and shaders*.
 
 ### Forge 1.8–1.12.2 — `runtime/mc/legacy`
 
