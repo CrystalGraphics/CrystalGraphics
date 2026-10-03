@@ -3,6 +3,8 @@ package com.crystalgraphics.render.mesh;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -34,6 +36,7 @@ final class CgMeshRing {
     private static final int FIRST_PAGE = 256 << 10;
     private static final int MAX_PAGE = 16 << 20;
     static final int IDLE_FRAMES = 600;
+    private static final int PAGES = CgTrace.name("mesh.ring-pages");
 
     static final class Page {
         final CgStreamBuffer buffer;
@@ -97,6 +100,7 @@ final class CgMeshRing {
         }
         int size = pages.isEmpty() ? FIRST_PAGE : Math.min(pages.get(pages.size() - 1).bytes * 2, MAX_PAGE);
         pages.add(new Page(Math.max(size, bytes)));
+        CgTrace.marker(CgChannels.GL, "mesh.ringPage", "new, " + (Math.max(size, bytes) >> 10) + " KB");
         return openPage(pages.size() - 1);
     }
 
@@ -142,8 +146,10 @@ final class CgMeshRing {
             if (now - p.openFrame < IDLE_FRAMES) break;
             p.buffer.delete();
             pages.remove(last);
+            CgTrace.marker(CgChannels.GL, "mesh.ringPage", "freed, " + (p.bytes >> 10) + " KB");
             for (CgMeshPool pool : pools) pool.forgetRingPage(last);
         }
+        CgTrace.counter(CgChannels.GL, PAGES, pages.size());
     }
 
     void delete() {
