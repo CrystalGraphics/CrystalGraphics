@@ -10,9 +10,9 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Strength ("Shimmer at full intensity, share of the screen's height", float) = 0.006
+    _Strength ("Shimmer at full intensity, share of the screen's height", float) = 0.012
     _Scale    ("Shimmer frequency, a block", float) = 1.6
-    _Rise     ("Rising speed, blocks a second", float) = 1.5
+    _Rise     ("Rising speed, blocks a second", float) = 0.7
 }
 
 struct v2f { vec3 world; };
