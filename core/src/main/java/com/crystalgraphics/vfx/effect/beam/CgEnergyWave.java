@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -15,6 +16,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
+import com.crystalgraphics.world.CgCameraShake;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -46,10 +48,12 @@ import java.util.List;
  * ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} its progress, 0..1); {@link #SLOT_STREAKS} and
  * {@link #SLOT_ARCS} as stateless ribbons ({@link CgVfxFrame#ribbons}, {@code CG_OBJECT_CUSTOM1} the ball's radius in
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
- * {@link #SLOT_IMPACT} and {@link #SLOT_BLAST_GLOW} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
+ * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
  * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
- * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts.</p>
+ * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts.
+ * Heat haze shimmers round the charge, the beam, the impact and the blast's heart, and a shock front bends the air as
+ * the blast goes off: {@code shaders/vfx/air/}, dropped at the Low quality tier.</p>
  *
  * <p>It announces each moment of that life ({@link #MOMENT_CHARGE_START} to {@link #MOMENT_END}) to
  * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
@@ -59,6 +63,8 @@ import java.util.List;
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
+ *   <li>It shakes the camera ({@link CgCameraShake}), by distance: a tremor growing over the charge, a jolt and a kick
+ *       of the field of view at the release, a rumble while it fires and while it hits, and the blast.</li>
  * </ul>
  */
 public final class CgEnergyWave extends CgVfxEffect {
@@ -88,6 +94,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST_GLOW = "blastGlow";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
+    /** The blast's shock front, racing out ahead of its dust: a sphere at the target. */
+    public static final String SLOT_BLAST_SHOCK = "blastShock";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
 
@@ -179,8 +187,16 @@ public final class CgEnergyWave extends CgVfxEffect {
             .colors(SHELL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build();
 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
+    private static final String AIR = "crystalgraphics:shaders/vfx/air/";
 
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
+            .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(2.2f)
+                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
+            .layer(haze(SLOT_CHARGE, 2.6f))
+            .layer(haze(SLOT_IMPACT, 2.4f))
+            .layer(haze(SLOT_BLAST_GLOW, 2.2f))
+            .layer(CgVfxLayer.builder(AIR + "shock.shader").slot(SLOT_BLAST_SHOCK)
+                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
                     .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
@@ -255,6 +271,8 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
+    /** Trauma: the charge's tremor at its peak, the release's jolt, the recoil while firing, the rumble while hitting. */
+    private static final float CHARGE_TREMOR = 0.35f, RELEASE_JOLT = 0.55f, FIRING_RECOIL = 0.12f, HIT_RUMBLE = 0.3f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
@@ -275,6 +293,9 @@ public final class CgEnergyWave extends CgVfxEffect {
     private float normalX, normalY = 1f, normalZ;
     /** The moments already announced, a bit each, and the stream's size when it was stopped. */
     private int momentsFired, sizeAtStop;
+    /** Camera shake held at the muzzle and at the target; made when first needed. */
+    private CgCameraShake.Rumble muzzleRumble, hitRumble;
+    private boolean released;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
         super(look, x, y, z);
@@ -294,6 +315,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Violet: the Kamehameha's layers with another palette. */
     public static CgVfxLook galickGun() {
         return GALICK_GUN;
+    }
+
+    /** Heat haze round what a slot draws, {@code radius} times its size; dropped at the Low tier. */
+    private static CgVfxLayer haze(String slot, float radius) {
+        return CgVfxLayer.builder(AIR + "haze.shader").slot(slot).radius(radius)
+                .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build();
     }
 
     private static CgVfxLayer orb(String shader, String slot, float radius, float parameter, CgVfxParam a,
@@ -353,11 +380,16 @@ public final class CgEnergyWave extends CgVfxEffect {
         stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
+        shake();
         boolean drained = state() == State.STOPPING && stream.size() == 0;
         // The tail has run into the target: it bursts.
         if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
             blastAge = age;
             startBlast();
+            float reach = get(RADIUS) * get(BLAST_RADIUS);
+            double bx = originX + stream.impactX(), by = originY + stream.impactY(), bz = originZ + stream.impactZ();
+            CgCameraShake.shake(bx, by, bz, 1f, reach, reach * 5f);
+            CgCameraShake.kick(bx, by, bz, 0.1f, 0.45f, reach, reach * 4f);
         }
         boolean emitted = true;
         if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
@@ -369,6 +401,32 @@ public final class CgEnergyWave extends CgVfxEffect {
                 : age > blastAge + get(BLAST_TIME) && emitted;
         if (momentsHeard()) moments(ending);
         if (ending) die();
+    }
+
+    /** The charge's tremor, the release's jolt, the recoil while firing and the rumble at the target while it hits. */
+    private void shake() {
+        if (state() == State.PLAYING && age < releaseAge) {
+            float progress = age / Math.max(releaseAge, 1.0e-3f);
+            muzzle().level(CHARGE_TREMOR * progress * progress);
+        } else if (state() == State.PLAYING) {
+            if (!released) {
+                released = true;
+                CgCameraShake.shake(originX, originY, originZ, RELEASE_JOLT, 3f, 30f);
+                CgCameraShake.kick(originX, originY, originZ, 0.08f, 0.35f, 3f, 30f);
+            }
+            muzzle().level(FIRING_RECOIL);
+        }
+        if (impactLevel > 0.01f) {
+            float radius = get(RADIUS);
+            if (hitRumble == null) hitRumble = CgCameraShake.rumble().radii(radius * 6f, radius * 48f);
+            hitRumble.at(originX + stream.impactX(), originY + stream.impactY(), originZ + stream.impactZ())
+                    .level(HIT_RUMBLE * impactLevel);
+        }
+    }
+
+    private CgCameraShake.Rumble muzzle() {
+        if (muzzleRumble == null) muzzleRumble = CgCameraShake.rumble().at(originX, originY, originZ).radii(3f, 24f);
+        return muzzleRumble;
     }
 
     /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
@@ -503,6 +561,14 @@ public final class CgEnergyWave extends CgVfxEffect {
             float heart = dome * 0.5f;
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
             drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
+        }
+        // The shock front races out well ahead of the dust and is gone in a little over half a second.
+        float shockTime = since / 0.6f;
+        if (shockTime < 1f) {
+            float front = radius * get(BLAST_RADIUS) * 2.6f * (float) CgEasings.OUT_CUBIC.ease(shockTime);
+            placed.identity().scale(front);
+            float left = 1f - shockTime;
+            drawAt(frame, layers, SLOT_BLAST_SHOCK, x, y, z, placed, front, front, left * (float) Math.sqrt(left), shockTime, false);
         }
         float ringTime = Math.min(since / 0.7f, 1f);
         if (ringTime < 1f) {
