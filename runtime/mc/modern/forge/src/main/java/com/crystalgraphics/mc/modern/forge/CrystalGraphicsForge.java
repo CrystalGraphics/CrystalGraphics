@@ -150,6 +150,12 @@ public final class CrystalGraphicsForge implements VariantEntry {
             *///?} else {
             MinecraftForge.EVENT_BUS.addListener(Events::onFrameEnd);
             //?}
+            // The world events, once a client tick: ClientTickEvent at END, with the same Post and bus as above.
+            //? if >=1.21.6 {
+            /*TickEvent.ClientTickEvent.Post.BUS.addListener(Events::onClientTick);
+            *///?} else {
+            MinecraftForge.EVENT_BUS.addListener(Events::onClientTick);
+            //?}
             // The camera hooks a shake and an FOV kick are added at (HostCameraModern).
             //? if >=1.21.6 {
             /*ViewportEvent.ComputeCameraAngles.BUS.addListener(Events::onCameraAngles);
@@ -158,13 +164,9 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(Events::onCameraAngles);
             MinecraftForge.EVENT_BUS.addListener(Events::onFov);
             //?}
-            // Forge 26.1.1 to 26.2 post the camera-angle event after renderLevel has taken the view, so its angles
-            // reach nothing drawn: only the FOV applies there.
-            //? if >=26.1 <26.3 {
-            /*HostCameraModern.declare(CgHostCamera.FOV);
-            *///?} else {
+            // Forge 26.1.1 to 26.2 post the camera-angle event after renderLevel has taken the view: their angles
+            // come from the CameraHook node mixin instead.
             HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
-            //?}
             // ExplosionHook and LevelEventHook, the node mixins that report them.
             //? if >=1.21.3 {
             /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
@@ -273,6 +275,16 @@ public final class CrystalGraphicsForge implements VariantEntry {
         *///?} else {
         private static void onFrameEnd(TickEvent.RenderTickEvent event) {
             if (event.phase == TickEvent.Phase.END) LifecycleModern.frameEnd();
+        }
+        //?}
+
+        //? if >=1.20.4 {
+        /*private static void onClientTick(TickEvent.ClientTickEvent.Post event) {
+            LifecycleModern.clientTick();
+        }
+        *///?} else {
+        private static void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) LifecycleModern.clientTick();
         }
         //?}
 

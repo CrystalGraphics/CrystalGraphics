@@ -21,8 +21,8 @@ import net.minecraft.world.entity.LightningBolt;
 
 /**
  * The client's world events, into {@link CgWorldEvents}, 1.13.2 to 26.3. Hurt, death and lightning are read off state
- * the client already holds, once a frame ({@link #poll}, every loader): an entity's hurt time rising, its death time
- * starting, a new lightning bolt. An explosion and a block broken arrive only as packets and level events, so a node
+ * the client already holds, once a game tick ({@link #tick}, each loader's client tick): an entity's hurt time rising,
+ * its death time starting, a new lightning bolt. Once a frame ({@link #poll}) until a first tick arrives. An explosion and a block broken arrive only as packets and level events, so a node
  * mixin hands them in ({@link #explosion}, {@link #levelEvent}) where its loader's names allow one.
  *
  * <ul>
@@ -39,13 +39,24 @@ public final class WorldEventsModern {
     private static final Int2IntOpenHashMap HURT = new Int2IntOpenHashMap();
     private static final IntOpenHashSet DEAD = new IntOpenHashSet(), BOLTS = new IntOpenHashSet(), PRESENT = new IntOpenHashSet();
     private static Level seen;
-    private static int frames;
+    private static int scans;
+    private static boolean ticked;
 
     private WorldEventsModern() {
     }
 
-    /** Once a frame, at the opaque pass: the hurts, deaths and lightning since the last. */
+    /** Once a client tick, after it: the hurts, deaths and lightning since the last. */
+    public static void tick(Minecraft mc) {
+        ticked = true;
+        scan(mc);
+    }
+
+    /** Once a frame, at the opaque pass: what {@link #tick} reads, while no loader has ticked it. */
     public static void poll(Minecraft mc) {
+        if (!ticked) scan(mc);
+    }
+
+    private static void scan(Minecraft mc) {
         Level level = mc.level;
         if (level != seen) {
             seen = level;
@@ -55,7 +66,7 @@ public final class WorldEventsModern {
         }
         //? if >=1.14 {
         if (level == null) return;
-        boolean prune = ++frames % PRUNE_EVERY == 0;
+        boolean prune = ++scans % PRUNE_EVERY == 0;
         if (prune) PRESENT.clear();
         for (Entity e : mc.level.entitiesForRendering()) {
             int id = e.getId();

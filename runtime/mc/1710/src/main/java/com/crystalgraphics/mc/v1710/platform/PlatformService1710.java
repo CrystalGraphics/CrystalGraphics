@@ -18,6 +18,7 @@ import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
 import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
 import com.crystalgraphics.mc.v1710.platform.world.EntityQuery1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldQuery1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
@@ -135,6 +136,7 @@ public final class PlatformService1710 implements CgPlatformService {
             // WorldEvents1710 polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
             CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
                     | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
+            FMLCommonHandler.instance().bus().register(new WorldEvents1710.Ticks());
         }
 
         // Prefer Angelica's mirror over the driver for GL state reads.

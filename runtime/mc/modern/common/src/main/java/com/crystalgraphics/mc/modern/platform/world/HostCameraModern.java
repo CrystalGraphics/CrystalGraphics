@@ -4,8 +4,9 @@ import com.crystalgraphics.platform.service.CgHostCamera;
 
 /**
  * {@link CgHostCamera} for the modern hosts: holds the last offset core gave and adds it where each loader sets its
- * camera up — Forge's and NeoForge's camera-angle and field-of-view events, a node mixin on Fabric's {@code Camera.setup}
- * and {@code GameRenderer.getFov}. Client only: constructed by {@code PlatformServiceModern.gl()}.
+ * camera up — Forge's and NeoForge's camera-angle and field-of-view events, and node mixins on the camera and its field
+ * of view where those events fall short or Fabric has none. Client only: constructed by
+ * {@code PlatformServiceModern.gl()}.
  *
  * <pre>{@code
  * // a loader, at its camera hook
@@ -15,8 +16,8 @@ import com.crystalgraphics.platform.service.CgHostCamera;
  *
  * <ul>
  *   <li>Rotation, roll and field of view only: no modern hook offers the camera's position, so the translation is
- *       dropped. Fabric has no roll either (its {@code setRotation} takes two angles), and Forge 26.1.1 to 26.2 apply
- *       only the field of view (their angle event comes after the view is taken).</li>
+ *       dropped. Fabric rolls from 1.21.11, where Minecraft renders from the camera's quaternion; Forge 26.1.1 to 26.2
+ *       turn the camera in a node mixin, their angle event coming after the view is taken.</li>
  *   <li>Render thread only, like the hooks that read it.</li>
  * </ul>
  */

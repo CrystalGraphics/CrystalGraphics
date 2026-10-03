@@ -174,6 +174,20 @@ public final class LifecycleModern {
     }
 
     /**
+     * The client has run a game tick: read the world events it brought. A tick, not a frame, because a hurt lasts half a
+     * second and a lightning bolt a few ticks, and a slow frame spans both.
+     *
+     * <pre>{@code
+     * // Forge: TickEvent.ClientTickEvent at END (Post from 1.20.4); NeoForge: ClientTickEvent.Post (TickEvent before
+     * // 1.20.6); Fabric: ClientTickEvents.END_CLIENT_TICK
+     * LifecycleModern.clientTick();
+     * }</pre>
+     */
+    public static void clientTick() {
+        WorldEventsModern.tick(Minecraft.getInstance());
+    }
+
+    /**
      * Binds Minecraft's main target for drawing and answers its GL framebuffer.
      *
      * <pre>{@code
