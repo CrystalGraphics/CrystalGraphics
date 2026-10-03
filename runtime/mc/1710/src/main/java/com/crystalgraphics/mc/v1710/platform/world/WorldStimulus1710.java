@@ -29,6 +29,11 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     private boolean listening;
 
     @Override
+    public void keepRunning() {
+        Minecraft.getMinecraft().gameSettings.pauseOnLostFocus = false;
+    }
+
+    @Override
     public boolean lightning(double x, double y, double z) {
         if (Minecraft.getMinecraft().thePlayer == null) return false;
         int dimension = Minecraft.getMinecraft().thePlayer.dimension;

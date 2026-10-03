@@ -52,7 +52,7 @@ public final class CgWorldProbe {
     public static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.worldprobe");
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldProbe");
-    private static final int SETTLE_SECONDS = 3, EVENT_SECONDS = 12;
+    private static final int SETTLE_SECONDS = 3, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
     private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f;
     private static final int CAMERA_FRAMES = 4;
     private static final Matrix4fc IDENTITY = new Matrix4f();
@@ -61,7 +61,7 @@ public final class CgWorldProbe {
 
     private static boolean installed;
     private static Phase phase = Phase.WAITING;
-    private static long phaseNanos;
+    private static long phaseNanos, settleNanos;
     private static int passed, failed, skipped, cameraFrames;
     private static int cameraBits;
     private static float baseFov, baseYaw, baseRoll;
@@ -93,9 +93,14 @@ public final class CgWorldProbe {
         long now = System.nanoTime();
         switch (phase) {
             case WAITING:
-                if (entities.localPlayer() >= 0) next(Phase.SETTLING, now);
+                if (entities.localPlayer() < 0) break;
+                CgPlatform.get(CgWorldStimulus.SERVICE).keepRunning();
+                settleNanos = now;
+                next(Phase.SETTLING, now);
                 break;
             case SETTLING:
+                // A paused game ticks no server: wait it out, for a while, rather than check a frozen world.
+                if (host.environment().paused() && (now - settleNanos) / 1.0e9 < PAUSED_SECONDS) phaseNanos = now;
                 if (seconds(now) < SETTLE_SECONDS) break;
                 LOGGER.info("world probe: started");
                 staticChecks(host);

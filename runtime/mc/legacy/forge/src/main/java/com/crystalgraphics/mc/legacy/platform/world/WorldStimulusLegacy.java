@@ -19,6 +19,11 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     *///?}
 
     @Override
+    public void keepRunning() {
+        Minecraft.getMinecraft().gameSettings.pauseOnLostFocus = false;
+    }
+
+    @Override
     public boolean lightning(double x, double y, double z) {
         return run(String.format(Locale.ROOT, "summon %s %.2f %.2f %.2f", LIGHTNING, x, y, z));
     }
