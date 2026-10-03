@@ -167,6 +167,20 @@ a scatter or general body once, in order. Images are read whole before the body 
 and `CgKernelFormTest` in core (GL-free); `ShippedKernelSpirvTest` in `runtime/lwjgl/vulkan` compiles every shipped
 kernel through shaderc; the harness's `shader-compile-audit` compiles them, and every lowered pass of them, on the
 driver; `compute-seam` dispatches `harness:shaders/compute_seam.compute` on every device against a CPU reference,
-subgroups native and emulated. **`compute-tiers` is the gate for the forms**: one kernel per shape, each result worked
-out in Java, run forced to every tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33|CPU`, and
-`-Dcrystalgraphics.shaderBuffer.tier=TBO` for GLSL 3.30 with buffer textures); every tier must give the same buffers.
+subgroups native and emulated.
+
+**`CgComputeSelfTest` is the gate for the forms**, and it ships: one kernel per shape
+(`crystalgraphics:shaders/env/compute/self_test.compute`), each result worked out in Java, every tier giving the same
+buffers. It runs three ways:
+
+```bash
+# the harness, forced to each tier, and on the downlevel contexts, which choose their own
+./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers" -Dcrystalgraphics.compute.tier=G33
+./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers" -Pharness.downlevel=mac41
+# any installed client, at its first frame: the verdict lands beside the GPU report
+./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true
+```
+
+`-Pharness.downlevel=mac41|gl33` runs the harness on Mesa's llvmpipe shaped as a GL 4.1 or 3.3 context: real contexts
+without compute, with Mesa's stricter GLSL compiler, where a forced tier on NVIDIA still has every feature.
+`compute-graph`, `indirect-draw` and `shader-compile-audit` run there unforced too, and none of them skips for a tier.

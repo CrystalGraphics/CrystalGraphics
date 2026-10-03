@@ -1550,6 +1550,23 @@ com/crystalgraphics/compute/CgCompute
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
   method public,static releaseAll ()V
   method public,static reloadAll ()V
+com/crystalgraphics/compute/CgComputeSelfTest
+  access public,final
+  extends java/lang/Object
+  method public,static run ()Lcom/crystalgraphics/compute/CgComputeSelfTest$Result;
+  method public,static runIfAsked ()V
+com/crystalgraphics/compute/CgComputeSelfTest$Result
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+  method public failures ()Ljava/util/List;
+  method public forms ()Ljava/lang/String;
+  method public passed ()Z
+  method public tier ()Ljava/lang/String;
+  method public verdict ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/compute/CgDispatchBindings
   access public,final
   extends java/lang/Object

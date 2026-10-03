@@ -140,6 +140,7 @@ public record CgGpuReport(String api, Map<String, String> facts) {
         for (int i = 0, n = CgGL.glGetInteger(CgGL.GL_NUM_EXTENSIONS); i < n; i++) {
             listed.add(CgGL.glGetStringi(CgGL.GL_EXTENSIONS, i));
         }
+        listed.removeAll(CgDisabledExtensions.all());
         for (Feature feature : FEATURES) f.put(feature.key(), feature.in(version, listed));
 
         if (has(f, "compute")) {

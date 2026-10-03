@@ -1586,6 +1586,17 @@ archived in the private plan repository, `plan/crystalgraphics/archive/`.
                                                      # context has what it needs; refused, naming it, where not
 -Dcrystalgraphics.shaderBuffer.tier=TBO              # SSBO_GL43|SSBO_ARB|TBO: engine buffers read as buffer textures,
                                                      # GLSL 3.30, as a 3.3 context runs them; with G33, that context
+-Dcrystalgraphics.compute.selfTest=true              # at the first frame, run a kernel of every shape on this context
+                                                     # and check each result against Java; logs `[crystalgraphics]
+                                                     # compute self-test <tier>: PASS|FAIL`, which prodSmoke gathers
+                                                     # (-PcgSmokeProps=crystalgraphics.compute.selfTest=true)
+
+# Extensions
+-Dcrystalgraphics.gl.disableExtensions=GL_ARB_buffer_storage,GL_ARB_compute_shader
+                                                     # treat these as absent (CgDisabledExtensions): a driver whose
+                                                     # implementation misbehaves, and the harness's downlevel contexts.
+                                                     # A feature core in the context's version stays; a forced tier
+                                                     # turns that off
 
 # Batching
 -Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in
