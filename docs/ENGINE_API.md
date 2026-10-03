@@ -387,6 +387,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
+| 6c | `CgBufferTextures.releaseAll()` | The buffer textures materials and lowered kernels read buffers through, one per unit, and the zero buffer an unbound one reads |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
