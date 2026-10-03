@@ -85,8 +85,14 @@ public final class CgGpuOps {
             "CompactValues", "CompactCount"};
     /** Each kernel under each set of keywords an op asks for, made once. */
     private static final CgKernel[][] SCAN_VARIANTS = new CgKernel[SCAN_KERNELS.length][3 * 3 * 2 * 2];
-    private static final int RADIX_COUNT = 0, RADIX_SCATTER = 1, RADIX_SCATTER_KEYS = 2;
-    private static final String[] SORT_KERNELS = {"RadixCount", "RadixScatter", "RadixScatterKeys"};
+    private static final int RADIX_COUNT = 0, RADIX_SCATTER = 1, RADIX_SCATTER_KEYS = 2, SORT_COUNT = 3, SORT_REDUCE = 4,
+            SORT_SCAN = 5, SORT_SCAN_ADD = 6, SORT_SCATTER = 7, SORT_SCATTER_KEYS = 8;
+    private static final String[] SORT_KERNELS = {"RadixCount", "RadixScatter", "RadixScatterKeys", "SortCount",
+            "SortReduce", "SortScan", "SortScanAdd", "SortScatter", "SortScatterKeys"};
+    /** The compute-only sort's keys a block, and its work groups at most: few enough for one group to scan their sums. */
+    private static final int SORT_BLOCK = 512, SORT_GROUPS = 1024;
+    /** The compute-only histogram's bins at most (held in shared memory), its work groups at most, and keys a group. */
+    private static final int GROUP_BINS = 1024, HISTOGRAM_GROUPS = 256, HISTOGRAM_GROUP_KEYS = 4096;
     private static final CgKernel[][] SORT_VARIANTS = new CgKernel[SORT_KERNELS.length][3 * 2];
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
     private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
@@ -282,35 +288,60 @@ public final class CgGpuOps {
         if (binCount < 1) throw new IllegalArgumentException(binCount + " bins");
         distinct(keys, bins);
         fill(pass, bins, 0, CgGpuCount.of(binCount));
-        if (count.capacity() == 0) return;
-        counted(pass.dispatch(Files.histogram().kernel("Histogram"), count.capacity()), count, keys)
-                .bind("KEYS", keys).bind("BINS", bins).set("_Shift", shift).set("_Bins", binCount);
+        int capacity = count.capacity();
+        if (capacity == 0) return;
+        CgKernel grouped = Files.histogram().kernel("HistogramGroups");
+        CgDispatch dispatch;
+        if (binCount <= GROUP_BINS && grouped.runs()) {
+            int groups = Math.min(HISTOGRAM_GROUPS, (capacity + HISTOGRAM_GROUP_KEYS - 1) / HISTOGRAM_GROUP_KEYS);
+            dispatch = pass.dispatchGroups(grouped, groups, 1, 1).set("_Groups", groups);
+        } else {
+            dispatch = pass.dispatch(Files.histogram().kernel("Histogram"), capacity);
+        }
+        counted(dispatch, count, keys).bind("KEYS", keys).bind("BINS", bins).set("_Shift", shift).set("_Bins", binCount);
     }
 
     /**
-     * Least significant digit first, four bits a pass, ping-ponging through scratch: each pass counts the digits of
-     * every block of 32, scans the counts digit-major, and moves each element to its place. An odd number of passes
-     * ends in scratch and is copied back.
+     * Least significant digit first, four bits a pass, ping-ponging through scratch; an odd number of passes ends in
+     * scratch and is copied back. Both forms are stable, so they put every key in the same place.
+     *
+     * <p>Where the compute-only kernels run (FidelityFX Parallel Sort's), each work group counts the digits of its
+     * run of 512-key blocks, the counts are scanned digit-major in two levels, and each group sorts every 128 of its
+     * keys by the digit in shared memory before writing them out. Elsewhere each pass counts the digits of every
+     * block of 32, scans the counts with {@link #scanLevel}, and ranks each element within its block.
      */
     private static void radixSort(CgComputePass pass, Element element, Order order, int bits, CgGraphBuffer keys,
                                   @Nullable CgGraphBuffer values, CgGpuCount count) {
         if (values != null) distinct(keys, values);
         int capacity = count.capacity();
         if (capacity <= 1) return;
-        int blocks = (capacity + 31) / 32, cells = 16 * blocks, passes = (bits + 3) / 4;
+        boolean grouped = sortKernel(SORT_COUNT, element, order).runs();
+        int blocks = grouped ? (capacity + SORT_BLOCK - 1) / SORT_BLOCK : (capacity + 31) / 32;
+        int groups = Math.min(blocks, SORT_GROUPS), reduce = (groups + SORT_BLOCK - 1) / SORT_BLOCK;
+        int cells = 16 * (grouped ? groups : blocks), passes = (bits + 3) / 4;
         CgGpuCount cellCount = CgGpuCount.of(cells);
-        CgGraphBuffer digits = words("ops.sort.digits", cells), offsets = words("ops.sort.offsets", cells);
+        CgGraphBuffer digits = words("ops.sort.digits", cells);
+        CgGraphBuffer offsets = grouped ? null : words("ops.sort.offsets", cells);
+        CgGraphBuffer reduced = grouped ? words("ops.sort.reduced", 16 * reduce) : null;
         CgGraphBuffer keysIn = keys, keysOut = words("ops.sort.keys", capacity);
         CgGraphBuffer valuesIn = values, valuesOut = values == null ? null : words("ops.sort.values", capacity);
         for (int p = 0; p < passes; p++) {
-            counted(pass.dispatch(sortKernel(RADIX_COUNT, element, order), cells), count, keysIn)
-                    .bind("KEYS", keysIn).bind("CELLS", digits).set("_Shift", 4 * p).set("_Blocks", blocks);
-            scanLevel(pass, cellCount, Fold.SUM, Element.UINT, false, false, digits, offsets, 0, cells);
-            CgDispatch scatter = counted(valuesIn == null
-                    ? pass.dispatch(sortKernel(RADIX_SCATTER_KEYS, element, order), capacity)
-                    : pass.dispatch(sortKernel(RADIX_SCATTER, element, order), capacity), count, keysIn);
-            scatter.bind("KEYS", keysIn).bind("OFFSETS", offsets).bind("KEYS_OUT", keysOut)
-                    .set("_Shift", 4 * p).set("_Blocks", blocks);
+            CgDispatch scatter;
+            if (grouped) {
+                groupRuns(counted(pass.dispatchGroups(sortKernel(SORT_COUNT, element, order), groups, 1, 1), count,
+                        keysIn), blocks, groups).bind("KEYS", keysIn).bind("TABLE", digits).set("_Shift", 4 * p);
+                scanGroups(pass, digits, reduced, groups, reduce);
+                scatter = groupRuns(counted(pass.dispatchGroups(sortKernel(valuesIn == null ? SORT_SCATTER_KEYS
+                        : SORT_SCATTER, element, order), groups, 1, 1), count, keysIn), blocks, groups)
+                        .bind("TABLE", digits);
+            } else {
+                counted(pass.dispatch(sortKernel(RADIX_COUNT, element, order), cells), count, keysIn)
+                        .bind("KEYS", keysIn).bind("CELLS", digits).set("_Shift", 4 * p).set("_Blocks", blocks);
+                scanLevel(pass, cellCount, Fold.SUM, Element.UINT, false, false, digits, offsets, 0, cells);
+                scatter = counted(pass.dispatch(sortKernel(valuesIn == null ? RADIX_SCATTER_KEYS : RADIX_SCATTER,
+                        element, order), capacity), count, keysIn).bind("OFFSETS", offsets).set("_Blocks", blocks);
+            }
+            scatter.bind("KEYS", keysIn).bind("KEYS_OUT", keysOut).set("_Shift", 4 * p);
             if (valuesIn != null) scatter.bind("VALUES_IN", valuesIn).bind("VALUES_OUT", valuesOut);
             CgGraphBuffer k = keysIn;
             keysIn = keysOut;
@@ -323,6 +354,25 @@ public final class CgGpuOps {
             copy(pass, keysIn, keys, count);
             if (values != null) copy(pass, valuesIn, values, count);
         }
+    }
+
+    /** How the compute-only sort shares {@code blocks} blocks of 512 among {@code groups} work groups. */
+    private static CgDispatch groupRuns(CgDispatch dispatch, int blocks, int groups) {
+        return dispatch.set("_Groups", groups).set("_GroupBlocks", blocks / groups).set("_ExtraGroups", blocks % groups);
+    }
+
+    /**
+     * The compute-only sort's counts, scanned digit-major in place: each digit's groups summed per 512, those sums
+     * scanned by one work group, then each run of 512 scanned from its sum's prefix.
+     */
+    private static void scanGroups(CgComputePass pass, CgGraphBuffer table, CgGraphBuffer reduced, int groups,
+                                   int reduce) {
+        pass.dispatchGroups(sortKernel(SORT_REDUCE, Element.UINT, Order.ASCENDING), 16 * reduce, 1, 1)
+                .bind("TABLE", table).bind("REDUCED", reduced).set("_Groups", groups).set("_ReduceGroups", reduce);
+        pass.dispatchGroups(sortKernel(SORT_SCAN, Element.UINT, Order.ASCENDING), 1, 1, 1)
+                .bind("REDUCED", reduced).set("_ReduceGroups", reduce);
+        pass.dispatchGroups(sortKernel(SORT_SCAN_ADD, Element.UINT, Order.ASCENDING), 16 * reduce, 1, 1)
+                .bind("REDUCED", reduced).bind("TABLE", table).set("_Groups", groups).set("_ReduceGroups", reduce);
     }
 
     // ── Mip chains, blur ─────────────────────────────────────────────────────

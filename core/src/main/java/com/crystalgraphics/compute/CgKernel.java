@@ -10,6 +10,7 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Set;
@@ -45,9 +46,8 @@ public final class CgKernel {
     /** The program last answered, while its file has not released it. */
     private volatile CgKernelProgram program;
     private volatile int programGeneration = -1;
-    /** The form last chosen, and what it was chosen under: the file's generation, the bodies given, the tier. */
-    private volatile CgKernelForm form;
-    private volatile long formKey = Long.MIN_VALUE;
+    /** The form last chosen, or why there is none, and what it was chosen under. */
+    private volatile Choice choice;
     /** What the every-tier check last passed under: the file's generation and the bodies given. */
     private volatile long checkedKey = Long.MIN_VALUE;
 
@@ -106,13 +106,24 @@ public final class CgKernel {
      * @throws IllegalStateException naming what stops it, where it can run nowhere
      */
     public CgKernelForm form() {
+        Choice c = choice();
+        if (c.refusal != null) throw c.refusal;
+        return c.form;
+    }
+
+    /** The choice for the current context: kept, a refusal included, while the file, its bodies and the tier hold. */
+    private Choice choice() {
         ComputeTier tier = CgCapabilities.detect().computeTier();
         long key = ((long) compute.generation() << 40) ^ ((long) compute.bodiesGiven() << 8) ^ tier.ordinal();
-        CgKernelForm held = form;
-        if (held != null && formKey == key) return held;
-        held = CgKernelForm.choose(compute.source(), decl(), tier, n -> compute.cpuBody(n) != null);
-        form = held;
-        formKey = key;
+        Choice held = choice;
+        if (held != null && held.key == key) return held;
+        try {
+            held = new Choice(key, CgKernelForm.choose(compute.source(), decl(), tier, n -> compute.cpuBody(n) != null),
+                    null);
+        } catch (IllegalStateException e) {
+            held = new Choice(key, null, e);
+        }
+        choice = held;
         return held;
     }
 
@@ -134,12 +145,7 @@ public final class CgKernel {
      * Java body, which a feature built on it asks before it is offered. Render thread, or once capabilities are known.
      */
     public boolean runs() {
-        try {
-            form();
-            return true;
-        } catch (IllegalStateException e) {
-            return false;
-        }
+        return choice().refusal == null;
     }
 
     /** Its lowered form for the current context, built the first time: the kernel, or its fallback. Render thread. */
@@ -179,4 +185,7 @@ public final class CgKernel {
     public String toString() {
         return compute.path() + "#" + name + (keywords.isEmpty() ? "" : keywords.toString());
     }
+
+    /** Keyed by the file's generation, the bodies given and the tier; one of form and refusal is null. */
+    private record Choice(long key, @Nullable CgKernelForm form, @Nullable IllegalStateException refusal) {}
 }

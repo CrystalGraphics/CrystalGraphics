@@ -172,6 +172,13 @@ pass.end();
 - **One lowerable algorithm per op runs on every tier**, as compute on V and G43. A reduce folds sixteen at a time,
   a level at a time; a scan scans the block sums a level up and starts each block from its prefix; a sort is LSD radix
   with four-bit digits, counting each block of 32 and ranking within it. Each kernel has a Java body.
+- **Where compute runs, two ops take a faster form with the same answer**, chosen by `runs()` on a `compute_only`
+  kernel: the sort is FidelityFX Parallel Sort's (a work group counts its run of 512-key blocks and sorts each 128 keys
+  in shared memory), and a histogram of at most 1024 bins counts in shared memory first. On an RTX 4070 SUPER at a
+  million keys and values, a 32-bit sort takes 0.42 ms on GL (0.94 with emulated subgroups) where the every-tier form
+  took 1.94, and a 64-bin histogram 0.01 ms where it took 0.27.
+- **What every op costs**, per tier and device: the harness's `gpu-ops-cost` scene prints a table of GPU and CPU
+  time per op at a million elements and a 1920x1080 chain.
 - **Every tier gives the same bits**: integers exactly, a float sum in the same tree order, a sort stable everywhere.
   Below compute an add is a float blend, so a histogram bin is exact to 2^24.
 - **Mip chains and blurs** are image kernels, one per format (`CgGpuOps.IMAGE_TYPES`: RGBA8, RGBA16F, R16F, R32F),
