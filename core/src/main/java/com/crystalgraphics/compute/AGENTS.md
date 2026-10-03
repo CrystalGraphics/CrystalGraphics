@@ -114,12 +114,14 @@ bin.cpu(d -> {                                     // and a Java body, for the C
 ```
 
 **Lowered** (`lower`, gpu-compute §6.2): each shape becomes draws every GL from 3.3 has. A buffer the kernel writes its
-own element of is captured by transform feedback from a vertex stage; appends are emitted by a geometry stage and
-counted into a 1x1 float target with additive blending; a scatter is points into a texture laid out element to texel,
-blended for adds, minima and maxima; an image is a fragment pass. Buffers are read as buffer textures. Every pass reads
-what the buffers held before the dispatch, and what they write is copied over the views after the last. G40 sizes an
-indirect dispatch's draws from the GPU's count (`glDrawArraysIndirect`); G33 reads the count back, a stall counted as
-`buffer.readbacks`. A device has no transform feedback, so a lowered tier forced on one is refused at startup.
+own element of is a render target laid out as the buffer's words, drawn by one fragment pass over its texels, and up to
+eight buffers of one layout share the pass. Appends are emitted by a geometry stage, captured by transform feedback and
+counted into a 1x1 float target with additive blending. A scatter is points into a target laid out element to texel,
+blended for adds, minima and maxima, and an image is a fragment pass. Buffers are read as buffer textures. Every pass
+reads what the buffers held before the dispatch; after the last, each target is read into its buffer on the GPU
+(`glReadPixels` into a pixel pack buffer). G40 sizes an indirect dispatch's draws from the GPU's count
+(`glDrawArraysIndirect`); G33 reads the count back, a stall counted as `buffer.readbacks`. A device has no transform
+feedback, so a lowered tier forced on one is refused at startup.
 
 **The CPU tier** (`cpu`, §6.4): the body runs over CPU copies of the bound buffers (`CgCpuMirrors`), read back the
 first time and kept while nothing else writes the buffer; what it writes is uploaded through the frame ring before the
@@ -178,7 +180,21 @@ pass.end();
   million keys and values, a 32-bit sort takes 0.42 ms on GL (0.94 with emulated subgroups) where the every-tier form
   took 1.94, and a 64-bin histogram 0.01 ms where it took 0.27.
 - **What every op costs**, per tier and device: the harness's `gpu-ops-cost` scene prints a table of GPU and CPU
-  time per op at a million elements and a 1920x1080 chain.
+  time per op at a million elements and a 1920x1080 chain. On an RTX 4070 SUPER, GPU ms:
+
+  | Op | compute (G43) | lowered (G40, G33) |
+  |---|---|---|
+  | fill, iota, copy | 0.02-0.04 | 0.08-0.15 |
+  | reduce | 0.03 | 0.4-0.5 |
+  | scan, compact | 0.08, 0.11 | 0.7, 1.0 |
+  | bounds | 0.29 | 2.7 |
+  | histogram, 64 bins | 0.01 | 0.44 |
+  | sort, 32 bits | 0.42 | 12 |
+  | downsample, blur | 0.03-0.53 | 0.16-0.55 |
+
+  Lowered, each buffer a dispatch writes lands through one `glReadPixels`, which costs this driver 15-70 µs of CPU:
+  0.1-1 ms per op, and 7 ms for a 32-bit sort, whose every digit pass lands several buffers. The CPU tier takes 3-19 ms
+  for the buffer ops and 360 ms for a 32-bit sort.
 - **Every tier gives the same bits**: integers exactly, a float sum in the same tree order, a sort stable everywhere.
   Below compute an add is a float blend, so a histogram bin is exact to 2^24.
 - **Mip chains and blurs** are image kernels, one per format (`CgGpuOps.IMAGE_TYPES`: RGBA8, RGBA16F, R16F, R32F),
@@ -231,7 +247,7 @@ pass.end();
 - **`compute_only` takes no `#pragma fallback`**: a fallback is a lowered form, which `compute_only` says it has none of.
 - **A polyfill is exact, not free**: `bitCount` is a dozen instructions where the builtin is one, and only on the
   tiers that lack it. A kernel defining its own function of a builtin's name keeps its own; nothing is renamed.
-- **Lowering refuses**, by name: a general kernel; an element wider than one capture (64 words); a counter's
+- **Lowering refuses**, by name: a general kernel; an appended element wider than one capture (64 words); a counter's
   `NAME_INC`/`NAME_ADD` whose result is used (a blend answers nothing); a cube image; an SNORM image written.
 - **A CPU body writes only through what it is handed**: its range's elements in a map, gather or image kernel (ranges
   run at once), anything in a scatter or general one. `d.append(name)` answers the index to write in

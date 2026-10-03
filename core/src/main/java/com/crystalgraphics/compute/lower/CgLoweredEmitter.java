@@ -25,8 +25,9 @@ import java.util.Set;
 
 /**
  * One pass of a kernel lowered below compute (gpu-compute C5) as GLSL 3.30 stages: the kernel's own code, unchanged,
- * run as a vertex stage under transform feedback, a geometry stage emitting points, or a fragment stage over an image,
- * with its accessors rewritten for that stage. {@code #include} lines are left for {@code CgShaderPreprocessor}.
+ * run as a fragment stage over the texels of the buffers it writes, a geometry stage emitting points, or a fragment
+ * stage over an image, with its accessors rewritten for that stage. {@code #include} lines are left for
+ * {@code CgShaderPreprocessor}.
  *
  * <pre>{@code
  * for (CgLowering.Pass pass : CgLowering.passes(source, kernel)) {
@@ -37,9 +38,10 @@ import java.util.Set;
  *
  * <p>A buffer is read as a {@code usamplerBuffer} of its element's 32-bit words: {@link #tbo} holding the buffer whole,
  * {@link #base} the view's first element, {@link #length} its elements. An element of a 4-, 8- or 16-byte scalar or
- * vector is one texel of one, two or four words; a struct of 16-byte fields is a texel per field. Captured elements are
- * the same words, in {@code uint}, {@code uvec2} or {@code uvec4} outputs, so the buffer holds exactly what compute
- * would have written.</p>
+ * vector is one texel of one, two or four words; a struct of 16-byte fields is a texel per field. A written element is
+ * the same words, in {@code uint}, {@code uvec2} or {@code uvec4} outputs: a fragment per texel of an output pass's
+ * render target, laid out as the buffer is and read back into it, or a captured vertex per appended element. The buffer
+ * holds exactly what compute would have written.</p>
  */
 public final class CgLoweredEmitter {
 
@@ -92,7 +94,7 @@ public final class CgLoweredEmitter {
         return words == 1 ? CgGL.GL_R32UI : words == 2 ? CgGL.GL_RG32UI : CgGL.GL_RGBA32UI;
     }
 
-    /** The captured outputs one element of {@code b} is written as. */
+    /** The captured outputs one element appended to {@code b} is written as. */
     public static String[] captures(CgBufferDecl b) {
         String[] names = new String[texelsPerElement(b)];
         for (int i = 0; i < names.length; i++) names[i] = "_cg_c" + i;
@@ -123,8 +125,7 @@ public final class CgLoweredEmitter {
     public static Stages emit(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, Pass pass,
                               CgLoweredTarget target) {
         return switch (pass.kind()) {
-            case OUTPUT -> new Stages(kernelStage(source, kernel, keywords, pass, target), null, null,
-                    captures(pass.buffer()));
+            case OUTPUT -> new Stages(FULLSCREEN_VERTEX, null, kernelStage(source, kernel, keywords, pass, target), null);
             case APPEND -> new Stages(PASS_VERTEX, kernelStage(source, kernel, keywords, pass, target), COUNT_FRAGMENT,
                     captures(pass.buffer()));
             case SCATTER -> new Stages(PASS_VERTEX, kernelStage(source, kernel, keywords, pass, target),
@@ -201,7 +202,13 @@ public final class CgLoweredEmitter {
     /** What a stage declares before the kernel's code: its primitive layout, outputs and emitters. */
     private static void prologue(StringBuilder sb, Pass pass, CgLoweredTarget target) {
         switch (pass.kind()) {
-            case OUTPUT -> outputs(sb, pass.buffer());
+            case OUTPUT -> {
+                sb.append("uniform int ").append(TEXELS_X).append(";\n");
+                for (int n = 0; n < pass.buffers().size(); n++) {
+                    sb.append("layout(location = ").append(n).append(") out ")
+                      .append(uintType(texelWords(pass.buffers().get(n)))).append(" _cg_o").append(n).append(";\n");
+                }
+            }
             case APPEND -> {
                 int vertices = target.geometryVertices(pass.buffer().stride() / 4);
                 sb.append("layout(points) in;\nlayout(points, max_vertices = ").append(vertices).append(") out;\n");
@@ -238,12 +245,18 @@ public final class CgLoweredEmitter {
         sb.append("\nvoid main() {\n");
         switch (pass.kind()) {
             case OUTPUT -> {
-                CgBufferDecl b = pass.buffer();
-                sb.append("    _cg_setup(gl_VertexID);\n")
-                  .append("    _cg_out = _cg_load_").append(b.name()).append("(CG_ELEMENT);\n")
-                  .append("    if (CG_IN_RANGE) ").append(kernel.name()).append("();\n")
-                  .append("    _cg_capture(_cg_out);\n")
-                  .append("    gl_Position = vec4(0.0);\n");
+                int k = texelsPerElement(pass.buffer());
+                sb.append("    int _cg_t = int(gl_FragCoord.y) * ").append(TEXELS_X).append(" + int(gl_FragCoord.x);\n")
+                  .append("    _cg_setup(").append(k == 1 ? "_cg_t" : "_cg_t / " + k).append(");\n");
+                for (CgBufferDecl b : pass.buffers()) {
+                    sb.append("    _cg_out_").append(b.name()).append(" = _cg_load_").append(b.name()).append("(CG_ELEMENT);\n");
+                }
+                sb.append("    if (CG_IN_RANGE) ").append(kernel.name()).append("();\n");
+                if (k > 1) sb.append("    int _cg_j = _cg_t % ").append(k).append(";\n");
+                for (int n = 0; n < pass.buffers().size(); n++) {
+                    CgBufferDecl b = pass.buffers().get(n);
+                    sb.append("    _cg_o").append(n).append(" = ").append(texelOf(b, "_cg_out_" + b.name())).append(";\n");
+                }
             }
             case APPEND, SCATTER -> sb.append("    _cg_setup(_cg_vertex[0]);\n    if (CG_IN_RANGE) ")
                     .append(kernel.name()).append("();\n");
@@ -267,9 +280,8 @@ public final class CgLoweredEmitter {
                 sb.append("uniform usamplerBuffer ").append(counterTbo(b)).append(";\nuniform int ").append(counterAt(b)).append(";\n");
             }
             load(sb, b);
-            boolean captured = pass.buffer() == b && (pass.kind() == Kind.OUTPUT || pass.kind() == Kind.APPEND);
-            if (captured) capture(sb, b);
-            if (captured && pass.kind() == Kind.OUTPUT) sb.append(e).append(" _cg_out;\n");
+            if (pass.kind() == Kind.APPEND && pass.buffer() == b) capture(sb, b);
+            if (pass.kind() == Kind.OUTPUT && pass.buffers().contains(b)) sb.append(e).append(" _cg_out_").append(b.name()).append(";\n");
             for (CgBufferAccessor accessor : CgBufferAccessor.values()) {
                 if (CgLowering.uses(kernel, b, accessor)) accessor(sb, b, accessor, pass);
             }
@@ -297,7 +309,20 @@ public final class CgLoweredEmitter {
         sb.append("    return v;\n}\n");
     }
 
-    /** {@code _cg_capture(v)}: the element's words into the captured outputs. */
+    /** The texel of element {@code v} an output pass's fragment writes: its words, or field {@code _cg_j}'s of a struct. */
+    private static String texelOf(CgBufferDecl b, String v) {
+        if (!b.struct()) return pack(b.element(), v);
+        int k = b.fields().size();
+        StringBuilder texel = new StringBuilder();
+        for (int j = 0; j < k - 1; j++) {
+            CgElementField f = b.fields().get(j);
+            texel.append("_cg_j == ").append(j).append(" ? ").append(pack(f.type(), v + "." + f.name())).append(" : ");
+        }
+        CgElementField last = b.fields().get(k - 1);
+        return texel.append(pack(last.type(), v + "." + last.name())).toString();
+    }
+
+    /** {@code _cg_capture(v)}: an appended element's words into the captured outputs. */
     private static void capture(StringBuilder sb, CgBufferDecl b) {
         sb.append("void _cg_capture(").append(b.element()).append(" v) {\n");
         if (!b.struct()) {
@@ -321,7 +346,8 @@ public final class CgLoweredEmitter {
             case READ -> indexed(sb, e + " " + name, "", "return _cg_load_" + b.name() + "(int(i));");
             case LENGTH -> sb.append("int ").append(name).append("() { return ").append(length(b)).append("; }\n");
             case WRITE -> sb.append("void ").append(name).append('(').append(e).append(" v) {")
-                    .append(pass.kind() == Kind.OUTPUT && pass.buffer() == b ? " _cg_out = v;" : "").append(" }\n");
+                    .append(pass.kind() == Kind.OUTPUT && pass.buffers().contains(b) ? " _cg_out_" + b.name() + " = v;" : "")
+                    .append(" }\n");
             case STORE -> {
                 String body = scatterHere && pass.op() == Op.STORE ? inRange + "; " + storePoints(b, pass.floats()) : "";
                 indexed(sb, "void " + name, ", " + e + " v", body);

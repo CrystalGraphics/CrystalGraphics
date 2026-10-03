@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
  * }</pre>
  *
  * <ul>
- *   <li>{@link Kind#OUTPUT}: a buffer the kernel writes its own element of, captured by transform feedback from a
- *       vertex stage, one vertex an element.</li>
+ *   <li>{@link Kind#OUTPUT}: buffers the kernel writes its own element of, a fragment pass over their words laid out
+ *       as texels, a render target each: up to {@link #MAX_TARGETS} buffers of one layout a pass.</li>
  *   <li>{@link Kind#APPEND}: an append buffer, captured from a geometry stage emitting a point per appended element,
  *       the points also counted into a texel.</li>
  *   <li>{@link Kind#SCATTER}: a buffer written at computed indices, as points into a texture laid out element to
@@ -36,12 +36,16 @@ import java.util.regex.Pattern;
  *   <li>{@link Kind#IMAGE}: an image the kernel writes its own texel of, a fragment pass over it.</li>
  * </ul>
  *
- * <p>Every pass reads what the buffers held before the dispatch; what they write lands after the last.</p>
+ * <p>Every pass reads what the buffers held before the dispatch; what they write lands after the last, each target
+ * read back into its buffer.</p>
  */
 public final class CgLowering {
 
     /** The words one transform-feedback capture interleaves: GL 3.0's guaranteed 64 components. */
     public static final int MAX_CAPTURED_WORDS = 64;
+
+    /** The render targets one pass writes: GL 3.3's guaranteed draw buffers. */
+    public static final int MAX_TARGETS = 8;
 
     public enum Kind { OUTPUT, APPEND, SCATTER, IMAGE }
 
@@ -51,10 +55,17 @@ public final class CgLowering {
     /**
      * One draw of a lowered kernel.
      *
-     * @param floats a scatter pass's target holds floats (it adds, takes minima or maxima), else the element's bits
+     * @param buffers what it writes: an output pass's buffers, all of one layout; the one buffer an append or scatter
+     *                pass writes; none for an image pass
+     * @param floats  a scatter pass's target holds floats (it adds, takes minima or maxima), else the element's bits
      */
-    public record Pass(Kind kind, @Nullable CgBufferDecl buffer, @Nullable CgImageDecl image, @Nullable Op op,
+    public record Pass(Kind kind, List<CgBufferDecl> buffers, @Nullable CgImageDecl image, @Nullable Op op,
                        boolean floats) {
+
+        /** The buffer an append or scatter pass writes, or an output pass's first. */
+        public CgBufferDecl buffer() {
+            return buffers.get(0);
+        }
     }
 
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
@@ -71,10 +82,9 @@ public final class CgLowering {
         String named = "kernel " + kernel.name();
         if (kernel.shape().unrestricted()) return named + " is general and " + generalConstruct(source, kernel);
         for (CgBufferDecl b : source.buffers()) {
-            boolean captured = uses(kernel, b, CgBufferAccessor.WRITE) || uses(kernel, b, CgBufferAccessor.APPEND);
-            if (captured && b.stride() / 4 > MAX_CAPTURED_WORDS) {
-                return named + " writes " + b.name() + ", whose " + b.stride() + "-byte element is more than one capture "
-                        + "of " + MAX_CAPTURED_WORDS + " words holds below compute";
+            if (uses(kernel, b, CgBufferAccessor.APPEND) && b.stride() / 4 > MAX_CAPTURED_WORDS) {
+                return named + " appends to " + b.name() + ", whose " + b.stride() + "-byte element is more than one "
+                        + "capture of " + MAX_CAPTURED_WORDS + " words holds below compute";
             }
             if (b.access() == CgBufferAccess.COUNTER) {
                 for (CgBufferAccessor a : new CgBufferAccessor[]{CgBufferAccessor.INC, CgBufferAccessor.ADD}) {
@@ -104,22 +114,31 @@ public final class CgLowering {
     /** The draws {@code kernel} lowers to, in the order they run. {@link #refusal} first. */
     public static List<Pass> passes(CgComputeSource source, CgKernelDecl kernel) {
         List<Pass> passes = new ArrayList<>();
-        for (CgBufferDecl b : source.buffers()) {
-            if (uses(kernel, b, CgBufferAccessor.WRITE)) passes.add(new Pass(Kind.OUTPUT, b, null, null, false));
+        List<CgBufferDecl> written = new ArrayList<>();
+        for (CgBufferDecl b : source.buffers()) if (uses(kernel, b, CgBufferAccessor.WRITE)) written.add(b);
+        while (!written.isEmpty()) {
+            int k = CgLoweredEmitter.texelsPerElement(written.get(0));
+            List<CgBufferDecl> pass = new ArrayList<>();
+            for (int i = 0; i < written.size() && pass.size() < MAX_TARGETS; ) {
+                if (CgLoweredEmitter.texelsPerElement(written.get(i)) == k) pass.add(written.remove(i));
+                else i++;
+            }
+            passes.add(new Pass(Kind.OUTPUT, List.copyOf(pass), null, null, false));
         }
         for (CgBufferDecl b : source.buffers()) {
-            if (uses(kernel, b, CgBufferAccessor.APPEND)) passes.add(new Pass(Kind.APPEND, b, null, null, false));
+            if (uses(kernel, b, CgBufferAccessor.APPEND)) passes.add(new Pass(Kind.APPEND, List.of(b), null, null, false));
         }
         for (CgBufferDecl b : source.buffers()) {
             boolean adds = uses(kernel, b, CgBufferAccessor.ADD) || uses(kernel, b, CgBufferAccessor.INC);
             boolean floats = adds || uses(kernel, b, CgBufferAccessor.MIN) || uses(kernel, b, CgBufferAccessor.MAX);
-            if (uses(kernel, b, CgBufferAccessor.STORE)) passes.add(new Pass(Kind.SCATTER, b, null, Op.STORE, floats));
-            if (adds) passes.add(new Pass(Kind.SCATTER, b, null, Op.ADD, true));
-            if (uses(kernel, b, CgBufferAccessor.MIN)) passes.add(new Pass(Kind.SCATTER, b, null, Op.MIN, true));
-            if (uses(kernel, b, CgBufferAccessor.MAX)) passes.add(new Pass(Kind.SCATTER, b, null, Op.MAX, true));
+            List<CgBufferDecl> one = List.of(b);
+            if (uses(kernel, b, CgBufferAccessor.STORE)) passes.add(new Pass(Kind.SCATTER, one, null, Op.STORE, floats));
+            if (adds) passes.add(new Pass(Kind.SCATTER, one, null, Op.ADD, true));
+            if (uses(kernel, b, CgBufferAccessor.MIN)) passes.add(new Pass(Kind.SCATTER, one, null, Op.MIN, true));
+            if (uses(kernel, b, CgBufferAccessor.MAX)) passes.add(new Pass(Kind.SCATTER, one, null, Op.MAX, true));
         }
         for (CgImageDecl image : source.images()) {
-            if (uses(kernel, image, CgImageAccessor.WRITE)) passes.add(new Pass(Kind.IMAGE, null, image, null, false));
+            if (uses(kernel, image, CgImageAccessor.WRITE)) passes.add(new Pass(Kind.IMAGE, List.of(), image, null, false));
         }
         return passes;
     }
