@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.render.stage.CgHostView;
 import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
@@ -135,9 +136,13 @@ final class HostViewModern {
         out.set(x, y, z, view, projection);
     }
 
-    /** What {@code renderLevel} is handed from 1.15: pitch about X, then yaw plus a half turn about Y. */
+    /**
+     * What {@code renderLevel} is handed from 1.15: the camera event's roll about Z (Forge and NeoForge keep it only in
+     * the pose stack), pitch about X, then yaw plus a half turn about Y.
+     */
     private static Matrix4f rotation(float xRot, float yRot) {
-        return VIEW.rotationX((float) Math.toRadians(xRot)).rotateY((float) Math.toRadians(yRot + 180f));
+        return VIEW.rotationZ((float) Math.toRadians(HostCameraModern.eventRoll()))
+                .rotateX((float) Math.toRadians(xRot)).rotateY((float) Math.toRadians(yRot + 180f));
     }
 
     //? if <1.17 {

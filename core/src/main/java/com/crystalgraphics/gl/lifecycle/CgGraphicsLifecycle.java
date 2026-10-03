@@ -5,6 +5,7 @@ import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
+import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.CgPlatform;
@@ -25,6 +26,7 @@ import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gl.texture.CgTextureCopy;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTextureManager;
+import com.crystalgraphics.settings.CgSettings;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.NativeLoader;
 import com.crystalgraphics.text.render.CgTextRenderer;
@@ -208,6 +210,7 @@ public final class CgGraphicsLifecycle {
                 }
                 CgWorldRenderer.get().install();
                 CgRenderDemo.INSTANCE.install();
+                CgWorldProbe.installIfEnabled();
 
                 initialized = true;
                 destroyed = false;   // an explicit init is what makes a context live again
@@ -386,6 +389,7 @@ public final class CgGraphicsLifecycle {
             CgGlState.invalidateAllIfPresent();
 
             CgFontRegistry.get().tickFrame(frameCounter);
+            CgSettings.tickFrame();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
             if (initialized) CgComputeSelfTest.runIfAsked();
 

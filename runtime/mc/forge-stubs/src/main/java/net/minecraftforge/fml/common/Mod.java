@@ -35,6 +35,9 @@ public @interface Mod {
     /** Legacy FML's ordering, e.g. {@code required-after:crystalgraphics}. */
     String dependencies() default "";
 
+    /** Legacy FML's handshake: which remote versions a connection accepts. {@code "*"} accepts an absent mod. */
+    String acceptableRemoteVersions() default "";
+
     /** Legacy FML's lifecycle hook, found by reflection on the {@code @Mod} instance. */
     @Retention(RetentionPolicy.RUNTIME)
     @Target(ElementType.METHOD)

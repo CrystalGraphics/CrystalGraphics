@@ -2,6 +2,8 @@ package com.crystalgraphics.mc.v1710.platform.world;
 
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
@@ -19,8 +21,8 @@ import java.util.Set;
 
 /**
  * The client's world events on Minecraft 1.7.10, into {@link CgWorldEvents}. Hurt, death and lightning are read off
- * the client's own state once a game tick ({@link #poll}, from the opaque pass): a hurt time rising, a death time
- * starting, a new bolt among the weather effects. An explosion and a block broken arrive through mixins
+ * the client's own state once a game tick ({@link #poll}, at each client tick's end through {@link Ticks}): a hurt time
+ * rising, a death time starting, a new bolt among the weather effects. An explosion and a block broken arrive through mixins
  * ({@link #explosion}, {@link #levelEvent}).
  */
 public final class WorldEvents1710 {
@@ -38,7 +40,18 @@ public final class WorldEvents1710 {
     private WorldEvents1710() {
     }
 
-    /** At the opaque pass: the hurts, deaths and lightning since the last game tick polled. */
+    /** The client tick, on FML's bus: {@code FMLCommonHandler.instance().bus().register(new WorldEvents1710.Ticks())}. */
+    public static final class Ticks {
+        @SubscribeEvent
+        public void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) poll();
+        }
+    }
+
+    /**
+     * At each client tick's end, and at the opaque pass: the hurts, deaths and lightning since the last game tick polled.
+     * A frame alone would miss what lasts less than one: a hurt is half a second, a bolt a few ticks.
+     */
     public static void poll() {
         WorldClient world = Minecraft.getMinecraft().theWorld;
         if (world != seen) {

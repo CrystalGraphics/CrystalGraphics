@@ -7,6 +7,8 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.effect.EntityLightningBolt;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
 //? if >=1.9 {
 import net.minecraft.network.play.server.SPacketExplosion;
 import net.minecraft.util.math.BlockPos;
@@ -23,8 +25,8 @@ import java.util.Set;
 
 /**
  * The client's world events on Forge 1.8.9 to 1.12.2, into {@link CgWorldEvents}. Hurt, death and lightning are read
- * off the client's own state once a game tick ({@link #poll}, from the opaque pass): a hurt time rising, a death time
- * starting, a new bolt among the weather effects. An explosion and a block broken arrive through SRG-named mixins
+ * off the client's own state once a game tick ({@link #poll}, at each client tick's end through {@link Ticks}): a hurt
+ * time rising, a death time starting, a new bolt among the weather effects. An explosion and a block broken arrive through SRG-named mixins
  * ({@link #explosion}, {@link #levelEvent}).
  */
 public final class WorldEventsLegacy {
@@ -41,7 +43,18 @@ public final class WorldEventsLegacy {
     private WorldEventsLegacy() {
     }
 
-    /** At the opaque pass: the hurts, deaths and lightning since the last game tick polled. */
+    /** The client tick, on FML's bus: {@code FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks())}. */
+    public static final class Ticks {
+        @SubscribeEvent
+        public void onClientTick(TickEvent.ClientTickEvent event) {
+            if (event.phase == TickEvent.Phase.END) poll();
+        }
+    }
+
+    /**
+     * At each client tick's end, and at the opaque pass: the hurts, deaths and lightning since the last game tick polled.
+     * A frame alone would miss what lasts less than one: a hurt is half a second, a bolt a few ticks.
+     */
     public static void poll() {
         WorldClient world = ClientLegacy.world();
         if (world != seen) {

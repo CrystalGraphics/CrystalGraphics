@@ -10,8 +10,7 @@ import net.minecraft.world.effect.MobEffects;
 /*import org.joml.Vector3fc;
 *///?}
 //? if >=1.21.11 {
-/*import net.minecraft.client.GraphicsPreset;
-import net.minecraft.world.attribute.EnvironmentAttributeSystem;
+/*import net.minecraft.world.attribute.EnvironmentAttributeSystem;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 *///?}
 //? if >=1.15 {
@@ -89,7 +88,8 @@ public final class EnvironmentModern {
         /*boolean hasSky = false, hasCeiling = false;
         *///?}
         //? if >=1.21.11 {
-        /*boolean ultraWarm = attributes.getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES);
+        /*// Positional, though it reads as a dimension's: getDimensionValue throws for it.
+        boolean ultraWarm = attributes.getValue(EnvironmentAttributes.WATER_EVAPORATES, eye);
         *///?} elif >=1.16.5 {
         boolean ultraWarm = level.dimensionType().ultraWarm();
         //?} else {
@@ -247,10 +247,9 @@ public final class EnvironmentModern {
         float screen = Float.NaN, fov = Float.NaN;
         *///?}
         //? if >=1.21.11 {
-        /*GraphicsPreset preset = options.graphicsPreset().get();
-        int graphics = preset == GraphicsPreset.FAST ? CgHostEnvironment.GRAPHICS_FAST
-                : preset == GraphicsPreset.FANCY ? CgHostEnvironment.GRAPHICS_FANCY
-                : preset == GraphicsPreset.FABULOUS ? CgHostEnvironment.GRAPHICS_FABULOUS : -1;
+        /*// A preset only sets these, so a custom one maps too: Fabulous is improved transparency, Fancy cutout leaves.
+        int graphics = options.improvedTransparency().get() ? CgHostEnvironment.GRAPHICS_FABULOUS
+                : options.cutoutLeaves().get() ? CgHostEnvironment.GRAPHICS_FANCY : CgHostEnvironment.GRAPHICS_FAST;
         *///?} elif >=1.19 {
         int graphics = ((Enum<?>) options.graphicsMode().get()).ordinal();
         //?} elif >=1.16.5 <1.19 {

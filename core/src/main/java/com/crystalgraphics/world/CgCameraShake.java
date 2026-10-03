@@ -7,78 +7,100 @@ import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
- * Shakes the host's camera, and kicks its field of view, for every effect at once: each adds an impulse, and once a frame
- * they are summed into the one offset {@link CgHostCamera} applies. A shake is felt less the farther the camera is from
- * where it started, and scaled by the player's accessibility settings for screen and field-of-view effects.
+ * Shakes the host's camera, and kicks its field of view, for every effect at once, on the trauma model: an impact adds
+ * trauma 0..1, felt fully within an inner radius of it and not at all past an outer one; trauma decays at a fixed rate;
+ * the camera turns and moves by trauma squared through smooth noise. So hits stack and settle on their own, and a small
+ * one barely registers while a big one rocks the view. Scaled by the player's Screen Effects and FOV Effects, then by
+ * CrystalGraphics' own comfort settings ({@link CgGraphicsSettings#SHAKE}, {@link CgGraphicsSettings#FOV_KICK}), which
+ * can only lower it.
  *
  * <pre>{@code
- * CgCameraShake.shake(x, y, z, 1f, 0.8f, 40f);   // a blast: full strength, 0.8 s, felt out to 40 blocks
- * CgCameraShake.kick(0.12f, 0.25f);              // the field of view widened 12% at once, easing back over 0.25 s
+ * CgCameraShake.shake(x, y, z, 1f, 12f, 60f);   // a blast: full trauma within 12 blocks, none past 60
+ * CgCameraShake.kick(0.12f, 0.3f);              // the field of view widened 12% at once, easing back over 0.3 s
+ * CgCameraShake.kick(x, y, z, 0.12f, 0.3f, 12f, 60f);   // the same, felt by distance like a shake
+ *
+ * // a held tremor: set its level every tick while it lasts
+ * CgCameraShake.Rumble charge = CgCameraShake.rumble().radii(4f, 24f);
+ * charge.at(x, y, z).level(0.3f * progress);
+ * charge.close();                               // or stop setting it: it lapses within a quarter second
  * }</pre>
  *
  * <ul>
- *   <li>Strength 1 turns the camera up to about two degrees and moves it a few hundredths of a block.</li>
- *   <li>It does nothing where the host fills no camera slot: the harness. Render thread only; allocates nothing.</li>
- *   <li>At most {@link #MAX} impulses at once; past that the weakest is replaced.</li>
+ *   <li>Trauma 1 turns the camera up to about three degrees and moves it a few hundredths of a block; trauma 0.3 is a
+ *       tenth of that.</li>
+ *   <li>Where the camera stands is taken on the frame after the call, so an impact may be added from any tick.</li>
+ *   <li>It does nothing where the host fills no camera slot: the harness. Render thread only; a shake allocates
+ *       nothing.</li>
  * </ul>
  */
 public final class CgCameraShake {
 
-    public static final int MAX = 16;
+    /** Trauma lost a second: a full shake settles in a little over a second. */
+    public static final float DECAY = CgShakeModel.DECAY;
 
-    private static final float DEGREES = 2f, BLOCKS = 0.04f;
+    private static final float YAW = 3f, PITCH = 3f, ROLL = 2.5f, SHIFT = 0.05f;
+    /** Noise cycles a second: a tremble, not a wobble. */
+    private static final float FREQUENCY = 14f;
+    private static final int KICKS = 8;
 
-    // Per impulse: start time, duration, strength, reach, x, y, z, phase; a reach of 0 is an FOV kick.
-    private static final double[] IMPULSES = new double[MAX * 8];
-    private static int count;
+    private static final CgShakeModel MODEL = new CgShakeModel(CgFrameClock::seconds);
+    private static final int KICK_STRIDE = 8;
+    // Per kick: start time, duration, amount, x, y, z, inner, outer; an outer radius of 0 is felt everywhere.
+    private static final double[] KICK = new double[KICKS * KICK_STRIDE];
+    private static int kicks;
     private static boolean installed, moving;
+    private static double lastFrame = Double.NaN;
 
     private CgCameraShake() {
     }
 
-    /** A shake from the point: {@code strength} at the point, gone at {@code reach} blocks, over {@code seconds}. */
-    public static void shake(double x, double y, double z, float strength, float seconds, float reach) {
-        add(strength, seconds, Math.max(reach, 1e-3f), x, y, z);
+    /** An impact at the point: {@code trauma} 0..1 within {@code inner} blocks of it, fading linearly to none at {@code outer}. */
+    public static void shake(double x, double y, double z, float trauma, float inner, float outer) {
+        shake(x, y, z, trauma, inner, outer, 1f);
+    }
+
+    /** As {@link #shake(double, double, double, float, float, float)}, the fade between the radii raised to {@code exponent}. */
+    public static void shake(double x, double y, double z, float trauma, float inner, float outer, float exponent) {
+        install();
+        MODEL.add(x, y, z, trauma, inner, Math.max(outer, inner + 1e-3f), exponent);
+    }
+
+    /** A held tremor: trauma added while its level is set, every tick, until it is closed or left alone. */
+    public static Rumble rumble() {
+        install();
+        return new Rumble(MODEL);
     }
 
     /** The field of view widened by {@code amount} (0.1 is 10%) at once, easing back over {@code seconds}. */
     public static void kick(float amount, float seconds) {
-        add(amount, seconds, 0f, 0.0, 0.0, 0.0);
+        kick(0.0, 0.0, 0.0, amount, seconds, 0f, 0f);
     }
 
-    private static void add(float strength, float seconds, float reach, double x, double y, double z) {
+    /** As {@link #kick(float, float)}, felt fully within {@code inner} blocks of the point and not at all past {@code outer}. */
+    public static void kick(double x, double y, double z, float amount, float seconds, float inner, float outer) {
         install();
-        double now = CgFrameClock.seconds();
-        int at = count < MAX ? count++ : weakest(now);
-        int i = at * 8;
-        IMPULSES[i] = now;
-        IMPULSES[i + 1] = Math.max(seconds, 1e-3f);
-        IMPULSES[i + 2] = strength;
-        IMPULSES[i + 3] = reach;
-        IMPULSES[i + 4] = x;
-        IMPULSES[i + 5] = y;
-        IMPULSES[i + 6] = z;
-        IMPULSES[i + 7] = (x * 12.9898 + z * 78.233 + now * 3.7) % 100.0;
+        int i = (kicks < KICKS ? kicks++ : 0) * KICK_STRIDE;
+        KICK[i] = CgFrameClock.seconds();
+        KICK[i + 1] = Math.max(seconds, 1e-3f);
+        KICK[i + 2] = amount;
+        KICK[i + 3] = x;
+        KICK[i + 4] = y;
+        KICK[i + 5] = z;
+        KICK[i + 6] = inner;
+        KICK[i + 7] = outer > 0f ? Math.max(outer, inner + 1e-3f) : 0f;
     }
 
-    private static int weakest(double now) {
-        int best = 0;
-        double least = Double.MAX_VALUE;
-        for (int k = 0; k < MAX; k++) {
-            double left = IMPULSES[k * 8 + 2] * envelope(now, k);
-            if (left < least) {
-                least = left;
-                best = k;
-            }
-        }
-        return best;
+    /** Whether anything has shaken: from then this owns the host camera's offset, and writes it every frame. */
+    public static boolean active() {
+        return installed;
     }
 
-    private static double envelope(double now, int k) {
-        double t = (now - IMPULSES[k * 8]) / IMPULSES[k * 8 + 1];
-        return t >= 1.0 ? 0.0 : (1.0 - t) * (1.0 - t);
+    /** The decaying trauma now, 0..1, without the rumbles. */
+    public static float trauma() {
+        return MODEL.trauma();
     }
 
     private static void install() {
@@ -87,48 +109,79 @@ public final class CgCameraShake {
         CgRenderStage.WORLD_OPAQUE.register(Integer.MIN_VALUE, CgCameraShake::frame);
     }
 
-    /** Sums the live impulses against this frame's camera and hands the result to the host for its next frame. */
+    /** Steps the trauma against this frame's camera and hands the offset to the host for its next frame. */
     private static void frame(CgStageFrame stage) {
-        if (count == 0 && !moving) return;
+        double now = CgFrameClock.seconds();
+        float dt = Double.isNaN(lastFrame) ? 0f : (float) Math.max(0.0, Math.min(now - lastFrame, 0.1));
+        lastFrame = now;
+        if (MODEL.still() && kicks == 0 && !moving) return;
         CgHostFrame host = stage.host();
         CgHostEnvironment world = host.environment();
-        double now = CgFrameClock.seconds();
         double cx = host.view().x(), cy = host.view().y(), cz = host.view().z();
-        float screen = Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects();
-        float fovEffects = Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects();
-        double yaw = 0, pitch = 0, roll = 0, dx = 0, dy = 0, dz = 0, fov = 0;
-        for (int k = count - 1; k >= 0; k--) {
-            int i = k * 8;
-            double e = envelope(now, k);
-            if (e <= 0.0) {
-                remove(k);
+        float shake = MODEL.step(dt, cx, cy, cz);
+        float fov = 0f;
+        for (int k = kicks - 1; k >= 0; k--) {
+            int i = k * KICK_STRIDE;
+            double t = (now - KICK[i]) / KICK[i + 1];
+            if (t >= 1.0) {
+                int last = --kicks;
+                if (k != last) System.arraycopy(KICK, last * KICK_STRIDE, KICK, i, KICK_STRIDE);
                 continue;
             }
-            double strength = IMPULSES[i + 2] * e, reach = IMPULSES[i + 3];
-            if (reach == 0.0) {
-                fov += strength;
-                continue;
-            }
-            double ox = IMPULSES[i + 4] - cx, oy = IMPULSES[i + 5] - cy, oz = IMPULSES[i + 6] - cz;
-            double felt = 1.0 - Math.min(Math.sqrt(ox * ox + oy * oy + oz * oz) / reach, 1.0);
-            double a = strength * felt * felt, t = (now - IMPULSES[i]) + IMPULSES[i + 7];
-            // Incommensurate sines: an irregular tremble that never repeats within a shake.
-            yaw += a * (Math.sin(t * 37.0) + 0.5 * Math.sin(t * 61.0));
-            pitch += a * (Math.sin(t * 43.0 + 1.3) + 0.5 * Math.sin(t * 71.0));
-            roll += a * 0.6 * Math.sin(t * 29.0 + 2.1);
-            dx += a * Math.sin(t * 53.0 + 0.7);
-            dy += a * Math.sin(t * 47.0 + 2.9);
-            dz += a * Math.sin(t * 59.0 + 4.1);
+            float felt = KICK[i + 7] == 0.0 ? 1f : CgShakeModel.falloff(Math.sqrt((KICK[i + 3] - cx) * (KICK[i + 3] - cx)
+                    + (KICK[i + 4] - cy) * (KICK[i + 4] - cy) + (KICK[i + 5] - cz) * (KICK[i + 5] - cz)),
+                    (float) KICK[i + 6], (float) KICK[i + 7], 1f);
+            fov += (float) (KICK[i + 2] * felt * (1.0 - t) * (1.0 - t));
         }
-        float s = screen * DEGREES, b = screen * BLOCKS;
-        CgPlatform.get(CgHostCamera.SERVICE).offset((float) dx * b, (float) dy * b, (float) dz * b,
-                (float) yaw * s, (float) pitch * s, (float) roll * s, 1f + (float) fov * fovEffects);
-        // One more frame of zeros once the last impulse ends, so the host lets the camera go.
-        moving = count > 0;
+        float screen = (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get();
+        float fovEffects = (Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects()) * CgGraphicsSettings.FOV_KICK.get();
+        float s = shake * screen, t = (float) (now * FREQUENCY);
+        CgPlatform.get(CgHostCamera.SERVICE).offset(
+                SHIFT * s * CgShakeModel.noise(t, 3), SHIFT * s * CgShakeModel.noise(t, 4), SHIFT * s * CgShakeModel.noise(t, 5),
+                YAW * s * CgShakeModel.noise(t, 0), PITCH * s * CgShakeModel.noise(t, 1), ROLL * s * CgShakeModel.noise(t * 0.7f, 2),
+                1f + fov * fovEffects);
+        // One more frame of zeros once everything has settled, so the host lets the camera go.
+        moving = shake > 0f || kicks > 0;
     }
 
-    private static void remove(int k) {
-        int last = --count;
-        if (k != last) System.arraycopy(IMPULSES, last * 8, IMPULSES, k * 8, 8);
+    /** A held tremor from {@link #rumble()}: a place, radii, and a level its owner sets every tick. */
+    public static final class Rumble {
+
+        private final CgShakeModel model;
+        double x, y, z, touched;
+        float level, inner = 4f, outer = 24f;
+        boolean closed;
+
+        Rumble(CgShakeModel model) {
+            this.model = model;
+        }
+
+        public Rumble at(double x, double y, double z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            return this;
+        }
+
+        /** Full within {@code inner} blocks, none past {@code outer}. */
+        public Rumble radii(float inner, float outer) {
+            this.inner = inner;
+            this.outer = Math.max(outer, inner + 1e-3f);
+            return this;
+        }
+
+        /** The trauma it adds while held, 0..1. Call it every tick: unset for a quarter second, it lapses. */
+        public Rumble level(float level) {
+            this.level = level;
+            this.touched = model.now();
+            this.closed = false;
+            model.hold(this);
+            return this;
+        }
+
+        /** Stops it now. */
+        public void close() {
+            closed = true;
+        }
     }
 }

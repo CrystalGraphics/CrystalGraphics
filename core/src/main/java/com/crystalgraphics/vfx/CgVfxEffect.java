@@ -134,8 +134,9 @@ public abstract class CgVfxEffect {
         return system != null ? system.air() : STILL;
     }
 
-    /** Advances one of its emitters by a tick, in its system's air, sampling turbulence at its origin. */
+    /** Advances one of its emitters by a tick, in its system's air and at its spawn share, sampling turbulence at its origin. */
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
+        if (system != null) emitter.share(system.spawnShare(emitter.emitter()));
         emitter.tick(dt, air(), originX, originY, originZ);
     }
 

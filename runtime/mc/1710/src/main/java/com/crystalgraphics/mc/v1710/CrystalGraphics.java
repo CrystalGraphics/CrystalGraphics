@@ -2,12 +2,15 @@ package com.crystalgraphics.mc.v1710;
 
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.v1710.platform.PlatformService1710;
+import com.crystalgraphics.mc.v1710.platform.net.Network1710;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.ICrashCallable;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
+import cpw.mods.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -79,6 +82,8 @@ public final class CrystalGraphics{
     public void onInit(FMLInitializationEvent event) {
         LOGGER.info("{}: init", NAME);
         PlatformService1710.onInit();
+        // Both sides, and at init rather than preInit: a channel registered at preInit delivered nothing.
+        Network1710.install();
 
         if (!FMLCommonHandler.instance().getSide().isClient()) return;
 
@@ -105,6 +110,18 @@ public final class CrystalGraphics{
     @Mod.EventHandler
     public void onPostInit(FMLPostInitializationEvent event) {
         LOGGER.info("{}: postInit", NAME);
+    }
+
+    /** Loads what persists with the world, its worlds now loaded. */
+    @Mod.EventHandler
+    public void onServerStarting(FMLServerStartingEvent event) {
+        Network1710.serverStarting();
+    }
+
+    /** Closes every connection, so no caller is left waiting out a timeout for a stopped server. */
+    @Mod.EventHandler
+    public void onServerStopping(FMLServerStoppingEvent event) {
+        Network1710.serverStopping();
     }
 
 }

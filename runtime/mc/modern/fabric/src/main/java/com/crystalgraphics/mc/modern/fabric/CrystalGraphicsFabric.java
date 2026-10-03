@@ -1,9 +1,16 @@
 package com.crystalgraphics.mc.modern.fabric;
 
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
+import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgWorldEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 //? if >=26.1 {
 /*import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -34,6 +41,19 @@ public final class CrystalGraphicsFabric implements VariantEntry {
     @Override
     public void start(Object context) {
         Events.register();
+        // What the node mixins apply and report: CameraHook from 1.15 (1.14.4 turns its view from elsewhere, so the hook
+        // changes nothing seen) with roll from 1.21.11, FovHook on every version, ExplosionHook on every version,
+        // LevelEventHook from 1.15.
+        //? if >=1.21.11 {
+        /*HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL);
+        *///?} elif >=1.15 {
+        HostCameraModern.declare(CgHostCamera.ROTATION);
+        //?}
+        HostCameraModern.declare(CgHostCamera.FOV);
+        CgWorldEvents.declare(CgWorldEvents.EXPLOSION);
+        //? if >=1.15 {
+        CgWorldEvents.declare(CgWorldEvents.BLOCK_BROKEN);
+        //?}
     }
 
     // -- Events -----------------------------------------------------------------
@@ -47,6 +67,14 @@ public final class CrystalGraphicsFabric implements VariantEntry {
             registerReload();
             registerRenderFrame();
             registerShutdown();
+            // The world events, once a client tick and as entities join and leave the client level.
+            ClientTickEvents.END_CLIENT_TICK.register(client -> LifecycleModern.clientTick());
+            ClientEntityEvents.ENTITY_LOAD.register((entity, level) -> LifecycleModern.entityJoined(entity));
+            ClientEntityEvents.ENTITY_UNLOAD.register((entity, level) -> LifecycleModern.entityLeft(entity));
+            // The client connection; its tick is LifecycleModern.clientTick's.
+            CrystalGraphicsFabricCommon.Network.registerClientReceiver();
+            ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> NetworkModern.clientConnected());
+            ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> NetworkModern.clientDisconnected());
         }
 
         // -- Asset reload -----------------------------------------------------------
