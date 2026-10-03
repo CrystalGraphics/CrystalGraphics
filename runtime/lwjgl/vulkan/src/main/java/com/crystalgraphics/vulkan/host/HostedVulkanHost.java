@@ -268,7 +268,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     @Override public final boolean ownsSubmission() { return false; }
 
-    /** Minecraft 26.2 enables neither indirect count nor a first instance, and a hosted device has what it enabled. */
+    /** Minecraft 26.2 enables none of the three, and a hosted device has what it enabled. */
+    @Override public boolean multiDrawIndirect() { return false; }
+
     @Override public boolean indirectCount() { return false; }
 
     @Override public boolean indirectFirstInstance() { return false; }

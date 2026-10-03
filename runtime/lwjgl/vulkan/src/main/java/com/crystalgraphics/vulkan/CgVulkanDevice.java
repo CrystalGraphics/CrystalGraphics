@@ -177,7 +177,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
-                host.indirectCount(), host.indirectFirstInstance());
+                host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance());
     }
 
     @Override

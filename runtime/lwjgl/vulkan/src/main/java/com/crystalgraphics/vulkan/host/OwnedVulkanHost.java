@@ -100,7 +100,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkDevice device;
     private final int family;
     private boolean bresenhamLines;
-    private boolean indirectCount, indirectFirstInstance;
+    private boolean multiDrawIndirect, indirectCount, indirectFirstInstance;
     private final VkQueue queue;
 
     private final long[] pools = new long[FRAMES];
@@ -175,6 +175,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public int validationErrors() { return errors; }
 
     @Override public boolean bresenhamLines() { return bresenhamLines; }
+    @Override public boolean multiDrawIndirect() { return multiDrawIndirect; }
     @Override public boolean indirectCount() { return indirectCount; }
     @Override public boolean indirectFirstInstance() { return indirectFirstInstance; }
 
@@ -589,6 +590,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         bresenhamLines = hasLines && hasLineModes.bresenhamLines();
         indirectCount = has12.drawIndirectCount();
         indirectFirstInstance = has.drawIndirectFirstInstance();
+        multiDrawIndirect = has.multiDrawIndirect();
 
         VkPhysicalDeviceFeatures enable = VkPhysicalDeviceFeatures.calloc(stack)
                 .samplerAnisotropy(has.samplerAnisotropy()).fillModeNonSolid(has.fillModeNonSolid())
@@ -596,7 +598,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 // What GL 4.x gives a shader: doubles and 64-bit integers, where the hardware has them.
                 .shaderFloat64(has.shaderFloat64()).shaderInt64(has.shaderInt64())
                 // GPU-driven draws: several commands per call, a first instance, and image writes in kernels.
-                .multiDrawIndirect(has.multiDrawIndirect()).drawIndirectFirstInstance(indirectFirstInstance)
+                .multiDrawIndirect(multiDrawIndirect).drawIndirectFirstInstance(indirectFirstInstance)
                 .shaderStorageImageWriteWithoutFormat(has.shaderStorageImageWriteWithoutFormat());
         // GL's line rule, where the device has it: without it a line on a pixel boundary can vanish.
         VkPhysicalDeviceLineRasterizationFeaturesEXT lineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)

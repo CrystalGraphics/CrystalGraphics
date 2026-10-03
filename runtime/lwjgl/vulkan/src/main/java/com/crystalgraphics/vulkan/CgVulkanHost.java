@@ -104,6 +104,9 @@ public interface CgVulkanHost {
      */
     boolean bresenhamLines();
 
+    /** Whether the device was created with {@code multiDrawIndirect}: an indirect draw of more than one command. */
+    boolean multiDrawIndirect();
+
     /** Whether the device was created with {@code drawIndirectCount}: a draw's count may come from a buffer. */
     boolean indirectCount();
 
