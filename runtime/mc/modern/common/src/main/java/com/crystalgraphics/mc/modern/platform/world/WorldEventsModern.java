@@ -12,6 +12,8 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 //? if >=1.16.5 {
 import net.minecraft.world.entity.LightningBolt;
 //?}
@@ -22,7 +24,9 @@ import net.minecraft.world.entity.LightningBolt;
 /**
  * The client's world events, into {@link CgWorldEvents}, 1.13.2 to 26.3. Hurt, death and lightning are read off state
  * the client already holds, once a game tick ({@link #tick}, each loader's client tick): an entity's hurt time rising,
- * its death time starting, a new lightning bolt. Once a frame ({@link #poll}) until a first tick arrives. An explosion and a block broken arrive only as packets and level events, so a node
+ * its death time starting, a new lightning bolt. Once a frame ({@link #poll}) until a first tick arrives. And as entities
+ * join and leave the client level ({@link #joined}, {@link #left}): a server catching up can add a bolt and remove it,
+ * or kill a mob and remove it, between two client ticks, which no poll sees. An explosion and a block broken arrive only as packets and level events, so a node
  * mixin hands them in ({@link #explosion}, {@link #levelEvent}) where its loader's names allow one.
  *
  * <ul>
@@ -35,6 +39,9 @@ public final class WorldEventsModern {
 
     private static final int LEVEL_EVENT_BLOCK_BROKEN = 2001;
     private static final int PRUNE_EVERY = 600;
+    /** {@code -Dcrystalgraphics.worldevents.trace=true}: every bolt and every hurt or dying entity a scan meets. */
+    private static final boolean TRACE = Boolean.getBoolean("crystalgraphics.worldevents.trace");
+    private static final Logger LOGGER = LogManager.getLogger("WorldEventsModern");
 
     private static final Int2IntOpenHashMap HURT = new Int2IntOpenHashMap();
     private static final IntOpenHashSet DEAD = new IntOpenHashSet(), BOLTS = new IntOpenHashSet(), PRESENT = new IntOpenHashSet();
@@ -47,8 +54,28 @@ public final class WorldEventsModern {
 
     /** Once a client tick, after it: the hurts, deaths and lightning since the last. */
     public static void tick(Minecraft mc) {
+        if (TRACE && !ticked) LOGGER.info("world events: ticked by the loader");
         ticked = true;
         scan(mc);
+    }
+
+    /** An entity joined the client level: a lightning bolt is reported now, however briefly it stays. */
+    public static void joined(Entity e) {
+        if (isBolt(e) && BOLTS.add(e.getId())) CgWorldEvents.lightning(x(e), y(e), z(e));
+    }
+
+    /** An entity left the client level: one leaving dead is reported hurt and killed, unless a scan already did. */
+    public static void left(Entity e) {
+        //? if >=1.14 {
+        if (!(e instanceof LivingEntity) || ((LivingEntity) e).getHealth() > 0f) return;
+        LivingEntity living = (LivingEntity) e;
+        int id = e.getId();
+        if (living.hurtTime > HURT.get(id)) {
+            HURT.put(id, living.hurtTime);
+            CgWorldEvents.entityHurt(id, x(e), y(e), z(e));
+        }
+        if (DEAD.add(id)) CgWorldEvents.entityDied(id, x(e), y(e), z(e));
+        //?}
     }
 
     /** Once a frame, at the opaque pass: what {@link #tick} reads, while no loader has ticked it. */
@@ -74,10 +101,17 @@ public final class WorldEventsModern {
             if (e instanceof LivingEntity) {
                 LivingEntity living = (LivingEntity) e;
                 int last = HURT.put(id, living.hurtTime);
+                if (TRACE && (living.hurtTime > 0 || living.deathTime > 0)) {
+                    LOGGER.info("world events: scan {} {} {} hurt {} (was {}) death {} at {} {} {}", scans, id,
+                            e.getClass().getSimpleName(), living.hurtTime, last, living.deathTime, x(e), y(e), z(e));
+                }
                 if (living.hurtTime > last) CgWorldEvents.entityHurt(id, x(e), y(e), z(e));
                 if (living.deathTime > 0 && DEAD.add(id)) CgWorldEvents.entityDied(id, x(e), y(e), z(e));
+            } else if (isBolt(e)) {
+                boolean fresh = BOLTS.add(id);
+                if (TRACE) LOGGER.info("world events: scan {} bolt {} new {} at {} {} {}", scans, id, fresh, x(e), y(e), z(e));
+                if (fresh) CgWorldEvents.lightning(x(e), y(e), z(e));
             }
-            else if (isBolt(e) && BOLTS.add(id)) CgWorldEvents.lightning(x(e), y(e), z(e));
         }
         if (prune) {
             HURT.keySet().retainAll(PRESENT);

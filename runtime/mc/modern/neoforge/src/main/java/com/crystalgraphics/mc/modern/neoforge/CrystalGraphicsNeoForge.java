@@ -28,6 +28,8 @@ import net.neoforged.neoforge.event.TickEvent;
 //?}
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
+import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
+import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 //? if >=1.21.4 {
 /*import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
@@ -99,8 +101,10 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 NeoForge.EVENT_BUS.addListener(ModBus::onCameraAngles);
                 NeoForge.EVENT_BUS.addListener(ModBus::onFov);
                 HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
-                // The world events, once a client tick.
+                // The world events, once a client tick and as entities join and leave the client level.
                 NeoForge.EVENT_BUS.addListener(ModBus::onClientTick);
+                NeoForge.EVENT_BUS.addListener(ModBus::onEntityJoin);
+                NeoForge.EVENT_BUS.addListener(ModBus::onEntityLeave);
                 // ExplosionHook and LevelEventHook, the node mixins that report them.
                 //? if >=1.21.6 {
                 /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
@@ -122,6 +126,15 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             // A double to 1.21.1 and a float after; HostCameraModern.fov takes either.
             private static void onFov(ViewportEvent.ComputeFov event) {
                 event.setFOV(HostCameraModern.fov(event.getFOV()));
+            }
+
+            // Client levels only: in single player the integrated server's levels post these too.
+            private static void onEntityJoin(EntityJoinLevelEvent event) {
+                if (event.getLevel().isClientSide()) LifecycleModern.entityJoined(event.getEntity());
+            }
+
+            private static void onEntityLeave(EntityLeaveLevelEvent event) {
+                if (event.getLevel().isClientSide()) LifecycleModern.entityLeft(event.getEntity());
             }
 
             // TickEvent's client tick at END, ClientTickEvent.Post from NeoForge 20.6.

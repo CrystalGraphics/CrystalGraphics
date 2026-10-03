@@ -55,7 +55,7 @@ public final class CgWorldProbe {
     public static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.worldprobe");
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldProbe");
-    private static final int SETTLE_SECONDS = 3, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
+    private static final int SETTLE_SECONDS = 3, MIN_EVENT_SECONDS = 4, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;
     private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f;
     private static final int CAMERA_FRAMES = 4;
     private static final Matrix4fc IDENTITY = new Matrix4f();
@@ -127,7 +127,11 @@ public final class CgWorldProbe {
                 startEvents(now);
                 break;
             case EVENTS:
-                if (events.complete() || seconds(now) >= EVENT_SECONDS) finish(host);
+                // At least a few seconds, though the events land sooner: the server corrects the client's game time
+                // once a second, which can step it back across a shorter window.
+                events.watch();
+                double inEvents = seconds(now);
+                if ((events.complete() && inEvents >= MIN_EVENT_SECONDS) || inEvents >= EVENT_SECONDS) finish(host);
                 break;
             default:
                 break;
@@ -415,12 +419,17 @@ public final class CgWorldProbe {
         int blockX, blockY, blockZ;
         boolean lightning, block, explosion, hurt, died;
         String blockDetail = "none", explosionDetail = "none", heardFar = "none", boltFar = "none";
+        // What the client held, watched each frame apart from the events: did the pig and the bolt reach it at all.
+        boolean pigSeen, pigDead, boltSeen;
+        String boltSeenAs = "";
 
         void reset(int kinds) {
             declared = kinds;
             unavailable = blockSkipped = blastSkipped = null;
             lightning = block = explosion = hurt = died = false;
             heardFar = boltFar = "none";
+            pigSeen = pigDead = boltSeen = false;
+            boltSeenAs = "";
         }
 
         boolean complete() {
@@ -478,30 +487,62 @@ public final class CgWorldProbe {
         void report() {
             event("events.lightning", CgWorldEvents.LIGHTNING, null, lightning, "within 24 blocks of the bolt");
             if (!lightning && unavailable == null && wants(CgWorldEvents.LIGHTNING)) {
-                info("events.lightning-elsewhere", boltFar + String.format(", asked at %.1f %.1f", lightningX, lightningZ));
+                info("events.lightning-elsewhere", boltFar + String.format(", asked at %.1f %.1f", lightningX, lightningZ)
+                        + "; an entity at the bolt on the client: " + boltSeen + " " + boltSeenAs);
             }
             event("events.block-broken", CgWorldEvents.BLOCK_BROKEN, blockSkipped, block, blockDetail);
             event("events.explosion", CgWorldEvents.EXPLOSION, blastSkipped, explosion, explosionDetail);
             event("events.entity-hurt", CgWorldEvents.ENTITY_HURT, blastSkipped, hurt, "the pig beside the blast");
             event("events.entity-died", CgWorldEvents.ENTITY_DIED, blastSkipped, died, "the pig beside the blast");
             if (blastSkipped == null && unavailable == null && (!hurt || !died)) {
-                info("events.beside-blast", livingNearBlast() + "; heard elsewhere: " + heardFar);
+                info("events.beside-blast", livingNearBlast() + "; heard elsewhere: " + heardFar
+                        + "; a living thing at the blast on the client: " + pigSeen + ", seen dead: " + pigDead);
             }
         }
 
-        /** What a missed pig left: the living things the client holds round the blast now. */
+        /** Once a frame in the event phase: the client's own entities round the blast and the bolt. */
+        void watch() {
+            CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+            if (blastSkipped == null) {
+                entities.within(blastX - 3, blastY - 3, blastZ - 3, blastX + 3, blastY + 3, blastZ + 3, id -> {
+                    int flags = entities.flags(id);
+                    if (id == player || (flags & CgEntityQuery.LIVING) == 0) return;
+                    pigSeen = true;
+                    if ((flags & CgEntityQuery.ALIVE) == 0) pigDead = true;
+                });
+            }
+            double ly = pose[CgEntityQuery.Y];
+            entities.within(lightningX - 3, ly - 8, lightningZ - 3, lightningX + 3, ly + 8, lightningZ + 3, id -> {
+                if (id == player || (entities.flags(id) & CgEntityQuery.LIVING) != 0 || boltSeen) return;
+                boltSeen = true;
+                boltSeenAs = "id " + id + " kind " + entities.kind(id);
+            });
+        }
+
+        /** What a missed pig left: the nearest living thing the client holds round the blast now. */
         private String livingNearBlast() {
             CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
-            StringBuilder out = new StringBuilder();
-            int[] count = new int[1];
+            int[] count = new int[1], nearest = {-1};
+            double[] best = {Double.MAX_VALUE};
             entities.within(blastX - 48, blastY - 48, blastZ - 48, blastX + 48, blastY + 48, blastZ + 48, id -> {
-                if (id == player || (entities.flags(id) & CgEntityQuery.LIVING) == 0 || count[0]++ >= 4) return;
+                if (id == player || (entities.flags(id) & CgEntityQuery.LIVING) == 0) return;
+                count[0]++;
                 entities.pose(id, 1f, pose);
-                out.append(String.format(" [%d kind %d at %.1f %.1f %.1f, alive %b]", id, entities.kind(id),
-                        pose[CgEntityQuery.X], pose[CgEntityQuery.Y], pose[CgEntityQuery.Z],
-                        (entities.flags(id) & CgEntityQuery.ALIVE) != 0));
+                double d = Math.sqrt(sq(pose[CgEntityQuery.X] - blastX) + sq(pose[CgEntityQuery.Y] - blastY)
+                        + sq(pose[CgEntityQuery.Z] - blastZ));
+                if (d < best[0]) {
+                    best[0] = d;
+                    nearest[0] = id;
+                }
             });
-            return count[0] + " living within 48 blocks" + out;
+            String at = String.format("blast at %.1f %.1f %.1f, %d living within 48 blocks", blastX, blastY, blastZ, count[0]);
+            if (nearest[0] < 0) return at;
+            return at + String.format(", nearest %d kind %d at %.1f blocks, alive %b", nearest[0],
+                    entities.kind(nearest[0]), best[0], (entities.flags(nearest[0]) & CgEntityQuery.ALIVE) != 0);
+        }
+
+        private static double sq(double v) {
+            return v * v;
         }
 
         private void event(String name, int kind, String skippedBecause, boolean heard, String detail) {
