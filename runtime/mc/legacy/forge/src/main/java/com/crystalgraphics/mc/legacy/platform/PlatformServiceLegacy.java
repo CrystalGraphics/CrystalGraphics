@@ -9,6 +9,7 @@ import com.crystalgraphics.mc.legacy.platform.service.RenderingService;
 import com.crystalgraphics.mc.legacy.platform.service.ResourceService;
 import com.crystalgraphics.mc.legacy.platform.service.SoundService;
 import com.crystalgraphics.mc.legacy.platform.world.EntityQueryLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
@@ -32,6 +33,7 @@ import com.crystalgraphics.platform.service.CgWorldSound;
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.platform.service.CgWorldStimulus;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 
 /**
  * The Forge 1.8–1.12.2 platform bundle: tier 1's LWJGL2 services, the {@link GlStateManagerGLBackend}, and
@@ -80,6 +82,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         HostCameraLegacy camera = new HostCameraLegacy();
         CgPlatform.provide(CgHostCamera.SERVICE, camera);
         MinecraftForge.EVENT_BUS.register(camera);
+        FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
     }
 
     @Override public CgGLBackend gl() {

@@ -21,7 +21,8 @@ import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;
 //? if >=1.20.6 {
-/*import net.neoforged.neoforge.client.event.RenderFrameEvent;
+/*import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.RenderFrameEvent;
 *///?} else {
 import net.neoforged.neoforge.event.TickEvent;
 //?}
@@ -98,6 +99,8 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
                 NeoForge.EVENT_BUS.addListener(ModBus::onCameraAngles);
                 NeoForge.EVENT_BUS.addListener(ModBus::onFov);
                 HostCameraModern.declare(CgHostCamera.ROTATION | CgHostCamera.ROLL | CgHostCamera.FOV);
+                // The world events, once a client tick.
+                NeoForge.EVENT_BUS.addListener(ModBus::onClientTick);
                 // ExplosionHook and LevelEventHook, the node mixins that report them.
                 //? if >=1.21.6 {
                 /*CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN);
@@ -120,6 +123,17 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             private static void onFov(ViewportEvent.ComputeFov event) {
                 event.setFOV(HostCameraModern.fov(event.getFOV()));
             }
+
+            // TickEvent's client tick at END, ClientTickEvent.Post from NeoForge 20.6.
+            //? if >=1.20.6 {
+            /*private static void onClientTick(ClientTickEvent.Post event) {
+                LifecycleModern.clientTick();
+            }
+            *///?} else {
+            private static void onClientTick(TickEvent.ClientTickEvent event) {
+                if (event.phase == TickEvent.Phase.END) LifecycleModern.clientTick();
+            }
+            //?}
 
             // NeoForge 21.4 keys every listener by id.
             //? if >=1.21.4 {

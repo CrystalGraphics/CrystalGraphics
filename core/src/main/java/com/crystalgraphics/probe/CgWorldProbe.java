@@ -414,13 +414,13 @@ public final class CgWorldProbe {
         double lightningX, lightningZ, blastX, blastY, blastZ;
         int blockX, blockY, blockZ;
         boolean lightning, block, explosion, hurt, died;
-        String blockDetail = "none", explosionDetail = "none", heardFar = "none";
+        String blockDetail = "none", explosionDetail = "none", heardFar = "none", boltFar = "none";
 
         void reset(int kinds) {
             declared = kinds;
             unavailable = blockSkipped = blastSkipped = null;
             lightning = block = explosion = hurt = died = false;
-            heardFar = "none";
+            heardFar = boltFar = "none";
         }
 
         boolean complete() {
@@ -439,6 +439,7 @@ public final class CgWorldProbe {
         @Override
         public void lightning(double x, double y, double z) {
             if (Math.hypot(x - lightningX, z - lightningZ) < 24) lightning = true;
+            else boltFar = String.format("a bolt at %.1f %.1f %.1f", x, y, z);
         }
 
         @Override
@@ -476,6 +477,9 @@ public final class CgWorldProbe {
 
         void report() {
             event("events.lightning", CgWorldEvents.LIGHTNING, null, lightning, "within 24 blocks of the bolt");
+            if (!lightning && unavailable == null && wants(CgWorldEvents.LIGHTNING)) {
+                info("events.lightning-elsewhere", boltFar + String.format(", asked at %.1f %.1f", lightningX, lightningZ));
+            }
             event("events.block-broken", CgWorldEvents.BLOCK_BROKEN, blockSkipped, block, blockDetail);
             event("events.explosion", CgWorldEvents.EXPLOSION, blastSkipped, explosion, explosionDetail);
             event("events.entity-hurt", CgWorldEvents.ENTITY_HURT, blastSkipped, hurt, "the pig beside the blast");
