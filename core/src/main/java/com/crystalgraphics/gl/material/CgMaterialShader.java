@@ -308,6 +308,7 @@ public final class CgMaterialShader {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                 parsed = CgShaderParser.parse(source, resourcePath);
                 requireMargin(parsed, source);
+                requireUnits(parsed);
             } catch (CgShaderParseException e) {
                 parseFailed = true;
                 LOGGER.error("Cannot parse '{}': {}", resourcePath, e.getMessage());
@@ -413,6 +414,7 @@ public final class CgMaterialShader {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                     parsed = CgShaderParser.parse(source, resourcePath);
                     requireMargin(parsed, source);
+                    requireUnits(parsed);
                 } catch (CgShaderParseException e) {
                     if (isFirst) throw e;
                     LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
@@ -1099,6 +1101,24 @@ public final class CgMaterialShader {
             throw new CgShaderParseException("[" + resourcePath + "] samples cg_SceneColor without a SceneColorMargin: "
                     + "add the share of the target's height it samples past its geometry to the top-level Tags, "
                     + "e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }");
+        }
+    }
+
+    /**
+     * A shader's samplers take units from 0, and the engine's reserved units count down from the top: one whose
+     * samplers reach the lowest reserved unit would have the engine's texture overwrite one, or does not parse.
+     * Unchecked before the context sizes the reserved units (a headless parse).
+     */
+    private void requireUnits(CgParsedShader parsed) {
+        if (!CgBindingPoints.isInitialized()) return;
+        int samplers = 0;
+        for (CgMaterialProperty property : parsed.properties()) {
+            if (property.getType().isSampler()) samplers++;
+        }
+        int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        if (samplers > free) {
+            throw new CgShaderParseException("[" + resourcePath + "] declares " + samplers + " samplers, and this GPU "
+                    + "leaves materials " + free + " texture units below the engine's reserved ones");
         }
     }
 
