@@ -89,8 +89,6 @@ public final class CgWorldRenderer {
 
     private final List<FrameListener> listeners = new CopyOnWriteArrayList<>();
     private final Draw scratch = new Draw();
-    private final CgDepthSnapshot depthSnapshot = new CgDepthSnapshot();
-    private final CgColorSnapshot colorSnapshot = new CgColorSnapshot();
 
     // The frame's draws, flat: what a pooled command object per draw used to hold.
     private long frame = -1;
@@ -147,13 +145,10 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
     }
 
-    /** Drops every draw and the depth snapshot's storage, which the framebuffer registry frees. At context teardown. */
+    /** Drops every draw. At context teardown. */
     public void release() {
         clear();
         frame = -1;
-        snapshotTaken = colorTaken = -1;
-        depthSnapshot.dropStorage();
-        colorSnapshot.dropStorage();
         depthOnly.clear();
     }
 
@@ -381,8 +376,6 @@ public final class CgWorldRenderer {
 
     private long[] keys = new long[64];
     private byte[] phase = new byte[64];
-    /** The stage the depth snapshot was last taken for: frame * 2 + OPAQUE or TRANSPARENT. */
-    private long snapshotTaken = -1, colorTaken = -1;
 
     private void recordOpaque(CgStageFrame stage) {
         record(stage, OPAQUE);
@@ -412,7 +405,7 @@ public final class CgWorldRenderer {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.recordOpaque" : "world.recordTransparent")) {
             prepare(view);
-            boolean prepass = false, sceneDepth = false, sceneColor = false;
+            boolean prepass = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
                 byte p = classify(i, which, view);
@@ -420,22 +413,11 @@ public final class CgWorldRenderer {
                 if (p == SKIP) continue;
                 drawn++;
                 prepass |= p == FORWARD_AND_PREPASS;
-                sceneDepth |= materials[i].readsSceneDepth();
-                sceneColor |= materials[i].readsSceneColor();
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
             if (drawn == 0) return;
 
             CgRecording recording = stage.recording();
-            // Per stage: an opaque reader sees the host's world, a transparent one the opaque draws added to it.
-            if (sceneDepth && snapshotTaken != now * 2 + which) {
-                snapshotTaken = now * 2 + which;
-                recording.callback("world.depthSnapshot", null, depthSnapshot.source(stage.host().mainFramebuffer()));
-            }
-            if (sceneColor && colorTaken != now * 2 + which) {
-                colorTaken = now * 2 + which;
-                recording.callback("world.colorSnapshot", null, colorSnapshot.source(stage.host().mainFramebuffer()));
-            }
             CgPassConstants constants = stage.constants();
             bindings.clear();
             if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
@@ -521,8 +503,8 @@ public final class CgWorldRenderer {
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                             boolean depthOnlyPass, CgHostView view) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-                .texture(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthSnapshot)
-                .texture(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colorSnapshot);
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;

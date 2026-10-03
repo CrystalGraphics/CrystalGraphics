@@ -2,6 +2,9 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
@@ -9,13 +12,19 @@ import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -40,6 +49,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 public final class CgFrameBuilder {
 
+    private static final Logger LOGGER = LogManager.getLogger("CgFrameBuilder");
+    /** Passes already warned of running out of target copies, by name. */
+    private static final Set<String> COPIES_WARNED = ConcurrentHashMap.newKeySet();
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int PASSES = CgTrace.name("graph.passes");
     private static final int BATCHES = CgTrace.name("graph.batches");
@@ -378,6 +390,7 @@ public final class CgFrameBuilder {
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        placeCopies(pass, packed);
         frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
@@ -385,7 +398,57 @@ public final class CgFrameBuilder {
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
         for (int i = 0; i < pass.textureCount(); i++) constants.texture(pass.textureUnit(i), pass.texture(i));
+        if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
+        if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
         packed.constants = constants.end();
+    }
+
+    /**
+     * Where the pass copies its target for draws sampling it: before a reader of what a draw since the last copy
+     * wrote. The pass starts with both unseen, since whatever drew into the target before it has no copy. A reader's
+     * own writes leave what it reads clean, so readers in a row share one copy.
+     */
+    private static void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
+        int sampled = (pass.sceneColorUnit() >= 0 ? CgTargetCopy.COLOR : 0)
+                | (pass.sceneDepthUnit() >= 0 ? CgTargetCopy.DEPTH : 0);
+        if (sampled == 0) return;
+        int unseen = sampled, copies = 0;
+        for (int b = 0; b < packed.count; b++) {
+            CgPipeline pipeline = CgPipeline.byId(packed.pipeline[b]);
+            int reads = sampled & readsOf(pipeline);
+            int wanted = reads & unseen;
+            if (wanted != 0) {
+                if (copies < CgRasterPass.MAX_TARGET_COPIES) {
+                    packed.copyBefore[b] = wanted;
+                    unseen &= ~wanted;
+                    copies++;
+                } else if (COPIES_WARNED.add(pass.name())) {
+                    LOGGER.warn("{} needs more than {} copies of its target; its later readers share the last",
+                            pass, CgRasterPass.MAX_TARGET_COPIES);
+                }
+            }
+            unseen |= sampled & writesOf(pipeline, pass.state) & ~reads;
+        }
+    }
+
+    private static int readsOf(CgPipeline pipeline) {
+        return (pipeline.shader().readsSceneColor() ? CgTargetCopy.COLOR : 0)
+                | (pipeline.shader().readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
+    }
+
+    /** What a pipeline's draws write into the target: its own state, else the pass's; undeclared is a write. */
+    private static int writesOf(CgPipeline pipeline, CgRenderState passState) {
+        CgRenderState own = pipeline.state();
+        List<CgColorMask> masks = own != null && !own.getColorMasks().isEmpty() ? own.getColorMasks()
+                : passState != null ? passState.getColorMasks() : Collections.<CgColorMask>emptyList();
+        boolean color = masks.isEmpty();
+        for (int i = 0; i < masks.size(); i++) {
+            CgColorMask mask = masks.get(i);
+            color |= mask.r() || mask.g() || mask.b() || mask.a();
+        }
+        CgDepthState depth = own != null && own.getDepth() != null ? own.getDepth()
+                : passState != null ? passState.getDepth() : null;
+        return (color ? CgTargetCopy.COLOR : 0) | (depth == null || depth.write() ? CgTargetCopy.DEPTH : 0);
     }
 
     /** {@code table}'s ids mapped into the frame's, -1 until first used; the arrays are kept between builds. */

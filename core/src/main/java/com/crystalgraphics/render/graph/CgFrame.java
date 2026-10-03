@@ -287,6 +287,8 @@ public final class CgFrame {
         CgBufferHandle[] counts = new CgBufferHandle[16];
         long[] countOffsets = new long[16];
         int[] countModes = new int[16];
+        /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
+        int[] copyBefore = new int[16];
         /** Its indirect batches: the commands the executor builds before the pass begins. */
         int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
@@ -315,6 +317,7 @@ public final class CgFrame {
                 counts = new CgBufferHandle[n];
                 countOffsets = new long[n];
                 countModes = new int[n];
+                copyBefore = new int[n];
             } else {
                 Arrays.fill(mesh, 0, count, null);
                 Arrays.fill(counts, 0, count, null);
@@ -323,6 +326,7 @@ public final class CgFrame {
             kinds = 0;
             indirects = 0;
             Arrays.fill(instances, 0, batches, 0);
+            Arrays.fill(copyBefore, 0, batches, 0);
         }
     }
 }

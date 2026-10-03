@@ -37,7 +37,11 @@ import java.util.List;
  *   <li>A pass into a layer names where the layer sits in the recording's root space with {@link #view}: what a
  *       record under a spatial node is placed through. Records at node 0 are already in the target's space.</li>
  *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
- *       fixed unit, as a world pass binds the scene's depth.</li>
+ *       fixed unit.</li>
+ *   <li>{@link #sceneColor} and {@link #sceneDepth} let its draws sample the target itself: a draw whose shader reads
+ *       {@code cg_SceneColor} or {@code cg_DepthBuffer} sees every draw of the pass sorted before it. The graph copies
+ *       the target before the first such draw and again wherever a draw since wrote what it reads, at most
+ *       {@link #MAX_TARGET_COPIES} times a pass; readers in a row share a copy, so they never see each other.</li>
  *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
  *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
  * </ul>
@@ -70,6 +74,15 @@ public final class CgRasterPass extends CgPass {
 
     private int viewOwner;
     private float viewX, viewY;
+
+    /** Copies of the target a pass takes for its readers, at most; past it they share the last. */
+    public static final int MAX_TARGET_COPIES = 4;
+
+    /** The units its draws sample the target's colour and depth at, or -1. */
+    private int sceneColorUnit = -1, sceneDepthUnit = -1;
+    /** Its copy of its target, made when it first declares a read of it. */
+    @Nullable
+    private CgTargetCopy targetCopy;
 
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = new int[0];
@@ -225,6 +238,44 @@ public final class CgRasterPass extends CgPass {
         textures[n] = texture;
         if (texture instanceof CgGraphTexture graph) recording.read(this, graph, CgAccess.SAMPLED_READ);
         return this;
+    }
+
+    /**
+     * Lets draws whose shader reads {@code cg_SceneColor} sample the target's colour at {@code unit}, as it stands
+     * after every draw sorted before them.
+     *
+     * <pre>{@code
+     * recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
+     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+     * }</pre>
+     */
+    public CgRasterPass sceneColor(int unit) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        sceneColorUnit = unit;
+        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        return this;
+    }
+
+    /** As {@link #sceneColor}, for the target's depth and {@code cg_DepthBuffer}. */
+    public CgRasterPass sceneDepth(int unit) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        sceneDepthUnit = unit;
+        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        return this;
+    }
+
+    int sceneColorUnit() {
+        return sceneColorUnit;
+    }
+
+    int sceneDepthUnit() {
+        return sceneDepthUnit;
+    }
+
+    @Nullable
+    CgTargetCopy targetCopy() {
+        return targetCopy;
     }
 
     int textureCount() {

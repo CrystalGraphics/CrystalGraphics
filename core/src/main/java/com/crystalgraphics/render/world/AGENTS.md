@@ -4,8 +4,7 @@
 
 | Type | Role |
 |------|------|
-| `CgWorldRenderer` | Registered on `WORLD_OPAQUE` and `WORLD_TRANSPARENT` at `ORDER` (1000). Holds the frame's draws flat (absolute positions in doubles, local transforms, customs, queue, priority); at each stage culls them against the stage's view, picks a `CgMeshLods` draw's level by its screen height, sorts them, and records the depth snapshot callback, the prepass, and the opaque or transparent pass onto the host's target. `onFrame` listeners run once a frame, before the first world stage records |
-| `CgDepthSnapshot` | The scene's depth for `cg_DepthBuffer`: blitted from the host's main framebuffer by a callback pass, its format matched to the source's. It is itself the `CgTexture` each world pass binds, so a format change never leaves a pass holding a deleted texture |
+| `CgWorldRenderer` | Registered on `WORLD_OPAQUE` and `WORLD_TRANSPARENT` at `ORDER` (1000). Holds the frame's draws flat (absolute positions in doubles, local transforms, customs, queue, priority); at each stage culls them against the stage's view, picks a `CgMeshLods` draw's level by its screen height, sorts them, and records the prepass and the opaque or transparent pass onto the host's target, each declaring `sceneDepth`/`sceneColor` so its readers sample the target as it stands. `onFrame` listeners run once a frame, before the first world stage records |
 | `CgSortKey` | Filament's key layout with a log-quantised distance: slot, priority, material, distance, mesh. No far plane |
 
 ## Rules
@@ -15,8 +14,9 @@
   view's origin, `cg_WorldOrigin` at the host's absolute position.
 - **A draw lives one ring frame** (`CgFrameRing.frame()`); a stage drops the previous frame's draws before it records.
   A host advancing no ring frame (a test) keeps them.
-- **The snapshot is taken once a frame**, at the first world stage whose draws include a material reading
-  `cg_DepthBuffer` (`CgMaterial.readsSceneDepth`).
+- **`cg_DepthBuffer` and `cg_SceneColor` are the graph's copies of the target** (`CgRasterPass.sceneDepth`,
+  `sceneColor`): a reader sees every draw sorted before it except readers in a row with it, so a heat haze at the
+  top priority bends the particles under it. `render/graph/AGENTS.md` § *Reading the target*.
 - **Material chains** (`setNextPass`) are drawn as further draws on the same instances, in the forward passes only.
 - **An indirect draw** (`.indirect(count, offset, mode, factor)`) carries its count into each pass's chunk. Its
   culling is by the bounds it states: what the count will be is unknown when it is culled. A count written in the same

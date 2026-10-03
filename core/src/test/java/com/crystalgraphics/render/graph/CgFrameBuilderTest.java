@@ -72,6 +72,61 @@ public class CgFrameBuilderTest {
         return rec.raster(target, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
     }
 
+    private static final String READER = """
+            #type none
+            Pass {
+                void vertex(out v2f o) { }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(cg_SceneColor, vec2(0.5)); }
+            }
+            """;
+
+    /** One draw of {@code pipeline} at sort key {@code key}. */
+    private CgDrawChunk keyed(CgRecording rec, CgMaterial of, CgPipeline pipeline, long key) {
+        CgChunkBuilder c = rec.chunks().begin();
+        c.draw(pipeline, of.captureBindings(rec.bindings())).sortKey(key);
+        c.instance();
+        c.bounds(0, 0, 10, 10);
+        return c.end();
+    }
+
+    /**
+     * A reader of the target is copied for before it whenever a draw since the last copy wrote what it reads; readers
+     * in a row share one copy, in sorted order whatever order they were added in.
+     */
+    @Test
+    public void aReaderGetsACopyOfWhatDrewBeforeIt() {
+        CgMaterial haze = CgMaterial.fromSource(READER);
+        CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
+        assertTrue(reads.shader().readsSceneColor());
+        assertFalse(quads.shader().readsSceneColor());
+
+        CgRecording rec = new CgRecording();
+        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
+                .sceneColor(5);
+        pass.add(keyed(rec, haze, reads, 5));      // after the second plain draw: a copy of its own
+        pass.add(keyed(rec, material, quads, 1));
+        pass.add(keyed(rec, haze, reads, 2));      // first reader: a copy
+        pass.add(keyed(rec, haze, reads, 3));      // shares it
+        pass.add(keyed(rec, material, quads, 4));
+        pass.end();
+        CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
+        CgFrame.Raster packed = frame.rasters[0];
+
+        int copies = 0, readersSeen = 0;
+        for (int b = 0; b < packed.count; b++) {
+            boolean reader = packed.pipeline[b] == reads.id();
+            if (packed.copyBefore[b] != 0) {
+                assertTrue("a copy only before a reader", reader);
+                assertEquals(CgTargetCopy.COLOR, packed.copyBefore[b]);
+                copies++;
+            }
+            if (reader) readersSeen++;
+        }
+        assertTrue(readersSeen >= 2);
+        assertEquals(2, copies);
+        builder.recycle(frame);
+    }
+
     /** A nested scissor is issued once per pass, from the entry that changed, each inside the one before it. */
     @Test
     public void aScissorChainIsIssuedFromWhereItChanged() {

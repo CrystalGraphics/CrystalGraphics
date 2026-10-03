@@ -81,6 +81,7 @@ import java.util.function.IntConsumer;
 public final class CgExecutor {
 
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
+    private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     /** What every QUAD and CURVE instance expands. */
@@ -706,50 +707,55 @@ public final class CgExecutor {
         CgPipeline pipeline = null;
         boolean usable = false;
         int slot = 0;
-        for (int b = 0; b < packed.count; b++) {
-            int command = packed.counts[b] != null ? slot++ : -1;
-            if (packed.scissor[b] != boundScissor) {
-                boundScissor = packed.scissor[b];
-                if (boundScissor == CgRasterPass.NO_SCISSOR) {
-                    if (damage == null) CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
-                    else CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
-                } else if (boundScissor >= 0) {
-                    scissorRect(pass, packed.palette, boundScissor);
-                    if (damage != null) cutToDamage(damage);
-                    CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
-                    CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+        try {
+            for (int b = 0; b < packed.count; b++) {
+                int command = packed.counts[b] != null ? slot++ : -1;
+                if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b]);
+                if (packed.scissor[b] != boundScissor) {
+                    boundScissor = packed.scissor[b];
+                    if (boundScissor == CgRasterPass.NO_SCISSOR) {
+                        if (damage == null) CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+                        else CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
+                    } else if (boundScissor >= 0) {
+                        scissorRect(pass, packed.palette, boundScissor);
+                        if (damage != null) cutToDamage(damage);
+                        CgGL.glEnable(CgGL.GL_SCISSOR_TEST);
+                        CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
+                    }
+                }
+                if (packed.pipeline[b] != boundPipeline) {
+                    boundPipeline = packed.pipeline[b];
+                    pipeline = CgPipeline.byId(boundPipeline);
+                    if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
+                    usable = pipeline.bind();
+                    boundBinding = -1;
+                }
+                if (!usable) {
+                    CgTrace.add(CgChannels.GL, "graph.batches.skipped", 1);
+                    continue;
+                }
+                if (command >= 0 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
+                    pipeline.sharedInstance(packed.first[b]);
+                } else {
+                    pipeline.instanceBase(packed.first[b]);
+                }
+                if (packed.binding[b] != boundBinding) {
+                    boundBinding = packed.binding[b];
+                    frame.bindings.bind(boundBinding);
+                }
+                CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
+                if (command >= 0 && gpuCounts) {
+                    CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
+                            commands.offset(command));
+                } else if (command >= 0) {
+                    drawCounted(mesh, pipeline, packed, b);
+                } else {
+                    CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
+                            packed.rangeCount[b]);
                 }
             }
-            if (packed.pipeline[b] != boundPipeline) {
-                boundPipeline = packed.pipeline[b];
-                pipeline = CgPipeline.byId(boundPipeline);
-                if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
-                usable = pipeline.bind();
-                boundBinding = -1;
-            }
-            if (!usable) {
-                CgTrace.add(CgChannels.GL, "graph.batches.skipped", 1);
-                continue;
-            }
-            if (command >= 0 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
-                pipeline.sharedInstance(packed.first[b]);
-            } else {
-                pipeline.instanceBase(packed.first[b]);
-            }
-            if (packed.binding[b] != boundBinding) {
-                boundBinding = packed.binding[b];
-                frame.bindings.bind(boundBinding);
-            }
-            CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
-            if (command >= 0 && gpuCounts) {
-                CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
-                        commands.offset(command));
-            } else if (command >= 0) {
-                drawCounted(mesh, pipeline, packed, b);
-            } else {
-                CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
-                        packed.rangeCount[b]);
-            }
+        } finally {
+            if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
     }
@@ -841,6 +847,21 @@ public final class CgExecutor {
         scissorRect[1] = y0;
         scissorRect[2] = Math.max(0, x1 - x0);
         scissorRect[3] = Math.max(0, y1 - y0);
+    }
+
+    /** Copies what {@code bits} name from the pass's target for the draws sampling it, and binds the copies. */
+    private static void copyTarget(CgRasterPass pass, int bits) {
+        CgGraphTexture target = pass.target;
+        CgTargetCopy copy = pass.targetCopy();
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
+            copy.copy(CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING), null, 0, 0, bits, POOL);
+        } else {
+            CgFrameBuffer storage = storage(target);
+            copy.copy(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), bits, POOL);
+        }
+        if ((bits & CgTargetCopy.COLOR) != 0) copy.color.bind(pass.sceneColorUnit());
+        if ((bits & CgTargetCopy.DEPTH) != 0) copy.depth.bind(pass.sceneDepthUnit());
+        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
     /** Binds a pass's target and its viewport; the current target is left as it is. */

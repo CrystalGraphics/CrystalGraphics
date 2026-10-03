@@ -46,6 +46,28 @@ name, so pooled transients, a history's two versions and a buffer used across fr
 fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
 kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
 
+**Reading the target** (`CgRasterPass.sceneColor(unit)`, `sceneDepth(unit)`): a draw whose shader reads
+`cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
+pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:
+colour by any draw with colour writes on, depth only by a depth write. The pass starts with neither copied, so its
+first reader always copies. A reader's own writes leave what it reads clean, so readers in a row share one copy and
+never see each other (Godot's screen-texture rule); past `MAX_TARGET_COPIES` (4) a pass's readers share its last
+copy, logged once. The executor blits before the batch, scissor off, and binds the copy at the pass's unit
+(`graph.target-copies`); a blit is ordered among draws by the backend, as any copy is.
+
+```java
+CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
+        .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)    // haze, glass, water: the target as drawn so far
+        .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);         // soft particles, depth fades
+```
+
+- Each pass copies into one framebuffer from the transient pool, held from its first copy to its end; a later copy
+  overwrites the earlier, so nesting and passes of other sizes never disturb it, and a steady frame allocates nothing.
+- The copy has the target's formats (a float target keeps its range); the current target's colour is RGBA8 and its
+  depth in its own format, the viewport's size.
+- Sort order decides what a reader sees: give the readers of one effect the highest priority and they draw last, on
+  one copy of everything under them.
+
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect

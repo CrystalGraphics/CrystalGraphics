@@ -39,11 +39,11 @@ public final class CgVfxLayer {
     /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
     public static final int PRIORITY_SMOKE = 1;
     /**
-     * Layers that bend the scene behind them (heat haze, a shock front), first of all: they redraw what is behind them
-     * from {@code cg_SceneColor}, which holds the world but none of this pass, so anything drawn before them would be
-     * painted over.
+     * Layers that bend the scene behind them (heat haze, a shock front), last of all: {@code cg_SceneColor} holds what
+     * drew before them, so they bend every particle and glow, and readers in a row share one copy of the target. What
+     * is in front of a haze bends with it.
      */
-    public static final int PRIORITY_DISTORTION = 0;
+    public static final int PRIORITY_DISTORTION = 7;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";
 
