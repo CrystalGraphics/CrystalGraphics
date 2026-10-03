@@ -16,6 +16,11 @@ import java.util.Locale;
 public final class WorldStimulusModern implements CgWorldStimulus {
 
     @Override
+    public void keepRunning() {
+        Minecraft.getInstance().options.pauseOnLostFocus = false;
+    }
+
+    @Override
     public boolean lightning(double x, double y, double z) {
         return run(String.format(Locale.ROOT, "summon minecraft:lightning_bolt %.2f %.2f %.2f", x, y, z));
     }
