@@ -6,6 +6,10 @@ harness is one), and also inside Minecraft: **one jar** for Forge 1.7.10–26.3,
 1.14.4–26.3. **Authored in** Java 25, with a Java 8 copy of every engine module. **The parent of** CrystalGUI, which
 builds every Minecraft node against this repository's node of the same version.
 
+**Where documentation goes.** This file holds only what every session needs — rules and routing. New reference
+material goes to the doc that owns the subject (`docs/`, indexed in `docs/ARCHITECTURE.md` § *Docs*), and a
+package's rule to that package's `CLAUDE.md`. Never append a section here; add a routing row if a new doc needs one.
+
 ---
 
 ## Project philosophy
