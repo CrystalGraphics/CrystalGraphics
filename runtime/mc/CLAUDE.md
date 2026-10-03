@@ -1,0 +1,1 @@
+@../../docs/MINECRAFT_INTEGRATION.md
