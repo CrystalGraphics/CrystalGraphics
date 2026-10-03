@@ -17,8 +17,11 @@ import com.crystalgraphics.world.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.AxisAngle4f;
+import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 /**
  * Proves, in a running game, that the host answers every world seam and that the answers agree with each other: the
@@ -63,8 +66,9 @@ public final class CgWorldProbe {
     private static Phase phase = Phase.WAITING;
     private static long phaseNanos, settleNanos;
     private static int passed, failed, skipped, cameraFrames;
-    private static int cameraBits;
-    private static float baseFov, baseYaw, baseRoll;
+    private static int cameraBits, cameraStep;
+    private static float baseFov;
+    private static final Matrix3f baseView = new Matrix3f();
     private static long startGameTime;
     private static int startTextures, startEpoch;
     private static final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
@@ -108,7 +112,18 @@ public final class CgWorldProbe {
                 break;
             case CAMERA:
                 if (++cameraFrames < CAMERA_FRAMES) break;
-                finishCamera(host);
+                if (cameraStep == 0) {
+                    checkTurn(host);
+                    if (has(CgHostCamera.ROLL)) {
+                        CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, ROLL, 1f);
+                        cameraStep = 1;
+                        cameraFrames = 0;
+                        break;
+                    }
+                } else {
+                    checkRoll(host);
+                }
+                if (cameraBits != 0) CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
                 startEvents(now);
                 break;
             case EVENTS:
@@ -267,18 +282,18 @@ public final class CgWorldProbe {
             skip("camera", "this version applies no camera offset");
         } else {
             baseFov = host.environment().fov();
-            baseYaw = yaw(host.view().view());
-            baseRoll = roll(host.view().view());
-            camera.offset(0f, 0f, 0f, has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, has(CgHostCamera.ROLL) ? ROLL : 0f,
-                    has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
+            baseView.set(host.view().view());
+            camera.offset(0f, 0f, 0f, has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
         }
+        cameraStep = 0;
         cameraFrames = 0;
         next(Phase.CAMERA, now);
     }
 
-    private static void finishCamera(CgHostFrame host) {
+    // Yaw first, with the FOV, then roll alone: each is then one rotation between the views before and after, measured
+    // whatever the player's pitch. A host may turn about the view's vertical or the world's; both pass.
+    private static void checkTurn(CgHostFrame host) {
         if (cameraBits == 0) return;
-        Matrix4fc view = host.view().view();
         int applied = CgPlatform.get(CgHostCamera.SERVICE).applied();
         if (has(CgHostCamera.FOV)) {
             float ratio = host.environment().fov() / baseFov;
@@ -288,20 +303,30 @@ public final class CgWorldProbe {
             skip("camera.fov", "not applied on this version");
         }
         if (has(CgHostCamera.ROTATION)) {
-            float turned = Math.abs(wrap(yaw(view) - baseYaw));
-            check("camera.yaw", Math.abs(turned - YAW) < 1.5f, String.format("turned %.2f degrees, %s", turned,
-                    ran(applied, CgHostCamera.ROTATION)));
+            AxisAngle4f turn = turnSinceBase(host.view().view());
+            Vector3f worldUp = baseView.transform(new Vector3f(0f, 1f, 0f));
+            float about = Math.max(Math.abs(turn.y), Math.abs(turn.x * worldUp.x + turn.y * worldUp.y + turn.z * worldUp.z));
+            float degrees = (float) Math.toDegrees(turn.angle);
+            check("camera.yaw", Math.abs(degrees - YAW) < 1.5f && about > 0.98f, String.format(
+                    "turned %.2f degrees about an axis %.3f vertical, %s", degrees, about, ran(applied, CgHostCamera.ROTATION)));
         } else {
             skip("camera.yaw", "not applied on this version");
         }
-        if (has(CgHostCamera.ROLL)) {
-            float rolled = Math.abs(wrap(roll(view) - baseRoll));
-            check("camera.roll", Math.abs(rolled - ROLL) < 1.5f, String.format("rolled %.2f degrees, %s", rolled,
-                    ran(applied, CgHostCamera.ROLL)));
-        } else {
-            skip("camera.roll", "not applied on this version");
-        }
-        CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+        if (!has(CgHostCamera.ROLL)) skip("camera.roll", "not applied on this version");
+    }
+
+    private static void checkRoll(CgHostFrame host) {
+        AxisAngle4f turn = turnSinceBase(host.view().view());
+        float degrees = (float) Math.toDegrees(turn.angle);
+        check("camera.roll", Math.abs(degrees - ROLL) < 1.5f && Math.abs(turn.z) > 0.98f, String.format(
+                "rolled %.2f degrees about an axis %.3f along the view, %s", degrees, Math.abs(turn.z),
+                ran(CgPlatform.get(CgHostCamera.SERVICE).applied(), CgHostCamera.ROLL)));
+    }
+
+    /** The rotation from the base view to this one, in view space: an axis there and an angle. */
+    private static AxisAngle4f turnSinceBase(Matrix4fc view) {
+        Matrix3f delta = new Matrix3f().set(view).mul(new Matrix3f(baseView).transpose());
+        return new AxisAngle4f().set(delta);
     }
 
     /** Whether the host's hook for {@code part} has ever run: what tells an unfired hook from an ignored one. */
@@ -311,16 +336,6 @@ public final class CgWorldProbe {
 
     private static boolean has(int bit) {
         return (cameraBits & bit) != 0;
-    }
-
-    /** The camera's heading, degrees: its forward axis (the view's third row, negated) on the ground plane. */
-    private static float yaw(Matrix4fc view) {
-        return (float) Math.toDegrees(Math.atan2(-view.m02(), -view.m22()));
-    }
-
-    /** How far the camera's right axis tips out of the ground plane, degrees. */
-    private static float roll(Matrix4fc view) {
-        return (float) Math.toDegrees(Math.asin(Math.max(-1f, Math.min(1f, view.m10()))));
     }
 
     // ── World events, caused on the server ───────────────────────────────────────
@@ -449,8 +464,9 @@ public final class CgWorldProbe {
             if (id != player && near(x, y, z)) died = true;
         }
 
+        // Wide: a pig on a fuseless TNT is thrown several blocks before a slow frame polls it.
         private boolean near(double x, double y, double z) {
-            return Math.abs(x - blastX) < 8 && Math.abs(y - blastY) < 12 && Math.abs(z - blastZ) < 8;
+            return Math.abs(x - blastX) < 24 && Math.abs(y - blastY) < 24 && Math.abs(z - blastZ) < 24;
         }
 
         void report() {
@@ -482,8 +498,9 @@ public final class CgWorldProbe {
         LOGGER.info("world probe {}: skipped ({})", name, reason);
     }
 
+    // "is", never ": ": a reader takes "name: false" for a failed check.
     private static void info(String name, String detail) {
-        LOGGER.info("world probe {}: {}", name, detail);
+        LOGGER.info("world probe {} is {}", name, detail);
     }
 
     private static void next(Phase to, long now) {
@@ -497,13 +514,6 @@ public final class CgWorldProbe {
 
     private static boolean inUnit(float v) {
         return v >= 0f && v <= 1f;
-    }
-
-    private static float wrap(float degrees) {
-        float d = degrees % 360f;
-        if (d > 180f) d -= 360f;
-        if (d < -180f) d += 360f;
-        return d;
     }
 
     private static double frac(double v) {
