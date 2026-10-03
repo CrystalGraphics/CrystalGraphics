@@ -1,6 +1,7 @@
 package com.crystalgraphics.vulkan.command;
 
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkImageMemoryBarrier;
 import org.lwjgl.vulkan.VkMemoryBarrier;
@@ -25,6 +26,17 @@ public final class VulkanBarriers {
             b.subresourceRange().aspectMask(aspect).baseMipLevel(baseMip).levelCount(mips)
                     .baseArrayLayer(baseLayer).layerCount(layers);
             vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, null, null, b);
+        }
+    }
+
+    /** One buffer's writes at {@code srcStage} made visible to {@code dstStage}: a compute pass's precise barrier. */
+    static void buffer(VkCommandBuffer cmd, long buffer, int srcStage, int srcAccess, int dstStage, int dstAccess) {
+        try (MemoryStack stack = stackPush()) {
+            VkBufferMemoryBarrier.Buffer b = VkBufferMemoryBarrier.calloc(1, stack).sType$Default()
+                    .srcAccessMask(srcAccess).dstAccessMask(dstAccess)
+                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED).dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
+                    .buffer(buffer).offset(0).size(VK_WHOLE_SIZE);
+            vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, null, b, null);
         }
     }
 

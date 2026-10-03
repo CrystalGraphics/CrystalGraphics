@@ -1,6 +1,8 @@
 package com.crystalgraphics.vulkan.command;
 
 import com.crystalgraphics.platform.device.command.CgCommandEncoder;
+import com.crystalgraphics.platform.device.command.CgComputePass;
+import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.device.command.CgPassDesc;
 import com.crystalgraphics.platform.device.command.CgRenderPass;
 import com.crystalgraphics.platform.device.format.CgFormat;
@@ -44,6 +46,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
 
     private final CgVulkanDevice device;
     private VulkanPass open;
+    private VulkanComputePass openCompute;
 
     public VulkanEncoder(CgVulkanDevice device) {
         this.device = device;
@@ -56,6 +59,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
 
     void passEnded() { open = null; }
 
+    void computeEnded() { openCompute = null; }
+
     private VkCommandBuffer cmd() {
         return device.host().commandBuffer();
     }
@@ -67,8 +72,40 @@ public final class VulkanEncoder implements CgCommandEncoder {
     // ── passes ─────────────────────────────────────────────────────────────────
 
     @Override
+    public CgComputePass beginCompute(String label) {
+        outsidePass("beginCompute");
+        if (openCompute != null) throw new IllegalStateException("beginCompute inside a compute pass");
+        openCompute = new VulkanComputePass(device, this);
+        return openCompute;
+    }
+
+    @Override
+    public void bufferBarrier(CgGpuBuffer buffer, CgAccess from, CgAccess to) {
+        outsidePass("bufferBarrier");
+        VulkanBarriers.buffer(cmd(), ((VulkanBuffer) buffer).buffer, VulkanAccess.stage(from), VulkanAccess.access(from),
+                VulkanAccess.stage(to), VulkanAccess.access(to));
+        device.barriers++;
+    }
+
+    @Override
+    public void imageBarrier(CgGpuTexture texture, CgAccess from, CgAccess to) {
+        outsidePass("imageBarrier");
+        device.barriers += ((VulkanTexture) texture).barrier(cmd(), VulkanAccess.layout(to), VulkanAccess.stage(from),
+                VulkanAccess.access(from), VulkanAccess.stage(to), VulkanAccess.access(to));
+    }
+
+    @Override
+    public void memoryBarrier(CgAccess from, CgAccess to) {
+        outsidePass("memoryBarrier");
+        VulkanBarriers.global(cmd(), VulkanAccess.stage(from), VulkanAccess.access(from), VulkanAccess.stage(to),
+                VulkanAccess.access(to));
+        device.barriers++;
+    }
+
+    @Override
     public CgRenderPass beginPass(CgPassDesc desc) {
         outsidePass("beginPass");
+        if (openCompute != null) throw new IllegalStateException("beginPass inside a compute pass");
         VkCommandBuffer cmd = cmd();
         for (CgPassDesc.Color c : desc.colors()) {
             toAttachment(cmd, c.view(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,

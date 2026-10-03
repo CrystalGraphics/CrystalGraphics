@@ -65,6 +65,13 @@ public final class CgBindings {
         return this;
     }
 
+    /** One mip level of a texture a kernel reads and writes with {@code imageLoad} and {@code imageStore}. */
+    public CgBindings image(int slot, CgTextureView level) {
+        int i = next(slot, CgBindingLayout.Type.STORAGE_IMAGE);
+        view[i] = level;
+        return this;
+    }
+
     public int count() { return count; }
 
     public int binding(int i) { return binding[i]; }

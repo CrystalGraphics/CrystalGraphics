@@ -103,4 +103,10 @@ public interface CgVulkanHost {
      * pixels a line covers. Without it a line on an exact pixel boundary can vanish where GL draws it.
      */
     boolean bresenhamLines();
+
+    /** Whether the device was created with {@code drawIndirectCount}: a draw's count may come from a buffer. */
+    boolean indirectCount();
+
+    /** Whether the device was created with {@code drawIndirectFirstInstance}. */
+    boolean indirectFirstInstance();
 }

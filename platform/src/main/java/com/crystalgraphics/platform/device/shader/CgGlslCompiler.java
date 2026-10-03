@@ -31,6 +31,9 @@ public interface CgGlslCompiler {
     /** @throws CgShaderModule.CompileException with the compiler's log */
     Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations, String label);
 
+    /** A compute stage, every binding assigned as {@link #compile} assigns them. @throws CgShaderModule.CompileException */
+    ComputeProgram compileCompute(String glsl, String label);
+
     /** A vertex input and the location it reads. */
     record Attribute(String name, int location, int glType) {}
 
@@ -39,6 +42,9 @@ public interface CgGlslCompiler {
 
     /** A sampler or texel buffer and its binding. */
     record Sampler(String name, int binding, int glType, boolean texel) {}
+
+    /** A storage image and its binding. */
+    record Image(String name, int binding, int glType) {}
 
     /**
      * One leaf of a loose uniform: {@code -1} for a stage that does not declare it. Element {@code e}, column
@@ -58,4 +64,15 @@ public interface CgGlslCompiler {
                    int vertexUniformBinding, int vertexUniformSize,
                    int fragmentUniformBinding, int fragmentUniformSize,
                    List<CgBindingLayout.Slot> slots) {}
+
+    /**
+     * A compiled compute stage. Its loose uniforms are in one block, {@link #uniformBinding}, each at its
+     * {@link Uniform#vertexOffset}: the block every stage-indexed reader takes first.
+     *
+     * @param localSize      the work group's size, as the source declares it
+     * @param uniformBinding the loose-uniform block, or -1 without one
+     */
+    record ComputeProgram(ByteBuffer spirv, int[] localSize, List<Block> uniformBlocks, List<Block> storageBlocks,
+                          List<Sampler> samplers, List<Image> images, List<Uniform> uniforms,
+                          int uniformBinding, int uniformSize, List<CgBindingLayout.Slot> slots) {}
 }

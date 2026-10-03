@@ -38,6 +38,9 @@ final class SpirvModule {
     final ByteBuffer spirv;
     final List<Resource> uniformBuffers = new ArrayList<>(), storageBuffers = new ArrayList<>();
     final List<Resource> samplers = new ArrayList<>(), inputs = new ArrayList<>(), outputs = new ArrayList<>();
+    final List<Resource> images = new ArrayList<>();
+    /** A compute stage's work group, as declared; zeros for any other stage. */
+    final int[] localSize = new int[3];
     /** The loose-uniform block's leaves, at their offsets in it; empty without one. */
     final List<CgGlslCompiler.Uniform> uniforms = new ArrayList<>();
     int defaultBlockSize;
@@ -65,6 +68,10 @@ final class SpirvModule {
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, SpvDecorationBinding, uniformBuffers);
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_STORAGE_BUFFER, SpvDecorationBinding, storageBuffers);
                 read(stack, compiler, active, SPVC_RESOURCE_TYPE_SAMPLED_IMAGE, SpvDecorationBinding, samplers);
+                read(stack, compiler, active, SPVC_RESOURCE_TYPE_STORAGE_IMAGE, SpvDecorationBinding, images);
+                for (int i = 0; i < 3; i++) {
+                    localSize[i] = spvc_compiler_get_execution_mode_argument_by_index(compiler, SpvExecutionModeLocalSize, i);
+                }
                 read(stack, compiler, resources, SPVC_RESOURCE_TYPE_STAGE_INPUT, SpvDecorationLocation, inputs);
                 read(stack, compiler, resources, SPVC_RESOURCE_TYPE_STAGE_OUTPUT, SpvDecorationLocation, outputs);
             } finally {
@@ -91,7 +98,9 @@ final class SpirvModule {
             long typeHandle = spvc_compiler_get_type_handle(compiler, r.type_id());
             int glType = 0, locations = 1;
             boolean texel = false;
-            if (type == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE) {
+            if (type == SPVC_RESOURCE_TYPE_STORAGE_IMAGE) {
+                glType = imageGlType(spvc_type_get_image_dimension(typeHandle), spvc_type_get_image_arrayed(typeHandle));
+            } else if (type == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE) {
                 int dim = spvc_type_get_image_dimension(typeHandle);
                 texel = dim == SpvDimBuffer;
                 glType = samplerGlType(dim, spvc_type_get_image_arrayed(typeHandle), spvc_type_get_image_is_depth(typeHandle));
@@ -160,6 +169,16 @@ final class SpirvModule {
             case SpvDim3D:     return 0x8B5F;
             case SpvDimCube:   return depth ? 0x8DC5 : 0x8B60;
             case SpvDimBuffer: return 0x8DC2;
+            default: return 0;
+        }
+    }
+
+    private static int imageGlType(int dim, boolean arrayed) {
+        switch (dim) {
+            case SpvDim2D:     return arrayed ? 0x9053 : 0x904D;   // GL_IMAGE_2D_ARRAY, GL_IMAGE_2D
+            case SpvDim3D:     return 0x904E;                       // GL_IMAGE_3D
+            case SpvDimCube:   return 0x9050;                       // GL_IMAGE_CUBE
+            case SpvDimBuffer: return 0x9051;                       // GL_IMAGE_BUFFER
             default: return 0;
         }
     }
