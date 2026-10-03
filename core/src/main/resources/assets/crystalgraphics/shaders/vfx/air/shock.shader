@@ -9,7 +9,7 @@ Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
-    _Strength ("Bend at full intensity, share of the screen's height", float) = 0.02
+    _Strength ("Bend at full intensity, share of the screen's height", float) = 0.04
     _Band     ("How far in from the silhouette the band reaches, as facing 0..1", float) = 0.45
 }
 
