@@ -106,6 +106,21 @@ public final class CgBindingPoints {
      */
     public static Binding PARTICLES;
 
+    /** How many buffers a material's {@code Buffers { }} may declare. */
+    public static final int MATERIAL_BUFFER_COUNT = 4;
+
+    /**
+     * The first of {@link #MATERIAL_BUFFER_COUNT} storage points a material's buffers bind at on the SSBO path: buffer
+     * {@code i} at this plus {@code i}, below the engine buffers' points. On the TBO path buffer {@code i} reads from
+     * the texture unit after the material's samplers and its earlier buffers.
+     */
+    public static int MATERIAL_BUFFERS_SSBO = -1;
+
+    /** The texture unit a material's buffer {@code i} reads from on the TBO path, after its {@code samplers}. */
+    public static int materialBufferUnit(int samplers, int i) {
+        return samplers + i;
+    }
+
     /**
      * UBO binding slot for the engine's per-frame uniform block ({@code CgFrameBlock}).
      * Set to {@code maxUniformBufferBindings - 1} by {@link #init(CgCapabilities)}.
@@ -207,6 +222,8 @@ public final class CgBindingPoints {
         CLIP_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PALETTE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         SHAPE_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        maxSsboBindings -= MATERIAL_BUFFER_COUNT;
+        MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 
         // ── UBO bindings ───────────────────────────────────────────────────────────────
         FRAME_DATA_UBO          = --maxUboBindings;

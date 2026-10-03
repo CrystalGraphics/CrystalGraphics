@@ -8,7 +8,7 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 | Type | Is | Thread |
 |---|---|---|
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `prepare`/`program`/`bind`/`instanceBase` render thread |
-| `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures and buffers as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
+| `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT`, and the record stride each writes | — |
 | `CgPassConstants` | the pass block (`CgFrameBlock`'s layout) as a value, one per pass | any |
 | `CgDrawChunk` / `CgChunkBuilder` | an immutable run of draws under one property state (spatial, clip, effect node), with its instance records per kind and bounds per draw — Blink's paint chunk | the builder: one recorder; the chunk: any, once ended |
@@ -32,6 +32,9 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   compiles. `captureBindings()` reads no GL name.
 - **A texture in a snapshot is a handle**, resolved at `bind`: one reallocated before execution binds its new
   storage. Never capture a `CgTextureMutable` whose id another thread rewrites.
+- **A buffer in a snapshot is a `CgBufferHandle`**, resolved at `bind` the same way; a `CgGraphBuffer` is read by the
+  raster pass the chunk is added to, so the graph orders the draw after the pass writing it. A buffer texture
+  (`texelBuffer(unit, format, buffer)`) binds through `CgBufferTextures`, one texture per unit.
 - **A sampler's unit is its index among the shader's declared samplers.** `CgMaterialShader` wires every program
   that way at compile, so nothing per material is left to wire at execution.
 - **`cg_InstanceBase`** is what `CG_INSTANCE_ID` adds to `gl_InstanceID`; it defaults to 0, so a draw that uploads

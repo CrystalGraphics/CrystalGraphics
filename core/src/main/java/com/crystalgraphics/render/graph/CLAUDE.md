@@ -151,6 +151,7 @@ on a worker thread; the three PNGs in its output directory must be byte-identica
 `--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.
 `--mode=indirect-draw` is the indirect half: four indirect draws, one per mode and one past its mesh, each matched
-against a direct draw of what its count means, in a graph, executed again and through the world renderer. Both pass
+against a direct draw of what its count means, in a graph, executed again and through the world renderer.
+`--mode=material-buffer` is a material reading a kernel's buffers through `Buffers { }`, drawn indirect. All three pass
 forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
 (`compute/CLAUDE.md` § *Tests*).

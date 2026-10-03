@@ -154,6 +154,7 @@ public final class CgShaderParser {
                 CgStructureParser.parseUsePragmas(source, resourcePath));
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
+        CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(stripGlslComments(source), resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 
         // ── Step 3: top-level Tags block → RenderType, CastShadows ────────
@@ -287,7 +288,7 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, castShadows, Collections.unmodifiableList(passes));
+                renderType, castShadows, Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
     }
 
     /**

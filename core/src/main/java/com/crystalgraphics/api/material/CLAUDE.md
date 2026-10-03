@@ -237,6 +237,8 @@ int b = material.captureBindings(table);                  // block bytes now; te
 - `captureBindings` puts a sampler's texture at its **index among the declared samplers**, the unit every
   program is wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
 - Equal snapshots intern to one id; a property changed after the capture does not change what it holds.
+- A buffer the shader's `Buffers { }` declares is bound with `material.buffer(name, buffer)` and captured the same
+  way; a capture with one unbound throws. `bind()` binds none (SHADERS.md § *Reading a kernel's buffers*).
 
 ### CgMaterial.reload()
 Called by `CgMaterialRegistry.reloadAll()` during hot-reload (F3+T).

@@ -299,8 +299,53 @@ public final class CgComputeParser {
         if (access == CgBufferAccess.COUNTER && !element.equals("uint") && !element.equals("int")) {
             throw fail(at, name + " is a counter buffer, whose element is uint or int");
         }
-        return new CgBufferDecl(name, m.group(2), element, access, layout.stride(), lowerable(element),
+        return new CgBufferDecl(name, m.group(2), element, access, layout.stride(), lowerable(element, structBodies),
                 SCALARS.contains(element), buffers.size(), List.copyOf(std430.fieldsOf(element)));
+    }
+
+    /**
+     * A {@code .shader}'s {@code Buffers { }}: the buffers a material reads of those kernels write, in a kernel's
+     * grammar. Each is {@code readonly}, of an element every tier holds. {@code structs} holds the body of each struct
+     * declared before the block, by name.
+     *
+     * <pre>{@code
+     * List<CgBufferDecl> read = CgComputeParser.materialBuffers("SPARKS (\"Sparks\", Spark, readonly)",
+     *         Map.of("Spark", "vec4 positionLife; vec4 velocitySeed;"), path);
+     * }</pre>
+     */
+    public static List<CgBufferDecl> materialBuffers(String block, Map<String, String> structs, String path) {
+        List<CgBufferDecl> read = new ArrayList<>();
+        Std430 std430 = new Std430(structs, e -> ConstantInt.eval(e, Map.of()));
+        for (String raw : block.split("\n")) {
+            String line = raw.trim();
+            if (line.isEmpty()) continue;
+            Matcher m = DECLARATION.matcher(line);
+            if (!m.matches() || m.group(5) != null) {
+                throw new CgShaderParseException("[" + path + "] Buffers: '" + line + "' is not 'NAME (\"Display\", element, readonly)'");
+            }
+            String name = m.group(1);
+            String element = m.group(3);
+            if (!MACRO_NAME.matcher(name).matches() || name.startsWith("CG_")) {
+                throw new CgShaderParseException("[" + path + "] '" + name + "' cannot name a buffer: upper case, digits and '_', not starting CG_");
+            }
+            for (CgBufferDecl b : read) {
+                if (b.name().equals(name)) throw new CgShaderParseException("[" + path + "] declares buffer '" + name + "' twice");
+            }
+            if (CgBufferAccess.of(m.group(4)) != CgBufferAccess.READONLY) {
+                throw new CgShaderParseException("[" + path + "] buffer '" + name + "' is " + m.group(4)
+                        + ": a material only reads a buffer, so it is readonly");
+            }
+            Std430.Layout layout = std430.of(element);
+            if (layout == null) throw new CgShaderParseException("[" + path + "] buffer " + name + ": '" + element
+                    + "' is no type this compiler lays out: a scalar, vector or struct declared before Buffers { }");
+            if (!lowerable(element, structs)) {
+                throw new CgShaderParseException("[" + path + "] buffer " + name + "'s element '" + element + "' is not one "
+                        + "every tier holds: float, int or uint, their 2- and 4-vectors, or a struct of vec4, ivec4 and uvec4 only");
+            }
+            read.add(new CgBufferDecl(name, m.group(2), element, CgBufferAccess.READONLY, layout.stride(), true,
+                    SCALARS.contains(element), read.size(), List.copyOf(std430.fieldsOf(element))));
+        }
+        return List.copyOf(read);
     }
 
     private CgImageDecl image(Matcher m, int at) {
@@ -315,7 +360,7 @@ public final class CgComputeParser {
     }
 
     /** A lower tier's texel or capture holds it: a 4-, 8- or 16-byte scalar or vector, or 16-byte fields only. */
-    private boolean lowerable(String element) {
+    private static boolean lowerable(String element, Map<String, String> structBodies) {
         if (LOWERABLE_ELEMENTS.contains(element)) return true;
         String body = structBodies.get(element);
         String[][] fields = body == null ? null : Std430.fields(body);

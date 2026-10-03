@@ -1,5 +1,8 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.compute.lower.CgLoweredEmitter;
+import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -245,7 +248,7 @@ public final class CgMaterialShaderCompiler {
                                                        CgUniformBuffer matPropsUbo,
                                                        CompileConfig config) {
         final String shadowVertexBody;
-        if (isSimpleVertex(forwardPass)) {
+        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)) {
             // Simple path: minimal position-only transform using the frame UBO shadow matrix
             shadowVertexBody =
                     "    // Auto-generated shadow caster -- minimal position transform\n"
@@ -320,7 +323,7 @@ public final class CgMaterialShaderCompiler {
                                                       CgUniformBuffer matPropsUbo,
                                                       CompileConfig config) {
         final String depthVertexBody;
-        if (isSimpleVertex(forwardPass)) {
+        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)) {
             depthVertexBody =
                     "    // Auto-generated depth prepass -- minimal position transform\n"
                     + "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n";
@@ -393,6 +396,14 @@ public final class CgMaterialShaderCompiler {
         return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff;
     }
 
+    /** Whether the pass's vertex body names a buffer of the material's: it places vertices from a kernel's output. */
+    private static boolean readsBuffers(CgParsedShader shader, CgParsedPass pass) {
+        for (CgBufferDecl b : shader.buffers()) {
+            if (pass.vertexBody().matches("(?s).*\\b" + b.name() + "\\b.*")) return true;
+        }
+        return false;
+    }
+
     // ── Vertex shader builder ─────────────────────────────────────────────────
 
     private static String buildVertexSource(CgParsedShader shader,
@@ -454,6 +465,8 @@ public final class CgMaterialShaderCompiler {
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
+
+        appendMaterialBuffers(sb, shader, useSsbo);
 
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
@@ -527,6 +540,8 @@ public final class CgMaterialShaderCompiler {
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
+
+        appendMaterialBuffers(sb, shader, useSsbo);
 
         // v2f struct
         appendV2fStruct(sb, pass.v2fStructBody());
@@ -604,6 +619,26 @@ public final class CgMaterialShaderCompiler {
             if (provider == null || provider.envPath() == null) continue;
             sb.append("#include \"").append(provider.envPath()).append("\"").append("\n");
         }
+    }
+
+    /**
+     * The material's {@code Buffers { }}: the structs they hold, then each as a storage block, or below the SSBO path as
+     * a buffer texture on the unit after the samplers and the buffers before it.
+     */
+    private static void appendMaterialBuffers(StringBuilder sb, CgParsedShader shader, boolean useSsbo) {
+        if (shader.buffers().isEmpty()) return;
+        if (!useSsbo && CgBindingPoints.isInitialized()) {
+            int samplers = 0;
+            for (CgMaterialProperty p : shader.properties()) if (p.getType().isSampler()) samplers++;
+            int free = Math.min(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            if (samplers + shader.buffers().size() > free) {
+                throw new CgShaderParseException("'Buffers': " + samplers + " samplers and " + shader.buffers().size()
+                        + " buffers read as textures need " + (samplers + shader.buffers().size())
+                        + " texture units, and this context leaves a material " + free);
+            }
+        }
+        sb.append("// Buffers { }\n").append(shader.bufferStructs());
+        for (CgBufferDecl b : shader.buffers()) CgLoweredEmitter.reader(sb, b, useSsbo);
     }
 
     private static void appendAttachedBuffers(StringBuilder sb,
