@@ -65,8 +65,8 @@ CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, Cg
   overwrites the earlier, so nesting and passes of other sizes never disturb it, and a steady frame allocates nothing.
 - The copy has the target's formats (a float target keeps its range); the current target's colour is RGBA8 and its
   depth in its own format, the viewport's size.
-- Sort order decides what a reader sees: give the readers of one effect the highest priority and they draw last, on
-  one copy of everything under them.
+- Sort order decides what a reader sees: it bends what sorted before it. The world renderer's groups and orders
+  place a haze after what it should bend (`render/world/AGENTS.md`).
 
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the

@@ -184,64 +184,64 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
-            .colors(SHELL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build();
+            .colors(SHELL, CORE).order(CgVfxLayer.ORDER_BANDS).build();
 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
     private static final String AIR = "crystalgraphics:shaders/vfx/air/";
 
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
             .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(2.2f)
-                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
+                    .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
             .layer(haze(SLOT_CHARGE, 2.6f))
             .layer(haze(SLOT_IMPACT, 2.4f))
             .layer(haze(SLOT_BLAST_GLOW, 2.2f))
             .layer(CgVfxLayer.builder(AIR + "shock.shader").slot(SLOT_BLAST_SHOCK)
-                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
+                    .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
-                    .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_LIGHT).build())
+                    .radius(10f).colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
-                    .radius(4.4f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
+                    .radius(4.4f).colors(GLOW, null).order(CgVfxLayer.ORDER_VOLUME).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
-                    .radius(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
+                    .radius(1f).colors(SHELL, SHELL_HOT).order(CgVfxLayer.ORDER_SURFACE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
-                    .radius(0.52f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
+                    .radius(0.52f).colors(CORE, CORE_RIM).order(CgVfxLayer.ORDER_CORE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
-                    .radius(1.2f).colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .radius(1.2f).colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
-                    .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
-            .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+                    .colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
+            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.ORDER_SURFACE))
+            .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.ORDER_CORE))
+            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
+            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.ORDER_VOLUME))
             .layer(CgVfxLayer.builder(BEAM + "charge_streaks.shader").slot(SLOT_STREAKS)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "charge_arcs.shader").slot(SLOT_ARCS)
-                    .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+                    .colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
+            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_SPLASH)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_IMPACT_RING)
-                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
-                    .colors(CORE, SHELL).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+                    .colors(CORE, SHELL).order(CgVfxLayer.ORDER_SURFACE).build())
+            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS)
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS)
                     .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 18f).set1f("_Life", 1.2f)
                             .set1f("_Width", 0.08f).set1f("_Streak", 0.08f))
                     .build())
             .add(BLAST)
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
-                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
             .build();
 
     private static final CgVfxLook FINAL_FLASH = KAMEHAMEHA.toBuilder()
@@ -320,13 +320,13 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Heat haze round what a slot draws, {@code radius} times its size; dropped at the Low tier. */
     private static CgVfxLayer haze(String slot, float radius) {
         return CgVfxLayer.builder(AIR + "haze.shader").slot(slot).radius(radius)
-                .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build();
+                .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build();
     }
 
     private static CgVfxLayer orb(String shader, String slot, float radius, float parameter, CgVfxParam a,
-                                  CgVfxParam b, int priority) {
+                                  CgVfxParam b, int order) {
         return CgVfxLayer.builder(BEAM + shader + ".shader").slot(slot).radius(radius).parameter(parameter)
-                .colors(a, b).priority(priority).build();
+                .colors(a, b).order(order).build();
     }
 
     /** Where the source points, any length. */

@@ -769,7 +769,10 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
 
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
-  (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
+  (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
+  defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a
+  `.group(x, y, z)` sorting as one at its position (Niagara's system; every VFX effect is one) and its draws by their
+  `.order(0..15)` within it. Equal neighbours instance.
 - `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
   `WORLD_TRANSPARENT` the transparent pass. Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
   for a reader only where one draws.

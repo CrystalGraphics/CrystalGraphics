@@ -1,7 +1,7 @@
 // Heat haze along a beam: haze.shader's shimmer on a tube round a path, strongest face-on and gone at the silhouette and
 // where the tube meets the scene. A tube layer: fx_tube.glsl's contract (_FxPath, CG_OBJECT_CUSTOM0..1 as CgVfxTube
-// writes them), its radius the layer's. Drawn last in the transparent pass (PRIORITY_DISTORTION). Reads cg_SceneColor
-// and depth.
+// writes them), its radius the layer's. Drawn after the soft layers and before the sharp ones (ORDER_DISTORTION).
+// Reads cg_SceneColor and depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"

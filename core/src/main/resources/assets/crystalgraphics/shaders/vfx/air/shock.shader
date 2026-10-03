@@ -1,7 +1,8 @@
 // A shock front in the air: a sphere shell, invisible face-on, bending the scene behind it in a thin band just inside
 // its silhouette, where the front is seen edge-on. Racing out from a blast ahead of its dust, it reads as the air
-// itself rippling. Drawn on CgVfxFrame.mesh's sphere, front faces, last in the transparent pass (PRIORITY_DISTORTION),
-// so it bends the glows and particles under it. CG_OBJECT_CUSTOM1.z is an intensity. Reads cg_SceneColor.
+// itself rippling. Drawn on CgVfxFrame.mesh's sphere, front faces, after the soft layers and before the sharp ones
+// (ORDER_DISTORTION), so it bends smoke and glow but never a bright body. CG_OBJECT_CUSTOM1.z is an intensity. Reads
+// cg_SceneColor.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
