@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy;
 
 import com.crystalgraphics.mc.legacy.platform.PlatformServiceLegacy;
+import com.crystalgraphics.mc.legacy.platform.net.NetworkLegacy;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.mc.shared.FmlEvents;
 import com.crystalgraphics.mc.shared.VariantEntry;
@@ -8,9 +9,9 @@ import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.ICrashCallable;
 
 /**
- * CrystalGraphics on Forge 1.8–1.12.2, both sides: the platform bundle and the crash-report line. No GL
- * work here — FML's splash screen loads mods on a context of its own, so the render context initialises
- * lazily from the first world pass.
+ * CrystalGraphics on Forge 1.8–1.12.2, both sides: the platform bundle, the crash-report line and the
+ * connections ({@link NetworkLegacy}). No GL work here — FML's splash screen loads mods on a context of its
+ * own, so the render context initialises lazily from the first world pass.
  */
 public final class CrystalGraphicsLegacy implements VariantEntry {
 
@@ -24,5 +25,8 @@ public final class CrystalGraphicsLegacy implements VariantEntry {
             });
             PlatformServiceLegacy.register(FMLCommonHandler.instance().getSide().isClient());
         });
+        events.on("FMLInitializationEvent", event -> NetworkLegacy.install());
+        events.on("FMLServerStartingEvent", event -> NetworkLegacy.serverStarting());
+        events.on("FMLServerStoppingEvent", event -> NetworkLegacy.serverStopping());
     }
 }
