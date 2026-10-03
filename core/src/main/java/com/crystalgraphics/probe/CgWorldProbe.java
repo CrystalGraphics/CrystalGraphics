@@ -2,6 +2,7 @@ package com.crystalgraphics.probe;
 
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -13,6 +14,10 @@ import com.crystalgraphics.render.stage.CgHostTextures;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.world.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -22,6 +27,9 @@ import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Proves, in a running game, that the host answers every world seam and that the answers agree with each other: the
@@ -47,6 +55,8 @@ import org.joml.Vector3f;
  *       {@code CgWorldEvents.declared()} say what each answers.</li>
  *   <li>It changes the world a little: a stone set and broken, and a TNT in the air beside the player, only where the
  *       air is clear. Never point it at a world that matters.</li>
+ *   <li>It writes CrystalGraphics' settings file if there is none, and sets the density for one check, putting it back
+ *       after.</li>
  * </ul>
  */
 public final class CgWorldProbe {
@@ -99,6 +109,8 @@ public final class CgWorldProbe {
             case WAITING:
                 if (entities.localPlayer() < 0) break;
                 CgPlatform.get(CgWorldStimulus.SERVICE).keepRunning();
+                // The first read writes a missing file within a frame: there by the time settingsChecks looks.
+                CgGraphicsSettings.DENSITY.get();
                 settleNanos = now;
                 next(Phase.SETTLING, now);
                 break;
@@ -231,6 +243,7 @@ public final class CgWorldProbe {
                 "precipitation " + rain);
 
         environmentChecks(env, view);
+        settingsChecks(env);
 
         CgHostTextures textures = host.textures();
         check("textures.block-atlas", textures.blockAtlas() != 0, "atlas " + textures.blockAtlas());
@@ -272,6 +285,34 @@ public final class CgWorldProbe {
         check("env.time", env.gameTime() >= 0 && env.dayTime() >= 0, "game " + env.gameTime() + ", day " + env.dayTime());
         info("env.fog", Float.isNaN(env.fogStart()) ? "absent on this version" : "start " + env.fogStart() + ", end " + env.fogEnd());
         info("env.paused", String.valueOf(env.paused()));
+    }
+
+    // ── Our settings ─────────────────────────────────────────────────────────────
+
+    private static void settingsChecks(CgHostEnvironment env) {
+        Path file = CgGraphicsSettings.FILE.path();
+        Path game = CgPlatform.get(CgGameDirectory.SERVICE).get();
+        check("settings.file", file.startsWith(game) && Files.isRegularFile(file), file + " under " + game);
+
+        // A burst of 1000 at density 0.5 keeps about half, whatever Minecraft's Particles says.
+        float before = CgGraphicsSettings.DENSITY.get();
+        CgGraphicsSettings.DENSITY.set(0.5f);
+        CgVfxSystem vfx = new CgVfxSystem();
+        vfx.update(0.0);
+        CgVfxEmitter burst = CgVfxEmitter.builder("probe").capacity(1000).burst(0f, 1000).build();
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(burst, 0.5f).share(vfx.spawnShare(burst));
+        instance.start(0f, 0f, 0f);
+        instance.tick(CgVfxSystem.TICK, vfx.air(), 0.0, 0.0, 0.0);
+        int spawned = instance.particles().count();
+        vfx.delete();
+        CgGraphicsSettings.DENSITY.set(before);
+        check("vfx.density", spawned > 430 && spawned < 570, spawned + " of 1000 at density 0.5; Minecraft's Particles "
+                + env.particles() + ", followed " + CgGraphicsSettings.FOLLOW_MINECRAFT_PARTICLES.get());
+
+        float pace = CgVfxSystem.pace(env);
+        boolean still = env.paused() || env.frozen();
+        check("vfx.pace", still ? pace == 0f : pace > 0f, "pace " + pace + ", paused " + env.paused() + ", tick rate "
+                + env.tickRate() + ", frozen " + env.frozen());
     }
 
     // ── The camera offset ────────────────────────────────────────────────────────

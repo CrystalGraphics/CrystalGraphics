@@ -7,11 +7,14 @@ import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
  * Shakes the host's camera, and kicks its field of view, for every effect at once: each adds an impulse, and once a frame
  * they are summed into the one offset {@link CgHostCamera} applies. A shake is felt less the farther the camera is from
- * where it started, and scaled by the player's accessibility settings for screen and field-of-view effects.
+ * where it started, and scaled by the player's accessibility settings for screen and field-of-view effects, then by
+ * CrystalGraphics' own comfort settings ({@link CgGraphicsSettings#SHAKE}, {@link CgGraphicsSettings#FOV_KICK}), which can
+ * only lower it.
  *
  * <pre>{@code
  * CgCameraShake.shake(x, y, z, 1f, 0.8f, 40f);   // a blast: full strength, 0.8 s, felt out to 40 blocks
@@ -99,8 +102,8 @@ public final class CgCameraShake {
         CgHostEnvironment world = host.environment();
         double now = CgFrameClock.seconds();
         double cx = host.view().x(), cy = host.view().y(), cz = host.view().z();
-        float screen = Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects();
-        float fovEffects = Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects();
+        float screen = (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get();
+        float fovEffects = (Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects()) * CgGraphicsSettings.FOV_KICK.get();
         double yaw = 0, pitch = 0, roll = 0, dx = 0, dy = 0, dz = 0, fov = 0;
         for (int k = count - 1; k >= 0; k--) {
             int i = k * 8;

@@ -22,6 +22,7 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgWorldSound;
 import com.crystalgraphics.platform.service.CgWorldEvents;
@@ -124,6 +125,7 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
+            CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
             // What WorldEventsModern.poll reports; the explosion and the broken block are the loaders' mixins'.
             //? if >=1.14 {
             CgWorldEvents.declare(CgWorldEvents.ENTITY_HURT | CgWorldEvents.ENTITY_DIED);

@@ -21,6 +21,8 @@ import java.util.List;
  *   <li>Nothing spawns before {@link #start}; a second {@code start} restarts it.</li>
  *   <li>Positions are relative to the effect's origin; the origin passed to {@link #tick} is only where turbulence is
  *       sampled, so effects at different places see different eddies.</li>
+ *   <li>{@link #share} thins what spawns by particle index, so a sparser burst keeps the same particles where it keeps
+ *       any: the effect's shape, only fewer. A playing effect's share is its system's, set every tick.</li>
  * </ul>
  */
 public final class CgVfxEmitterInstance {
@@ -34,7 +36,7 @@ public final class CgVfxEmitterInstance {
     private CgVfxGround field;
     private double originX, originY, originZ;
     private int spawned, burstsDone;
-    private float rateOwed;
+    private float rateOwed, share = 1f;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
         this.emitter = emitter;
@@ -66,6 +68,12 @@ public final class CgVfxEmitterInstance {
     /** The host world's surfaces around the burst, shared by its emitters; null for the fixed height alone. */
     public CgVfxEmitterInstance ground(CgVfxGround field) {
         this.field = field;
+        return this;
+    }
+
+    /** The share of its particles to spawn, 0 to 1: the player's density, applied by the system. */
+    public CgVfxEmitterInstance share(float share) {
+        this.share = share;
         return this;
     }
 
@@ -178,6 +186,7 @@ public final class CgVfxEmitterInstance {
     private void spawnOne() {
         CgVfxEmitter e = emitter;
         int k = spawned++;
+        if (share < 1f && rand(k, 10) >= share) return;
         int i = particles.add();
         if (i < 0) return;
         CgVfxParticleSet p = particles;

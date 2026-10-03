@@ -63,3 +63,6 @@ matters; that is what makes it debuggable at full speed.
 - **Libraries name no `cg_*` or `CG_*`**: an include compiles ahead of the frame block, so it takes values as
   arguments, and what must name them is a macro.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
+- **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
+  thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
+  effect only declares what is detail: a layer `.from(CgQuality.MEDIUM)`, an emitter `.optional()` (halved at Low).
