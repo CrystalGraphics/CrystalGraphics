@@ -41,4 +41,12 @@ public interface CgHostCamera {
     default int capabilities() {
         return 0;
     }
+
+    /**
+     * The parts whose hook has run at least once since start: a part declared in {@link #capabilities()} and missing
+     * here is wired to a hook the game never calls.
+     */
+    default int applied() {
+        return 0;
+    }
 }

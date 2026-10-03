@@ -17,6 +17,7 @@ import com.crystalgraphics.world.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
 /**
@@ -54,6 +55,7 @@ public final class CgWorldProbe {
     private static final int SETTLE_SECONDS = 3, EVENT_SECONDS = 12;
     private static final float FOV_SCALE = 1.25f, YAW = 10f, ROLL = 10f;
     private static final int CAMERA_FRAMES = 4;
+    private static final Matrix4fc IDENTITY = new Matrix4f();
 
     private enum Phase { WAITING, SETTLING, CAMERA, EVENTS, DONE }
 
@@ -120,6 +122,10 @@ public final class CgWorldProbe {
         CgHostView view = host.view();
         CgHostEnvironment env = host.environment();
 
+        // An identity projection is a view nobody filled: the host's capture never ran (on 1.21.6-1.21.11 it is a node
+        // mixin). Every camera check below would then fail for that reason alone.
+        check("view.captured", !view.projection().equals(IDENTITY, 1.0e-6f),
+                String.format("projection m00 %.3f, m11 %.3f", view.projection().m00(), view.projection().m11()));
         int player = entities.localPlayer();
         boolean posed = entities.pose(player, host.partialTick(), pose);
         check("entity.pose", posed, "player " + player);
@@ -268,26 +274,34 @@ public final class CgWorldProbe {
     private static void finishCamera(CgHostFrame host) {
         if (cameraBits == 0) return;
         Matrix4fc view = host.view().view();
+        int applied = CgPlatform.get(CgHostCamera.SERVICE).applied();
         if (has(CgHostCamera.FOV)) {
             float ratio = host.environment().fov() / baseFov;
-            check("camera.fov", Math.abs(ratio - FOV_SCALE) < 0.03f, String.format("fov %.2f to %.2f, ratio %.3f",
-                    baseFov, host.environment().fov(), ratio));
+            check("camera.fov", Math.abs(ratio - FOV_SCALE) < 0.03f, String.format("fov %.2f to %.2f, ratio %.3f, %s",
+                    baseFov, host.environment().fov(), ratio, ran(applied, CgHostCamera.FOV)));
         } else {
             skip("camera.fov", "not applied on this version");
         }
         if (has(CgHostCamera.ROTATION)) {
             float turned = Math.abs(wrap(yaw(view) - baseYaw));
-            check("camera.yaw", Math.abs(turned - YAW) < 1.5f, String.format("turned %.2f degrees", turned));
+            check("camera.yaw", Math.abs(turned - YAW) < 1.5f, String.format("turned %.2f degrees, %s", turned,
+                    ran(applied, CgHostCamera.ROTATION)));
         } else {
             skip("camera.yaw", "not applied on this version");
         }
         if (has(CgHostCamera.ROLL)) {
             float rolled = Math.abs(wrap(roll(view) - baseRoll));
-            check("camera.roll", Math.abs(rolled - ROLL) < 1.5f, String.format("rolled %.2f degrees", rolled));
+            check("camera.roll", Math.abs(rolled - ROLL) < 1.5f, String.format("rolled %.2f degrees, %s", rolled,
+                    ran(applied, CgHostCamera.ROLL)));
         } else {
             skip("camera.roll", "not applied on this version");
         }
         CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+    }
+
+    /** Whether the host's hook for {@code part} has ever run: what tells an unfired hook from an ignored one. */
+    private static String ran(int applied, int part) {
+        return (applied & part) != 0 ? "its hook ran" : "its hook never ran";
     }
 
     private static boolean has(int bit) {
@@ -338,15 +352,19 @@ public final class CgWorldProbe {
         } else {
             events.blockSkipped = "no clear block above the player";
         }
-        // Open sky over the blast, so the TNT breaks nothing.
-        double ex = px - 14, ey = py + 10, ez = pz;
-        if (Double.isNaN(CgWorldQueries.ceilingAbove(world, ex, py, ez, 32))) {
+        // Eight blocks over whatever stands in that column, trees included, with clear air round it: the TNT breaks
+        // nothing.
+        double ex = px - 14, ez = pz;
+        int columnTop = world.surfaceY(floor(ex), floor(ez), CgWorldQuery.HEIGHT_TOP);
+        double ey = Math.max(py + 10, columnTop == Integer.MIN_VALUE ? py + 10 : columnTop + 8);
+        if (ey + 8 < world.maxY() && Double.isNaN(CgWorldQueries.ceilingAbove(world, ex, ey - 6, ez, 14))
+                && Double.isNaN(CgWorldQueries.groundBelow(world, ex, ey, ez, 6))) {
             events.blastX = ex;
             events.blastY = ey;
             events.blastZ = ez;
             stimulus.explode(ex, ey, ez);
         } else {
-            events.blastSkipped = "no open sky beside the player";
+            events.blastSkipped = "no clear air for a blast beside the player";
         }
         next(Phase.EVENTS, now);
     }

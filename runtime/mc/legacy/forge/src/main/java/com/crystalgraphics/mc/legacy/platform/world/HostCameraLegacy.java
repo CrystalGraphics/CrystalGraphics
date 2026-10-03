@@ -17,6 +17,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 public final class HostCameraLegacy implements CgHostCamera {
 
     private float yaw, pitch, roll, fovScale = 1f;
+    private int applied;
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
@@ -31,8 +32,14 @@ public final class HostCameraLegacy implements CgHostCamera {
         return ROTATION | ROLL | FOV;
     }
 
+    @Override
+    public int applied() {
+        return applied;
+    }
+
     @SubscribeEvent
     public void onCameraSetup(EntityViewRenderEvent.CameraSetup event) {
+        applied |= ROTATION | ROLL;
         //? if >=1.9 {
         event.setYaw(event.getYaw() + yaw);
         event.setPitch(event.getPitch() + pitch);
@@ -46,6 +53,7 @@ public final class HostCameraLegacy implements CgHostCamera {
 
     @SubscribeEvent
     public void onFov(EntityViewRenderEvent.FOVModifier event) {
+        applied |= FOV;
         event.setFOV(event.getFOV() * fovScale);
     }
 }

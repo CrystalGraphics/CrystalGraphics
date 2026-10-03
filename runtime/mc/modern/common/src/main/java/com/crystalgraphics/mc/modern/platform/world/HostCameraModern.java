@@ -23,6 +23,8 @@ public final class HostCameraModern implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f;
     private static volatile int capabilities;
+    /** The parts whose hook has run: render thread only, like the hooks. */
+    private static int applied;
 
     /** A loader, where it wires a hook: what it applies ({@code CgHostCamera.ROTATION} and the rest). */
     public static synchronized void declare(int parts) {
@@ -35,6 +37,11 @@ public final class HostCameraModern implements CgHostCamera {
     }
 
     @Override
+    public int applied() {
+        return applied;
+    }
+
+    @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
         HostCameraModern.yaw = yaw;
         HostCameraModern.pitch = pitch;
@@ -43,6 +50,7 @@ public final class HostCameraModern implements CgHostCamera {
     }
 
     public static float yaw(float base) {
+        applied |= ROTATION;
         return base + yaw;
     }
 
@@ -51,14 +59,17 @@ public final class HostCameraModern implements CgHostCamera {
     }
 
     public static float roll(float base) {
+        applied |= ROLL;
         return base + roll;
     }
 
     public static double fov(double base) {
+        applied |= FOV;
         return base * fovScale;
     }
 
     public static float fov(float base) {
+        applied |= FOV;
         return base * fovScale;
     }
 }
