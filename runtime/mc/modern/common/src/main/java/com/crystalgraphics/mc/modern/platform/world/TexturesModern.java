@@ -9,11 +9,15 @@ import com.mojang.blaze3d.textures.GpuTexture;
 *///?}
 //? if >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.GraphicsApi;
+import com.crystalgraphics.mc.modern.platform.vulkan.Blaze3dVulkanHost;
+*///?}
+//? if >=1.21.5 <26.1 {
+/*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 *///?}
 
 /**
  * Minecraft's lightmap and block atlas at the world stages, into the stage's {@link CgHostTextures}: a GL name on a GL
- * host, Blaze3D's own texture on the 26.2 Vulkan host, which {@code CgHostTextures} imports once per texture object.
+ * host, a name {@code Blaze3dVulkanHost} imported on the 26.2 Vulkan host.
  * Render thread; allocates only when a name changes.
  *
  * <ul>
@@ -33,6 +37,16 @@ public final class TexturesModern {
     }
 
     public static void capture(Minecraft mc, CgHostTextures out) {
+        //? if >=26.2 {
+        /*if (GraphicsApi.vulkan()) {
+            // Imported through the Vulkan host, which wraps each image once and keeps its name.
+            GpuTexture image = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getTexture();
+            out.importedBlockAtlas(Blaze3dVulkanHost.current().importTexture(image), image.getWidth(0), image.getHeight(0));
+            out.importedLightmap(Blaze3dVulkanHost.current().importTexture(mc.gameRenderer.lightmap().texture()),
+                    LIGHTMAP_SIZE, LIGHTMAP_SIZE);
+            return;
+        }
+        *///?}
         //? if >=1.21.5 {
         /*GpuTexture atlas = mc.getTextureManager().getTexture(TextureAtlas.LOCATION_BLOCKS).getTexture();
         out.blockAtlas(handle(atlas, true), atlas.getWidth(0), atlas.getHeight(0));
@@ -51,15 +65,15 @@ public final class TexturesModern {
         //?}
     }
 
-    // What CgGL.importHostTexture takes for this host: Blaze3D's texture under Vulkan, its GL name boxed on GL.
-    //? if >=26.2 {
-    /*private static Object handle(GpuTexture texture, boolean atlas) {
-        if (texture == null) return null;
-        return GraphicsApi.vulkan() ? texture : boxed(((GlTexture) texture).glId(), atlas);
-    }
-    *///?} elif >=1.21.5 {
+    // What CgGL.importHostTexture takes on a GL host: the GL name, boxed. The Vulkan host imports its own, above.
+    //? if >=26.1 {
     /*private static Object handle(GpuTexture texture, boolean atlas) {
         return texture == null ? null : boxed(((GlTexture) texture).glId(), atlas);
+    }
+    *///?} elif >=1.21.5 {
+    /*// Through LifecycleModern.hostTexture: NeoForge's dev runs wrap every texture for validation.
+    private static Object handle(GpuTexture texture, boolean atlas) {
+        return texture == null ? null : boxed(((GlTexture) LifecycleModern.hostTexture(texture)).glId(), atlas);
     }
     *///?}
 

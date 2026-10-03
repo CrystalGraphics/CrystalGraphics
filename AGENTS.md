@@ -225,6 +225,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Draw 2D quads, curves or text through the renderers | [Instanced renderers](#instanced-renderers) | `gl/render/AGENTS.md` |
 | Load a resource file (shader source, config, image) | [Resource I/O](#resource-io--cgio-and-cgtextureio) | `util/io/CgIO` |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
+| Send something between client and server | [Connections](#connections--cgnetwork) | `CgMessage`'s javadoc |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
 
 ---
@@ -1364,6 +1365,36 @@ reload, or GL state shared with Minecraft and other mods. Each host's classes: i
 **Every hook below is a host section's bracket**: `CgGraphicsLifecycle`'s entries open one with
 `CgGL.fromHost()` and close it with `toHost()`, and a host's own bracket around them nests.
 Nothing on GL; the platform guide's *Host sections* has the rules.
+
+## Connections — `CgNetwork`
+
+Every host installs one channel, `crystalgraphics:wire` (`crystalgraphics` on 1.7.10 and legacy Forge), and
+forwards join, leave, both ticks, the client's connect and disconnect, and server stopping into
+`com.crystalgraphics.net.CgNetwork`, which holds one connection per player by profile UUID and one to the server.
+The forwards are `NetworkModern` (each loader's entry class), `NetworkLegacy` and `Network1710`, registered at init
+on both sides. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
+talks over a connection contributes to `CgProtocols` at init and asks `CgNetwork.forPlayer`/`client`.
+CrystalGUI's `docs/CGUI_NETWORKING_PRIMER.md` is the guide.
+
+**A mod sends a typed `CgMessage`** (a name, a direction and a `CgCodec`, declared at init) to a `CgAudience`.
+Each connection opens with `cg/hello`: the client says which message namespaces it declared, until the server
+answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
+skipped and counted rather than sent.
+
+**Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
+`except`. All but the first two and the last ask the `CgServerPlayers` slot (`platform.service`), which each host
+fills beside its channel (`ServerPlayersModern`, `ServerPlayersLegacy`, `ServerPlayers1710`) with facts only:
+dimension, position, profile id, and who has a chunk or an entity loaded. Modern Minecraft has no public answer to
+the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
+
+**`CgReplicated`** is a server-owned object mirrored to the clients that can see it: changes coalesce to one a
+tick, a player coming into view is sent the current value, and `persisted()` saves under the world's directory
+(`crystalgraphics/replicated/`) at stop and every five minutes. Hosts forward the server starting too
+(`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
+
+**`CgRequest`** is a typed question with one answer (`toServer`/`toClient`, `onServer`/`onClient`, `ask`), over the
+router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
+mostly push: a `CgMessage` unless the asker needs the answer.
 
 ## 1.7.10 — `runtime/mc/1710`
 

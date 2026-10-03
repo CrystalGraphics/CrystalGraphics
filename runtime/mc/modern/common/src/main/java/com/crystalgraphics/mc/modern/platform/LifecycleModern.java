@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
@@ -14,6 +15,7 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.entity.Entity;
 import org.apache.logging.log4j.LogManager;
 import org.joml.Matrix4fc;
 //? if <26.3 {
@@ -174,6 +176,40 @@ public final class LifecycleModern {
     }
 
     /**
+     * The client has run a game tick: read the world events it brought. A tick, not a frame, because a hurt lasts half a
+     * second and a lightning bolt a few ticks, and a slow frame spans both.
+     *
+     * <pre>{@code
+     * // Forge: TickEvent.ClientTickEvent at END (Post from 1.20.4); NeoForge: ClientTickEvent.Post (TickEvent before
+     * // 1.20.6); Fabric: ClientTickEvents.END_CLIENT_TICK
+     * LifecycleModern.clientTick();
+     * }</pre>
+     */
+    public static void clientTick() {
+        WorldEventsModern.tick(Minecraft.getInstance());
+        CgNetwork.clientTick();
+    }
+
+    /**
+     * An entity joined the client level. Loaders call it for client levels only: in single player the integrated
+     * server's levels post the same event.
+     *
+     * <pre>{@code
+     * // Forge, NeoForge: EntityJoinLevelEvent (EntityJoinWorldEvent to 1.18.2), when event.getLevel().isClientSide()
+     * // Fabric: ClientEntityEvents.ENTITY_LOAD
+     * LifecycleModern.entityJoined(entity);
+     * }</pre>
+     */
+    public static void entityJoined(Entity entity) {
+        WorldEventsModern.joined(entity);
+    }
+
+    /** An entity left the client level: {@link #entityJoined}'s pair, from the matching leave event. */
+    public static void entityLeft(Entity entity) {
+        WorldEventsModern.left(entity);
+    }
+
+    /**
      * Binds Minecraft's main target for drawing and answers its GL framebuffer.
      *
      * <pre>{@code
@@ -218,6 +254,11 @@ public final class LifecycleModern {
     public static void unwrapWith(UnaryOperator<GpuTexture> texture, UnaryOperator<GpuDevice> device) {
         hostTexture = texture;
         hostDevice = device;
+    }
+
+    // The GL texture under one the loader may have wrapped: what a cast to GlTexture needs.
+    public static GpuTexture hostTexture(GpuTexture texture) {
+        return hostTexture.apply(texture);
     }
     *///?}
 

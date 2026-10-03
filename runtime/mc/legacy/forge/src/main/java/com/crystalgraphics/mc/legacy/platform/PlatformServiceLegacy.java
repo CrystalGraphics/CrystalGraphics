@@ -3,15 +3,18 @@ package com.crystalgraphics.mc.legacy.platform;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.mc.legacy.platform.service.GameDirectoryService;
 import com.crystalgraphics.mc.legacy.platform.service.LifecycleService;
 import com.crystalgraphics.mc.legacy.platform.service.ReloadService;
 import com.crystalgraphics.mc.legacy.platform.service.RenderingService;
 import com.crystalgraphics.mc.legacy.platform.service.ResourceService;
 import com.crystalgraphics.mc.legacy.platform.service.SoundService;
 import com.crystalgraphics.mc.legacy.platform.world.EntityQueryLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -19,6 +22,7 @@ import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
@@ -28,7 +32,10 @@ import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.platform.service.CgWorldSound;
+import com.crystalgraphics.platform.service.CgWorldEvents;
+import com.crystalgraphics.platform.service.CgWorldStimulus;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 
 /**
  * The Forge 1.8–1.12.2 platform bundle: tier 1's LWJGL2 services, the {@link GlStateManagerGLBackend}, and
@@ -70,9 +77,15 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryLegacy());
         CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryLegacy());
         CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundLegacy());
+        CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
+        CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService());
+        // WorldEventsLegacy polls the hurts, deaths and lightning; ExplosionHook and LevelEventHook the rest.
+        CgWorldEvents.declare(CgWorldEvents.EXPLOSION | CgWorldEvents.BLOCK_BROKEN | CgWorldEvents.ENTITY_HURT
+                | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
         HostCameraLegacy camera = new HostCameraLegacy();
         CgPlatform.provide(CgHostCamera.SERVICE, camera);
         MinecraftForge.EVENT_BUS.register(camera);
+        FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
     }
 
     @Override public CgGLBackend gl() {

@@ -34,8 +34,9 @@ import java.util.List;
  * mutable position, so it allocates nothing but {@link #collisionBoxes}'s box list.
  *
  * <ul>
- *   <li>1.13.2 has no sound type, light listener, fluid height or biome colours under these names: it answers
- *       {@code SURFACE_OTHER}, block brightness, a source block's height and 0.</li>
+ *   <li>1.13.2 has no sound type, light listener, fluid height or averaged biome colours under these names: it answers
+ *       {@code SURFACE_OTHER}, block brightness, a source block's height, and grass and foliage at the block alone
+ *       (water 0).</li>
  *   <li>Fog, sky and water-fog colours come from the biome on 1.16.5 to 1.21.10 and from environment attributes from
  *       1.21.11; the tint from the block's tint source and the sprite from the block-state model set on 26.x.</li>
  * </ul>
@@ -214,7 +215,14 @@ public final class WorldQueryModern implements CgWorldQuery {
             case BIOME_WATER: return 0xFF000000 | BiomeColors.getAverageWaterColor(Minecraft.getInstance().level, pos);
             default: break;
         }
-        //?}
+        //?} else {
+        /*// 1.13's averaging helpers are unmapped: the biome's own colour at the block.
+        switch (kind) {
+            case BIOME_GRASS: return 0xFF000000 | level.getBiome(pos).getGrassColor(pos);
+            case BIOME_FOLIAGE: return 0xFF000000 | level.getBiome(pos).getFoliageColor(pos);
+            default: break;
+        }
+        *///?}
         //? if >=26.3 {
         /*switch (kind) {
             case BIOME_FOG: return argb(level.environmentAttributes().getValue(EnvironmentAttributes.FOG_COLOR, pos));

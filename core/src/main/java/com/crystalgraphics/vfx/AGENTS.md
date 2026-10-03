@@ -32,6 +32,7 @@ vfx.submit(CgWorldRenderer.get());
 | `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (hashes, gradient and value noise with their fractals, warped turbulence, flicker, voronoi, erf, tonemap, `FX_CAMERA` -- the ONE copy: the showcase's `shaders/demo/vfx_common.glsl` includes it and adds only its studio lighting), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it), `fx_ribbon` (ribbon hashes and placement), `fx_lightning` (a bolt's midpoint-displaced channel, its return strokes, and the core-halo-glow profile across it), `fx_particle` (placing a particle's quad or stroke: the record index, a turned camera-facing corner, a velocity's heading) |
 | `shaders/vfx/<family>/` | One directory per family, mirroring `vfx.effect.<family>`, named by slot (`body_*`, `head_*`) |
 | `shaders/vfx/particle/` | Shared particle looks drawn from the particle records: `speck` (ragged debris), `spark` (a glowing disc streaked along its motion, as bright as it is hot), `arc` (an ink stroke round the emitter's source) |
+| `shaders/vfx/air/` | Shared by any family, the air bending: `haze` (a shimmer round something hot, on a sphere) and `haze_tube` (along a beam), `shock` (a blast's shock front, refracting at its silhouette). Each redraws the scene behind it from `cg_SceneColor`, so they take `CgVfxLayer.PRIORITY_DISTORTION` (drawn first in the transparent pass) and `.from(CgQuality.MEDIUM)` |
 | `shaders/vfx/smoke/` | Shared by any family: `billow` (a cel-shaded explosion billow as a real mesh: a sphere displaced by Voronoi domes, opaque with a depth prepass, contour strokes where the surface turns from the eye -- the anime look, as built in UE5 Niagara; all noise per vertex), `smoke_puff` (realistic: a lit puff on a billboard that depth-tests its own ball's surface, so it meets the ground in a curve) |
 
 ## Seeing every moment
@@ -63,3 +64,6 @@ matters; that is what makes it debuggable at full speed.
 - **Libraries name no `cg_*` or `CG_*`**: an include compiles ahead of the frame block, so it takes values as
   arguments, and what must name them is a macro.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
+- **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
+  thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
+  effect only declares what is detail: a layer `.from(CgQuality.MEDIUM)`, an emitter `.optional()` (halved at Low).

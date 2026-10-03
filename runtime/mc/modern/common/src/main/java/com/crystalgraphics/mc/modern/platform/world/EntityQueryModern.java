@@ -28,7 +28,7 @@ import java.util.function.IntConsumer;
  * {@code PlatformServiceModern.gl()}. Render thread; allocates nothing but the iterator of {@link #within}'s walk.
  *
  * <ul>
- *   <li>1.13.2 answers no velocity (zero) and walks no entities: its spellings for both differ and it is one node.</li>
+ *   <li>1.13.2 answers no velocity (zero), and walks a box through the level's own query, a list per call.</li>
  *   <li>Vehicles are minecarts and boats, as Minecraft's own vehicle class has them from 1.20.3.</li>
  * </ul>
  */
@@ -163,6 +163,13 @@ public final class EntityQueryModern implements CgEntityQuery {
         for (Entity e : mc.level.entitiesForRendering()) {
             if (e.getBoundingBox().intersects(minX, minY, minZ, maxX, maxY, maxZ)) visitor.accept(e.getId());
         }
-        //?}
+        //?} else {
+        /*// 1.13 lists no entities for rendering: the level's own box query, a list per call.
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return;
+        for (Entity e : level.getEntities((Entity) null, new AABB(minX, minY, minZ, maxX, maxY, maxZ))) {
+            visitor.accept(e.getId());
+        }
+        *///?}
     }
 }

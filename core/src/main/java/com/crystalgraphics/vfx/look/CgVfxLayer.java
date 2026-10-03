@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.settings.CgQuality;
 
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -24,6 +25,7 @@ import java.util.function.Consumer;
  *       batch. Material properties are per layer: a different value needs a different layer.</li>
  *   <li>A tube layer's shader reads {@code fx_tube.glsl}'s contract: {@code _FxPath}, and {@code CG_OBJECT_CUSTOM0..3}
  *       as {@code CgVfxTube} writes them. A mesh layer's reads {@code CgVfxFrame.mesh}'s.</li>
+ *   <li>A layer {@link Builder#from} a quality tier is not drawn below it; the frame skips it, so an effect never asks.</li>
  * </ul>
  */
 public final class CgVfxLayer {
@@ -36,6 +38,12 @@ public final class CgVfxLayer {
     public static final int PRIORITY_LIGHT = 2, PRIORITY_VOLUME = 3, PRIORITY_SURFACE = 4, PRIORITY_BANDS = 5, PRIORITY_CORE = 6;
     /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
     public static final int PRIORITY_SMOKE = 1;
+    /**
+     * Layers that bend the scene behind them (heat haze, a shock front), first of all: they redraw what is behind them
+     * from {@code cg_SceneColor}, which holds the world but none of this pass, so anything drawn before them would be
+     * painted over.
+     */
+    public static final int PRIORITY_DISTORTION = 0;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";
 
@@ -46,6 +54,7 @@ public final class CgVfxLayer {
     final float parameter;
     final int priority;
     final boolean volume;
+    final CgQuality from;
     final Consumer<CgShaderBindings> properties;
 
     private CgVfxLayer(Builder b) {
@@ -57,6 +66,7 @@ public final class CgVfxLayer {
         this.parameter = b.parameter;
         this.priority = b.priority;
         this.volume = b.volume;
+        this.from = b.from;
         this.properties = b.properties;
     }
 
@@ -100,6 +110,11 @@ public final class CgVfxLayer {
         return volume;
     }
 
+    /** The lowest quality tier that draws it. */
+    public CgQuality from() {
+        return from;
+    }
+
     /** Material properties set once on its material, or null. */
     public Consumer<CgShaderBindings> properties() {
         return properties;
@@ -114,6 +129,7 @@ public final class CgVfxLayer {
         private float parameter;
         private int priority = PRIORITY_SURFACE;
         private boolean volume;
+        private CgQuality from = CgQuality.LOW;
         private Consumer<CgShaderBindings> properties;
 
         private Builder(String shader) {
@@ -158,6 +174,12 @@ public final class CgVfxLayer {
          */
         public Builder volume() {
             this.volume = true;
+            return this;
+        }
+
+        /** Drawn only at {@code tier} and above: distortion, bloom and other detail a lower tier drops. */
+        public Builder from(CgQuality tier) {
+            this.from = Objects.requireNonNull(tier, "tier");
             return this;
         }
 

@@ -21,9 +21,16 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>Primitives only: absolute coordinates, the entity ids {@link CgEntityQuery} knows, and the engine's surface
  *       kinds and ARGB colours for a broken block, which is gone by the time a listener hears.</li>
  *   <li>A listener must not throw: one that does stops the event reaching the listeners after it.</li>
+ *   <li>Not every host reports every kind: {@link #declared()} says which this one does, as each host
+ *       {@linkplain #declare declares} them where it wires the hook.</li>
  * </ul>
  */
 public final class CgWorldEvents {
+
+    /** The kinds of event, as bits of {@link #declared()}. */
+    public static final int EXPLOSION = 1, BLOCK_BROKEN = 2, ENTITY_HURT = 4, ENTITY_DIED = 8, LIGHTNING = 16;
+
+    private static volatile int declared;
 
     /** What a listener hears; every method does nothing unless overridden. */
     public interface Listener {
@@ -55,6 +62,16 @@ public final class CgWorldEvents {
 
     public static void stopListening(Listener listener) {
         LISTENERS.remove(listener);
+    }
+
+    /** Host side, where it wires a hook: this host reports {@code kinds} ({@link #EXPLOSION} and the rest). */
+    public static synchronized void declare(int kinds) {
+        declared |= kinds;
+    }
+
+    /** The kinds this host reports; 0 on a host that reports none. */
+    public static int declared() {
+        return declared;
     }
 
     /** Host side. */

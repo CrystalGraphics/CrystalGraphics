@@ -20,11 +20,15 @@ import com.crystalgraphics.platform.CgService;
  *       multiplies the field of view, 1 for none.</li>
  *   <li>It holds until the next call: a caller that stops shaking gives zeros and 1, and {@link #NONE} ignores it all,
  *       which is right where nothing has a camera to move.</li>
+ *   <li>Not every host applies every part: {@link #capabilities()} says which this one does. The rest is dropped.</li>
  *   <li>Render thread only.</li>
  * </ul>
  */
 @FunctionalInterface
 public interface CgHostCamera {
+
+    /** What a host applies, as bits of {@link #capabilities()}: yaw and pitch, roll, the field of view. */
+    int ROTATION = 1, ROLL = 2, FOV = 4;
 
     /** No camera to move: the harness, a dedicated server. */
     CgHostCamera NONE = (x, y, z, yaw, pitch, roll, fovScale) -> { };
@@ -32,4 +36,17 @@ public interface CgHostCamera {
     CgService<CgHostCamera> SERVICE = CgService.of("crystalgraphics:host_camera", NONE);
 
     void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale);
+
+    /** The parts of an offset this host applies ({@link #ROTATION}, {@link #ROLL}, {@link #FOV}); 0 for none. */
+    default int capabilities() {
+        return 0;
+    }
+
+    /**
+     * The parts whose hook has run at least once since start: a part declared in {@link #capabilities()} and missing
+     * here is wired to a hook the game never calls.
+     */
+    default int applied() {
+        return 0;
+    }
 }

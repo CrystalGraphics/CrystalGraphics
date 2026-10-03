@@ -15,11 +15,13 @@
 // CgVfxQuads (CgMesh.quads): the vertex's quad, and its corner -1..1 on each axis.
 #define FX_QUAD_INDEX float(CG_VERTEX_ID >> 2)
 #define FX_QUAD_CORNER (CG_VERTEX_CORNER * 2.0 - 1.0)
-// CgVfxRibbons: the ribbon, how far along it 0..1 (0 its tail), and the side -1 or 1. 66 vertices a ribbon, two for
-// each of its 32 segments' ends: CgVfxRibbons.VERTICES and SEGMENTS.
-#define FX_RIBBON_INDEX float(CG_VERTEX_ID / 66)
-#define FX_RIBBON_ALONG (float((CG_VERTEX_ID % 66) >> 1) / 32.0)
-#define FX_RIBBON_SIDE (float(CG_VERTEX_ID & 1) * 2.0 - 1.0)
+// CgVfxRibbons: the ribbon, how far along it 0..1 (0 its tail), and the side -1 or 1. A triangle list with no
+// indices, 192 vertices a ribbon (CgVfxRibbons.VERTICES): six a segment of its 32 (SEGMENTS), in the order
+// (s,0) (s,1) (s+1,0), (s,1) (s+1,1) (s+1,0). Bit k of 0x34 says corner k is at the segment's far end, of 0x1A
+// that it is on side 1.
+#define FX_RIBBON_INDEX float(CG_VERTEX_ID / 192)
+#define FX_RIBBON_ALONG (float((CG_VERTEX_ID % 192) / 6 + ((0x34 >> (CG_VERTEX_ID % 6)) & 1)) / 32.0)
+#define FX_RIBBON_SIDE (float((0x1A >> (CG_VERTEX_ID % 6)) & 1) * 2.0 - 1.0)
 
 // ── Hashes (Dave Hoskins, sin-free), 0..1 ──────────────────────────────────────────────────────────────────────
 

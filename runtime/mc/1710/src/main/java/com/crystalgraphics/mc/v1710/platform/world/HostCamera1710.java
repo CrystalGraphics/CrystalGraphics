@@ -18,6 +18,7 @@ import org.lwjgl.opengl.GL11;
 public final class HostCamera1710 implements CgHostCamera {
 
     private static float yaw, pitch, roll, fovScale = 1f;
+    private static int applied;
 
     @Override
     public void offset(float x, float y, float z, float yaw, float pitch, float roll, float fovScale) {
@@ -27,14 +28,26 @@ public final class HostCamera1710 implements CgHostCamera {
         HostCamera1710.fovScale = fovScale;
     }
 
+    @Override
+    public int capabilities() {
+        return ROTATION | ROLL | FOV;
+    }
+
+    @Override
+    public int applied() {
+        return applied;
+    }
+
     /** {@code CameraHook}, at the head of {@code orientCamera}: the offset as GL rotations on the modelview. */
     public static void rotate() {
+        applied |= ROTATION | ROLL;
         if (roll != 0f) GL11.glRotatef(roll, 0f, 0f, 1f);
         if (pitch != 0f) GL11.glRotatef(pitch, 1f, 0f, 0f);
         if (yaw != 0f) GL11.glRotatef(yaw, 0f, 1f, 0f);
     }
 
     public static float fov(float base) {
+        applied |= FOV;
         return base * fovScale;
     }
 }

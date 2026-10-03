@@ -5,7 +5,11 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -43,6 +47,9 @@ import java.util.List;
  *       buffer hold only the last upload.</li>
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
  *   <li>{@link #air} is the wind every effect's particles move through; set it once, or change it while playing.</li>
+ *   <li>It applies the player's settings ({@link CgGraphicsSettings}) to every effect: particle density and the
+ *       quality tier, read once an update. Its clock stops while the game is paused or {@code /tick freeze} holds the
+ *       world, and runs at the world's tick rate.</li>
  * </ul>
  */
 public final class CgVfxSystem {
@@ -62,7 +69,7 @@ public final class CgVfxSystem {
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
-    // The tube and ribbons are this system's own; the sphere and quads are shared shapes.
+    // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, ribbonMesh, sphereMesh, quadMesh;
     /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
     private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
@@ -70,6 +77,8 @@ public final class CgVfxSystem {
     private final CgVfxAir air = new CgVfxAir();
     private double clock = Double.NaN;
     private float owed, simulated;
+    private float density = 1f;
+    private CgQuality quality = CgQuality.HIGH;
 
     public <E extends CgVfxEffect> E play(E effect) {
         effect.system = this;
@@ -95,13 +104,18 @@ public final class CgVfxSystem {
         return air;
     }
 
-    /** Advances every effect to {@code seconds} on the clock the caller keeps. */
+    /**
+     * Advances every effect to {@code seconds} on the clock the caller keeps, at the world's pace: not at all while it is
+     * paused or frozen, slower or faster under {@code /tick rate}.
+     */
     public void update(double seconds) {
+        CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
+        readSettings(world);
         if (Double.isNaN(clock)) {
             clock = seconds;
             return;
         }
-        owed = Math.max(0f, owed + (float) (seconds - clock));
+        owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world));
         clock = seconds;
         int ticks = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim")) {
@@ -120,6 +134,29 @@ public final class CgVfxSystem {
         for (int i = effects.size() - 1; i >= 0; i--) {
             if (effects.get(i).state() == CgVfxEffect.State.DEAD) effects.remove(i);
         }
+    }
+
+    /** The share of {@code emitter}'s particles to spawn: the player's density, halved again at Low for an optional one. */
+    public float spawnShare(CgVfxEmitter emitter) {
+        return emitter.optional() && quality == CgQuality.LOW ? density * 0.5f : density;
+    }
+
+    /** The quality tier this update draws at. */
+    public CgQuality quality() {
+        return quality;
+    }
+
+    private void readSettings(CgHostEnvironment world) {
+        density = CgGraphicsSettings.DENSITY.get();
+        if (CgGraphicsSettings.FOLLOW_MINECRAFT_PARTICLES.get()) density *= world.particleShare();
+        quality = CgGraphicsSettings.QUALITY.get();
+    }
+
+    /** Simulated seconds per real second for {@code world}: 0 while paused or frozen, the tick rate over 20 otherwise. */
+    public static float pace(CgHostEnvironment world) {
+        if (world.paused() || world.frozen()) return 0f;
+        float rate = world.tickRate();
+        return rate > 0f ? rate / 20f : 1f;
     }
 
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
@@ -206,7 +243,6 @@ public final class CgVfxSystem {
         effects.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
-        if (ribbonMesh != null) ribbonMesh.release();
         tubeMesh = null;
         ribbonMesh = null;
         sphereMesh = null;

@@ -34,6 +34,8 @@ import java.util.List;
  *   <li>{@link Builder#capacity} bounds the live particles; a spawn into a full set is dropped.</li>
  *   <li>The launch direction is the vertical share {@code up} in [{@code upMin}, {@code upMax}], skewed toward
  *       {@code upMax} by a bias under 1, at any heading.</li>
+ *   <li>The player's density setting thins every emitter; one marked {@link Builder#optional} spawns half again at the
+ *       Low quality tier.</li>
  * </ul>
  */
 public final class CgVfxEmitter {
@@ -50,6 +52,7 @@ public final class CgVfxEmitter {
 
     final String name, layer;
     final Renderer renderer;
+    final boolean optional;
     final int capacity;
     final float[] burstTimes;
     final int[] burstCounts;
@@ -63,6 +66,7 @@ public final class CgVfxEmitter {
         name = b.name;
         layer = b.layer;
         renderer = b.renderer;
+        optional = b.optional;
         capacity = b.capacity;
         burstTimes = new float[b.burstTimes.size()];
         burstCounts = new int[b.burstCounts.size()];
@@ -117,6 +121,11 @@ public final class CgVfxEmitter {
         return capacity;
     }
 
+    /** Whether the Low quality tier halves it ({@link Builder#optional}). */
+    public boolean optional() {
+        return optional;
+    }
+
     public List<CgVfxModule> modules() {
         return modules;
     }
@@ -143,6 +152,7 @@ public final class CgVfxEmitter {
         private String name;
         private String layer;
         private Renderer renderer = Renderer.QUADS;
+        private boolean optional;
         private int capacity = 256;
         private final List<Float> burstTimes = new ArrayList<>();
         private final List<Integer> burstCounts = new ArrayList<>();
@@ -168,6 +178,7 @@ public final class CgVfxEmitter {
             name = e.name;
             layer = e.layer;
             renderer = e.renderer;
+            optional = e.optional;
             capacity = e.capacity;
             for (int i = 0; i < e.burstTimes.length; i++) {
                 burstTimes.add(e.burstTimes[i]);
@@ -209,6 +220,12 @@ public final class CgVfxEmitter {
 
         public Builder renderer(Renderer renderer) {
             this.renderer = renderer;
+            return this;
+        }
+
+        /** Detail the effect reads as whole without: the Low quality tier spawns half of it. */
+        public Builder optional() {
+            this.optional = true;
             return this;
         }
 
