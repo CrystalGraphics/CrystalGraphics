@@ -38,6 +38,17 @@ paint.end();
 int bindings = rec.bindings().begin().storage(CELLS_POINT, state).end();   // a draw reading it as a storage block
 ```
 
+**Mip levels.** A graph texture the graph allocates may hold levels (`CgTextureDesc.withMips()`, or a count): a pass
+draws into level 0, a kernel writes any (`dispatch.image(name, texture, level, -1)`), and anything sampling it filters
+trilinearly. `CgGpuOps.downsample` fills the chain. An imported framebuffer carries its own count
+(`CgFrameBuffer.createOwned(name, w, h, format, levels)`).
+
+```java
+CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
+CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("hi-z").color(0, CgTextureType.R32F).build();
+CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, r32f, 6));   // six levels
+```
+
 **Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
 name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
 `cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's

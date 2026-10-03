@@ -160,6 +160,10 @@ public final class CgDispatch {
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("a kernel binds named storage; the current target has none");
         }
+        if (level < 0 || level >= texture.getLevels()) {
+            throw new IllegalArgumentException(name + " binds level " + level + " of " + texture + ", which has "
+                    + texture.getLevels());
+        }
         if (layer >= 0 && image.dimension() != CgImageDimension.D2) {
             throw new IllegalArgumentException(name + " is " + image.dimension().token + ": it binds every layer");
         }

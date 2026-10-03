@@ -60,6 +60,9 @@ public final class CgTexture2D extends CgTextureAbstract {
     /** Asset path this texture was loaded from; {@code null} for procedural textures. */
     @Getter private final String sourcePath;
 
+    /** Levels specified at allocation; a spec that generates mipmaps has its full chain instead. */
+    private int levels = 1;
+
     private CgTexture2D(int textureId, int width, int height, CgTextureSpec spec, String sourcePath) {
         super(textureId, width, height, spec);
         this.sourcePath = sourcePath;
@@ -96,7 +99,7 @@ public final class CgTexture2D extends CgTextureAbstract {
         CgImageData data = CgTextureIO.load(path);
         if (data == null) return null;
         return doCreate(data.width(), data.height(), data.pixels(),
-                pixelFormatForChannels(data.channels()), GL_UNSIGNED_BYTE, spec, path);
+                pixelFormatForChannels(data.channels()), GL_UNSIGNED_BYTE, spec, path, 1);
     }
 
     /**
@@ -117,8 +120,32 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     /** Creates an empty 2D texture with no image data. Not cached; caller owns the lifecycle. */
     public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec) {
-        return doCreate(width, height, null,
-                spec.getGlBaseFormat(), spec.getGlType(), spec, null);
+        return createEmpty(width, height, spec, 1);
+    }
+
+    /**
+     * An empty texture of {@code levels} mip levels, sampled through all of them: what a kernel or a pass fills level by
+     * level. Not cached; caller owns the lifecycle.
+     *
+     * <pre>{@code
+     * CgTexture2D chain = CgTexture2D.createEmpty(w, h, CgTextureSpec.RGBA16F_LINEAR, CgTexture.fullChain(w, h));
+     * float level2 = textureLod(chain, uv, 2.0).r;   // in a shader, once something wrote level 2
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its minification filter becomes the spec's, mipmapped: trilinear from {@code GL_LINEAR}.</li>
+     *   <li>A spec that generates its mipmaps ({@code CgMipmapConfig}) makes its own chain and is refused here.</li>
+     * </ul>
+     */
+    public static CgTexture2D createEmpty(int width, int height, CgTextureSpec spec, int levels) {
+        if (levels < 1 || levels > CgTexture.fullChain(width, height)) {
+            throw new IllegalArgumentException(levels + " levels for a " + width + "x" + height + " texture: it holds 1 to "
+                    + CgTexture.fullChain(width, height));
+        }
+        if (levels > 1 && spec.getMipmaps().isEnabled()) {
+            throw new IllegalArgumentException("a spec that generates mipmaps makes its own chain: give levels 1");
+        }
+        return doCreate(width, height, null, spec.getGlBaseFormat(), spec.getGlType(), spec, null, levels);
     }
 
     /**
@@ -127,7 +154,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public static CgTexture2D createFromPixels(int width, int height, ByteBuffer pixels, CgTextureSpec spec) {
         return doCreate(width, height, pixels,
-                spec.getGlBaseFormat(), spec.getGlType(), spec, null);
+                spec.getGlBaseFormat(), spec.getGlType(), spec, null, 1);
     }
 
     // ── Upload ────────────────────────────────────────────────────────
@@ -171,7 +198,16 @@ public final class CgTexture2D extends CgTextureAbstract {
                         spec.getGlInternalFormat(), width, height, 0,
                         pixelFormat, pixelType, pixels);
             }
+            for (int l = 1; l < levels; l++) {
+                CgGL.glTexImage2D(GL_TEXTURE_2D, l, spec.getGlInternalFormat(), Math.max(1, width >> l),
+                        Math.max(1, height >> l), 0, pixelFormat, pixelType, (ByteBuffer) null);
+            }
             spec.applyTo(GL_TEXTURE_2D);
+            if (levels > 1) {
+                CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAX_LEVEL, levels - 1);
+                CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MIN_FILTER, spec.getMinFilter() == CgGL.GL_NEAREST
+                        ? CgGL.GL_NEAREST_MIPMAP_NEAREST : CgGL.GL_LINEAR_MIPMAP_LINEAR);
+            }
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_2D, 0);
         }
@@ -197,6 +233,11 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     @Override public int getTarget() { return GL_TEXTURE_2D; }
 
+    @Override
+    public int getLevels() {
+        return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : levels;
+    }
+
     // ── Internal factory ──────────────────────────────────────────────
 
     /**
@@ -205,8 +246,9 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     private static CgTexture2D doCreate(int width, int height, @Nullable ByteBuffer pixels,
                                         int pixelFormat, int pixelType,
-                                        CgTextureSpec spec, @Nullable String sourcePath) {
+                                        CgTextureSpec spec, @Nullable String sourcePath, int levels) {
         CgTexture2D tex = new CgTexture2D(0, width, height, spec, sourcePath);
+        tex.levels = levels;
         tex.gpu.run(pixels, data -> {
             int id = CgGL.glGenTextures();
             tex.textureId = id;

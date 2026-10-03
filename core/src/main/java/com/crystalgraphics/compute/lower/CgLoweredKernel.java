@@ -492,12 +492,50 @@ public final class CgLoweredKernel {
             use(pass, b);
             if (copy != null) texture(imageUnit[i], CgGL.GL_TEXTURE_2D, copy.texture());
             if (copy != null && pass.level()[i] >= 0) CgGL.glUniform1i(pass.level()[i], 0);
+            pinLevels(pass, b, i);
             CgGL.glUniform1i(pass.layer(), layered ? z : 0);
             CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
         }
         CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, 0, 0);
         discardTarget();
         if (copy != null) CgLoweredResources.release(copy);
+        unpinLevels(b, i);
+    }
+
+    /**
+     * Where the pass reads another level of the texture it draws into, that texture samples only the level read
+     * (GL's rule against a feedback loop: the drawn level must lie outside base to max), and the read is at its base.
+     */
+    private void pinLevels(PassProgram pass, CgDispatchBindings b, int written) {
+        int pinned = -1;
+        for (CgImageDecl image : source.images()) {
+            int r = image.index();
+            if (r == written || imageUnit[r] < 0 || b.image(r) != b.image(written)) continue;
+            if (b.level(r) == b.level(written)) {
+                throw new IllegalStateException(kernel.name() + " reads " + image.name() + " at the level it writes: "
+                        + "below compute, bind one image to read and write it");
+            }
+            if (pinned >= 0 && pinned != b.level(r)) {
+                throw new IllegalStateException(kernel.name() + " reads two levels of the texture it writes: below "
+                        + "compute a pass reads one");
+            }
+            pinned = b.level(r);
+            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + imageUnit[r]);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_BASE_LEVEL, pinned);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_MAX_LEVEL, pinned);
+            CgGL.glUniform1i(pass.level()[r], 0);
+        }
+    }
+
+    private void unpinLevels(CgDispatchBindings b, int written) {
+        for (CgImageDecl image : source.images()) {
+            int r = image.index();
+            if (r == written || imageUnit[r] < 0 || b.image(r) != b.image(written)) continue;
+            texture(imageUnit[r], b.imageTarget(r), b.image(r));
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_BASE_LEVEL, 0);
+            CgGL.glTexParameteri(b.imageTarget(r), CgGL.GL_TEXTURE_MAX_LEVEL, b.levels(r) - 1);
+            return;
+        }
     }
 
     /** What image {@code image} holds now, for a kernel that loads the image it writes. */

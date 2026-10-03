@@ -881,8 +881,9 @@ particles.kernel("Simulate").cpu(d -> {
 
 In a frame a kernel runs in a graph's compute pass (`recording.compute(...)`), on `CgGraphBuffer`s and storage images,
 every barrier derived by the executor. **`CgGpuOps`** is the library every GPU-driven consumer would otherwise write:
-fill, iota, copy, dispatch arguments, reduce, bounds, scan, compact, sort and histogram, dispatched into the caller's
-pass with the count fixed or read from the GPU, and the same bits on every tier. Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what
+fill, iota, copy, dispatch arguments, reduce, bounds, scan, compact, sort and histogram, and over a texture's mip levels
+downsample and blur, dispatched into the caller's pass with the count fixed or read from the GPU, and the same answer
+on every tier. Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what
 is easy to get wrong; `render/graph/AGENTS.md` the graph's half.
 
 ---

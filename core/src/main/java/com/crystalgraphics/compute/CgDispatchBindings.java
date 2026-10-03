@@ -24,7 +24,7 @@ public final class CgDispatchBindings {
 
     private final int[] buffer, counter;
     private final long[] offset, bytes, counterOffset;
-    private final int[] image, imageTarget, level, layer, width, height, depth;
+    private final int[] image, imageTarget, level, levels, layer, width, height, depth;
     private int x, y, z;
     private boolean indirect;
     private int args;
@@ -41,6 +41,7 @@ public final class CgDispatchBindings {
         image = new int[m];
         imageTarget = new int[m];
         level = new int[m];
+        levels = new int[m];
         layer = new int[m];
         width = new int[m];
         height = new int[m];
@@ -63,15 +64,16 @@ public final class CgDispatchBindings {
     }
 
     /**
-     * Mip {@code level} of texture {@code name} ({@code GL_TEXTURE_2D}, {@code _3D} or {@code _2D_ARRAY}) as declared
-     * image {@code index}, that level being {@code width} x {@code height} x {@code depth}; {@code layer} -1 for every
-     * layer.
+     * Mip {@code level} of texture {@code name} ({@code GL_TEXTURE_2D}, {@code _3D} or {@code _2D_ARRAY}, of
+     * {@code levels} levels) as declared image {@code index}, that level being {@code width} x {@code height} x
+     * {@code depth}; {@code layer} -1 for every layer.
      */
-    public CgDispatchBindings image(int index, int name, int target, int level, int layer, int width, int height,
-                                    int depth) {
+    public CgDispatchBindings image(int index, int name, int target, int level, int levels, int layer, int width,
+                                    int height, int depth) {
         image[index] = name;
         imageTarget[index] = target;
         this.level[index] = level;
+        this.levels[index] = levels;
         this.layer[index] = layer;
         this.width[index] = width;
         this.height[index] = height;
@@ -120,6 +122,8 @@ public final class CgDispatchBindings {
     public int imageTarget(int index) { return imageTarget[index]; }
 
     public int level(int index) { return level[index]; }
+
+    public int levels(int index) { return levels[index]; }
 
     public int layer(int index) { return layer[index]; }
 
