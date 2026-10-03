@@ -6,7 +6,20 @@ import com.crystalgraphics.platform.service.CgResourceService;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Enumeration;
+import java.util.List;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Stream;
 
 public class CgIO {
 
@@ -184,6 +197,46 @@ public class CgIO {
             } catch (Throwable ignored) {}
         }
         return null;
+    }
+
+    /**
+     * Every resource under {@code assets/<namespace>/<directory>/} and its subdirectories whose name ends in
+     * {@code extension}, as paths {@link #loadSource} takes, sorted. From the classpath, directories and jars alike;
+     * a resource pack's are not listed.
+     *
+     * <pre>{@code
+     * for (String path : CgIO.list("crystalgraphics", "shaders", ".compute")) CgCompute.load(path);
+     * }</pre>
+     */
+    public static List<String> list(String namespace, String directory, String extension) {
+        String prefix = "assets/" + namespace + "/" + directory + "/";
+        TreeSet<String> out = new TreeSet<>();
+        try {
+            ClassLoader loader = CgIO.class.getClassLoader();
+            for (Enumeration<URL> roots = loader.getResources(prefix); roots.hasMoreElements(); ) {
+                URL root = roots.nextElement();
+                if ("file".equals(root.getProtocol())) {
+                    Path dir = Paths.get(root.toURI());
+                    try (Stream<Path> walk = Files.walk(dir)) {
+                        walk.filter(f -> f.toString().endsWith(extension)).forEach(f -> out.add(namespace + ":" + directory
+                                + "/" + dir.relativize(f).toString().replace(File.separatorChar, '/')));
+                    }
+                } else if ("jar".equals(root.getProtocol())) {
+                    String spec = root.getPath();
+                    try (JarFile jar = new JarFile(new File(new URL(spec.substring(0, spec.indexOf('!'))).toURI()))) {
+                        for (Enumeration<JarEntry> e = jar.entries(); e.hasMoreElements(); ) {
+                            String name = e.nextElement().getName();
+                            if (name.startsWith(prefix) && name.endsWith(extension)) {
+                                out.add(namespace + ":" + directory + "/" + name.substring(prefix.length()));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IOException | URISyntaxException e) {
+            throw new IllegalStateException("Listing " + prefix + " failed", e);
+        }
+        return new ArrayList<>(out);
     }
 
     public static String loadSource(String path) {

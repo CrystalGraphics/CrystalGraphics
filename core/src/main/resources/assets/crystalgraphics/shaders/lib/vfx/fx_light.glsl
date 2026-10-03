@@ -9,7 +9,7 @@
 
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // The scene's surface behind this pixel, sceneDistance along the ray, in camera-relative space, and its normal facing the
 // eye. Fragment stage only: the normal comes from the surface's derivatives.
 void fx_scene_surface(vec3 eye, vec3 ray, float sceneDistance, out vec3 point, out vec3 normal) {

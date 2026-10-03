@@ -74,6 +74,14 @@ public final class CgShaderParser {
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
+     * The {@code Properties { }} block of any source in the shader family, {@code .compute} included: what a material
+     * or a kernel exposes. Empty when there is none.
+     */
+    public static List<CgMaterialProperty> parseProperties(String source, String resourcePath) {
+        return CgPropertiesParser.parse(source, resourcePath);
+    }
+
+    /**
      * Parses a {@code .shader} source string into a {@link CgParsedShader}.
      *
      * @param source the full content of a {@code .shader} file

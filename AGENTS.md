@@ -214,6 +214,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | I need to… | Jump to section | Primary package guide |
 |---|---|---|
 | Write or load a `.shader` material | [CrystalShader Pipeline](#crystalshader-material-pipeline) | `api/material/AGENTS.md` |
+| Write or run a kernel (`.compute`) | [Compute](#compute--the-compute-file) | `compute/AGENTS.md` |
 | Draw meshes into the world | [CgWorldRenderer](#cgworldrenderer--drawing-into-the-world) | `render/world/AGENTS.md` |
 | Create a framebuffer (FBO) for post-processing | [Framebuffers](#framebuffers) | `api/framebuffer/AGENTS.md` |
 | Load or build a 3D mesh | [Meshes](#meshes) | `api/mesh/AGENTS.md` |
@@ -419,16 +420,17 @@ Available in the vertex stage only. Locations are bound by `CgShaderFactory` bef
 
 `cg_env.glsl` already declares `CgObjectDataBuffer` and `CgFrameBlock`. The engine wires them automatically post-link. **Never `material.attach()` a buffer named for either** — it produces duplicate GLSL declarations and a compile failure. Only user-owned buffers belong in `attach()`.
 
-### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE`
+### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
 One `.shader` file becomes **two** GLSL programs, and `partitionGlobalDecls` hoists **every** `#`-line
 from a material or pass preamble — `#include` very much included — into **both** of them. There is no
-stage filtering, by design: a shader author writes one preamble, not two.
+stage filtering, by design: a shader author writes one preamble, not two. A kernel is a third stage, and
+includes `cg_env.glsl` and its engine buffers' env files like any material.
 
 The consequence is the rule:
 
-> **A lib included at material scope is compiled into the vertex stage too. If any of it is
-> fragment-only, it must guard itself.**
+> **A lib included at material scope is compiled into the vertex stage too, and an env file into every
+> stage. If any of it is fragment-only, it must guard itself.**
 
 The compiler emits exactly one of these into each generated source, **before** the user directive
 block, so an included lib can see it:
@@ -437,17 +439,18 @@ block, so an included lib can see it:
 |---|---|
 | `CG_VERTEX_STAGE 1` | generated vertex source only |
 | `CG_FRAGMENT_STAGE 1` | generated fragment source only |
+| `CG_COMPUTE_STAGE 1` | a kernel's source |
 
 ```glsl
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 float sdf_coverage(float dist) { return 1.0 - smoothstep(-fwidth(dist), fwidth(dist), dist); }
 #endif
 ```
 
-**Use `#ifndef CG_VERTEX_STAGE`, not `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
+**Name the stages that cannot have it, never `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
 through `CgShaderPreprocessor` with *no* stage defines at all, so an `#ifdef` silently deletes the
-function from every one of them. `#ifndef` includes it everywhere except the one stage that cannot
-have it.
+function from every one of them. A kernel drops every function it does not call, so a lib's guard only
+matters to one that calls it; an env file's guard is what lets a kernel `#pragma cg_use` its buffer.
 
 > **Both facts here were learned the expensive way.** `sdf.glsl`'s `fwidth` reached the vertex stage
 > and an AMD tester could not launch the UI gallery at all, while it ran flawlessly on NVIDIA —
@@ -455,17 +458,18 @@ have it.
 > to be emitted *after* the user `#include`s, which meant every guard evaluated identically in both
 > stages and did nothing at all. Ordering is what makes the guard mechanism exist.
 
-Fragment-only, i.e. never legal in a vertex shader: `fwidth`/`dFdx`/`dFdy` and their `Fine`/`Coarse`
-variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
+Fragment-only, i.e. never legal in a vertex shader or a kernel: `fwidth`/`dFdx`/`dFdy` and their
+`Fine`/`Coarse` variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
 `interpolateAt*`, `gl_SampleID`/`gl_SamplePosition`/`gl_SampleMask`.
 
-Two things enforce this so it cannot regress silently:
+Three things enforce this so it cannot regress silently:
 
 - **`ShippedShaderStagePurityTest`** (in both CrystalGraphics and CrystalGUI) compiles every shipped
-  `.shader` and asserts no such identifier is *reachable* in the generated vertex source. It resolves
-  the stage conditionals itself, because `CgShaderPreprocessor` expands `#include` but leaves
-  `#ifdef` to the driver. GL-free, so it catches this on any machine.
-- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader and keyword
+  `.shader` and asserts no such identifier is *reachable* in the generated vertex source;
+  **`ShippedKernelStagePurityTest`** does the same for every shipped kernel, against vertex-only names
+  too. Both resolve the stage conditionals through `CgShaderStages`, because `CgShaderPreprocessor`
+  expands `#include` but leaves `#if` to the driver. GL-free, so they catch this on any machine.
+- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader, kernel and keyword
   variant, collecting failures instead of crashing on the first. Run it on any GPU that disagrees.
 
 ---
@@ -817,6 +821,48 @@ Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once
 
 ---
 
+# Compute — the `.compute` file
+
+Kernels in the `.shader` family: the same preprocessor, `#include`, `#pragma cg_feature`, `#pragma cg_use` and
+`Properties`, GLSL inside. **`crystalgraphics:shaders/example.compute` is the reference**, as `example.shader` is
+for materials; `.compute` files live under `shaders/`, beside what draws their output. Plan:
+`plan/crystalgraphics/gpu-compute.md`.
+
+```glsl
+#pragma kernel Simulate map            // name, local size (none: 64), shape
+#pragma kernel Bin 256 general
+#pragma fallback Bin BinScatter         // what a tier without compute runs instead
+
+struct Particle { vec4 positionLife; vec4 velocitySeed; };
+Buffers { STATE ("Particle state", Particle, readwrite) }
+
+void Simulate() {
+    Particle p = STATE(CG_ELEMENT);
+    p.positionLife.xyz += p.velocitySeed.xyz * CG_TIME;
+    STATE_WRITE(p);                     // this element: what a map kernel writes
+}
+```
+
+```java
+CgKernelProgram simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").program();
+try (CgGlScope scope = CgKernelProgram.scope()) {
+    simulate.use().buffer("STATE", stateBuffer).dispatch(count);
+}
+```
+
+- **The shape** (`map`, `gather`, `append`, `scatter`, `image`, `general`) says what a kernel writes, and so which
+  tiers run it. The compiler checks it against everything the kernel reaches and refuses what exceeds it by name.
+- **Buffers and images are declared, not written**: the engine writes each kernel's declarations and accessors
+  (`NAME(i)`, `NAME_WRITE`, `NAME_STORE`, `NAME_ADD`, `NAME_APPEND`, `NAME_INC`; `NAME_LOAD`, `NAME_WRITE` on an
+  image) and assigns every binding.
+- **Each kernel's source carries only the functions and `shared` variables it reaches.**
+- **Subgroups** (`CG_SUBGROUP_ADD` and the rest) are the device's operations where it has them all and the work
+  group through shared memory where not; a kernel never branches on support.
+
+Its package guide, `compute/AGENTS.md`, has the bindings, the built-ins and what is easy to get wrong.
+
+---
+
 # Core Framework Systems
 
 ## Framebuffers
@@ -1163,6 +1209,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 5 | `CgTextureManager.get().freeAll()` | All cached textures + fallback |
 | 5c | `CgFontRegistry.get().releaseAll()` | Glyph atlas textures + background generation executor, reset in place (reusable immediately) |
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
+| 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
@@ -1212,6 +1259,7 @@ All 35 package guides under `src/main/java/com/crystalgraphics/`. Relative paths
 | `render/graph/AGENTS.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
 | `gl/material/AGENTS.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
 | `gl/material/parse/AGENTS.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
+| `compute/AGENTS.md` | `CgCompute`, `CgKernel`, `.compute` parsing and emission, `CgKernelProgram` — kernels |
 
 ### Shaders
 | Path | What it covers |

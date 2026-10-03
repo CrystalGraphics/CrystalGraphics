@@ -20,7 +20,7 @@ import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
  * <p>Public facade methods delegate to the core methods and accept the typed wrapper objects
  * used at compile time.</p>
  */
-final class CgGlslEmitter {
+public final class CgGlslEmitter {
 
     private CgGlslEmitter() {
         throw new AssertionError("CgGlslEmitter is not instantiable");
@@ -93,13 +93,21 @@ final class CgGlslEmitter {
      * @param macroName  the user-facing macro, e.g. {@code "FONT_METRICS"}
      */
     static String emitSsbo(CgBufferFormat format, String bufferName, String macroName) {
+        return emitSsbo(format, bufferName, macroName, true);
+    }
+
+    /**
+     * {@link #emitSsbo(CgBufferFormat, String, String)}, writable where {@code readonly} is false: what a kernel
+     * declares an engine buffer as.
+     */
+    public static String emitSsbo(CgBufferFormat format, String bufferName, String macroName, boolean readonly) {
         String structName = format.getGlslName();
         String arrayName  = "_cg_" + lowerFirst(structName) + "Arr";
 
         StringBuilder sb = new StringBuilder(256);
         appendStructDecl(sb, format, structName);
         sb.append('\n');
-        sb.append("layout(std430) readonly buffer ").append(bufferName).append(" {\n");
+        sb.append(readonly ? "layout(std430) readonly buffer " : "layout(std430) buffer ").append(bufferName).append(" {\n");
         sb.append("    ").append(structName).append(' ').append(arrayName).append("[];\n");
         sb.append("};\n");
         sb.append('\n');
@@ -180,7 +188,7 @@ final class CgGlslEmitter {
      * @param blockName the value of {@code CgUniformBuffer.getName()} — used as the GLSL
      *                  block name; must match exactly for {@code wireShader()} to succeed
      */
-    static String emitUbo(CgBufferFormat format, String blockName) {
+    public static String emitUbo(CgBufferFormat format, String blockName) {
         StringBuilder sb = new StringBuilder(128);
         sb.append("layout(std140) uniform ").append(blockName).append(" {\n");
         for (int i = 0; i < format.getFieldCount(); i++) {

@@ -16,7 +16,7 @@
 // =============================================================================
 #pragma once
 
-#ifndef CG_VERTEX_STAGE
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 float rect_blur_erf(float x) {
     float s = sign(x);
     float a = abs(x);
