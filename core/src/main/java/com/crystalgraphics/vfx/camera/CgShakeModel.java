@@ -1,11 +1,11 @@
-package com.crystalgraphics.world;
+package com.crystalgraphics.vfx.camera;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.DoubleSupplier;
 
 /**
- * The trauma model behind {@link CgCameraShake} (Eiserloh, "Juicing Your Cameras With Math"): impacts add trauma 0..1,
+ * The trauma model behind {@link CgShakeRuntime} (Eiserloh, "Juicing Your Cameras With Math"): impacts add trauma 0..1,
  * scaled by where the camera stands from them, trauma decays at a fixed rate, held rumbles add to it while held, and the
  * camera moves by trauma squared. Pure state and maths, so it is tested without a host.
  */
@@ -19,7 +19,7 @@ final class CgShakeModel {
 
     private final DoubleSupplier clock;
     private final double[] pending = new double[MAX_PENDING * PENDING_STRIDE];
-    private final List<CgCameraShake.Rumble> rumbles = new ArrayList<>();
+    private final List<CgCameraShake.Held> rumbles = new ArrayList<>();
     private int pendingCount;
     // Per tremor: start, seconds, trauma, x, y, z, inner, outer.
     private final double[] tremors = new double[MAX_TREMORS * TREMOR_STRIDE];
@@ -60,7 +60,7 @@ final class CgShakeModel {
         tremors[i + 7] = outer;
     }
 
-    void hold(CgCameraShake.Rumble rumble) {
+    void hold(CgCameraShake.Held rumble) {
         if (!rumbles.contains(rumble)) rumbles.add(rumble);
     }
 
@@ -80,7 +80,7 @@ final class CgShakeModel {
         double now = now();
         float held = 0f;
         for (int k = rumbles.size() - 1; k >= 0; k--) {
-            CgCameraShake.Rumble r = rumbles.get(k);
+            CgCameraShake.Held r = rumbles.get(k);
             if (r.closed || now - r.touched > RUMBLE_EXPIRES) {
                 rumbles.remove(k);
                 continue;

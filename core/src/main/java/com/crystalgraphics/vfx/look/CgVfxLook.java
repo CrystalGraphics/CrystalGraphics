@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,6 +16,7 @@ import java.util.List;
  * CgVfxLook finalFlash = CgEnergyWave.kamehameha().toBuilder()
  *         .set(CgEnergyWave.CORE, 1f, 0.97f, 0.8f, 1f)
  *         .set(CgEnergyWave.RADIUS, 0.9f)
+ *         .set(CgEnergyWave.BLAST_SHAKE, CgCameraShakes.EXPLOSION.toBuilder().punch(2f).build())
  *         .build();
  *
  * CgVfxLook mine = CgVfxLook.builder(CgEnergyWave.SCHEMA)
@@ -50,7 +52,7 @@ public final class CgVfxLook {
     }
 
     public static Builder builder(CgVfxSchema schema) {
-        return new Builder(new CgVfxValues(schema, schema.defaults(), schema.defaultCurves()), new ArrayList<>(), new ArrayList<>());
+        return new Builder(new CgVfxValues(schema, schema.defaults(), schema.defaultObjects()), new ArrayList<>(), new ArrayList<>());
     }
 
     public Builder toBuilder() {
@@ -111,6 +113,11 @@ public final class CgVfxLook {
 
         public Builder set(CgVfxParam param, CgKeyframes curve) {
             values.set(param, curve);
+            return this;
+        }
+
+        public Builder set(CgVfxParam param, CgCameraShake shake) {
+            values.set(param, shake);
             return this;
         }
 

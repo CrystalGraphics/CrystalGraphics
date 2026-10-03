@@ -6,6 +6,8 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
+import java.util.Arrays;
 
 /**
  * An effect playing in a world: placed at an origin in doubles, simulated in floats relative to it on the
@@ -26,6 +28,9 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
  *   <li>An effect is done when it calls {@link #die()}; the system then drops it before the next frame.</li>
  *   <li>It announces the moments of its life with {@link #moment}, which a {@link CgVfxMomentListener} hears: name
  *       them as constants on the effect.</li>
+ *   <li>It shakes the camera through shakes declared on its schema, so a look can change them:
+ *       {@link #playShake} for a hit, {@link #holdShake} every tick for a tremor that lasts. What it holds stops when
+ *       it dies.</li>
  * </ul>
  */
 public abstract class CgVfxEffect {
@@ -43,6 +48,9 @@ public abstract class CgVfxEffect {
     /** The air an effect's particles move through before it is played: still. */
     private static final CgVfxAir STILL = new CgVfxAir().wind(0f, 0f, 0f);
     private double groundY = Double.NaN;
+    /** The shakes it holds, by parameter; made when first held. */
+    private CgVfxParam[] heldParams;
+    private CgCameraShake.Held[] held;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -68,11 +76,16 @@ public abstract class CgVfxEffect {
 
     /** Removes it at once. */
     public void kill() {
-        state = State.DEAD;
+        die();
     }
 
     protected final void die() {
         state = State.DEAD;
+        if (held != null) {
+            for (CgCameraShake.Held h : held) {
+                if (h != null) h.close();
+            }
+        }
     }
 
     public final State state() {
@@ -113,6 +126,49 @@ public abstract class CgVfxEffect {
     public final CgVfxEffect set(CgVfxParam param, CgKeyframes curve) {
         values.set(param, curve);
         return this;
+    }
+
+    public final CgCameraShake shake(CgVfxParam param) {
+        return values.shake(param);
+    }
+
+    public final CgVfxEffect set(CgVfxParam param, CgCameraShake shake) {
+        values.set(param, shake);
+        return this;
+    }
+
+    /** Plays the shake {@code param} at a point relative to its origin, its radii in units of {@code scale} blocks. */
+    protected final void playShake(CgVfxParam param, float x, float y, float z, float scale) {
+        values.shake(param).play(originX + x, originY + y, originZ + z, scale);
+    }
+
+    /** As {@link #playShake(CgVfxParam, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
+    protected final void playShake(CgVfxParam param, float x, float y, float z, float dx, float dy, float dz, float scale) {
+        values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
+    }
+
+    /**
+     * Holds the shake {@code param} at a point relative to its origin, its trauma times {@code level}: call it every tick
+     * while it lasts. Left unset for a quarter second, it lapses.
+     */
+    protected final void holdShake(CgVfxParam param, float x, float y, float z, float scale, float level) {
+        CgCameraShake shake = values.shake(param);
+        int slot = 0;
+        if (heldParams == null) {
+            heldParams = new CgVfxParam[4];
+            held = new CgCameraShake.Held[4];
+        }
+        while (slot < heldParams.length && heldParams[slot] != null && heldParams[slot] != param) slot++;
+        if (slot == heldParams.length) {
+            heldParams = Arrays.copyOf(heldParams, slot * 2);
+            held = Arrays.copyOf(held, slot * 2);
+        }
+        if (held[slot] == null || held[slot].shake() != shake) {
+            if (held[slot] != null) held[slot].close();
+            heldParams[slot] = param;
+            held[slot] = shake.hold();
+        }
+        held[slot].at(originX + x, originY + y, originZ + z).scale(scale).level(level);
     }
 
     /**

@@ -16,9 +16,8 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
-import com.crystalgraphics.world.CgCameraShake;
+import com.crystalgraphics.vfx.camera.CgCameraShakes;
 import org.joml.Matrix4f;
-import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,9 +63,9 @@ import java.util.List;
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
- *   <li>It shakes the camera ({@link CgCameraShake}), by distance: a tremor growing over the charge, a jolt, a recoil
- *       and a kick of the field of view at the release, a rumble while it fires and while it hits, and the blast's
- *       shake and shove when its shock front reaches the camera.</li>
+ *   <li>It shakes the camera through five shakes a look may change ({@link #CHARGE_SHAKE} to {@link #BLAST_SHAKE}):
+ *       a tremor growing over the charge, a recoil at the release, a hum while it fires, a rumble while it hits, and
+ *       the blast when its shock front reaches the camera.</li>
  * </ul>
  */
 public final class CgEnergyWave extends CgVfxEffect {
@@ -176,6 +175,26 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
 
+    /**
+     * Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius: what
+     * {@link #BLAST_SHAKE} arrives with.
+     */
+    private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
+    /** Held over the charge at the muzzle, its level the charge's progress squared. */
+    public static final CgVfxParam CHARGE_SHAKE = SCHEMA.shake("chargeShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.4f).radii(3f, 24f).build());
+    /** Played at the muzzle as it releases, its punch back along the aim. */
+    public static final CgVfxParam RELEASE_SHAKE = SCHEMA.shake("releaseShake", CgCameraShakes.RECOIL);
+    /** Held at the muzzle while it fires. */
+    public static final CgVfxParam FIRING_SHAKE = SCHEMA.shake("firingShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.2f).radii(3f, 24f).build());
+    /** Held at the target while it hits, at the scale of {@link #RADIUS}, its level how hard it is hitting. */
+    public static final CgVfxParam HIT_SHAKE = SCHEMA.shake("hitShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.3f).radii(6f, 48f).build());
+    /** Played at the burst, at the scale of the blast's radius, arriving with the blast's shock front. */
+    public static final CgVfxParam BLAST_SHAKE = SCHEMA.shake("blastShake",
+            CgCameraShakes.EXPLOSION.toBuilder().arrives(SHOCK_REACH, SHOCK_SECONDS, CgEasings.OUT_CUBIC).build());
+
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
@@ -276,19 +295,10 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
-    /** Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius. */
-    private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
-    /** Trauma: the charge's tremor at its peak, the release's jolt, the recoil while firing, the rumble while hitting. */
-    private static final float CHARGE_TREMOR = 0.4f, RELEASE_JOLT = 0.7f, FIRING_RECOIL = 0.2f, HIT_RUMBLE = 0.3f;
-    /** Punch strength: the release's recoil, back along the aim, and the blast's shove away from its heart. */
-    private static final float RELEASE_PUNCH = 0.7f, BLAST_PUNCH = 1.5f;
-    /** The blast's tremor after its front arrives: the trauma it starts at, and the seconds it tapers to nothing over. */
-    private static final float BLAST_TREMOR = 0.85f, BLAST_TREMOR_SECONDS = 4f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
     private final Matrix4f placed = new Matrix4f();
-    private final Vector3d camera = new Vector3d();
     /** The blast's emitters, one per emitter of the look, started when it bursts. */
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
     /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
@@ -305,11 +315,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     private float normalX, normalY = 1f, normalZ;
     /** The moments already announced, a bit each, and the stream's size when it was stopped. */
     private int momentsFired, sizeAtStop;
-    /** Camera shake held at the muzzle and at the target; made when first needed. */
-    private CgCameraShake.Rumble muzzleRumble, hitRumble;
     private boolean released;
-    /** Whether the blast's shock front has reached the camera, and shaken it. */
-    private boolean blastFelt;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
         super(look, x, y, z);
@@ -403,8 +409,8 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
             blastAge = age;
             startBlast();
+            playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
-        if (!Float.isNaN(blastAge) && !blastFelt) feelBlast();
         boolean emitted = true;
         if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
         for (int i = 0; i < blast.size(); i++) {
@@ -417,51 +423,27 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (ending) die();
     }
 
-    /**
-     * The blast's shake and kick, when its shock front reaches the camera; past the front's reach, as the front dies.
-     */
-    private void feelBlast() {
-        float since = age - blastAge, reach = get(RADIUS) * get(BLAST_RADIUS);
-        double bx = originX + stream.impactX(), by = originY + stream.impactY(), bz = originZ + stream.impactZ();
-        if (since < SHOCK_SECONDS && CgCameraShake.camera(camera).distance(bx, by, bz) > shockFront(since)) return;
-        blastFelt = true;
-        CgCameraShake.shake(bx, by, bz, 1f, reach, reach * 5f);
-        CgCameraShake.punch(bx, by, bz, BLAST_PUNCH, reach, reach * 5f);
-        CgCameraShake.tremor(bx, by, bz, BLAST_TREMOR, BLAST_TREMOR_SECONDS, reach, reach * 5f);
-        CgCameraShake.kick(bx, by, bz, 0.14f, 0.5f, reach, reach * 4f);
-    }
-
     /** How far the blast's shock front has come, in blocks, {@code since} seconds after the burst. */
     private float shockFront(float since) {
         return get(RADIUS) * get(BLAST_RADIUS) * SHOCK_REACH
                 * (float) CgEasings.OUT_CUBIC.ease(Math.min(since / SHOCK_SECONDS, 1f));
     }
 
-    /** The charge's tremor, the release's jolt, the recoil while firing and the rumble at the target while it hits. */
+    /** The charge's tremor, the release's recoil, the hum while firing and the rumble at the target while it hits. */
     private void shake() {
         if (state() == State.PLAYING && age < releaseAge) {
             float progress = age / Math.max(releaseAge, 1.0e-3f);
-            muzzle().level(CHARGE_TREMOR * progress * progress);
+            holdShake(CHARGE_SHAKE, 0f, 0f, 0f, 1f, progress * progress);
         } else if (state() == State.PLAYING) {
             if (!released) {
                 released = true;
-                CgCameraShake.shake(originX, originY, originZ, RELEASE_JOLT, 3f, 30f);
-                CgCameraShake.punch(originX, originY, originZ, -aimX, -aimY, -aimZ, RELEASE_PUNCH, 3f, 30f);
-                CgCameraShake.kick(originX, originY, originZ, 0.1f, 0.35f, 3f, 30f);
+                playShake(RELEASE_SHAKE, 0f, 0f, 0f, -aimX, -aimY, -aimZ, 1f);
             }
-            muzzle().level(FIRING_RECOIL);
+            holdShake(FIRING_SHAKE, 0f, 0f, 0f, 1f, 1f);
         }
         if (impactLevel > 0.01f) {
-            float radius = get(RADIUS);
-            if (hitRumble == null) hitRumble = CgCameraShake.rumble().radii(radius * 6f, radius * 48f);
-            hitRumble.at(originX + stream.impactX(), originY + stream.impactY(), originZ + stream.impactZ())
-                    .level(HIT_RUMBLE * impactLevel);
+            holdShake(HIT_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS), impactLevel);
         }
-    }
-
-    private CgCameraShake.Rumble muzzle() {
-        if (muzzleRumble == null) muzzleRumble = CgCameraShake.rumble().at(originX, originY, originZ).radii(3f, 24f);
-        return muzzleRumble;
     }
 
     /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
