@@ -37,6 +37,7 @@ import org.joml.Vector3f;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -112,7 +113,11 @@ public final class CgWorldRenderer {
     private float[] transforms = new float[64 * 16];
     private float[] customs = new float[64 * 16];
     private int[] queues = new int[64];
-    private int[] priorities = new int[64];
+    private int[] orders = new int[64];
+    private CgSortLayer[] layers = new CgSortLayer[64];
+    /** Per draw: whether it is in a group, and the group's absolute position (3). */
+    private boolean[] grouped = new boolean[64];
+    private double[] groupPositions = new double[64 * 3];
 
     // Per recording, reused: nothing here allocates per frame once warm.
     private final Matrix4f model = new Matrix4f();
@@ -180,7 +185,10 @@ public final class CgWorldRenderer {
         private final Matrix4f transform = new Matrix4f();
         private final float[] custom = new float[16];
         private int queue;
-        private int priority;
+        private int order;
+        private CgSortLayer layer;
+        private boolean inGroup;
+        private double groupX, groupY, groupZ;
         private int submesh, first, count;
         private final float[] bounds = new float[6];
         private boolean boundsSet;
@@ -198,7 +206,9 @@ public final class CgWorldRenderer {
             transform.identity();
             Arrays.fill(custom, 0f);
             queue = material.getRenderQueue();
-            priority = 0;
+            order = 0;
+            layer = CgSortLayer.DEFAULT;
+            inGroup = false;
             submesh = -1;
             first = 0;
             count = -1;
@@ -301,9 +311,35 @@ public final class CgWorldRenderer {
             return this;
         }
 
-        /** 0 to 15; higher draws later within its queue. */
-        public Draw priority(int priority) {
-            this.priority = priority;
+        /** The {@link CgSortLayer} it sorts in; {@link CgSortLayer#DEFAULT} unless named. */
+        public Draw layer(CgSortLayer layer) {
+            this.layer = Objects.requireNonNull(layer, "layer");
+            return this;
+        }
+
+        /** 0 to 15; higher draws later within its layer, or within its {@link #group}. */
+        public Draw order(int order) {
+            if (order < 0 || order > 15) throw new IllegalArgumentException("order " + order + " is outside 0..15");
+            this.order = order;
+            return this;
+        }
+
+        /**
+         * Sorts it with the group at absolute {@code (x, y, z)} as one, as Niagara sorts a system's emitters: a
+         * transparent group draws whole, back to front by its position among the other groups and draws of its
+         * {@link #layer}, and its draws by their own {@link #order}, then distance, within it: back to front only among
+         * the draws of one order. Every draw of a group gives
+         * the same position and layer. Opaque draws ignore it.
+         *
+         * <pre>{@code
+         * world.draw(mesh, haze).at(x, y, z).layer(CgSortLayer.EFFECTS).group(ox, oy, oz).order(4).submit();
+         * }</pre>
+         */
+        public Draw group(double x, double y, double z) {
+            inGroup = true;
+            groupX = x;
+            groupY = y;
+            groupZ = z;
             return this;
         }
 
@@ -328,7 +364,14 @@ public final class CgWorldRenderer {
         d.transform.get(transforms, count * 16);
         System.arraycopy(d.custom, 0, customs, count * 16, 16);
         queues[count] = d.queue;
-        priorities[count] = d.priority;
+        orders[count] = d.order;
+        layers[count] = d.layer;
+        grouped[count] = d.inGroup;
+        if (d.inGroup) {
+            groupPositions[count * 3] = d.groupX;
+            groupPositions[count * 3 + 1] = d.groupY;
+            groupPositions[count * 3 + 2] = d.groupZ;
+        }
         ranges[count * 3] = d.submesh;
         ranges[count * 3 + 1] = d.first;
         ranges[count * 3 + 2] = d.count;
@@ -347,6 +390,7 @@ public final class CgWorldRenderer {
         Arrays.fill(lods, 0, count, null);
         Arrays.fill(materials, 0, count, null);
         Arrays.fill(counts, 0, count, null);
+        Arrays.fill(layers, 0, count, null);
         count = 0;
     }
 
@@ -359,7 +403,10 @@ public final class CgWorldRenderer {
         transforms = Arrays.copyOf(transforms, n * 16);
         customs = Arrays.copyOf(customs, n * 16);
         queues = Arrays.copyOf(queues, n);
-        priorities = Arrays.copyOf(priorities, n);
+        orders = Arrays.copyOf(orders, n);
+        layers = Arrays.copyOf(layers, n);
+        grouped = Arrays.copyOf(grouped, n);
+        groupPositions = Arrays.copyOf(groupPositions, n * 3);
         ranges = Arrays.copyOf(ranges, n * 3);
         drawBounds = Arrays.copyOf(drawBounds, n * 6);
         boundsStated = Arrays.copyOf(boundsStated, n);
@@ -474,10 +521,21 @@ public final class CgWorldRenderer {
         float distance = Math.max(0f, (cx - eye.x) * forward.x + (cy - eye.y) * forward.y + (cz - eye.z) * forward.z);
         CgMaterial material = materials[i];
         keys[i] = transparent
-                ? CgSortKey.transparent(queue, priorities[i], distance)
-                : CgSortKey.opaque(queue, priorities[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
+                ? transparentKey(i, queue, distance, view)
+                : CgSortKey.opaque(queue, layers[i].rank(), orders[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
         boolean prepass = !transparent && (material.hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
         return prepass ? FORWARD_AND_PREPASS : FORWARD;
+    }
+
+    /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order and distance. */
+    private long transparentKey(int i, int queue, float distance, CgHostView view) {
+        int layer = layers[i].rank();
+        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, orders[i], distance);
+        float gx = (float) (groupPositions[i * 3] - view.x()) - eye.x;
+        float gy = (float) (groupPositions[i * 3 + 1] - view.y()) - eye.y;
+        float gz = (float) (groupPositions[i * 3 + 2] - view.z()) - eye.z;
+        float groupDistance = Math.max(0f, gx * forward.x + gy * forward.y + gz * forward.z);
+        return CgSortKey.transparent(queue, layer, groupDistance, orders[i], distance);
     }
 
     /**

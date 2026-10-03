@@ -23,7 +23,7 @@ import java.util.List;
  * }</pre>
  *
  * <ul>
- *   <li>Layers draw in list order within their priority; give each additive layer a priority of its own so its draws
+ *   <li>Layers draw in list order within their order; give each additive layer an order of its own so its draws
  *       batch.</li>
  *   <li>A layer's material is made once per layer object by the system that draws it, so share layer objects between
  *       looks that draw them alike.</li>

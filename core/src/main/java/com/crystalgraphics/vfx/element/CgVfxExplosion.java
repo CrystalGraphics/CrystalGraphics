@@ -145,17 +145,17 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         rays = named(RAYS, name);
         rings = named(RINGS, name);
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
-                .colors(body, hot).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+                .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
-                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
-                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
-                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         ringLayer = CgVfxLayer.builder(PARTICLE + "ring.shader").slot(rings.layer())
-                .colors(debris, null).priority(CgVfxLayer.PRIORITY_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         sparkLayer = CgVfxLayer.builder(PARTICLE + "spark.shader").slot(sparkles.layer())
-                .colors(hot, sparkCore).priority(CgVfxLayer.PRIORITY_BANDS).build();
+                .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
     }
 
     /** Every emitter of this kit, in the order they start. */

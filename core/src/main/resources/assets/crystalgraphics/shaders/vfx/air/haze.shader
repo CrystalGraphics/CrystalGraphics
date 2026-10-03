@@ -1,6 +1,6 @@
 // Heat haze round something hot: the scene behind a sphere shimmering in rising noise, strongest face-on (where the
 // most hot air lies along the ray) and gone at the silhouette and where the sphere meets the scene, so it has no edge.
-// Drawn on CgVfxFrame.mesh's sphere, front faces, last in the transparent pass (PRIORITY_DISTORTION).
+// Drawn on CgVfxFrame.mesh's sphere, front faces, after the soft layers and before the sharp ones (ORDER_DISTORTION).
 // CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity. Reads cg_SceneColor and depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"

@@ -32,7 +32,7 @@ vfx.submit(CgWorldRenderer.get());
 | `shaders/lib/vfx/` | The GLSL libraries, `fx_`-prefixed: `fx_common` (hashes, gradient and value noise with their fractals, warped turbulence, flicker, voronoi, erf, tonemap, `FX_CAMERA` -- the ONE copy: the showcase's `shaders/demo/vfx_common.glsl` includes it and adds only its studio lighting), `fx_tube` (the path texture, tube placement, ray against an axis), `fx_volume` (analytic core and glow volumes), `fx_depth` (scene depth; only a depth reader includes it), `fx_ribbon` (ribbon hashes and placement), `fx_lightning` (a bolt's midpoint-displaced channel, its return strokes, and the core-halo-glow profile across it), `fx_particle` (placing a particle's quad or stroke: the record index, a turned camera-facing corner, a velocity's heading) |
 | `shaders/vfx/<family>/` | One directory per family, mirroring `vfx.effect.<family>`, named by slot (`body_*`, `head_*`) |
 | `shaders/vfx/particle/` | Shared particle looks drawn from the particle records: `speck` (ragged debris), `spark` (a glowing disc streaked along its motion, as bright as it is hot), `arc` (an ink stroke round the emitter's source) |
-| `shaders/vfx/air/` | Shared by any family, the air bending: `haze` (a shimmer round something hot, on a sphere) and `haze_tube` (along a beam), `shock` (a blast's shock front, refracting at its silhouette). Each redraws the scene behind it from `cg_SceneColor`, so they take `CgVfxLayer.PRIORITY_DISTORTION` (drawn last in the transparent pass, bending every particle under them on one copy of the target) and `.from(CgQuality.MEDIUM)` |
+| `shaders/vfx/air/` | Shared by any family, the air bending: `haze` (a shimmer round something hot, on a sphere) and `haze_tube` (along a beam), `shock` (a blast's shock front, refracting at its silhouette). Each redraws the scene behind it from `cg_SceneColor`, so they take `CgVfxLayer.ORDER_DISTORTION` and `.from(CgQuality.MEDIUM)`. That order sits after smoke, light and glow volumes, which they bend on one copy of the target, and before the sharp layers (`ORDER_SURFACE`, `_BANDS`, `_CORE`), which are never bent nor copied, so a bright body is never smeared into the air round it. Every effect sorts as one group at its origin in `CgSortLayer.EFFECTS`, its layers' orders ordering nothing outside it, so a haze bends every effect farther than its own and none nearer |
 | `shaders/vfx/smoke/` | Shared by any family: `billow` (a cel-shaded explosion billow as a real mesh: a sphere displaced by Voronoi domes, opaque with a depth prepass, contour strokes where the surface turns from the eye -- the anime look, as built in UE5 Niagara; all noise per vertex), `smoke_puff` (realistic: a lit puff on a billboard that depth-tests its own ball's surface, so it meets the ground in a curve) |
 
 ## Seeing every moment
@@ -56,8 +56,8 @@ matters; that is what makes it debuggable at full speed.
   render-graph owner, and only when per-draw records are measured as the cost.
 - **One property snapshot per material per stage.** Per-effect variation is per-draw data (`custom` slots, the path
   texture) or another layer; never set a property between two submits of one material.
-- **Additive layers each take a priority of their own** (`CgVfxLayer.PRIORITY_*`, a share of a 4-bit field every
-  world consumer uses), so their chunks batch.
+- **Additive layers each take an order of their own** (`CgVfxLayer.ORDER_*`, within the effect's group: nothing
+  outside the effect sees it), so their chunks batch.
 - **A chunk's bounds cover everything its shader draws**: radius, cap push and displacement.
 - **A volume that integrates along the view ray must cover each pixel once**: a bent tube's far wall does not, so such a
   tube layer is `volume()` and sums only its own chunk's rings on a sphere.

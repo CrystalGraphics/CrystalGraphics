@@ -15,7 +15,7 @@ import java.util.function.Consumer;
  *         .slot(CgVfxLayer.SLOT_BODY)                         // the part of the effect it draws
  *         .radius(1.0f)                                      // times the effect's own radius
  *         .colors(CgEnergyWave.SHELL, CgEnergyWave.SHELL_HOT) // CG_OBJECT_CUSTOM2, CG_OBJECT_CUSTOM3
- *         .priority(CgVfxLayer.PRIORITY_SURFACE)
+ *         .order(CgVfxLayer.ORDER_SURFACE)
  *         .properties(b -> b.set1f("_Flow", 22f))
  *         .build();
  * }</pre>
@@ -31,19 +31,24 @@ import java.util.function.Consumer;
 public final class CgVfxLayer {
 
     /**
-     * World-stage priorities the vfx layers take, one per kind of draw so each batches: a share of the field every world
-     * consumer draws from (0 to 15), kept in this one table. Transparent draws of one priority sort by distance alone, so
-     * two tube layers sharing one interleave chunk by chunk and never instance.
+     * Where a layer draws within its effect (the world renderer's {@code order} within the effect's group, Niagara's
+     * emitter sort order hint), one per kind of draw so each batches: 0 to 15, higher later. Every effect sorts as one
+     * group at its origin in {@code CgSortLayer.EFFECTS}, so these order nothing outside it. Layers of one order sort
+     * by distance alone, so two tube layers sharing one interleave chunk by chunk and never instance.
+     *
+     * <p>Layers that bend the scene ({@link #ORDER_DISTORTION}) sit between the soft ones and the sharp ones: they bend
+     * smoke, light and glow volumes, while {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and {@link #ORDER_CORE} draw
+     * after them and are never bent, nor copied into what a haze samples, so a bright body is never smeared into the
+     * air round it (as a fire in Unreal draws after its distortion).</p>
      */
-    public static final int PRIORITY_LIGHT = 2, PRIORITY_VOLUME = 3, PRIORITY_SURFACE = 4, PRIORITY_BANDS = 5, PRIORITY_CORE = 6;
-    /** Alpha-blended layers, before every additive one: they hide the scene behind them, and the energy's light falls over them. */
-    public static final int PRIORITY_SMOKE = 1;
+    public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2, ORDER_VOLUME = 3;
     /**
-     * Layers that bend the scene behind them (heat haze, a shock front), last of all: {@code cg_SceneColor} holds what
-     * drew before them, so they bend every particle and glow, and readers in a row share one copy of the target. What
-     * is in front of a haze bends with it.
+     * Layers that bend the scene behind them (heat haze, a shock front): {@code cg_SceneColor} holds what drew before
+     * them, and readers in a row share one copy of the target. A haze also leaves its own hot body unbent.
      */
-    public static final int PRIORITY_DISTORTION = 7;
+    public static final int ORDER_DISTORTION = 4;
+    /** Sharp emissive layers, drawn after every haze: never bent. */
+    public static final int ORDER_SURFACE = 5, ORDER_BANDS = 6, ORDER_CORE = 7;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";
 
@@ -52,7 +57,7 @@ public final class CgVfxLayer {
     final float radius;
     final CgVfxParam colorA, colorB;
     final float parameter;
-    final int priority;
+    final int order;
     final boolean volume;
     final CgQuality from;
     final Consumer<CgShaderBindings> properties;
@@ -64,7 +69,7 @@ public final class CgVfxLayer {
         this.colorA = b.colorA;
         this.colorB = b.colorB;
         this.parameter = b.parameter;
-        this.priority = b.priority;
+        this.order = b.order;
         this.volume = b.volume;
         this.from = b.from;
         this.properties = b.properties;
@@ -101,8 +106,9 @@ public final class CgVfxLayer {
         return parameter;
     }
 
-    public int priority() {
-        return priority;
+    /** Where it draws within its effect: an {@code ORDER_} constant. */
+    public int order() {
+        return order;
     }
 
     /** Whether each chunk of a tube draws on a sphere around it ({@link Builder#volume()}). */
@@ -127,7 +133,7 @@ public final class CgVfxLayer {
         private float radius = 1f;
         private CgVfxParam colorA, colorB;
         private float parameter;
-        private int priority = PRIORITY_SURFACE;
+        private int order = ORDER_SURFACE;
         private boolean volume;
         private CgQuality from = CgQuality.LOW;
         private Consumer<CgShaderBindings> properties;
@@ -160,9 +166,10 @@ public final class CgVfxLayer {
             return this;
         }
 
-        public Builder priority(int priority) {
-            if (priority < 0 || priority > 15) throw new IllegalArgumentException("priority " + priority + " is outside 0..15");
-            this.priority = priority;
+        /** Where it draws within its effect, 0 to 15: an {@code ORDER_} constant. */
+        public Builder order(int order) {
+            if (order < 0 || order > 15) throw new IllegalArgumentException("order " + order + " is outside 0..15");
+            this.order = order;
             return this;
         }
 

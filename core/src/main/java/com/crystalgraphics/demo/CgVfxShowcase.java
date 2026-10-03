@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -64,10 +65,11 @@ public final class CgVfxShowcase {
     };
 
     /**
-     * Order within a world stage, low first: the sky's fade under all that is blended, then the spheres, then the sky,
-     * where depth rejects whatever covers it before it is shaded, and its seal over all that is blended.
+     * The sky, last in each world stage: where depth rejects whatever covers it before it is shaded, and its seal over
+     * all that is blended. Its fade draws in {@code BACKGROUND}, under all that is blended, and the spheres in
+     * {@code EFFECTS}, among the effects by distance.
      */
-    private static final int SKY_FADE = 0, SPHERES = 1, SKY = 15;
+    private static final CgSortLayer SKY = CgSortLayer.after("crystalgraphics:showcase_sky", CgSortLayer.OVERLAY);
 
     private static final int SHIELD = 14, STORM = 9, BLACK_HOLE = 12, GALAXY = 13, SUPERNOVA = 11;
     /** The black hole is traced in a larger sphere than the rest, so its disk has room; the sphere itself never shows. */
@@ -144,11 +146,11 @@ public final class CgVfxShowcase {
             spin(k, seconds);
             if (k == SUPERNOVA) {
                 transform.scale(SUPERNOVA_SIZE);
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).priority(SPHERES).submit();
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).layer(CgSortLayer.EFFECTS).submit();
                 transform.identity().scale(SUPERNOVA_SIZE * CORONA_REACH);
                 float flare = 1f + 0.15f * (float) Math.sin(seconds * 2.1) + 0.08f * flicker(seconds, k);
                 world.draw(sphere, corona).at(cx, cy, cz).transform(transform)
-                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).priority(SPHERES).submit();
+                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
                 continue;
             }
             // Every sphere knows how high above the floor it is: the metals mirror the floor from there.
@@ -159,13 +161,13 @@ public final class CgVfxShowcase {
                         .custom(0, impacts[0], impacts[1], impacts[2], impacts[3])
                         .custom(1, impacts[4], impacts[5], impacts[6], impacts[7])
                         .custom(2, impacts[8], impacts[9], impacts[10], impacts[11])
-                        .custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
+                        .custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
                 boltsInFlight(world, cx, cy, cz);
                 // What the field protects: a small gold core turning inside it.
                 transform.identity().rotateY(-seconds * 0.6f).scale(0.45f);
-                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
+                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
             } else {
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).priority(SPHERES).submit();
+                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
             }
             float strength = GLOW[k][3];
             // The black hole has no ball to glow round: its disk lights the floor alone.
@@ -174,7 +176,7 @@ public final class CgVfxShowcase {
             transform.identity().scale(GLOW_REACH[k]);
             world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
-                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).priority(SPHERES).submit();
+                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
         }
         waves(world, x, y, z, seconds);
     }
@@ -194,7 +196,7 @@ public final class CgVfxShowcase {
         }
         world.draw(floor, floorMaterial).at(x, y, z).submit();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
+        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
     }
 
     /**
@@ -205,9 +207,9 @@ public final class CgVfxShowcase {
     public void submitSky(CgWorldRenderer world, double cameraX, double cameraY, double cameraZ) {
         ensureResources();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
-        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY_FADE).submit();
-        world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).priority(SKY).submit();
+        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
+        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).layer(CgSortLayer.BACKGROUND).submit();
+        world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
     }
 
     /** The system the showcase plays its effects through: register a {@code CgVfxMomentListener} on it to photograph their moments. */
@@ -325,7 +327,7 @@ public final class CgVfxShowcase {
             float distance = BOLT_RANGE + (1f - BOLT_RANGE) * travel;
             boolean steep = Math.abs(dy) > 0.95f;
             transform.identity().rotateTowards(dx, dy, dz, steep ? 1f : 0f, steep ? 0f : 1f, 0f).scale(0.05f, 0.05f, 0.34f);
-            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).priority(SPHERES).submit();
+            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).layer(CgSortLayer.EFFECTS).submit();
         }
     }
 
