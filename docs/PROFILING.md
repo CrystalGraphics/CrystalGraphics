@@ -173,7 +173,8 @@ Rules that follow:
   milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`,
   `stage.parkSamplers`), the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any
   engine theory, run a bare GLFW window (clear and swap, nothing of ours) for two minutes with `nvidia-smi`
-  sampling beside it: if it stalls too, the fix is the machine. The recipe, the script and what it found
+  sampling beside it: if it stalls too, the machine is part of it -- and readbacks make those stalls worse
+  (below, *A readback's time*). The recipe, the script and what it found
   (on 2026-10-01 a background utility froze every OpenGL window on this machine for seconds) are in
   `plan/gl-gpu-stalls-notes.md`, from its line *If the freezes come back, start here*.
 
@@ -376,9 +377,12 @@ material, hot reload, and every host's own hooks (`runtime/mc/**`).
 
 **A readback's time is not always its own either.** A `glGet` waits for the driver's own thread to drain what was
 queued, so the first readback of a stage (`stage.parkSamplers`, `glState.adopt`) takes a stall from anywhere: another
-process on the GPU, a present still pending. On a busy machine those two held nearly every spike over 20 ms whichever
-mesh path ran, and the rest fell in `frame.input`, the window system's poll. Compare spike counts over interleaved
-runs, never one run.
+process on the GPU, a present still pending. **And the reads make it worse**: a bare GLFW window making the reads a
+frame here makes (two sampler parks, 60 more `glGet`s) had three times the frames over 20 ms of the same window
+without them, 28-33 against 9-10 in two minutes, up to 96 ms against 41, with the time inside the reads
+(`BareGets.java`, `plan/gl-gpu-stalls-notes.md`). So a spike in `stage.parkSamplers` or `glState.adopt` is the
+machine's hiccup paid synchronously, at a price these reads set. Compare spike counts over interleaved runs, never
+one run.
 
 **A GPU zone's time is not always its own.** The first GPU zone of a frame absorbs whatever the GPU was still
 finishing: in the shader graph, the main preview's GPU zone once read 9 ms, and with that draw switched off the
