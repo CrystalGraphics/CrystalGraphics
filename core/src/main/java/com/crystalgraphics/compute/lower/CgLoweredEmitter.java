@@ -279,7 +279,7 @@ public final class CgLoweredEmitter {
             if (b.access() == CgBufferAccess.APPEND) {
                 sb.append("uniform usamplerBuffer ").append(counterTbo(b)).append(";\nuniform int ").append(counterAt(b)).append(";\n");
             }
-            load(sb, b);
+            load(sb, b, true);
             if (pass.kind() == Kind.APPEND && pass.buffer() == b) capture(sb, b);
             if (pass.kind() == Kind.OUTPUT && pass.buffers().contains(b)) sb.append(e).append(" _cg_out_").append(b.name()).append(";\n");
             for (CgBufferAccessor accessor : CgBufferAccessor.values()) {
@@ -288,12 +288,34 @@ public final class CgLoweredEmitter {
         }
     }
 
-    /** {@code _cg_load_NAME(i)}: element {@code i} of the view, from its words. */
-    private static void load(StringBuilder sb, CgBufferDecl b) {
+    /**
+     * GLSL reading a lowerable buffer from a stage outside a kernel, a material reading what one wrote: {@code NAME(i)}
+     * for an {@code int} or {@code uint} {@code i}, over the storage block {@link #readerBlock} when {@code storage},
+     * else over the buffer texture {@link #tbo}, its texels {@link #texelFormat}. The element's struct is the caller's
+     * to declare first.
+     */
+    public static void reader(StringBuilder sb, CgBufferDecl b, boolean storage) {
+        String e = b.element();
+        if (storage) {
+            sb.append("layout(std430) readonly buffer ").append(readerBlock(b)).append(" { ").append(e).append(' ')
+              .append(b.array()).append("[]; };\n");
+            indexed(sb, e + " " + b.name(), "", "return " + b.array() + "[i];");
+            return;
+        }
+        sb.append("uniform usamplerBuffer ").append(tbo(b)).append(";\n");
+        load(sb, b, false);
+        indexed(sb, e + " " + b.name(), "", "return _cg_load_" + b.name() + "(int(i));");
+    }
+
+    /** The storage block {@link #reader} declares. */
+    public static String readerBlock(CgBufferDecl b) { return "CgMaterialBuffer_" + b.name(); }
+
+    /** {@code _cg_load_NAME(i)}: element {@code i} of the buffer, from its words; of the view from {@link #base} if {@code view}. */
+    private static void load(StringBuilder sb, CgBufferDecl b, boolean view) {
         String e = b.element();
         int k = texelsPerElement(b);
-        sb.append(e).append(" _cg_load_").append(b.name()).append("(int i) {\n    int t = (").append(base(b))
-          .append(" + i) * ").append(k).append(";\n");
+        sb.append(e).append(" _cg_load_").append(b.name()).append("(int i) {\n    int t = ")
+          .append(view ? "(" + base(b) + " + i)" : "i").append(" * ").append(k).append(";\n");
         if (!b.struct()) {
             int words = texelWords(b);
             String fetch = "texelFetch(" + tbo(b) + ", t)" + (words == 1 ? ".r" : words == 2 ? ".rg" : "");

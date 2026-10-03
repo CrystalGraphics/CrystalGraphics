@@ -207,6 +207,8 @@ public final class CgCapabilities {
 
     /** Max MSAA samples available for driver*/
     @Getter int maxSamples;
+    /** Texels a buffer texture may read: 65536 at least. */
+    @Getter int maxTextureBufferSize;
     /**
      * Whether a program's {@code GL_COMPLETION_STATUS_KHR} may be polled ({@code GL_KHR_parallel_shader_compile} or
      * the ARB twin): a compile can then be submitted and drawn from only once the driver has finished it.
@@ -340,6 +342,7 @@ public final class CgCapabilities {
         caps.maxUniformBufferBindings  = CgGL.glGetInteger(CgGL.GL_MAX_UNIFORM_BUFFER_BINDINGS);
         caps.gpuShaderInt64            = gl.OpenGL40();
         caps.maxSamples                = CgGL.glGetInteger(CgGL.GL_MAX_SAMPLES);
+        caps.maxTextureBufferSize      = CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_BUFFER_SIZE);
         caps.parallelShaderCompile     = gl.parallelShaderCompile();
 
         // GL_CONTEXT_PROFILE_MASK (0x9126); bit 0x1 = GL_CONTEXT_CORE_PROFILE_BIT.

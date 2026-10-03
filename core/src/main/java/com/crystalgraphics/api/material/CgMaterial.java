@@ -9,6 +9,8 @@ import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.compute.lower.CgLoweredEmitter;
+import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
@@ -20,9 +22,12 @@ import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import lombok.Getter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -857,7 +862,8 @@ public final class CgMaterial {
 
     /**
      * Snapshots what a draw of this material reads, as it is now, into {@code table}: the properties block's bytes,
-     * each sampler's texture at its declared unit, and any buffer attached with {@link #attach}. Compiles nothing.
+     * each sampler's texture at its declared unit, any buffer attached with {@link #attach}, and each buffer bound with
+     * {@link #buffer}. Compiles nothing.
      *
      * <pre>{@code
      * material.applyProperties(b -> b.colorARGB("_Color", 0xFFFF0000));
@@ -878,6 +884,14 @@ public final class CgMaterial {
     public int captureBindings(CgBindingTable table) {
         checkNotDeleted();
         syncPropsToParse();
+        List<CgBufferDecl> declared = propsParse == null ? List.of() : propsParse.buffers();
+        for (int i = 0; i < declared.size(); i++) {
+            String name = declared.get(i).name();
+            if (buffers == null || buffers.get(name) == null) {
+                throw new IllegalStateException("this material reads buffer " + name + ", and nothing is bound to it: "
+                        + "material.buffer(\"" + name + "\", buffer)");
+            }
+        }
         table.begin();
         if (propStore != null) {
             if (propStore.hasUboProps()) {
@@ -887,7 +901,64 @@ public final class CgMaterial {
             propStore.captureSamplers(table);
         }
         if (cgMaterialShader != null) captureAttachedBuffers(table);
+        boolean texels = CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO;
+        for (int i = 0; i < declared.size(); i++) {
+            CgBufferDecl b = declared.get(i);
+            CgBufferHandle bound = buffers.get(b.name());
+            if (texels) {
+                checkTexels(b, bound);
+                table.texelBuffer(CgBindingPoints.materialBufferUnit(propStore.samplerCount(), i), CgLoweredEmitter.texelFormat(b), bound);
+            } else {
+                table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, bound);
+            }
+        }
         return table.end();
+    }
+
+    /** Read as a texture, a buffer is cut off at the context's texel limit: refuse one that would be. */
+    private static void checkTexels(CgBufferDecl b, CgBufferHandle bound) {
+        CgCapabilities caps = CgCapabilities.detected();
+        if (caps == null || !(bound instanceof CgGraphBuffer buffer)) return;
+        long texels = buffer.size() / (CgLoweredEmitter.texelWords(b) * 4L);
+        if (texels > caps.getMaxTextureBufferSize()) {
+            throw new IllegalStateException(b.name() + " is " + texels + " texels; this context reads a buffer as a "
+                    + "texture of at most " + caps.getMaxTextureBufferSize());
+        }
+    }
+
+    /** What {@link #buffer} bound, by declared name. */
+    @Nullable
+    private Map<String, CgBufferHandle> buffers;
+
+    /**
+     * Binds {@code buffer} as buffer {@code name} of the shader's {@code Buffers { }}, which each pass reads as
+     * {@code NAME(i)}: usually a frame graph's buffer a kernel writes, which the graph orders the draw after.
+     *
+     * <pre>{@code
+     * // sparks.shader, at material scope:
+     * //   struct Spark { vec4 positionLife; vec4 velocitySeed; };
+     * //   Buffers { SPARKS ("Sparks", Spark, readonly) }
+     * sparkMaterial.buffer("SPARKS", sparks);
+     * world.draw(CgMesh.quads(capacity), sparkMaterial).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Captured as a texture is: a draw recorded before the call reads what was bound then.</li>
+     *   <li>Recorded draws read it ({@link #captureBindings}); {@link #bind()} binds none of these.</li>
+     *   <li>Every declared buffer is bound before the first capture, which throws naming one that is not.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException if the shader declares no buffer {@code name}
+     */
+    public CgMaterial buffer(String name, CgBufferHandle buffer) {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        if (parsed == null || parsed.buffer(name) == null) {
+            throw new IllegalArgumentException("'" + name + "' is no buffer this material's Buffers { } declares");
+        }
+        if (buffers == null) buffers = new HashMap<>();
+        buffers.put(name, Objects.requireNonNull(buffer, "buffer"));
+        return this;
     }
 
     /** The properties block packed as it is now, repacked only after a value moved. */

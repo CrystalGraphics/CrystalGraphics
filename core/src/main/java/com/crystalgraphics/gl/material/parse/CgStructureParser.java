@@ -1,13 +1,20 @@
 package com.crystalgraphics.gl.material.parse;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.compute.parse.CgComputeParser;
+import com.crystalgraphics.compute.source.CgBufferDecl;
+import com.github.bsideup.jabel.Desugar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,10 +46,60 @@ final class CgStructureParser {
 
     /** Matches a {@code Pass} keyword followed by optional whitespace and an opening brace. */
     private static final Pattern PASS_BLOCK_PATTERN = Pattern.compile("\\bPass\\s*\\{");
+    private static final Pattern BUFFERS_BLOCK_PATTERN = Pattern.compile("\\bBuffers\\s*\\{");
+    private static final Pattern STRUCT_PATTERN = Pattern.compile("\\bstruct\\s+([A-Za-z_]\\w*)\\s*\\{");
 
     static final String[] RESERVED_PREFIXES = {"cg_", "CG_", "_v2f_"};
 
+    /** A material's {@code Buffers { }}, and the declarations of the structs their elements name. */
+    @Desugar
+    record MaterialBuffers(List<CgBufferDecl> buffers, String structs) {
+        static final MaterialBuffers NONE = new MaterialBuffers(List.of(), "");
+    }
+
     private CgStructureParser() {}
+
+    /**
+     * The material-level {@code Buffers { }}, read in a kernel's grammar ({@link CgComputeParser#materialBuffers}),
+     * with the structs it names declared before it. {@code code} is the source with its comments blanked.
+     */
+    static MaterialBuffers parseBuffers(String code, String resourcePath) {
+        Matcher pass = PASS_BLOCK_PATTERN.matcher(code);
+        String region = pass.find() ? code.substring(0, pass.start()) : code;
+        Matcher block = BUFFERS_BLOCK_PATTERN.matcher(region);
+        if (!block.find()) return MaterialBuffers.NONE;
+        int open = block.end() - 1;
+        int close = matchBrace(region, open);
+        int blockStart = block.start();
+        if (block.find(close)) throw new CgShaderParseException("[" + resourcePath + "] declares 'Buffers' twice");
+
+        Map<String, String> bodies = new LinkedHashMap<>();
+        Map<String, String> declarations = new HashMap<>();
+        Matcher struct = STRUCT_PATTERN.matcher(region);
+        while (struct.find() && struct.start() < blockStart) {
+            if (struct.group(1).equals("v2f")) continue;
+            int braceOpen = struct.end() - 1;
+            int braceClose = matchBrace(region, braceOpen);
+            int semi = region.indexOf(';', braceClose);
+            bodies.put(struct.group(1), region.substring(braceOpen + 1, braceClose));
+            declarations.put(struct.group(1), region.substring(struct.start(), semi < 0 ? braceClose + 1 : semi + 1));
+        }
+        List<CgBufferDecl> buffers = CgComputeParser.materialBuffers(region.substring(open + 1, close), bodies, resourcePath);
+        if (buffers.size() > CgBindingPoints.MATERIAL_BUFFER_COUNT) {
+            throw new CgShaderParseException("[" + resourcePath + "] 'Buffers' declares " + buffers.size()
+                    + " buffers: a material reads at most " + CgBindingPoints.MATERIAL_BUFFER_COUNT);
+        }
+        StringBuilder structs = new StringBuilder();
+        for (String name : bodies.keySet()) {
+            for (CgBufferDecl b : buffers) {
+                if (b.element().equals(name)) {
+                    structs.append(declarations.get(name)).append('\n');
+                    break;
+                }
+            }
+        }
+        return new MaterialBuffers(buffers, structs.toString());
+    }
 
     // ── Block extraction ──────────────────────────────────────────────────────
 

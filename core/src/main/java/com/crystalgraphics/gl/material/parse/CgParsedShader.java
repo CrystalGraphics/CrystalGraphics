@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.material.parse;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 
 import java.util.List;
@@ -59,13 +60,24 @@ import java.util.List;
  *     Contains at least one entry — the parser throws
  *     {@link CgShaderParseException} when no {@code Pass { }} blocks are found.
  *     Duplicate Depth/ShadowCaster passes are silently removed (first kept).
+ * @param buffers
+ *     The material-level {@code Buffers { }}: buffers a kernel writes, which every pass reads. Buffer {@code i} is
+ *     bound by {@code CgMaterial.buffer(name, buffer)}. Empty when there is none.
+ * @param bufferStructs
+ *     The structs those buffers' elements name, as declared, emitted ahead of them in every stage.
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
                               boolean unfogged,
-                              List<CgParsedPass> passes) {
+                              List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
+
+    /** The declared buffer of that name, or null. */
+    public CgBufferDecl buffer(String name) {
+        for (int i = 0; i < buffers.size(); i++) if (buffers.get(i).name().equals(name)) return buffers.get(i);
+        return null;
+    }
 
     /** Whether its draws carry the object record ({@code CG_OBJECT_DATA}): every material but the quad and curve renderers'. */
     public boolean readsObjectRecord() {
