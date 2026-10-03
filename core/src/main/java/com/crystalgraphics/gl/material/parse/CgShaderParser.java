@@ -167,6 +167,7 @@ public final class CgShaderParser {
 
         // CastShadows is opt-out: absent or any value other than "Off" means true
         boolean castShadows = !"Off".equalsIgnoreCase(topTags.getOrDefault("CastShadows", "On"));
+        float sceneColorMargin = sceneColorMargin(topTags.get("SceneColorMargin"), resourcePath);
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -287,7 +288,22 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, castShadows, Collections.unmodifiableList(passes));
+                renderType, castShadows, sceneColorMargin, Collections.unmodifiableList(passes));
+    }
+
+    /** The {@code "SceneColorMargin"} tag: a share of the target's height, above 0; NaN when absent. */
+    private static float sceneColorMargin(String tag, String resourcePath) {
+        if (tag == null) return Float.NaN;
+        float margin;
+        try {
+            margin = Float.parseFloat(tag.trim());
+        } catch (NumberFormatException e) {
+            throw new CgShaderParseException("[" + resourcePath + "] SceneColorMargin '" + tag + "' is not a number");
+        }
+        if (!(margin > 0f)) {
+            throw new CgShaderParseException("[" + resourcePath + "] SceneColorMargin must be above 0, a share of the target's height");
+        }
+        return margin;
     }
 
     /**

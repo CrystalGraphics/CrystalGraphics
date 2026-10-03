@@ -43,6 +43,10 @@ import java.util.List;
  *     {@code "CastShadows" = "Off"}; {@code true} in all other cases (including
  *     when the tag is absent). Controls whether the shadow auto-generation ladder
  *     runs during {@code recompile()}.
+ * @param sceneColorMargin
+ *     How far past its own geometry a draw samples {@code cg_SceneColor}, a share of the target's height: the
+ *     material-level {@code "SceneColorMargin"} tag, NaN when absent, and required of a shader that reads it. The
+ *     frame graph copies the target that much wider round a reader.
  * @param passes
  *     Ordered, unmodifiable list of parsed {@link CgParsedPass} records.
  *     Contains at least one entry — the parser throws
@@ -52,7 +56,7 @@ import java.util.List;
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
-                              String renderType, boolean castShadows,
+                              String renderType, boolean castShadows, float sceneColorMargin,
                               List<CgParsedPass> passes) {
 
     /**

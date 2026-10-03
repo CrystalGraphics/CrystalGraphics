@@ -289,6 +289,11 @@ public final class CgFrame {
         int[] countModes = new int[16];
         /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
         int[] copyBefore = new int[16];
+        /**
+         * Per batch copying colour, the rect it copies in GL pixels from the bottom left, x0, y0, x1, y1; x1 below 0
+         * for the whole target. Depth is always copied whole.
+         */
+        int[] copyRect = new int[16 * 4];
         /** Its indirect batches: the commands the executor builds before the pass begins. */
         int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
@@ -318,6 +323,7 @@ public final class CgFrame {
                 countOffsets = new long[n];
                 countModes = new int[n];
                 copyBefore = new int[n];
+                copyRect = new int[n * 4];
             } else {
                 Arrays.fill(mesh, 0, count, null);
                 Arrays.fill(counts, 0, count, null);

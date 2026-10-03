@@ -11,6 +11,9 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -74,6 +77,7 @@ public class CgFrameBuilderTest {
 
     private static final String READER = """
             #type none
+            Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.05" }
             Pass {
                 void vertex(out v2f o) { }
                 void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(cg_SceneColor, vec2(0.5)); }
@@ -82,11 +86,54 @@ public class CgFrameBuilderTest {
 
     /** One draw of {@code pipeline} at sort key {@code key}. */
     private CgDrawChunk keyed(CgRecording rec, CgMaterial of, CgPipeline pipeline, long key) {
+        return keyed(rec, of, pipeline, key, 0, 0, 10, 10);
+    }
+
+    /** As {@link #keyed(CgRecording, CgMaterial, CgPipeline, long)}, over a rect of the target, from its top left. */
+    private CgDrawChunk keyed(CgRecording rec, CgMaterial of, CgPipeline pipeline, long key,
+                              float x0, float y0, float x1, float y1) {
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(pipeline, of.captureBindings(rec.bindings())).sortKey(key);
         c.instance();
-        c.bounds(0, 0, 10, 10);
+        c.bounds(x0, y0, x1, y1);
         return c.end();
+    }
+
+    /**
+     * A colour copy covers its readers' rects grown by their margin, in GL pixels, and a reader after a draw takes a
+     * copy of its own rect: the readers before it drew too, so the last copy no longer holds what it sees.
+     */
+    @Test
+    public void aCopyIsCutToWhatItsReadersSample() {
+        CgMaterial haze = CgMaterial.fromSource(READER);
+        CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
+        CgRecording rec = new CgRecording();
+        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
+                .sceneColor(5);
+        // Margin: 0.05 of 64 plus a texel, 4.2 pixels.
+        pass.add(keyed(rec, material, quads, 1, 0, 0, 10, 10));
+        pass.add(keyed(rec, haze, reads, 2, 20, 20, 30, 30));    // a copy...
+        pass.add(keyed(rec, haze, reads, 3, 40, 0, 50, 10));     // ...grown to hold this reader too
+        pass.add(keyed(rec, material, quads, 4, 0, 50, 10, 60)); // ends the run, over neither
+        pass.add(keyed(rec, haze, reads, 5, 22, 22, 28, 28));    // inside the copy, but the first reader drew there
+        pass.add(keyed(rec, material, quads, 6, 20, 20, 30, 30));
+        pass.add(keyed(rec, haze, reads, 7, 20, 20, 30, 30));    // wider than the last copy
+        pass.end();
+        CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
+        CgFrame.Raster packed = frame.rasters[0];
+
+        List<int[]> rects = new ArrayList<>();
+        for (int b = 0; b < packed.count; b++) {
+            if (packed.copyBefore[b] == 0) continue;
+            assertEquals(reads.id(), packed.pipeline[b]);
+            assertEquals(CgTargetCopy.COLOR, packed.copyBefore[b]);
+            rects.add(Arrays.copyOfRange(packed.copyRect, b * 4, b * 4 + 4));
+        }
+        assertEquals(3, rects.size());
+        assertArrayEquals(new int[]{15, 29, 55, 64}, rects.get(0));
+        assertArrayEquals(new int[]{17, 31, 33, 47}, rects.get(1));
+        assertArrayEquals(new int[]{15, 29, 35, 49}, rects.get(2));
+        builder.recycle(frame);
     }
 
     /**

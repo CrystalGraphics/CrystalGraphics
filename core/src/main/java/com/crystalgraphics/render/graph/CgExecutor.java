@@ -82,6 +82,7 @@ public final class CgExecutor {
 
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
     private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
+    private static final int TARGET_COPY_PIXELS = CgTrace.name("graph.target-copy-pixels");
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     /** What every QUAD and CURVE instance expands. */
@@ -710,7 +711,7 @@ public final class CgExecutor {
         try {
             for (int b = 0; b < packed.count; b++) {
                 int command = packed.counts[b] != null ? slot++ : -1;
-                if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b]);
+                if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
                     if (boundScissor == CgRasterPass.NO_SCISSOR) {
@@ -849,19 +850,25 @@ public final class CgExecutor {
         scissorRect[3] = Math.max(0, y1 - y0);
     }
 
-    /** Copies what {@code bits} name from the pass's target for the draws sampling it, and binds the copies. */
-    private static void copyTarget(CgRasterPass pass, int bits) {
+    /**
+     * Copies what {@code bits} name from the pass's target for the draws sampling it, colour in the rect at {@code at}
+     * of {@code rects}, and binds the copies.
+     */
+    private static void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
         CgGraphTexture target = pass.target;
         CgTargetCopy copy = pass.targetCopy();
+        long pixels;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
-            copy.copy(CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING), null, 0, 0, bits, POOL);
+            pixels = copy.copy(CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING), null, 0, 0, bits, rects, at, POOL);
         } else {
             CgFrameBuffer storage = storage(target);
-            copy.copy(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), bits, POOL);
+            pixels = copy.copy(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), bits,
+                    rects, at, POOL);
         }
         if ((bits & CgTargetCopy.COLOR) != 0) copy.color.bind(pass.sceneColorUnit());
         if ((bits & CgTargetCopy.DEPTH) != 0) copy.depth.bind(pass.sceneDepthUnit());
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
+        CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
     }
 
     /** Binds a pass's target and its viewport; the current target is left as it is. */

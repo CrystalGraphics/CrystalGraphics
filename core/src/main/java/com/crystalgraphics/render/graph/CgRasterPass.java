@@ -40,8 +40,9 @@ import java.util.List;
  *       fixed unit.</li>
  *   <li>{@link #sceneColor} and {@link #sceneDepth} let its draws sample the target itself: a draw whose shader reads
  *       {@code cg_SceneColor} or {@code cg_DepthBuffer} sees every draw of the pass sorted before it. The graph copies
- *       the target before the first such draw and again wherever a draw since wrote what it reads, at most
- *       {@link #MAX_TARGET_COPIES} times a pass; readers in a row share a copy, so they never see each other.</li>
+ *       the target before the first such draw and again wherever a draw since wrote what it reads; readers in a row
+ *       share a copy, so they never see each other. A colour copy is cut to its readers' bounds grown by their
+ *       shader's {@code SceneColorMargin} tag, so a reader with no bounds copies the whole target.</li>
  *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
  *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
  * </ul>
@@ -74,9 +75,6 @@ public final class CgRasterPass extends CgPass {
 
     private int viewOwner;
     private float viewX, viewY;
-
-    /** Copies of the target a pass takes for its readers, at most; past it they share the last. */
-    public static final int MAX_TARGET_COPIES = 4;
 
     /** The units its draws sample the target's colour and depth at, or -1. */
     private int sceneColorUnit = -1, sceneDepthUnit = -1;
