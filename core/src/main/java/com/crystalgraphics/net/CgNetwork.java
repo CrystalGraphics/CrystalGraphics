@@ -1,6 +1,7 @@
 package com.crystalgraphics.net;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -58,6 +59,9 @@ public final class CgNetwork {
     /** The client's single key: it has one server and needs no identity. */
     private static final Object CLIENT = "client";
 
+    /** The hello and the typed messages, on every connection. */
+    private static final String CONTRIBUTOR = "cg";
+
     private static final List<Consumer<CgPeer>> CLOSED = new CopyOnWriteArrayList<>();
 
     @Nullable
@@ -92,6 +96,14 @@ public final class CgNetwork {
         server = new CgConnections("server", channel.maxFrameBytes(), false).onPeerClosed(CgNetwork::closed);
         client = new CgConnections("client", channel.maxFrameBytes(), true);
         channel.setInboundHandler(CgNetwork::route);
+        Set<String> contributors = CgProtocols.contributors();
+        if (!contributors.contains(CONTRIBUTOR)) {
+            // The hello first: a typed send to a peer waits on it.
+            CgProtocols.contribute(CONTRIBUTOR, connection -> {
+                CgHello.bind(connection, CgMessage::namespaces);
+                CgMessage.bindAll(connection);
+            });
+        }
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
         return true;
     }
@@ -118,6 +130,15 @@ public final class CgNetwork {
     public static CgProtocolConnection<Object> client() {
         CgConnections table = client;
         return table == null ? null : table.get(CLIENT);
+    }
+
+    /** Hands each connected player's profile id to {@code out}. Server side; what {@link CgAudience#all()} reads. */
+    public static void forEachPlayer(Consumer<UUID> out) {
+        CgConnections table = server;
+        if (table == null) return;
+        for (Object key : table.keys()) {
+            if (key instanceof UUID) out.accept((UUID) key);
+        }
     }
 
     /** How many connections are open, both sides. Diagnostics, and what a leak shows up in. */

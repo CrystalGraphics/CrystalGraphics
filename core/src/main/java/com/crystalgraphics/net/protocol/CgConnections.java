@@ -6,7 +6,9 @@ import com.crystalgraphics.serialization.CgPlainOps;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -178,6 +180,11 @@ public final class CgConnections {
     /** Closes everything. On a stop, so no caller is left waiting out a timeout for a dead process. */
     public void closeAll(String reason) {
         for (Object key : peers.keySet().toArray()) close(key, reason);
+    }
+
+    /** The keys of every open connection: a live view, safe to iterate while peers come and go. */
+    public Set<Object> keys() {
+        return Collections.unmodifiableSet(peers.keySet());
     }
 
     /** How many peers hold one. Diagnostics, and what a leak would show up in. */
