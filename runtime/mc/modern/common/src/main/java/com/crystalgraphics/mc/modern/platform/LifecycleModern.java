@@ -219,6 +219,11 @@ public final class LifecycleModern {
         hostTexture = texture;
         hostDevice = device;
     }
+
+    // The GL texture under one the loader may have wrapped: what a cast to GlTexture needs.
+    public static GpuTexture hostTexture(GpuTexture texture) {
+        return hostTexture.apply(texture);
+    }
     *///?}
 
     // 26.2 moved it from Minecraft to the game renderer.

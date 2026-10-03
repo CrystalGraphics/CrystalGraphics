@@ -63,7 +63,7 @@ public final class CgHostTextures {
         return version;
     }
 
-    /** Host side: this frame's lightmap, the host's own handle for it (an Integer GL name, or Blaze3D's texture); null for none. */
+    /** Host side: this frame's lightmap, the handle {@link CgGL#importHostTexture} takes on this host; null for none. */
     public CgHostTextures lightmap(Object hostHandle, int width, int height) {
         if (!Objects.equals(hostHandle, lightmapHandle)) {
             lightmapHandle = hostHandle;
@@ -80,6 +80,33 @@ public final class CgHostTextures {
         if (!Objects.equals(hostHandle, atlasHandle)) {
             atlasHandle = hostHandle;
             atlas = hostHandle == null ? 0 : CgGL.importHostTexture(hostHandle);
+            version++;
+        }
+        atlasWidth = width;
+        atlasHeight = height;
+        return this;
+    }
+
+    /**
+     * Host side: this frame's lightmap as a name the host already imported, for a host with its own cached import (the
+     * Vulkan host's {@code importTexture}, which wraps its image in what the tracked backend takes); 0 for none.
+     */
+    public CgHostTextures importedLightmap(int name, int width, int height) {
+        if (name != lightmap || lightmapHandle != null) {
+            lightmapHandle = null;
+            lightmap = name;
+            version++;
+        }
+        lightmapWidth = width;
+        lightmapHeight = height;
+        return this;
+    }
+
+    /** Host side: this frame's block atlas, as {@link #importedLightmap}. */
+    public CgHostTextures importedBlockAtlas(int name, int width, int height) {
+        if (name != atlas || atlasHandle != null) {
+            atlasHandle = null;
+            atlas = name;
             version++;
         }
         atlasWidth = width;

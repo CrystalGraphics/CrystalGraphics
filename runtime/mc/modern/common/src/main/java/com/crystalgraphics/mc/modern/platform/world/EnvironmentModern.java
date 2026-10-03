@@ -89,7 +89,8 @@ public final class EnvironmentModern {
         /*boolean hasSky = false, hasCeiling = false;
         *///?}
         //? if >=1.21.11 {
-        /*boolean ultraWarm = attributes.getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES);
+        /*// Positional, though it reads as a dimension's: getDimensionValue throws for it.
+        boolean ultraWarm = attributes.getValue(EnvironmentAttributes.WATER_EVAPORATES, eye);
         *///?} elif >=1.16.5 {
         boolean ultraWarm = level.dimensionType().ultraWarm();
         //?} else {

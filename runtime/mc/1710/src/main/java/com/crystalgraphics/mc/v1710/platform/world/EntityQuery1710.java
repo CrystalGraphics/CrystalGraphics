@@ -27,6 +27,8 @@ import java.util.function.IntConsumer;
  */
 public final class EntityQuery1710 implements CgEntityQuery {
 
+    private static final double PLAYER_EYE = 1.62;
+
     @Override
     public int localPlayer() {
         Entity player = Minecraft.getMinecraft().thePlayer;
@@ -49,14 +51,14 @@ public final class EntityQuery1710 implements CgEntityQuery {
         Entity e = entity(id);
         if (e == null) return false;
         out[X] = e.lastTickPosX + (e.posX - e.lastTickPosX) * partialTick;
-        out[Y] = e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTick;
+        out[Y] = e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTick - e.yOffset;
         out[Z] = e.lastTickPosZ + (e.posZ - e.lastTickPosZ) * partialTick;
         out[VELOCITY_X] = e.motionX;
         out[VELOCITY_Y] = e.motionY;
         out[VELOCITY_Z] = e.motionZ;
         out[WIDTH] = e.boundingBox.maxX - e.boundingBox.minX;
         out[HEIGHT] = e.boundingBox.maxY - e.boundingBox.minY;
-        out[EYE_HEIGHT] = e.getEyeHeight();
+        out[EYE_HEIGHT] = eyeHeight(e);
         out[YAW] = angle(e.prevRotationYaw, e.rotationYaw, partialTick);
         out[PITCH] = e.prevRotationPitch + (e.rotationPitch - e.prevRotationPitch) * partialTick;
         if (e instanceof EntityLivingBase) {
@@ -70,6 +72,14 @@ public final class EntityQuery1710 implements CgEntityQuery {
             out[LIMB_SWING] = out[LIMB_SWING_AMOUNT] = 0.0;
         }
         return true;
+    }
+
+    // A player's eyeHeight is measured from its posY, which sits yOffset above the feet on the local player and at
+    // them on a remote one; the camera is 1.62 above the feet either way (EntityRenderer.orientCamera).
+    private static double eyeHeight(Entity e) {
+        if (!(e instanceof EntityPlayer)) return e.getEyeHeight();
+        EntityPlayer player = (EntityPlayer) e;
+        return PLAYER_EYE + player.getEyeHeight() - player.getDefaultEyeHeight();
     }
 
     /** From {@code from} to {@code to} degrees by {@code t}, the short way round. */
