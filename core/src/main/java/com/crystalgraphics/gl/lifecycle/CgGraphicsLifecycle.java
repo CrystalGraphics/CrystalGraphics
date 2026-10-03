@@ -17,6 +17,7 @@ import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
@@ -483,6 +484,7 @@ public final class CgGraphicsLifecycle {
 
         // Step 7a2: Kernel programs and their blocks; the parsed files stay for the next context.
         CgCompute.releaseAll();
+        CgBufferTextures.releaseAll();
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.
