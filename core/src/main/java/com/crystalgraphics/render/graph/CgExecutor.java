@@ -251,12 +251,13 @@ public final class CgExecutor {
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
         multiDraw = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
-        // The current target, noted before any pass binds its own: rebound for a pass into it after one into another.
-        startNoted = frame.readsCurrentDepth || frame.rastersCurrent && frame.rastersOther;
+        // The current target, noted before any pass binds its own: rebound for a pass into it after one into another,
+        // and what a copy of it reads. From the state shadow, since a glGet waits for the driver to drain the queue.
+        startNoted = frame.readsCurrentDepth || frame.rastersCurrent;
         otherBound = false;
         if (startNoted) {
-            startFramebuffer = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
-            CgGL.glGetInteger(CgGL.GL_VIEWPORT, startViewport);
+            startFramebuffer = CgGlState.drawFramebuffer();
+            CgGlState.viewport(startViewport);
         }
         frame.bindings.upload(ring);
         for (int k = 0; k < KINDS; k++) {
@@ -1300,8 +1301,6 @@ public final class CgExecutor {
         CgTargetCopy copy = pass.targetCopy();
         long pixels;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
-            // What the execution began on, as bindTarget binds it; a glGet would wait for the driver to drain every
-            // draw queued before it.
             pixels = copy.copy(startFramebuffer, null, startViewport.get(2), startViewport.get(3), bits, rects, at, POOL);
         } else {
             CgFrameBuffer storage = storage(target);

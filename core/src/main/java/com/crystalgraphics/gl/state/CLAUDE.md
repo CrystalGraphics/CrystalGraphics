@@ -173,6 +173,20 @@ reports every write outside an open scope as a leak, and a handed-over write is 
 Open the scope at the entry point, and where the entry runs every frame, only once there is work (the
 glyph drain opens it on the first commit).
 
+## Asking the shadow instead of the driver
+
+A `glGet` on a frame path waits for the driver to drain every queued call: one in the target copy cost bloom
+2 ms a frame at the beam peak. Ask the shadow, which answers from what a scope read or what we wrote:
+
+```java
+int target = CgGlState.drawFramebuffer();   // the bound draw framebuffer
+CgGlState.viewport(ints);                   // x, y, width, height at 0..3
+```
+
+- Free inside a host section once the domain is known (an open scope declaring it read it). Outside one, or
+  untrusted, it reads the domain once, as a scope would.
+- Inside a `CgGlRecording` it answers what the recording set.
+
 ### Trust is per field
 
 A **field** is what one setter writes — `glDepthMask`'s mask, `glBlendFuncSeparate`'s four factors, one
