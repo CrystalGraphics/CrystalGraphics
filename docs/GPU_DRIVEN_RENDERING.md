@@ -336,9 +336,11 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 8. **Bounds**: authored for a definition (Niagara's fixed bounds), or a GPU reduce read back late and grown by the
    speed limit times the delay. A draw with no bounds cannot be culled on the CPU.
 9. **Transparency**: sort what blends (the (slot, depth) key); additive needs no order.
-10. **Overlap**: compute that leaves the GPU idle (small dispatches, a reduction's last levels) goes in an `async()`
-    pass beside fill-bound drawing, on a device with a compute queue (§12). The builder starts it as early as its inputs
-    allow and moves what reads its results as late as the graph allows, so recording order does not decide the overlap.
+10. **Overlap: mark every pass that fits `async()`**, and do not leave it for later. A simulation step, a sort or a cull
+    of thousands, with drawing between it and its reader (a step at the opaque stage read at the transparent one is
+    the usual case), runs beside the drawing on a device with a compute queue and in order with the same result
+    elsewhere (§12). The rule, and what to leave in order: [`SHADERS.md` § *Beside the drawing*](SHADERS.md#beside-the-drawing-async).
+    The engine places it and waits for it, across the frame's stages.
 11. **Design for every tier** ([`SHADERS.md` § *Designing for every tier*](SHADERS.md#designing-for-every-tier)):
     lowerable shapes, `vec4` records, few dispatches below compute, capacity sized by `kernel.form()`, and the work
     scaled by a `CgGpuBudget` its passes are charged to.

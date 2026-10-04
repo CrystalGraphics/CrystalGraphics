@@ -105,16 +105,36 @@ public final class CgComputePass extends CgPass {
 
     /**
      * Runs beside the frame's queue where the device has a compute queue ({@code CgCapabilities.asyncCompute()}): the
-     * steps after it that touch nothing it reads or writes overlap it, and the first that does waits for it. The builder
-     * places it as early, and what reads its results as late, as the graph allows. Elsewhere, and for a pass with a
-     * dispatch below compute, it runs in order with the same result.
+     * steps after it that touch nothing it reads or writes overlap it, and the first that does waits for it, in this
+     * execution or a later one of the frame. Elsewhere, and for a pass with a dispatch below compute, it runs in order
+     * with the same result.
+     *
+     * <p><b>Mark every pass that fits</b>: all compute, big enough to hide (thousands of elements, or dispatches with
+     * barriers between them), with drawing between it and its first reader. Left in order, such a pass costs the frame
+     * its whole time. Leave it off a small pass and one whose reader comes straight after.
      *
      * <pre>{@code
+     * // A simulation stepped at the opaque stage, drawn at the transparent one: the world draws beside it.
+     * CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(order, frame -> {
+     *     CgComputePass step = frame.recording().compute("sparks.step").async();
+     *     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
+     *     step.end();
+     * });
+     *
+     * // A cull ahead of a shadow map that touches neither buffer: drawn while the cull runs, wherever recorded.
      * CgComputePass cull = recording.compute("instances.cull", constants).async();
      * cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
      * cull.end();
-     * recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs, wherever recorded
+     * recording.raster(shadowMap, ...);
      * }</pre>
+     *
+     * <ul>
+     *   <li>The builder places it as early, and what reads its results as late, as the graph allows: recording order
+     *       does not decide the overlap.</li>
+     *   <li>Waits cross executions for graph buffers (not imported ones) and transient textures; work on anything else
+     *       is waited for at the end of its execution, since the host may touch it.</li>
+     *   <li>On Minecraft's device it may not touch Minecraft's own textures, and throws naming one.</li>
+     * </ul>
      */
     public CgComputePass async() {
         requireOpen();
