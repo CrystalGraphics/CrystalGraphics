@@ -7,6 +7,7 @@ import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -188,6 +189,9 @@ public final class CgRecording {
                                @Nullable CgRenderState state, CgOrder order) {
         requireOpen();
         if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
+        if (target.isVolume()) {
+            throw new IllegalArgumentException(target + " is a volume: kernels write it as a 3d image, and no pass draws into one");
+        }
         String name = level == 0 ? "raster " + target.name() : "raster " + target.name() + " level " + level;
         CgRasterPass pass = new CgRasterPass(this, name, target, level, load, block(constants), state, order);
         add(pass);
@@ -218,6 +222,7 @@ public final class CgRecording {
         if (from.kind() == CgGraphTexture.Kind.CURRENT || to.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("a copy names its framebuffers; the current target has none");
         }
+        if (from.isVolume() || to.isVolume()) throw new IllegalArgumentException("a copy is between 2D textures, not volumes");
         CgPass.Copy copy = new CgPass.Copy(from, x, y, w, h, to, tx, ty, tw, th, linear);
         add(copy);
         read(copy, from, CgAccess.COPY_READ);
@@ -288,13 +293,26 @@ public final class CgRecording {
      * attachment back to the CPU, as its texture type ({@link CgReadback#pixels}): rows bottom first, tightly packed.
      */
     public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink) {
+        return readback(texture, level, x, y, 0, w, h, 1, sink);
+    }
+
+    /**
+     * Reads a {@code w} x {@code h} x {@code d} box at {@code (x, y, z)} of a volume back to the CPU: slices from
+     * {@code z} up, each as the 2D form answers a region. On a 2D texture {@code z} is 0 and {@code d} 1.
+     *
+     * <pre>{@code
+     * recording.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));   // slices 40 and 41
+     * }</pre>
+     */
+    public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
+                              CgReadback.Sink sink) {
         requireOpen();
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
         }
-        region(texture, level, x, y, w, h, "a readback");
+        region(texture, level, x, y, z, w, h, d, "a readback");
         CgRequest request = new CgRequest("readback " + texture.name());
-        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, w, h, sink, request);
+        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, z, w, h, d, sink, request);
         add(pass);
         read(pass, texture, CgAccess.COPY_READ);
         return request;
@@ -316,24 +334,41 @@ public final class CgRecording {
      * </ul>
      */
     public CgRequest update(CgGraphTexture texture, int level, int x, int y, int w, int h, ByteBuffer data) {
+        return update(texture, level, x, y, 0, w, h, 1, data);
+    }
+
+    /**
+     * Writes a {@code w} x {@code h} x {@code d} box at {@code (x, y, z)} of a volume, laid out as
+     * {@link #readback(CgGraphTexture, int, int, int, int, int, int, int, CgReadback.Sink)} answers one: what a window
+     * scrolling through a world uploads, a slab of new slices. On a 2D texture {@code z} is 0 and {@code d} 1.
+     *
+     * <pre>{@code
+     * recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 slices from 32, R8UI: 128 * 96 * 16 bytes
+     * }</pre>
+     */
+    public CgRequest update(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, ByteBuffer data) {
         requireOpen();
-        CgFrameBufferFormat format = region(texture, level, x, y, w, h, "an update");
+        CgFrameBufferFormat format = region(texture, level, x, y, z, w, h, d, "an update");
         if (format == null || format.isMultisampled()) {
             throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known type to update");
         }
         CgTextureType type = format.getColorSlot(0);
-        long want = (long) w * h * CgReadback.pixelBytes(type);
+        long want = (long) w * h * d * CgReadback.pixelBytes(type);
         if (data.remaining() != want) {
-            throw new IllegalArgumentException(w + "x" + h + " of " + type + " is " + want + " bytes, not " + data.remaining());
+            throw new IllegalArgumentException(w + "x" + h + "x" + d + " of " + type + " is " + want + " bytes, not "
+                    + data.remaining());
         }
         byte[] bytes = new byte[data.remaining()];
         data.duplicate().get(bytes);
         int pixelFormat = type.glBaseFormat, pixelType = type.glType;
         return upload(texture, target -> {
-            if (!(target.getColorTexture(0) instanceof CgTexture2D colour)) {
+            if (target.getColorTexture(0) instanceof CgTexture2D colour) {
+                colour.uploadRegion(level, x, y, w, h, texels(bytes), pixelFormat, pixelType);
+            } else if (target.getColorTexture(0) instanceof CgTexture3D volume) {
+                volume.uploadRegion(level, x, y, z, w, h, d, texels(bytes), pixelFormat, pixelType);
+            } else {
                 throw new IllegalStateException(texture + "'s attachment 0 is no texture the engine owns");
             }
-            colour.uploadRegion(level, x, y, w, h, texels(bytes), pixelFormat, pixelType);
         });
     }
 
@@ -347,9 +382,10 @@ public final class CgRecording {
         return texels;
     }
 
-    /** The format of {@code texture}, null where unknown, after checking the region lies in level {@code level}. */
+    /** The format of {@code texture}, null where unknown, after checking the box lies in level {@code level}. */
     @Nullable
-    private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int w, int h, String what) {
+    private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
+                                              String what) {
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) throw new IllegalArgumentException("the current target is no texture");
         if (level < 0 || level >= texture.getLevels()) {
             throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
@@ -360,9 +396,10 @@ public final class CgRecording {
             throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
         }
         int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > lw || y + h > lh) {
-            throw new IllegalArgumentException(what + " of " + w + "x" + h + " at " + x + "," + y + " in level " + level
-                    + " of " + texture + ", " + lw + "x" + lh);
+        int ld = texture.getDepth();
+        if (x < 0 || y < 0 || z < 0 || w <= 0 || h <= 0 || d <= 0 || x + w > lw || y + h > lh || z + d > ld) {
+            throw new IllegalArgumentException(what + " of " + w + "x" + h + "x" + d + " at " + x + "," + y + "," + z
+                    + " in level " + level + " of " + texture + ", " + lw + "x" + lh + "x" + ld);
         }
         return format;
     }

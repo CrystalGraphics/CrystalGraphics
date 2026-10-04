@@ -715,11 +715,12 @@ public final class CgExecutor {
         }
         for (int i = 0; i < d.images.length; i++) {
             if (d.images[i] == null) continue;
-            CgTexture color = storage(d.images[i]).getColorTexture(0);
+            CgFrameBuffer storage = storage(d.images[i]);
+            CgTexture color = storage.getColorTexture(0);
             int level = d.levels[i];
-            b.image(i, color.getId(), CgGL.GL_TEXTURE_2D, level, color.getLevels(), d.layers[i],
-                    Math.max(1, color.getWidth() >> level),
-                    Math.max(1, color.getHeight() >> level), 1);
+            b.image(i, color.getId(), color.getTarget(), level, color.getLevels(), d.layers[i],
+                    Math.max(1, color.getWidth() >> level), Math.max(1, color.getHeight() >> level),
+                    Math.max(1, storage.getDepth() >> level));
         }
         switch (d.form) {
             case ELEMENTS -> b.elements(d.x, d.y, d.z);
@@ -1300,7 +1301,12 @@ public final class CgExecutor {
             return;
         }
         CgFrameBuffer storage = storage(r.texture);
-        CgReadback.pixels(storage.levelId(r.level), r.x, r.y, r.w, r.h, storage.getFormat().getColorSlot(0), r);
+        if (storage.isVolume()) {
+            CgReadback.slices(storage.getColorTexture(0).getId(), r.level, r.x, r.y, r.z, r.w, r.h, r.d,
+                    storage.getFormat().getColorSlot(0), r);
+        } else {
+            CgReadback.pixels(storage.levelId(r.level), r.x, r.y, r.w, r.h, storage.getFormat().getColorSlot(0), r);
+        }
     }
 
     /** A texture's storage now: a requested one's is made on first use. */
@@ -1309,9 +1315,7 @@ public final class CgExecutor {
         if (storage == null && texture.kind() == CgGraphTexture.Kind.REQUESTED) {
             // At a requested texture's first use; made again later, the picture it held was lost.
             CgTrace.add(CgChannels.GL, "graph.requested.made", 1);
-            CgTextureDesc desc = texture.desc();
-            storage = CgFrameBuffer.createOwned("cg_graph_" + texture.name(), desc.width(), desc.height(), desc.format(),
-                    desc.levels());
+            storage = CgTexturePool.create("cg_graph_" + texture.name(), texture.desc());
             texture.resolve(storage);
         }
         if (storage == null) throw new IllegalStateException(texture + " has no storage in this pass");

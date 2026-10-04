@@ -83,7 +83,8 @@ refused at startup.
 first time and kept while nothing else writes the buffer; what it writes is uploaded through the frame ring before the
 next pass. A map, gather, append or image body runs as ranges on a pool of daemon workers (`crystalgraphics-compute-*`),
 a scatter or general body once, in order. Images are read whole before the body and written whole after; a sampler
-property the kernel names (`CgKernelDecl.samplers`) is read whole, every level, on the render thread before it.
+property the kernel names (`CgKernelDecl.samplers`) is read whole, every level and every slice of a 3D one, on the
+render thread before it.
 
 **The every-tier check** (§6.6): `CgKernelForm.check`, GL-free, asks G43, G40 and G33 for the form each would choose
 and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.20, 4.00, 3.30) against

@@ -50,6 +50,9 @@ CPU, per frame: O(draws)                          GPU, per frame: O(elements)
 - **Nothing waits.** A count goes from the kernel that wrote it to the command that draws it on the GPU. What the CPU
   wants to know (live bounds, events, a count for a budget) comes back through `CgReadback` frames later; an event
   stream comes back as the rows its count says were written, with the count (`CgGpuOps.readRows`).
+- **A field the elements move through is a volume.** The world's voxels, a vector field, a gas grid: a 3D graph
+  texture kernels write as a `3d` image and sample as a `sampler3D`, a box of it updated as the world changes
+  ([`SHADERS.md` § *Volumes*](SHADERS.md#volumes)).
 
 ## 2. Which entry point
 
@@ -476,7 +479,7 @@ against 0.221 on Vulkan, inside the 5% it allows over.
 
 What a pipeline here cannot do today, so a design does not assume it:
 
-- 3D textures in the graph: use an atlas of slices.
+- Mip levels of a volume in the graph: it holds one. A `CgTexture3D` of its own has them (`generateMipmaps`).
 - Persistent world draws (a GPU scene scatter-updated only when something moves): records are rewritten every frame.
 - Two-phase occlusion for the engine's own draws: the pyramid is of what the host drew first.
 - Clustered lights and decals, an order-independent transparent queue, bindless textures.

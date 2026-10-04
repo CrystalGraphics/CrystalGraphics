@@ -43,6 +43,7 @@ CgFrameBufferRegistry       → single source of truth for all owned FBOs;
 | `delete()` — frees GL resources; sets `deleted = true`; does NOT touch registry | `CgFrameBuffer` |
 | `wrap(name, fboId, w, h, family)` — non-owned wrapper via `WrappedFrameBuffer` inner class | `CgFrameBuffer` |
 | `createScreenSized(name, format)` — delegates to `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
+| `createVolume(name, w, h, d, format)` — a frame-graph volume's storage: slot 0 as a `CgTexture3D`, no framebuffer object; binding it, blits, clears, reattachment and resizes throw | `CgFrameBuffer` |
 
 ## Factory Split
 

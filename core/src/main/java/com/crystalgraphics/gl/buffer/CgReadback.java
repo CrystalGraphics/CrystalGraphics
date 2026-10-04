@@ -73,6 +73,8 @@ public final class CgReadback {
     private static final ArrayDeque<CgReadback> PENDING = new ArrayDeque<>();
     private static final List<CgReadback> IDLE = new ArrayList<>();
     private static long polls;
+    /** The framebuffer {@link #slices} attaches each slice to, made at first use. */
+    private static int sliceReader;
 
     private int buffer;
     private long capacity;
@@ -115,6 +117,42 @@ public final class CgReadback {
             if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);   // GL's default
             // UNBOUND AT ONCE: a bound pack buffer takes every later glReadPixels in the process, a host's screenshot
             // included.
+            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
+        }
+        r.start(size, sink);
+    }
+
+    /**
+     * Reads a {@code width} x {@code height} x {@code depth} box at {@code (x, y, z)} of level {@code level} of 3D
+     * texture {@code texture}, as {@code type}'s base format and pixel type: slices from {@code z} up, each laid out as
+     * {@link #pixels} lays out a region.
+     *
+     * <pre>{@code
+     * CgReadback.slices(grid.getId(), 0, 0, 0, 0, 64, 64, 64, CgTextureType.R16F, data -> keep(data));
+     * }</pre>
+     */
+    public static void slices(int texture, int level, int x, int y, int z, int width, int height, int depth,
+                              CgTextureType type, Sink sink) {
+        if (!type.isColor()) throw new IllegalArgumentException("a readback reads colour, not " + type);
+        if (width <= 0 || height <= 0 || depth <= 0) {
+            throw new IllegalArgumentException("a readback of " + width + "x" + height + "x" + depth);
+        }
+        int row = width * pixelBytes(type);
+        long slice = (long) row * height, size = slice * depth;
+        CgReadback r = take(size);
+        try (CgGlScope ignored = CgGlState.save(FBO)) {
+            // Read through a framebuffer bound for reading alone: a slice of a 3D image is no draw target on a device.
+            if (sliceReader == 0) sliceReader = CgGL.glGenFramebuffers();
+            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, sliceReader);
+            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, r.buffer);
+            boolean unaligned = (row & 3) != 0;
+            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 1);
+            for (int s = 0; s < depth; s++) {
+                CgGL.glFramebufferTextureLayer(CgGL.GL_READ_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture, level, z + s);
+                CgGL.glReadPixels(x, y, width, height, type.glBaseFormat, type.glType, s * slice);
+            }
+            if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);
+            CgGL.glFramebufferTextureLayer(CgGL.GL_READ_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, 0, 0, 0);
             CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
         }
         r.start(size, sink);
@@ -166,6 +204,8 @@ public final class CgReadback {
         for (CgReadback r : IDLE) CgGL.glDeleteBuffers(r.buffer);
         PENDING.clear();
         IDLE.clear();
+        if (sliceReader != 0) CgGL.glDeleteFramebuffers(sliceReader);
+        sliceReader = 0;
     }
 
     /** One with staging of at least {@code size} bytes: an idle one of that size class, else new. */
