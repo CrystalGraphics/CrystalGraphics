@@ -44,6 +44,8 @@ public final class CgLoweredPrograms {
     }
 
     private static final Map<String, Helper> HELPERS = new HashMap<>();
+    /** {@link #scatterInit}'s, by {@link #scalar} for a float target and at 3 for words; {@link #scatterBits}'s by it. */
+    private static final Helper[] INIT = new Helper[4], BITS = new Helper[3];
 
     private CgLoweredPrograms() {}
 
@@ -78,9 +80,11 @@ public final class CgLoweredPrograms {
      * @param scalar the element's type when {@code floats}: float, int or uint
      */
     public static Helper scatterInit(boolean floats, String scalar) {
-        String key = "init/" + floats + "/" + scalar;
+        int at = floats ? scalar(scalar) : 3;
+        Helper held = INIT[at];
+        if (held != null) return held;
         String out = floats ? "vec4(" + toFloat(scalar, "w.r") + ")" : "w";
-        return HELPERS.computeIfAbsent(key, k -> draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
+        return INIT[at] = draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
                 #version 330 core
                 uniform usamplerBuffer _cg_src;
                 uniform int _cg_first;
@@ -94,7 +98,7 @@ public final class CgLoweredPrograms {
                     uvec4 w = texelFetch(_cg_src, _cg_first + t);
                     _cg_o = %s;
                 }
-                """.formatted(floats ? "vec4" : "uvec4", out)));
+                """.formatted(floats ? "vec4" : "uvec4", out));
     }
 
     /**
@@ -106,7 +110,10 @@ public final class CgLoweredPrograms {
      * @param scalar the element's type: float, int or uint
      */
     public static Helper scatterBits(String scalar) {
-        return HELPERS.computeIfAbsent("bits/" + scalar, k -> draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
+        int at = scalar(scalar);
+        Helper held = BITS[at];
+        if (held != null) return held;
+        return BITS[at] = draw(CgLoweredEmitter.FULLSCREEN_VERTEX, """
                 #version 330 core
                 uniform sampler2D _cg_texels;
                 uniform usamplerBuffer _cg_src;
@@ -122,7 +129,7 @@ public final class CgLoweredPrograms {
                     uint seed = texelFetch(_cg_src, _cg_first + t).r;
                     _cg_o = v == %s ? seed : %s;
                 }
-                """.formatted(toFloat(scalar, "seed"), fromFloat(scalar, "v"))));
+                """.formatted(toFloat(scalar, "seed"), fromFloat(scalar, "v")));
     }
 
     /**
@@ -176,6 +183,11 @@ public final class CgLoweredPrograms {
                 """));
     }
 
+    /** float 0, int 1, anything else 2: read as uint, as {@link #toFloat} does. */
+    private static int scalar(String scalar) {
+        return scalar.equals("float") ? 0 : scalar.equals("int") ? 1 : 2;
+    }
+
     static String toFloat(String scalar, String bits) {
         return scalar.equals("float") ? "uintBitsToFloat(" + bits + ")" : scalar.equals("int") ? "float(int(" + bits + "))"
                 : "float(" + bits + ")";
@@ -197,5 +209,11 @@ public final class CgLoweredPrograms {
     static void releaseAll() {
         for (Helper h : HELPERS.values()) h.delete();
         HELPERS.clear();
+        for (Helper[] helpers : new Helper[][]{INIT, BITS}) {
+            for (int i = 0; i < helpers.length; i++) {
+                if (helpers[i] != null) helpers[i].delete();
+                helpers[i] = null;
+            }
+        }
     }
 }
