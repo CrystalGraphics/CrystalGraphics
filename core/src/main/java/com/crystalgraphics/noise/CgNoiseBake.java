@@ -68,6 +68,30 @@ public final class CgNoiseBake {
     }
 
     /**
+     * Cellular noise with its slope: rgb the unit direction from the nearest feature point, the gradient of the distance
+     * to it; a that distance, in cells. What a surface shaded from cellular noise takes its normal from: the gradient
+     * interpolates smoothly where differences of a filtered distance would step at every texel.
+     */
+    public static float[] voronoiNearest(int size, int period) {
+        float[] out = new float[size * size * size * 4];
+        float[] cell = new float[6];
+        float scale = (float) period / size;
+        int i = 0;
+        for (int z = 0; z < size; z++) {
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++, i += 4) {
+                    voronoiAt((x + 0.5f) * scale, (y + 0.5f) * scale, (z + 0.5f) * scale, period, cell);
+                    out[i] = cell[3];
+                    out[i + 1] = cell[4];
+                    out[i + 2] = cell[5];
+                    out[i + 3] = cell[0];
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
      * A divergence-free flow: rgb the curl of {@code gradient}'s first three channels taken as a vector potential
      * (Bridson's curl noise), in lattice units, by central differences across texels; a 0. {@code gradient} is
      * {@link #gradient}'s output at the same size and period.
@@ -232,11 +256,14 @@ public final class CgNoiseBake {
                 lerp(lerp(hash31(x0, y0, z1), hash31(x1, y0, z1), ux), lerp(hash31(x0, y1, z1), hash31(x1, y1, z1), ux), uy), uz);
     }
 
-    /** {@code fx_voronoi} on cells wrapping every {@code period}: F1, F2 and the nearest cell's hash into {@code out}. */
+    /**
+     * {@code fx_voronoi} on cells wrapping every {@code period}: F1, F2 and the nearest cell's hash into {@code out}, and
+     * into {@code out[3..5]}, when it holds six, the unit direction from the nearest feature point.
+     */
     static void voronoiAt(float px, float py, float pz, int period, float[] out) {
         float cx = (float) Math.floor(px), cy = (float) Math.floor(py), cz = (float) Math.floor(pz);
         float fx = px - cx, fy = py - cy, fz = pz - cz;
-        float f1 = 8f, f2 = 8f, id = 0f;
+        float f1 = 8f, f2 = 8f, id = 0f, nx = 0f, ny = 0f, nz = 0f;
         float[] h = new float[3];
         for (int z = -1; z <= 1; z++) {
             for (int y = -1; y <= 1; y++) {
@@ -249,6 +276,9 @@ public final class CgNoiseBake {
                         f2 = f1;
                         f1 = d;
                         id = hash31(wx, wy, wz);
+                        nx = dx;
+                        ny = dy;
+                        nz = dz;
                     } else if (d < f2) {
                         f2 = d;
                     }
@@ -258,5 +288,12 @@ public final class CgNoiseBake {
         out[0] = f1;
         out[1] = f2;
         out[2] = id;
+        if (out.length >= 6) {
+            // (nx, ny, nz) runs from p to the feature point; the distance grows away from it
+            float inv = f1 > 1e-6f ? -1f / f1 : 0f;
+            out[3] = nx * inv;
+            out[4] = ny * inv;
+            out[5] = nz * inv;
+        }
     }
 }

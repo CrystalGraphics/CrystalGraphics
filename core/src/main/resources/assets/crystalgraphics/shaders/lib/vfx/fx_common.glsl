@@ -46,6 +46,7 @@ vec3 fx_hash33(vec3 p) {
 //       _Noise      ("Noise",       sampler3D) = "cg_noise"         // fx_noise, fx_fbm, fx_ridged, fx_warped, fx_heat, fx_flicker
 //       _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"   // fx_value_noise, fx_value_fbm, fx_value_ridged
 //       _Voronoi    ("Voronoi",     sampler3D) = "cg_voronoi"       // fx_voronoi
+//       _VoronoiNearest ("Cells",   sampler3D) = "cg_voronoi_nearest" // fx_voronoi_nearest
 //   }
 //
 // The volumes repeat every CG_NOISE_PERIOD units: noise driven by time adds cg_noise_time(t), which never loops.
@@ -86,6 +87,8 @@ float fx_flicker_volume(sampler3D volume, float time, float seed) {
 #define fx_value_ridged(p, octaves) cg_value_ridged3(_ValueNoise, p, octaves)
 // The nearest and second-nearest feature distances, and the nearest cell's id in [0, 1).
 #define fx_voronoi(p) cg_voronoi3(_Voronoi, p)
+// xyz the unit direction from the nearest feature point, the gradient of w, the distance to it: a normal from cells.
+#define fx_voronoi_nearest(p) cg_voronoi_nearest4(_VoronoiNearest, p)
 
 // ── Light and colour ───────────────────────────────────────────────────────────────────────────────────────────
 

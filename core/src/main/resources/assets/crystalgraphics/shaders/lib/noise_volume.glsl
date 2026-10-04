@@ -7,6 +7,7 @@
 //       _Noise      ("Noise",       sampler3D) = "cg_noise"         // gradient, about -1..1
 //       _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"   // value, 0..1
 //       _Voronoi    ("Voronoi",     sampler3D) = "cg_voronoi"       // F1, F2, the cell's hash
+//       _VoronoiNearest ("Cells",   sampler3D) = "cg_voronoi_nearest" // F1's gradient, F1
 //       _Curl       ("Curl",        sampler3D) = "cg_curl"          // a divergence-free flow
 //   }
 //   float n = cg_fbm3(_Noise, p, 3);
@@ -93,6 +94,12 @@ float cg_warped3(sampler3D volume, vec3 p, float strength) {
 // across a cell's edge for a texel.
 vec3 cg_voronoi3(sampler3D volume, vec3 p) {
     return cg_noise4(volume, p).xyz;
+}
+
+// xyz the unit direction from the nearest feature point, the gradient of w, the distance to it in cells: a normal from
+// cellular noise without differencing a filtered distance, which steps at every texel. "cg_voronoi_nearest".
+vec4 cg_voronoi_nearest4(sampler3D volume, vec3 p) {
+    return cg_noise4(volume, p);
 }
 
 // The flow at p, divergence-free, about -2..2 a component.
