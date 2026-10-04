@@ -17,7 +17,8 @@ import java.util.Arrays;
  * public final class MyEffect extends CgVfxEffect {
  *     public MyEffect(CgVfxLook look, double x, double y, double z) { super(look, x, y, z); }
  *     @Override protected void tick(float dt) { ... }          // CgVfxSystem.TICK seconds of simulation
- *     @Override protected void submit(CgVfxFrame frame) { ... } // draw, interpolated by frame.alpha()
+ *     @Override protected void submit(CgVfxFrame frame) { ... } // draw, interpolated by frame.alpha() (particles:
+ *                                                               // frame.particleAlpha())
  * }
  * CgVfxEffect effect = vfx.play(new MyEffect(look, x, y, z));
  * effect.stop();                                                // finishes what is in flight, then dies
@@ -51,6 +52,10 @@ public abstract class CgVfxEffect {
     /** The shakes it holds, by parameter; made when first held. */
     private CgVfxParam[] heldParams;
     private CgCameraShake.Held[] held;
+    /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
+    private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
+    private int dueCount;
+    private float dueDt;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -190,10 +195,50 @@ public abstract class CgVfxEffect {
         return system != null ? system.air() : STILL;
     }
 
-    /** Advances one of its emitters by a tick, in its system's air and at its spawn share, sampling turbulence at its origin. */
+    /**
+     * Advances one of its emitters by a tick, in its system's air and at its spawn share, sampling turbulence at its
+     * origin. Played, the emitter runs after {@link #tick(float)} returns, with this effect's other emitters, in the
+     * order they were asked, on whichever thread takes the effect, and only every {@link CgVfxSystem#particleStep()}th
+     * tick, by that many ticks' time; unplayed, at once, by {@code dt}. Call it every tick either way.
+     *
+     * <pre>{@code
+     * for (CgVfxEmitterInstance e : blast) {
+     *     tick(e, dt);
+     *     done &= e.finished();          // as of the previous tick when played
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>What it reads of the emitter in the same {@code tick} is the previous tick's.</li>
+     *   <li>Nothing the emitter's modules read may change after this call within the tick: its ground's
+     *       {@code fill} belongs before it.</li>
+     * </ul>
+     */
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
-        if (system != null) emitter.share(system.spawnShare(emitter.emitter()));
-        emitter.tick(dt, air(), originX, originY, originZ);
+        if (system == null) {
+            emitter.tick(dt, air(), originX, originY, originZ);
+            return;
+        }
+        if (!system.particleTick()) return;
+        emitter.share(system.spawnShare(emitter.emitter()));
+        if (dueCount == due.length) due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
+        due[dueCount++] = emitter;
+        dueDt = dt / CgVfxSystem.TICK * system.particleDt();
+    }
+
+    /** Whether {@link #tick(CgVfxEmitterInstance, float)} queued emitters this tick. */
+    final boolean hasEmitterTicks() {
+        return dueCount > 0;
+    }
+
+    /** Runs the emitters queued this tick, in order. Any thread, one at a time per effect. */
+    final void tickEmitters() {
+        CgVfxAir air = air();
+        for (int i = 0; i < dueCount; i++) {
+            due[i].tick(dueDt, air, originX, originY, originZ);
+            due[i] = null;
+        }
+        dueCount = 0;
     }
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
