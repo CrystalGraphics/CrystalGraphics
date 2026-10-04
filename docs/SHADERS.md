@@ -1209,6 +1209,17 @@ CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and whic
 
 - A kernel that fails to compile throws with the driver's log and the emitted source, numbered. One that fails to
   parse throws `CgShaderParseException` from `CgCompute.load`, naming the file, the kernel and the line.
+- **Checked mode**, `-Dcrystalgraphics.compute.checked=true`: every buffer and image access a kernel run as compute
+  makes is bounds-checked, one out of range is skipped, and the first of each dispatch is logged a frame or two later,
+  once a place (`CgComputeCheck.reported()` lists them):
+
+  ```
+  [crystalgraphics] compute check: mymod:shaders/bins.compute, kernel Bin, line 24: BINS_ADD at 64, past BINS's 64 elements
+  [crystalgraphics] compute check: mymod:shaders/heat.compute, kernel Paint, line 29: HEAT_WRITE at (32, 8), outside HEAT's 32x32 (256 times in one dispatch)
+  ```
+
+  Compute tiers only: a lowered kernel writes its own element, and a Java body's buffers throw on their own.
+  `NAME_DATA[i]` and appends are not checked. A debugging switch: every access tests its index.
 - An asset reload (`CgAssetReloader`) re-reads every `.compute`; `CgCompute.load(path).reload()` re-reads one.
 - `-Dcrystalgraphics.compute.tier=G40` runs a kernel as a Mac would on any machine; `G33` with
   `-Dcrystalgraphics.shaderBuffer.tier=TBO` as a GL 3.3 context.

@@ -7,6 +7,7 @@ import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.compute.lower.CgLoweredKernel;
 import com.crystalgraphics.compute.lower.CgLoweredResources;
 import com.crystalgraphics.compute.parse.CgComputeParser;
+import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
@@ -214,6 +215,7 @@ public final class CgCompute {
         CgCpuMirrors.releaseAll();
         CgCpuRunner.releaseAll();
         CgBufferReadback.release();
+        CgComputeCheck.release();
     }
 
     private List<String> kernelNames() {
