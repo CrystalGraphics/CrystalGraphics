@@ -139,6 +139,35 @@ public class CgComputeGraphTest {
     }
 
     @Test
+    public void aResizedHistory_isANewHandleHoldingBothVersions_andTheOldOneIsReleasedAfter() {
+        CgGraphBuffer state = CgGraphBuffer.history("state", DESC);
+        CgBufferDesc bigger = CgBufferDesc.elements(256, 16, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+        CgRecording rec = new CgRecording();
+        CgComputePass sim = rec.compute("sim");
+        sim.dispatch(step, 64).bind("IN", state).bind("OUT", state);
+        sim.end();
+        CgGraphBuffer grown = rec.resize(state, bigger);
+        assertNotSame(state, grown);
+        assertEquals(CgGraphBuffer.Kind.HISTORY, grown.kind());
+        assertEquals(bigger.bytes(), grown.size());
+        assertEquals(List.of("sim", "copy state.previous -> state", "copy state -> state", "release state"), names(build(rec)));
+    }
+
+    @Test
+    public void aResizedPersistentBuffer_copiesTheSmallerSize_andOnlyKeptBuffersResize() {
+        CgGraphBuffer counts = CgGraphBuffer.persistent("counts", DESC);
+        CgBufferDesc smaller = CgBufferDesc.elements(16, 16, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+        CgRecording rec = new CgRecording();
+        rec.fill(counts, 0);
+        CgGraphBuffer shrunk = rec.resize(counts, smaller);
+        assertEquals(CgGraphBuffer.Kind.PERSISTENT, shrunk.kind());
+        assertEquals(List.of("fill counts", "copy counts -> counts", "release counts"), names(build(rec)));
+        CgRecording other = new CgRecording();
+        assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.transientBuffer("t", DESC), DESC));
+        assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.history("h", DESC).previous(), DESC));
+    }
+
+    @Test
     public void aReadbackKeepsTheTransientWriterItReads_andIsNeverCulled() {
         CgGraphBuffer scratch = CgGraphBuffer.transientBuffer("scratch", DESC);
         CgRecording rec = new CgRecording();

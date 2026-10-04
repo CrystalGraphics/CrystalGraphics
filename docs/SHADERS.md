@@ -929,7 +929,11 @@ recording.fill(buffer, 0);                                   // every word; (buf
 recording.update(buffer, 0, bytes);                          // a ByteBuffer, copied now
 recording.copy(from, 0, to, 0, size);
 recording.release(buffer);                                   // a persistent or history buffer, once its users ran
+state = recording.resize(state, CgBufferDesc.elements(capacity, 32, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
 ```
+
+`resize` answers a new handle of the buffer's kind holding what each version held, up to the smaller size, and releases
+the old one: use the new handle from then on, and bind it again wherever the old one was bound (`material.buffer`).
 
 A buffer declares every use it is put to: `STORAGE` for a kernel or a storage block, `INDIRECT` for
 `dispatchIndirect`'s arguments, `COPY` for a fill, update or copy; `VERTEX`, `INDEX` and `UNIFORM` for draws. **New

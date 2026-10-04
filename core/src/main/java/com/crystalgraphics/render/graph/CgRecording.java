@@ -357,6 +357,41 @@ public final class CgRecording {
         write(pass, requested, 0);
     }
 
+    /**
+     * A persistent or history buffer at another size: a new handle of {@code buffer}'s kind and name, made at
+     * {@code desc}, holding what each of {@code buffer}'s versions held up to the smaller of the two sizes; then
+     * {@code buffer} is released. A pool grows this way when the CPU's count outgrows it, and shrinks on a quiet frame.
+     *
+     * <pre>{@code
+     * if (needed > capacity) {
+     *     capacity = sizeClass(needed);
+     *     particles = recording.resize(particles, CgBufferDesc.elements(capacity, 64, STORAGE, COPY));
+     *     particleMaterial.buffer("PARTICLES", particles);   // a binding of the old handle reads nothing
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Use the handle it answers from here on, in this recording and every later one; the old one is gone once
+     *       this recording executes.</li>
+     *   <li>Past the old size the new storage holds whatever the driver gives, as new storage does.</li>
+     *   <li>Both descs need {@code COPY}, since the bytes move by copies.</li>
+     * </ul>
+     */
+    public CgGraphBuffer resize(CgGraphBuffer buffer, CgBufferDesc desc) {
+        requireOpen();
+        boolean history = buffer.kind() == CgGraphBuffer.Kind.HISTORY;
+        if (!history && buffer.kind() != CgGraphBuffer.Kind.PERSISTENT || buffer.isPreviousVersion()) {
+            throw new IllegalArgumentException("only a persistent or history buffer is resized: " + buffer);
+        }
+        CgGraphBuffer next = history ? CgGraphBuffer.history(buffer.name(), desc) : CgGraphBuffer.persistent(buffer.name(), desc);
+        long bytes = Math.min(buffer.size(), desc.bytes());
+        // Each copy into a history makes its next version, so the previous version goes first and stays previous.
+        if (history) copy(buffer.previous(), 0, next, 0, bytes);
+        copy(buffer, 0, next, 0, bytes);
+        release(buffer);
+        return next;
+    }
+
     /** Frees a persistent or history buffer's storage once everything before it used it. */
     public void release(CgGraphBuffer buffer) {
         requireOpen();
