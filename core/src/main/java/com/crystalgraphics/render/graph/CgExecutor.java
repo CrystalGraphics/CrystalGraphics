@@ -377,8 +377,10 @@ public final class CgExecutor {
             if (!(pass instanceof CgComputePass)) barriers(frame, s);
             if (pass instanceof CgRasterPass raster) {
                 raster(frame, raster, frame.rasters[s]);
+                unpinLevels(frame, s);
             } else if (pass instanceof CgComputePass compute) {
                 compute(frame, compute, frame.computes[s]);
+                unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill fill) {
                 int id = bufferStorage(fill.buffer, true);
                 CgGL.cgFillBuffer(id, fill.offset, fill.size, fill.value);
@@ -411,7 +413,7 @@ public final class CgExecutor {
             } else if (pass instanceof CgPass.Callback callback) {
                 boolean bound = otherBound;   // the scope restores the binding it found
                 try (CgGlScope ignored = CgGlState.saveAll()) {
-                    bindTarget(callback.target);
+                    bindTarget(callback.target, 0);
                     callback.body.run();
                 }
                 otherBound = bound;
@@ -702,7 +704,7 @@ public final class CgExecutor {
         }
         if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
         if (packed.indirects > 0 && gpuCounts) writeCommands(pass, packed);   // a dispatch never sits inside a render pass
-        bindTarget(pass.target);
+        bindTarget(pass.target, pass.level);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
             if (damage == null) {
@@ -918,10 +920,10 @@ public final class CgExecutor {
     }
 
     /**
-     * Binds a pass's target and its viewport. The current target is left as it is, unless a pass of this execution
-     * bound another: then what was bound when it began is bound again.
+     * Binds level {@code level} of a pass's target and its viewport. The current target is left as it is, unless a pass
+     * of this execution bound another: then what was bound when it began is bound again.
      */
-    private void bindTarget(CgGraphTexture target) {
+    private void bindTarget(CgGraphTexture target, int level) {
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
             if (otherBound) {
                 CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
@@ -931,9 +933,16 @@ public final class CgExecutor {
             return;
         }
         CgFrameBuffer storage = storage(target);
-        storage.bind();
-        CgGL.glViewport(0, 0, storage.getWidth(), storage.getHeight());
+        storage.bindLevel(level);
+        CgGL.glViewport(0, 0, storage.levelWidth(level), storage.levelHeight(level));
         otherBound = startNoted;
+    }
+
+    /** What a step sampled one level of samples every level again: no pin outlives the pass that made it. */
+    private static void unpinLevels(CgFrame frame, int s) {
+        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+            if (frame.accessView[i] instanceof CgGraphTexture texture && texture.framebuffer() != null) texture.unpinLevels();
+        }
     }
 
     /** A texture's storage now: a requested one's is made on first use. */

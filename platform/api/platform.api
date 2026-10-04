@@ -795,6 +795,7 @@ com/crystalgraphics/platform/device/resource/CgTextureView
   method public height ()I
   method public layers ()I
   method public mips ()I
+  method public overlaps (Lcom/crystalgraphics/platform/device/resource/CgTextureView;)Z
   method public texture ()Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;
   method public width ()I
   method public,final equals (Ljava/lang/Object;)Z
@@ -954,6 +955,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public getMaxRenderbufferSize ()I
   method public getMaxSamples ()I
   method public getMaxSsboBindings ()I
+  method public getMaxTextureBufferSize ()I
   method public getMaxTextureSize ()I
   method public getMaxTextureUnits ()I
   method public getMaxUniformBufferBindings ()I
@@ -2619,7 +2621,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTarget
   access public,final,record
   extends java/lang/Record
   method public <init> (Ljava/util/List;Lcom/crystalgraphics/platform/device/resource/CgTextureView;)V
-  method public attaches (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)Z
+  method public attaches (Lcom/crystalgraphics/platform/device/resource/CgTextureView;)Z
   method public colors ()Ljava/util/List;
   method public depth ()Lcom/crystalgraphics/platform/device/resource/CgTextureView;
   method public height ()I

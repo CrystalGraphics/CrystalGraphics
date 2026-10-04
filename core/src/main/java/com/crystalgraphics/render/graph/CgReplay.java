@@ -328,8 +328,8 @@ public final class CgReplay {
 
     /** Whether a texture is the same object next frame: anything but a graph texture made for one frame. */
     private static boolean lasts(CgTexture texture) {
-        return !(texture instanceof CgGraphTexture graph) || graph.kind() == CgGraphTexture.Kind.REQUESTED
-                || graph.kind() == CgGraphTexture.Kind.IMPORTED;
+        CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        return graph == null || graph.kind() == CgGraphTexture.Kind.REQUESTED || graph.kind() == CgGraphTexture.Kind.IMPORTED;
     }
 
     private static boolean readsShapes(int pipeline) {
