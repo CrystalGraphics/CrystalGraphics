@@ -337,7 +337,8 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
    speed limit times the delay. A draw with no bounds cannot be culled on the CPU.
 9. **Transparency**: sort what blends (the (slot, depth) key); additive needs no order.
 10. **Overlap**: compute that leaves the GPU idle (small dispatches, a reduction's last levels) goes in an `async()`
-    pass beside fill-bound drawing, on a device with a compute queue (§12).
+    pass beside fill-bound drawing, on a device with a compute queue (§12). The builder starts it as early as its inputs
+    allow and moves what reads its results as late as the graph allows, so recording order does not decide the overlap.
 11. **Design for every tier** ([`SHADERS.md` § *Designing for every tier*](SHADERS.md#designing-for-every-tier)):
     lowerable shapes, `vec4` records, few dispatches below compute, capacity sized by `kernel.form()`, and the work
     scaled by a `CgGpuBudget` its passes are charged to.
@@ -350,7 +351,7 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 | A draw's count | a command written by a kernel | the same | a command written by a lowered kernel | read back before the draw: a stall (`buffer.readbacks`) | the CPU's copy, no read |
 | Multi-draw | where the device enables it | where `multiDraw()` | where `multiDraw()` (not on macOS) | plain draws where `multiDraw()`; indirect ones never (their counts are read back) | plain draws, as its context |
 | GPU cull | compute | compute | lowered | lowered, counts read back | Java body |
-| Async compute | the owned device's compute queue; in order on Minecraft's | in order | in order | in order | in order |
+| Async compute | the owned device's compute queue, and Minecraft 26.2's | in order | in order | in order | in order |
 
 The picture is the same on every tier; each one's gate is the same scene compared byte for byte (§14).
 

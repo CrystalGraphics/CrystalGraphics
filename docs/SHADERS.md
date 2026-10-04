@@ -1136,9 +1136,12 @@ recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the c
 ```
 
 - **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device, and Minecraft
-  26.2's, whose own compute queue Minecraft leaves unused), the pass runs on it, after everything recorded before it.
+  26.2's, whose own compute queue Minecraft leaves unused), the pass runs on it, after every step placed before it.
   The steps after it that touch nothing it reads or writes run beside it; the first that does waits for it, as does a
   callback and the end of the execution.
+- **The builder places it, not the recording**: the pass and what it reads go as early as the graph allows, and what
+  reads its results as late, so the drawing recorded after its consumer still runs beside it. On every device: the
+  order is one the reads and writes allow, so the result is the same.
 - **Everywhere else it runs in order**, with the same result: GL, a Minecraft device with no compute queue of its own,
   and a pass with a dispatch below compute.
 - **On Minecraft's device an async pass may not use Minecraft's own textures** (its main target, the lightmap): only
