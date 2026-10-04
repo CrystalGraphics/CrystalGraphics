@@ -1238,6 +1238,16 @@ CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and whic
 
   Compute tiers only: a lowered kernel writes its own element, and a Java body's buffers throw on their own.
   `NAME_DATA[i]` and appends are not checked. A debugging switch: every access tests its index.
+- **What a buffer holds**, field by field: `CgBufferInspector` reads any buffer a compute pass binds, after that pass,
+  and decodes it through the kernel's own declaration, on every tier and without a stall (`render/graph/CLAUDE.md`
+  § *Inspecting a buffer*):
+
+  ```java
+  CgBufferInspector.watch(true);
+  for (CgBufferInspector.Site site : CgBufferInspector.sites()) System.out.println(site);
+  // sparks after particles.step: 4096 x Spark, 32 bytes each (mymod:shaders/particles.compute Step, STATE)
+  CgBufferInspector.read(site, 0, 16, read -> System.out.println(read.value(0, site.decl().field("positionLife"))));
+  ```
 - An asset reload (`CgAssetReloader`) re-reads every `.compute`; `CgCompute.load(path).reload()` re-reads one.
 - `-Dcrystalgraphics.compute.tier=G40` runs a kernel as a Mac would on any machine; `G33` with
   `-Dcrystalgraphics.shaderBuffer.tier=TBO` as a GL 3.3 context.
