@@ -53,7 +53,7 @@ CPU, per frame: O(draws)                          GPU, per frame: O(elements)
 
 | You have | Use | The engine does |
 |---|---|---|
-| A buffer of object records (transforms and customs) for one mesh or `CgMeshLods` | `world.draw(lods, material).instances(records, count)` | per stage: a depth pyramid, a GPU cull against view and pyramid, a level per instance, a draw per level, the levels one call |
+| A buffer of object records (transforms and customs) for one mesh or `CgMeshLods` | `world.draw(lods, material).instances(records, count)`, or `instances(records, first, count)` for one range of a buffer several sets share | per stage: a depth pyramid, a GPU cull against view and pyramid, a level per instance, a draw per level, the levels one call |
 | A count a kernel wrote, and a material that pulls its own vertices from your buffers | `world.draw(mesh, material).indirect(count, offset, mode, factor)` | a draw command from the count, joined with its neighbours |
 | A renderer of your own recording chunks | `chunks.draw(...).objects(records, first, n).indirect(...)`, `CgGpuOps.cull`, `CgGpuOps.depthPyramid` | commands, joining, barriers; the cull and pyramid are yours to record |
 | Work whose size only the GPU knows | `CgGpuOps.dispatchArgs` + `pass.dispatchIndirect` | group counts written on the GPU |
@@ -402,7 +402,6 @@ spheres, most off screen.
 
 What a pipeline here cannot do today, so a design does not assume it:
 
-- `.instances()` over a range of a records buffer, so several mesh slots share one buffer.
 - 3D textures in the graph: use an atlas of slices.
 - Persistent world draws (a GPU scene scatter-updated only when something moves): records are rewritten every frame.
 - Two-phase occlusion for the engine's own draws: the pyramid is of what the host drew first.

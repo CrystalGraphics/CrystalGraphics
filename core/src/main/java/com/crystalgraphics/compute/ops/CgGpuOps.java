@@ -352,8 +352,25 @@ public final class CgGpuOps {
      */
     public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, CgGpuCount count,
                             CgGraphBuffer out, CgGraphBuffer counts, int word) {
+        cull(pass, cull, instances, 0, count, out, counts, word);
+    }
+
+    /**
+     * {@link #cull(CgComputePass, CgCull, CgGraphBuffer, CgGpuCount, CgGraphBuffer, CgGraphBuffer, int)} of the records
+     * of {@code instances} from record {@code first}: several sets sharing one buffer, each its own range.
+     *
+     * <pre>{@code
+     * CgGpuOps.cull(pass, cull, pool, firstOfThisSlot, CgGpuCount.of(slotSize), visible, counts, 0);
+     * }</pre>
+     */
+    public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
+                            CgGraphBuffer out, CgGraphBuffer counts, int word) {
         distinct(instances, out);
         int capacity = count.capacity(), levels = cull.levels();
+        if (first < 0 || (long) (first + capacity) * RECORD_BYTES > instances.size()) {
+            throw new IllegalArgumentException("records " + first + " to " + (first + capacity) + " of " + instances
+                    + ", which holds " + instances.size() / RECORD_BYTES);
+        }
         long region = (long) cullFirst(1, capacity) * RECORD_BYTES;
         if (out.size() < levels * region) {
             throw new IllegalArgumentException(out + " holds " + out.size() + " bytes; a cull of " + capacity
@@ -366,7 +383,7 @@ public final class CgGpuOps {
         for (int l = 0; l < levels; l++) {
             CgDispatch dispatch = counted(pass.dispatch(kernel, capacity), count, instances)
                     .bind("INSTANCES", instances).bind("OUT", out, l * region, region)
-                    .counter("OUT", counts, (word + l) * 4L).set("_Level", l);
+                    .counter("OUT", counts, (word + l) * 4L).set("_Level", l).set("_First", first);
             cull.apply(dispatch);
         }
     }

@@ -145,7 +145,7 @@ final class CgGpuOpsBodies {
     static CgCompute cull(CgCompute file) {
         file.kernel("Cull").cpu(d -> {
             CgCpuBuffer in = d.buffer("INSTANCES"), out = d.appended("OUT");
-            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels");
+            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels"), first = d.propertyInt("_First");
             float[] place = columns(d, "_Place", 4), normal = columns(d, "_PlaceNormal", 3);
             float[] clip = columns(d, "_Clip", 0), planes = new float[24], heights = new float[8];
             for (int i = 0; i < 6; i++) for (int c = 0; c < 4; c++) planes[i * 4 + c] = d.property("_Plane" + i, c);
@@ -156,7 +156,7 @@ final class CgGpuOpsBodies {
             float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
             for (int e = d.first(); e < d.end(); e++) {
                 if (!below(e, n)) continue;
-                for (int w = 0; w < 48; w++) r[w] = in.getFloat(e, w);
+                for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + e, w);
                 for (int c = 0; c < 4; c++) {
                     for (int row = 0; row < 4; row++) {
                         m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]
