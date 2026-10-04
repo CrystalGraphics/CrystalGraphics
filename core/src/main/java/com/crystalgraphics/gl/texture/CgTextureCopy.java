@@ -2,6 +2,9 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -131,34 +134,32 @@ public final class CgTextureCopy {
         ensureScratchFramebuffers();
         if (scratchReadFbo == 0 || scratchDrawFbo == 0) return false;
 
-        int prevRead = CgGL.glGetInteger(CgGL.GL_READ_FRAMEBUFFER_BINDING);
-        int prevDraw = CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
-        try {
-            for (int layer = 0; layer < layerCount; layer++) {
-                CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, scratchReadFbo);
-                CgGL.glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcTextureId, 0, layer);
-
-                CgGL.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, scratchDrawFbo);
-                CgGL.glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, dstTextureId, 0, layer);
-
-                CgGL.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-            }
-            return true;
-        } catch (RuntimeException e) {
-            LOGGER.log(Level.WARNING, "Framebuffer blit copy failed; caller must use its own fallback", e);
-            return false;
-        } finally {
-            // Detach so the scratch FBOs never keep a deleted texture alive, then restore.
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO)) {
             try {
-                CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, scratchReadFbo);
-                CgGL.glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
-                CgGL.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, scratchDrawFbo);
-                CgGL.glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
-            } catch (RuntimeException ignored) {
-                // Detach is best-effort cleanup; never mask the real outcome above.
+                for (int layer = 0; layer < layerCount; layer++) {
+                    CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, scratchReadFbo);
+                    CgGL.glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, srcTextureId, 0, layer);
+
+                    CgGL.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, scratchDrawFbo);
+                    CgGL.glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, dstTextureId, 0, layer);
+
+                    CgGL.glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                }
+                return true;
+            } catch (RuntimeException e) {
+                LOGGER.log(Level.WARNING, "Framebuffer blit copy failed; caller must use its own fallback", e);
+                return false;
+            } finally {
+                // Detach so the scratch FBOs never keep a deleted texture alive; the scope restores.
+                try {
+                    CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, scratchReadFbo);
+                    CgGL.glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
+                    CgGL.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, scratchDrawFbo);
+                    CgGL.glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 0, 0, 0);
+                } catch (RuntimeException ignored) {
+                    // Detach is best-effort cleanup; never mask the real outcome above.
+                }
             }
-            CgGL.glBindFramebuffer(GL_READ_FRAMEBUFFER, prevRead);
-            CgGL.glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevDraw);
         }
     }
 
