@@ -92,6 +92,35 @@ public final class VulkanTexture implements CgGpuTexture {
      */
     public int transition(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout,
                    int dstStage, int dstAccess) {
+        return move(cmd, baseMip, mips, baseLayer, count, layout, 0, 0, dstStage, dstAccess, false);
+    }
+
+    public int transitionAll(VkCommandBuffer cmd, int layout, int dstStage, int dstAccess) {
+        return transition(cmd, 0, desc.mips(), 0, layers, layout, dstStage, dstAccess);
+    }
+
+    /**
+     * The last use at {@code srcStage}/{@code srcAccess} made visible to the next, in {@code layout}: a dependency
+     * where a subresource is in it already, a transition where not.
+     *
+     * @return barriers recorded
+     */
+    public int barrier(VkCommandBuffer cmd, int layout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
+        if (allIn(layout)) {
+            VulkanBarriers.image(cmd, image, aspect, 0, desc.mips(), 0, layers, layout, layout, srcStage, srcAccess,
+                    dstStage, dstAccess);
+            return 1;
+        }
+        return move(cmd, 0, desc.mips(), 0, layers, layout, srcStage, srcAccess, dstStage, dstAccess, true);
+    }
+
+    /**
+     * One barrier per run of subresources sharing a layout: a transition from any other, waiting on what that layout's
+     * last use and {@code srcStage}/{@code srcAccess} might be doing; with {@code depend}, a dependency alone on a run
+     * already in {@code layout}.
+     */
+    private int move(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout, int srcStage,
+                     int srcAccess, int dstStage, int dstAccess, boolean depend) {
         int barriers = 0;
         for (int mip = baseMip; mip < baseMip + mips; mip++) {
             int layer = baseLayer;
@@ -101,31 +130,18 @@ public final class VulkanTexture implements CgGpuTexture {
                 while (end < baseLayer + count && layout(mip, end) == old) end++;
                 if (old != layout) {
                     VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, old, layout,
-                            srcStage(old), srcAccess(old), dstStage, dstAccess);
+                            srcStage(old) | srcStage, srcAccess(old) | srcAccess, dstStage, dstAccess);
                     barriers++;
                     for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
+                } else if (depend) {
+                    VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, layout, layout,
+                            srcStage, srcAccess, dstStage, dstAccess);
+                    barriers++;
                 }
                 layer = end;
             }
         }
         return barriers;
-    }
-
-    public int transitionAll(VkCommandBuffer cmd, int layout, int dstStage, int dstAccess) {
-        return transition(cmd, 0, desc.mips(), 0, layers, layout, dstStage, dstAccess);
-    }
-
-    /**
-     * The last use at {@code srcStage}/{@code srcAccess} made visible to the next, in {@code layout}: a dependency
-     * alone where every subresource is in it already, a transition where not.
-     *
-     * @return barriers recorded
-     */
-    public int barrier(VkCommandBuffer cmd, int layout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
-        if (!allIn(layout)) return transitionAll(cmd, layout, dstStage, dstAccess);
-        VulkanBarriers.image(cmd, image, aspect, 0, desc.mips(), 0, layers, layout, layout, srcStage, srcAccess,
-                dstStage, dstAccess);
-        return 1;
     }
 
     /** What the last use of a subresource in {@code layout} might still be doing. */
