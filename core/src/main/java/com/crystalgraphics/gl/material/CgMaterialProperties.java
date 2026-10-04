@@ -132,18 +132,29 @@ public final class CgMaterialProperties implements CgShaderBindings {
 
     /**
      * Adds each sampler's texture to a snapshot, at the unit its program reads it from: its index among the declared
-     * samplers. A sampler with no texture set is left out.
+     * samplers. A sampler with no texture set takes the engine texture its default names, else is left out.
      */
     public void captureSamplers(CgBindingTable table) {
         for (int i = 0; i < samplerProps.size(); i++) {
-            CgTexture texture = samplerProps.get(i).getSamplerTexture();
+            CgTexture texture = samplerProps.get(i).boundTexture();
             if (texture != null) table.texture(i, texture);
         }
     }
 
-    /** Binds each sampler property's texture to its assigned texture unit. Called per-draw. */
+    /**
+     * Binds each sampler property's texture to its assigned texture unit, and one never set to the engine texture its
+     * default names, at its index: the unit its program was wired with. Called per-draw.
+     */
     public void bindSamplerTextures() {
-        for (int i = 0; i < samplerProps.size(); i++) samplerProps.get(i).bindSamplerTexture();
+        for (int i = 0; i < samplerProps.size(); i++) {
+            CgMaterialProperty p = samplerProps.get(i);
+            if (p.getSamplerTexture() != null) {
+                p.bindSamplerTexture();
+            } else {
+                CgTexture named = p.boundTexture();
+                if (named != null) named.bind(p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i);
+            }
+        }
     }
 
     /**
