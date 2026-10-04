@@ -219,6 +219,11 @@ dispatch and parameter buffers) have many binding points and are rarely written,
   maximum): issued and never restored, since no host binds there.
 - The round trip checks only points our code has bound.
 
+`TEXTURES` is half of this: a scope reads the active unit and the units our code has ever bound a texture on when
+it opens, and any other unit at its first bind inside it. It restores only the units it saved, so the 32 units a
+whole read cost become the handful the engine uses (`glState.adopt.units` counts them). A free provider still reads
+every unit, since its reads cost nothing.
+
 ## Diagnostics — reach for these before reasoning
 
 Reasoning from symptoms produced a wrong answer three times in this subsystem's history; each of these gave

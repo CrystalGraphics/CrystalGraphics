@@ -181,6 +181,7 @@ public final class CgGlStateManager {
     private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
     private static final int ADOPT = CgTrace.name("glState.adopt");
     private static final int ADOPT_COUNT = CgTrace.name("glState.adopt.count");
+    private static final int ADOPT_UNITS = CgTrace.name("glState.adopt.units");
 
     /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
     private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
@@ -406,6 +407,14 @@ public final class CgGlStateManager {
 
     /** The highest texture unit our own code has selected: a unit above it is one we cannot have disturbed. */
     private int highestUnit;
+
+    /**
+     * Units our code has bound a texture on: what a scope reads when it opens. Any other unit is read at its first bind
+     * inside one, so a scope never reads the units the engine leaves alone.
+     */
+    private int touchedUnits;
+
+    private static final int TEXTURES_BIT = 1 << CgGlSlot.TEXTURES.ordinal();
 
     /** Tells the round trip what reached the driver, when it is on and the write is the code under test. */
     private void wrote(long fields) {
@@ -791,6 +800,7 @@ public final class CgGlStateManager {
         assertOwner();
         // Only GL_TEXTURE_2D is modelled; other targets are always issued rather than assumed redundant.
         if (target != CgGL.GL_TEXTURE_2D) return true;
+        if ((unknownFields & F_ACTIVE_TEXTURE) != 0 && recording == null && savesTextures()) readUnits(0);
         if ((unknownFields & F_ACTIVE_TEXTURE) != 0) {
             // Which unit this lands on is unknown, so whatever any unit's binding was believed to be may
             // now be wrong.
@@ -801,12 +811,62 @@ public final class CgGlStateManager {
         }
         int unit = current.activeTextureUnit;
         if (unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return true;
+        if (!adopting && !verifying) {
+            touchedUnits |= 1 << unit;
+            if (recording == null) captureUnit(unit);
+        }
         if (!staleUnit(unit) && current.boundTexture2D[unit] == texture) return skip();
         current.boundTexture2D[unit] = texture;
         unknownUnits &= ~(1 << unit);
         callsIssued++;
         wrote(F_ACTIVE_TEXTURE);   // the TEXTURES domain; a unit's binding has no field bit of its own
         return true;
+    }
+
+    /** Saves {@code unit}'s binding into every open scope declaring {@code TEXTURES} that has not saved it: the active unit. */
+    private void captureUnit(int unit) {
+        int bit = 1 << unit;
+        for (int f = depth - 1; f >= 0; f--) {
+            Frame frame = frames[f];
+            if ((frame.mask & TEXTURES_BIT) == 0 || frame.handOver || (frame.savedUnits & bit) != 0) continue;
+            if ((unknownUnits & bit) != 0) readUnits(bit);
+            frame.saved.boundTexture2D[unit] = current.boundTexture2D[unit];
+            frame.savedUnits |= bit;
+        }
+    }
+
+    private boolean savesTextures() {
+        for (int f = 0; f < depth; f++) if ((frames[f].mask & TEXTURES_BIT) != 0 && !frames[f].handOver) return true;
+        return false;
+    }
+
+    /** Reads the active unit and the units {@code units} names. */
+    private void readUnits(int units) {
+        adopting = true;
+        long t = CgTrace.stamp(GL);
+        int filled;
+        try {
+            filled = provider.readTextureUnits(current, units);
+        } finally {
+            adopting = false;
+            CgTrace.zoneDone(GL, ADOPT, t);
+            CgTrace.add(GL, ADOPT_COUNT, 1);
+            CgTrace.add(GL, ADOPT_UNITS, Integer.bitCount(units));
+        }
+        unknownFields &= ~F_ACTIVE_TEXTURE;
+        unknownUnits &= ~filled;
+        adopted++;
+    }
+
+    /**
+     * {@code TEXTURES} for a scope opening: the units our code has touched, all of them when {@code reread}, else those
+     * the shadow does not know. Nothing when it knows them and the active unit.
+     */
+    private void adoptUnits(boolean reread) {
+        if (reread) unknownUnits |= ~touchedUnits;   // the host may have rebound any; the rest are read at first bind
+        int want = reread ? touchedUnits : touchedUnits & unknownUnits;
+        if (!reread && want == 0 && (unknownFields & F_ACTIVE_TEXTURE) == 0) return;
+        readUnits(want);
     }
 
     /**
@@ -1202,13 +1262,18 @@ public final class CgGlStateManager {
             if ((f.mask & bit) != 0) continue;
             if ((CAPTURED_SLOTS & bit) != 0) {
                 if (reread && provider.hostBinds(slot)) known[captured(slot)] = 0;   // read at first write instead
-            } else if (!handOver && (reread || !isTrusted(slot))) {
-                adopt(slot);   // a hand-over restores nothing
+            } else if (handOver) {
+                // a hand-over restores nothing
+            } else if (slot == CgGlSlot.TEXTURES && !provider.isFree()) {
+                adoptUnits(reread);
+            } else if (reread || !isTrusted(slot)) {
+                adopt(slot);
             }
             f.mask |= bit;
         }
         Arrays.fill(f.captured, 0);
         f.saved.copyFrom(current);
+        f.savedUnits = (f.mask & TEXTURES_BIT) != 0 && !handOver ? ~unknownUnits : 0;
         if (roundTrip != null) roundTrip.opened(f);
         return f;
     }
@@ -1222,6 +1287,7 @@ public final class CgGlStateManager {
             adopting = false;
             CgTrace.zoneDone(GL, ADOPT, t);
             CgTrace.add(GL, ADOPT_COUNT, 1);
+            if (slot == CgGlSlot.TEXTURES) CgTrace.add(GL, ADOPT_UNITS, CgGlStateShadow.MAX_TEXTURE_UNITS);
         }
         unknownFields &= ~SLOT_FIELDS[slot.ordinal()];
         if (slot == CgGlSlot.TEXTURES) unknownUnits = 0;
@@ -1289,6 +1355,8 @@ public final class CgGlStateManager {
         private Throwable openedAt;
         /** Texture units the open read covered: a unit first selected inside this scope has no "before". */
         private int unitsAtOpen;
+        /** Texture units whose binding this scope saved, at open or at their first bind: the ones it restores. */
+        private int savedUnits;
         /** Per captured domain: the points this scope saved, and those our code had touched when it opened. */
         private final int[] captured = new int[CAPTURED.length], touchedAtOpen = new int[CAPTURED.length];
 
@@ -1318,9 +1386,11 @@ public final class CgGlStateManager {
                     }
                     // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
                     // the normal deduplicated path and usually emits nothing.
-                    forcing = mustIssue(slot) || !isTrusted(slot);
+                    forcing = mustIssue(slot) || (slot == CgGlSlot.TEXTURES
+                            ? (unknownFields & F_ACTIVE_TEXTURE) != 0 || (savedUnits & unknownUnits) != 0
+                            : !isTrusted(slot));
                     try {
-                        reissue(slot, saved);
+                        reissue(slot, saved, savedUnits);
                     } finally {
                         forcing = false;
                     }
@@ -1342,7 +1412,7 @@ public final class CgGlStateManager {
      * <p>The only per-domain code in this class. It replaces twelve value-object {@code emit()}
      * implementations, and because it goes through {@code CgGL} it inherits deduplication for free.</p>
      */
-    private void reissue(CgGlSlot slot, CgGlStateShadow s) {
+    private void reissue(CgGlSlot slot, CgGlStateShadow s, int units) {
         switch (slot) {
             case BLEND:
                 setCap(CgGL.GL_BLEND, s.blendEnabled);
@@ -1419,6 +1489,7 @@ public final class CgGlStateManager {
                 break;
             case TEXTURES:
                 for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+                    if ((units & (1 << unit)) == 0) continue;   // never bound inside the scope
                     // A unit is skipped only when its binding is known to match; an unknown one is rebound.
                     if ((unknownUnits & (1 << unit)) == 0 && current.boundTexture2D[unit] == s.boundTexture2D[unit]) continue;
                     CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);

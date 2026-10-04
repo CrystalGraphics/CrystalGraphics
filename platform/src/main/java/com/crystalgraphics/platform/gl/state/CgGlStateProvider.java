@@ -50,6 +50,19 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * The active texture unit and the {@code GL_TEXTURE_2D} binding of each unit whose bit {@code units} sets; answers
+     * the units it filled. Every unit by default.
+     *
+     * <pre>{@code
+     * int filled = provider.readTextureUnits(shadow, 1 << 3 | 1 << 0);   // the active unit, units 0 and 3
+     * }</pre>
+     */
+    default int readTextureUnits(CgGlStateShadow t, int units) {
+        read(CgGlSlot.TEXTURES, t);
+        return -1;
+    }
+
+    /**
      * Whether the host binds {@code slot}'s points itself while it has the context. Asked only of the domains
      * captured at first write: one the host never binds keeps the shadow across host sections, so a scope saves
      * it with no read. No by default: vanilla Minecraft binds no storage buffer, image unit or indirect buffer on
