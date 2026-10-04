@@ -2923,6 +2923,10 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/service/CgCacheDirectory
+  access public,final
+  extends java/lang/Object
+  method public,static of (Ljava/lang/String;)Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgCursorService
   access public,abstract,interface
   extends java/lang/Object
