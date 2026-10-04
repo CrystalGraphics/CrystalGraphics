@@ -11,65 +11,62 @@ package com.crystalgraphics.vfx.particle;
  * ax += v[0] * strength;
  * }</pre>
  *
- * <p>Each component of the result is roughly -2..2. Not thread-safe: it reuses a scratch array.</p>
+ * <p>Each component of the result is roughly -2..2. Thread-safe: it keeps no state.</p>
  */
 public final class CgVfxCurlNoise {
 
-    private static final float[] A = new float[4], B = new float[4], C = new float[4];
+    private static final float OCTAVE = 2.03f;
+    // Perlin's improved-noise gradients: the twelve cube edges, four of them twice to fill sixteen.
+    private static final float[] GX = {1, -1, 1, -1, 1, -1, 1, -1, 0, 0, 0, 0, 1, -1, 0, 0};
+    private static final float[] GY = {1, 1, -1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 1, 1, -1, -1};
+    private static final float[] GZ = {0, 0, 0, 0, 1, 1, -1, -1, 1, 1, -1, -1, 0, 0, 1, -1};
 
     private CgVfxCurlNoise() {
     }
 
     /** The field at {@code (x, y, z)}, in the noise's own units, into {@code out[0..2]}. */
     public static void sample(float x, float y, float z, float[] out) {
-        potential(x, y, z, 0f, 0f, 0f, A);
-        potential(x, y, z, 31.4f, 47.1f, 12.9f, B);
-        potential(x, y, z, 73.7f, 19.3f, 55.1f, C);
-        // curl of (A, B, C): (dC/dy - dB/dz, dA/dz - dC/dx, dB/dx - dA/dy)
-        out[0] = C[2] - B[3];
-        out[1] = A[3] - C[1];
-        out[2] = B[1] - A[2];
-    }
-
-    /** Two octaves of gradient noise at p plus an offset: value in d[0], its gradient in d[1..3]. */
-    private static void potential(float x, float y, float z, float ox, float oy, float oz, float[] d) {
-        gradient(x + ox, y + oy, z + oz, d);
-        float v = d[0], gx = d[1], gy = d[2], gz = d[3];
-        gradient(x * 2.03f + ox + 5.2f, y * 2.03f + oy + 1.3f, z * 2.03f + oz + 7.9f, d);
-        d[0] = v + 0.5f * d[0];
-        d[1] = gx + 0.5f * 2.03f * d[1];
-        d[2] = gy + 0.5f * 2.03f * d[2];
-        d[3] = gz + 0.5f * 2.03f * d[3];
-    }
-
-    /**
-     * Gradient noise at p with its analytic derivative: d[0] the value, about -1..1, d[1..3] its gradient. Quintic fade,
-     * as fx_noise in the shaders, so the field is smooth to its second derivative.
-     */
-    static void gradient(float x, float y, float z, float[] d) {
-        int ix = floor(x), iy = floor(y), iz = floor(z);
-        float fx = x - ix, fy = y - iy, fz = z - iz;
-        float ux = fade(fx), uy = fade(fy), uz = fade(fz);
-        float dux = fadeSlope(fx), duy = fadeSlope(fy), duz = fadeSlope(fz);
-        float value = 0f, gx = 0f, gy = 0f, gz = 0f;
-        for (int c = 0; c < 8; c++) {
-            int cx = c & 1, cy = (c >> 1) & 1, cz = (c >> 2) & 1;
-            int h = hash(ix + cx, iy + cy, iz + cz);
-            float rx = fx - cx, ry = fy - cy, rz = fz - cz;
-            float hx = gradX(h), hy = gradY(h), hz = gradZ(h);
-            float dot = hx * rx + hy * ry + hz * rz;
-            float wx = cx == 1 ? ux : 1f - ux, wy = cy == 1 ? uy : 1f - uy, wz = cz == 1 ? uz : 1f - uz;
-            float sx = cx == 1 ? dux : -dux, sy = cy == 1 ? duy : -duy, sz = cz == 1 ? duz : -duz;
-            float w = wx * wy * wz;
-            value += w * dot;
-            gx += w * hx + sx * wy * wz * dot;
-            gy += w * hy + wx * sy * wz * dot;
-            gz += w * hz + wx * wy * sz * dot;
+        // The three potentials share each octave's lattice cell and weights; one hash per corner picks all three
+        // gradients. Only their gradients are kept, which is all the curl reads.
+        float ay = 0f, az = 0f, bx = 0f, bz = 0f, cx = 0f, cy = 0f;
+        float px = x, py = y, pz = z, k = 1f;
+        for (int octave = 0; octave < 2; octave++) {
+            if (octave == 1) {
+                px = x * OCTAVE + 5.2f;
+                py = y * OCTAVE + 1.3f;
+                pz = z * OCTAVE + 7.9f;
+                k = 0.5f * OCTAVE;
+            }
+            int ix = floor(px), iy = floor(py), iz = floor(pz);
+            float fx = px - ix, fy = py - iy, fz = pz - iz;
+            float ux = fade(fx), uy = fade(fy), uz = fade(fz);
+            float dux = k * fadeSlope(fx), duy = k * fadeSlope(fy), duz = k * fadeSlope(fz);
+            for (int c = 0; c < 8; c++) {
+                int ox = c & 1, oy = (c >> 1) & 1, oz = (c >> 2) & 1;
+                int h = hash(ix + ox, iy + oy, iz + oz);
+                float rx = fx - ox, ry = fy - oy, rz = fz - oz;
+                float wx = ox == 1 ? ux : 1f - ux, wy = oy == 1 ? uy : 1f - uy, wz = oz == 1 ? uz : 1f - uz;
+                float sx = ox == 1 ? dux : -dux, sy = oy == 1 ? duy : -duy, sz = oz == 1 ? duz : -duz;
+                // gradient of the weighted corner (w * dot): w * g + dot * grad(w), the octave's scale folded into both
+                float w = k * wx * wy * wz, wdx = sx * wy * wz, wdy = wx * sy * wz, wdz = wx * wy * sz;
+                int g = h >>> 28;
+                float dot = GX[g] * rx + GY[g] * ry + GZ[g] * rz;
+                ay += w * GY[g] + wdy * dot;
+                az += w * GZ[g] + wdz * dot;
+                g = (h >>> 24) & 15;
+                dot = GX[g] * rx + GY[g] * ry + GZ[g] * rz;
+                bx += w * GX[g] + wdx * dot;
+                bz += w * GZ[g] + wdz * dot;
+                g = (h >>> 20) & 15;
+                dot = GX[g] * rx + GY[g] * ry + GZ[g] * rz;
+                cx += w * GX[g] + wdx * dot;
+                cy += w * GY[g] + wdy * dot;
+            }
         }
-        d[0] = value;
-        d[1] = gx;
-        d[2] = gy;
-        d[3] = gz;
+        // curl of (A, B, C): (dC/dy - dB/dz, dA/dz - dC/dx, dB/dx - dA/dy)
+        out[0] = cy - bz;
+        out[1] = az - cx;
+        out[2] = bx - ay;
     }
 
     private static float fade(float t) {
@@ -90,22 +87,7 @@ public final class CgVfxCurlNoise {
         h ^= h >>> 15;
         h *= 0x2C1B3C6D;
         h ^= h >>> 12;
+        h *= 0x297A2D39;
         return h;
-    }
-
-    // One of the twelve edge directions of a cube, as Perlin's improved noise picks them.
-    private static float gradX(int h) {
-        int k = Math.floorMod(h, 12);
-        return k < 4 ? ((k & 1) == 0 ? 1f : -1f) : k < 8 ? ((k & 1) == 0 ? 1f : -1f) : 0f;
-    }
-
-    private static float gradY(int h) {
-        int k = Math.floorMod(h, 12);
-        return k < 4 ? ((k & 2) == 0 ? 1f : -1f) : k < 8 ? 0f : ((k & 1) == 0 ? 1f : -1f);
-    }
-
-    private static float gradZ(int h) {
-        int k = Math.floorMod(h, 12);
-        return k < 4 ? 0f : k < 8 ? ((k & 2) == 0 ? 1f : -1f) : ((k & 2) == 0 ? 1f : -1f);
     }
 }
