@@ -436,7 +436,7 @@ public final class CgMaterialShaderCompiler {
         // guard evaluate identically in both stages, i.e. do nothing: that is how sdf.glsl's
         // fwidth() reached the vertex shader, which NVIDIA accepted and AMD correctly rejected.
         sb.append("#define CG_VERTEX_STAGE 1\n");
-        appendPassDefine(sb, pass);
+        appendPassDefine(sb, shader, pass);
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
@@ -519,7 +519,7 @@ public final class CgMaterialShaderCompiler {
         // Stage define — the symmetric counterpart of CG_VERTEX_STAGE, and like it, emitted before
         // the user directive block so a guard inside an included lib can actually see it.
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
-        appendPassDefine(sb, pass);
+        appendPassDefine(sb, shader, pass);
         sb.append("#define CG_FOG_MODE ").append(fogMode(pass)).append('\n');
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
@@ -748,9 +748,25 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
-    /** {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart. */
-    private static void appendPassDefine(StringBuilder sb, CgParsedPass pass) {
+    /**
+     * {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart; and
+     * in every pass {@code CG_EMISSION}, the glow's multiplier: {@code _EmissionColor.rgb} (a color property) times
+     * {@code _EmissionStrength} (a float) where the shader declares them, times the draw's {@code CG_OBJECT_EMISSION}.
+     */
+    private static void appendPassDefine(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
+        sb.append("#define CG_EMISSION (vec3(1.0)");
+        if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
+        if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
+        if (shader.readsObjectRecord()) sb.append(" * CG_OBJECT_EMISSION");
+        sb.append(")\n");
+    }
+
+    private static boolean hasProperty(CgParsedShader shader, String name, int components) {
+        for (CgMaterialProperty p : shader.properties()) {
+            if (p.getName().equals(name) && p.getType().getComponents() == components) return true;
+        }
+        return false;
     }
 
     /** How {@code cg_Fog} treats the pass's output: mixed toward the fog (0), premultiplied (1), added (2). */
@@ -781,6 +797,8 @@ public final class CgMaterialShaderCompiler {
         }
         if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+            // Code that reads CG_EMISSION has applied it already.
+            if (emissive && !pass.fragmentBody().contains("CG_EMISSION")) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
             // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
             // light is not lit, only faded by the fog.
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());

@@ -2,6 +2,7 @@ package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
+import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
@@ -40,8 +41,10 @@ public final class CgPostStack {
     private final CgPostComposite composite = new CgPostComposite();
     private final CgPostContext context = new CgPostContext(composite);
     private final CgBloom bloom = new CgBloom();
+    /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
+    private final CgPostDebug debug = CgPostDebug.fromProperty();
     /** Every effect, by point then order then when it was added: replaced whole, so recording reads a snapshot. */
-    private volatile CgPostEffect[] effects = {bloom};
+    private volatile CgPostEffect[] effects = debug == null ? new CgPostEffect[]{bloom} : new CgPostEffect[]{bloom, debug};
     private boolean installed;
 
     private CgPostStack() {
@@ -93,6 +96,7 @@ public final class CgPostStack {
     public void release() {
         composite.release();
         bloom.release();
+        if (debug != null) debug.release();
     }
 
     private void record(CgStageFrame stage) {

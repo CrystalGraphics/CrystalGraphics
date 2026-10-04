@@ -111,7 +111,9 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
 - **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
   transparent pass that pass is drawn into the emission target, hidden by the scene's depth, and published as
   `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). The target is R11G11B10F, at the tier's share of
-  the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it.
+  the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it. A draw's
+  `.emission(scale)` scales its glow (0 leaves it out), and a material's `_EmissionColor`/`_EmissionStrength` its
+  material's, both through `CG_EMISSION`.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 
@@ -128,7 +130,8 @@ fx.close();
 ```
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
-shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`), `custom0`–`custom3` 32–47.
+shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`),
+`custom0`–`custom3` 32–47.
 
 **An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
 constants:

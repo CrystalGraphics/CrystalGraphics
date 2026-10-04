@@ -95,6 +95,9 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
 // The world's light at the draw: block and sky light, 0 to 15 each. Rides in the normal matrix's unused column.
 #define CG_OBJECT_LIGHT (CG_OBJECT_DATA.normalMatrix[3].xy)
+// The draw's emission scale (CgWorldRenderer's .emission), stored less 1 in the same column so a writer leaving the
+// slot 0 means 1. Read through CG_EMISSION.
+#define CG_OBJECT_EMISSION (1.0 + CG_OBJECT_DATA.normalMatrix[3].z)
 
 // -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
 // cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that

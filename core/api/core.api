@@ -4392,6 +4392,7 @@ com/crystalgraphics/render/post/CgPostStack
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
+  field public,static,final CHAIN Lcom/crystalgraphics/render/stage/CgFrameKey;
   implements com/crystalgraphics/render/post/CgPostEffect
   method public <init> ()V
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
@@ -4436,6 +4437,16 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public release ()V
+com/crystalgraphics/render/post/debug/CgPostDebug
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/render/post/CgPostEffect
+  method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public order ()I
+  method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
+  method public release ()V
+  method public,static fromProperty ()Lcom/crystalgraphics/render/post/debug/CgPostDebug;
 com/crystalgraphics/render/property/CgEffectTree
   access public,final
   extends java/lang/Object
@@ -4685,6 +4696,7 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public emission (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public fullBright ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public group (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
