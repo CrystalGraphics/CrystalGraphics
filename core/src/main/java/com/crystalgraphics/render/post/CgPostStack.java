@@ -2,6 +2,7 @@ package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
+import com.crystalgraphics.render.post.distortion.CgPostDistortion;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
@@ -51,7 +52,8 @@ public final class CgPostStack {
     private static final CgPostStack INSTANCE = new CgPostStack();
 
     private final CgPostComposite composite = new CgPostComposite();
-    private final CgPostContext context = new CgPostContext(composite);
+    private final CgPostDistortion distortion = new CgPostDistortion();
+    private final CgPostContext context = new CgPostContext(composite, distortion);
     private final CgBloom bloom = new CgBloom();
     private final CgPostLooks looks = new CgPostLooks();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
@@ -142,6 +144,7 @@ public final class CgPostStack {
     /** Forgets what it made on the GPU. At context teardown. */
     public void release() {
         composite.release();
+        distortion.release();
         bloom.release();
         if (debug != null) debug.release();
     }

@@ -103,7 +103,8 @@ public final class CgBloom implements CgPostEffect {
 
     @Override
     public void record(CgPostContext post) {
-        CgGraphTexture emission = post.resources().get(CgFrameKeys.EMISSION);
+        // Bent as the scene beneath was, or the glow sits unbent over every haze.
+        CgGraphTexture emission = post.distorted(post.resources().get(CgFrameKeys.EMISSION));
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;
         post.resources().put(CHAIN, glow);
