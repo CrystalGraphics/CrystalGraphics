@@ -26,7 +26,8 @@ public final class CgPostLooks implements CgPostEffect {
     @Override
     public boolean active(CgPostContext post) {
         CgPostSettings s = post.settings();
-        return s.flash() != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() > 0f;
+        float flashes = CgGraphicsSettings.FLASHES.get();
+        return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f;
     }
 
     @Override

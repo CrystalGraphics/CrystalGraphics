@@ -32,6 +32,17 @@ public class CgPostVolumeTest {
     }
 
     @Test
+    public void focus_ofOneFadingVolume_staysItsOwn() {
+        CgPostSettings resolved = new CgPostSettings();
+        resolved.reset();
+        resolved.blend(new CgPostSettings().impact(CgImpact.LINES, 1f), 0.2f, 0.8f, 0.3f);
+        assertEquals(0.8f, resolved.focusX(), 1e-6f);
+        assertEquals(0.3f, resolved.focusY(), 1e-6f);
+        resolved.blend(new CgPostSettings().chromatic(1f), 0.6f, 0.2f, 0.7f);
+        assertEquals("weighted by 0.2 and 0.6", 0.35f, resolved.focusX(), 1e-6f);
+    }
+
+    @Test
     public void impactLook_isTheHeavierVolumes() {
         CgPostSettings resolved = new CgPostSettings();
         resolved.reset();
