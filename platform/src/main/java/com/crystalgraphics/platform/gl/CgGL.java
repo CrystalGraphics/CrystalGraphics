@@ -1667,6 +1667,11 @@ public final class CgGL {
         gl().glEndTimeElapsedQuery();
     }
 
+    /** The GPU's clock once the commands before it finish, into {@code query}: {@link CgGLBackend#glQueryTimestamp}. */
+    public static void glQueryTimestamp(int query) {
+        gl().glQueryTimestamp(query);
+    }
+
     public static boolean glIsQueryResultAvailable(int query) {
         return gl().glIsQueryResultAvailable(query);
     }

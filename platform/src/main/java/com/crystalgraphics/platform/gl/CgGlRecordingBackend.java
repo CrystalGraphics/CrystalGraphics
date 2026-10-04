@@ -43,7 +43,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
             MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
             CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118, BEGIN_TRANSFORM_FEEDBACK = 119,
-            END_TRANSFORM_FEEDBACK = 120;
+            END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -197,6 +197,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
                 case TEX_BUFFER: CgGL.glTexBuffer(ri(), ri(), ri()); break;
                 case BEGIN_TIME_QUERY: CgGL.glBeginTimeElapsedQuery(ri()); break;
                 case END_TIME_QUERY: CgGL.glEndTimeElapsedQuery(); break;
+                case QUERY_TIMESTAMP: CgGL.glQueryTimestamp(ri()); break;
                 case DELETE_QUERY: CgGL.glDeleteQuery(ri()); break;
                 case BIND_VAO: CgGL.glBindVertexArray(ri()); break;
                 case DELETE_VAO: CgGL.glDeleteVertexArrays(ri()); break;
@@ -572,6 +573,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override public int glGenQuery() { throw refused("glGenQuery", CREATES); }
     @Override public void glBeginTimeElapsedQuery(int query) { op(BEGIN_TIME_QUERY); i(query); }
     @Override public void glEndTimeElapsedQuery() { op(END_TIME_QUERY); }
+    @Override public void glQueryTimestamp(int query) { op(QUERY_TIMESTAMP); i(query); }
     @Override public boolean glIsQueryResultAvailable(int query) { return live.glIsQueryResultAvailable(query); }
     @Override public long glGetQueryResultNanos(int query) { return live.glGetQueryResultNanos(query); }
     @Override public void glDeleteQuery(int query) { op(DELETE_QUERY); i(query); }

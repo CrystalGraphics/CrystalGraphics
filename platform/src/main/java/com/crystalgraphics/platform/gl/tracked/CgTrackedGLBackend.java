@@ -988,6 +988,12 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         timing = null;
     }
 
+    /** A timestamp at the bottom of the pipe: allowed inside a pass, and while a timer runs. */
+    @Override
+    public void glQueryTimestamp(int query) {
+        device.encoder().timestamp(queries.get(query));
+    }
+
     @Override public boolean glIsQueryResultAvailable(int query) { return queries.get(query).resultNanos() >= 0; }
 
     @Override

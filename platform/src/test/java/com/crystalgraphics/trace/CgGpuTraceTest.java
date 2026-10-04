@@ -158,6 +158,56 @@ public class CgGpuTraceTest {
         assertTrue(CgGpuTrace.totals().size() == 1);
     }
 
+    @Test
+    public void marksChargeEachRunToItsLabelAndLeaveTheFrameTotalToTheZone() {
+        gl.queriesReady = true;
+        gl.queryNanos = 10 * MS;
+        int opaque = CgGpuTrace.label("opaque"), glass = CgGpuTrace.label("glass");
+        CgTrace.frameBegin();
+        CgGpuTrace.begin("world");
+        CgGpuTrace.mark(opaque);
+        gl.clock = 3 * MS;
+        CgGpuTrace.mark(opaque);       // the same run
+        gl.clock = 4 * MS;
+        CgGpuTrace.mark(glass);
+        gl.clock = 10 * MS;
+        CgGpuTrace.end();
+        CgTrace.frameBegin();
+
+        assertEquals(3, gl.countOf("glQueryTimestamp"));
+        assertEquals(10 * MS, frame(0).gpuNanos());
+        Map<String, Long> counters = counters(0);
+        assertEquals(Long.valueOf(4 * MS), counters.get("gpu:world.opaque"));
+        assertEquals(Long.valueOf(6 * MS), counters.get("gpu:world.glass"));
+    }
+
+    @Test
+    public void markEndLeavesWhatFollowsUncharged() {
+        gl.queriesReady = true;
+        int a = CgGpuTrace.label("a");
+        CgTrace.frameBegin();
+        CgGpuTrace.begin("pass");
+        CgGpuTrace.mark(a);
+        gl.clock = 2 * MS;
+        CgGpuTrace.markEnd();
+        gl.clock = 9 * MS;
+        CgGpuTrace.end();
+        CgTrace.frameBegin();
+
+        assertEquals(2, gl.countOf("glQueryTimestamp"));
+        assertEquals(Long.valueOf(2 * MS), counters(0).get("gpu:pass.a"));
+    }
+
+    @Test
+    public void aMarkOutsideAMeasuredZoneIssuesNothing() {
+        CgGpuTrace.mark(CgGpuTrace.label("a"));
+        CgTrace.disable(CgGpuTrace.GPU.name());
+        CgGpuTrace.begin("pass");
+        CgGpuTrace.mark(CgGpuTrace.label("a"));
+        CgGpuTrace.end();
+        assertFalse(gl.sawCall("glQueryTimestamp"));
+    }
+
     private static void zone(String name) {
         CgGpuTrace.begin(name);
         CgGpuTrace.end();

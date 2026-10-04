@@ -106,4 +106,11 @@ public interface CgCommandEncoder {
 
     /** Allowed inside a pass. */
     void endTimer(CgTimerQuery query);
+
+    /**
+     * Writes the GPU's clock into {@code query} once the commands before it finish: its {@code resultNanos()} is then
+     * that time, in nanoseconds of a clock only differences of mean anything. Allowed inside a pass, and while
+     * another query times.
+     */
+    void timestamp(CgTimerQuery query);
 }

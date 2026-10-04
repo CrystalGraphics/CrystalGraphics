@@ -544,5 +544,15 @@ public final class VulkanEncoder implements CgCommandEncoder {
         VulkanTimerQuery q = (VulkanTimerQuery) query;
         vkCmdWriteTimestamp(cmd(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, q.pool, 1);
         q.frame = device.frameIndex();
+        q.stamp = false;
+    }
+
+    @Override
+    public void timestamp(CgTimerQuery query) {
+        VulkanTimerQuery q = (VulkanTimerQuery) query;
+        vkResetQueryPool(device.vk(), q.pool, 0, 2);
+        vkCmdWriteTimestamp(cmd(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, q.pool, 1);
+        q.frame = device.frameIndex();
+        q.stamp = true;
     }
 }

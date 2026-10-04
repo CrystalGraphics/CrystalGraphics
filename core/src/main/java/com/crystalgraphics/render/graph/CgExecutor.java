@@ -111,6 +111,8 @@ public final class CgExecutor {
     private static final int CPU_COUNT = CgTrace.name("graph.dispatches.cpu");
     /** Each compute pass's GPU zone by its name, interned once: a pass is recorded anew each frame. */
     private static final Map<String, Integer> GPU_ZONES = new HashMap<>();
+    /** By pipeline id, its GPU group's label plus one: its material's path. */
+    private static int[] groupLabels = new int[64];
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
@@ -969,10 +971,12 @@ public final class CgExecutor {
         }
         CgPipeline pipeline = null;
         boolean usable = false, objectsBound = false;
+        boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS) && CgGpuTrace.isMeasuring();
         int slot = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
+                if (groups) CgGpuTrace.mark(groupLabel(packed.pipeline[b]));   // before its target copy, which it pays for
                 int command = packed.counts[b] != null ? slot : -1;
                 int end;
                 if (command >= 0) {
@@ -1052,10 +1056,22 @@ public final class CgExecutor {
                 }
             }
         } finally {
+            if (groups) CgGpuTrace.markEnd();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
             if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
+    }
+
+    private static int groupLabel(int pipeline) {
+        if (pipeline >= groupLabels.length) groupLabels = Arrays.copyOf(groupLabels, Math.max(pipeline + 1, groupLabels.length * 2));
+        int label = groupLabels[pipeline] - 1;
+        if (label < 0) {
+            String path = CgPipeline.byId(pipeline).shader().getResourcePath();
+            label = CgGpuTrace.label(path != null ? path : "unnamed");
+            groupLabels[pipeline] = label + 1;
+        }
+        return label;
     }
 
     private static CgMesh mesh(CgFrame.Raster packed, int b) {

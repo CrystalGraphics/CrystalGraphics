@@ -980,6 +980,11 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glQueryTimestamp(int query) {
+        GL33.glQueryCounter(query, GL33.GL_TIMESTAMP);
+    }
+
+    @Override
     public boolean glIsQueryResultAvailable(int query) {
         return GL15.glGetQueryObjecti(query, GL15.GL_QUERY_RESULT_AVAILABLE) != 0;
     }

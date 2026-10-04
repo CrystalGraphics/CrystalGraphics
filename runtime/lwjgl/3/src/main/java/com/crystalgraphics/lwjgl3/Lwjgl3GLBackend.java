@@ -1022,6 +1022,11 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glQueryTimestamp(int query) {
+        GL33C.glQueryCounter(query, GL33C.GL_TIMESTAMP);
+    }
+
+    @Override
     public boolean glIsQueryResultAvailable(int query) {
         GL15C.nglGetQueryObjectiv(query, GL15C.GL_QUERY_RESULT_AVAILABLE, SCRATCH_ADDRESS);
         return MemoryUtil.memGetInt(SCRATCH_ADDRESS) != 0;

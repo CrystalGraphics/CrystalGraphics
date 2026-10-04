@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**157 methods** (169 declarations with overloads): **144 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **11 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawElementsIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
+**158 methods** (170 declarations with overloads): **145 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **11 by nothing** -- `isAvailable`, `getPriority`, `glQueryTimestamp`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
 **What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -62,14 +62,14 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `glGenBuffers` | `glGenBuffers` | 13 |  |  |  | 8 |
-| `glBindBuffer` | `glBindBuffer` | 64 |  |  | 3 | 17 |
-| `glBufferData` ×3 | `glBufferData` | 16 |  |  |  | 8 |
-| `glBufferSubData` | `glBufferSubData` | 5 |  |  |  | 1 |
-| `glCopyBufferSubData` | `glCopyBufferSubData` | 5 |  |  |  |  |
-| `glDeleteBuffers` | `glDeleteBuffers` | 23 |  |  |  | 6 |
-| `glBindBufferBase` | `glBindBufferBase` | 9 |  |  | 2 |  |
-| `glBindBufferRange` | `glBindBufferRange` | 8 |  |  | 2 |  |
+| `glGenBuffers` | `glGenBuffers` | 15 |  |  |  | 8 |
+| `glBindBuffer` | `glBindBuffer` | 73 |  |  | 3 | 17 |
+| `glBufferData` ×3 | `glBufferData` | 18 |  |  |  | 8 |
+| `glBufferSubData` | `glBufferSubData` | 4 |  |  |  | 1 |
+| `glCopyBufferSubData` | `glCopyBufferSubData` | 6 |  |  |  |  |
+| `glDeleteBuffers` | `glDeleteBuffers` | 25 |  |  |  | 6 |
+| `glBindBufferBase` | `glBindBufferBase` | 10 |  |  | 2 |  |
+| `glBindBufferRange` | `glBindBufferRange` | 9 |  |  | 2 |  |
 | `glTexBuffer` | `glTexBuffer` | 2 |  |  |  |  |
 | `glGenVertexArrays` | `glGenVertexArrays` | 3 |  |  |  | 7 |
 | `glBindVertexArray` | `glBindVertexArray` | 13 |  |  | 1 | 22 |
@@ -77,11 +77,11 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 | `glEnableVertexAttribArray` | `glEnableVertexAttribArray` | 4 |  |  |  | 11 |
 | `glVertexAttribPointer` | `glVertexAttribPointer` | 3 |  |  |  | 11 |
 | `glVertexAttribIPointer` | `glVertexAttribIPointer` | 1 |  |  |  |  |
-| `cgFillBuffer` | `cgFillBuffer` | 1 |  |  |  |  |
+| `cgFillBuffer` | `cgFillBuffer` | 3 |  |  |  |  |
 | `glMapBufferRange` | `glMapBufferRange` | 7 |  |  |  |  |
 | `glUnmapBuffer` | `glUnmapBuffer` | 6 |  |  |  |  |
 | `glFlushMappedBufferRange` | `glFlushMappedBufferRange` | 1 |  |  |  |  |
-| `glBufferStorage` | `glBufferStorage` | 2 |  |  |  |  |
+| `glBufferStorage` | `glBufferStorage` | 3 |  |  |  |  |
 | `glVertexAttribDivisor` | `glVertexAttribDivisor` |  |  |  |  |  |
 
 ## Programs
@@ -103,8 +103,8 @@ The link-time rewrite (D3.6) produces the tables these answer from.
 | `glGetProgramInfoLog` | `glGetProgramInfoLog` | 3 |  |  |  | 1 |
 | `glUseProgram` | `glUseProgram` | 7 |  |  | 1 | 9 |
 | `glDeleteProgram` | `glDeleteProgram` | 1 |  |  |  | 5 |
-| `glGetUniformLocation` | `glGetUniformLocation` | 16 |  |  |  | 4 |
-| `glUniform1i` | `glUniform1i` | 18 |  |  |  |  |
+| `glGetUniformLocation` | `glGetUniformLocation` | 17 |  |  |  | 4 |
+| `glUniform1i` | `glUniform1i` | 19 |  |  |  |  |
 | `glUniform1f` | `glUniform1f` | 1 |  |  |  |  |
 | `glUniform2f` | `glUniform2f` | 1 |  |  |  | 1 |
 | `glUniform3f` | `glUniform3f` | 1 |  |  |  |  |
@@ -131,7 +131,7 @@ Uploads are encoder work outside a pass.
 |---|---|---:|---:|---:|---:|---:|
 | `copyImageSubData` | `glCopyImageSubData` | 1 |  |  |  |  |
 | `glGenTextures` | `glGenTextures` | 9 |  |  |  | 5 |
-| `glBindTexture` | `glBindTexture` | 32 |  |  | 1 | 11 |
+| `glBindTexture` | `glBindTexture` | 33 |  |  | 1 | 11 |
 | `glDeleteTextures` | `glDeleteTextures` | 7 |  |  |  | 3 |
 | `glTexImage2D` ×2 | `glTexImage2D` | 5 |  |  |  | 3 |
 | `glTexSubImage2D` ×2 | `glTexSubImage2D` | 2 |  |  |  |  |
@@ -158,7 +158,7 @@ Attachment sets; a bind picks the next pass's target.
 | `deleteFramebuffers` | `glDeleteFramebuffers` | 7 |  | 1 |  | 5 |
 | `framebufferTexture2D` | `glFramebufferTexture2D` | 7 |  | 2 |  | 3 |
 | `checkFramebufferStatus` | `glCheckFramebufferStatus` | 2 | 2 |  |  | 4 |
-| `drawBuffers` | `glDrawBuffers` | 2 |  |  |  |  |
+| `drawBuffers` | `glDrawBuffers` | 3 |  |  |  |  |
 | `getFramebufferAttachmentParameteriv` | `glGetFramebufferAttachmentParameteriv` | 2 |  |  |  | 1 |
 | `glDrawBuffer` | `glDrawBuffer` | 1 |  |  |  |  |
 | `glReadBuffer` | `glReadBuffer` | 1 |  |  |  |  |
@@ -180,13 +180,13 @@ The tracker's draw, and a clear as a load op.
 | `glDrawElementsInstancedBaseVertex` | `glDrawElementsInstancedBaseVertex` | 1 |  |  |  |  |
 | `glDrawArraysIndirect` | `glDrawArraysIndirect` | 2 |  |  |  |  |
 | `glDrawElementsIndirect` | `glDrawElementsIndirect` | 1 |  |  |  |  |
+| `glMultiDrawElementsIndirect` | `glMultiDrawElementsIndirect` | 2 |  |  |  |  |
 | `glBeginTransformFeedback` | `glBeginTransformFeedback` | 2 |  |  |  |  |
 | `glEndTransformFeedback` | `glEndTransformFeedback` | 2 |  |  |  |  |
 | `glClear` | `glClear` | 4 |  |  |  | 5 |
 | `glDrawElements` | `glDrawElements` |  |  |  |  | 2 |
 | `glDrawElementsInstanced` | `glDrawElementsInstanced` |  |  |  |  |  |
 | `glMultiDrawArraysIndirect` | `glMultiDrawArraysIndirect` |  |  |  |  |  |
-| `glMultiDrawElementsIndirect` | `glMultiDrawElementsIndirect` |  |  |  |  |  |
 | `glMultiDrawArraysIndirectCount` | `glMultiDrawArraysIndirectCount` |  |  |  |  |  |
 | `glMultiDrawElementsIndirectCount` | `glMultiDrawElementsIndirectCount` |  |  |  |  |  |
 
@@ -199,7 +199,7 @@ Dispatches, storage images and the barriers the frame graph derives; async work 
 | `glDispatchCompute` | `glDispatchCompute` | 1 |  |  |  |  |
 | `glDispatchComputeIndirect` | `glDispatchComputeIndirect` | 1 |  |  |  |  |
 | `glBindImageTexture` | `glBindImageTexture` | 3 |  |  | 1 |  |
-| `cgBufferBarrier` | `cgBufferBarrier` | 1 |  |  |  |  |
+| `cgBufferBarrier` | `cgBufferBarrier` | 5 |  |  |  |  |
 | `cgBeginAsync` | `cgBeginAsync` | 1 |  |  |  |  |
 | `cgEndAsync` | `cgEndAsync` | 1 |  |  |  |  |
 | `cgWaitAsync` | `cgWaitAsync` | 1 |  |  |  |  |
@@ -218,11 +218,12 @@ Fences on the frame that recorded them; a readback stalls.
 | `glIsQueryResultAvailable` | `glIsQueryResultAvailable` |  |  |  | 1 |  |
 | `glGetQueryResultNanos` | `glGetQueryResultNanos` |  |  |  | 1 |  |
 | `glDeleteQuery` | `glDeleteQuery` |  |  |  | 2 |  |
-| `glGetTexImage` | `glGetTexImage` | 2 |  |  |  | 2 |
+| `glGetTexImage` | `glGetTexImage` | 3 |  |  |  | 2 |
 | `glReadPixels` ×2 | `glReadPixels` | 6 | 1 |  |  | 3 |
 | `glFenceSync` | `glFenceSync` | 2 |  |  |  |  |
 | `glClientWaitSync` | `glClientWaitSync` | 2 |  |  |  |  |
 | `glDeleteSync` | `glDeleteSync` | 5 |  |  |  |  |
+| `glQueryTimestamp` | `glQueryTimestamp` |  |  |  |  |  |
 
 ## Fixed function
 

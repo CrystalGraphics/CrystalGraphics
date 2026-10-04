@@ -537,6 +537,13 @@ public final class CgRecordingDevice implements CgDevice {
             record("endTimer " + ref(query));
         }
 
+        @Override
+        public void timestamp(CgTimerQuery query) {
+            use(query);
+            ((Timer) query).frame = frame;
+            record("timestamp " + ref(query));
+        }
+
         private String region(CgTextureRegion r) {
             return "mip" + r.mip() + " " + r.x() + "," + r.y() + "," + r.z() + " " + r.width() + "x" + r.height() + "x" + r.depth();
         }

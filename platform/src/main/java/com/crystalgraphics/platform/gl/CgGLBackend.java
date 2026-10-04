@@ -153,6 +153,12 @@ public abstract class CgGLBackend {
     /** Begins a {@code GL_TIME_ELAPSED} query. Must not be nested inside another. */
     public abstract void glBeginTimeElapsedQuery(int query) ;
     public abstract void glEndTimeElapsedQuery() ;
+    /**
+     * Writes the GPU's clock into {@code query} once the commands before it finish ({@code glQueryCounter},
+     * {@code GL_TIMESTAMP}): {@link #glGetQueryResultNanos} then answers that time in nanoseconds. Allowed while a
+     * time-elapsed query runs; two timestamps' difference is the time between them.
+     */
+    public abstract void glQueryTimestamp(int query) ;
     /** Non-blocking. Polling this instead of reading directly is what avoids a pipeline stall. */
     public abstract boolean glIsQueryResultAvailable(int query) ;
     /** @return elapsed GPU time in nanoseconds; only valid once {@link #glIsQueryResultAvailable} is true */
