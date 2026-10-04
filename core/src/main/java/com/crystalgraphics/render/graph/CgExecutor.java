@@ -53,6 +53,7 @@ import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -106,7 +107,13 @@ public final class CgExecutor {
     private static final boolean BARRIERS = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.graph.barriers"));
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
+    private static final int LOWERED_COUNT = CgTrace.name("graph.dispatches.lowered");
+    private static final int CPU_COUNT = CgTrace.name("graph.dispatches.cpu");
+    /** Each compute pass's GPU zone by its name, interned once: a pass is recorded anew each frame. */
+    private static final Map<String, Integer> GPU_ZONES = new HashMap<>();
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
+    /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
+    private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
     private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
@@ -228,6 +235,7 @@ public final class CgExecutor {
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
         HAZARDS.clear();
+        CgBufferInspector.reset();
     }
 
     private void run(CgFrame frame) {
@@ -407,8 +415,19 @@ public final class CgExecutor {
                 raster(frame, raster, frame.rasters[s]);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgComputePass compute) {
-                if (async) computeAsync(frame, s, compute);
-                else compute(frame, compute, frame.computes[s]);
+                if (async) {
+                    computeAsync(frame, s, compute);
+                } else {
+                    // On the detail channel: an enclosing GPU zone is timed around this one, not through it.
+                    boolean gpu = CgTrace.isEnabled(CgChannels.GL_DETAIL) && CgGpuTrace.isMeasuring();
+                    if (gpu) CgGpuTrace.begin(gpuZone(compute.name()));
+                    try {
+                        compute(frame, compute, frame.computes[s]);
+                    } finally {
+                        if (gpu) CgGpuTrace.end();
+                    }
+                }
+                if (CgBufferInspector.watching()) inspect(compute);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill fill) {
                 int id = bufferStorage(fill.buffer, true);
@@ -499,18 +518,46 @@ public final class CgExecutor {
         List<CgDispatch> dispatches = pass.dispatches();
         boolean draws = false;
         for (int d = 0; d < dispatches.size(); d++) draws |= dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE;
+        int lowered = 0, cpu = 0;
         // A lowered dispatch is draws: what they bind must not reach the passes after, which draw into what is bound.
-        try (CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
+        try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null;
+             CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
             for (int d = 0; d < dispatches.size(); d++) {
                 CgDispatch dispatch = dispatches.get(d);
                 switch (dispatch.kernel.form().how()) {
                     case COMPUTE -> dispatch(frame, dispatch, packed.bindings[d]);
-                    case LOWERED -> lowered(frame, dispatch, packed.bindings[d]);
-                    case CPU -> cpu(dispatch);
+                    case LOWERED -> {
+                        lowered(frame, dispatch, packed.bindings[d]);
+                        lowered++;
+                    }
+                    case CPU -> {
+                        cpu(dispatch);
+                        cpu++;
+                    }
                 }
             }
         }
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+        if (lowered > 0) CgTrace.add(CgChannels.GL, LOWERED_COUNT, lowered);
+        if (cpu > 0) CgTrace.add(CgChannels.GL, CPU_COUNT, cpu);
+    }
+
+    /** What {@code pass} bound, noted for {@link CgBufferInspector}, and the reads armed for it copied as it left them. */
+    private void inspect(CgComputePass pass) {
+        CgBufferInspector.note(pass);
+        for (CgBufferInspector.Request read = CgBufferInspector.due(); read != null; read = CgBufferInspector.due()) {
+            if (asyncUnwaited) waitAsync(asyncLatest);
+            int id = bufferStorage(read.view(), false);
+            CgLoweredResources.land(id);
+            barrier(true, id, CgAccess.COPY_READ);
+            CgReadback.buffer(id, read.offset(), read.size(), read);
+        }
+    }
+
+    private static int gpuZone(String pass) {
+        Integer id = GPU_ZONES.get(pass);
+        if (id == null) GPU_ZONES.put(pass, id = CgGpuTrace.name(pass));
+        return id;
     }
 
     // ── Async compute ────────────────────────────────────────────────────────
@@ -934,6 +981,10 @@ public final class CgExecutor {
                 } else {
                     end = packed.objects[b] == null && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
                             ? joinRun(packed, b) : b;
+                    if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
+                            && breaksOnBinding(packed, b, end + 1)) {
+                        CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
+                    }
                 }
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
@@ -1052,6 +1103,14 @@ public final class CgExecutor {
     /** Whether every instance of indirect batch {@code b} reads its one record: an INSTANCES draw of the frame's. */
     private static boolean sharesRecord(CgFrame.Raster packed, int b) {
         return packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+    }
+
+    /** Whether batch {@code k} would join {@code b}'s run but for its bindings: what bindless would join. */
+    private static boolean breaksOnBinding(CgFrame.Raster packed, int b, int k) {
+        return packed.objects[b] == null && packed.counts[k] == null && packed.objects[k] == null
+                && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
+                && packed.binding[k] != packed.binding[b] && packed.scissor[k] == packed.scissor[b]
+                && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 
     /** Binds a GPU buffer of object records where {@code CG_OBJECT_DATA} reads the frame's own. */

@@ -950,6 +950,24 @@ try (CgGlScope scope = CgKernelProgram.scope()) {           // saves what a disp
 CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // the reader barriers
 ```
 
+#### Before the first dispatch
+
+A kernel compiles at its first dispatch, on the render thread. `prepare()` starts it earlier — at load, on a loading
+screen — so that frame finds it compiled:
+
+```java
+CgCompute particles = CgCompute.load("mymod:shaders/particles.compute");
+particles.kernel("Simulate").prepare();                 // each kernel and keyword set the effect dispatches
+particles.kernel("Simulate").withKeywords("WIND").prepare();
+```
+
+- Where the driver links on its own threads (`KHR_parallel_shader_compile`), the link runs while frames go on; the
+  dispatch that takes the program waits for what is left (`compute.compileWait`, counted by `compute.compile-waits`).
+- A lowered kernel's passes are built at once; a Java body needs nothing.
+- On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
+  (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as
+  long.
+
 ### Drawing what a kernel wrote
 
 | A kernel wrote | A draw reads it | Tiers |
@@ -1229,6 +1247,27 @@ CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and whic
 
 - A kernel that fails to compile throws with the driver's log and the emitted source, numbered. One that fails to
   parse throws `CgShaderParseException` from `CgCompute.load`, naming the file, the kernel and the line.
+- **Checked mode**, `-Dcrystalgraphics.compute.checked=true`: every buffer and image access a kernel run as compute
+  makes is bounds-checked, one out of range is skipped, and the first of each dispatch is logged a frame or two later,
+  once a place (`CgComputeCheck.reported()` lists them):
+
+  ```
+  [crystalgraphics] compute check: mymod:shaders/bins.compute, kernel Bin, line 24: BINS_ADD at 64, past BINS's 64 elements
+  [crystalgraphics] compute check: mymod:shaders/heat.compute, kernel Paint, line 29: HEAT_WRITE at (32, 8), outside HEAT's 32x32 (256 times in one dispatch)
+  ```
+
+  Compute tiers only: a lowered kernel writes its own element, and a Java body's buffers throw on their own.
+  `NAME_DATA[i]` and appends are not checked. A debugging switch: every access tests its index.
+- **What a buffer holds**, field by field: `CgBufferInspector` reads any buffer a compute pass binds, after that pass,
+  and decodes it through the kernel's own declaration, on every tier and without a stall (`render/graph/CLAUDE.md`
+  § *Inspecting a buffer*):
+
+  ```java
+  CgBufferInspector.watch(true);
+  for (CgBufferInspector.Site site : CgBufferInspector.sites()) System.out.println(site);
+  // sparks after particles.step: 4096 x Spark, 32 bytes each (mymod:shaders/particles.compute Step, STATE)
+  CgBufferInspector.read(site, 0, 16, read -> System.out.println(read.value(0, site.decl().field("positionLife"))));
+  ```
 - An asset reload (`CgAssetReloader`) re-reads every `.compute`; `CgCompute.load(path).reload()` re-reads one.
 - `-Dcrystalgraphics.compute.tier=G40` runs a kernel as a Mac would on any machine; `G33` with
   `-Dcrystalgraphics.shaderBuffer.tier=TBO` as a GL 3.3 context.

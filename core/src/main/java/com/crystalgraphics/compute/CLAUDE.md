@@ -11,11 +11,11 @@ is easy to get wrong — is `docs/SHADERS.md` § *Compute*, loaded below.** This
 
 | Package | Holds |
 |---|---|
-| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, a value: `program()`, `glsl()`, `cpu(body)`, `form()`, `runs()`, `check()`, `lowered()`. `CgKernelForm` — how this context runs a kernel, and the every-tier check. `CgDispatchBindings` — what a dispatch below compute binds, in GL names |
+| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, one instance per set, holding its checks, form, program and lowered form: `program()`, `prepare()` (the program started ahead of its first dispatch), `glsl()`, `cpu(body)`, `form()`, `runs()`, `check()`, `lowered()`. `CgKernelForm` — how this context runs a kernel, and the every-tier check. `CgDispatchBindings` — what a dispatch below compute binds, in GL names |
 | `source` | What a `.compute` declares, as data, no GL: `CgComputeSource`, `CgKernelDecl` (size, shape, fallback, and what its code reaches), `CgBufferDecl`, `CgImageDecl`, `CgSourcePart` (the code, cut where kernels differ), the vocabularies `CgKernelShape`, `CgBufferAccess`, `CgImageAccess`, `CgImageFormat`, `CgImageDimension`, and the accessors `CgBufferAccessor`/`CgImageAccessor` with the rule for each |
 | `parse` | `CgComputeParser`, GL-free; package-private `TopLevel` (file scope, item by item), `GlslText`, `Std430`, `ConstantInt` |
 | `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits), `CgGlslBuiltins` (each builtin newer than GLSL 3.30, its version and its exact polyfill, or none) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
-| `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
+| `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself; `submit` links without waiting, a `Pending` that `finish()` makes the program. `CgComputeCheck`: checked mode's report slots, read back at `tickFrame` |
 | `lower` | A kernel below compute (C5): `CgLowering` (the passes a shape lowers to, or the construct that stops it; GL-free), `CgLoweredEmitter` (each pass's stages, and `reader`, the buffer accessor a material's `Buffers { }` shares), `CgLoweredTarget`, `CgLoweredKernel` (the passes compiled, and its dispatch), `CgLoweredPrograms` (the helper programs), `CgLoweredResources` (scratch, texel targets, zeroed counters), `CgTexelTarget` |
 | `cpu` | The CPU tier (C6): `CgCpuBody` (a kernel's Java body), `CgCpuDispatch`, `CgCpuBuffer`, `CgCpuImage` (what a body sees), `CgCpuRunner` (runs one), `CgCpuMirrors` (the CPU copies of GL buffers) |
 | `ops` | The library (C7): `CgGpuOps`, `CgGpuCount`, `CgCull` (what a cull tests against, C9b), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsBodies` (every op kernel's Java body), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
@@ -59,6 +59,7 @@ Wired by name after linking, so the source carries no `binding =`:
 | The frame block | `CgFrameBlock` at `FRAME_DATA_UBO`: `CgKernelProgram.frame(constants)` in a direct dispatch |
 | An engine buffer (`#pragma cg_use`) | its own binding point; writable in a general kernel, read-only in the rest |
 | `cg_Dispatch[6]` | base and count per dispatch, one `glUniform1iv` |
+| Checked mode's slot (`CgCheck`) | the next point after the counts; each dispatch binds its own slot of `CgComputeCheck`'s buffer, so no two overlap |
 
 ## Three forms: compute, lowered, a Java body
 

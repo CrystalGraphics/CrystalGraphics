@@ -65,6 +65,8 @@ public final class CgKernelProgram {
     private final int[] counterPoints;
     /** Per append buffer, its count's word uniform; -1 for any other buffer. */
     private final int[] counterWords;
+    /** Where checked mode's report slot binds, after every buffer and count; -1 unchecked. */
+    private final int checkPoint;
     private final int[] groupLimits = new int[3];
     private final IntBuffer dispatch = CgBufferUtils.createIntBuffer(6);
     private final CgMaterialProperties properties;
@@ -74,7 +76,7 @@ public final class CgKernelProgram {
     private float[] frameValues;
 
     private CgKernelProgram(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl,
-                            CgShaderProgram program) {
+                            CgShaderProgram program, boolean checked) {
         this.source = source;
         this.kernel = kernel;
         this.keywords = keywords;
@@ -90,6 +92,7 @@ public final class CgKernelProgram {
         this.counterWords = new int[source.buffers().size()];
         int next = source.buffers().size();
         for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = b.access() == CgBufferAccess.APPEND ? next++ : -1;
+        this.checkPoint = checked ? next : -1;
         CgCapabilities caps = CgCapabilities.detect();
         for (int axis = 0; axis < 3; axis++) groupLimits[axis] = caps.maxComputeWorkGroupCount(axis);
         try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
@@ -115,16 +118,69 @@ public final class CgKernelProgram {
     /** As {@link #build(CgComputeSource, CgKernelDecl, Set)}, for a target this context runs: subgroups emulated. */
     public static CgKernelProgram build(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords,
                                         CgKernelTarget target) {
+        return submit(source, kernel, keywords, target).finish();
+    }
+
+    /**
+     * {@link #build}, returning before the driver has linked: where it links on threads of its own
+     * ({@code KHR_parallel_shader_compile}), the link runs while frames go on.
+     *
+     * <pre>{@code
+     * CgKernelProgram.Pending pending = CgKernelProgram.submit(source, decl, keywords, CgKernelTarget.current());
+     * // later frames:
+     * if (pending.isDone()) program = pending.finish();   // throws as build would
+     * }</pre>
+     */
+    public static Pending submit(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords,
+                                 CgKernelTarget target) {
         String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
         String expanded = new CgShaderPreprocessor().process(glsl, source.path());
-        CgShaderProgram program;
-        try {
-            program = CgShaderProgram.compileCompute(expanded);
-        } catch (IllegalStateException e) {
-            throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
-                    + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
+        CgShaderProgram program = CgShaderProgram.create();
+        program.submitComputeLink(expanded);
+        return new Pending(source, kernel, keywords, glsl, expanded, program, target.checked());
+    }
+
+    /** A kernel's program linking: {@link #finish} makes it, waiting for the driver only if it has not finished. */
+    public static final class Pending {
+        private final CgComputeSource source;
+        private final CgKernelDecl kernel;
+        private final Set<String> keywords;
+        private final String glsl, expanded;
+        private final CgShaderProgram program;
+        private final boolean checked;
+
+        private Pending(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl, String expanded,
+                        CgShaderProgram program, boolean checked) {
+            this.source = source;
+            this.kernel = kernel;
+            this.keywords = keywords;
+            this.glsl = glsl;
+            this.expanded = expanded;
+            this.program = program;
+            this.checked = checked;
         }
-        return new CgKernelProgram(source, kernel, keywords, glsl, program);
+
+        /** Whether {@link #finish} would return without waiting. */
+        public boolean isDone() {
+            return program.isLinkDone();
+        }
+
+        /** @throws IllegalStateException with the driver's log, and the emitted source, if it failed to compile or link */
+        public CgKernelProgram finish() {
+            try {
+                program.finishLink();
+            } catch (IllegalStateException e) {
+                program.delete();
+                throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
+                        + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
+            }
+            return new CgKernelProgram(source, kernel, keywords, glsl, program, checked);
+        }
+
+        /** Drops a link nobody will finish. */
+        public void delete() {
+            program.delete();
+        }
     }
 
     private void wire() {
@@ -134,6 +190,7 @@ public final class CgKernelProgram {
             storageBlock(id, CgKernelEmitter.bitsBlock(b), b.index());
             if (counterPoints[b.index()] >= 0) storageBlock(id, CgKernelEmitter.counterBlock(b), counterPoints[b.index()]);
         }
+        if (checkPoint >= 0) storageBlock(id, CgKernelEmitter.CHECK_BLOCK, checkPoint);
         for (String token : source.engineBuffers()) {
             CgShaderBuffer buffer = CgEngineBufferRegistry.get(token).buffer().get();
             storageBlock(id, buffer.getName(), buffer.getBindingLocation());
@@ -287,6 +344,7 @@ public final class CgKernelProgram {
             for (int by = 0; by < gy; by += groupLimits[1]) {
                 for (int bx = 0; bx < gx; bx += groupLimits[0]) {
                     setDispatch(bx * kernel.sizeX(), by * kernel.sizeY(), bz * kernel.sizeZ(), x, y, z);
+                    if (checkPoint >= 0) CgComputeCheck.bind(checkPoint, this);
                     CgGL.glDispatchCompute(Math.min(groupLimits[0], gx - bx), Math.min(groupLimits[1], gy - by),
                             Math.min(groupLimits[2], gz - bz));
                 }
@@ -308,6 +366,7 @@ public final class CgKernelProgram {
     /** {@link #dispatchIndirect} with only what is bound now, as {@link #dispatchBound}. */
     public void dispatchIndirectBound(int glBuffer, long offset) {
         setDispatch(0, 0, 0, -1, -1, -1);
+        if (checkPoint >= 0) CgComputeCheck.bind(checkPoint, this);
         CgGL.glBindBuffer(CgGL.GL_DISPATCH_INDIRECT_BUFFER, glBuffer);
         CgGL.glDispatchComputeIndirect(offset);
     }
@@ -338,6 +397,9 @@ public final class CgKernelProgram {
     // ── What it is ────────────────────────────────────────────────────────────
 
     public CgKernelDecl kernel() { return kernel; }
+
+    /** The file it was compiled from. */
+    public CgComputeSource source() { return source; }
 
     public Set<String> keywords() { return keywords; }
 

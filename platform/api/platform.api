@@ -2114,6 +2114,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
   method public checkFramebufferStatus (I)I
+  method public compileInBackground ()Lcom/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend;
   method public copyImageSubData (IIIIIIIIIIIIIII)V
   method public deleteFramebuffers (I)V
   method public device ()Lcom/crystalgraphics/platform/device/CgDevice;
@@ -2418,6 +2419,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedPrograms
   method public attach (II)V
   method public attachedShaders (ILjava/nio/IntBuffer;Ljava/nio/IntBuffer;)V
   method public bindAttribLocation (IILjava/lang/CharSequence;)V
+  method public compileInBackground ()V
   method public createProgram ()I
   method public createShader (I)I
   method public currentName ()I
@@ -2923,6 +2925,10 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/service/CgCacheDirectory
+  access public,final
+  extends java/lang/Object
+  method public,static of (Ljava/lang/String;)Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgCursorService
   access public,abstract,interface
   extends java/lang/Object
