@@ -1,16 +1,16 @@
 package com.crystalgraphics.vulkan.command;
 
-import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkBufferMemoryBarrier;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkImageMemoryBarrier;
+import org.lwjgl.vulkan.VkImageSubresourceRange;
 import org.lwjgl.vulkan.VkMemoryBarrier;
 
-import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.VK10.*;
 
 /**
- * Pipeline barriers, spelled once. Coarse on purpose (plan/device-vulkan.md §5): correct first.
+ * Pipeline barriers, spelled once. Coarse on purpose (plan/device-vulkan.md §5): correct first. Filled in
+ * {@link VulkanScratch}, since one is recorded per kernel access.
  *
  * <p>Into a {@link VulkanComputeCommandBuffer} a barrier keeps to the stages and accesses a compute queue has. What it
  * drops is drawing, which only the frame's queue does: the work before is covered by the semaphore the async work
@@ -30,40 +30,52 @@ public final class VulkanBarriers {
                       int oldLayout, int newLayout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-        try (MemoryStack stack = stackPush()) {
-            VkImageMemoryBarrier.Buffer b = VkImageMemoryBarrier.calloc(1, stack).sType$Default()
-                    .srcAccessMask(access(cmd, srcAccess, src)).dstAccessMask(access(cmd, dstAccess, dst))
-                    .oldLayout(oldLayout).newLayout(newLayout)
-                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED).dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-                    .image(image);
-            b.subresourceRange().aspectMask(aspect).baseMipLevel(baseMip).levelCount(mips)
-                    .baseArrayLayer(baseLayer).layerCount(layers);
-            vkCmdPipelineBarrier(cmd, src, dst, 0, null, null, b);
-        }
+        VulkanScratch s = VulkanScratch.get(VkImageMemoryBarrier.SIZEOF);
+        int range = VkImageMemoryBarrier.SUBRESOURCERANGE;
+        s.bytes.putInt(VkImageMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER)
+                .putLong(VkImageMemoryBarrier.PNEXT, 0L)
+                .putInt(VkImageMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
+                .putInt(VkImageMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst))
+                .putInt(VkImageMemoryBarrier.OLDLAYOUT, oldLayout)
+                .putInt(VkImageMemoryBarrier.NEWLAYOUT, newLayout)
+                .putInt(VkImageMemoryBarrier.SRCQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                .putInt(VkImageMemoryBarrier.DSTQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                .putLong(VkImageMemoryBarrier.IMAGE, image)
+                .putInt(range + VkImageSubresourceRange.ASPECTMASK, aspect)
+                .putInt(range + VkImageSubresourceRange.BASEMIPLEVEL, baseMip)
+                .putInt(range + VkImageSubresourceRange.LEVELCOUNT, mips)
+                .putInt(range + VkImageSubresourceRange.BASEARRAYLAYER, baseLayer)
+                .putInt(range + VkImageSubresourceRange.LAYERCOUNT, layers);
+        nvkCmdPipelineBarrier(cmd, src, dst, 0, 0, 0L, 0, 0L, 1, s.address);
     }
 
     /** One buffer's writes at {@code srcStage} made visible to {@code dstStage}: a compute pass's precise barrier. */
     static void buffer(VkCommandBuffer cmd, long buffer, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-        try (MemoryStack stack = stackPush()) {
-            VkBufferMemoryBarrier.Buffer b = VkBufferMemoryBarrier.calloc(1, stack).sType$Default()
-                    .srcAccessMask(access(cmd, srcAccess, src)).dstAccessMask(access(cmd, dstAccess, dst))
-                    .srcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED).dstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
-                    .buffer(buffer).offset(0).size(VK_WHOLE_SIZE);
-            vkCmdPipelineBarrier(cmd, src, dst, 0, null, b, null);
-        }
+        VulkanScratch s = VulkanScratch.get(VkBufferMemoryBarrier.SIZEOF);
+        s.bytes.putInt(VkBufferMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER)
+                .putLong(VkBufferMemoryBarrier.PNEXT, 0L)
+                .putInt(VkBufferMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
+                .putInt(VkBufferMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst))
+                .putInt(VkBufferMemoryBarrier.SRCQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                .putInt(VkBufferMemoryBarrier.DSTQUEUEFAMILYINDEX, VK_QUEUE_FAMILY_IGNORED)
+                .putLong(VkBufferMemoryBarrier.BUFFER, buffer)
+                .putLong(VkBufferMemoryBarrier.OFFSET, 0L)
+                .putLong(VkBufferMemoryBarrier.SIZE, VK_WHOLE_SIZE);
+        nvkCmdPipelineBarrier(cmd, src, dst, 0, 0, 0L, 1, s.address, 0, 0L);
     }
 
     /** Every earlier write visible to every later access: what a transfer is fenced with on each side. */
     static void global(VkCommandBuffer cmd, int srcStage, int srcAccess, int dstStage, int dstAccess) {
         int src = stage(cmd, srcStage, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
         int dst = stage(cmd, dstStage, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-        try (MemoryStack stack = stackPush()) {
-            VkMemoryBarrier.Buffer b = VkMemoryBarrier.calloc(1, stack).sType$Default()
-                    .srcAccessMask(access(cmd, srcAccess, src)).dstAccessMask(access(cmd, dstAccess, dst));
-            vkCmdPipelineBarrier(cmd, src, dst, 0, b, null, null);
-        }
+        VulkanScratch s = VulkanScratch.get(VkMemoryBarrier.SIZEOF);
+        s.bytes.putInt(VkMemoryBarrier.STYPE, VK_STRUCTURE_TYPE_MEMORY_BARRIER)
+                .putLong(VkMemoryBarrier.PNEXT, 0L)
+                .putInt(VkMemoryBarrier.SRCACCESSMASK, access(cmd, srcAccess, src))
+                .putInt(VkMemoryBarrier.DSTACCESSMASK, access(cmd, dstAccess, dst));
+        nvkCmdPipelineBarrier(cmd, src, dst, 0, 1, s.address, 0, 0L, 0, 0L);
     }
 
     /** {@code stages} as {@code cmd}'s queue has them; {@code none} where it has none of them. */

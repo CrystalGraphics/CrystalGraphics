@@ -187,6 +187,7 @@ record and the multi-draw variant has no shared record.
   `CgMeshStore.multiDraw(false)` in 77, and compares the two byte for byte; `--mode=gpu-cull` does the same for a
   culled set's levels. `-Dcrystalgraphics.mesh.multiDraw=false`
   turns it off for a process.
+- What a consumer builds on all of this, and how to design for joins: `docs/GPU_DRIVEN_RENDERING.md`.
 
 **Inspecting a buffer** (gpu-compute C10): `CgBufferInspector` is a debugger's buffer view. While watching, each
 compute pass notes the buffers its dispatches bind, a `Site` each (the buffer, the pass, the kernel's declaration of

@@ -644,7 +644,8 @@ A `.compute` holds **kernels**: GLSL functions the GPU runs once per element. A 
 every context a player may have, with the same answer on each: as a compute shader where the context has them, as
 draws where it does not (macOS's GL 4.1, a GL 3.3 context), and as a Java body where no GPU form can run it.
 **`crystalgraphics:shaders/example.compute` is the reference**: every part of the format, annotated, compiled by the
-tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Plan:
+tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Designing one
+that runs well on all of them: [Designing for every tier](#designing-for-every-tier). Plan:
 `plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`.
 
 ### Start to finish
@@ -970,6 +971,9 @@ particles.kernel("Simulate").withKeywords("WIND").prepare();
 
 ### Drawing what a kernel wrote
 
+The whole workflow, from a kernel to culled draws joined into one call, with recipes and the design rules:
+[`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
+
 | A kernel wrote | A draw reads it | Tiers |
 |---|---|---|
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
@@ -1220,6 +1224,88 @@ Lowered, an op run alone lands its result once, a `glReadPixels` costing this dr
 0.1-0.5 ms; a 32-bit sort takes 3.2 ms of CPU, its eighty dispatches' draws rather than landing. The CPU tier takes
 3-19 ms for the buffer ops and 360 ms for a 32-bit sort. **Below compute, sort fewer bits**: a depth key quantised to
 16 bits sorts in four passes, not eight.
+
+### Designing for every tier
+
+Write for the Vulkan device and GL 4.3, and the same file runs on macOS's GL 4.1 and a GL 3.3 context. What changes
+below compute is what a kernel may do and what a dispatch costs. The every-tier check ([Every tier](#every-tier))
+refuses the first on the author's machine; the second is the design's to answer.
+
+**1. Pick the narrowest shape.** The first six rows run on every tier as written.
+
+| The kernel… | Write it as |
+|---|---|
+| updates each element from itself | `map` |
+| reads other elements: neighbours, a lookup | `gather` |
+| emits zero or more new elements: spawning, trails | `append` |
+| writes at a computed index: binning, splatting, counting | `scatter` |
+| writes each texel of an image | `image` |
+| sums, prefix-sums, compacts, sorts, bins, takes bounds | a [`CgGpuOps`](#ops-cggpuops) op, not a kernel of your own |
+| uses `shared` memory, `barrier()` or subgroups for speed | `general`, with a lowerable kernel for the same result as its `#pragma fallback` |
+| has no lowerable algorithm | `general` and `#pragma compute_only`, the feature behind `kernel.runs()` |
+
+```glsl
+#pragma kernel Bin 256 general           // bins in shared memory: what compute runs
+#pragma kernel BinScatter scatter        // the same counts by blended adds: what G40 and G33 run
+#pragma fallback Bin BinScatter
+```
+
+**2. Lay records out in `vec4`s.** Below `general` a struct holds `vec4`, `ivec4` and `uvec4` only: pack scalars into
+lanes rather than adding fields.
+
+```glsl
+struct Particle {
+    vec4  positionLife;   // xyz position, w life left
+    vec4  velocityAge;    // xyz velocity, w age
+    uvec4 idKind;         // x a stable id, y the kind, zw spare
+};
+```
+
+**3. A dispatch reads the buffers as they were before it.** Lowered, every pass reads what the buffers held before the
+dispatch; on compute, reading an element another invocation writes is a race. State that advances is a history buffer
+(`IN` reads the newest version, `OUT` writes the next), and work that needs another's result is a second dispatch,
+which the graph orders.
+
+**4. A scatter's add is a blend.** Below compute `_ADD`, `_MIN` and `_MAX` blend into a float target: a count is exact
+to 2^24 a bin, and a counter whose answer is used is refused. To claim a slot, append; to number survivors,
+`CgGpuOps.compact`.
+
+```glsl
+uint slot = FREE_INC(0);  OUT_STORE(slot, p);   // refused below compute: a blend answers nothing
+SPAWNED_APPEND(p);                              // every tier
+```
+
+**5. Count dispatches, not elements.** Below compute a dispatch is draws: an op takes 0.1-0.5 ms of CPU where GL 4.3
+takes 0.01, and up to 40 times the GPU time ([what each op costs](#ops-cggpuops)).
+
+- One kernel writing several buffers beats a kernel for each: outputs of one layout share a pass, up to eight.
+- Chain kernels in one graph, and fill, copy, draw or read a buffer at the chain's end: each buffer leaving a chain of
+  lowered kernels is a read-back.
+- Sort the bits the key has: `sort(pass, 16, …)` is half a 32-bit sort's passes, and a 32-bit sort of a million keys
+  lowered takes 8 ms of GPU.
+- At G33 a GPU count a draw takes is read back first: a stall for each such draw.
+
+**6. Size the work by the form.** Nothing scales a consumer's work for it: an effect sized for the author's GPU runs
+on a Mac at a fraction of the speed. Size capacity by how this context runs the heaviest kernel.
+
+```java
+int capacity = step.form().how() == CgKernelForm.How.COMPUTE ? 1_000_000 : 100_000;
+```
+
+**7. Integers where the answer must match.** Integers and `cg_rng` give the same bits on every tier and in a Java
+body; floats agree to a rounding. A decision, a count or a seed that must match across machines is integer math or
+`cg_rng`, keyed by an id the element carries, never its slot.
+
+**8. Run it on the tiers you do not have.**
+
+```bash
+# your GPU, forced to each tier's form: G43, G40, G33, CPU
+./gradlew :gl-debug-harness:runHarness --args="--mode=<scene>" -Dcrystalgraphics.compute.tier=G40
+# a context that lacks compute: Mesa as macOS's GL 4.1, or a bare 3.3 (gl33)
+./gradlew :gl-debug-harness:runHarness -Pharness.downlevel=mac41 --args="--mode=<scene>"
+```
+
+A forced tier keeps NVIDIA's extensions and lenient compiler; only the downlevel run has a Mac's limits.
 
 ### Easy to get wrong
 
