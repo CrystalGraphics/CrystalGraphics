@@ -139,6 +139,8 @@ public final class CgRasterPass extends CgPass {
      * it splits the stage's own zone, which GPU zones' not nesting allows.
      */
     public CgRasterPass timed(int zone) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        recording.requireOpen();
         gpuZone = zone;
         return this;
     }
