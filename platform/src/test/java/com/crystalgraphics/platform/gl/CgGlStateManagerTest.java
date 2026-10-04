@@ -227,6 +227,19 @@ public class CgGlStateManagerTest {
                 mgr.bufferChanged(CgGL.GL_ELEMENT_ARRAY_BUFFER, 42));
     }
 
+    /** A scope that saved a texture deleted inside it restores 0: binding a deleted name is GL_INVALID_OPERATION. */
+    @Test
+    public void aScopeRestoresNothingDeletedInsideIt() {
+        try (CgGlScope outer = CgGlState.save(CgGlSlot.TEXTURES)) {   // the inner scope saves from the shadow
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, 7);
+            try (CgGlScope inner = CgGlState.save(CgGlSlot.TEXTURES)) {
+                CgGL.glDeleteTextures(7);
+                gl.clear();
+            }
+            assertFalse("the deleted texture is not bound again", gl.boundTextures.contains(7));
+        }
+    }
+
     /** GL_ARRAY_BUFFER is global context state, not captured by a VAO, so a VAO switch must not disturb it. */
     @Test
     public void switchingVaoKeepsTheArrayBufferBinding() {
