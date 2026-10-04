@@ -6,7 +6,6 @@ import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.settings.CgQuality;
 
 /**
  * The post stack's bloom: what the scene emits ({@link CgFrameKeys#EMISSION}) spread wide by a chain of raster passes
@@ -24,7 +23,8 @@ import com.crystalgraphics.settings.CgQuality;
  * }</pre>
  *
  * <ul>
- *   <li>Off below {@code CgQuality.MEDIUM}.</li>
+ *   <li>Every tier blooms: Low a cheaper chain from a quarter-size emission, Ultra a full-size one
+ *       ({@link CgBloomChain}).</li>
  *   <li>Nothing emitted this firing, nothing recorded.</li>
  *   <li>Settings are read on the render thread and may be written from any: a float, read at most a frame late.</li>
  * </ul>
@@ -90,14 +90,13 @@ public final class CgBloom implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return intensity > 0f && CgGraphicsSettings.QUALITY.get().atLeast(CgQuality.MEDIUM)
-                && post.resources().has(CgFrameKeys.EMISSION);
+        return intensity > 0f && post.resources().has(CgFrameKeys.EMISSION);
     }
 
     @Override
     public void record(CgPostContext post) {
         CgGraphTexture emission = post.resources().get(CgFrameKeys.EMISSION);
-        CgGraphTexture glow = chain.record(post.recording(), emission, post.constants());
+        CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
         if (linear) post.composite().linear();
     }

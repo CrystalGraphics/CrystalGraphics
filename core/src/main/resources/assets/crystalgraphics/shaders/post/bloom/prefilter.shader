@@ -1,16 +1,15 @@
-// One downsample of the bloom chain: a level from the one above it (or from the emission target, for the first), by the
-// 13-tap filter. KARIS is the first step's, so a firefly cannot dominate its block; CHEAP is Low's 4x4 box instead.
-// One triangle over the level. CgBloomChain draws it.
+// A halving before the bloom chain, where the emission is more than twice the chain's top level: Castano's 3x3 Gaussian
+// from four bilinear taps, as Filament's first step. KARIS is the first halving's, so a firefly cannot dominate its
+// block. One triangle over the half-size target. CgBloomChain draws it.
 #type none
 #pragma cg_feature KARIS
-#pragma cg_feature CHEAP
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Overlay"
 
 Properties {
-    _Source ("The level above, or the emission", sampler2D) = "black"
+    _Source ("The emission, or the halving before", sampler2D) = "black"
 }
 
 struct v2f { vec2 uv; };
@@ -32,12 +31,10 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec2 texel = 1.0 / vec2(textureSize(_Source, 0));
-#if defined(CHEAP)
-        fragColor = vec4(post_downsample4(_Source, i.uv, texel, 1.0, false), 1.0);
-#elif defined(KARIS)
-        fragColor = vec4(post_downsample13(_Source, i.uv, texel, true), 1.0);
+#ifdef KARIS
+        fragColor = vec4(post_downsample4(_Source, i.uv, texel, 0.75, true), 1.0);
 #else
-        fragColor = vec4(post_downsample13(_Source, i.uv, texel, false), 1.0);
+        fragColor = vec4(post_downsample4(_Source, i.uv, texel, 0.75, false), 1.0);
 #endif
     }
 }

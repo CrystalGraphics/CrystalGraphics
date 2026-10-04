@@ -32,6 +32,8 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -105,7 +107,7 @@ public final class CgWorldRenderer {
             .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
                     CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD)).build();
     private static final CgFrameBufferFormat EMISSION_FORMAT = CgFrameBufferFormat.builder("cg_emission")
-            .color(0, CgTextureType.RGBA16F).build();
+            .color(0, CgTextureType.R11F_G11F_B10F).build();
     private static final int GPU_EMISSION = CgGpuTrace.name("world.emission");
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
@@ -164,7 +166,8 @@ public final class CgWorldRenderer {
 
     // Emission: the target Emissive passes draw into, and its constants.
     private boolean[] emits = new boolean[64];
-    private float emissionScale = 0.5f;
+    /** 0 until set: the tier's share then. */
+    private float emissionScale;
     private CgGraphTexture emissionTarget;
     private final CgPassConstants emissionConstants = new CgPassConstants();
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
@@ -195,16 +198,24 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * The emission target's size as a share of the world's: 0.5 by default; 1 for a tighter glow at four times the
-     * cost. How strongly it blooms is the post stack's ({@code CgPostStack.get().bloom()}).
+     * The emission target's size as a share of the world's, in place of the tier's: Low 0.25, Medium and High 0.5,
+     * Ultra 1. Larger is a tighter glow, at the square of the cost. How strongly it blooms is the post stack's
+     * ({@code CgPostStack.get().bloom()}).
      *
      * <pre>{@code
-     * CgWorldRenderer.get().emissionScale(1f);
+     * CgWorldRenderer.get().emissionScale(1f);   // full size whatever the tier
+     * CgWorldRenderer.get().emissionScale(0f);   // the tier's again
      * }</pre>
      */
     public void emissionScale(float scale) {
-        if (!(scale > 0f && scale <= 1f)) throw new IllegalArgumentException("an emission scale of " + scale + ": 0 to 1");
+        if (!(scale >= 0f && scale <= 1f)) throw new IllegalArgumentException("an emission scale of " + scale + ": 0 to 1");
         emissionScale = scale;
+    }
+
+    private float emissionScale() {
+        if (emissionScale > 0f) return emissionScale;
+        CgQuality tier = CgGraphicsSettings.QUALITY.get();
+        return tier == CgQuality.LOW ? 0.25f : tier == CgQuality.ULTRA ? 1f : 0.5f;
     }
 
     /** Calls {@code listener} once a frame, before the first world stage records. Closing the registration stops it. */
@@ -574,7 +585,8 @@ public final class CgWorldRenderer {
         CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
         if (emitting == 0) return;
 
-        int w = Math.max(1, (int) (targetWidth * emissionScale)), h = Math.max(1, (int) (targetHeight * emissionScale));
+        float scale = emissionScale();
+        int w = Math.max(1, (int) (targetWidth * scale)), h = Math.max(1, (int) (targetHeight * scale));
         if (emissionTarget == null || emissionTarget.getWidth() != w || emissionTarget.getHeight() != h) {
             emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
