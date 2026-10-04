@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -124,11 +125,16 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *
      * <ul>
      *   <li>Read as the whole texture for ordering: a pass sampling it runs after every pass writing the texture.</li>
-     *   <li>Its size is the attachment's; a slot the format lacks binds nothing.</li>
+     *   <li>Throws for a slot its format lacks or holds as a renderbuffer, here where the format is known, else at bind.</li>
+     *   <li>Samples the attachment's every level: {@link #level} pins slot 0 alone.</li>
+     *   <li>Never a kernel's storage image: the graph orders a texture by slot 0.</li>
      * </ul>
      */
     public Attachment attachment(int slot) {
-        if (slot < 0) throw new IllegalArgumentException(this + " has no colour attachment " + slot);
+        CgFrameBufferFormat format = desc != null ? desc.format() : framebuffer != null ? framebuffer.getFormat() : null;
+        if (slot < 0 || format != null && (format.getColorSlot(slot) == null || format.isColorRenderbuffer(slot))) {
+            throw new IllegalArgumentException(this + " has no sampleable colour attachment " + slot);
+        }
         if (attachmentViews.length <= slot) attachmentViews = Arrays.copyOf(attachmentViews, slot + 1);
         Attachment view = attachmentViews[slot];
         if (view == null) attachmentViews[slot] = view = new Attachment(this, slot);
@@ -320,15 +326,24 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
             return framebuffer == null ? null : framebuffer.getColorTexture(slot);
         }
 
+        /** Its texture to bind; throws where the storage has none, rather than leave the unit as it was. */
+        @Nullable
+        private CgTexture bound() {
+            if (texture.framebuffer == null) return null;
+            CgTexture color = color();
+            if (color == null) throw new IllegalStateException(this + ": its storage has no colour texture in that slot");
+            return color;
+        }
+
         @Override
         public void bind() {
-            CgTexture color = color();
+            CgTexture color = bound();
             if (color != null) color.bind();
         }
 
         @Override
         public void bind(int unit) {
-            CgTexture color = color();
+            CgTexture color = bound();
             if (color != null) color.bind(unit);
         }
 
