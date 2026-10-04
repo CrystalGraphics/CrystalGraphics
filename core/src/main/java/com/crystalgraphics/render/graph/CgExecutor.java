@@ -128,6 +128,8 @@ public final class CgExecutor {
     /** Per file, what its dispatches below compute bind: lowered, or run by a Java body. */
     private final Map<CgComputeSource, CgDispatchBindings> belowCompute = new IdentityHashMap<>();
     private final int[] range = new int[4];
+    /** Per indirect batch starting a run of the pass about to draw, the run's last batch: itself when none joins it. */
+    private int[] runs = new int[64];
     /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
     private int startFramebuffer;
     private boolean startNoted, otherBound;
@@ -910,9 +912,15 @@ public final class CgExecutor {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
-                int command = packed.counts[b] != null ? slot++ : -1;
-                int end = command < 0 && packed.objects[b] == null && multiDraw && b + 1 < packed.count
-                        && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
+                int command = packed.counts[b] != null ? slot : -1;
+                int end;
+                if (command >= 0) {
+                    end = gpuCounts ? runs[b] : b;
+                    slot += end - b + 1;
+                } else {
+                    end = packed.objects[b] == null && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
+                            ? joinRun(packed, b) : b;
+                }
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
@@ -935,7 +943,7 @@ public final class CgExecutor {
                     boundBinding = -1;
                 }
                 if (!usable) {
-                    if (end > b) CgMeshStore.get().dropJoined();
+                    if (end > b && command < 0) CgMeshStore.get().dropJoined();
                     CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
                     b = end;
                     continue;
@@ -944,17 +952,22 @@ public final class CgExecutor {
                     boundBinding = packed.binding[b];
                     frame.bindings.bind(boundBinding);
                 }
-                if (end > b) {
-                    CgMeshStore.get().drawJoined();
-                    b = end;
-                    continue;
-                }
                 if (packed.objects[b] != null) {
                     bindObjects(packed.objects[b]);
                     objectsBound = true;
                 } else if (objectsBound && packed.kind[b] == OBJECT) {
                     instanceBuffers[OBJECT].bind();
                     objectsBound = false;
+                }
+                if (end > b) {
+                    if (command >= 0) {
+                        CgMeshStore.get().drawIndirectJoined(mesh(packed, b), commands.buffer(), commands.offset(command),
+                                end - b + 1, commands.stride());
+                    } else {
+                        CgMeshStore.get().drawJoined();
+                    }
+                    b = end;
+                    continue;
                 }
                 if (command >= 0 && packed.objects[b] == null
                         && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
@@ -1010,6 +1023,23 @@ public final class CgExecutor {
                 && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b];
     }
 
+    /**
+     * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
+     * records, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s. Never a draw whose instances
+     * share one record, which a multi-draw's pipeline cannot read.
+     */
+    private static boolean joinableIndirect(CgFrame.Raster packed, int b, int k) {
+        return packed.counts[k] != null && !sharesRecord(packed, k) && packed.copyBefore[k] == 0
+                && packed.pipeline[k] == packed.pipeline[b] && packed.binding[k] == packed.binding[b]
+                && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
+                && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
+    }
+
+    /** Whether every instance of indirect batch {@code b} reads its one record: an INSTANCES draw of the frame's. */
+    private static boolean sharesRecord(CgFrame.Raster packed, int b) {
+        return packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+    }
+
     /** Binds a GPU buffer of object records where {@code CG_OBJECT_DATA} reads the frame's own. */
     private static void bindObjects(CgBufferHandle objects) {
         int id = objects instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : objects.bufferId();
@@ -1037,35 +1067,49 @@ public final class CgExecutor {
 
     /**
      * The pass's indirect commands, one per indirect batch in batch order, written before the pass begins; each
-     * count's own barrier came with the pass's access list.
+     * count's own barrier came with the pass's access list. Where draws join, decides the runs a multi-draw draws
+     * ({@link #runs}) and writes their commands in its form.
      */
     private void writeCommands(CgRasterPass pass, CgFrame.Raster packed) {
         int args = commands.reserve(packed.indirects, FORGET_BUFFER);
         barrier(true, args, CgAccess.COMPUTE_WRITE);
-        CgMeshStore store = CgMeshStore.get();
+        if (runs.length < packed.count) runs = new int[Math.max(packed.count, runs.length * 2)];
         int slot = 0;
         try (CgGlScope scope = commands.lowered() ? CgLoweredKernel.scope() : null) {
             for (int b = 0; b < packed.count; b++) {
-                CgBufferHandle count = packed.counts[b];
-                if (count == null) continue;
-                int countId;
-                if (count instanceof CgGraphBuffer graph) {
-                    countId = bufferStorage(graph, false);
-                } else {
-                    countId = count.bufferId();
-                    barrier(true, countId, CgAccess.COMPUTE_READ);
+                if (packed.counts[b] == null) continue;
+                int end = b;
+                if (multiDraw && !sharesRecord(packed, b)) {
+                    while (end + 1 < packed.count && joinableIndirect(packed, b, end + 1)) end++;
                 }
-                if (!store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range)) {
-                    Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
-                }
-                long countBytes = count instanceof CgGraphBuffer graph ? graph.size() : packed.countOffsets[b] + 4;
-                commands.write(slot++, countId, packed.countOffsets[b], countBytes,
-                        CgIndirect.values()[packed.countModes[b] & 3], packed.countModes[b] >>> 2, range, packed.instances[b],
-                        packed.objects[b] != null ? packed.instances[b] : -1);
+                runs[b] = end;
+                for (int k = b; k <= end; k++) writeCommand(packed, k, slot++, end > b);
+                b = end;
             }
         }
         barrier(true, args, CgAccess.INDIRECT);
         CgTrace.add(CgChannels.GL, COMMAND_COUNT, packed.indirects);
+    }
+
+    /** Batch {@code b}'s command into {@code slot}; {@code joined}, in a multi-draw's form with its first instance. */
+    private void writeCommand(CgFrame.Raster packed, int b, int slot, boolean joined) {
+        CgBufferHandle count = packed.counts[b];
+        int countId;
+        if (count instanceof CgGraphBuffer graph) {
+            countId = bufferStorage(graph, false);
+        } else {
+            countId = count.bufferId();
+            barrier(true, countId, CgAccess.COMPUTE_READ);
+        }
+        CgMeshStore store = CgMeshStore.get();
+        boolean drawn = joined
+                ? store.joinedRange(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range)
+                : store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range);
+        if (!drawn) Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
+        long countBytes = count instanceof CgGraphBuffer graph ? graph.size() : packed.countOffsets[b] + 4;
+        commands.write(slot, countId, packed.countOffsets[b], countBytes, CgIndirect.values()[packed.countModes[b] & 3],
+                packed.countModes[b] >>> 2, range, packed.instances[b],
+                packed.objects[b] != null ? packed.instances[b] : -1, joined ? packed.first[b] : 0);
     }
 
     /**

@@ -128,7 +128,7 @@ chunks.instance();                                                              
 - `INDICES` and `VERTICES` draw count x factor of the range, never more than it holds; `INSTANCES` draws the range
   count x factor times, every instance reading the draw's one record, and `CG_DRAW_INSTANCE` is which element it is.
 - An indirect draw is a batch of its own, and its command's first instance is 0 on every device: the instance base is
-  `cg_InstanceBase`, as for any draw.
+  `cg_InstanceBase`, as for any draw. A command a multi-draw draws is the exception (below).
 - Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
   kernels writing them share nothing and need no barrier between them.
 
@@ -145,8 +145,8 @@ chunks.draw(pipeline, bindings, rock).objects(visible, 0, capacity).indirect(vis
 
 - The raster pass reads the buffer as a vertex and fragment stage would (sampled on the TBO path), so the pass writing
   it runs first and, below compute, lands it.
-- Such a draw is a batch of its own and never joins a multi-draw; a pass whose only object draws are of `objects()`
-  uploads no object records.
+- Such a draw is a batch of its own, joined into a multi-draw only with indirect draws of the same buffer (below); a
+  pass whose only object draws are of `objects()` uploads no object records.
 
 **Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
 bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page,
@@ -155,11 +155,20 @@ and writes the commands into the frame ring (`drawJoined`); the executor binds t
 which reads each draw's first instance and base vertex from its command rather than `cg_InstanceBase` and
 `cg_VertexBase`. A run of one is drawn the plain way.
 
+Indirect draws join too, where their commands are written on the GPU (compute, and G40 with indirect draws):
+consecutive indirect batches under one pipeline, bindings and scissor, reading the same object records, from meshes
+that join (`CgMeshStore.joins`). The executor decides the runs before the pass, when it writes the commands: each into
+consecutive slots, in the joined form (`joinedRange`) with the batch's instance base as its first instance, then draws
+the run with `drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one
+call however many levels. An `INSTANCES` draw of the frame's records never joins, since every instance reads one
+record and the multi-draw variant has no shared record.
+
 - Every joined draw is by indices: a mesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an
   array draw's base vertex as 0 where Vulkan gives its first vertex. Meshes with and without indices never share a
   call.
 - The picture is the same either way: `--mode=multi-draw` draws 78 instances of 76 meshes in 4 calls, then with
-  `CgMeshStore.multiDraw(false)` in 77, and compares the two byte for byte. `-Dcrystalgraphics.mesh.multiDraw=false`
+  `CgMeshStore.multiDraw(false)` in 77, and compares the two byte for byte; `--mode=gpu-cull` does the same for a
+  culled set's levels. `-Dcrystalgraphics.mesh.multiDraw=false`
   turns it off for a process.
 
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands

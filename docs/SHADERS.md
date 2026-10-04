@@ -1148,6 +1148,8 @@ for (int l = 0; l < cull.levels(); l++) {
   camera-relative, the camera subtracted in doubles.
 - The pyramid is `CgGpuOps.PYRAMID_FORMAT` with mips, the size of the target it reads; one built from this frame's
   depth hides what is behind the host's world as drawn so far.
+- Where draws join and the GPU writes the commands (compute, and G40 with indirect draws), the levels are one
+  multi-draw call (`render/graph/CLAUDE.md` § *Multi-draw*).
 - Its gate is `--mode=gpu-cull`: the same picture as the world renderer's CPU cull, byte for byte, on every tier.
 
 **`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, any element drawing

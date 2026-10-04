@@ -558,8 +558,7 @@ public final class CgMeshStore {
         if (p == null || p.joinsAs == 0) return false;
         if (q == null) {
             joinedFrom = p;
-        } else if (p.joinsAs != q.joinsAs || p.mode != q.mode || p.ring != q.ring
-                || (p.ring ? p.ringPage != q.ringPage || p.pool != q.pool : p.slab != q.slab)) {
+        } else if (!joins(p, q)) {
             return false;
         }
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
@@ -614,6 +613,61 @@ public final class CgMeshStore {
         calls++;
         CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
         CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /**
+     * Whether draws of {@code a} and {@code b} can be one multi-draw call: what {@link #join} asks of a run, for a
+     * caller writing the commands itself. Both must have something to draw.
+     */
+    public boolean joins(CgMesh a, CgMesh b) {
+        Placement p = placed(a), q = placed(b);
+        return p != null && q != null && p.joinsAs != 0 && joins(p, q);
+    }
+
+    /**
+     * What a command of {@link #drawIndirectJoined} draws a range of {@code mesh} from, into {@code out}, in
+     * {@link #range}'s form: always by indices, a mesh without them by the shared run of 0, 1, 2 ... False, writing
+     * nothing, when the mesh has nothing to draw or never joins.
+     */
+    public boolean joinedRange(CgMesh mesh, int submesh, int first, int count, int[] out) {
+        Placement p = placed(mesh);
+        if (p == null || p.joinsAs == 0 || !range(mesh, submesh, first, count, out)) return false;
+        if (p.joinsAs == BY_SEQUENCE) {
+            out[0] -= out[2];   // the first vertex, counted from the base: an index into the run
+            out[3] = 1;
+        }
+        return true;
+    }
+
+    /**
+     * Draws {@code n} commands {@code stride} bytes apart from byte {@code offset} of buffer {@code args} as one
+     * {@code glMultiDrawElementsIndirect}, each written from {@link #joinedRange} for a mesh that {@link #joins}
+     * {@code first}, with a {@link CgPipeline#multiDraw()} pipeline bound. Leaves the vertex array bound, as
+     * {@link #draw} does.
+     *
+     * <pre>{@code
+     * store.joinedRange(mesh, -1, 0, -1, range);       // per command, written into args on the GPU
+     * pipeline.multiDraw().bind();
+     * store.drawIndirectJoined(firstMesh, args, offset, n, stride);
+     * }</pre>
+     */
+    public void drawIndirectJoined(CgMesh first, int args, long offset, int n, int stride) {
+        Placement p = placed(first);
+        if (p == null || p.joinsAs == 0) return;
+        bind(p, p.joinsAs == BY_SEQUENCE ? sequence : -1);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
+        CgGL.glMultiDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset, n, stride);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        calls++;
+        CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, n);
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
+    }
+
+    /** Whether {@code p} and {@code q} share the vertex array, the indices and the topology a multi-draw needs. */
+    private static boolean joins(Placement p, Placement q) {
+        return p.joinsAs == q.joinsAs && p.mode == q.mode && p.ring == q.ring
+                && (p.ring ? p.ringPage == q.ringPage && p.pool == q.pool : p.slab == q.slab);
     }
 
     /** {@code mesh}'s placement this frame, placed now if it was not placed with the frame; null with nothing to draw. */
