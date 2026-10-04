@@ -31,12 +31,16 @@ public final class RecordingGlBackend extends CgGLBackend {
     public final List<List<Float>> polygonOffsets = new ArrayList<>();
     /** Every glMemoryBarrier's bits, in order. */
     public final List<Integer> memoryBarriers = new ArrayList<>();
+    /** Every glBindTexture's name, in order. */
+    public final List<Integer> boundTextures = new ArrayList<>();
 
     private void record(String name) { calls.add(name); }
 
     public List<String> calls() { return calls; }
 
-    public void clear() { calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); memoryBarriers.clear(); }
+    public void clear() {
+        calls.clear(); depthFuncs.clear(); clearDepths.clear(); polygonOffsets.clear(); memoryBarriers.clear(); boundTextures.clear();
+    }
 
     public int countOf(String name) {
         int n = 0;
@@ -119,7 +123,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glVertexAttribIPointer(int index, int size, int type, int stride, long pointer) { record("glVertexAttribIPointer"); }
     @Override public void glVertexAttribDivisor(int index, int divisor) { record("glVertexAttribDivisor"); }
     @Override public int glGenTextures() { record("glGenTextures"); return 0; }
-    @Override public void glBindTexture(int target, int texture) { record("glBindTexture"); }
+    @Override public void glBindTexture(int target, int texture) { record("glBindTexture"); boundTextures.add(texture); }
     @Override public void glDeleteTextures(int texture) { record("glDeleteTextures"); }
     @Override public void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, ByteBuffer pixels) { record("glTexImage2D"); }
     @Override public void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, FloatBuffer pixels) { record("glTexImage2D"); }
