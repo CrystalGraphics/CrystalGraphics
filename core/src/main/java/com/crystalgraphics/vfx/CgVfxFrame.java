@@ -38,13 +38,6 @@ public final class CgVfxFrame {
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
             MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
 
-    /**
-     * {@code -Dcrystalgraphics.vfx.skip=haze,body_glow}: layers whose shader path contains any of these draw nothing, to
-     * find what a frame's GPU time is spent on.
-     */
-    private static final String[] SKIP = System.getProperty("crystalgraphics.vfx.skip", "").isEmpty() ? new String[0]
-            : System.getProperty("crystalgraphics.vfx.skip").split(",");
-
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
@@ -77,10 +70,10 @@ public final class CgVfxFrame {
         return world;
     }
 
-    /** Whether this frame's quality tier is below {@code layer}'s. */
+    /** Whether this frame's quality tier is below {@code layer}'s, or {@link CgVfxSystem#skipped()} names it. */
     private boolean skips(CgVfxLayer layer) {
         if (!system.quality().atLeast(layer.from())) return true;
-        for (String token : SKIP) {
+        for (String token : CgVfxSystem.skippedParts()) {
             if (layer.shader().contains(token)) return true;
         }
         return false;

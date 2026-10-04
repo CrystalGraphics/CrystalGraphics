@@ -120,6 +120,28 @@ public final class CgVfxSystem {
         particleStep = Math.max(1, ticks);
     }
 
+    /**
+     * Layers whose shader path contains any of these draw nothing, in every system: to see or time a frame without
+     * them. {@code -Dcrystalgraphics.vfx.skip=haze,body_glow} sets it at launch and {@link #skip(String...)} live.
+     *
+     * <pre>{@code
+     * CgVfxSystem.skip("body_glow", "orb_glow");   // the beams' halos off
+     * CgVfxSystem.skip();                           // everything back
+     * }</pre>
+     */
+    public static String[] skipped() {
+        return skipped.clone();
+    }
+
+    /** Sets {@link #skipped()} for every system, from its next submit. */
+    public static void skip(String... parts) {
+        skipped = parts.clone();
+    }
+
+    static String[] skippedParts() {
+        return skipped;
+    }
+
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
@@ -130,6 +152,8 @@ public final class CgVfxSystem {
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
     private static int particleStep = Math.max(1, Integer.getInteger("crystalgraphics.vfx.particleStep", 2));
+    private static volatile String[] skipped = System.getProperty("crystalgraphics.vfx.skip", "").isEmpty()
+            ? new String[0] : System.getProperty("crystalgraphics.vfx.skip").split(",");
     /** Fewer records than this are written on the render thread alone. */
     private static final int PARALLEL_RECORDS = 4096;
     private static final int MAX_TICKS = 12;
