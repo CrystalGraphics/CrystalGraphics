@@ -64,11 +64,12 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 // a draw that uploaded its own. Below 0 it names the one record every instance reads, -1 - cg_InstanceBase: an
 // indirect INSTANCES draw's. The fragment stage reads the result as a flat varying the compiler wires. A kernel has
 // neither: its invocations are env/compute/kernel.glsl's.
-#if defined(CG_VERTEX_STAGE) && defined(CG_MULTI_DRAW)
+#ifdef CG_VERTEX_STAGE
+#ifdef CG_MULTI_DRAW
 // A multi-draw's variant: no uniform changes between its commands, so each command's first instance is its batch's
 // base and its base vertex the mesh's. Every command is drawn by indices, a mesh without them by 0, 1, 2 ...: GL gives
-// an array draw's base vertex as 0. Core in 4.6, GL_ARB_shader_draw_parameters below, which the compiler enables. Vulkan's gl_InstanceIndex counts from the first
-// instance; GL's gl_InstanceID does not.
+// an array draw's base vertex as 0. Core in 4.6, GL_ARB_shader_draw_parameters below, which the compiler enables.
+// Vulkan's gl_InstanceIndex counts from the first instance; GL's gl_InstanceID does not.
 #if __VERSION__ >= 460
 #define CG_BASE_INSTANCE gl_BaseInstance
 #define CG_BASE_VERTEX gl_BaseVertex
@@ -83,7 +84,7 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 #endif
 #define CG_INSTANCE_ID (CG_DRAW_INSTANCE + CG_BASE_INSTANCE)
 #define CG_VERTEX_ID (gl_VertexID - CG_BASE_VERTEX)
-#elif defined(CG_VERTEX_STAGE)
+#else
 uniform int cg_InstanceBase;
 #define CG_INSTANCE_ID (cg_InstanceBase < 0 ? -1 - cg_InstanceBase : gl_InstanceID + cg_InstanceBase)
 // The instance's index in its own draw: in an indirect INSTANCES draw, the element it draws.
@@ -92,7 +93,6 @@ uniform int cg_InstanceBase;
 uniform int cg_VertexBase;
 #define CG_VERTEX_ID (gl_VertexID - cg_VertexBase)
 #endif
-#ifdef CG_VERTEX_STAGE
 // The corner of a CgMesh.quads(n) vertex: (0,0), (1,0), (1,1), (0,1) around each quad.
 #define CG_VERTEX_CORNER vec2(float(((CG_VERTEX_ID + 1) >> 1) & 1), float((CG_VERTEX_ID >> 1) & 1))
 #elif !defined(CG_COMPUTE_STAGE)
