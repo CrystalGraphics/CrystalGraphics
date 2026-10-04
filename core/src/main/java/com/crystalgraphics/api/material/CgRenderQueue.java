@@ -29,6 +29,8 @@ public final class CgRenderQueue {
     public static final int GEOMETRY    = 2000;
     public static final int ALPHA_TEST  = 2450;
     public static final int TRANSPARENT = 3000;
+    /** Transparent, drawn after the distortion pass has bent the scene: sharp over it. */
+    public static final int AFTER_DISTORTION = 3500;
     public static final int OVERLAY     = 4000;
 
     // ── Threshold constants for pass-bucket routing ───────────────────────────
@@ -45,6 +47,9 @@ public final class CgRenderQueue {
      * Matches Unity's opaque/transparent boundary.
      */
     public static final int TRANSPARENT_THRESHOLD = 2500;
+
+    /** Queue values {@code >= AFTER_DISTORTION_THRESHOLD} and {@code < OVERLAY_THRESHOLD} draw after the distortion pass. */
+    public static final int AFTER_DISTORTION_THRESHOLD = 3500;
 
     /**
      * Queue values {@code >= OVERLAY_THRESHOLD} are routed to the overlay pass bucket.
@@ -71,6 +76,7 @@ public final class CgRenderQueue {
             case "GEOMETRY":    return GEOMETRY;
             case "ALPHA_TEST":  return ALPHA_TEST;
             case "TRANSPARENT": return TRANSPARENT;
+            case "AFTER_DISTORTION": return AFTER_DISTORTION;
             case "OVERLAY":     return OVERLAY;
             default: break;
         }
@@ -81,6 +87,7 @@ public final class CgRenderQueue {
             case "GEOMETRY":    return GEOMETRY;
             case "ALPHA_TEST":  return ALPHA_TEST;
             case "TRANSPARENT": return TRANSPARENT;
+            case "AFTER_DISTORTION": return AFTER_DISTORTION;
             case "OVERLAY":     return OVERLAY;
             default:
                 throw new IllegalArgumentException("Unknown render queue: '" + name + "'");

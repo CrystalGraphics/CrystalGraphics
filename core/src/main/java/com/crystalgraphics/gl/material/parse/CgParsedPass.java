@@ -76,4 +76,5 @@ public record CgParsedPass(String lightMode, String name, CgRenderState renderSt
 
     /** LightMode tag value for the light a surface emits, drawn into the bloom target. */
     static final String LIGHT_MODE_EMISSIVE = CgRenderPassVariant.EMISSIVE.lightModeName();
+    static final String LIGHT_MODE_DISTORTION = CgRenderPassVariant.DISTORTION.lightModeName();
 }

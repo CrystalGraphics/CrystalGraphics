@@ -75,6 +75,9 @@ public final class CgShaderParser {
                     CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
             .depth(CgDepthState.NONE).cull(CgCullState.BACK).build();
 
+    /** A Distortion pass with no RenderState block adds into the distortion target, which has no depth either. */
+    private static final CgRenderState DISTORTION_STATE = EMISSIVE_STATE;
+
     /** A single field parsed from the {@code struct v2f { }} block.
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
      * @param name  Field name (e.g. {@code "worldPos"}). */
@@ -228,12 +231,13 @@ public final class CgShaderParser {
             } else if (CgParsedPass.LIGHT_MODE_FORWARD.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_SHADOW_CASTER.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_DEPTH.equals(rawLightMode)
-                    || CgParsedPass.LIGHT_MODE_EMISSIVE.equals(rawLightMode)) {
+                    || CgParsedPass.LIGHT_MODE_EMISSIVE.equals(rawLightMode)
+                    || CgParsedPass.LIGHT_MODE_DISTORTION.equals(rawLightMode)) {
                 lightMode = rawLightMode;
             } else {
                 lightMode = CgParsedPass.LIGHT_MODE_FORWARD;
                 LOGGER.warn("[" + resourcePath + "] Pass #" + i + " has unrecognised LightMode '" + rawLightMode + "'. Defaulting to '" + CgParsedPass.LIGHT_MODE_FORWARD + "'. "
-                        + "Valid values: Forward, ShadowCaster, Depth, Emissive.");
+                        + "Valid values: Forward, ShadowCaster, Depth, Emissive, Distortion.");
             }
 
             // 7c. Deduplicate ShadowCaster, Depth and Emissive — only one of each is allowed
@@ -248,7 +252,7 @@ public final class CgShaderParser {
 
             // 7d. Resolve pass name — use authored "Name" tag or auto-assign
             String passName;
-            if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode)) {
+            if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode) || CgParsedPass.LIGHT_MODE_DISTORTION.equals(lightMode)) {
                 passName = lightMode;   // the world renderer finds it by its LightMode
             } else if (passTags.containsKey("Name") && !passTags.get("Name").isEmpty()) {
                 passName = passTags.get("Name");
@@ -285,9 +289,40 @@ public final class CgShaderParser {
                 continue;
             }
 
+            // 7e''. A Distortion pass with no vertex() bends from where the Forward pass draws: its v2f, declarations
+            // and vertex function, with this pass's own declarations and fragment after them.
+            if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(lightMode) && !passBody.contains("void vertex(")) {
+                CgParsedPass forward = null;
+                for (CgParsedPass p : passes) {
+                    if (CgParsedPass.LIGHT_MODE_FORWARD.equals(p.lightMode())) {
+                        forward = p;
+                        break;
+                    }
+                }
+                if (forward == null) {
+                    throw new CgShaderParseException("[" + resourcePath + "] A Distortion pass with no vertex() takes the "
+                            + "Forward pass's, and no Forward pass comes before it");
+                }
+                String fragmentBody = CgStructureParser.extractBlock(passBody, "void fragment(", "fragment", resourcePath);
+                CgStructureParser.validateNoMainFunction(fragmentBody, "fragment", resourcePath);
+                CgFragOutputParser.FragOutput fragOutput = CgFragOutputParser.parse(passBody, resourcePath);
+                if (fragOutput.isMrt()) {
+                    throw new CgShaderParseException("[" + resourcePath + "] A Distortion pass writes one vec4: "
+                            + "'void fragment(in v2f i, out vec4 offset)'");
+                }
+                String own = CgStructureParser.parsePassGlobalDecls(passBody, "void fragment(", resourcePath);
+                CgStructureParser.validatePassBody(passBody, passName, resourcePath);
+                passes.add(new CgParsedPass(lightMode, passName,
+                        CgRenderStateParser.parse(passBody, resourcePath, DISTORTION_STATE), forward.v2fStructBody(),
+                        own.isEmpty() ? forward.globalDecls() : forward.globalDecls() + "\n" + own, forward.vertexBody(),
+                        fragmentBody, fragOutput));
+                continue;
+            }
+
             // 7e. Parse render state for this pass
             CgRenderState renderState = CgRenderStateParser.parse(passBody, resourcePath,
-                    CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode) ? EMISSIVE_STATE : CgRenderState.DEFAULT);
+                    CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode) ? EMISSIVE_STATE
+                            : CgParsedPass.LIGHT_MODE_DISTORTION.equals(lightMode) ? DISTORTION_STATE : CgRenderState.DEFAULT);
 
             // 7f. Resolve v2f body (per-pass override or shared fallback)
             String v2fBody = CgStructureParser.parsePassV2fBody(passBody, sharedV2f, resourcePath);

@@ -188,6 +188,13 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
 - **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
   `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
 
+## The Distortion pass
+
+Authoring: `docs/SHADERS.md` § *The Distortion pass*. The parser forces its name to `Distortion`; a pass with no
+`void vertex(` takes the first Forward pass's v2f, declarations and vertex body, its own declarations (up to
+`void fragment(`) appended (step 7e''), and refuses an MRT output. With no `RenderState` it is `EMISSIVE_STATE`. The
+compiler adds `CG_DISTORTION_PASS` and the same scene-depth discard as an Emissive pass; it is neither lit nor fogged.
+
 ## `#pragma cg_feature` Stop Conditions
 
 Both `parsePreambleDirectives` and `parseFeaturePragmas` stop at:

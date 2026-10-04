@@ -126,6 +126,56 @@ public class CgMaterialShaderCompilerTest {
         parse("#type spatial\nPass { Tags { \"LightMode\" = \"Emissive\" } }\n" + MINIMAL.substring(MINIMAL.indexOf("Pass")));
     }
 
+    // ── Distortion pass ───────────────────────────────────────────────────────
+
+    private static final String DISTORTION =
+            "#type spatial\n" +
+            "struct v2f {\n    vec2 uv;\n};\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Forward\" }\n" +
+            "    vec2 shared_bend() { return vec2(0.01); }\n" +
+            "    void vertex(out v2f o) { o.uv = vec2(0.5); }\n" +
+            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(0.0); }\n" +
+            "}\n" +
+            "Pass {\n" +
+            "    Tags { \"LightMode\" = \"Distortion\" \"Name\" = \"Bend\" }\n" +
+            "    float own_split() { return 0.3; }\n" +
+            "    void fragment(in v2f i, out vec4 offset) { offset = vec4(shared_bend(), own_split(), 0.0); }\n" +
+            "}\n";
+
+    @Test
+    public void distortionPass_withNoVertex_takesTheForwardPasss_andAddsWithoutDepth() {
+        CgParsedShader shader = parse(DISTORTION);
+        CgParsedPass forward = shader.passes().get(0), distortion = shader.getPassByLightMode("Distortion");
+        assertEquals("Distortion", distortion.name());
+        assertEquals(forward.vertexBody(), distortion.vertexBody());
+        assertTrue(distortion.globalDecls().contains("shared_bend") && distortion.globalDecls().contains("own_split"));
+        assertEquals(CgGL.GL_ONE, distortion.renderState().getBlend().dstRgb());
+        assertSame(CgDepthState.NONE, distortion.renderState().getDepth());
+        String frag = CgMaterialShaderCompiler.compile(shader, distortion, NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertTrue(frag.contains("#define CG_DISTORTION_PASS 1"));
+        assertTrue("hidden by the scene", frag.indexOf("CG_EMISSIVE_DEPTH_BIAS) discard;") >= 0);
+        assertFalse(frag.contains("cg_Fog(_cg_fragColor)") || frag.contains("cg_Lit(_cg_fragColor)"));
+    }
+
+    @Test(expected = CgShaderParseException.class)
+    public void distortionPass_withNoVertex_needsAForwardPassBeforeIt() {
+        parse("#type spatial\nstruct v2f { vec2 uv; };\nPass { Tags { \"LightMode\" = \"Distortion\" }\n"
+                + "    void fragment(in v2f i, out vec4 offset) { offset = vec4(0.0); } }\n");
+    }
+
+    @Test
+    public void overdrawVariant_countsOnceAfterTheFragmentRuns() {
+        CgParsedShader shader = parse(DISTORTION);
+        String frag = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,
+                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.DEBUG_OVERDRAW)))
+                .fragmentSource();
+        int run = frag.indexOf("fragment(_v2f_local, _cg_fragColor);"), count = frag.indexOf("_cg_fragColor = vec4(1.0, 0.0, 0.0, 0.0);");
+        assertTrue("its discard still runs, then one count", run >= 0 && count > run);
+        assertTrue("its depth test, as a discard", frag.indexOf("discard;") >= 0 && frag.indexOf("discard;") < run);
+    }
+
     @Test
     public void emissivePass_depthTestAlways_leavesOcclusionToTheShader() {
         CgParsedShader shader = parse(EMISSIVE.replace("\"Name\" = \"Glow\" }\n",

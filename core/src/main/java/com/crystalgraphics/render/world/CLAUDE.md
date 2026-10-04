@@ -40,6 +40,12 @@
   the target, each pixel weighing the four texels round it by bilinear distance and by how near the depth each was
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
+- **Distortion** (`recordDistortion`, after the transparent pass): every transparent draw of the stage whose chain has a
+  Distortion pass draws it into a transient RGBA16F target of the stage's size, reading the target's depth through
+  `sceneDepth(unit, from)`, and `world_distortion_apply.shader` bends the target by it in one full-screen pass reading
+  one `sceneColor` copy. Then the after-distortion pass: transparent draws in `CgRenderQueue.AFTER_DISTORTION` and up
+  (`Draw.afterDistortion()`), sharp. Published as `CgFrameKeys.DISTORTION`. Its gate is `--mode=distortion`, every
+  pixel against where it should have sampled, on gl, gl33 and vulkan with synchronization validation.
 - **The overdraw view** (`recordOverdraw`, last, only while `overdraw(true)`, which
   `-Dcrystalgraphics.post.debug=overdraw` sets): every transparent draw of the stage, half-size ones too, again
   through `CgPipeline.overdraw()` into an R16F target of the stage's size, published as `CgFrameKeys.OVERDRAW`. The

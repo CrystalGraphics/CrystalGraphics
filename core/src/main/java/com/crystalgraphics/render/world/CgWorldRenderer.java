@@ -128,6 +128,11 @@ public final class CgWorldRenderer {
     private static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
+    private static final CgFrameBufferFormat DISTORTION_FORMAT = CgFrameBufferFormat.builder("cg_world_distortion")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final String DISTORTION_APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
+    private static final int GPU_DISTORTION = CgGpuTrace.name("world.distortion"),
+            GPU_DISTORTION_APPLY = CgGpuTrace.name("world.distortionApply");
     private static final CgFrameBufferFormat OVERDRAW_FORMAT = CgFrameBufferFormat.builder("cg_world_overdraw")
             .color(0, CgTextureType.R16F).build();
 
@@ -218,6 +223,12 @@ public final class CgWorldRenderer {
     private CgMaterial upsample;
     private CgTexture upsampleBound;
 
+    // Distortion: the target Distortion passes add into, and what applies it to the stage's target.
+    private boolean[] distorts = new boolean[64];
+    private CgGraphTexture distortionTarget;
+    private CgMaterial distortionApply;
+    private CgTexture distortionApplyBound;
+
     // The overdraw view: the transparent draws counted again into this target.
     private boolean overdraw = "overdraw".equals(System.getProperty("crystalgraphics.post.debug"));
     private CgGraphTexture overdrawTarget;
@@ -247,6 +258,8 @@ public final class CgWorldRenderer {
         depthOnly.clear();
         upsample = null;
         upsampleBound = null;
+        distortionApply = null;
+        distortionApplyBound = null;
     }
 
     /**
@@ -555,6 +568,23 @@ public final class CgWorldRenderer {
             return this;
         }
 
+        /**
+         * Draws it after the distortion pass has bent the scene, so it stays sharp: {@link CgRenderQueue#AFTER_DISTORTION},
+         * for a draw whose material also serves layers that bend. A transparent draw only.
+         *
+         * <pre>{@code
+         * world.draw(tube, beamCore).at(x, y, z).afterDistortion().submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Blended after the apply, it draws over nearer transparent draws that drew before it.</li>
+         * </ul>
+         */
+        public Draw afterDistortion() {
+            queue = CgRenderQueue.AFTER_DISTORTION;
+            return this;
+        }
+
         /** Overrides the material's authored queue: {@link CgRenderQueue} values. */
         public Draw queue(int queue) {
             this.queue = queue;
@@ -703,7 +733,7 @@ public final class CgWorldRenderer {
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
-    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2;
+    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2, AFTER = 3;
     /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
     private static final float NEAR_W = 0.01f;
 
@@ -766,21 +796,102 @@ public final class CgWorldRenderer {
                 }
                 CgTrace.counter(CgChannels.WORLD, "world.halfDraws", halfDrawn);
             }
+            int afterDrawn = 0;
+            if (which == TRANSPARENT) {
+                for (int i = 0; i < count; i++) {
+                    if (phase[i] != FORWARD || queues[i] < CgRenderQueue.AFTER_DISTORTION_THRESHOLD) continue;
+                    phase[i] = AFTER;
+                    afterDrawn++;
+                }
+            }
 
             CgRecording recording = stage.recording();
             CgPassConstants constants = stage.constants();
             bindings.clear();
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
-                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
-                if (drawn > halfDrawn) {
-                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+                if (drawn > halfDrawn + afterDrawn) {
+                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false, view);
                 }
+                if (which == TRANSPARENT) recordDistortion(stage, recording, view);
+                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view);
             }
             if (which == TRANSPARENT) recordEmission(stage, recording, view);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
         }
+    }
+
+    /**
+     * Every transparent draw this stage drew whose chain has a Distortion pass, added into a target of the stage's size
+     * hidden by its depth, then applied to the target once: each pixel takes the scene's colour from where its offset
+     * points, mirrored at the borders, a sample nearer than the pixel refused (it would pull the foreground in), red and
+     * blue spread by the split. Nothing is recorded when no draw distorts. Published as {@link CgFrameKeys#DISTORTION}.
+     */
+    private void recordDistortion(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
+        int distorting = 0;
+        for (int i = 0; i < count; i++) {
+            boolean d = phase[i] != SKIP && distortsScene(materials[i]);
+            distorts[i] = d;
+            if (d) distorting++;
+        }
+        CgTrace.counter(CgChannels.WORLD, "world.distortionDraws", distorting);
+        if (distorting == 0) return;
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (distortionTarget == null || distortionTarget.getWidth() != w || distortionTarget.getHeight() != h) {
+            distortionTarget = CgGraphTexture.transientTexture("cg_world_distortion", new CgTextureDesc(w, h, DISTORTION_FORMAT));
+        }
+        CgRasterPass bend = recording.raster(distortionTarget, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), EMISSIVE_STATE,
+                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_DISTORTION);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!distorts[i]) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (!link.hasDistortionPass()) continue;
+                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
+                    continue;
+                }
+                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                group(chunks, i);
+                writeInstance(chunks, i);
+            }
+        }
+        bend.add(chunks.end());
+        bend.end();
+
+        if (distortionApply == null) distortionApply = CgMaterial.newInstance(DISTORTION_APPLY_SHADER);
+        if (distortionTarget != distortionApplyBound) {
+            CgTexture offsets = distortionTarget;
+            distortionApply.applyProperties(b -> b.sampler("_Distortion", 0, offsets));
+            distortionApplyBound = offsets;
+        }
+        CgPipeline pipeline = distortionApply.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
+        CgRasterPass apply = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
+                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .timed(GPU_DISTORTION_APPLY);
+        CgChunkBuilder applied = recording.chunks().begin();
+        applied.draw(pipeline, distortionApply.captureBindings(recording.bindings()), FULLSCREEN);
+        applied.instance();
+        apply.add(applied.end());
+        apply.end();
+        stage.resources().put(CgFrameKeys.DISTORTION, distortionTarget);
+    }
+
+    /** Whether any link of a material chain has a Distortion pass. */
+    private static boolean distortsScene(CgMaterial material) {
+        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
+            if (link.hasDistortionPass()) return true;
+        }
+        return false;
     }
 
     /**
@@ -1068,15 +1179,17 @@ public final class CgWorldRenderer {
                 .m32(model.m32() + (float) (positions[i * 3 + 2] - view.z()));
     }
 
+    /** The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. */
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                            boolean depthOnlyPass, CgHostView view) {
+                            boolean depthOnlyPass, boolean after, CgHostView view) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;
+            if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)
+                    || (phase[i] == AFTER) != after) continue;
             modelOf(i, view);
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {

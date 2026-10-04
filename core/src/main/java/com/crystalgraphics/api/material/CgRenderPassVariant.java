@@ -62,7 +62,15 @@ public enum CgRenderPassVariant {
      * <p>Takes the material's keywords, like {@link #FORWARD}. Unlit and faded by fog; a fragment behind the
      * scene's depth is discarded before its fragment function runs.</p>
      */
-    EMISSIVE("Emissive");
+    EMISSIVE("Emissive"),
+
+    /**
+     * How a surface bends what is behind it: an offset in UV units and a chromatic split, added into the world's
+     * distortion target and applied to the scene once, after the transparent pass. Never auto-generated.
+     * <p>Takes the material's keywords, like {@link #FORWARD}. Unlit and unfogged; a fragment behind the scene's depth
+     * is discarded before its fragment function runs.</p>
+     */
+    DISTORTION("Distortion");
 
     private final String lightModeName;
 

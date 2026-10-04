@@ -1,9 +1,11 @@
 // The post stack's debug view: one texture bloom works from (the emission, or a level of the chain) over the whole
-// frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp. CgPostDebug draws it
+// frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp; with OFFSETS, the
+// distortion target: |offset| x 50 in red and green, the split in blue. CgPostDebug draws it
 // (-Dcrystalgraphics.post.debug); nothing else should.
 #type none
 
 #pragma cg_feature HEAT
+#pragma cg_feature OFFSETS
 
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Overlay"
@@ -37,6 +39,9 @@ Pass {
                                vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0));
         int k = min(int(t), 5);
         fragColor = vec4(mix(ramp[k], ramp[k + 1], t - float(k)), 1.0);
+#elif defined(OFFSETS)
+        vec4 d = textureLod(_Source, i.uv, 0.0);
+        fragColor = vec4(abs(d.xy) * 50.0, d.z, 1.0);
 #else
         fragColor = vec4(textureLod(_Source, i.uv, 0.0).rgb, 1.0);
 #endif

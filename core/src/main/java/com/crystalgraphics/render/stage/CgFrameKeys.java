@@ -16,6 +16,13 @@ public final class CgFrameKeys {
      * How many transparent fragments each pixel shaded this firing, R16F: the world renderer's overdraw view, published
      * only while {@code CgWorldRenderer.overdraw(true)}; {@code -Dcrystalgraphics.post.debug=overdraw} shows it.
      */
+    /**
+     * Where each pixel of the scene was bent from this firing, RGBA16F: xy the offset in UV units, z the chromatic split,
+     * every Distortion pass added into it. Published by the world renderer after the transparent pass when any drew,
+     * already applied to the target by then.
+     */
+    public static final CgFrameKey<CgGraphTexture> DISTORTION = CgFrameKey.of("crystalgraphics:distortion", CgGraphTexture.class);
+
     public static final CgFrameKey<CgGraphTexture> OVERDRAW = CgFrameKey.of("crystalgraphics:overdraw", CgGraphTexture.class);
 
     private CgFrameKeys() {

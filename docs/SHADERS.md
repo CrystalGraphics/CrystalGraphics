@@ -400,6 +400,7 @@ Each `Pass { }` carries a `Tags { "LightMode" = "..." }` that routes it to the c
 | `ShadowCaster` | Depth-from-light pass | Auto-generated for `RenderType=Opaque`, `castShadows=true`, `queue < 3000` |
 | `Depth` | Early depth pre-pass | Auto-generated for opaque materials |
 | `Emissive` | The world's bloom: light the material gives off, blurred over the scene | Never generated; at most one per shader. Below |
+| `Distortion` | How the surface bends what is behind it: an offset, applied to the scene once after the transparent pass | Never generated; at most one per shader. Below |
 
 The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache. Auto-assigned as `Pass0`, `Pass1`, … when absent.
 
@@ -455,6 +456,41 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
   blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
 - `-Dcrystalgraphics.post.debug=emission` draws the emission target over the frame; `=level<N>` one level of bloom's
   chain (`docs/DEBUG_FLAGS.md`).
+
+#### The Distortion pass
+
+What a material draws in its Distortion pass is where each pixel behind it takes its colour from: `xy` an offset in UV
+units, `z` a chromatic split. `CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
+target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's distortion
+vectors). A heat haze or a shockwave writes an offset here instead of sampling `cg_SceneColor` itself.
+
+```glsl
+Pass { Tags { "LightMode" = "Forward" } ... }    // what the surface draws, if anything: a pure haze draws nothing
+
+// No vertex(): the Forward pass's v2f, declarations and vertex function, with this pass's own after them
+Pass {
+    Tags { "LightMode" = "Distortion" }
+    void fragment(in v2f i, out vec4 offset) {
+        vec2 bend = haze(i.uv) * 0.02;            // UV units: 0.02 is 2% of the screen
+        offset = vec4(bend, 0.3, 0.0);            // split 0.3: red bends 1.3x as far, blue 0.7x
+    }
+}
+```
+
+- **Offsets add**: overlapping hazes sum rather than each bending the last, and nothing seams where they meet. Fade one
+  out by scaling its offset, never by alpha.
+- **One apply bends everything drawn before it**, near or far. A draw that must stay sharp over a haze goes after it:
+  `Queue = "AfterDistortion"` for a material, `.afterDistortion()` for one draw of a material other draws share.
+  Blended after the apply, such a draw covers nearer transparent draws of other effects.
+- **Hidden by the scene, not by a depth test**, as an Emissive pass is: a fragment behind the scene's depth is discarded
+  before `fragment()` runs; `DepthTest ALWAYS` turns that off. With no `RenderState` it adds ONE ONE, no depth test,
+  back faces culled.
+- **The apply** mirrors UVs at the screen's borders, refuses a sample nearer than its pixel (it would pull the
+  foreground into the bent region), and spreads red and blue by the split. A frame where nothing distorts records
+  neither pass.
+- `CG_DISTORTION_PASS` is defined in both stages; the pass takes the material's keywords. Unlit, unfogged, one output.
+- `-Dcrystalgraphics.post.debug=distortion` shows the target (|offset| x 50 in red and green, the split in blue);
+  `--mode=distortion` is the gate.
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

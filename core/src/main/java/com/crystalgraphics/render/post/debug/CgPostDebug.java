@@ -15,20 +15,22 @@ import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
+import com.crystalgraphics.render.stage.CgFrameKey;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 
 /**
  * Draws what bloom works from over the whole frame, last: the emission target, or one level of the chain. Set by
  * {@code -Dcrystalgraphics.post.debug=emission} or {@code =level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
- * heat ramp (blue 1, green 4, red 16, white 32). The post stack adds it when the flag is set.
+ * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion target's offsets (|offset| x 50
+ * in red and green, the split in blue). The post stack adds it when the flag is set.
  */
 public final class CgPostDebug implements CgPostEffect {
 
     private static final String SHADER = "crystalgraphics:shaders/post/debug.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
-    private static final int EMISSION = -1, OVERDRAW = -2;
+    private static final int EMISSION = -1, OVERDRAW = -2, DISTORTION = -3;
 
     /** {@link #EMISSION}, {@link #OVERDRAW}, else the chain's level. */
     private final int level;
@@ -45,6 +47,7 @@ public final class CgPostDebug implements CgPostEffect {
         if (view == null || view.isEmpty()) return null;
         if (view.equals("emission")) return new CgPostDebug(EMISSION);
         if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
+        if (view.equals("distortion")) return new CgPostDebug(DISTORTION);
         if (view.startsWith("level")) {
             try {
                 return new CgPostDebug(Math.max(0, Integer.parseInt(view.substring(5))));
@@ -52,7 +55,7 @@ public final class CgPostDebug implements CgPostEffect {
                 // falls through to the refusal
             }
         }
-        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": emission, overdraw or level<N>");
+        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": emission, overdraw, distortion or level<N>");
     }
 
     @Override
@@ -67,16 +70,14 @@ public final class CgPostDebug implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return post.resources().has(level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW : CgBloom.CHAIN);
+        return post.resources().has(key());
     }
 
     @Override
     public void record(CgPostContext post) {
         CgTexture source;
-        if (level == EMISSION) {
-            source = post.resources().get(CgFrameKeys.EMISSION);
-        } else if (level == OVERDRAW) {
-            source = post.resources().get(CgFrameKeys.OVERDRAW);
+        if (level < 0) {
+            source = post.resources().get(key());
         } else {
             CgGraphTexture chain = post.resources().get(CgBloom.CHAIN);
             source = chain.level(Math.min(level, chain.getLevels() - 1));
@@ -84,6 +85,7 @@ public final class CgPostDebug implements CgPostEffect {
         if (material == null) {
             material = CgMaterial.newInstance(SHADER);
             if (level == OVERDRAW) material.enableKeyword("HEAT");
+            if (level == DISTORTION) material.enableKeyword("OFFSETS");
         }
         if (source != bound) {
             material.applyProperties(b -> b.sampler("_Source", 0, source));
@@ -97,6 +99,11 @@ public final class CgPostDebug implements CgPostEffect {
         chunks.instance();
         pass.add(chunks.end());
         pass.end();
+    }
+
+    private CgFrameKey<CgGraphTexture> key() {
+        return level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW
+                : level == DISTORTION ? CgFrameKeys.DISTORTION : CgBloom.CHAIN;
     }
 
     /** Forgets its material, which the material registry frees with the context. */
