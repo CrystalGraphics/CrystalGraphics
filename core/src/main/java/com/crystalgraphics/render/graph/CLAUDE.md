@@ -26,6 +26,8 @@ builder.recycle(frame);
 versions, every write making the next) or imported — and on graph textures as storage images. A dispatch's bindings
 say what it reads and writes, taken from the accessors its kernel uses, so ordering, culling and lifetimes come from
 them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write.
+`resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
+capacity.
 
 ```java
 CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));

@@ -4393,6 +4393,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public release (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public release (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public reset ()V
+  method public resize (Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgBufferDesc;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public scratch (Ljava/lang/String;IILcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public scratch (Ljava/lang/String;JLcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public seal ()Lcom/crystalgraphics/render/graph/CgRecording;

@@ -403,7 +403,6 @@ spheres, most off screen.
 What a pipeline here cannot do today, so a design does not assume it:
 
 - `.instances()` over a range of a records buffer, so several mesh slots share one buffer.
-- History buffers that grow: size a pool for its peak.
 - 3D textures in the graph: use an atlas of slices.
 - Persistent world draws (a GPU scene scatter-updated only when something moves): records are rewritten every frame.
 - Two-phase occlusion for the engine's own draws: the pyramid is of what the host drew first.
