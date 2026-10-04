@@ -51,6 +51,16 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
 - An id is defined once (`define` throws on a second); renderers record in ascending order, ties in
   registration order; any thread may register.
 - `frame.callback(name, body)` draws immediately at its place in the stage, for work not yet recorded.
+- **`frame.resources()` is the firing's blackboard**: a renderer publishes a resource under a static `CgFrameKey`
+  and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
+  executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
+  that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target.
+
+```java
+public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);
+frame.resources().put(MASK, mask);                    // the producer, at a lower order
+CgGraphTexture mask = frame.resources().get(MASK);    // a later renderer of the same firing; null if none
+```
 
 ### CgWorldRenderer — drawing into the world
 

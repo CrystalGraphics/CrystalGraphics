@@ -4033,6 +4033,7 @@ com/crystalgraphics/render/graph/CgComputePass
   method public dispatchIndirect (Lcom/crystalgraphics/compute/CgKernel;Lcom/crystalgraphics/render/graph/CgGraphBuffer;J)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public dispatches ()Ljava/util/List;
   method public end ()V
+  method public timed (I)Lcom/crystalgraphics/render/graph/CgComputePass;
 com/crystalgraphics/render/graph/CgDispatch
   access public,final
   extends java/lang/Object
@@ -4198,6 +4199,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public scissor (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIIII)I
   method public texture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public timed (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public useScissor (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public view (IFF)Lcom/crystalgraphics/render/graph/CgRasterPass;
 com/crystalgraphics/render/graph/CgRecording
@@ -4373,6 +4375,23 @@ com/crystalgraphics/render/property/CgSpatialTree
   method public movable (I)Z
   method public parent (I)I
   method public reset ()V
+com/crystalgraphics/render/stage/CgFrameKey
+  access public,final
+  extends java/lang/Object
+  method public name ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public type ()Ljava/lang/Class;
+  method public,static of (Ljava/lang/String;Ljava/lang/Class;)Lcom/crystalgraphics/render/stage/CgFrameKey;
+com/crystalgraphics/render/stage/CgFrameKeys
+  access public,final
+  extends java/lang/Object
+  field public,static,final EMISSION Lcom/crystalgraphics/render/stage/CgFrameKey;
+com/crystalgraphics/render/stage/CgFrameResources
+  access public,final
+  extends java/lang/Object
+  method public get (Lcom/crystalgraphics/render/stage/CgFrameKey;)Ljava/lang/Object;
+  method public has (Lcom/crystalgraphics/render/stage/CgFrameKey;)Z
+  method public put (Lcom/crystalgraphics/render/stage/CgFrameKey;Ljava/lang/Object;)V
 com/crystalgraphics/render/stage/CgHostEnvironment
   access public,final
   extends java/lang/Object
@@ -4508,6 +4527,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
   method public stage ()Lcom/crystalgraphics/render/stage/CgRenderStage;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/stage/CgStageRenderer
