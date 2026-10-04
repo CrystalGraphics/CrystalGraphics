@@ -554,7 +554,8 @@ public final class CgExecutor {
             if (texture == null) continue;
             CgImageDecl image = d.source.images().get(i);
             int id = storage(texture).getColorTexture(0).getId();
-            if (d.imageAccess[i] != 0) barrier(false, id, d.imageAccess[i]);
+            int access = imageAccess(d, i, id);
+            if (access != 0) barrier(false, id, access);
             boolean layered = d.layers[i] < 0 && image.dimension() != CgImageDimension.D2;
             CgGL.glBindImageTexture(i, id, d.levels[i], layered, Math.max(0, d.layers[i]), glAccess(image.access()),
                     image.format().glFormat);
@@ -573,6 +574,21 @@ public final class CgExecutor {
         for (int b = 0; b < d.buffers.length; b++) {
             if (wroteHistory(d.buffers[b], d.bufferAccess[b]) && firstWriter(d, b)) d.buffers[b].advance();
         }
+    }
+
+    /**
+     * What dispatch {@code d} does to texture {@code id} through every image binding naming it, at the first such binding;
+     * 0 at the rest. One barrier for all of them: a transition made for one binding must be visible to the others, a
+     * level read beside a level written.
+     */
+    private static int imageAccess(CgDispatch d, int binding, int id) {
+        int access = 0;
+        for (int i = 0; i < d.images.length; i++) {
+            if (d.images[i] == null || storage(d.images[i]).getColorTexture(0).getId() != id) continue;
+            if (i < binding) return 0;
+            access |= d.imageAccess[i];
+        }
+        return access;
     }
 
     private static boolean wroteHistory(@Nullable CgGraphBuffer buffer, int access) {
