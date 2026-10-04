@@ -74,7 +74,7 @@ uint digit(uint e) {
     return digitOf(KEYS(e));
 }
 
-// ── Every tier ──────────────────────────────────────────────────────────────
+// -- Every tier --------------------------------------------------------------
 
 // Cell (digit, block): how many of the block's elements have the digit.
 void RadixCount() {
@@ -109,7 +109,7 @@ void RadixScatterKeys() {
     if (i < count()) KEYS_OUT_STORE(place(i), KEYS(i));
 }
 
-// ── Compute only ────────────────────────────────────────────────────────────
+// -- Compute only ------------------------------------------------------------
 
 // A block is 128 invocations' four keys each, key i of invocation l at 128 i + l.
 const uint SORT_BLOCK = 512u;
