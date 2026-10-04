@@ -119,7 +119,7 @@ public final class CgExecutor {
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
-    private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
+    static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
     private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
     /**

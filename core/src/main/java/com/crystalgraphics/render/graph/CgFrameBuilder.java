@@ -42,6 +42,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   <li>Not thread-safe: one thread builds with one builder. {@link #recycle} may be called from another.</li>
  *   <li>A cycle among the passes — two passes each reading what the other writes — is a recording error and
  *       throws, naming them.</li>
+ *   <li>An {@code async()} compute pass runs as early as what it reads allows, and whatever reads its results as late
+ *       as the graph allows, so the passes recorded around it overlap it. Otherwise creation order breaks ties.</li>
  * </ul>
  */
 public final class CgFrameBuilder {
@@ -52,6 +54,8 @@ public final class CgFrameBuilder {
     private static final int DRAWS = CgTrace.name("graph.draws");
     private static final int SNAPSHOTS = CgTrace.name("graph.snapshots");
     private static final int INSTANCES = CgTrace.name("graph.instances");
+    /** A heap key is a pass's class shifted above its index. */
+    private static final int CLASS_SHIFT = 28, INDEX = (1 << CLASS_SHIFT) - 1;
 
     private final CgBatcher batcher = new CgBatcher();
     private final ConcurrentLinkedQueue<CgFrame> recycled = new ConcurrentLinkedQueue<>();
@@ -72,6 +76,9 @@ public final class CgFrameBuilder {
     private final IntList stack = new IntList();
     private int[] indegree = new int[16];
     private int[] order = new int[16];
+    /** Per pass, its heap key ({@link #rank}); and whether it feeds an async pass, or follows one. */
+    private int[] rank = new int[16];
+    private boolean[] feeds = new boolean[16], follows = new boolean[16];
     private IntHeap ready = new IntHeap(16);
     private int[] firstUse = new int[16], lastUse = new int[16];
     private final IdentityHashMap<CgBindingTable, int[]> interned = new IdentityHashMap<>();
@@ -231,11 +238,15 @@ public final class CgFrameBuilder {
         }
     }
 
-    /** Kahn's algorithm over the passes still needed, the lowest creation index first: creation order breaks ties. */
+    /**
+     * Kahn's algorithm over the passes still needed. Among the passes ready together, an async pass and what it
+     * depends on go first and what depends on it last, so the work between overlaps it; then creation order.
+     */
     private int topological(int total) {
         if (indegree.length < total) {
             indegree = new int[Math.max(total, indegree.length * 2)];
             order = new int[indegree.length];
+            rank = new int[indegree.length];
             ready = new IntHeap(indegree.length);
         }
         Arrays.fill(indegree, 0, total, 0);
@@ -245,15 +256,16 @@ public final class CgFrameBuilder {
             count++;
             for (int i = 0; i < out[p].size; i++) if (needed[out[p].get(i)]) indegree[out[p].get(i)]++;
         }
+        rank(total);
         ready.size = 0;
-        for (int p = 0; p < total; p++) if (needed[p] && indegree[p] == 0) ready.push(p);
+        for (int p = 0; p < total; p++) if (needed[p] && indegree[p] == 0) ready.push(rank[p]);
         int at = 0;
         while (ready.size > 0) {
-            int p = ready.pop();
+            int p = ready.pop() & INDEX;
             order[at++] = p;
             for (int i = 0; i < out[p].size; i++) {
                 int q = out[p].get(i);
-                if (needed[q] && --indegree[q] == 0) ready.push(q);
+                if (needed[q] && --indegree[q] == 0) ready.push(rank[q]);
             }
         }
         if (at < count) {
@@ -262,6 +274,47 @@ public final class CgFrameBuilder {
             throw new IllegalStateException("passes read what each other write:" + stuck);
         }
         return count;
+    }
+
+    /**
+     * Each needed pass's heap key: its class above its creation index. 0 for an async pass and every pass it depends
+     * on, 2 for every pass depending on one and on none, 1 for the rest; all 1 when no pass is async.
+     */
+    private void rank(int total) {
+        if (feeds.length < total) {
+            feeds = new boolean[Math.max(total, feeds.length * 2)];
+            follows = new boolean[feeds.length];
+        }
+        Arrays.fill(feeds, 0, total, false);
+        Arrays.fill(follows, 0, total, false);
+        boolean any = false;
+        for (int p = 0; p < total; p++) {
+            if (needed[p] && passes[p] instanceof CgComputePass compute && (compute.isAsync() || CgExecutor.ASYNC_ALL)) {
+                feeds[p] = true;
+                any = true;
+            }
+        }
+        if (any) {
+            walk(feeds, follows, out, total);   // from the async passes alone, before the next walk widens feeds
+            walk(feeds, feeds, in, total);
+        }
+        for (int p = 0; p < total; p++) rank[p] = (feeds[p] ? 0 : follows[p] ? 2 : 1) << CLASS_SHIFT | p;
+    }
+
+    /** Marks in {@code set} every needed pass reachable along {@code edges} from a pass in {@code from}. */
+    private void walk(boolean[] from, boolean[] set, IntList[] edges, int total) {
+        stack.clear();
+        for (int p = 0; p < total; p++) if (from[p]) stack.add(p);
+        while (stack.size > 0) {
+            int p = stack.pop();
+            for (int i = 0; i < edges[p].size; i++) {
+                int q = edges[p].get(i);
+                if (needed[q] && !set[q]) {
+                    set[q] = true;
+                    stack.add(q);
+                }
+            }
+        }
     }
 
     /** When each transient lives, in the executed order. */

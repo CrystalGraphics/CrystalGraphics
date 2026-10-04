@@ -281,7 +281,7 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'
   snapshots bind, as of `add`; it writes its target at `end`. A read sees the last write recorded before it — in its
-  recording or one added to the graph earlier. Creation order only breaks ties.
+  recording or one added to the graph earlier. Creation order only breaks ties, after the async placement below.
 - **A pass nobody reads is culled** unless it writes a resource that outlives the frame (an imported, current or
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description
@@ -296,6 +296,8 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   Minecraft's own images, which only its graphics queue may use. The
   executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
   to another counts), before a callback, and at the end of the execution (`docs/SHADERS.md` § *Beside the drawing*).
+  The builder runs an async pass and what it depends on as early as the graph allows, and what depends on it as late,
+  so the steps between overlap it; under `asyncAll` that is every compute pass.
 - **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any
   thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
   once `CgReadback.poll` has run its sink; executing the frame again does not read it again.

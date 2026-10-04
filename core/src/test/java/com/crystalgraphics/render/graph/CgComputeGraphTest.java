@@ -93,6 +93,54 @@ public class CgComputeGraphTest {
     }
 
     @Test
+    public void anAsyncPassRunsBeforeWorkRecordedAroundIt_andWhatReadsItsResultsRunsLast() {
+        CgGraphBuffer sim = CgGraphBuffer.transientBuffer("sim", DESC), used = CgGraphBuffer.transientBuffer("used", DESC);
+        CgRecording rec = new CgRecording();
+        draw(rec, "before");
+        CgComputePass async = rec.compute("async").async();
+        async.dispatch(produce, 64).bind("DST", sim);
+        async.end();
+        CgComputePass use = rec.compute("use");
+        use.dispatch(consume, 64).bind("SRC", sim).bind("DST", used);
+        use.end();
+        CgComputePass keep = rec.compute("keep");
+        keep.dispatch(consume, 64).bind("SRC", used).bind("DST", CgGraphBuffer.persistent("out", DESC));
+        keep.end();
+        draw(rec, "after");
+        assertEquals(List.of("async", "raster before", "raster after", "use", "keep"), names(build(rec)));
+    }
+
+    @Test
+    public void whatAnAsyncPassReadsRunsBeforeIt_noAsyncPassKeepsRecordedOrder() {
+        for (boolean async : new boolean[] {true, false}) {
+            CgGraphBuffer seed = CgGraphBuffer.transientBuffer("seed", DESC);
+            CgRecording rec = new CgRecording();
+            draw(rec, "first");
+            CgComputePass write = rec.compute("seed");
+            write.dispatch(produce, 64).bind("DST", seed);
+            write.end();
+            CgComputePass step = rec.compute("step");
+            if (async) step.async();
+            step.dispatch(consume, 64).bind("SRC", seed).bind("DST", CgGraphBuffer.persistent("out", DESC));
+            step.end();
+            assertEquals(async ? List.of("seed", "step", "raster first") : List.of("raster first", "seed", "step"),
+                    names(build(rec)));
+        }
+    }
+
+    /** A raster pass into a requested texture of its own, touching nothing else. */
+    private void draw(CgRecording rec, String target) {
+        CgRasterPass pass = rec.raster(CgGraphTexture.requested(target, new CgTextureDesc(8, 8, CgTextureDesc.RGBA8)),
+                CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
+        CgChunkBuilder c = rec.chunks().begin();
+        c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(rec.bindings()));
+        c.instance();
+        c.bounds(0, 0, 8, 8);
+        pass.add(c.end());
+        pass.end();
+    }
+
+    @Test
     public void aKernelWritingWhatNobodyReadsIsCulled_oneWritingWhatOutlivesTheFrameIsNot() {
         CgRecording rec = new CgRecording();
         CgComputePass wasted = rec.compute("wasted");

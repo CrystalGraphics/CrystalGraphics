@@ -105,14 +105,15 @@ public final class CgComputePass extends CgPass {
 
     /**
      * Runs beside the frame's queue where the device has a compute queue ({@code CgCapabilities.asyncCompute()}): the
-     * steps after it that touch nothing it reads or writes overlap it, and the first that does waits for it. Elsewhere,
-     * and for a pass with a dispatch below compute, it runs in order with the same result.
+     * steps after it that touch nothing it reads or writes overlap it, and the first that does waits for it. The builder
+     * places it as early, and what reads its results as late, as the graph allows. Elsewhere, and for a pass with a
+     * dispatch below compute, it runs in order with the same result.
      *
      * <pre>{@code
      * CgComputePass cull = recording.compute("instances.cull", constants).async();
      * cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
      * cull.end();
-     * recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
+     * recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs, wherever recorded
      * }</pre>
      */
     public CgComputePass async() {
