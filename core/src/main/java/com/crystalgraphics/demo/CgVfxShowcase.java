@@ -6,6 +6,8 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -93,6 +95,7 @@ public final class CgVfxShowcase {
             new Lane("galickGun", CgEnergyWave.galickGun(), 6.6f, new float[]{0f, 2.5f, -10f}, new float[]{0f, 0f, -1f},
                     new float[]{0f, 3f, -28f}, new float[][]{{-26f, 3f, -40f}, {26f, 3f, -40f}}),
     };
+    private static final int SPHERES_ZONE = CgTrace.name("showcase.spheres");
     /** A stress lane's first shot lands this many seconds after the one before, so every beam holds at once. */
     private static final float STRESS_STAGGER = 0.1f;
     /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
@@ -206,6 +209,13 @@ public final class CgVfxShowcase {
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
         ensureResources();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SPHERES_ZONE)) {
+            spheres(world, x, y, z, seconds);
+        }
+        waves(world, x, y, z, seconds);
+    }
+
+    private void spheres(CgWorldRenderer world, double x, double y, double z, float seconds) {
         for (int k = 0; k < COUNT; k++) {
             int row = k / 4, column = k % 4;
             double cx = x + (column - 1.5) * SPACING;
@@ -246,7 +256,6 @@ public final class CgVfxShowcase {
                     .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
                     .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
         }
-        waves(world, x, y, z, seconds);
     }
 
     /**

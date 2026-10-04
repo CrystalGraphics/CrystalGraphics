@@ -1,6 +1,10 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxTrace;
+
 import java.util.List;
+import java.util.Locale;
 
 /**
  * One running {@link CgVfxEmitter}: its particles, its clock, where it spawns from, and the solver that moves them. An
@@ -26,6 +30,17 @@ import java.util.List;
  * </ul>
  */
 public final class CgVfxEmitterInstance {
+
+    private static final int SPAWN_NS = CgTrace.name("vfx.sim.spawn-ns"), SOLVE_NS = CgTrace.name("vfx.sim.solve-ns"),
+            AGE_NS = CgTrace.name("vfx.sim.age-ns"), SPAWNED = CgTrace.name("vfx.particles.spawned"),
+            TICKED = CgTrace.name("vfx.particles.ticked");
+    /** Each module kind's time counter: {@code vfx.module.<kind>-ns}. */
+    private static final ClassValue<Integer> MODULE_NS = new ClassValue<>() {
+        @Override
+        protected Integer computeValue(Class<?> kind) {
+            return CgTrace.name("vfx.module." + kind.getSimpleName().toLowerCase(Locale.ROOT) + "-ns");
+        }
+    };
 
     private final CgVfxEmitter emitter;
     private final CgVfxParticleSet particles;
@@ -95,20 +110,33 @@ public final class CgVfxEmitterInstance {
         this.originX = originX;
         this.originY = originY;
         this.originZ = originZ;
-        spawn(dt);
         CgVfxParticleSet p = particles;
+        long t = CgVfxTrace.start();
+        int before = p.count();
+        spawn(dt);
+        if (t != 0L) CgVfxTrace.count(SPAWNED, p.count() - before);
+        t = CgVfxTrace.lap(SPAWN_NS, t);
         List<CgVfxModule> modules = emitter.modules;
         for (int m = 0; m < modules.size(); m++) {
-            if (!modules.get(m).afterSolve()) modules.get(m).apply(this, dt);
+            CgVfxModule module = modules.get(m);
+            if (module.afterSolve()) continue;
+            module.apply(this, dt);
+            if (t != 0L) t = CgVfxTrace.lap(MODULE_NS.get(module.getClass()), t);
         }
         solve(dt);
+        t = CgVfxTrace.lap(SOLVE_NS, t);
         for (int m = 0; m < modules.size(); m++) {
-            if (modules.get(m).afterSolve()) modules.get(m).apply(this, dt);
+            CgVfxModule module = modules.get(m);
+            if (!module.afterSolve()) continue;
+            module.apply(this, dt);
+            if (t != 0L) t = CgVfxTrace.lap(MODULE_NS.get(module.getClass()), t);
         }
+        if (t != 0L) CgVfxTrace.count(TICKED, p.count());
         for (int i = p.count() - 1; i >= 0; i--) {
             p.age[i] += dt;
             if (p.age[i] >= p.life[i]) p.remove(i);
         }
+        CgVfxTrace.lap(AGE_NS, t);
         time += dt;
     }
 

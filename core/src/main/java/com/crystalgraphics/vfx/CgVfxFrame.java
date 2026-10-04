@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -31,6 +32,11 @@ import java.util.List;
  * <p>A layer above this frame's quality tier ({@link CgVfxLayer#from}) draws nothing, whichever method draws it.</p>
  */
 public final class CgVfxFrame {
+
+    private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
+            DRAWS_PARTICLE_MESH = CgTrace.name("vfx.draws.particle-mesh"),
+            DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
+            DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons");
 
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
@@ -85,6 +91,7 @@ public final class CgVfxFrame {
     public void mesh(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
         if (skips(layer)) return;
+        CgVfxTrace.count(DRAWS_MESH, 1);
         draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
     }
 
@@ -96,6 +103,7 @@ public final class CgVfxFrame {
     public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
         if (skips(layer)) return;
+        CgVfxTrace.count(DRAWS_RIBBONS, 1);
         draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f).submit();
     }
 
@@ -136,6 +144,7 @@ public final class CgVfxFrame {
     private void particleMeshes(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer) {
         CgVfxEmitter def = emitter.emitter();
         CgVfxParticleSet p = emitter.particles();
+        CgVfxTrace.count(DRAWS_PARTICLE_MESH, p.count());
         for (int i = 0; i < p.count(); i++) {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
@@ -194,6 +203,7 @@ public final class CgVfxFrame {
             color(draw, 2, layer.colorA(), values);
             color(draw, 3, layer.colorB(), values);
             draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+            CgVfxTrace.count(DRAWS_PARTICLE_BATCH, 1);
         }
     }
 
@@ -213,6 +223,7 @@ public final class CgVfxFrame {
     public void billboard(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, float size,
                           float ex, float ey, float ez, float ew) {
         if (skips(layer)) return;
+        CgVfxTrace.count(DRAWS_BILLBOARD, 1);
         // Its bounds: the cube its transform scales, whichever way the shader turns it.
         draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
                 .submit();
@@ -253,6 +264,7 @@ public final class CgVfxFrame {
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
         draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+        CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
     }
 
     /** A draw of {@code layer} on {@code mesh} with the per-draw data every effect shader reads, for the caller to submit. */
