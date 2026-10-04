@@ -108,8 +108,8 @@ public final class CgVfxTube {
                     .custom(0, row, first, scaleOf, layer.parameter())
                     .custom(1, cx, cy, cz, owned)
                     .custom(2, a0, a1, a2, a3)
-                    .custom(3, b0, b1, b2, b3)
-                    .layer(CgVfxSystem.sortLayer(layer)).group(ox, oy, oz).order(layer.order());
+                    .custom(3, b0, b1, b2, b3);
+            CgVfxSystem.place(draw, layer, ox, oy, oz);
             // A volume is soft light that adds: a quarter of the pixels draws it as well.
             if (layer.isVolume()) draw.halfResolution();
             draw.submit();

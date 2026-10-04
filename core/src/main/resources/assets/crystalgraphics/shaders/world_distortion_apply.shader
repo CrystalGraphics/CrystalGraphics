@@ -1,5 +1,6 @@
 // The world renderer's distortion apply: each pixel takes the scene's colour from where the Distortion passes' summed
-// offset points (_Distortion: xy in UV units, z the chromatic split), once, after the transparent pass. UVs mirror at
+// offset points (_Distortion: xy in UV units, z the chromatic split, divided by w where w is above 0, so overlapping
+// draws writing split times weight and the weight average their splits), once, after the transparent pass. UVs mirror at
 // the screen's borders (Quantum Break's answer to clamping's smear); a sample nearer than the pixel is refused, since
 // it would pull the foreground into the bent region. CgWorldRenderer draws it; nothing else should.
 #type none
@@ -42,8 +43,9 @@ Pass {
         vec2 at = cg_mirror(uv + d.xy);
         float own = CG_SCENE_EYE_DEPTH(uv);
         if (CG_SCENE_EYE_DEPTH(at) < own * (1.0 - CG_DISTORTION_LEAK)) discard;
+        float split = d.w > 0.0 ? d.z / d.w : d.z;
         vec4 g = CG_SCENE_COLOR(at);
-        fragColor = vec4(CG_SCENE_COLOR(cg_mirror(uv + d.xy * (1.0 + d.z))).r, g.g,
-                         CG_SCENE_COLOR(cg_mirror(uv + d.xy * (1.0 - d.z))).b, g.a);
+        fragColor = vec4(CG_SCENE_COLOR(cg_mirror(uv + d.xy * (1.0 + split))).r, g.g,
+                         CG_SCENE_COLOR(cg_mirror(uv + d.xy * (1.0 - split))).b, g.a);
     }
 }

@@ -460,7 +460,7 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
 #### The Distortion pass
 
 What a material draws in its Distortion pass is where each pixel behind it takes its colour from: `xy` an offset in UV
-units, `z` a chromatic split. `CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
+units, `z` a chromatic split, `w` the split's weight. `CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
 target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's distortion
 vectors). A heat haze or a shockwave writes an offset here instead of sampling `cg_SceneColor` itself.
 
@@ -475,10 +475,17 @@ Pass {
         offset = vec4(bend, 0.3, 0.0);            // split 0.3: red bends 1.3x as far, blue 0.7x
     }
 }
+
+// A haze that fades: offset and split scaled by the fade, the fade as the weight
+offset = vec4(bend * fade, 0.3 * fade, fade);
 ```
 
 - **Offsets add**: overlapping hazes sum rather than each bending the last, and nothing seams where they meet. Fade one
   out by scaling its offset, never by alpha.
+- **Splits average where weighted**: the apply divides `z` by `w` where `w` is above 0, so draws writing
+  `split * weight` and `weight` blend their splits instead of summing them. With `w` 0 the summed `z` is the split.
+- **A pure haze draws nothing in the scene**: give its Forward pass `ColorMask 0` and `DepthWrite OFF`, and the world
+  renderer skips it (`CgRenderState.writesNothing()`), leaving the Distortion pass the whole cost.
 - **One apply bends everything drawn before it**, near or far. A draw that must stay sharp over a haze goes after it:
   `Queue = "AfterDistortion"` for a material, `.afterDistortion()` for one draw of a material other draws share.
   Blended after the apply, such a draw covers nearer transparent draws of other effects.
