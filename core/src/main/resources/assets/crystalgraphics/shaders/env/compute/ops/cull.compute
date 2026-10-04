@@ -8,6 +8,7 @@
 Properties {
     _CountAt      ("The count's word in COUNT, -1 for none",           int)  = -1
     _Capacity     ("Instances dispatched",                             int)  = 0
+    _First        ("The first record of INSTANCES read",               int)  = 0
     _Level        ("The level this dispatch keeps",                    int)  = 0
     _Levels       ("Levels by screen height; 0 for one never culled",  int)  = 0
     _Heights0     ("Screen heights of levels 0 to 3",                  vec4) = (0, 0, 0, 0)
@@ -100,7 +101,7 @@ bool outside(vec4 plane, vec3 lo, vec3 hi) {
 void Cull() {
     uint n = _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
     if (uint(CG_ELEMENT) >= n) return;
-    CullRecord r = INSTANCES(CG_ELEMENT);
+    CullRecord r = INSTANCES(_First + CG_ELEMENT);
     mat4 place = mat4(_Place0, _Place1, _Place2, _Place3);
     mat4 m = place * mat4(r.model0, r.model1, r.model2, r.model3);
 
