@@ -139,6 +139,9 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
 - The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames (`CgImpact`:
   negative, black and white, speed lines). Flash and impact frames are scaled by the player's `FLASHES` comfort setting.
 - A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
+- **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at
+  `AFTER_WORLD` or `AFTER_COMPOSITE`, or composite inputs at `BEFORE_COMPOSITE`. `render/post/CLAUDE.md` § *Writing an
+  effect* has the rules; `--mode=post-effects` is one at each point.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`),
@@ -437,6 +440,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 6c | `CgBufferTextures.releaseAll()` | The buffer textures materials and lowered kernels read buffers through, one per unit, and the zero buffer an unbound one reads |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
+| 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
 | 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
 

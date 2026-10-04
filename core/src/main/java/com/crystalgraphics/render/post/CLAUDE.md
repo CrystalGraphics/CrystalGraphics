@@ -43,4 +43,34 @@ filters in `shaders/lib/post/bloom.glsl`.
 - **An effect's look is a volume, never a write to the global settings**: it closes its volume when it ends, and the
   player's comfort settings scale what it asks for.
 - **Recording allocates nothing**: the effect and volume lists are array snapshots, replaced whole by adding and removal.
-- Gate: `--mode=post-looks` (every look through a volume, checked from the pixels), on `gl` and `vulkan`.
+- Gates: `--mode=post-looks` (every look through a volume, checked from the pixels) and `--mode=post-effects` (an
+  effect at each point), on `gl` and `vulkan`; `--mode=bloom-occlusion` for bloom.
+
+## Writing an effect
+
+What a mod adds is a `CgPostEffect`, registered with `CgPostStack.get().add(effect)` and removed by closing what that
+returns. `CgPostEffectsTestScene` in the harness has one at each point.
+
+```java
+final class Tint implements CgPostEffect {
+    private final CgMaterial material = CgMaterial.newInstance("mymod:shaders/tint.shader");   // #type none, Blend set
+    public CgPostPoint point() { return CgPostPoint.AFTER_COMPOSITE; }
+    public boolean active(CgPostContext post) { return strength > 0f; }
+    public void record(CgPostContext post) {
+        CgRasterPass pass = post.recording().raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED);
+        CgChunkBuilder chunks = post.recording().chunks().begin();
+        chunks.draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(post.recording().bindings()), CgMesh.quads(1));
+        chunks.instance();
+        pass.add(chunks.end());
+        pass.end();
+    }
+}
+```
+
+- **`AFTER_WORLD`** sees the scene before any look; **`AFTER_COMPOSITE`** the final picture. A pass that reads the
+  target declares `sceneColor(unit)` and its shader a `SceneColorMargin`; one that reads depth, `sceneDepth(unit)`.
+- **`BEFORE_COMPOSITE`** is for feeding the composite (`post.composite()`), not for drawing: a look drawn there would
+  sit under bloom.
+- `order()` sorts effects within a point, ties in the order added. `active` is asked every firing; record nothing
+  when inactive, and allocate nothing in either.
+- Read the firing's blackboard (`post.resources()`) and blended looks (`post.settings()`); never hold either.
