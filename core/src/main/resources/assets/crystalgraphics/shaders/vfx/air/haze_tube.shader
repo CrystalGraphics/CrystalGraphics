@@ -28,6 +28,7 @@ Properties {
     _Fringe   ("How much more red bends than green, and blue less", float) = 0.15
     _Scale    ("Shimmer frequency, a block", float) = 1.6
     _Rise     ("Rising speed, blocks a second", float) = 0.7
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 // reach: the ring's radius, the sheath's radius, blocks along the path

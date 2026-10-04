@@ -7,6 +7,10 @@
 Tags { "RenderType" = "Opaque" }
 Queue = "Geometry"
 
+Properties {
+    _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"
+}
+
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };
 
 Pass {

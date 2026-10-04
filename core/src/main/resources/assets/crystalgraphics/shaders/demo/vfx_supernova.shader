@@ -8,6 +8,11 @@
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"
+}
+
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };
 
 Pass {
@@ -22,7 +27,7 @@ Pass {
     float supernova_arcs(vec3 p, float t, float seed, float rate) {
         float strike = floor(t * rate);
         vec3 q = p * 1.8 + fx_hash33(vec3(strike, seed, 7.0)) * 40.0;
-        q += vec3(fx_value_noise(q * 2.5 + t * 3.0), fx_value_noise(q * 2.5 - t * 3.0), 0.0) * 0.4;
+        q += vec3(fx_value_noise(q * 2.5 + cg_noise_time(t * 3.0)), fx_value_noise(q * 2.5 - cg_noise_time(t * 3.0)), 0.0) * 0.4;
         float bolt = smoothstep(0.84, 0.98, fx_value_ridged(q, 4));
         float lit = step(0.4, fx_hash31(vec3(strike, seed, 3.0)));
         return bolt * lit * (0.6 + 0.4 * sin(t * 70.0 + seed * 9.0));

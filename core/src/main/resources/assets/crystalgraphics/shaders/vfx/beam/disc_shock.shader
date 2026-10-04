@@ -8,6 +8,10 @@
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
+Properties {
+    _Noise ("Noise", sampler3D) = "cg_noise"
+}
+
 struct v2f { vec3 world; vec2 local; };
 
 Pass {

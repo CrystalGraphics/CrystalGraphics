@@ -5,6 +5,10 @@
 Tags { "RenderType" = "Opaque" }
 Queue = "Geometry"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };
 
 Pass {

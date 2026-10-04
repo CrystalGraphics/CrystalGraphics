@@ -10,6 +10,10 @@
 Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 world; vec4 speck; float opacity; vec2 light; };
 
 Pass {

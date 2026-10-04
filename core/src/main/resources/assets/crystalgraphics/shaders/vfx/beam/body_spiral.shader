@@ -13,6 +13,7 @@ Properties {
     _Pitch  ("Blocks per turn", float) = 2.6
     _Speed  ("How fast the bands flow forward, turns a second", float) = 5.5
     _Width  ("Band half-width, share of a turn", float) = 0.09
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; vec4 surface; };

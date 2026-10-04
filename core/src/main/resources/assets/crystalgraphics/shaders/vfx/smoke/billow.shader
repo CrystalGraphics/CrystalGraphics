@@ -23,6 +23,8 @@ Properties {
     _Glow    ("Brightness of the core while hot", float) = 1.7
     _NearFrom ("Blocks from the eye where it starts eroding away", float) = 8.0
     _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"
 }
 
 struct v2f { vec3 world; vec3 normal; vec3 lobe; };
@@ -41,13 +43,17 @@ Pass {
         return sqrt(max(1.0 - f1 * f1 * 1.6, 0.0));
     }
 
-    // One octave of domes at frequency c: the dome under p, and its gradient along the sphere, through the nearest
-    // feature point, so no extra lookups are needed.
+    // One octave of domes at frequency c: the dome under p, and its gradient, through the slope of the distance to the
+    // nearest feature point across a quarter cell.
     float domes(vec3 p, float c, vec3 offset, out vec3 gradient) {
-        vec3 nearest;
-        float f1 = fx_voronoi(p * c + offset, nearest).x;
+        vec3 q = p * c + offset;
+        const float e = 0.25;
+        float f1 = fx_voronoi(q).x;
+        vec3 slope = vec3(fx_voronoi(q + vec3(e, 0.0, 0.0)).x - fx_voronoi(q - vec3(e, 0.0, 0.0)).x,
+                          fx_voronoi(q + vec3(0.0, e, 0.0)).x - fx_voronoi(q - vec3(0.0, e, 0.0)).x,
+                          fx_voronoi(q + vec3(0.0, 0.0, e)).x - fx_voronoi(q - vec3(0.0, 0.0, e)).x) / (2.0 * e);
         float height = dome(f1);
-        gradient = c * 1.6 * nearest / max(height, 0.08);
+        gradient = -c * 1.6 * f1 * slope / max(height, 0.08);
         return height;
     }
 

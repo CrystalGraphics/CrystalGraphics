@@ -16,6 +16,7 @@ Properties {
     _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.55
     _Displace ("Rolling bulges, share of the radius", float) = 0.16
     _Tongue   ("Flame tongues, share of the radius", float) = 0.5
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 surface; float pulse; };

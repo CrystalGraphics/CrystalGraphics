@@ -9,6 +9,10 @@
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 worldPos; vec3 normalWs; };
 
 Pass {
@@ -21,8 +25,8 @@ Pass {
 
     // A tendril's sideways wander at {@code s} along it: smooth noise flowing over time, plus a fine flicker.
     float storm_wander(float s, float seed, float t) {
-        return (fx_value_noise(vec3(s * 3.0, seed, t * 1.3)) - 0.5) * 0.7
-             + (fx_value_noise(vec3(s * 9.0, seed + 5.0, t * 4.0)) - 0.5) * 0.25;
+        return (fx_value_noise(vec3(s * 3.0, seed, 0.0) + cg_noise_time(t * 1.3)) - 0.5) * 0.7
+             + (fx_value_noise(vec3(s * 9.0, seed + 5.0, 0.0) + cg_noise_time(t * 4.0)) - 0.5) * 0.25;
     }
 
     // Where a tendril from {@code a} along {@code dir} for {@code len} is, {@code s} along it. It leaves both ends
@@ -58,7 +62,7 @@ Pass {
         vec3 drift = vec3(sin(t * 0.37 * pace + seed * 1.7), sin(t * 0.29 * pace + seed * 2.3), sin(t * 0.33 * pace + seed * 0.9));
         float strikes = t * (1.5 + 3.5 * fx_hash31(vec3(seed, 7.0, 3.0))) + seed * 0.37;
         surge = exp(-fract(strikes) * (4.0 + 6.0 * h)) * step(0.35, fx_hash31(vec3(floor(strikes), seed, 4.0)));
-        flicker = (0.25 + 0.75 * fx_value_noise(vec3(t * (6.0 + 14.0 * h), seed, 3.0))) * (0.45 + 1.6 * surge);
+        flicker = (0.25 + 0.75 * fx_value_noise(vec3(seed, 3.0, 0.0) + cg_noise_time(t * (6.0 + 14.0 * h)))) * (0.45 + 1.6 * surge);
         wild = t * (1.0 + 2.0 * h) + surge * 0.6;
         return normalize(base + drift * 0.5);
     }
@@ -106,7 +110,7 @@ Pass {
         vec3 camera = FX_CAMERA;
         vec3 v = normalize(camera - i.worldPos);
         float nv = max(dot(n, v), 0.0);
-        float pulse = 0.85 + 0.15 * sin(t * 9.0) + 0.1 * fx_value_noise(vec3(t * 13.0, 0.0, 0.0));
+        float pulse = 0.85 + 0.15 * sin(t * 9.0) + 0.1 * fx_value_noise(cg_noise_time(t * 13.0));
         vec3 inside;
         if (gl_FrontFacing) {
         // The plane through the centre facing the camera, in radii.

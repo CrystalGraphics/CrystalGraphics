@@ -14,6 +14,7 @@ Properties {
     _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.56
     _Displace ("Churn, share of the size", float) = 0.24
     _Tongue   ("Comet tongues flung back, share of the size", float) = 0.7
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; vec3 local; vec3 centre; };

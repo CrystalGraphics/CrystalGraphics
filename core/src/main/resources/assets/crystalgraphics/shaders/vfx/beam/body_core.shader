@@ -13,6 +13,7 @@ Properties {
     _FxPath  ("Path rings", sampler2D) = "black"
     _Flow    ("Flow, blocks a second", float) = 24.0
     _Density ("How fast it turns white", float) = 3.2
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 ring; float pulse; };
@@ -44,7 +45,7 @@ Pass {
         vec3 ray = normalize(i.world - eye);
         vec4 q = fx_capsule(eye, ray, i.axis, normalize(i.tangent), i.ring.x, i.ring.w);
         // A boiling edge: the radius heaves along the beam, faster than the flow.
-        float boil = fx_noise(vec3((q.w - i.ring.z * _Flow * 1.6) * 0.7, i.ring.z * 3.0, 2.5));
+        float boil = fx_noise(vec3((q.w - i.ring.z * _Flow * 1.6) * 0.7, 2.5, 0.0) + cg_noise_time(i.ring.z * 3.0));
         float r = max(i.ring.y * (1.0 + 0.22 * boil), 1.0e-4);
         float thickness = fx_core_thickness(q.y, r, q.z);
         if (thickness <= 0.0) discard;

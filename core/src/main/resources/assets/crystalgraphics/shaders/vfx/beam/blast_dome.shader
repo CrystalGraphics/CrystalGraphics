@@ -13,6 +13,7 @@ Properties {
     _Erode   ("Progress the dome starts breaking up at", float) = 0.3
     _Scale   ("Break-up frequency", float) = 3.0
     _Billow  ("Billows out of the sphere, share of its radius", float) = 0.16
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; vec3 local; };

@@ -14,6 +14,7 @@ Properties {
     _Thickness ("Half the band's height at birth, blocks", float) = 0.18
     _Tilt      ("Largest tilt off level, radians", float) = 0.06
     _Breaks    ("How many dashes it breaks into", float) = 5.0
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
 }
 
 struct v2f { vec3 world; vec3 band; };

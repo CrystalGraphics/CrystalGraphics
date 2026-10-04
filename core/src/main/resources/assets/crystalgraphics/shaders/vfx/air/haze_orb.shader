@@ -24,6 +24,7 @@ Properties {
     _Fringe   ("How much more red bends than green, and blue less", float) = 0.18
     _Scale    ("Shimmer frequency, a block", float) = 1.6
     _Rise     ("Rising speed, blocks a second", float) = 0.7
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; };
