@@ -13,6 +13,8 @@ import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackedProgram;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -38,6 +40,8 @@ public final class TrackedPrograms {
     static final int GL_UNSIGNED_INT_VEC4 = 0x8DC8;
     /** The vertex binding disabled inputs read their constant from: past any a vertex array uses. */
     static final int CONSTANT_BINDING = 15;
+    private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
+    private static final int SPIRV = CgTrace.name("shader.spirv"), PIPELINE = CgTrace.name("shader.computePipeline");
 
     static final class Shader {
         final int type;
@@ -182,7 +186,7 @@ public final class TrackedPrograms {
             return;
         }
         CgGlslCompiler.Program t;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
             t = compiler.compile(vs.source, fs.source, p.attribBindings, label);
         } catch (CgShaderModule.CompileException e) {
             fail(p, e.getMessage());
@@ -202,7 +206,7 @@ public final class TrackedPrograms {
 
     private void linkCompute(Program p, Shader cs, String label) {
         CgGlslCompiler.ComputeProgram t;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
             t = compiler.compileCompute(cs.source, label);
         } catch (CgShaderModule.CompileException e) {
             fail(p, e.getMessage());
@@ -211,7 +215,9 @@ public final class TrackedPrograms {
         releaseLinked(p);
         CgBindingLayout layout = device.createBindingLayout(label, t.slots());
         CgShaderModule module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
-        p.pipeline = device.createComputePipeline(label, module, layout);
+        try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
+            p.pipeline = device.createComputePipeline(label, module, layout);
+        }
         p.objects.addAll(List.of(p.pipeline, module, layout));
         p.vertexData = uniformBlock(t.uniformBinding(), t.uniformSize());
         p.fragmentData = null;
