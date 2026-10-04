@@ -169,6 +169,10 @@ Rules that follow:
   flipped between them (`TraceCostProbe` in `harness-scenes` is the pattern) — drift cancels.
 - Across runs: back to back, on a quiet machine, each at least twice. **A difference smaller than twice the
   run-to-run spread is not a finding** — say so rather than report it.
+- **CPU per call across backends wants the JIT done**: the tracked backend runs far more Java per call than GL's
+  few JNI calls, and C2 compiles it only after thousands of calls. `gpu-ops-cost` after 10 frames put Vulkan's
+  bounds at 0.48 ms of CPU against GL's 0.04, and after 600 at 0.08 against 0.01
+  (`-Dcrystalgraphics.harness.opsCost.warmup=600`).
 - **A spike no zone explains is the machine until a bare window says otherwise.** A stall of tens of
   milliseconds to seconds lands in whatever first waits on the driver -- a `glGet` (`glState.adopt`,
   `stage.parkSamplers`), the swap, even `glfwPollEvents` -- so where it shows names no cause. Before any

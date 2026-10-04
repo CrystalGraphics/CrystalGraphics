@@ -20,18 +20,24 @@ import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkBufferImageCopy;
+import org.lwjgl.vulkan.VkClearColorValue;
+import org.lwjgl.vulkan.VkClearDepthStencilValue;
 import org.lwjgl.vulkan.VkClearValue;
 import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkExtent2D;
 import org.lwjgl.vulkan.VkImageBlit;
 import org.lwjgl.vulkan.VkImageCopy;
 import org.lwjgl.vulkan.VkImageResolve;
+import org.lwjgl.vulkan.VkRect2D;
 import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
 
 import java.nio.ByteBuffer;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
-import static org.lwjgl.vulkan.KHRDynamicRendering.vkCmdBeginRenderingKHR;
+import static org.lwjgl.vulkan.KHRDynamicRendering.VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
+import static org.lwjgl.vulkan.KHRDynamicRendering.VK_STRUCTURE_TYPE_RENDERING_INFO_KHR;
+import static org.lwjgl.vulkan.KHRDynamicRendering.nvkCmdBeginRenderingKHR;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
 
@@ -116,45 +122,65 @@ public final class VulkanEncoder implements CgCommandEncoder {
                     VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
                     VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT);
         }
-        try (MemoryStack stack = stackPush()) {
-            VkRenderingInfo info = VkRenderingInfo.calloc(stack).sType$Default().layerCount(1);
-            info.renderArea().extent().set(desc.width(), desc.height());
-            if (!desc.colors().isEmpty()) {
-                VkRenderingAttachmentInfo.Buffer colors = VkRenderingAttachmentInfo.calloc(desc.colors().size(), stack);
-                for (int i = 0; i < desc.colors().size(); i++) {
-                    CgPassDesc.Color c = desc.colors().get(i);
-                    VulkanTexture t = (VulkanTexture) c.view().texture();
-                    VkRenderingAttachmentInfo a = colors.get(i).sType$Default()
-                            .imageView(t.view(device.vk(), c.view(), true))
-                            .imageLayout(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
-                            .loadOp(load(c.load())).storeOp(store(c.store()));
-                    color(a.clearValue(), t.desc().format(), c.r(), c.g(), c.b(), c.a());
-                }
-                info.pColorAttachments(colors);
+        // In VulkanScratch: the rendering info, each colour attachment, then depth and stencil.
+        int n = desc.colors().size(), size = VkRenderingAttachmentInfo.SIZEOF;
+        int colorsAt = (VkRenderingInfo.SIZEOF + 7) & ~7, depthAt = colorsAt + n * size, stencilAt = depthAt + size;
+        VulkanScratch s = VulkanScratch.get(stencilAt + size);
+        ByteBuffer m = s.zero(stencilAt + size);
+        int extent = VkRenderingInfo.RENDERAREA + VkRect2D.EXTENT;
+        m.putInt(VkRenderingInfo.STYPE, VK_STRUCTURE_TYPE_RENDERING_INFO_KHR)
+                .putInt(extent + VkExtent2D.WIDTH, desc.width()).putInt(extent + VkExtent2D.HEIGHT, desc.height())
+                .putInt(VkRenderingInfo.LAYERCOUNT, 1)
+                .putInt(VkRenderingInfo.COLORATTACHMENTCOUNT, n)
+                .putLong(VkRenderingInfo.PCOLORATTACHMENTS, n == 0 ? 0L : s.address + colorsAt);
+        for (int i = 0; i < n; i++) {
+            CgPassDesc.Color c = desc.colors().get(i);
+            VulkanTexture t = (VulkanTexture) c.view().texture();
+            int at = colorsAt + i * size;
+            attachment(m, at, t.view(device.vk(), c.view(), true), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    load(c.load()), store(c.store()));
+            int color = at + VkRenderingAttachmentInfo.CLEARVALUE + VkClearValue.COLOR;
+            if (t.desc().format().numeric() == CgFormat.Numeric.INT) {
+                int ints = color + VkClearColorValue.INT32;
+                m.putInt(ints, (int) c.r()).putInt(ints + 4, (int) c.g()).putInt(ints + 8, (int) c.b())
+                        .putInt(ints + 12, (int) c.a());
+            } else {
+                int floats = color + VkClearColorValue.FLOAT32;
+                m.putFloat(floats, c.r()).putFloat(floats + 4, c.g()).putFloat(floats + 8, c.b())
+                        .putFloat(floats + 12, c.a());
             }
-            CgPassDesc.Depth d = desc.depth();
-            if (d != null) {
-                VulkanTexture t = (VulkanTexture) d.view().texture();
-                long view = t.view(device.vk(), d.view(), true);
-                if ((t.aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0) {
-                    VkRenderingAttachmentInfo a = VkRenderingAttachmentInfo.calloc(stack).sType$Default().imageView(view)
-                            .imageLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                            .loadOp(load(d.depthLoad())).storeOp(store(d.store()));
-                    a.clearValue().depthStencil().depth(d.clearDepth()).stencil(d.clearStencil());
-                    info.pDepthAttachment(a);
-                }
-                if ((t.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
-                    VkRenderingAttachmentInfo a = VkRenderingAttachmentInfo.calloc(stack).sType$Default().imageView(view)
-                            .imageLayout(VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                            .loadOp(load(d.stencilLoad())).storeOp(store(d.store()));
-                    a.clearValue().depthStencil().depth(d.clearDepth()).stencil(d.clearStencil());
-                    info.pStencilAttachment(a);
-                }
-            }
-            vkCmdBeginRenderingKHR(cmd, info);
         }
+        CgPassDesc.Depth d = desc.depth();
+        if (d != null) {
+            VulkanTexture t = (VulkanTexture) d.view().texture();
+            long view = t.view(device.vk(), d.view(), true);
+            if ((t.aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0) {
+                depthStencil(m, depthAt, view, load(d.depthLoad()), store(d.store()), d);
+                m.putLong(VkRenderingInfo.PDEPTHATTACHMENT, s.address + depthAt);
+            }
+            if ((t.aspect & VK_IMAGE_ASPECT_STENCIL_BIT) != 0) {
+                depthStencil(m, stencilAt, view, load(d.stencilLoad()), store(d.store()), d);
+                m.putLong(VkRenderingInfo.PSTENCILATTACHMENT, s.address + stencilAt);
+            }
+        }
+        nvkCmdBeginRenderingKHR(cmd, s.address);
         open = new VulkanPass(device, this, desc);
         return open;
+    }
+
+    private static void attachment(ByteBuffer m, int at, long view, int layout, int load, int store) {
+        m.putInt(at + VkRenderingAttachmentInfo.STYPE, VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR)
+                .putLong(at + VkRenderingAttachmentInfo.IMAGEVIEW, view)
+                .putInt(at + VkRenderingAttachmentInfo.IMAGELAYOUT, layout)
+                .putInt(at + VkRenderingAttachmentInfo.LOADOP, load)
+                .putInt(at + VkRenderingAttachmentInfo.STOREOP, store);
+    }
+
+    private static void depthStencil(ByteBuffer m, int at, long view, int load, int store, CgPassDesc.Depth d) {
+        attachment(m, at, view, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, load, store);
+        int clear = at + VkRenderingAttachmentInfo.CLEARVALUE + VkClearValue.DEPTHSTENCIL;
+        m.putFloat(clear + VkClearDepthStencilValue.DEPTH, d.clearDepth())
+                .putInt(clear + VkClearDepthStencilValue.STENCIL, d.clearStencil());
     }
 
     private void toAttachment(VkCommandBuffer cmd, CgTextureView v, int layout, int stage, int access) {

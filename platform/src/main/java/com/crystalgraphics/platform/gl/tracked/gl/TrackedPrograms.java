@@ -74,6 +74,8 @@ public final class TrackedPrograms {
         ByteBuffer vertexData, fragmentData;
         boolean vertexDirty, fragmentDirty;
         CgAllocation vertexUpload, fragmentUpload;
+        /** Where each upload starts in its allocation: a frame arena's page holds many. */
+        long vertexUploadAt, fragmentUploadAt;
         long vertexFrame = -1, fragmentFrame = -1;
         int[] blockBinding, storageBinding, samplerUnit, imageUnit;
         final List<int[]> locations = new ArrayList<>();          // {0 uniform | 1 sampler | 2 image, index, element}
@@ -556,15 +558,19 @@ public final class TrackedPrograms {
         Program p = current;
         state.program = p.tracked;
         state.clearBindings();
-        if (p.vertexData != null) state.uniform(t.vertexUniformBinding(), vertexUpload(p), 0, t.vertexUniformSize());
+        if (p.vertexData != null) {
+            CgAllocation a = vertexUpload(p);
+            state.uniform(t.vertexUniformBinding(), a, p.vertexUploadAt, t.vertexUniformSize());
+        }
         if (p.fragmentData != null) {
             long frame = device.frameIndex();
             if (p.fragmentDirty || p.fragmentFrame != frame) {
                 p.fragmentUpload = upload(p.fragmentData);
+                p.fragmentUploadAt = tracker.frameOffset();
                 p.fragmentFrame = frame;
                 p.fragmentDirty = false;
             }
-            state.uniform(t.fragmentUniformBinding(), p.fragmentUpload, 0, t.fragmentUniformSize());
+            state.uniform(t.fragmentUniformBinding(), p.fragmentUpload, p.fragmentUploadAt, t.fragmentUniformSize());
         }
         blocks(state, buffers, p, t);
         for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
@@ -576,7 +582,10 @@ public final class TrackedPrograms {
         if (p == null || !p.linked || !(p.table instanceof CgGlslCompiler.ComputeProgram t))
             throw new IllegalStateException("glDispatchCompute with no linked compute program in use");
         state.clearBindings();
-        if (p.vertexData != null) state.uniform(t.uniformBinding(), vertexUpload(p), 0, t.uniformSize());
+        if (p.vertexData != null) {
+            CgAllocation a = vertexUpload(p);
+            state.uniform(t.uniformBinding(), a, p.vertexUploadAt, t.uniformSize());
+        }
         blocks(state, buffers, p, t);
         for (int i = 0; i < t.samplers().size(); i++) samplers.bind(state, t.samplers().get(i), p.samplerUnit[i]);
         for (int i = 0; i < t.images().size(); i++) images.bind(state, t.images().get(i), p.imageUnit[i]);
@@ -596,6 +605,7 @@ public final class TrackedPrograms {
         long frame = device.frameIndex();
         if (p.vertexDirty || p.vertexFrame != frame) {
             p.vertexUpload = upload(p.vertexData);
+            p.vertexUploadAt = tracker.frameOffset();
             p.vertexFrame = frame;
             p.vertexDirty = false;
         }
@@ -669,10 +679,10 @@ public final class TrackedPrograms {
 
     public int currentName() { return current == null ? 0 : current.name; }
 
+    /** {@code data} copied into this frame's uploads: at {@link CgTracker#frameOffset()} in the answer. */
     private CgAllocation upload(ByteBuffer data) {
         CgAllocation a = tracker.frameAllocate(data.capacity());
-        ByteBuffer to = a.memory();
-        to.put(data.duplicate().clear());
+        a.put(tracker.frameOffset(), data);
         return a;
     }
 

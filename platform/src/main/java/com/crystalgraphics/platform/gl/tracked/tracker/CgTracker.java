@@ -17,6 +17,7 @@ import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
 import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
+import com.crystalgraphics.platform.gl.tracked.memory.CgFrameArena;
 import com.crystalgraphics.platform.gl.tracked.memory.CgSlabAllocator;
 
 import java.nio.ByteBuffer;
@@ -62,6 +63,9 @@ public final class CgTracker {
     private final CgDevice device;
     private final boolean debug;
     private final CgSlabAllocator host, local;
+    private final CgFrameArena frameUploads;
+    /** Where the last {@link #frameAllocate} put its bytes in the allocation it answered. */
+    private long frameOffset;
     private final Map<CgPipelineDesc, CgPipeline> pipelines = new HashMap<>();
     private boolean zeroToOneClip;
     private boolean warnedMaskedClear;
@@ -112,6 +116,7 @@ public final class CgTracker {
                 Math.max(device.info().limits().storageOffsetAlignment(), device.info().limits().texelOffsetAlignment())));
         this.host = new CgSlabAllocator(device, true, SLAB, align);
         this.local = new CgSlabAllocator(device, false, SLAB, align);
+        this.frameUploads = new CgFrameArena(host, align);
     }
 
     public CgDevice device() { return device; }
@@ -212,12 +217,15 @@ public final class CgTracker {
         passPipeline = p;
 
         CgAllocation vertices = frameAllocate(3 * 24);
-        ByteBuffer m = vertices.memory();
+        long first = vertices.offset + frameOffset;
+        ByteBuffer m = vertices.buffer.mapped();
         float[] corners = {-1, -1, 3, -1, -1, 3};
         for (int v = 0; v < 3; v++) {
-            m.putFloat(corners[2 * v]).putFloat(corners[2 * v + 1]).putFloat(r).putFloat(g).putFloat(b).putFloat(a);
+            int at = (int) first + 24 * v;
+            m.putFloat(at, corners[2 * v]).putFloat(at + 4, corners[2 * v + 1]).putFloat(at + 8, r).putFloat(at + 12, g)
+                    .putFloat(at + 16, b).putFloat(at + 20, a);
         }
-        pass.setVertexBuffer(0, vertices.buffer, vertices.offset);
+        pass.setVertexBuffer(0, vertices.buffer, first);
         pass.setViewport(0, 0, passTarget.width(), passTarget.height(), 0, 1);
         pass.setScissor(x, y, w, h);
         pass.draw(3, 1, 0, 0);
@@ -599,12 +607,25 @@ public final class CgTracker {
         return (hostVisible ? host : local).allocate(size, label);
     }
 
-    /** Host-visible memory for this frame only, freed when it retires: a per-draw upload. */
+    /**
+     * Host-visible memory for this frame only, a per-draw upload: {@code size} bytes at {@link #frameOffset()} in the
+     * allocation answered, until the next call. Up to a page comes from {@link CgFrameArena}, allocating nothing.
+     */
     public CgAllocation frameAllocate(long size) {
+        if (size <= CgFrameArena.PAGE) {
+            frameOffset = frameUploads.allocate(size, device.frameIndex(), device.retiredFrame());
+            return frameUploads.page();
+        }
         CgAllocation a = host.allocate(size, "frame");
         a.lastUse = device.frameIndex();
         device.whenRetired(a.lastUse, () -> host.free(a));
+        frameOffset = 0;
         return a;
+    }
+
+    /** Where the last {@link #frameAllocate}'s bytes start in the allocation it answered. */
+    public long frameOffset() {
+        return frameOffset;
     }
 
     /** Frees {@code a} once the last frame that used it has retired. */

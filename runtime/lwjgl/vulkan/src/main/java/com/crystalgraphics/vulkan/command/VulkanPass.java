@@ -14,6 +14,8 @@ import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkClearAttachment;
 import org.lwjgl.vulkan.VkClearRect;
 import org.lwjgl.vulkan.VkCommandBuffer;
+import org.lwjgl.vulkan.VkExtent2D;
+import org.lwjgl.vulkan.VkOffset2D;
 import org.lwjgl.vulkan.VkRect2D;
 import org.lwjgl.vulkan.VkViewport;
 
@@ -58,11 +60,13 @@ final class VulkanPass implements CgRenderPass {
                 ((VulkanBindingLayout) pipeline.desc.layout()).pipelineLayout, b);
     }
 
+    // Per draw: filled in VulkanScratch.
+
     @Override
     public void setVertexBuffer(int binding, CgGpuBuffer buffer, long offset) {
-        try (MemoryStack stack = stackPush()) {
-            vkCmdBindVertexBuffers(cmd(), binding, stack.longs(((VulkanBuffer) buffer).buffer), stack.longs(offset));
-        }
+        VulkanScratch s = VulkanScratch.get(16);
+        s.bytes.putLong(0, ((VulkanBuffer) buffer).buffer).putLong(8, offset);
+        nvkCmdBindVertexBuffers(cmd(), binding, 1, s.address, s.address + 8);
     }
 
     @Override
@@ -72,22 +76,22 @@ final class VulkanPass implements CgRenderPass {
 
     @Override
     public void setViewport(float x, float y, float width, float height, float minDepth, float maxDepth) {
-        try (MemoryStack stack = stackPush()) {
-            vkCmdSetViewport(cmd(), 0, VkViewport.calloc(1, stack).x(x).y(y).width(width).height(height)
-                    .minDepth(minDepth).maxDepth(maxDepth));
-        }
+        VulkanScratch s = VulkanScratch.get(VkViewport.SIZEOF);
+        s.bytes.putFloat(VkViewport.X, x).putFloat(VkViewport.Y, y).putFloat(VkViewport.WIDTH, width)
+                .putFloat(VkViewport.HEIGHT, height).putFloat(VkViewport.MINDEPTH, minDepth)
+                .putFloat(VkViewport.MAXDEPTH, maxDepth);
+        nvkCmdSetViewport(cmd(), 0, 1, s.address);
     }
 
     @Override
     public void setScissor(int x, int y, int width, int height) {
         if (x < 0) { width += x; x = 0; }
         if (y < 0) { height += y; y = 0; }
-        try (MemoryStack stack = stackPush()) {
-            VkRect2D.Buffer rect = VkRect2D.calloc(1, stack);
-            rect.offset().set(x, y);
-            rect.extent().set(Math.max(0, width), Math.max(0, height));
-            vkCmdSetScissor(cmd(), 0, rect);
-        }
+        VulkanScratch s = VulkanScratch.get(VkRect2D.SIZEOF);
+        s.bytes.putInt(VkRect2D.OFFSET + VkOffset2D.X, x).putInt(VkRect2D.OFFSET + VkOffset2D.Y, y)
+                .putInt(VkRect2D.EXTENT + VkExtent2D.WIDTH, Math.max(0, width))
+                .putInt(VkRect2D.EXTENT + VkExtent2D.HEIGHT, Math.max(0, height));
+        nvkCmdSetScissor(cmd(), 0, 1, s.address);
     }
 
     @Override

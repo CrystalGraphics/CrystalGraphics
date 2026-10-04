@@ -52,10 +52,16 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # frame ring: one build, both paths, for comparing them
 -Dcrystalgraphics.mesh.editStacks=true               # each mesh edit records its stack, which the [cg-mesh]
                                                      # report of a mesh edited every frame prints
+-Dcrystalgraphics.mesh.multiDraw=false               # a call a draw: no run of draws sharing pipeline, bindings and a
+                                                     # slab joined into one multi-draw (render/graph/CLAUDE.md,
+                                                     # Multi-draw); the picture must not change
 
 # Frame graph
 -Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
                                                      # validation must catch on --mode=compute-graph
+-Dcrystalgraphics.graph.asyncAll=true                # every compute pass that can go async does, as if marked
+                                                     # async(): a check of the waits, which the compute scenes must
+                                                     # pass under synchronization validation
 
 # Post stack (render/post/CLAUDE.md)
 -Dcrystalgraphics.post.bloom.linear=true             # bloom composited in linear light (the copy form) from the start,
@@ -91,6 +97,22 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # and check each result against Java; logs `[crystalgraphics]
                                                      # compute self-test <tier>: PASS|FAIL`, which prodSmoke gathers
                                                      # (-PcgSmokeProps=crystalgraphics.compute.selfTest=true)
+-Dcrystalgraphics.compute.checked=true               # kernels run as compute bounds-check every buffer and image
+                                                     # access: one out of range is skipped, and the first of each
+                                                     # dispatch logged once with its .compute line (SHADERS.md,
+                                                     # Debugging and testing). Every access tests its index
+
+# The Vulkan device (--device=vulkan)
+-Dcrystalgraphics.vulkan.syncValidation=true         # with the validation layer on, its synchronization checks too
+-Dcrystalgraphics.vulkan.asyncCompute=false          # false|graphics: async() compute passes run in order on the
+                                                     # frame's queue; graphics puts them on a second queue of its
+                                                     # family rather than a compute-only one
+
+# Caches kept across launches (CgCacheDirectory)
+-Dcrystalgraphics.cache=false                        # keep nothing: SPIR-V and the Vulkan pipeline cache rebuilt
+                                                     # each launch
+-Dcrystalgraphics.cache.dir=path                     # the cache root, a folder per kind (spirv, vulkan); by default
+                                                     # <game directory>/crystalgraphics/cache
 
 # Extensions
 -Dcrystalgraphics.gl.disableExtensions=GL_ARB_buffer_storage,GL_ARB_compute_shader

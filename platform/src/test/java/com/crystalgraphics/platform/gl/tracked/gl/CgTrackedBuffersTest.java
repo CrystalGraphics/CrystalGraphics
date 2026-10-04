@@ -104,7 +104,7 @@ public class CgTrackedBuffersTest {
     }
 
     @Test
-    public void aCopyIntoDeviceLocalStorageIsADeviceCopy_BetweenHostVisibleOnesTheCpus_OutOfDeviceLocalAReadBack() {
+    public void aCopyIsADeviceCopy_ButBetweenHostVisibleOnesTheCpus_AndAReadMapWaitsForIt() {
         int staging = buffer(CgGL.GL_ARRAY_BUFFER, 16, 0x88E0 /* GL_STREAM_DRAW */);
         gl.glBufferSubData(CgGL.GL_ARRAY_BUFFER, 0, ByteBuffer.allocateDirect(16).order(ByteOrder.nativeOrder()).putInt(0, 7));
         int local = buffer(CgGL.GL_ARRAY_BUFFER, 32, CgGL.GL_STATIC_DRAW);
@@ -123,9 +123,12 @@ public class CgTrackedBuffersTest {
 
         mark = device.log().size();
         copy(local, visible, 0, 8);
-        assertTrue("device-local into host-visible is a read back, waited for",
-                device.logSince(mark).stream().anyMatch(line -> line.startsWith("readBuffer")));
-        assertEquals(7, gl.bufferObjects().get(visible).storage.allocation().memory().getInt(0));
+        assertTrue("device-local into host-visible is a device copy, not a stall",
+                device.logSince(mark).stream().anyMatch(line -> line.startsWith("copyBuffer")));
+        gl.glBindBuffer(CgGL.GL_ARRAY_BUFFER, visible);
+        ByteBuffer read = gl.glMapBufferRange(CgGL.GL_ARRAY_BUFFER, 0, 8, CgGL.GL_MAP_READ_BIT, null);
+        assertEquals("a read map waits for the copy", 7, read.order(ByteOrder.nativeOrder()).getInt(0));
+        gl.glUnmapBuffer(CgGL.GL_ARRAY_BUFFER);
     }
 
     private void copy(int from, int to, long writeOffset, long size) {
