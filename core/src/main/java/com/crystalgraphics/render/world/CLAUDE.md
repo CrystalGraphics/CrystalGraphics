@@ -19,6 +19,8 @@
   `sceneColor`): a reader sees every draw sorted before it except readers in a row with it, so a heat haze bends what is sorted
   under it and nothing above. `render/graph/AGENTS.md` § *Reading the target*.
 - **Material chains** (`setNextPass`) are drawn as further draws on the same instances, in the forward passes only.
+- **A Forward pass that writes nothing is skipped** (`CgRenderState.writesNothing()`: colour masked off, depth unwritten,
+  stencil off): a pure haze or glow is all Distortion or Emissive pass. The overdraw view counts its Distortion pass.
 - **An indirect draw** (`.indirect(count, offset, mode, factor)`) carries its count into each pass's chunk. Its
   culling is by the bounds it states: what the count will be is unknown when it is culled. A count written in the same
   stage comes from a renderer registered below `ORDER` recording a compute pass into the stage's frame.

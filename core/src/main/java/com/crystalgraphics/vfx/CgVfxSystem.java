@@ -471,6 +471,16 @@ public final class CgVfxSystem {
         return SHARED_DISTORTION && layer.order() == CgVfxLayer.ORDER_DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
     }
 
+    /**
+     * {@code draw} placed as a draw of {@code layer} in the effect at {@code (ox, oy, oz)}: its sort layer, the effect's
+     * group and the layer's order, and a sharp layer ({@link CgVfxLayer#ORDER_SURFACE} and up) after the distortion
+     * apply, so no haze bends it.
+     */
+    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLayer layer, double ox, double oy, double oz) {
+        draw.layer(sortLayer(layer)).group(ox, oy, oz).order(layer.order());
+        return layer.order() >= CgVfxLayer.ORDER_SURFACE ? draw.afterDistortion() : draw;
+    }
+
     CgMesh ribbonMesh() {
         return ribbonMesh;
     }

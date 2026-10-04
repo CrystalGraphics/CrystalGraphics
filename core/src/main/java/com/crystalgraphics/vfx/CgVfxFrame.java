@@ -227,7 +227,7 @@ public final class CgVfxFrame {
                     .custom(1, cx, cy, cz, effect.age);
             color(draw, 2, layer.colorA(), values);
             color(draw, 3, layer.colorB(), values);
-            draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+            CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_BATCH, 1);
         }
     }
@@ -288,7 +288,7 @@ public final class CgVfxFrame {
                 .custom(1, cx, cy, cz, intensity);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+        CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
         CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
     }
 
@@ -303,7 +303,7 @@ public final class CgVfxFrame {
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        return draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order());
+        return CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ);
     }
 
     private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {

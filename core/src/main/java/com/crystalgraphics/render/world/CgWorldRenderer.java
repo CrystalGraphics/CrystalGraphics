@@ -913,6 +913,10 @@ public final class CgWorldRenderer {
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
                 CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+                // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.
+                if (pipeline != null && pipeline.state().writesNothing()) {
+                    pipeline = link.hasDistortionPass() ? link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
+                }
                 if (pipeline == null) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline.overdraw(), bindingOf(link, recording), i);
@@ -1194,7 +1198,7 @@ public final class CgWorldRenderer {
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
+                if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;

@@ -2,14 +2,14 @@
 // its silhouette, where the front is seen edge-on. Racing out from a blast ahead of its dust, it reads as the air
 // itself rippling. Drawn on CgVfxFrame.mesh's sphere's far wall, the shell the eye sees found analytically: its near
 // side from outside, its far side from inside, so a front sweeping past the camera ripples the whole view as it goes.
-// After the soft layers and before the sharp ones (ORDER_DISTORTION), so it bends smoke and glow but never a bright
-// body. CG_OBJECT_CUSTOM1.z is an intensity. Reads cg_SceneColor and depth.
+// A Distortion pass (ORDER_DISTORTION), so it bends smoke and glow but never a bright body. CG_OBJECT_CUSTOM1.z is an
+// intensity. Reads depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
 // The bend reaches _Strength times the intensity, at most about 0.05 of the height.
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.05" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
@@ -22,8 +22,10 @@ struct v2f { vec3 world; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
+    // Writes nothing, so the world renderer skips it: the Distortion pass is the haze.
     RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        ColorMask 0
+        Blend OFF
         DepthTest ALWAYS
         DepthWrite OFF
         Cull FRONT
@@ -36,6 +38,21 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        fragColor = vec4(0.0);
+    }
+}
+
+Pass {
+    Tags { "LightMode" = "Distortion" }
+    // Its own depth fade, from the scene's distance.
+    RenderState {
+        Blend ONE ONE
+        DepthTest ALWAYS
+        DepthWrite OFF
+        Cull FRONT
+    }
+
+    void fragment(in v2f i, out vec4 distortion) {
         vec3 eye = FX_CAMERA;
         vec3 ray = normalize(i.world - eye);
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
@@ -53,10 +70,10 @@ Pass {
         if (strength < 0.002) discard;
         // Outward on screen, along the normal as the eye sees it.
         vec2 dir = normalize((mat3(cg_ViewMatrix) * n).xy + 1.0e-5);
-        vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
         // Perspective: a far front moves the scene behind it as little as it covers.
         float far = min(1.0, _Reference / max(hit, 1.0e-3));
-        vec2 bent = uv + dir * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
-        fragColor = vec4(CG_SCENE_COLOR(bent).rgb, smoothstep(0.0, 0.15, strength));
+        vec2 offset = dir * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
+        float fade = smoothstep(0.0, 0.15, strength);
+        distortion = vec4(offset * fade, 0.0, fade);
     }
 }

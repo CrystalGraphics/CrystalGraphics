@@ -2,17 +2,17 @@
 // where the ray passes nearest the centre and gone at the silhouette and where the sphere meets the scene. Its outline
 // is a plume, not the sphere's disc: it reaches the rim above and fades sooner below and to the sides, and its edge is
 // torn by noise rising with the air, so it has no shape of its own.
-// Drawn on CgVfxFrame.mesh's sphere's far wall, its entry found analytically, so it bends from inside it too; after
-// the soft layers and before the sharp ones (ORDER_DISTORTION). A ray through the hot thing itself is left unbent, so the haze shimmers round it and never
+// Drawn on CgVfxFrame.mesh's sphere's far wall, its entry found analytically, so it bends from inside it too; a
+// Distortion pass (ORDER_DISTORTION), so the sharp layers stay unbent. A ray through the hot thing itself is left unbent, so the haze shimmers round it and never
 // warps it: CG_OBJECT_CUSTOM0.y, the layer's parameter, is the share of the unit sphere it fills,
 // 0 for nothing inside; .x is the layer's radius.
-// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity. Reads cg_SceneColor and depth.
+// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity. Reads depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
 // The bend reaches _Strength times the intensity times the noise, at most about 0.08 of the height.
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.08" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
@@ -26,8 +26,10 @@ struct v2f { vec3 world; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
+    // Writes nothing, so the world renderer skips it: the Distortion pass is the haze.
     RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        ColorMask 0
+        Blend OFF
         DepthTest ALWAYS
         DepthWrite OFF
         Cull FRONT
@@ -40,6 +42,21 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        fragColor = vec4(0.0);
+    }
+}
+
+Pass {
+    Tags { "LightMode" = "Distortion" }
+    // Its own depth fade, from the scene's distance.
+    RenderState {
+        Blend ONE ONE
+        DepthTest ALWAYS
+        DepthWrite OFF
+        Cull FRONT
+    }
+
+    void fragment(in v2f i, out vec4 distortion) {
         vec3 eye = FX_CAMERA;
         vec3 ray = normalize(i.world - eye);
         vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
@@ -69,10 +86,10 @@ Pass {
         float strength = body * soft * CG_OBJECT_CUSTOM1.z;
         if (strength < 0.002) discard;
         vec2 wobble = fx_heat((centre + spot) * _Scale, age, _Rise * _Scale, seed);
-        vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
         // Perspective: a far haze moves the scene behind it as little as it covers.
         float far = min(1.0, _Reference / max(enter, 1.0e-3));
-        vec2 bent = uv + wobble * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
-        fragColor = vec4(CG_SCENE_COLOR(bent).rgb, smoothstep(0.0, 0.1, strength));
+        vec2 offset = wobble * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
+        float fade = smoothstep(0.0, 0.1, strength);
+        distortion = vec4(offset * fade, 0.0, fade);
     }
 }

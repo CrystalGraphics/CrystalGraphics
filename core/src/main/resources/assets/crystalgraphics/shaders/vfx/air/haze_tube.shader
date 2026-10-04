@@ -3,9 +3,9 @@
 // The bend is a share of the screen's height, held to _Hold of the sheath's width on screen, so a far beam keeps it. A
 // tube layer: fx_tube.glsl's contract (_FxPath, CG_OBJECT_CUSTOM0..1 as CgVfxTube writes them), its radius the layer's
 // times the ring's, capped at the layer's parameter in blocks (0 for no cap). Drawn on the tube's far wall, where the
-// ray meets it found analytically, so it bends from inside it too; after the soft layers and before the sharp ones
-// (ORDER_DISTORTION). A ray through the beam itself, within _Core times its ring's radius of the path,
-// is left unbent. Reads cg_SceneColor and depth.
+// ray meets it found analytically, so it bends from inside it too; a Distortion pass (ORDER_DISTORTION), so the sharp
+// layers stay unbent. A ray through the beam itself, within _Core times its ring's radius of the path, is left unbent.
+// Reads depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
@@ -13,7 +13,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
 
 // The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under 0.016 of the height.
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
@@ -35,8 +35,10 @@ struct v2f { vec3 world; vec3 axis; vec3 tangent; vec2 time; vec3 reach; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
+    // Writes nothing, so the world renderer skips it: the Distortion pass is the haze.
     RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
+        ColorMask 0
+        Blend OFF
         DepthTest ALWAYS
         DepthWrite OFF
         Cull FRONT
@@ -61,6 +63,21 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+        fragColor = vec4(0.0);
+    }
+}
+
+Pass {
+    Tags { "LightMode" = "Distortion" }
+    // Its own depth fade, from the scene's distance.
+    RenderState {
+        Blend ONE ONE
+        DepthTest ALWAYS
+        DepthWrite OFF
+        Cull FRONT
+    }
+
+    void fragment(in v2f i, out vec4 distortion) {
         vec3 eye = FX_CAMERA;
         vec3 ray = normalize(i.world - eye);
         vec3 t = normalize(i.tangent);
@@ -91,8 +108,8 @@ Pass {
         vec2 flow = FX_HAZE_SCREEN_DIR(t) * ripple * (0.6 + 0.4 * fx_noise(drift * 0.7 + 3.3));
         vec2 wobble = mix(fx_heat(at * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
         float hold = FX_HAZE_HOLD(_Strength, edge, distance(eye, at), _Hold);
-        vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
         vec2 offset = wobble * _Strength * hold * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
-        fragColor = vec4(FX_HAZE_SCENE(uv, offset, _Fringe), smoothstep(0.0, 0.1, strength));
+        float fade = smoothstep(0.0, 0.1, strength);
+        distortion = vec4(offset * fade, _Fringe * fade, fade);
     }
 }

@@ -122,6 +122,19 @@ public final class CgRenderState {
         return builder().alpha(alpha).blend(blend).depth(depth).cull(cull).stencil(stencil).colorMask(mask).build();
     }
 
+    /**
+     * Whether a draw under it changes no pixel: every colour mask closed, depth declared and unwritten, stencil off. The
+     * world renderer skips such a pass, as it does a pure haze's Forward pass.
+     */
+    public boolean writesNothing() {
+        if (colorMasks.isEmpty() || depth == null || depth.write() || (stencil != null && stencil.enabled())) return false;
+        for (int i = 0; i < colorMasks.size(); i++) {
+            CgColorMask m = colorMasks.get(i);
+            if (m.r() || m.g() || m.b() || m.a()) return false;
+        }
+        return true;
+    }
+
     public static Builder builder() { return new Builder(); }
 
     public static final class Builder {
