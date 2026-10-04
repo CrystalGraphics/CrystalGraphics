@@ -3,7 +3,7 @@ package com.crystalgraphics.gl.texture;
 import com.crystalgraphics.platform.gl.CgGL;
 
 /**
- * Takes the host's sampler objects off the texture units for one of our passes, and puts them back after.
+ * Takes the host's sampler objects off the texture units for one of our passes.
  *
  * <pre>{@code
  * CgHostSamplers.park();
@@ -20,9 +20,9 @@ import com.crystalgraphics.platform.gl.CgGL;
  *
  * <ul>
  *   <li>Pairs nest, up to {@link #MAX_DEPTH}; an unmatched {@code unpark} throws.</li>
- *   <li>Only units holding a sampler are touched, so a host that binds none costs {@link #UNITS} reads.</li>
- *   <li>Minecraft caches no sampler binding and rebinds its own per draw; putting them back is for any
- *       other mod that might.</li>
+ *   <li>Every one of the first {@link #UNITS} units is unbound, read or not: what was bound is never read, since a
+ *       {@code glGet} waits for the driver to drain every queued call.</li>
+ *   <li>Nothing is put back. Minecraft caches no sampler binding and rebinds its own per draw.</li>
  * </ul>
  */
 public final class CgHostSamplers {
@@ -31,32 +31,20 @@ public final class CgHostSamplers {
     public static final int UNITS = 16;
     static final int MAX_DEPTH = 4;
 
-    private static final int GL_SAMPLER_BINDING = 0x8919;
-
-    private static final int[][] SAVED = new int[MAX_DEPTH][UNITS];
     private static int depth;
 
     private CgHostSamplers() {}
 
-    /** Unbinds the host's samplers from the first {@link #UNITS} units, remembering them. */
+    /** Unbinds any sampler from the first {@link #UNITS} units. */
     public static void park() {
         if (depth == MAX_DEPTH) throw new IllegalStateException("CgHostSamplers nested deeper than " + MAX_DEPTH);
-        int[] saved = SAVED[depth++];
-        int active = CgGL.glGetInteger(CgGL.GL_ACTIVE_TEXTURE);
-        for (int unit = 0; unit < UNITS; unit++) {
-            CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
-            saved[unit] = CgGL.glGetInteger(GL_SAMPLER_BINDING);
-            if (saved[unit] != 0) CgGL.glBindSampler(unit, 0);
-        }
-        CgGL.glActiveTexture(active);
+        depth++;
+        for (int unit = 0; unit < UNITS; unit++) CgGL.glBindSampler(unit, 0);
     }
 
-    /** Rebinds what {@link #park()} took off. */
+    /** Ends what {@link #park()} began. */
     public static void unpark() {
         if (depth == 0) throw new IllegalStateException("CgHostSamplers.unpark without park");
-        int[] saved = SAVED[--depth];
-        for (int unit = 0; unit < UNITS; unit++) {
-            if (saved[unit] != 0) CgGL.glBindSampler(unit, saved[unit]);
-        }
+        depth--;
     }
 }
