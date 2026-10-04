@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -1234,6 +1235,36 @@ public final class CgGlStateManager {
             if ((frames[d].mask & bit) != 0) return frames[d].saved;
         }
         return null;
+    }
+
+    /**
+     * The bound draw framebuffer, from the shadow where it vouches for it, else read once as a scope would. A
+     * {@code glGet} waits for the driver to drain every call queued before it, so a frame path asks here instead.
+     *
+     * <pre>{@code
+     * int target = CgGlState.drawFramebuffer();   // free inside a host section once known
+     * }</pre>
+     */
+    public int drawFramebuffer() {
+        if (recording != null) return CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+        know(CgGlSlot.FBO);
+        return current.drawFbo;
+    }
+
+    /** The viewport into {@code into} at 0..3 (x, y, width, height), as {@link #drawFramebuffer} reads. */
+    public void viewport(IntBuffer into) {
+        if (recording != null) {
+            CgGL.glGetInteger(CgGL.GL_VIEWPORT, into);
+            return;
+        }
+        know(CgGlSlot.VIEWPORT);
+        into.put(0, current.viewportX).put(1, current.viewportY).put(2, current.viewportW).put(3, current.viewportH);
+    }
+
+    /** Adopts {@code slot} where a scope opened now would: outside a host section, from a free provider, or unknown. */
+    private void know(CgGlSlot slot) {
+        assertOwner();
+        if (provider.isFree() || !CgGL.inHostSection() || !isTrusted(slot)) adopt(slot);
     }
 
     public int depth() { return depth; }
