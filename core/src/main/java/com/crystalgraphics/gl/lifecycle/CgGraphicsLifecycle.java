@@ -23,6 +23,7 @@ import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
@@ -397,6 +398,7 @@ public final class CgGraphicsLifecycle {
             CgSettings.tickFrame();
             if (initialized) CgComputeCheck.endFrame();   // the frame's checked dispatches, read back
             if (initialized) CgReadback.poll();   // before the listeners, which may read what landed
+            if (initialized) CgGpuBudget.tick();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
             if (initialized) {
                 CgComputeSelfTest.runIfAsked();

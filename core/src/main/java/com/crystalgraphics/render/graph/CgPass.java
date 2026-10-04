@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgPipeline;
 
 import javax.annotation.Nullable;
@@ -26,6 +27,9 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     final CgRequest request;
     /** Its GPU zone's name id ({@code CgGpuTrace.name}), or -1 when it is not timed on its own. */
     int gpuZone = -1;
+    /** What its GPU time is charged to, or null. */
+    @Nullable
+    CgGpuBudget budget;
 
     CgPass(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
         this.name = name;

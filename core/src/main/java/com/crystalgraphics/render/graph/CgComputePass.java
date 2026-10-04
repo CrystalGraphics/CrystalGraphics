@@ -2,12 +2,14 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgPassConstants;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Kernels run in order, made with {@link CgRecording#compute}: each dispatch's bindings decide what the pass reads and
@@ -88,6 +90,16 @@ public final class CgComputePass extends CgPass {
     public CgComputePass timed(int zone) {
         requireOpen();
         gpuZone = zone;
+        return this;
+    }
+
+    /**
+     * Charges its GPU time to {@code budget}, which scales its consumer's work to fit. Timed whatever the trace, under
+     * the budget's zone unless {@link #timed(int)} names one.
+     */
+    public CgComputePass timed(CgGpuBudget budget) {
+        requireOpen();
+        this.budget = Objects.requireNonNull(budget, "budget");
         return this;
     }
 

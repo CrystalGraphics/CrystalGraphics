@@ -335,7 +335,8 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 10. **Overlap**: compute that leaves the GPU idle (small dispatches, a reduction's last levels) goes in an `async()`
     pass beside fill-bound drawing, on a device with a compute queue (§12).
 11. **Design for every tier** ([`SHADERS.md` § *Designing for every tier*](SHADERS.md#designing-for-every-tier)):
-    lowerable shapes, `vec4` records, few dispatches below compute, and work sized by `kernel.form()`.
+    lowerable shapes, `vec4` records, few dispatches below compute, capacity sized by `kernel.form()`, and the work
+    scaled by a `CgGpuBudget` its passes are charged to.
 
 ## 11. Every tier
 
@@ -407,7 +408,6 @@ What a pipeline here cannot do today, so a design does not assume it:
 - Persistent world draws (a GPU scene scatter-updated only when something moves): records are rewritten every frame.
 - Two-phase occlusion for the engine's own draws: the pyramid is of what the host drew first.
 - Clustered lights and decals, an order-independent transparent queue, bindless textures.
-- `CgGpuBudget`: nothing scales a consumer's work for it.
 - Multi-draw on macOS's GL: each draw is its own call there.
 
 ## 16. Checklist for an agent
@@ -418,7 +418,7 @@ What a pipeline here cannot do today, so a design does not assume it:
 4. Record the compute pass ahead of its draws, a simulation once per frame (`registerOncePerFrame`); make every
    buffer a later stage or firing reads persistent.
 5. Write the material with the `CG_` macros and `Buffers { }`; one material per look.
-6. Bounds on every indirect draw.
+6. Bounds on every indirect draw; the passes charged to a `CgGpuBudget`, and the work scaled by it.
 7. Check: `multiDraw=false` gives the same picture, the counters show the calls you expect, checked mode is quiet,
    synchronization validation is clean, and it passes forced to G40, G33 and CPU.
 8. Measure before and after with the profiler, warm.

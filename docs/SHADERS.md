@@ -1316,12 +1316,20 @@ takes 0.01, and up to 40 times the GPU time ([what each op costs](#ops-cggpuops)
   lowered takes 8 ms of GPU.
 - At G33 a GPU count a draw takes is read back first: a stall for each such draw.
 
-**6. Size the work by the form.** Nothing scales a consumer's work for it: an effect sized for the author's GPU runs
-on a Mac at a fraction of the speed. Size capacity by how this context runs the heaviest kernel.
+**6. Scale the work by a budget.** An effect sized for the author's GPU runs on a Mac at a fraction of the speed. A
+`CgGpuBudget` times the passes charged to it on the GPU and answers a scale that holds them inside its milliseconds:
+multiply what is spawned or simulated by it. Size capacity by the form, since a budget scales work, not storage.
 
 ```java
-int capacity = step.form().how() == CgKernelForm.How.COMPUTE ? 1_000_000 : 100_000;
+static final CgGpuBudget SPARKS = CgGpuBudget.define("sparks", 1.5f);        // 1.5 ms of GPU a frame
+CgComputePass step = recording.compute("sparks.step").timed(SPARKS);       // charged to it: raster passes too
+int spawned = Math.round(wanted * SPARKS.scale());                          // in [0.1, 1]
+int capacity = kernel.form().how() == CgKernelForm.How.COMPUTE ? 1_000_000 : 100_000;
 ```
+
+- It starts at the tier's share (1 as compute, 0.5 lowered, 0.25 on the CPU tier), drops at once when over and rises
+  after a run well under; what it measures lags the work by a few frames and never waits for it.
+- An `async()` pass on a device with a compute queue runs beside the timer and is not counted.
 
 **7. Integers where the answer must match.** Integers and `cg_rng` give the same bits on every tier and in a Java
 body; floats agree to a rounding. A decision, a count or a seed that must match across machines is integer math or
