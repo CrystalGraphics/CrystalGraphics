@@ -1,0 +1,42 @@
+// CgGpuOps.expand (gpu-compute C11): rows of n elements each, every element told its row and its index in it.
+// ModernGPU's load-balancing search: an exclusive scan of the lengths gives each row's first element, and an element
+// finds its row by a binary search of those, so no thread walks a long row.
+#pragma kernel ExpandTotal scatter
+#pragma kernel Expand gather
+
+Properties {
+    _CountAt  ("The rows' count word in COUNT, -1 for none", int) = -1
+    _Capacity ("Rows at most",                               int) = 0
+    _TotalAt  ("The elements' count word in TOTAL",          int) = 0
+    _Elements ("Elements OUT holds",                         int) = 0
+}
+
+Buffers {
+    COUNT   ("The rows' count",                   uint,  readonly)
+    LENGTHS ("Each row's element count",          uint,  readonly)
+    STARTS  ("Each row's first element",          uint,  readonly)
+    TOTAL   ("The elements' count",               uint,  readwrite)
+    OUT     ("Each element's row and index in it", uvec2, readwrite)
+}
+
+uint rows() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+void ExpandTotal() {
+    if (CG_ELEMENT != 0) return;
+    uint n = rows();
+    TOTAL_STORE(_TotalAt, n == 0u ? 0u : STARTS(int(n) - 1) + LENGTHS(int(n) - 1));
+}
+
+void Expand() {
+    uint j = uint(CG_ELEMENT), total = min(TOTAL(_TotalAt), uint(_Elements));
+    if (j >= total) return;
+    // The last row starting at or below j: an empty row shares its successor's start, so it is never the answer.
+    uint lo = 0u, hi = rows();
+    while (hi - lo > 1u) {
+        uint mid = (lo + hi) / 2u;
+        if (STARTS(int(mid)) <= j) lo = mid; else hi = mid;
+    }
+    OUT_WRITE(uvec2(lo, j - STARTS(int(lo))));
+}

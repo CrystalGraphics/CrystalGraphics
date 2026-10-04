@@ -48,6 +48,32 @@ final class CgGpuOpsBodies {
         return file;
     }
 
+    static CgCompute expand(CgCompute file) {
+        file.kernel("ExpandTotal").cpu(d -> {
+            if (d.first() != 0 || d.end() == 0) return;
+            CgCpuBuffer lengths = d.buffer("LENGTHS"), starts = d.buffer("STARTS");
+            int n = count(d);
+            d.buffer("TOTAL").setInt(d.propertyInt("_TotalAt"), n == 0 ? 0 : starts.getInt(n - 1) + lengths.getInt(n - 1));
+        });
+        file.kernel("Expand").cpu(d -> {
+            CgCpuBuffer starts = d.buffer("STARTS"), out = d.buffer("OUT");
+            int n = count(d), total = d.buffer("TOTAL").getInt(d.propertyInt("_TotalAt")), elements = d.propertyInt("_Elements");
+            if (!below(total, elements)) total = elements;
+            for (int j = d.first(); j < d.end(); j++) {
+                if (!below(j, total)) continue;
+                int lo = 0, hi = n;
+                while (hi - lo > 1) {
+                    int mid = (lo + hi) >>> 1;
+                    if (Integer.compareUnsigned(starts.getInt(mid), j) <= 0) lo = mid;
+                    else hi = mid;
+                }
+                out.setInt(j, 0, lo);
+                out.setInt(j, 1, j - starts.getInt(lo));
+            }
+        });
+        return file;
+    }
+
     static CgCompute scan(CgCompute file) {
         file.kernel("ReduceStep").cpu(d -> {
             Fold f = new Fold(d);

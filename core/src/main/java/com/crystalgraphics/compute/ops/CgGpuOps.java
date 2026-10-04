@@ -113,6 +113,7 @@ public final class CgGpuOps {
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
     private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
     private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
+    private static final String EXPAND_PATH = "crystalgraphics:shaders/env/compute/ops/expand.compute";
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     /** An object record's bytes: what each instance and each kept record of a cull is. */
@@ -232,6 +233,40 @@ public final class CgGpuOps {
         if (values != null) keep.bind("VALUES", values);
         counted(pass.dispatch(scanKernel(COMPACT_COUNT, Fold.SUM, Element.UINT, false, false), 1), count, flags)
                 .bind("SRC", flags).bind("PREFIX", places).bind("DST", outCount).set("_At", word);
+    }
+
+    /**
+     * Rows expanded into elements: row r owns the next word r of {@code lengths} elements of {@code out}, and each
+     * learns its row and its index in that row, a {@code uvec2}. How many elements that makes lands at {@code word} of
+     * {@code total}. A kernel claiming k slots per source writes k, expands, and a map fills slot i of source s.
+     *
+     * <pre>{@code
+     * // Each emitter spawns lengths[e] sparks this frame; spark j learns its emitter and which of its spawns it is.
+     * CgGpuOps.expand(pass, lengths, CgGpuCount.at(counts, 0, EMITTERS), spawns, counts, 1);
+     * CgGpuCount spawned = CgGpuCount.at(counts, 1, MAX_SPAWNS);
+     * pass.dispatch(spawn, MAX_SPAWNS).bind("SPAWNS", spawns).bind("COUNT", counts).set("_CountAt", 1);
+     * // spawn.compute: uvec2 s = SPAWNS(CG_ELEMENT);   s.x the emitter, s.y its spawn index
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code out} holds {@code out.size() / 8} elements and none past them is written, but {@code total} counts
+     *       every one: read it as {@code CgGpuCount.at(total, word, out.size() / 8)}, which clamps.</li>
+     *   <li>{@code total} may be the rows' count's own buffer, at another word.</li>
+     * </ul>
+     */
+    public static void expand(CgComputePass pass, CgGraphBuffer lengths, CgGpuCount rows, CgGraphBuffer out,
+                              CgGraphBuffer total, int word) {
+        distinct(lengths, out);
+        distinct(lengths, total);
+        distinct(out, total);
+        CgGraphBuffer starts = words(pass, "ops.expand.starts", rows.capacity());
+        scan(pass, Scan.EXCLUSIVE, Fold.SUM, Element.UINT, lengths, rows, starts);
+        counted(pass.dispatch(Files.expand().kernel("ExpandTotal"), 1), rows, lengths)
+                .bind("LENGTHS", lengths).bind("STARTS", starts).bind("TOTAL", total).set("_TotalAt", word);
+        int elements = (int) Math.min(Integer.MAX_VALUE, out.size() / 8);
+        if (elements == 0) return;
+        counted(pass.dispatch(Files.expand().kernel("Expand"), elements), rows, starts).bind("STARTS", starts)
+                .bind("TOTAL", total).bind("OUT", out).set("_TotalAt", word).set("_Elements", elements);
     }
 
     /** Level by level into scratch, then the last level's fold at {@code word}. Level 0 reads a word of each record. */
@@ -678,7 +713,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded with its Java bodies the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram, image, cull;
+        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -722,6 +757,15 @@ public final class CgGpuOps {
             synchronized (Files.class) {
                 if (cull == null) cull = CgGpuOpsBodies.cull(CgCompute.load(CULL_PATH));
                 return cull;
+            }
+        }
+
+        static CgCompute expand() {
+            CgCompute f = expand;
+            if (f != null) return f;
+            synchronized (Files.class) {
+                if (expand == null) expand = CgGpuOpsBodies.expand(CgCompute.load(EXPAND_PATH));
+                return expand;
             }
         }
 
