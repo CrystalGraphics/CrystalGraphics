@@ -239,7 +239,8 @@ the right one in a single run.
 | Platform | Source | `glGet` per adopt |
 |---|---|---|
 | 1.7.10 + Angelica | `AngelicaStateProvider` (1.7.10), reads Angelica's mirror by reflection | near zero |
-| 1.7.10 vanilla · harness | `CgGlGetProvider` | full sweep |
+| 1.7.10 vanilla | `CgGlGetProvider` | full sweep |
+| harness on `gl` | `PlatformServiceHarness.KeptShadow`: `CgGlGetProvider` with `hostKeepsShadow()`, since every draw there is `CgGL`'s; stage entries forget nothing (`-Dcrystalgraphics.harness.keepShadow=false` turns it off) | what the shadow never learned: about one a frame |
 | Forge 1.8–1.12.2, 1.13+ (every modern node) | `CgGlGetProvider` — none of their own. What keeps *Minecraft's* shadow true there is the backend routing through it (`Blaze3dGLBackend`, `GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it | full sweep |
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth

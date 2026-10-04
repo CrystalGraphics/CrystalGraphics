@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlStateManager;
 
 /**
@@ -69,6 +70,21 @@ public interface CgGlStateProvider {
      * any version. A host running a shader pack's loader answers yes.
      */
     default boolean hostBinds(CgGlSlot slot) {
+        return false;
+    }
+
+    /**
+     * Whether the host writes GL only through {@link CgGL}, so the shadow stays true
+     * between host sections: a host boundary then forgets nothing, and an outermost scope reads only what it does
+     * not know. Foreign drawing inside {@code hostForeign} is still forgotten. No by default; Minecraft never.
+     *
+     * <pre>{@code
+     * CgGlState.setProvider(new CgGlGetProvider() {
+     *     @Override public boolean hostKeepsShadow() { return true; }   // the harness: every draw is CgGL's
+     * });
+     * }</pre>
+     */
+    default boolean hostKeepsShadow() {
         return false;
     }
 

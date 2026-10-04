@@ -437,6 +437,16 @@ public final class CgGlStateManager {
         }
     }
 
+    /** Whether the shadow survives the host: inside a host section, or always where the host keeps it. */
+    private boolean hostTrusted() {
+        return CgGL.inHostSection() || provider.hostKeepsShadow();
+    }
+
+    /** {@link #invalidateAll} at a host boundary: nothing where the host keeps the shadow. */
+    public void invalidateAtBoundary() {
+        if (!provider.hostKeepsShadow()) invalidateAll();
+    }
+
     public void invalidateAll() {
         if (recording != null) recording.recordInvalidateAll();
         forgetAll();
@@ -1256,7 +1266,7 @@ public final class CgGlStateManager {
         // shadow, and hostForeign forgets it again, so an untrusted slot is all that needs reading. A free
         // provider is read at every depth: trust saves nothing there, and a host rebinding through its own
         // manager defeats it.
-        boolean reread = provider.isFree() || (depth == 1 && (REREAD_EACH_SCOPE || !CgGL.inHostSection()));
+        boolean reread = provider.isFree() || (depth == 1 && (REREAD_EACH_SCOPE || !hostTrusted()));
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
@@ -1330,7 +1340,7 @@ public final class CgGlStateManager {
     /** Adopts {@code slot} where a scope opened now would: outside a host section, from a free provider, or unknown. */
     private void know(CgGlSlot slot) {
         assertOwner();
-        if (provider.isFree() || !CgGL.inHostSection() || !isTrusted(slot)) adopt(slot);
+        if (provider.isFree() || !hostTrusted() || !isTrusted(slot)) adopt(slot);
     }
 
     public int depth() { return depth; }
