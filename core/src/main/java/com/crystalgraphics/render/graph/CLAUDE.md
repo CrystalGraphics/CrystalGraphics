@@ -190,8 +190,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
   lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
   execution ends: ops chained in a frame land only what leaves them.
-- **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
-  pass that throws fails its request and the frame goes on.
+- **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any
+  thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
+  once `CgReadback.poll` has run its sink; executing the frame again does not read it again.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
   draws each batch's range through `cg_InstanceBase`. A nested execution (an immediate inside a callback) gets its
   own buffers and ring.

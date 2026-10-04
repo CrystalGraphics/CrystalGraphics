@@ -20,6 +20,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgQuadIndexBuffer;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBufferRegistry;
 import com.crystalgraphics.gl.framebuffer.CgFrameBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
@@ -391,6 +392,7 @@ public final class CgGraphicsLifecycle {
 
             CgFontRegistry.get().tickFrame(frameCounter);
             CgSettings.tickFrame();
+            if (initialized) CgReadback.poll();   // before the listeners, which may read what landed
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
             if (initialized) {
                 CgComputeSelfTest.runIfAsked();
@@ -485,6 +487,7 @@ public final class CgGraphicsLifecycle {
         // Step 7a2: Kernel programs and their blocks; the parsed files stay for the next context.
         CgCompute.releaseAll();
         CgBufferTextures.releaseAll();
+        CgReadback.releaseAll();
 
         // Step 7b: User-created SSBO/TBO/UBO resources managed by CgShaderBufferRegistry.
         //   Must be freed before the GL context is lost.

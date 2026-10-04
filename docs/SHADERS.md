@@ -953,6 +953,22 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 - **A buffer of records** is [Reading a kernel's buffers](#reading-a-kernels-buffers): the material declares it as the
   kernel does, `readonly`, and the graph orders the draw after the pass writing it.
 
+### Reading what a kernel wrote, on the CPU
+
+```java
+CgRequest got = recording.readback(counts, 0, 4, data -> alive = data.getInt(0));   // after the pass writing it
+recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heights));   // texture, level, region
+```
+
+- **It never stalls**: the GPU copies into memory the CPU maps, and the sink runs on the render thread once the GPU has
+  finished, from `CgGraphicsLifecycle.tickFrame`: usually a frame or two later. Steer by what arrived, not by what was
+  asked this frame. The request is done once the sink has run, and failed if the context goes first.
+- `data` is valid only during the call, in native byte order; a texture region is its rows bottom first, tightly
+  packed, in the texture type's base format and pixel type (`CgReadback.pixelBytes`).
+- A buffer needs `COPY`; a texture is read from its first colour attachment.
+- Outside a graph, `CgReadback.buffer(glBuffer, offset, size, sink)` and `CgReadback.pixels(fbo, x, y, w, h, type,
+  sink)` do the same on GL names.
+
 ### Every tier
 
 | Tier | Context | A kernel runs |

@@ -17,6 +17,7 @@ import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
@@ -351,7 +352,7 @@ public final class CgExecutor {
     private static boolean doneOnce(CgFrame frame, int s, boolean keepRequested) {
         CgPass pass = frame.steps[s];
         if (pass instanceof CgPass.Upload || pass instanceof CgPass.Compile || pass instanceof CgPass.Release
-                || pass instanceof CgPass.BufferRelease) return true;
+                || pass instanceof CgPass.BufferRelease || pass instanceof CgPass.Readback) return true;
         if (pass instanceof CgPass.Fill || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy) {
             return frame.outlives[s];
         }
@@ -388,6 +389,8 @@ public final class CgExecutor {
                 CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
                 CgLoweredResources.written(to);
                 written(copy.to);
+            } else if (pass instanceof CgPass.Readback readback) {
+                readback(readback);
             } else if (pass instanceof CgPass.BufferRelease release) {
                 freeKept(release.buffer);
                 KEPT.remove(release.buffer);
@@ -957,6 +960,16 @@ public final class CgExecutor {
         storage.bindLevel(level);
         CgGL.glViewport(0, 0, storage.levelWidth(level), storage.levelHeight(level));
         otherBound = startNoted;
+    }
+
+    /** A readback's copy, issued here; its sink hears from {@link CgReadback#poll} once the GPU has finished. */
+    private static void readback(CgPass.Readback r) {
+        if (r.buffer != null) {
+            CgReadback.buffer(bufferStorage(r.buffer, false), r.offset, r.size, r);
+            return;
+        }
+        CgFrameBuffer storage = storage(r.texture);
+        CgReadback.pixels(storage.levelId(r.level), r.x, r.y, r.w, r.h, storage.getFormat().getColorSlot(0), r);
     }
 
     /** A texture's storage now: a requested one's is made on first use. */
