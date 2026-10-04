@@ -24,7 +24,7 @@
   stage comes from a renderer registered below `ORDER` recording a compute pass into the stage's frame.
 - **A set of instances** (`.instances(records, count)`) is culled on the GPU: each stage drawing one builds a depth
   pyramid of its target before its passes, culls the set (`CgGpuOps.cull`) against the view and the pyramid, and draws
-  each level kept as one indirect draw, the levels joined into one multi-draw. `docs/SHADERS.md` § *Drawing what a kernel wrote*.
+  each level kept as one indirect draw, the levels joined into one multi-draw. `.bounds()` states the whole set's box. `docs/SHADERS.md` § *Drawing what a kernel wrote*.
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.
 - **Emission** (`recordEmission`, after the transparent pass): every visible draw whose chain has an Emissive pass
