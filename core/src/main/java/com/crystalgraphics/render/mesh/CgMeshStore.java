@@ -9,6 +9,7 @@ import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,10 +40,12 @@ import java.util.Map;
  * store.drawIndirect(mesh, pipeline, submesh, args, offset);
  *
  * // Draws of meshes that join, as one call (CgCapabilities.multiDraw()): each with its own first instance
- * pipeline.multiDraw().bind();
- * store.join(a, 1, -1, 0, -1, firstA);
- * store.join(b, 1, -1, 0, -1, firstB);      // store.joins(a, b)
- * store.drawJoined();
+ * if (store.join(a, 1, -1, 0, -1, firstA) && store.join(b, 1, -1, 0, -1, firstB)) {
+ *     pipeline.multiDraw().bind();
+ *     store.drawJoined();
+ * } else {
+ *     store.dropJoined();                   // and draw() each
+ * }
  * }</pre>
  *
  * <ul>
@@ -127,13 +130,18 @@ public final class CgMeshStore {
         boolean pending;
         /** A FRAME mesh on the ring: its page and offsets are this frame's, and {@link #placedFrame} says which frame. */
         boolean ring;
+        /** A ring placement's format's pool, which holds the page's vertex array. */
+        CgMeshPool pool;
         long placedFrame;
         int ringPage;
         int[] submeshes = new int[4];
         int submeshCount;
-        /** Every submesh drawn by indices: what a multi-draw joins. */
-        boolean indexed;
+        /** How a multi-draw joins it: {@link #BY_INDICES} or {@link #BY_SEQUENCE} for every submesh alike, else 0. */
+        int joinsAs;
     }
+
+    /** A placement drawn by its own indices, or by {@link #sequence} for one with none. */
+    private static final int BY_INDICES = 1, BY_SEQUENCE = 2;
 
     private final Map<CgVertexFormat, CgMeshPool> pools = new HashMap<>();
     private final IdentityHashMap<CgMesh, Placement> placements = new IdentityHashMap<>();
@@ -159,6 +167,11 @@ public final class CgMeshStore {
     @Nullable
     private Placement joinedFrom;
     private CgStreamBuffer commands;
+    /**
+     * Indices 0, 1, 2 ...: what a joined draw of a mesh without indices draws by, so every joined draw is by indices,
+     * where GL and Vulkan agree on {@code gl_BaseVertex}. Grown in {@link #upload} to the largest such submesh placed.
+     */
+    private int sequence, sequenceLength, sequenceNeed;
 
     private final CgMeshChanges changes = new CgMeshChanges();
     private final int[] nodes = new int[2], submesh = new int[4];
@@ -249,7 +262,7 @@ public final class CgMeshStore {
         p.placedFrame = frame;
         p.lastUse = frame;
         if (ring == null) ring = new CgMeshRing(pools.values());
-        pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
+        p.pool = pools.computeIfAbsent(mesh.format(), CgMeshPool::new);
         int stride = mesh.format().getStride();
         synchronized (mesh) {
             p.releases = mesh.releases();
@@ -316,12 +329,15 @@ public final class CgMeshStore {
         p.mode = glMode(mesh.topology());
         p.submeshCount = mesh.submeshCount();
         if (p.submeshes.length < p.submeshCount * 4) p.submeshes = new int[p.submeshCount * 4];
-        p.indexed = p.submeshCount > 0;
+        int indexed = 0, longest = 0;
         for (int s = 0; s < p.submeshCount; s++) {
             mesh.submesh(s, submesh);
             System.arraycopy(submesh, 0, p.submeshes, s * 4, 4);
-            p.indexed &= submesh[1] > 0;
+            if (submesh[1] > 0) indexed++;
+            else longest = Math.max(longest, submesh[3]);
         }
+        p.joinsAs = p.submeshCount == 0 ? 0 : indexed == p.submeshCount ? BY_INDICES : indexed == 0 ? BY_SEQUENCE : 0;
+        if (p.joinsAs == BY_SEQUENCE) sequenceNeed = Math.max(sequenceNeed, longest);
     }
 
     /** Copies what {@code from} holds into {@code to} on the GPU: the part of the mesh that did not change. */
@@ -384,6 +400,7 @@ public final class CgMeshStore {
      * what changed meshes kept from their old ranges. Before the frame's first raster pass.
      */
     public void upload() {
+        if (sequenceNeed > sequenceLength) growSequence();
         if (ring != null) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "mesh.commitRing")) {
                 ring.commit();
@@ -425,6 +442,17 @@ public final class CgMeshStore {
         batch.clear();
     }
 
+    private void growSequence() {
+        int length = Math.max(sequenceNeed, Math.max(1024, sequenceLength * 2));
+        ByteBuffer indices = CgBufferUtils.createByteBuffer(length * 4);
+        for (int i = 0; i < length; i++) indices.putInt(i);
+        indices.flip();
+        if (sequence == 0) sequence = CgGL.glGenBuffers();
+        CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, sequence);   // not the element binding, which a vertex array owns
+        CgGL.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, indices, CgGL.GL_STATIC_DRAW);
+        sequenceLength = length;
+    }
+
     // ── Drawing ────────────────────────────────────────────────────────────────
 
     /**
@@ -444,7 +472,7 @@ public final class CgMeshStore {
     public void draw(CgMesh mesh, CgPipeline pipeline, int instances, int submesh, int first, int count) {
         Placement p = placed(mesh);
         if (p == null) return;
-        bind(p, mesh);
+        bind(p, -1);
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
         for (int s = from; s < to; s++) {
             int firstIndex = p.submeshes[s * 4], indexCount = p.submeshes[s * 4 + 1];
@@ -497,7 +525,7 @@ public final class CgMeshStore {
     public void drawIndirect(CgMesh mesh, CgPipeline pipeline, int submesh, int args, long offset) {
         Placement p = placed(mesh);
         if (p == null || p.submeshCount == 0) return;
-        bind(p, mesh);
+        bind(p, -1);
         int s = Math.min(Math.max(submesh, 0), p.submeshCount - 1);
         pipeline.vertexBase(p.baseVertex + p.submeshes[s * 4 + 2]);
         CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, args);
@@ -509,48 +537,53 @@ public final class CgMeshStore {
     }
 
     /**
-     * Whether {@code a} and {@code b} can be drawn by one multi-draw call: from the same vertex array and indices, in
-     * one topology, every submesh by indices. Array draws never join, since GL's {@code gl_BaseVertexARB} is 0 for
-     * them. Places either mesh if the frame did not.
-     */
-    public boolean joins(CgMesh a, CgMesh b) {
-        Placement p = placed(a), q = placed(b);
-        if (p == null || q == null || !p.indexed || !q.indexed || p.mode != q.mode || p.ring != q.ring) return false;
-        return p.ring ? p.ringPage == q.ringPage && p.mesh.format().equals(q.mesh.format()) : p.slab == q.slab;
-    }
-
-    /**
-     * Adds a draw to the call {@link #drawJoined} makes: a range as {@link #draw(CgMesh, CgPipeline, int, int, int, int)}
-     * takes, its instances counted from {@code firstInstance} rather than {@code cg_InstanceBase}. Every mesh joined
-     * before that call must {@link #joins} the first.
+     * Adds a draw to the call {@link #drawJoined} makes, if its mesh joins those added since that call last ran: from
+     * the same vertex array, in one topology, drawn by indices or without them as they are. False, adding nothing, when
+     * it does not. A range as {@link #draw(CgMesh, CgPipeline, int, int, int, int)} takes, its instances counted from
+     * {@code firstInstance} rather than {@code cg_InstanceBase}.
      *
      * <pre>{@code
-     * multi = pipeline.multiDraw();          // CG_INSTANCE_ID and CG_VERTEX_ID from each command
-     * multi.bind();
-     * for (int i = 0; i < n; i++) store.join(meshes[i], 1, -1, 0, -1, firsts[i]);
-     * store.drawJoined();
+     * int n = 0;
+     * while (n < meshes.length && store.join(meshes[n], 1, -1, 0, -1, firsts[n])) n++;
+     * if (n > 1) {
+     *     pipeline.multiDraw().bind();     // CG_INSTANCE_ID and CG_VERTEX_ID from each command
+     *     store.drawJoined();              // n draws, one call
+     * } else {
+     *     store.dropJoined();              // one draw is drawn the plain way
+     * }
      * }</pre>
      */
-    public void join(CgMesh mesh, int instances, int submesh, int first, int count, int firstInstance) {
-        Placement p = placed(mesh);
-        if (p == null) return;
-        if (joinedFrom == null) joinedFrom = p;
+    public boolean join(CgMesh mesh, int instances, int submesh, int first, int count, int firstInstance) {
+        Placement p = placed(mesh), q = joinedFrom;
+        if (p == null || p.joinsAs == 0) return false;
+        if (q == null) {
+            joinedFrom = p;
+        } else if (p.joinsAs != q.joinsAs || p.mode != q.mode || p.ring != q.ring
+                || (p.ring ? p.ringPage != q.ringPage || p.pool != q.pool : p.slab != q.slab)) {
+            return false;
+        }
         int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        boolean indexed = p.joinsAs == BY_INDICES;
         for (int s = from; s < to; s++) {
-            int firstIndex = p.submeshes[s * 4], total = p.submeshes[s * 4 + 1];
+            int total = p.submeshes[s * 4 + (indexed ? 1 : 3)];
             int start = submesh < 0 ? 0 : Math.min(first, total);
             int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
             if (n <= 0) continue;
-            drawing += (long) n * instances;
-            CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
             if ((joinedCount + 1) * COMMAND_WORDS > joined.length) joined = Arrays.copyOf(joined, joined.length * 2);
             int at = joinedCount++ * COMMAND_WORDS;
             joined[at] = n;
             joined[at + 1] = instances;
-            joined[at + 2] = p.firstIndex + firstIndex + start;
+            joined[at + 2] = indexed ? p.firstIndex + p.submeshes[s * 4] + start : start;   // into the sequence
             joined[at + 3] = p.baseVertex + p.submeshes[s * 4 + 2];
             joined[at + 4] = firstInstance;
         }
+        return true;
+    }
+
+    /** Forgets what {@link #join} added since {@link #drawJoined} last ran, drawing none of it. */
+    public void dropJoined() {
+        joinedFrom = null;
+        joinedCount = 0;
     }
 
     /**
@@ -561,14 +594,19 @@ public final class CgMeshStore {
     public void drawJoined() {
         Placement p = joinedFrom;
         int n = joinedCount;
-        joinedFrom = null;
-        joinedCount = 0;
+        dropJoined();
         if (n == 0) return;
-        bind(p, p.mesh);
+        bind(p, p.joinsAs == BY_SEQUENCE ? sequence : -1);
         if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
         int bytes = n * COMMAND_WORDS * 4;
         ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
-        for (int i = 0; i < n * COMMAND_WORDS; i++) out.putInt(joined[i]);
+        long vertices = 0;
+        for (int i = 0; i < n * COMMAND_WORDS; i += COMMAND_WORDS) {
+            out.putInt(joined[i]).putInt(joined[i + 1]).putInt(joined[i + 2]).putInt(joined[i + 3]).putInt(joined[i + 4]);
+            vertices += (long) joined[i] * joined[i + 1];
+        }
+        drawing += vertices;
+        CgTrace.add(CgChannels.GL, DRAWN, vertices);
         int offset = commands.commit(bytes);
         CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, commands.getGlBufferId());
         CgGL.glMultiDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset, n, COMMAND_WORDS * 4);
@@ -594,16 +632,16 @@ public final class CgMeshStore {
         return p;
     }
 
-    /** Binds the vertex array and indices {@code p} draws from. */
-    private void bind(Placement p, CgMesh mesh) {
-        int vao, elements;
+    /** Binds the vertex array {@code p} draws from, and its indices or {@code elements} where that is not -1. */
+    private void bind(Placement p, int elements) {
+        int vao;
         if (p.ring) {
             CgStreamBuffer page = p.ringPage >= 0 ? ring.page(p.ringPage).buffer : null;
-            vao = pools.get(mesh.format()).ringVertexArray(Math.max(p.ringPage, 0), page);
-            elements = page != null ? page.getGlBufferId() : 0;
+            vao = p.pool.ringVertexArray(Math.max(p.ringPage, 0), page);
+            if (elements < 0) elements = page != null ? page.getGlBufferId() : 0;
         } else {
             vao = p.slab.vao;
-            elements = p.slab.indexBuffer;
+            if (elements < 0) elements = p.slab.indexBuffer;
         }
         CgGL.glBindVertexArray(vao);
         // LWJGL 2 checks an indexed draw's offset against the element binding it saw bound, never the vertex array's.
@@ -660,6 +698,7 @@ public final class CgMeshStore {
         }
         p.mesh = null;
         p.slab = null;
+        p.pool = null;
         p.ring = false;
         spare.add(p);
     }
@@ -684,6 +723,8 @@ public final class CgMeshStore {
         commands = null;
         joinedFrom = null;
         joinedCount = 0;
+        if (sequence != 0) CgGL.glDeleteBuffers(sequence);
+        sequence = sequenceLength = sequenceNeed = 0;
         slabBytes = 0;
         frame = Long.MIN_VALUE;
     }

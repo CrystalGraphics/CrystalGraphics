@@ -4368,8 +4368,8 @@ com/crystalgraphics/render/mesh/CgMeshStore
   method public drawIndirect (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIJ)V
   method public drawJoined ()V
   method public drawnVertices ()J
-  method public join (Lcom/crystalgraphics/api/mesh/CgMesh;IIIII)V
-  method public joins (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/mesh/CgMesh;)Z
+  method public dropJoined ()V
+  method public join (Lcom/crystalgraphics/api/mesh/CgMesh;IIIII)Z
   method public multiDraw ()Z
   method public multiDraw (Z)V
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V

@@ -133,14 +133,17 @@ chunks.instance();                                                              
   kernels writing them share nothing and need no barrier between them.
 
 **Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
-bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page
-(`CgMeshStore.joins`), are one `glMultiDrawElementsIndirect`. The executor binds the pipeline's `multiDraw()` variant,
+bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page,
+are one `glMultiDrawElementsIndirect`. The store takes each draw while its mesh joins the run (`CgMeshStore.join`)
+and writes the commands into the frame ring (`drawJoined`); the executor binds the pipeline's `multiDraw()` variant,
 which reads each draw's first instance and base vertex from its command rather than `cg_InstanceBase` and
-`cg_VertexBase`, and the store writes the commands into the frame ring (`join`, `drawJoined`).
+`cg_VertexBase`. A run of one is drawn the plain way.
 
-- Indexed draws only: GL gives an array draw's base vertex as 0 where Vulkan gives its first vertex.
-- The picture is the same either way: `--mode=multi-draw` draws 68 instances of 66 meshes in 2 calls, then with
-  `CgMeshStore.multiDraw(false)` in 67, and compares the two byte for byte. `-Dcrystalgraphics.mesh.multiDraw=false`
+- Every joined draw is by indices: a mesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an
+  array draw's base vertex as 0 where Vulkan gives its first vertex. Meshes with and without indices never share a
+  call.
+- The picture is the same either way: `--mode=multi-draw` draws 78 instances of 76 meshes in 4 calls, then with
+  `CgMeshStore.multiDraw(false)` in 77, and compares the two byte for byte. `-Dcrystalgraphics.mesh.multiDraw=false`
   turns it off for a process.
 
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
