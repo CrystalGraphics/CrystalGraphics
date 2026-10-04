@@ -12,7 +12,9 @@ import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,6 +59,8 @@ public final class CgCompute {
     private static final Map<String, CgCompute> GENERATED = new ConcurrentHashMap<>();
     /** Replaced generated files, whose programs the render thread deletes. */
     private static final Queue<CgCompute> RETIRED = new ConcurrentLinkedQueue<>();
+    private static final int COMPILE = CgTrace.name("compute.compile"), COMPILE_LOWERED = CgTrace.name("compute.compileLowered");
+    private static final int COMPILES = CgTrace.name("compute.compiles");
 
     private final String path;
     private final boolean generated;
@@ -144,7 +148,10 @@ public final class CgCompute {
         if (program == null || program.isDeleted()) {
             CgKernelDecl decl = source.kernel(kernel.name());
             if (decl == null) throw new IllegalStateException("[" + path + "] no longer has kernel '" + kernel.name() + "'");
-            program = CgKernelProgram.build(source, decl, kernel.keywords());
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
+                program = CgKernelProgram.build(source, decl, kernel.keywords());
+            }
+            CgTrace.add(CgChannels.GL, COMPILES, 1);
             programs.put(key, program);
         }
         return program;
@@ -155,7 +162,10 @@ public final class CgCompute {
         String key = runs.name() + kernel.keywords();
         CgLoweredKernel built = lowered.get(key);
         if (built == null || built.isDeleted()) {
-            built = CgLoweredKernel.build(source, runs, kernel.keywords());
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE_LOWERED)) {
+                built = CgLoweredKernel.build(source, runs, kernel.keywords());
+            }
+            CgTrace.add(CgChannels.GL, COMPILES, 1);
             lowered.put(key, built);
         }
         return built;
