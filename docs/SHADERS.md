@@ -1108,6 +1108,8 @@ pass.end();
 | `histogram(pass, keys, count, bins, binCount, shift)` | bin `min(key >>> shift, binCount - 1)` counted; exact to 2^24 a bin |
 | `downsample(pass, texture, filter)`, `(pass, texture, from, to, filter)` | each mip level from the one above: `AVERAGE` (area-weighted), `MIN` or `MAX` (a depth pyramid) |
 | `blur(pass, source, target, sigma)`, `(pass, source, level, target, level, sigma)` | a separable Gaussian; in place at a small level is the cheap blur |
+| `depthPyramid(recording, depthOf, constants, pyramid)` | a target's depth as eye depth, each level the farthest it covers: what a cull tests against |
+| `cull(pass, cull, instances, count, out, counts, word)` | instances of one mesh culled as `CgWorldRenderer` culls a draw (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many |
 
 - **A count is fixed or a word on the GPU** (`CgGpuCount.of(n)`, `CgGpuCount.at(buffer, word, capacity)`). A GPU count
   dispatches the capacity and every kernel stops at the count it reads, so no op needs it on the CPU.
@@ -1126,6 +1128,27 @@ CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);            // each level from 
 CgGpuOps.blur(pass, bloom, 3, bloom, 3, 2f);                 // in place, at an eighth the size
 CgGpuOps.downsample(pass, depth, Filter.MAX);                // a depth pyramid: each texel the farthest it covers
 ```
+
+**Culling a set of instances** (`CgCull`): records in `CgInstanceKind.OBJECT`'s layout, in the set's own space, culled
+against the view and drawn level by level from what the GPU kept, with no count on the CPU.
+
+```java
+CgCull cull = new CgCull().mesh(rockLods);                           // once
+CgGpuOps.depthPyramid(recording, stage.target(), stage.constants(), depth);   // after what hides them drew
+CgComputePass pass = recording.compute("rocks.cull");
+CgGpuOps.cull(pass, cull.view(view, projection).place(place).pyramid(depth), rocks, CgGpuCount.of(n), visible, counts, 0);
+pass.end();
+for (int l = 0; l < cull.levels(); l++) {
+    chunks.draw(pipeline, bindings, rockLods.level(l)).objects(visible, CgGpuOps.cullFirst(l, n), n)
+          .indirect(counts, l * 4L, CgIndirect.INSTANCES, 1);
+}
+```
+
+- `visible` holds `CgGpuOps.cullRecords(cull, n)` records; `counts` a word a level. The place and the view are
+  camera-relative, the camera subtracted in doubles.
+- The pyramid is `CgGpuOps.PYRAMID_FORMAT` with mips, the size of the target it reads; one built from this frame's
+  depth hides what is behind the host's world as drawn so far.
+- Its gate is `--mode=gpu-cull`: the same picture as the world renderer's CPU cull, byte for byte, on every tier.
 
 **`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, any element drawing
 its own numbers in any order, integer-exact on every tier, with `CgRng` giving the same bits in Java. Key an element

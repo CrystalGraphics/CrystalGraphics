@@ -18,7 +18,7 @@ is easy to get wrong — is `docs/SHADERS.md` § *Compute*, loaded below.** This
 | `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself |
 | `lower` | A kernel below compute (C5): `CgLowering` (the passes a shape lowers to, or the construct that stops it; GL-free), `CgLoweredEmitter` (each pass's stages, and `reader`, the buffer accessor a material's `Buffers { }` shares), `CgLoweredTarget`, `CgLoweredKernel` (the passes compiled, and its dispatch), `CgLoweredPrograms` (the helper programs), `CgLoweredResources` (scratch, texel targets, zeroed counters), `CgTexelTarget` |
 | `cpu` | The CPU tier (C6): `CgCpuBody` (a kernel's Java body), `CgCpuDispatch`, `CgCpuBuffer`, `CgCpuImage` (what a body sees), `CgCpuRunner` (runs one), `CgCpuMirrors` (the CPU copies of GL buffers) |
-| `ops` | The library (C7): `CgGpuOps`, `CgGpuCount`, `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsBodies` (every op kernel's Java body), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
+| `ops` | The library (C7): `CgGpuOps`, `CgGpuCount`, `CgCull` (what a cull tests against, C9b), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsBodies` (every op kernel's Java body), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
 
 The engine's own kernels are `.compute` files under `shaders/env/compute/`, beside what every kernel includes
 (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `lowered.glsl`): `args.compute` writes an indirect draw's command (C4).
@@ -99,6 +99,9 @@ and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.
   in shared memory), and a histogram of at most 1024 bins counts in shared memory first. At a million keys and
   values on an RTX 4070 SUPER, the sort takes 0.42 ms (0.94 with emulated subgroups) where the every-tier form took
   1.94, and a 64-bin histogram 0.01 ms where it took 0.27. The ports' licences are in `THIRD-PARTY.md`.
+- **The cull** (`cull.compute`) is one append dispatch a level, each testing every instance and keeping those at its
+  level, into that level's region of the output: an append writes one buffer, so the levels' records stay in one
+  buffer a multi-draw can share. `FillAt` zeroes its counters where they sit, so `counts` needs only `STORAGE`.
 - **Mip chains** are image kernels, one per format in `IMAGE_TYPES`. Below compute, a kernel reading one level of the
   texture it writes another of samples it with the base and max level pinned to the level read, which keeps the draw
   from being a feedback loop.
