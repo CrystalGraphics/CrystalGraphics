@@ -59,7 +59,8 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 
 # Post stack (render/post/CLAUDE.md)
 -Dcrystalgraphics.post.bloom.linear=true             # bloom composited in linear light (the copy form) from the start,
-                                                     # to compare with the default blend form
+                                                     # to compare with the default blend form; L cycles blend,
+                                                     # linear and off in any harness scene with a 3D camera
 -Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
                                                      # bloom's chain, 0 the glow the composite reads
 

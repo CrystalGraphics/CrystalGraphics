@@ -87,6 +87,10 @@ public final class CgBloom implements CgPostEffect {
         return this;
     }
 
+    public boolean linear() {
+        return linear;
+    }
+
     @Override
     public CgPostPoint point() {
         return CgPostPoint.BEFORE_COMPOSITE;
