@@ -59,6 +59,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`singlejar-logic/STUBS.md`](../singlejar-logic/STUBS.md) | Before adding a node, changing its pins, or touching a branch script's toolchain |
 | [`runtime/mc/modern/README.md`](../runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `CLAUDE.md` |
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
+| **[`docs/GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md)** | **Building a rendering pipeline on compute**: kernels writing records and counts, indirect and multi-draw draws, GPU culling and levels, and the design production engines follow |
 | **[`docs/PROFILING.md`](PROFILING.md)** | **Measuring anything**: the trace engine, the one-run rule, the harness and game runs, reading a report, what is instrumented. CrystalGUI adds `docs/CGUI_PROFILING.md`; the `profiling` skill is the checklist |
 | [`docs/NATIVE_BUILD_PROCESS.md`](NATIVE_BUILD_PROCESS.md) | Rebuilding the FreeType/HarfBuzz/msdfgen natives |
 | [`docs/HOTSWAP_SETUP.md`](HOTSWAP_SETUP.md) | Hotswapping into a running 1.7.10 client |

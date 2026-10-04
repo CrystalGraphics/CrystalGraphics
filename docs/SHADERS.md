@@ -971,6 +971,9 @@ particles.kernel("Simulate").withKeywords("WIND").prepare();
 
 ### Drawing what a kernel wrote
 
+The whole workflow, from a kernel to culled draws joined into one call, with recipes and the design rules:
+[`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
+
 | A kernel wrote | A draw reads it | Tiers |
 |---|---|---|
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
