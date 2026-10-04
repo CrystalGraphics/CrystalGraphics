@@ -20,14 +20,17 @@ import com.crystalgraphics.render.stage.CgFrameKeys;
 /**
  * Draws what bloom works from over the whole frame, last: the emission target, or one level of the chain. Set by
  * {@code -Dcrystalgraphics.post.debug=emission} or {@code =level<N>} (0 is the glow the composite reads), so a material's
- * glow can be seen without the picture round it. The post stack adds it when the flag is set.
+ * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
+ * heat ramp (blue 1, green 4, red 16, white 32). The post stack adds it when the flag is set.
  */
 public final class CgPostDebug implements CgPostEffect {
 
     private static final String SHADER = "crystalgraphics:shaders/post/debug.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
-    /** -1 for the emission, else the chain's level. */
+    private static final int EMISSION = -1, OVERDRAW = -2;
+
+    /** {@link #EMISSION}, {@link #OVERDRAW}, else the chain's level. */
     private final int level;
     private CgMaterial material;
     private CgTexture bound;
@@ -40,7 +43,8 @@ public final class CgPostDebug implements CgPostEffect {
     public static CgPostDebug fromProperty() {
         String view = System.getProperty("crystalgraphics.post.debug");
         if (view == null || view.isEmpty()) return null;
-        if (view.equals("emission")) return new CgPostDebug(-1);
+        if (view.equals("emission")) return new CgPostDebug(EMISSION);
+        if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
         if (view.startsWith("level")) {
             try {
                 return new CgPostDebug(Math.max(0, Integer.parseInt(view.substring(5))));
@@ -48,7 +52,7 @@ public final class CgPostDebug implements CgPostEffect {
                 // falls through to the refusal
             }
         }
-        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": emission or level<N>");
+        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": emission, overdraw or level<N>");
     }
 
     @Override
@@ -63,19 +67,24 @@ public final class CgPostDebug implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return post.resources().has(level < 0 ? CgFrameKeys.EMISSION : CgBloom.CHAIN);
+        return post.resources().has(level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW : CgBloom.CHAIN);
     }
 
     @Override
     public void record(CgPostContext post) {
         CgTexture source;
-        if (level < 0) {
+        if (level == EMISSION) {
             source = post.resources().get(CgFrameKeys.EMISSION);
+        } else if (level == OVERDRAW) {
+            source = post.resources().get(CgFrameKeys.OVERDRAW);
         } else {
             CgGraphTexture chain = post.resources().get(CgBloom.CHAIN);
             source = chain.level(Math.min(level, chain.getLevels() - 1));
         }
-        if (material == null) material = CgMaterial.newInstance(SHADER);
+        if (material == null) {
+            material = CgMaterial.newInstance(SHADER);
+            if (level == OVERDRAW) material.enableKeyword("HEAT");
+        }
         if (source != bound) {
             material.applyProperties(b -> b.sampler("_Source", 0, source));
             bound = source;

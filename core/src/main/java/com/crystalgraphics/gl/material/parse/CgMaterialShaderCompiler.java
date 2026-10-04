@@ -106,6 +106,12 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String MULTI_DRAW = "CG_MULTI_DRAW";
 
+    /**
+     * The engine's keyword for the overdraw view's variant of any pass: the pass's own vertex stage, depth test (as a
+     * discard behind the scene's depth) and {@code discard}, its colour replaced by a count of 1 in red.
+     */
+    public static final String DEBUG_OVERDRAW = "CG_DEBUG_OVERDRAW";
+
     private CgMaterialShaderCompiler() {
         throw new AssertionError("CgMaterialShaderCompiler is not instantiable");
     }
@@ -577,7 +583,7 @@ public final class CgMaterialShaderCompiler {
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
-        appendFragmentMain(sb, v2fFields, pass, shader);
+        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW));
 
         return sb.toString();
     }
@@ -627,6 +633,7 @@ public final class CgMaterialShaderCompiler {
             }
         }
         if (activeKeywords.contains(MULTI_DRAW)) sb.append("#define ").append(MULTI_DRAW).append(" 1\n");
+        if (activeKeywords.contains(DEBUG_OVERDRAW)) sb.append("#define ").append(DEBUG_OVERDRAW).append(" 1\n");
     }
 
     /**
@@ -800,7 +807,7 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
-                                            CgParsedPass pass, CgParsedShader shader) {
+                                            CgParsedPass pass, CgParsedShader shader, boolean overdraw) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
@@ -810,13 +817,26 @@ public final class CgMaterialShaderCompiler {
         if (shader.readsObjectRecord()) sb.append("  cg_Light = CG_OBJECT_LIGHT;\n");
         boolean emissive = CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode());
         CgDepthState depth = pass.renderState().getDepth();
-        if (emissive && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)) {
+        // The overdraw view's target has no depth either: its test is the pass's own, as a discard.
+        boolean overdrawTested = overdraw && (depth == null || depth.test() && depth.compareFunc() != CgGL.GL_ALWAYS);
+        if (emissive && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS) || overdrawTested) {
             // The bloom target has no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
             // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
             sb.append("  if (cg_LinearEyeDepth(gl_FragCoord.z) > CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION)"
                     + " * CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;\n");
         }
-        if (!pass.fragOutput().isMrt()) {
+        if (overdraw) {
+            // The fragment runs for its discard; what it wrote is replaced by one count.
+            if (!pass.fragOutput().isMrt()) {
+                sb.append("  fragment(_v2f_local, _cg_fragColor);\n  _cg_fragColor = vec4(1.0, 0.0, 0.0, 0.0);\n");
+            } else {
+                sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
+                sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");
+                for (int loc : pass.fragOutput().locations()) {
+                    sb.append("  _cg_RT").append(loc).append(" = vec4(1.0, 0.0, 0.0, 0.0);\n");
+                }
+            }
+        } else if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
             // Code that reads CG_EMISSION has applied it already.
             if (emissive && !pass.fragmentBody().contains("CG_EMISSION")) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");

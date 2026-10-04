@@ -2,6 +2,9 @@ package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgShader;
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
@@ -56,10 +59,13 @@ public final class CgPipeline {
     private final CgRenderState state;
     private final CgInstanceKind kind;
     private final boolean multiDraw;
+    private final boolean overdraw;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
     private CgPipeline multi;
+    @Nullable
+    private CgPipeline overdrawn;
 
     @Nullable
     private CgShader program;
@@ -79,12 +85,14 @@ public final class CgPipeline {
         this.state = key.state;
         this.kind = key.kind;
         this.multiDraw = key.multiDraw;
+        this.overdraw = key.overdraw;
         Set<String> passKeywords = pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE
                 ? keywords : Collections.emptySet();
-        if (multiDraw) {
-            Set<String> both = new TreeSet<>(passKeywords);
-            both.add(CgMaterialShaderCompiler.MULTI_DRAW);
-            passKeywords = Collections.unmodifiableSet(both);
+        if (multiDraw || overdraw) {
+            Set<String> more = new TreeSet<>(passKeywords);
+            if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
+            if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
+            passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
     }
@@ -100,7 +108,7 @@ public final class CgPipeline {
         Set<String> variant = (pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE) && !keywords.isEmpty()
                 ? Collections.unmodifiableSet(new TreeSet<>(keywords))
                 : Collections.emptySet();
-        return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, false), CgPipeline::register);
+        return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, false, false), CgPipeline::register);
     }
 
     /**
@@ -116,10 +124,33 @@ public final class CgPipeline {
     public CgPipeline multiDraw() {
         if (multiDraw) return this;
         if (multi == null) {
-            multi = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, true), CgPipeline::register);
+            multi = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, true, overdraw), CgPipeline::register);
         }
         return multi;
     }
+
+    /**
+     * This pipeline as the overdraw view draws it: the same vertex stage, depth test and discard, adding a count of 1
+     * in red into a target with no depth ({@link CgMaterialShaderCompiler#DEBUG_OVERDRAW}). Any thread.
+     *
+     * <pre>{@code
+     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).overdraw(), bindings, mesh);   // into an R16F count target
+     * }</pre>
+     */
+    public CgPipeline overdraw() {
+        if (overdraw) return this;
+        CgPipeline made = overdrawn;
+        if (made == null) {
+            CgRenderState counting = CgRenderState.builder().blend(ADD).depth(CgDepthState.NONE).cull(state.getCull())
+                    .colorMask(CgColorMask.ALL).build();
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, multiDraw, true), CgPipeline::register);
+            overdrawn = made;
+        }
+        return made;
+    }
+
+    private static final CgBlendState ADD = new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
+            CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD);
 
     private static CgPipeline register(Key key) {
         synchronized (REGISTERING) {
@@ -141,7 +172,8 @@ public final class CgPipeline {
         synchronized (this) {
             for (int i = 0; i < derivedCount; i++) if (derivedStates[i] == other) return derived[i];
         }
-        CgPipeline variant = of(shader, pass, keywords, other, kind);
+        CgPipeline variant = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, other, kind, multiDraw, overdraw),
+                CgPipeline::register);
         synchronized (this) {
             if (derivedCount == derived.length) {
                 derived = Arrays.copyOf(derived, derivedCount * 2);
@@ -253,16 +285,17 @@ public final class CgPipeline {
 
     @Override
     public String toString() {
-        return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "") + ")";
+        return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "")
+                + (overdraw ? " overdraw" : "") + ")";
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */
     private record Key(CgMaterialShader shader, CgRenderPassVariant pass, Set<String> keywords, CgRenderState state,
-                       CgInstanceKind kind, boolean multiDraw) {
+                       CgInstanceKind kind, boolean multiDraw, boolean overdraw) {
         @Override
         public boolean equals(Object o) {
             return o instanceof Key k && k.shader == shader && k.pass == pass && k.keywords.equals(keywords)
-                    && k.state == state && k.kind == kind && k.multiDraw == multiDraw;
+                    && k.state == state && k.kind == kind && k.multiDraw == multiDraw && k.overdraw == overdraw;
         }
 
         @Override
@@ -272,7 +305,7 @@ public final class CgPipeline {
             h = h * 31 + keywords.hashCode();
             h = h * 31 + System.identityHashCode(state);
             h = h * 31 + kind.ordinal();
-            return h * 2 + (multiDraw ? 1 : 0);
+            return h * 4 + (multiDraw ? 1 : 0) + (overdraw ? 2 : 0);
         }
     }
 }

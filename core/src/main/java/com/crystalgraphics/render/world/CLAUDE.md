@@ -40,5 +40,10 @@
   the target, each pixel weighing the four texels round it by bilinear distance and by how near the depth each was
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
+- **The overdraw view** (`recordOverdraw`, last, only while `overdraw(true)`, which
+  `-Dcrystalgraphics.post.debug=overdraw` sets): every transparent draw of the stage, half-size ones too, again
+  through `CgPipeline.overdraw()` into an R16F target of the stage's size, published as `CgFrameKeys.OVERDRAW`. The
+  variant keeps the draw's vertex stage and `discard`, makes its depth test a discard behind the stage's depth, and
+  adds 1 a fragment. Its gate is `--mode=overdraw-count`, exact on gl and vulkan.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.
