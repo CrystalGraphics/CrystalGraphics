@@ -15,8 +15,8 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
  *
  * <h3>Unity's list, minus one</h3>
  * <p>Unity offers Sphere, Capsule, Cylinder, Cube, Quad, Sprite and Custom Mesh. <b>Sprite is dropped</b>:
- * Unity distinguishes it from Quad by <em>material</em> — a sprite is unlit and premultiplied — and this
- * engine has no lighting for it to opt out of, so the two would render the same picture under two names.
+ * Unity distinguishes it from Quad by <em>material</em> — a sprite is unlit and premultiplied — and a
+ * preview has no lighting for it to opt out of, so the two would render the same picture under two names.
  * Custom Mesh belongs to whatever is doing the file picking, not here.</p>
  *
  * <h3>Dimensions and framing live together</h3>

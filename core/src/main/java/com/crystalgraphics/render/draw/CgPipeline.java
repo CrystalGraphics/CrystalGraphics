@@ -78,11 +78,11 @@ public final class CgPipeline {
      * The pipeline for this variant, state and kind, made on first use.
      *
      * @param keywords the enabled {@code #pragma cg_feature} names; ignored for any pass but
-     *                 {@link CgRenderPassVariant#FORWARD}, which is the only one keywords apply to
+     *                 {@link CgRenderPassVariant#FORWARD} and {@link CgRenderPassVariant#EMISSIVE}
      */
     public static CgPipeline of(CgMaterialShader shader, CgRenderPassVariant pass, Set<String> keywords,
                                 CgRenderState state, CgInstanceKind kind) {
-        Set<String> variant = pass == CgRenderPassVariant.FORWARD && !keywords.isEmpty()
+        Set<String> variant = (pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE) && !keywords.isEmpty()
                 ? Collections.unmodifiableSet(new TreeSet<>(keywords))
                 : Collections.emptySet();
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind), CgPipeline::register);
@@ -173,7 +173,8 @@ public final class CgPipeline {
         if (program != null && programRevision == revision) return program;
         program = pass == CgRenderPassVariant.FORWARD
                 ? shader.getOrCompileForwardPass(keywords)
-                : shader.getOrCompile(pass.lightModeName(), Collections.emptySet());
+                : shader.getOrCompile(pass.lightModeName(),
+                        pass == CgRenderPassVariant.EMISSIVE ? keywords : Collections.emptySet());
         programRevision = revision;
         instanceBaseLocation = UNRESOLVED;
         vertexBaseLocation = UNRESOLVED;

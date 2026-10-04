@@ -55,6 +55,11 @@ public final class CgFrame {
     boolean[] outlives = new boolean[8];
     /** Whether a step runs a kernel or works on a graph buffer: from then on the executor keeps every access. */
     boolean kernels;
+    /**
+     * Whether a pass samples the current target's depth from another target, or passes into the current target and
+     * into others are mixed: the executor then notes what is bound when it begins, which is what current means.
+     */
+    boolean readsCurrentDepth, rastersCurrent, rastersOther;
     int[] acquireAt = new int[8];
     int[] releaseAfter = new int[8];
     int batches;
@@ -88,6 +93,7 @@ public final class CgFrame {
         Arrays.fill(accessView, 0, accessCount, null);
         accessCount = 0;
         kernels = false;
+        readsCurrentDepth = rastersCurrent = rastersOther = false;
         bindings.reset();
         Arrays.fill(instanceFloats, 0);
         transients.clear();
@@ -287,6 +293,13 @@ public final class CgFrame {
         CgBufferHandle[] counts = new CgBufferHandle[16];
         long[] countOffsets = new long[16];
         int[] countModes = new int[16];
+        /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
+        int[] copyBefore = new int[16];
+        /**
+         * Per batch copying colour, the rect it copies in GL pixels from the bottom left, x0, y0, x1, y1; x1 below 0
+         * for the whole target. Depth is always copied whole.
+         */
+        int[] copyRect = new int[16 * 4];
         /** Its indirect batches: the commands the executor builds before the pass begins. */
         int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
@@ -315,6 +328,8 @@ public final class CgFrame {
                 counts = new CgBufferHandle[n];
                 countOffsets = new long[n];
                 countModes = new int[n];
+                copyBefore = new int[n];
+                copyRect = new int[n * 4];
             } else {
                 Arrays.fill(mesh, 0, count, null);
                 Arrays.fill(counts, 0, count, null);
@@ -323,6 +338,7 @@ public final class CgFrame {
             kinds = 0;
             indirects = 0;
             Arrays.fill(instances, 0, batches, 0);
+            Arrays.fill(copyBefore, 0, batches, 0);
         }
     }
 }

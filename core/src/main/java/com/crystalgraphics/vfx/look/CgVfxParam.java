@@ -1,9 +1,11 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 
 /**
- * One value an effect reads, declared on its {@link CgVfxSchema}: a scalar, a colour or a {@link CgKeyframes}. A {@link CgVfxLook} gives each
+ * One value an effect reads, declared on its {@link CgVfxSchema}: a scalar, a colour, a {@link CgKeyframes} or a
+ * {@link CgCameraShake}. A {@link CgVfxLook} gives each
  * its default, and a playing {@link CgVfxEffect} may override it.
  *
  * <pre>{@code
@@ -33,13 +35,17 @@ public final class CgVfxParam {
         return name;
     }
 
-    /** 1 for a scalar, 4 for a colour, 0 for a curve. */
+    /** 1 for a scalar, 4 for a colour, 0 for a curve, -1 for a shake. */
     public int size() {
         return size;
     }
 
     public boolean isCurve() {
         return size == 0;
+    }
+
+    public boolean isShake() {
+        return size == -1;
     }
 
     @Override

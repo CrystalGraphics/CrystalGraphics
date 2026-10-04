@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -105,7 +106,7 @@ public final class CgVfxTube {
                     .custom(1, cx, cy, cz, owned)
                     .custom(2, a0, a1, a2, a3)
                     .custom(3, b0, b1, b2, b3)
-                    .priority(layer.priority()).submit();
+                    .layer(CgSortLayer.EFFECTS).group(ox, oy, oz).order(layer.order()).submit();
         }
     }
 

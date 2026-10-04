@@ -1,9 +1,13 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.api.state.CgCullState;
+import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
+import com.crystalgraphics.platform.gl.CgGL;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -62,6 +66,14 @@ import java.util.regex.Matcher;
 public final class CgShaderParser {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    /**
+     * An Emissive pass with no RenderState block: added into the bloom target, which has no depth. ONE ONE, not
+     * {@link CgBlendState#ADDITIVE}'s SRC_ALPHA ONE: emitted light is written with an alpha of 0.
+     */
+    private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
+            .blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
+                    CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
+            .depth(CgDepthState.NONE).cull(CgCullState.BACK).build();
 
     /** A single field parsed from the {@code struct v2f { }} block.
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
@@ -168,6 +180,16 @@ public final class CgShaderParser {
 
         // CastShadows is opt-out: absent or any value other than "Off" means true
         boolean castShadows = !"Off".equalsIgnoreCase(topTags.getOrDefault("CastShadows", "On"));
+        float sceneColorMargin = sceneColorMargin(topTags.get("SceneColorMargin"), resourcePath);
+        String lighting = topTags.getOrDefault("Lighting", "Lit");
+        if (!"Lit".equals(lighting) && !"Unlit".equals(lighting)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Lighting is \"Lit\" or \"Unlit\", not \""
+                    + lighting + "\"");
+        }
+        String fog = topTags.getOrDefault("Fog", "On");
+        if (!"On".equals(fog) && !"Off".equals(fog)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Fog is \"On\" or \"Off\", not \"" + fog + "\"");
+        }
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -186,7 +208,7 @@ public final class CgShaderParser {
 
         // ── Step 7: parse each Pass block ─────────────────────────────────
         List<CgParsedPass> passes = new ArrayList<>();
-        // Track seen unique-only light modes (ShadowCaster, Depth) for dedup warning
+        // Track seen unique-only light modes (ShadowCaster, Depth, Emissive) for dedup warning
         Set<String> seenUniqueLightModes = new HashSet<>();
         int forwardPassIndex = 0;
 
@@ -205,15 +227,16 @@ public final class CgShaderParser {
                         + "Add: Tags {{ \"LightMode\" = \"Forward\" }} inside the Pass block.");
             } else if (CgParsedPass.LIGHT_MODE_FORWARD.equals(rawLightMode)
                     || CgParsedPass.LIGHT_MODE_SHADOW_CASTER.equals(rawLightMode)
-                    || CgParsedPass.LIGHT_MODE_DEPTH.equals(rawLightMode)) {
+                    || CgParsedPass.LIGHT_MODE_DEPTH.equals(rawLightMode)
+                    || CgParsedPass.LIGHT_MODE_EMISSIVE.equals(rawLightMode)) {
                 lightMode = rawLightMode;
             } else {
                 lightMode = CgParsedPass.LIGHT_MODE_FORWARD;
                 LOGGER.warn("[" + resourcePath + "] Pass #" + i + " has unrecognised LightMode '" + rawLightMode + "'. Defaulting to '" + CgParsedPass.LIGHT_MODE_FORWARD + "'. "
-                        + "Valid values: Forward, ShadowCaster, Depth.");
+                        + "Valid values: Forward, ShadowCaster, Depth, Emissive.");
             }
 
-            // 7c. Deduplicate ShadowCaster and Depth — only one of each is allowed
+            // 7c. Deduplicate ShadowCaster, Depth and Emissive — only one of each is allowed
             if (!CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode)) {
                 if (seenUniqueLightModes.contains(lightMode)) {
                     LOGGER.warn("[" + resourcePath + "] Duplicate '" + lightMode + "' pass found (Pass #" + i + "). Only the first occurrence is used. "
@@ -225,7 +248,9 @@ public final class CgShaderParser {
 
             // 7d. Resolve pass name — use authored "Name" tag or auto-assign
             String passName;
-            if (passTags.containsKey("Name") && !passTags.get("Name").isEmpty()) {
+            if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode)) {
+                passName = lightMode;   // the world renderer finds it by its LightMode
+            } else if (passTags.containsKey("Name") && !passTags.get("Name").isEmpty()) {
                 passName = passTags.get("Name");
             } else if (CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode)) {
                 passName = "Pass" + forwardPassIndex;
@@ -239,8 +264,30 @@ public final class CgShaderParser {
                 forwardPassIndex++;
             }
 
+            // 7e'. An Emissive pass with no code of its own draws the Forward pass's: an unlit effect's colour is its light.
+            if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode)
+                    && !passBody.contains("void vertex(") && !passBody.contains("void fragment(")) {
+                CgParsedPass forward = null;
+                for (CgParsedPass p : passes) {
+                    if (CgParsedPass.LIGHT_MODE_FORWARD.equals(p.lightMode())) {
+                        forward = p;
+                        break;
+                    }
+                }
+                if (forward == null) {
+                    throw new CgShaderParseException("[" + resourcePath + "] An Emissive pass with no vertex() and "
+                            + "fragment() draws the Forward pass's, and no Forward pass comes before it");
+                }
+                passes.add(new CgParsedPass(lightMode, passName,
+                        CgRenderStateParser.parse(passBody, resourcePath, forward.renderState()),
+                        forward.v2fStructBody(), forward.globalDecls(), forward.vertexBody(), forward.fragmentBody(),
+                        forward.fragOutput()));
+                continue;
+            }
+
             // 7e. Parse render state for this pass
-            CgRenderState renderState = CgRenderStateParser.parse(passBody, resourcePath);
+            CgRenderState renderState = CgRenderStateParser.parse(passBody, resourcePath,
+                    CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode) ? EMISSIVE_STATE : CgRenderState.DEFAULT);
 
             // 7f. Resolve v2f body (per-pass override or shared fallback)
             String v2fBody = CgStructureParser.parsePassV2fBody(passBody, sharedV2f, resourcePath);
@@ -288,7 +335,23 @@ public final class CgShaderParser {
 
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
-                renderType, castShadows, Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
+                renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
+                Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
+    }
+
+    /** The {@code "SceneColorMargin"} tag: a share of the target's height, above 0; NaN when absent. */
+    private static float sceneColorMargin(String tag, String resourcePath) {
+        if (tag == null) return Float.NaN;
+        float margin;
+        try {
+            margin = Float.parseFloat(tag.trim());
+        } catch (NumberFormatException e) {
+            throw new CgShaderParseException("[" + resourcePath + "] SceneColorMargin '" + tag + "' is not a number");
+        }
+        if (!(margin > 0f)) {
+            throw new CgShaderParseException("[" + resourcePath + "] SceneColorMargin must be above 0, a share of the target's height");
+        }
+        return margin;
     }
 
     /**

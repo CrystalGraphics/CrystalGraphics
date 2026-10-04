@@ -12,6 +12,9 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
     vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
+    vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
+    vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
+    vec4 cg_FogParams;    // x where the fog starts, y where it is whole, in blocks from the camera
 };
 
 // -- Per-Instance Object Data (SSBO path: GL 4.3+/ARB) ----------------------
@@ -90,6 +93,8 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM1 (CG_OBJECT_DATA.custom1)
 #define CG_OBJECT_CUSTOM2 (CG_OBJECT_DATA.custom2)
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
+// The world's light at the draw: block and sky light, 0 to 15 each. Rides in the normal matrix's unused column.
+#define CG_OBJECT_LIGHT (CG_OBJECT_DATA.normalMatrix[3].xy)
 
 // -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
 // cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that
@@ -103,6 +108,12 @@ uniform sampler2D cg_DepthBuffer;
 // CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
 uniform sampler2D cg_SceneColor;
 #define CG_SCENE_COLOR(uv) texture(cg_SceneColor, (uv))
+
+// cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
+// Bound to CgBindingPoints.LIGHTMAP_TEXTURE_UNIT; do NOT use that unit in material Properties either.
+uniform sampler2D cg_Lightmap;
+// The colour the world lights a thing with at block and sky light (0 to 15 each), as Minecraft lights its blocks.
+#define CG_LIGHTMAP(light) texture(cg_Lightmap, (clamp((light), 0.0, 15.0) + 0.5) / 16.0).rgb
 
 // Raw depth is the host's convention -- Minecraft 26.2 is reversed-Z with a 0..1 clip range, earlier
 // versions are not -- so compare depths as eye distances, never as raw values:
@@ -124,6 +135,55 @@ float cg_LinearEyeDepth(float windowDepth) {
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
+// How far behind the scene an Emissive pass's fragment may be and still bloom: an opaque emissive surface is at the
+// depth it wrote, give or take the depth buffer's precision. Eye units.
+#define CG_EMISSIVE_DEPTH_SLACK 1.002
+#define CG_EMISSIVE_DEPTH_BIAS  0.02
+
+// -- Sun and fog --------------------------------------------------------------
+#define CG_SUN_DIRECTION (cg_SunDirection.xyz)
+#define CG_DAYLIGHT      (cg_SunDirection.w)
+
+// How much of the host's fog lies between the camera and a point this far from it: 0 to 1, 0 with no fog.
+float cg_FogAmount(float distance) {
+    if (cg_FogColor.a < 0.5) return 0.0;
+    return distance < cg_FogParams.y ? smoothstep(cg_FogParams.x, cg_FogParams.y, distance) : 1.0;
+}
+#define CG_FOG_AMOUNT(worldPos) cg_FogAmount(length((worldPos) - cg_CameraPos.xyz))
+
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// The light a lit fragment takes: its draw's (CG_OBJECT_LIGHT) unless its fragment function sets another, as a
+// particle setting its own does.
+vec2 cg_Light;
+
+// This fragment's distance from the camera, from its window position: what its fog is measured by.
+float cg_FragmentDistance() {
+    vec2 ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
+    float eye = cg_ProjMatrix[2][3] == 0.0 ? cg_LinearEyeDepth(gl_FragCoord.z) : 1.0 / gl_FragCoord.w;
+    return eye * length(vec3(ndc.x / cg_ProjMatrix[0][0], ndc.y / cg_ProjMatrix[1][1], 1.0));
+}
+
+// What a lit material's colour becomes: times the lightmap at cg_Light.
+vec4 cg_Lit(vec4 color) {
+    return vec4(color.rgb * CG_LIGHTMAP(cg_Light), color.a);
+}
+
+// What a colour becomes behind this fragment's fog, for the pass's blend (CG_FOG_MODE, set by the compiler): mixed
+// toward the fog colour (0), toward it times alpha for premultiplied output (1), or faded to nothing when added (2).
+#ifndef CG_FOG_MODE
+#define CG_FOG_MODE 0
+#endif
+vec4 cg_Fog(vec4 color) {
+    float fog = cg_FogAmount(cg_FragmentDistance());
+#if CG_FOG_MODE == 2
+    return vec4(color.rgb * (1.0 - fog), color.a);
+#elif CG_FOG_MODE == 1
+    return vec4(mix(color.rgb, cg_FogColor.rgb * color.a, fog), color.a);
+#else
+    return vec4(mix(color.rgb, cg_FogColor.rgb, fog), color.a);
+#endif
+}
+#endif
 
 // -- Time and Resolution Macros ---------------------------------------------
 #define CG_TIME           (cg_Time.y)   // most useful: raw seconds

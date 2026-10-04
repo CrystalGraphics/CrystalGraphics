@@ -6,7 +6,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
@@ -76,3 +76,6 @@ Pass {
         fragColor = vec4(col * alpha * i.pulse * flicker * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
     }
 }
+
+// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
+Pass { Tags { "LightMode" = "Emissive" } }

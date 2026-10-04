@@ -176,6 +176,18 @@ shader in the engine.
 
 Called by `CgMaterialShader.recompile()` when `castShadows && renderQueue < 3000` and no explicit `ShadowCaster` pass was authored.
 
+## The Emissive pass
+
+Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with one:
+
+- **Parser**: the pass's name is forced to `Emissive`, since the world renderer finds it by LightMode. A pass with
+  neither `void vertex(` nor `void fragment(` copies the first Forward pass's v2f, declarations, bodies, output and
+  render state (step 7e'); with code, an absent `RenderState` defaults to `CgShaderParser.EMISSIVE_STATE`.
+- **Compiler**: `appendPassDefine` adds `CG_EMISSIVE_PASS`; the generated fragment `main` is unlit with fog mode 2,
+  and discards behind the scene's depth unless the pass's depth state is test-on with `GL_ALWAYS`.
+- **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
+  `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
+
 ## `#pragma cg_feature` Stop Conditions
 
 Both `parsePreambleDirectives` and `parseFeaturePragmas` stop at:

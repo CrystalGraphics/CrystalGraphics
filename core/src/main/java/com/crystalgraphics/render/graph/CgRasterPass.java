@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.device.command.CgAccess;
@@ -37,7 +38,13 @@ import java.util.List;
  *   <li>A pass into a layer names where the layer sits in the recording's root space with {@link #view}: what a
  *       record under a spatial node is placed through. Records at node 0 are already in the target's space.</li>
  *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
- *       fixed unit, as a world pass binds the scene's depth.</li>
+ *       fixed unit.</li>
+ *   <li>{@link #sceneColor} and {@link #sceneDepth} let its draws sample the target itself: a draw whose shader reads
+ *       {@code cg_SceneColor} or {@code cg_DepthBuffer} sees every draw of the pass sorted before it. The graph copies
+ *       the target before the first such draw and again wherever a draw since wrote what it reads; readers in a row
+ *       share a copy, so they never see each other. A colour copy is cut to its readers' bounds grown by their
+ *       shader's {@code SceneColorMargin} tag, so a reader with no bounds copies the whole target.
+ *       {@link #sceneDepth(int, CgGraphTexture)} samples another target's depth instead, copied once.</li>
  *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
  *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
  * </ul>
@@ -72,6 +79,18 @@ public final class CgRasterPass extends CgPass {
 
     private int viewOwner;
     private float viewX, viewY;
+
+    /** The units its draws sample the target's colour and depth at, or -1. */
+    private int sceneColorUnit = -1, sceneDepthUnit = -1;
+    /** Its copy of its target, made when it first declares a read of it. */
+    @Nullable
+    private CgTargetCopy targetCopy;
+    /** Another target whose depth its draws sample ({@link #sceneDepth(int, CgGraphTexture)}), the unit, and the copy. */
+    @Nullable
+    private CgGraphTexture depthFrom;
+    private int depthFromUnit = -1;
+    @Nullable
+    private CgTargetCopy depthFromCopy;
 
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = new int[0];
@@ -232,6 +251,97 @@ public final class CgRasterPass extends CgPass {
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
         if (graph != null) recording.read(this, graph, CgAccess.SAMPLED_READ);
         return this;
+    }
+
+    /**
+     * Lets draws whose shader reads {@code cg_SceneColor} sample the target's colour at {@code unit}, as it stands
+     * after every draw sorted before them. A pass into a mip level above 0 takes no copy.
+     *
+     * <pre>{@code
+     * recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
+     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+     * }</pre>
+     */
+    public CgRasterPass sceneColor(int unit) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        requireLevelZero();
+        sceneColorUnit = unit;
+        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        return this;
+    }
+
+    /** As {@link #sceneColor}, for the target's depth and {@code cg_DepthBuffer}. */
+    public CgRasterPass sceneDepth(int unit) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        requireLevelZero();
+        sceneDepthUnit = unit;
+        if (targetCopy == null) targetCopy = new CgTargetCopy();
+        return this;
+    }
+
+    /** A target copy is of level 0: a pass drawing another would read the wrong picture. */
+    private void requireLevelZero() {
+        if (level != 0) throw new IllegalStateException(this + " draws level " + level + ", and reads no copy of its target");
+    }
+
+    /**
+     * Lets draws whose shader reads {@code cg_DepthBuffer} sample {@code from}'s depth at {@code unit}, as it stands
+     * after every write to it recorded before this call: a glow or bloom pass into a target of its own, occluded by
+     * the scene. Copied once, whole, when the pass begins, at {@code from}'s size, so readers sample by normalized uv
+     * ({@code gl_FragCoord.xy / CG_RESOLUTION}) and the pass's target may be any size.
+     *
+     * <pre>{@code
+     * recording.raster(glow, CgLoad.clear(0, 0, 0, 0), frame.defaults(new CgPassConstants()), null, CgOrder.SORTED)
+     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@link CgGraphTexture#current()} is the framebuffer and viewport bound when the execution began.</li>
+     *   <li>Throws here where {@code from}'s format has no depth, and at execution where the current target has none.</li>
+     *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
+     * </ul>
+     */
+    public CgRasterPass sceneDepth(int unit, CgGraphTexture from) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        if (from == target) return sceneDepth(unit);
+        CgFrameBufferFormat format = from.desc() != null ? from.desc().format()
+                : from.framebuffer() != null ? from.framebuffer().getFormat() : null;
+        if (from.kind() != CgGraphTexture.Kind.CURRENT && (format == null || !format.hasDepth())) {
+            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
+        }
+        depthFrom = from;
+        depthFromUnit = unit;
+        if (depthFromCopy == null) depthFromCopy = new CgTargetCopy();
+        recording.read(this, from, CgAccess.SAMPLED_READ);
+        return this;
+    }
+
+    @Nullable
+    CgGraphTexture depthFrom() {
+        return depthFrom;
+    }
+
+    int depthFromUnit() {
+        return depthFromUnit;
+    }
+
+    @Nullable
+    CgTargetCopy depthFromCopy() {
+        return depthFromCopy;
+    }
+
+    int sceneColorUnit() {
+        return sceneColorUnit;
+    }
+
+    int sceneDepthUnit() {
+        return sceneDepthUnit;
+    }
+
+    @Nullable
+    CgTargetCopy targetCopy() {
+        return targetCopy;
     }
 
     int textureCount() {

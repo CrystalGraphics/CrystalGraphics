@@ -199,6 +199,7 @@ public final class CgLoweredKernel {
         }
         unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        unit(id, CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
         int n = source.buffers().size(), m = source.images().size();
         int[] base = new int[n], length = new int[n], span = new int[n], counterAt = new int[n], level = new int[m];
         for (CgBufferDecl b : source.buffers()) {

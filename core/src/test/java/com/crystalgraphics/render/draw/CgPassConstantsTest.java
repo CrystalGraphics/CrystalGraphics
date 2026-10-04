@@ -15,7 +15,7 @@ public class CgPassConstantsTest {
         Matrix4f view = new Matrix4f().translation(1, 2, 3);
         Matrix4f projection = new Matrix4f().setOrtho(0, 640, 480, 0, -1, 1);
         CgPassConstants constants = new CgPassConstants().time(2f).resolution(640, 480).camera(4, 5, 6).depth(true, false)
-                .origin(100.5, 64, -2000.25);
+                .origin(100.5, 64, -2000.25).sun(0f, 2f, 0f, 0.5f).fog(0.1f, 0.2f, 0.3f, 8f, 64f);
         constants.view.set(view);
         constants.projection.set(projection);
         float[] ours = new float[CgPassConstants.FLOATS];
@@ -29,7 +29,10 @@ public class CgPassConstantsTest {
                 .vec2("cg_Resolution", 640, 480)
                 .vec4("cg_CameraPos", 4, 5, 6, 1)
                 .vec4("cg_DepthParams", 1, 0, 0, 0)
-                .vec4("cg_WorldOrigin", 100.5f, 64, -2000.25f, 0);
+                .vec4("cg_WorldOrigin", 100.5f, 64, -2000.25f, 0)
+                .vec4("cg_SunDirection", 0, 1, 0, 0.5f)
+                .vec4("cg_FogColor", 0.1f, 0.2f, 0.3f, 1)
+                .vec4("cg_FogParams", 8, 64, 0, 0);
 
         assertEquals(CgPassConstants.FLOATS, CgPassConstants.FORMAT.getFloatCount());
         float[] theirs = new float[CgPassConstants.FLOATS];

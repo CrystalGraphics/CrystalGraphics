@@ -7,7 +7,7 @@ import org.joml.Vector3f;
 
 /**
  * What every draw of one pass reads in {@code CgFrameBlock}: camera, projection, time, resolution, depth
- * convention and world origin. One per pass, where the frame block used to be one global that every caller saved and restored around
+ * convention, world origin, sun and fog. One per pass, where the frame block used to be one global that every caller saved and restored around
  * itself; a UI layer, a preview and the world each carry their own. The GLSL names are unchanged.
  *
  * <pre>{@code
@@ -23,6 +23,8 @@ import org.joml.Vector3f;
  *   <li>{@link #camera} is what {@code CG_CAMERA_WORLD_POS} reads; it is not derived from {@link #view}, so a pass
  *       sets both. A camera-relative pass puts the camera at the origin and its absolute position in
  *       {@link #origin}.</li>
+ *   <li>{@link #sun} starts high in the south-west at full daylight and {@link #fog} off, so a pass with no world
+ *       (a preview, a harness scene) lights and fogs nothing oddly.</li>
  *   <li>A value: {@link #capture} copies it, so changing it afterwards changes no captured pass.</li>
  * </ul>
  */
@@ -31,7 +33,7 @@ public final class CgPassConstants {
     /** The GLSL block, declared by {@code cg_env.glsl}. */
     public static final String BLOCK_NAME = "CgFrameBlock";
 
-    /** {@code CgFrameBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin. */
+    /** {@code CgFrameBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, sun, fog. */
     public static final CgBufferFormat FORMAT = CgBufferFormat
             .builder(BLOCK_NAME, CgBufferFormat.MemoryLayout.STD140)
             .mat4("cg_ViewMatrix")
@@ -41,9 +43,15 @@ public final class CgPassConstants {
             .vec4("cg_CameraPos")
             .vec4("cg_DepthParams")
             .vec4("cg_WorldOrigin")
+            .vec4("cg_SunDirection")
+            .vec4("cg_FogColor")
+            .vec4("cg_FogParams")
             .build();
 
-    public static final int FLOATS = 52;
+    public static final int FLOATS = 64;
+
+    /** {@link #sun}'s direction until set: high, toward +x and +z. */
+    private static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
 
     public final Matrix4f view = new Matrix4f();
     public final Matrix4f projection = new Matrix4f();
@@ -59,6 +67,9 @@ public final class CgPassConstants {
     private float originX;
     private float originY;
     private float originZ;
+    private float sunX = SUN_X, sunY = SUN_Y, sunZ = SUN_Z, daylight = 1f;
+    private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
+    private boolean fog;
 
     private final float[] packed = new float[FLOATS];
     private final Vector3f eye = new Vector3f();
@@ -105,6 +116,44 @@ public final class CgPassConstants {
         return this;
     }
 
+    /** Toward the sun, or the moon while the sun is down, any length; {@code daylight} 0 to 1. */
+    public CgPassConstants sun(float x, float y, float z, float daylight) {
+        float length = (float) Math.sqrt(x * x + y * y + z * z);
+        if (length > 0f) {
+            sunX = x / length;
+            sunY = y / length;
+            sunZ = z / length;
+        }
+        this.daylight = daylight;
+        return this;
+    }
+
+    /** The sun this pass started with: high, toward +x and +z, at full daylight. */
+    public CgPassConstants defaultSun() {
+        sunX = SUN_X;
+        sunY = SUN_Y;
+        sunZ = SUN_Z;
+        daylight = 1f;
+        return this;
+    }
+
+    /** The fog: whole from {@code end} blocks from the camera, starting at {@code start}. */
+    public CgPassConstants fog(float red, float green, float blue, float start, float end) {
+        fog = true;
+        fogRed = red;
+        fogGreen = green;
+        fogBlue = blue;
+        fogStart = start;
+        fogEnd = Math.max(end, start + 1e-3f);
+        return this;
+    }
+
+    /** No fog. */
+    public CgPassConstants noFog() {
+        fog = false;
+        return this;
+    }
+
     /**
      * Takes every value from a block laid out as {@link #write} lays it out: what an immediate draw does with the
      * frame block a caller already prepared. {@link #write} reproduces the same floats.
@@ -123,7 +172,22 @@ public final class CgPassConstants {
         originX = block[at + 48];
         originY = block[at + 49];
         originZ = block[at + 50];
+        sunX = block[at + 52];
+        sunY = block[at + 53];
+        sunZ = block[at + 54];
+        daylight = block[at + 55];
+        fogRed = block[at + 56];
+        fogGreen = block[at + 57];
+        fogBlue = block[at + 58];
+        fog = block[at + 59] != 0f;
+        fogStart = block[at + 60];
+        fogEnd = block[at + 61];
         return this;
+    }
+
+    /** The target width a packed block was written with. */
+    public static float width(float[] block) {
+        return block[36];
     }
 
     /** The target height a packed block was written with: what a pass's palette flips {@code gl_FragCoord} by. */
@@ -155,6 +219,18 @@ public final class CgPassConstants {
         out[at + 49] = originY;
         out[at + 50] = originZ;
         out[at + 51] = 0f;
+        out[at + 52] = sunX;
+        out[at + 53] = sunY;
+        out[at + 54] = sunZ;
+        out[at + 55] = daylight;
+        out[at + 56] = fogRed;
+        out[at + 57] = fogGreen;
+        out[at + 58] = fogBlue;
+        out[at + 59] = fog ? 1f : 0f;
+        out[at + 60] = fogStart;
+        out[at + 61] = fogEnd;
+        out[at + 62] = 0f;
+        out[at + 63] = 0f;
     }
 
     /** Snapshots the block into {@code table} at the frame block's binding, and answers its id. */

@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
@@ -16,7 +17,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
-import com.crystalgraphics.world.CgCameraShake;
+import com.crystalgraphics.vfx.camera.CgCameraShakes;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -50,7 +51,8 @@ import java.util.List;
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
  * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
- * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
+ * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1); {@link #SLOT_BLAST_SKY} on a sphere holding
+ * the camera ({@code CG_OBJECT_CUSTOM1}: the cloud height, how far the clouds are lit, the intensity). The blast's cloud, debris, embers and
  * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts.
  * Heat haze shimmers round the charge, the beam, the impact and the blast's heart, and a shock front bends the air as
  * the blast goes off: {@code shaders/vfx/air/}, dropped at the Low quality tier.</p>
@@ -63,8 +65,9 @@ import java.util.List;
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
- *   <li>It shakes the camera ({@link CgCameraShake}), by distance: a tremor growing over the charge, a jolt and a kick
- *       of the field of view at the release, a rumble while it fires and while it hits, and the blast.</li>
+ *   <li>It shakes the camera through five shakes a look may change ({@link #CHARGE_SHAKE} to {@link #BLAST_SHAKE}):
+ *       a tremor growing over the charge, a recoil at the release, a hum while it fires, a rumble while it hits, and
+ *       the blast when its shock front reaches the camera.</li>
  * </ul>
  */
 public final class CgEnergyWave extends CgVfxEffect {
@@ -92,8 +95,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST = "blast";
     /** The blast's flash and its heart: spheres at the target. */
     public static final String SLOT_BLAST_GLOW = "blastGlow";
+    /** The sky's answer to the blast, its tint and the clouds lit over it: a sphere at the target holding the camera. */
+    public static final String SLOT_BLAST_SKY = "blastSky";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
+    /** Heat haze round the charge ball and round the contact orb, at their steady size: spheres, without the pulse. */
+    public static final String SLOT_CHARGE_HAZE = "chargeHaze", SLOT_IMPACT_HAZE = "impactHaze";
     /** The blast's shock front, racing out ahead of its dust: a sphere at the target. */
     public static final String SLOT_BLAST_SHOCK = "blastShock";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
@@ -172,6 +179,31 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
 
+    /**
+     * Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius: what
+     * {@link #BLAST_SHAKE} arrives with.
+     */
+    private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
+    /**
+     * The sky's answer: the radius of the sphere it is drawn on, blocks; how far the clouds over the blast are lit, as a
+     * multiple of the blast's radius; and the cloud height above the blast where the host gives none.
+     */
+    private static final float SKY_SPHERE = 384f, SKY_REACH = 10f, SKY_CLOUDS = 128f;
+    /** Held over the charge at the muzzle, its level the charge's progress squared. */
+    public static final CgVfxParam CHARGE_SHAKE = SCHEMA.shake("chargeShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.4f).radii(3f, 24f).build());
+    /** Played at the muzzle as it releases, its punch back along the aim. */
+    public static final CgVfxParam RELEASE_SHAKE = SCHEMA.shake("releaseShake", CgCameraShakes.RECOIL);
+    /** Held at the muzzle while it fires. */
+    public static final CgVfxParam FIRING_SHAKE = SCHEMA.shake("firingShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.2f).radii(3f, 24f).build());
+    /** Held at the target while it hits, at the scale of {@link #RADIUS}, its level how hard it is hitting. */
+    public static final CgVfxParam HIT_SHAKE = SCHEMA.shake("hitShake",
+            CgCameraShakes.RUMBLE.toBuilder().trauma(0.3f).radii(6f, 48f).build());
+    /** Played at the burst, at the scale of the blast's radius, arriving with the blast's shock front. */
+    public static final CgVfxParam BLAST_SHAKE = SCHEMA.shake("blastShake",
+            CgCameraShakes.EXPLOSION.toBuilder().arrives(SHOCK_REACH, SHOCK_SECONDS, CgEasings.OUT_CUBIC).build());
+
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
     public static final CgVfxParam SHELL = SCHEMA.color("shell", 0.15f, 0.55f, 1.6f, 1f);
@@ -184,64 +216,67 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
-            .colors(SHELL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build();
+            .colors(SHELL, CORE).order(CgVfxLayer.ORDER_BANDS).build();
 
     private static final String BEAM = "crystalgraphics:shaders/vfx/beam/";
     private static final String AIR = "crystalgraphics:shaders/vfx/air/";
 
     private static final CgVfxLook KAMEHAMEHA = CgVfxLook.builder(SCHEMA)
-            .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(2.2f)
-                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
-            .layer(haze(SLOT_CHARGE, 2.6f))
-            .layer(haze(SLOT_IMPACT, 2.4f))
-            .layer(haze(SLOT_BLAST_GLOW, 2.2f))
+            .layer(CgVfxLayer.builder(AIR + "haze_tube.shader").radius(4.5f).parameter(3.6f)
+                    .properties(b -> b.set1f("_Core", 1.4f))
+                    .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
+            .layer(haze(SLOT_CHARGE_HAZE, 4.2f))
+            .layer(haze(SLOT_IMPACT_HAZE, 4.2f))
+            .layer(haze(SLOT_BLAST_GLOW, 3.4f))
             .layer(CgVfxLayer.builder(AIR + "shock.shader").slot(SLOT_BLAST_SHOCK)
-                    .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build())
+                    .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
-                    .radius(10f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_LIGHT).build())
+                    .radius(10f).colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_glow.shader").volume()
-                    .radius(4.4f).colors(GLOW, null).priority(CgVfxLayer.PRIORITY_VOLUME).build())
+                    .radius(4.4f).colors(GLOW, null).order(CgVfxLayer.ORDER_VOLUME).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
-                    .radius(1f).colors(SHELL, SHELL_HOT).priority(CgVfxLayer.PRIORITY_SURFACE).build())
+                    .radius(1f).colors(SHELL, SHELL_HOT).order(CgVfxLayer.ORDER_SURFACE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
-                    .radius(0.52f).colors(CORE, CORE_RIM).priority(CgVfxLayer.PRIORITY_CORE).build())
+                    .radius(0.52f).colors(CORE, CORE_RIM).order(CgVfxLayer.ORDER_CORE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
-                    .radius(1.2f).colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .radius(1.2f).colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
-                    .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.PRIORITY_SURFACE))
-            .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
-            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
+                    .colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
+            .layer(orb("orb_light", SLOT_HEAD, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_HEAD, 3.2f, 1.5f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_shell", SLOT_HEAD, 1.15f, 1f, SHELL, SHELL_HOT, CgVfxLayer.ORDER_SURFACE))
+            .layer(orb("orb_core", SLOT_HEAD, 0.75f, 0f, CORE, CORE_RIM, CgVfxLayer.ORDER_CORE))
+            .layer(orb("orb_light", SLOT_CHARGE, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_CHARGE, 3.2f, 1.8f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_CHARGE, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
+            .layer(orb("orb_light", SLOT_FLASH, 7f, 0f, CORE_RIM, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_FLASH, 3.2f, 1f, CORE_RIM, null, CgVfxLayer.ORDER_VOLUME))
             .layer(CgVfxLayer.builder(BEAM + "charge_streaks.shader").slot(SLOT_STREAKS)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "charge_arcs.shader").slot(SLOT_ARCS)
-                    .colors(SPIRAL, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
-            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+                    .colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
+            .layer(orb("orb_light", SLOT_IMPACT, 9f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_glow", SLOT_IMPACT, 3.2f, 2f, GLOW, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_IMPACT, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_SPLASH)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_IMPACT_RING)
-                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
-                    .colors(CORE, SHELL).priority(CgVfxLayer.PRIORITY_SURFACE).build())
-            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.PRIORITY_LIGHT))
-            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.PRIORITY_VOLUME))
-            .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.PRIORITY_CORE))
+                    .colors(CORE, SHELL).order(CgVfxLayer.ORDER_SURFACE).build())
+            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(CgVfxLayer.builder(BEAM + "blast_sky.shader").slot(SLOT_BLAST_SKY)
+                    .colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).from(CgQuality.MEDIUM).build())
+            .layer(orb("orb_glow", SLOT_BLAST_GLOW, 3.2f, 1.4f, CORE_RIM, null, CgVfxLayer.ORDER_VOLUME))
+            .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
-                    .colors(SHELL_HOT, CORE).priority(CgVfxLayer.PRIORITY_BANDS)
+                    .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS)
                     .properties(b -> b.set1f("_Burst", 1f).set1f("_Count", 90f).set1f("_Speed", 18f).set1f("_Life", 1.2f)
                             .set1f("_Width", 0.08f).set1f("_Streak", 0.08f))
                     .build())
             .add(BLAST)
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
-                    .colors(CORE_RIM, SHELL).priority(CgVfxLayer.PRIORITY_BANDS).build())
+                    .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
             .build();
 
     private static final CgVfxLook FINAL_FLASH = KAMEHAMEHA.toBuilder()
@@ -271,8 +306,6 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
-    /** Trauma: the charge's tremor at its peak, the release's jolt, the recoil while firing, the rumble while hitting. */
-    private static final float CHARGE_TREMOR = 0.35f, RELEASE_JOLT = 0.55f, FIRING_RECOIL = 0.12f, HIT_RUMBLE = 0.3f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
@@ -293,8 +326,6 @@ public final class CgEnergyWave extends CgVfxEffect {
     private float normalX, normalY = 1f, normalZ;
     /** The moments already announced, a bit each, and the stream's size when it was stopped. */
     private int momentsFired, sizeAtStop;
-    /** Camera shake held at the muzzle and at the target; made when first needed. */
-    private CgCameraShake.Rumble muzzleRumble, hitRumble;
     private boolean released;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
@@ -317,16 +348,19 @@ public final class CgEnergyWave extends CgVfxEffect {
         return GALICK_GUN;
     }
 
-    /** Heat haze round what a slot draws, {@code radius} times its size; dropped at the Low tier. */
+    /**
+     * Heat haze round the orb a slot draws, out to {@code radius} times its size: a sheath strongest past the orb's
+     * glow, leaving the orb itself unbent; dropped at the Low tier.
+     */
     private static CgVfxLayer haze(String slot, float radius) {
-        return CgVfxLayer.builder(AIR + "haze.shader").slot(slot).radius(radius)
-                .priority(CgVfxLayer.PRIORITY_DISTORTION).from(CgQuality.MEDIUM).build();
+        return CgVfxLayer.builder(AIR + "haze_orb.shader").slot(slot).radius(radius).parameter(1f)
+                .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build();
     }
 
     private static CgVfxLayer orb(String shader, String slot, float radius, float parameter, CgVfxParam a,
-                                  CgVfxParam b, int priority) {
+                                  CgVfxParam b, int order) {
         return CgVfxLayer.builder(BEAM + shader + ".shader").slot(slot).radius(radius).parameter(parameter)
-                .colors(a, b).priority(priority).build();
+                .colors(a, b).order(order).build();
     }
 
     /** Where the source points, any length. */
@@ -386,10 +420,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
             blastAge = age;
             startBlast();
-            float reach = get(RADIUS) * get(BLAST_RADIUS);
-            double bx = originX + stream.impactX(), by = originY + stream.impactY(), bz = originZ + stream.impactZ();
-            CgCameraShake.shake(bx, by, bz, 1f, reach, reach * 5f);
-            CgCameraShake.kick(bx, by, bz, 0.1f, 0.45f, reach, reach * 4f);
+            playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
         boolean emitted = true;
         if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
@@ -403,30 +434,27 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (ending) die();
     }
 
-    /** The charge's tremor, the release's jolt, the recoil while firing and the rumble at the target while it hits. */
+    /** How far the blast's shock front has come, in blocks, {@code since} seconds after the burst. */
+    private float shockFront(float since) {
+        return get(RADIUS) * get(BLAST_RADIUS) * SHOCK_REACH
+                * (float) CgEasings.OUT_CUBIC.ease(Math.min(since / SHOCK_SECONDS, 1f));
+    }
+
+    /** The charge's tremor, the release's recoil, the hum while firing and the rumble at the target while it hits. */
     private void shake() {
         if (state() == State.PLAYING && age < releaseAge) {
             float progress = age / Math.max(releaseAge, 1.0e-3f);
-            muzzle().level(CHARGE_TREMOR * progress * progress);
+            holdShake(CHARGE_SHAKE, 0f, 0f, 0f, 1f, progress * progress);
         } else if (state() == State.PLAYING) {
             if (!released) {
                 released = true;
-                CgCameraShake.shake(originX, originY, originZ, RELEASE_JOLT, 3f, 30f);
-                CgCameraShake.kick(originX, originY, originZ, 0.08f, 0.35f, 3f, 30f);
+                playShake(RELEASE_SHAKE, 0f, 0f, 0f, -aimX, -aimY, -aimZ, 1f);
             }
-            muzzle().level(FIRING_RECOIL);
+            holdShake(FIRING_SHAKE, 0f, 0f, 0f, 1f, 1f);
         }
         if (impactLevel > 0.01f) {
-            float radius = get(RADIUS);
-            if (hitRumble == null) hitRumble = CgCameraShake.rumble().radii(radius * 6f, radius * 48f);
-            hitRumble.at(originX + stream.impactX(), originY + stream.impactY(), originZ + stream.impactZ())
-                    .level(HIT_RUMBLE * impactLevel);
+            holdShake(HIT_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS), impactLevel);
         }
-    }
-
-    private CgCameraShake.Rumble muzzle() {
-        if (muzzleRumble == null) muzzleRumble = CgCameraShake.rumble().at(originX, originY, originZ).radii(3f, 24f);
-        return muzzleRumble;
     }
 
     /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
@@ -537,8 +565,10 @@ public final class CgEnergyWave extends CgVfxEffect {
         float radius = get(RADIUS);
         float x = stream.impactX(), y = stream.impactY(), z = stream.impactZ();
         if (impactLevel > 0.01f) {
-            float orb = radius * get(IMPACT_RADIUS) * (1f + 0.08f * (float) Math.sin(age * 19f + seed * 6.28f))
-                    * (float) Math.sqrt(impactLevel);
+            float steadyOrb = radius * get(IMPACT_RADIUS) * (float) Math.sqrt(impactLevel);
+            placed.identity().scale(steadyOrb);
+            drawAt(frame, layers, SLOT_IMPACT_HAZE, x, y, z, placed, steadyOrb, steadyOrb, impactLevel, 0f, false);
+            float orb = steadyOrb * (1f + 0.08f * (float) Math.sin(age * 19f + seed * 6.28f));
             facing(placed, normalX, normalY, normalZ).rotateZ(age * 1.1f).scale(orb);
             drawAt(frame, layers, SLOT_IMPACT, x, y, z, placed, orb, orb, impactLevel, 0f, false);
             float reach = radius * 12f;
@@ -561,11 +591,16 @@ public final class CgEnergyWave extends CgVfxEffect {
             float heart = dome * 0.5f;
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
             drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
+            float clouds = CgRenderStage.WORLD_OPAQUE.host().environment().cloudHeight();
+            if (Float.isNaN(clouds)) clouds = (float) (originY + y) + SKY_CLOUDS;
+            placed.identity().scale(SKY_SPHERE);
+            drawAt(frame, layers, SLOT_BLAST_SKY, x, y, z, placed, clouds, radius * get(BLAST_RADIUS) * SKY_REACH, glow,
+                    0f, false);
         }
         // The shock front races out well ahead of the dust, gone in a little over a second.
-        float shockTime = since / 1.2f;
+        float shockTime = since / SHOCK_SECONDS;
         if (shockTime < 1f) {
-            float front = radius * get(BLAST_RADIUS) * 2.6f * (float) CgEasings.OUT_CUBIC.ease(shockTime);
+            float front = shockFront(since);
             placed.identity().scale(front);
             float left = 1f - shockTime;
             drawAt(frame, layers, SLOT_BLAST_SHOCK, x, y, z, placed, front, front, (float) Math.sqrt(left), shockTime, false);
@@ -610,6 +645,8 @@ public final class CgEnergyWave extends CgVfxEffect {
         } else {
             ball = full * (1f + (get(ROOT_SIZE) - 1f) * smooth(0f, SETTLE, sinceRelease));
         }
+        placed.identity().scale(ball);
+        draw(frame, layers, SLOT_CHARGE_HAZE, placed, ball, ball, fade, 0f);
         ball *= 1f + 0.05f * (float) Math.sin(age * 23f + seed * 6.28f);
         alongAim(placed);
         placed.rotateZ(age * 1.3f).scale(ball);

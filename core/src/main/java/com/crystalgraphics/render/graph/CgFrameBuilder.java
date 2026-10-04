@@ -2,6 +2,10 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
@@ -9,11 +13,13 @@ import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -76,6 +82,9 @@ public final class CgFrameBuilder {
     /** The values each recording of the graph being built is drawn with. */
     private final IdentityHashMap<CgRecording, CgPropertyValues> valuesOf = new IdentityHashMap<>();
     private final float[] domainBounds = new float[4];
+    private final float[] batchBounds = new float[4];
+    /** Scratch rects for placing copies, in GL pixels: x0, y0, x1, y1. */
+    private final int[] rect = new int[4], lastCopy = new int[4], dirty = new int[4];
 
     /** Builds the frame. The graph's recordings are only read. */
     public CgFrame build(CgFrameGraph graph) {
@@ -378,14 +387,164 @@ public final class CgFrameBuilder {
             }
         }
         Arrays.fill(refChunk, 0, refs, null);
+        placeCopies(pass, packed);
         frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         CgBindingTable constants = frame.bindings.begin()
                 .block(CgBindingPoints.FRAME_DATA_UBO, pass.constants, 0, CgPassConstants.FLOATS);
-        for (int i = 0; i < pass.textureCount(); i++) constants.texture(pass.textureUnit(i), pass.texture(i));
+        boolean lightmap = false;
+        for (int i = 0; i < pass.textureCount(); i++) {
+            constants.texture(pass.textureUnit(i), pass.texture(i));
+            lightmap |= pass.textureUnit(i) == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        }
+        // A pass with no world lights nothing: cg_Lightmap reads white.
+        if (!lightmap && CgBindingPoints.LIGHTMAP_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_1x1 != null) {
+            constants.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, CgFallbackTextures.WHITE_1x1);
+        }
+        if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
+        if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
+        if (pass.depthFrom() != null) {
+            constants.texture(pass.depthFromUnit(), pass.depthFromCopy().depth);
+            frame.readsCurrentDepth |= pass.depthFrom().kind() == CgGraphTexture.Kind.CURRENT;
+        }
+        if (pass.target == null || pass.target.kind() == CgGraphTexture.Kind.CURRENT) frame.rastersCurrent = true;
+        else frame.rastersOther = true;
         packed.constants = constants.end();
+    }
+
+    /**
+     * Where the pass copies its target for draws sampling it, and how much. Depth is copied whole, before a reader of
+     * what a draw since the last copy wrote. Colour is copied before a reader whose rect, its bounds grown by its
+     * shader's {@code SceneColorMargin}, the last copy does not hold or a draw since wrote into; the readers after it,
+     * up to the next draw that writes colour without reading it, share the copy, which covers all their rects. A
+     * reader's own writes leave what it reads clean, so readers in a row never see each other.
+     */
+    private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
+        int sampled = (pass.sceneColorUnit() >= 0 ? CgTargetCopy.COLOR : 0)
+                | (pass.sceneDepthUnit() >= 0 ? CgTargetCopy.DEPTH : 0);
+        if (sampled == 0) return;
+        float width = CgPassConstants.width(pass.constants), height = CgPassConstants.height(pass.constants);
+        // A pass into part of a layer is not in its target's pixels: its copies are whole.
+        boolean regions = width > 0f && height > 0f && pass.viewOwner() == 0 && pass.viewX() == 0f && pass.viewY() == 0f;
+        int depthUnseen = sampled & CgTargetCopy.DEPTH;
+        int run = -1;   // the batch holding the copy the current readers share
+        boolean copied = false;
+        clear(dirty);
+        for (int b = 0; b < packed.count; b++) {
+            CgPipeline pipeline = CgPipeline.byId(packed.pipeline[b]);
+            int reads = sampled & readsOf(pipeline);
+            int writes = sampled & writesOf(pipeline, pass.state);
+            if ((reads & depthUnseen) != 0) {
+                packed.copyBefore[b] |= CgTargetCopy.DEPTH;
+                depthUnseen = 0;
+            }
+            if ((reads & CgTargetCopy.COLOR) != 0) {
+                // NaN before its shader parses: the whole target. One texel more for the linear filter.
+                float share = pipeline.shader().sceneColorMargin();
+                screenRect(b, regions && !Float.isNaN(share), width, height, share * height + 1f, rect);
+                if (!isEmpty(rect)) {
+                    if (run >= 0) {
+                        union(packed.copyRect, run * 4, rect);
+                    } else if (!copied || !contains(lastCopy, rect) || intersects(dirty, rect)) {
+                        run = b;
+                        copied = true;
+                        packed.copyBefore[b] |= CgTargetCopy.COLOR;
+                        System.arraycopy(rect, 0, packed.copyRect, b * 4, 4);
+                        clear(dirty);
+                    }
+                }
+            }
+            if ((writes & CgTargetCopy.COLOR) != 0) {
+                screenRect(b, regions, width, height, 0f, rect);
+                union(dirty, 0, rect);
+                if ((reads & CgTargetCopy.COLOR) == 0 && run >= 0) {
+                    System.arraycopy(packed.copyRect, run * 4, lastCopy, 0, 4);
+                    run = -1;
+                }
+            }
+            if ((writes & CgTargetCopy.DEPTH) != 0 && (reads & CgTargetCopy.DEPTH) == 0) depthUnseen = sampled & CgTargetCopy.DEPTH;
+        }
+    }
+
+    /**
+     * Batch {@code b}'s bounds grown by {@code margin}, into {@code out} in GL pixels from the bottom left, cut to the
+     * target; the whole target ({@link #isWhole}) where they are infinite or not in the target's pixels.
+     */
+    private void screenRect(int b, boolean regions, float width, float height, float margin, int[] out) {
+        int domain = batcher.batchBounds(b, batchBounds);
+        float x0 = batchBounds[0], y0 = batchBounds[1], x1 = batchBounds[2], y1 = batchBounds[3];
+        if (!regions || domain != 0 || x0 == Float.NEGATIVE_INFINITY || y0 == Float.NEGATIVE_INFINITY
+                || x1 == Float.POSITIVE_INFINITY || y1 == Float.POSITIVE_INFINITY) {
+            out[0] = out[1] = 0;
+            out[2] = out[3] = -1;
+            return;
+        }
+        // Bounds run down from the top; GL's rows run up from the bottom.
+        int w = (int) Math.ceil(width), h = (int) Math.ceil(height);
+        out[0] = Math.max(0, (int) Math.floor(x0 - margin));
+        out[1] = Math.max(0, (int) Math.floor(height - (y1 + margin)));
+        out[2] = Math.min(w, (int) Math.ceil(x1 + margin));
+        out[3] = Math.min(h, (int) Math.ceil(height - (y0 - margin)));
+    }
+
+    /** A rect whose x1 is below 0 is the whole target, whatever its size. */
+    static boolean isWhole(int[] r, int at) {
+        return r[at + 2] < 0;
+    }
+
+    private static boolean isEmpty(int[] r) {
+        return !isWhole(r, 0) && (r[2] <= r[0] || r[3] <= r[1]);
+    }
+
+    private static void clear(int[] r) {
+        r[0] = r[1] = r[2] = r[3] = 0;
+    }
+
+    /** Unions {@code r} into the rect at {@code at} of {@code into}; an empty one there takes {@code r}. */
+    private static void union(int[] into, int at, int[] r) {
+        if (isWhole(into, at) || isEmpty(r)) return;
+        if (isWhole(r, 0) || into[at + 2] <= into[at] || into[at + 3] <= into[at + 1]) {
+            System.arraycopy(r, 0, into, at, 4);
+            return;
+        }
+        into[at] = Math.min(into[at], r[0]);
+        into[at + 1] = Math.min(into[at + 1], r[1]);
+        into[at + 2] = Math.max(into[at + 2], r[2]);
+        into[at + 3] = Math.max(into[at + 3], r[3]);
+    }
+
+    private static boolean contains(int[] outer, int[] r) {
+        if (isWhole(outer, 0)) return true;
+        if (isWhole(r, 0)) return false;
+        return outer[0] <= r[0] && outer[1] <= r[1] && outer[2] >= r[2] && outer[3] >= r[3];
+    }
+
+    private static boolean intersects(int[] a, int[] r) {
+        if (isEmpty(a) || isEmpty(r)) return false;
+        if (isWhole(a, 0) || isWhole(r, 0)) return true;
+        return a[0] < r[2] && r[0] < a[2] && a[1] < r[3] && r[1] < a[3];
+    }
+
+    private static int readsOf(CgPipeline pipeline) {
+        return (pipeline.shader().readsSceneColor() ? CgTargetCopy.COLOR : 0)
+                | (pipeline.shader().readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
+    }
+
+    /** What a pipeline's draws write into the target: its own state, else the pass's; undeclared is a write. */
+    private static int writesOf(CgPipeline pipeline, CgRenderState passState) {
+        CgRenderState own = pipeline.state();
+        List<CgColorMask> masks = own != null && !own.getColorMasks().isEmpty() ? own.getColorMasks()
+                : passState != null ? passState.getColorMasks() : Collections.<CgColorMask>emptyList();
+        boolean color = masks.isEmpty();
+        for (int i = 0; i < masks.size(); i++) {
+            CgColorMask mask = masks.get(i);
+            color |= mask.r() || mask.g() || mask.b() || mask.a();
+        }
+        CgDepthState depth = own != null && own.getDepth() != null ? own.getDepth()
+                : passState != null ? passState.getDepth() : null;
+        return (color ? CgTargetCopy.COLOR : 0) | (depth == null || depth.write() ? CgTargetCopy.DEPTH : 0);
     }
 
     /** {@code table}'s ids mapped into the frame's, -1 until first used; the arrays are kept between builds. */

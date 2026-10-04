@@ -102,8 +102,8 @@ public class CgPreviewMeshTest {
     /**
      * Unity's list minus Sprite.
      *
-     * <p>Unity separates Sprite from Quad by <em>material</em> — unlit and premultiplied — and this
-     * engine has no lighting for a sprite to opt out of, so the two would draw the same picture under two
+     * <p>Unity separates Sprite from Quad by <em>material</em> — unlit and premultiplied — and a
+     * preview has no lighting for a sprite to opt out of, so the two would draw the same picture under two
      * names. Asserted as an exact list so re-adding it is a decision rather than a reflex.</p>
      */
     @Test

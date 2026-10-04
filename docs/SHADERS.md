@@ -23,7 +23,7 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3
 #pragma cg_feature FOG_ON
 #pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
-Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation
+Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out
 Queue = "Geometry"                    // Background|Geometry|AlphaTest|Transparent|Overlay
 
 Properties {
@@ -69,13 +69,17 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
 | `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1. Read through `cg_LinearEyeDepth`, not directly |
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
+| `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
+| `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
+| `cg_FogParams` | `vec4` | `x` fog start, `y` fog end, in blocks from the eye. Read through `cg_FogAmount` |
 
 **Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
 
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
-| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | Scene depth snapshot, in the main target's own depth format, captured via one `glBlitFramebuffer` from MC's main render target at the start of each world stage whose materials read it: an opaque material sees the host's world, a transparent one the world renderer's opaque draws as well. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
-| `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The scene's colour, taken the same way and at the same moments as `cg_DepthBuffer`, only for a stage whose drawn materials read it: in a transparent pass the host's world and the world renderer's opaque draws. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
+| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingPoints.DEPTH_TEXTURE_UNIT` | The target's depth as it stands at the draw, in its own depth format: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingPoints.DEPTH_TEXTURE_UNIT`.** |
+| `cg_SceneColor` | `uniform sampler2D` | `CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
+| `cg_Lightmap` | `uniform sampler2D` | `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)`. **Do not bind user Properties samplers to that unit.** |
 
 Convenience macros over the frame block:
 
@@ -87,6 +91,32 @@ Convenience macros over the frame block:
 | `CG_SCENE_EYE_DEPTH(uv)` | `cg_LinearEyeDepth(texture(cg_DepthBuffer, uv).r)` | Scene distance from the camera at `uv`, in eye units, under any depth convention |
 | `CG_SCENE_COLOR(uv)` | `texture(cg_SceneColor, uv)` | The scene's colour at `uv` (`gl_FragCoord.xy / CG_RESOLUTION` for the pixel behind) |
 | `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform |
+
+#### Lighting and fog — on by default
+
+A world material is lit by the host's lightmap and fogged as Minecraft's own blocks are, with no code of its own. The compiler's generated fragment `main` sets `cg_Light` (block and sky light, 0 to 15) from the draw, calls `fragment()`, then applies `cg_Lit` and `cg_Fog` to its colour. This covers materials reading the object record, meaning those using neither `#pragma cg_use quad` nor `curve`, in a Forward pass with one output.
+
+```glsl
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }   // an emissive effect: fogged, never darkened
+Tags { "Lighting" = "Unlit" "Fog" = "Off" }                   // a sky, or a haze that bends what is already fogged
+
+void fragment(in v2f i, out vec4 fragColor) {
+    cg_Light = i.light;                       // a draw of many lights (particles) sets its own, before anything reads it
+    fragColor = vec4(albedo * max(dot(n, CG_SUN_DIRECTION), 0.2), 1.0);   // lit by the lightmap after
+}
+```
+
+| Name | Is |
+|---|---|
+| `cg_Light` | fragment only: this fragment's `vec2(block, sky)`, `CG_OBJECT_LIGHT` unless the shader sets it |
+| `CG_OBJECT_LIGHT` | the draw's light, in the normal matrix's unused column: `CgWorldRenderer`'s `.light`, else the world's at its position |
+| `CG_LIGHTMAP(light)` | the lightmap's colour for a `vec2(block, sky)` |
+| `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the generated `main` applies, for a material that opted out and wants them on part of its colour |
+| `cg_FogAmount(distance)`, `CG_FOG_AMOUNT(worldPos)` | 0 to 1, vanilla's smoothstep from `cg_FogParams` |
+| `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out |
+
+- The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
+- A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
 
@@ -233,7 +263,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
 | `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment` — the raster pass's property trees (`CgPalette`): each spatial node's affine into the target, each effect node's opacity. `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it | Never declared by hand. A material that honours group opacity multiplies by `CG_QUAD_OPACITY`/`CG_CURVE_OPACITY` |
 | `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextRenderer.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
-| `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` — the frame's particle records (`CgParticleBuffer`, FRAME lifetime, three vec4s each), written once a frame by whatever simulates particles; a draw reads its own range `[base, base + count)`. Write it every frame any particle draws | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
+| `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` / `CG_PARTICLE_LIGHT` — the frame's particle records (`CgParticleBuffer`, FRAME lifetime, four vec4s each, the fourth its `vec2(block, sky)` light), written once a frame by whatever simulates particles; a draw reads its own range `[base, base + count)`. Write it every frame any particle draws | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
 
 > **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
 > (injected by `#pragma cg_use quad`) provides
@@ -364,8 +394,42 @@ Each `Pass { }` carries a `Tags { "LightMode" = "..." }` that routes it to the c
 | `Forward` | Standard forward-lit draw | Default when `LightMode` is absent |
 | `ShadowCaster` | Depth-from-light pass | Auto-generated for `RenderType=Opaque`, `castShadows=true`, `queue < 3000` |
 | `Depth` | Early depth pre-pass | Auto-generated for opaque materials |
+| `Emissive` | The world's bloom: light the material gives off, blurred over the scene | Never generated; at most one per shader. Below |
 
 The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache. Auto-assigned as `Pass0`, `Pass1`, … when absent.
+
+#### The Emissive pass
+
+What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` draws it into its bloom
+target after the transparent pass, blurs it and adds it over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*).
+Unity's, Godot's and Unreal's emission is a material output added to an HDR scene colour; Minecraft's target is
+8-bit, so here it is a pass that draws the mesh again into a float target.
+
+```glsl
+// The Forward pass's code and render state again: what it draws, it also blooms
+Pass { Tags { "LightMode" = "Emissive" } }
+
+// Or its own: only the bright part blooms
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); o.uv = cg_TexCoord0; }
+    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_GlowColor.rgb * _GlowStrength, 0.0); }
+}
+```
+
+- **Write HDR colour with an alpha of 0.** It adds into a float target; the alpha is unused.
+- **Codeless**, it takes the first Forward pass's v2f, code and render state, and fails to parse when no Forward pass
+  comes before it. A `RenderState` of its own replaces the Forward pass's.
+- **With code and no `RenderState`**, it draws ONE ONE with no depth test and back faces culled. An authored state
+  replaces all of it, including the cull, so list everything. ONE ONE is not `CgBlendState.ADDITIVE`, which is
+  SRC_ALPHA ONE and adds nothing at alpha 0.
+- **Hidden by the scene, not by a depth test.** The bloom target has no depth, so the compiler discards a fragment
+  further than the scene's depth at its pixel, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`,
+  `CG_EMISSIVE_DEPTH_BIAS`, in `cg_env.glsl`). `DepthTest ALWAYS` turns that off for a shader that tests depth itself:
+  a volume drawn on its back faces.
+- Unlit and fogged additively whatever the material's tags. `CG_EMISSIVE_PASS` is defined in both stages, so a body
+  it shares with the Forward pass can tell them apart.
+- It takes the material's keywords, as the Forward pass does.
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

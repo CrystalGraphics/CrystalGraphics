@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -8,10 +9,15 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -20,12 +26,17 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -37,7 +48,9 @@ import org.joml.Vector3f;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -53,6 +66,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *          .submit();
  * });
  *
+ * // Lit by the world at its position unless told otherwise: a lamp's own glass, or a thing that glows
+ * world.draw(bulb, glass).at(x, y, z).light(15, skyLight).submit();
+ * world.draw(rune, sigil).at(x, y, z).fullBright().submit();
+ *
  * // A material's authored queue decides opaque or transparent; a draw may override it.
  * world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();
  *
@@ -66,6 +83,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>Shaders see camera-relative world space: {@code CG_CAMERA_WORLD_POS} is the origin, and
  *       {@code CG_ABSOLUTE_WORLD_POS(p)} adds the camera back for an effect that must not move with it.</li>
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
+ *   <li>A material is lit by the host's lightmap at {@code CG_OBJECT_LIGHT} and fogged unless its shader is tagged
+ *       {@code "Lighting" = "Unlit"}. The light is the world's at {@link Draw#at}, read at {@link Draw#submit}.</li>
+ *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: after the transparent pass that pass is drawn
+ *       into a smaller target ({@link #bloomScale}), where the scene's depth hides it, blurred, and added over the
+ *       world ({@link #bloom}).</li>
  * </ul>
  */
 public final class CgWorldRenderer {
@@ -80,6 +102,20 @@ public final class CgWorldRenderer {
             .depth(CgDepthState.TEST_WRITE).blend(CgBlendState.DISABLED).build();
     private static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
+    /**
+     * Emissive passes add into the bloom target, which has no depth: the scene hides them by its copied depth. ONE ONE,
+     * since emitted light is written with an alpha of 0.
+     */
+    private static final CgRenderState EMISSIVE_STATE = CgRenderState.builder()
+            .depth(CgDepthState.NONE).blend(new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_ONE,
+                    CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD)).build();
+    private static final CgFrameBufferFormat BLOOM_FORMAT = CgFrameBufferFormat.builder("cg_bloom")
+            .color(0, CgTextureType.RGBA16F).build();
+    private static final String BLOOM_SHADER = "crystalgraphics:shaders/bloom.shader";
+    /** The deepest mip level bloom blurs and sums (bloom.shader reads 1 to 5), and each level's blur in its texels. */
+    private static final int BLOOM_LEVELS = 5;
+    private static final float BLOOM_SIGMA = 1.5f;
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
     @FunctionalInterface
@@ -89,8 +125,6 @@ public final class CgWorldRenderer {
 
     private final List<FrameListener> listeners = new CopyOnWriteArrayList<>();
     private final Draw scratch = new Draw();
-    private final CgDepthSnapshot depthSnapshot = new CgDepthSnapshot();
-    private final CgColorSnapshot colorSnapshot = new CgColorSnapshot();
 
     // The frame's draws, flat: what a pooled command object per draw used to hold.
     private long frame = -1;
@@ -113,8 +147,14 @@ public final class CgWorldRenderer {
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
     private float[] customs = new float[64 * 16];
+    /** Per draw: block and sky light, 0 to 15. */
+    private float[] lights = new float[64 * 2];
     private int[] queues = new int[64];
-    private int[] priorities = new int[64];
+    private int[] orders = new int[64];
+    private CgSortLayer[] layers = new CgSortLayer[64];
+    /** Per draw: whether it is in a group, and the group's absolute position (3). */
+    private boolean[] grouped = new boolean[64];
+    private double[] groupPositions = new double[64 * 3];
 
     // Per recording, reused: nothing here allocates per frame once warm.
     private final Matrix4f model = new Matrix4f();
@@ -125,9 +165,22 @@ public final class CgWorldRenderer {
     private final Vector3f forward = new Vector3f();
     private final Vector3f min = new Vector3f();
     private final Vector3f max = new Vector3f();
+    /** A box's corners in clip space: x, y, w. */
+    private final float[] clipX = new float[8], clipY = new float[8], clipW = new float[8];
     private final CgViewFrustum frustum = new CgViewFrustum();
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
+
+    // Bloom: the target Emissive passes draw into, its constants, and the material adding it back.
+    private boolean[] emits = new boolean[64];
+    private float bloomIntensity = 1f, bloomScale = 0.5f;
+    private CgGraphTexture bloomTarget;
+    private CgMaterial bloomMaterial;
+    private boolean bloomStale = true;
+    private final CgPassConstants bloomConstants = new CgPassConstants();
+    private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
+    private final Consumer<CgShaderBindings> bloomProperties =
+            b -> b.sampler("_Bloom", 0, bloomTarget).set1f("_Intensity", bloomIntensity);
 
     private boolean installed;
     private boolean irisWarned;
@@ -147,14 +200,38 @@ public final class CgWorldRenderer {
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
     }
 
-    /** Drops every draw and the depth snapshot's storage, which the framebuffer registry frees. At context teardown. */
+    /** Drops every draw. At context teardown. */
     public void release() {
         clear();
         frame = -1;
-        snapshotTaken = colorTaken = -1;
-        depthSnapshot.dropStorage();
-        colorSnapshot.dropStorage();
         depthOnly.clear();
+        bloomMaterial = null;   // the material registry frees it with the context
+        bloomStale = true;
+    }
+
+    /**
+     * How strongly what Emissive passes draw blooms over the scene: 1 by default, 0 for none. Bloom also needs the
+     * player's quality at Medium or above.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().bloom(1.5f);   // a brighter glow round every emissive thing
+     * }</pre>
+     */
+    public void bloom(float intensity) {
+        if (intensity != bloomIntensity) bloomStale = true;
+        bloomIntensity = Math.max(0f, intensity);
+    }
+
+    /**
+     * The bloom target's size as a share of the world's: 0.5 by default; 1 for a tighter glow at four times the cost.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().bloomScale(1f);
+     * }</pre>
+     */
+    public void bloomScale(float scale) {
+        if (!(scale > 0f && scale <= 1f)) throw new IllegalArgumentException("a bloom scale of " + scale + ": 0 to 1");
+        bloomScale = scale;
     }
 
     /** Calls {@code listener} once a frame, before the first world stage records. Closing the registration stops it. */
@@ -185,7 +262,10 @@ public final class CgWorldRenderer {
         private final Matrix4f transform = new Matrix4f();
         private final float[] custom = new float[16];
         private int queue;
-        private int priority;
+        private int order;
+        private CgSortLayer layer;
+        private boolean inGroup;
+        private double groupX, groupY, groupZ;
         private int submesh, first, count;
         private final float[] bounds = new float[6];
         private boolean boundsSet;
@@ -194,6 +274,8 @@ public final class CgWorldRenderer {
         private long indirectOffset;
         private CgIndirect indirectMode;
         private int indirectFactor;
+        /** Block and sky light; NaN block for the world's at its position. */
+        private float blockLight, skyLight;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -203,13 +285,16 @@ public final class CgWorldRenderer {
             transform.identity();
             Arrays.fill(custom, 0f);
             queue = material.getRenderQueue();
-            priority = 0;
+            order = 0;
+            layer = CgSortLayer.DEFAULT;
+            inGroup = false;
             submesh = -1;
             first = 0;
             count = -1;
             boundsSet = false;
             pad = 0f;
             indirect = null;
+            blockLight = Float.NaN;
             return this;
         }
 
@@ -300,15 +385,53 @@ public final class CgWorldRenderer {
             return this;
         }
 
+        /** Lit by block and sky light {@code block} and {@code sky}, 0 to 15, in place of the world's at its position. */
+        public Draw light(float block, float sky) {
+            blockLight = block;
+            skyLight = sky;
+            return this;
+        }
+
+        /** Lit as if nothing shaded it: what a thing glowing on its own takes. */
+        public Draw fullBright() {
+            return light(15f, 15f);
+        }
+
         /** Overrides the material's authored queue: {@link CgRenderQueue} values. */
         public Draw queue(int queue) {
             this.queue = queue;
             return this;
         }
 
-        /** 0 to 15; higher draws later within its queue. */
-        public Draw priority(int priority) {
-            this.priority = priority;
+        /** The {@link CgSortLayer} it sorts in; {@link CgSortLayer#DEFAULT} unless named. */
+        public Draw layer(CgSortLayer layer) {
+            this.layer = Objects.requireNonNull(layer, "layer");
+            return this;
+        }
+
+        /** 0 to 15; higher draws later within its layer, or within its {@link #group}. */
+        public Draw order(int order) {
+            if (order < 0 || order > 15) throw new IllegalArgumentException("order " + order + " is outside 0..15");
+            this.order = order;
+            return this;
+        }
+
+        /**
+         * Sorts it with the group at absolute {@code (x, y, z)} as one, as Niagara sorts a system's emitters: a
+         * transparent group draws whole, back to front by its position among the other groups and draws of its
+         * {@link #layer}, and its draws by their own {@link #order}, then distance, within it: back to front only among
+         * the draws of one order. Every draw of a group gives
+         * the same position and layer. Opaque draws ignore it.
+         *
+         * <pre>{@code
+         * world.draw(mesh, haze).at(x, y, z).layer(CgSortLayer.EFFECTS).group(ox, oy, oz).order(4).submit();
+         * }</pre>
+         */
+        public Draw group(double x, double y, double z) {
+            inGroup = true;
+            groupX = x;
+            groupY = y;
+            groupZ = z;
             return this;
         }
 
@@ -332,8 +455,23 @@ public final class CgWorldRenderer {
         positions[count * 3 + 2] = d.z;
         d.transform.get(transforms, count * 16);
         System.arraycopy(d.custom, 0, customs, count * 16, 16);
+        if (Float.isNaN(d.blockLight)) {
+            int light = CgWorldLight.at(d.x, d.y, d.z);
+            lights[count * 2] = CgWorldLight.block(light);
+            lights[count * 2 + 1] = CgWorldLight.sky(light);
+        } else {
+            lights[count * 2] = d.blockLight;
+            lights[count * 2 + 1] = d.skyLight;
+        }
         queues[count] = d.queue;
-        priorities[count] = d.priority;
+        orders[count] = d.order;
+        layers[count] = d.layer;
+        grouped[count] = d.inGroup;
+        if (d.inGroup) {
+            groupPositions[count * 3] = d.groupX;
+            groupPositions[count * 3 + 1] = d.groupY;
+            groupPositions[count * 3 + 2] = d.groupZ;
+        }
         ranges[count * 3] = d.submesh;
         ranges[count * 3 + 1] = d.first;
         ranges[count * 3 + 2] = d.count;
@@ -352,6 +490,7 @@ public final class CgWorldRenderer {
         Arrays.fill(lods, 0, count, null);
         Arrays.fill(materials, 0, count, null);
         Arrays.fill(counts, 0, count, null);
+        Arrays.fill(layers, 0, count, null);
         count = 0;
     }
 
@@ -363,8 +502,12 @@ public final class CgWorldRenderer {
         positions = Arrays.copyOf(positions, n * 3);
         transforms = Arrays.copyOf(transforms, n * 16);
         customs = Arrays.copyOf(customs, n * 16);
+        lights = Arrays.copyOf(lights, n * 2);
         queues = Arrays.copyOf(queues, n);
-        priorities = Arrays.copyOf(priorities, n);
+        orders = Arrays.copyOf(orders, n);
+        layers = Arrays.copyOf(layers, n);
+        grouped = Arrays.copyOf(grouped, n);
+        groupPositions = Arrays.copyOf(groupPositions, n * 3);
         ranges = Arrays.copyOf(ranges, n * 3);
         drawBounds = Arrays.copyOf(drawBounds, n * 6);
         boundsStated = Arrays.copyOf(boundsStated, n);
@@ -378,11 +521,14 @@ public final class CgWorldRenderer {
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
     private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1;
+    /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
+    private static final float NEAR_W = 0.01f;
 
     private long[] keys = new long[64];
     private byte[] phase = new byte[64];
-    /** The stage the depth snapshot was last taken for: frame * 2 + OPAQUE or TRANSPARENT. */
-    private long snapshotTaken = -1, colorTaken = -1;
+    /** Per draw this stage: its box on screen, in target pixels from the top left; NaN first for none. */
+    private float[] screens = new float[64 * 4];
+    private float targetWidth, targetHeight;
 
     private void recordOpaque(CgStageFrame stage) {
         record(stage, OPAQUE);
@@ -411,8 +557,10 @@ public final class CgWorldRenderer {
                     + "remains valid.");
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, which == OPAQUE ? "world.recordOpaque" : "world.recordTransparent")) {
+            targetWidth = stage.host().width();
+            targetHeight = stage.host().height();
             prepare(view);
-            boolean prepass = false, sceneDepth = false, sceneColor = false;
+            boolean prepass = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
                 byte p = classify(i, which, view);
@@ -420,27 +568,100 @@ public final class CgWorldRenderer {
                 if (p == SKIP) continue;
                 drawn++;
                 prepass |= p == FORWARD_AND_PREPASS;
-                sceneDepth |= materials[i].readsSceneDepth();
-                sceneColor |= materials[i].readsSceneColor();
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
-            if (drawn == 0) return;
 
             CgRecording recording = stage.recording();
-            // Per stage: an opaque reader sees the host's world, a transparent one the opaque draws added to it.
-            if (sceneDepth && snapshotTaken != now * 2 + which) {
-                snapshotTaken = now * 2 + which;
-                recording.callback("world.depthSnapshot", null, depthSnapshot.source(stage.host().mainFramebuffer()));
-            }
-            if (sceneColor && colorTaken != now * 2 + which) {
-                colorTaken = now * 2 + which;
-                recording.callback("world.colorSnapshot", null, colorSnapshot.source(stage.host().mainFramebuffer()));
-            }
             CgPassConstants constants = stage.constants();
             bindings.clear();
-            if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
-            recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+            if (drawn > 0) {
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
+                recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+            }
+            if (which == TRANSPARENT) recordBloom(stage, recording, view);
         }
+    }
+
+    /**
+     * Every visible draw with an Emissive pass, opaque or transparent, into the bloom target hidden by the stage's
+     * depth; its levels each downsampled from the blurred one above and blurred; and their sum added onto the stage's
+     * target by {@code bloom.shader}. After the transparent pass, so it glows over everything.
+     */
+    private void recordBloom(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        if (bloomIntensity <= 0f || !CgGraphicsSettings.QUALITY.get().atLeast(CgQuality.MEDIUM)) return;
+        if (emits.length < meshes.length) emits = new boolean[meshes.length];
+        int emitting = 0;
+        for (int i = 0; i < count; i++) {
+            int queue = queues[i];
+            // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
+            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emitsLight(materials[i])
+                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
+            emits[i] = e;
+            if (e) emitting++;
+        }
+        CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        if (emitting == 0) return;
+
+        int w = Math.max(1, (int) (targetWidth * bloomScale)), h = Math.max(1, (int) (targetHeight * bloomScale));
+        if (bloomTarget == null || bloomTarget.getWidth() != w || bloomTarget.getHeight() != h) {
+            bloomTarget = CgGraphTexture.transientTexture("cg_bloom", new CgTextureDesc(w, h, BLOOM_FORMAT).withMips());
+            bloomStale = true;
+        }
+        stage.constants().write(constantsBlock, 0);
+        bloomConstants.read(constantsBlock, 0).resolution(w, h);
+
+        CgRasterPass glow = recording.raster(bloomTarget, CgLoad.clear(0f, 0f, 0f, 0f), bloomConstants, EMISSIVE_STATE,
+                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target());
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!emits[i]) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (!link.hasEmissivePass()) continue;
+                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                writeInstance(chunks, i);
+            }
+        }
+        glow.add(chunks.end());
+        glow.end();
+
+        int last = Math.min(BLOOM_LEVELS, bloomTarget.getLevels() - 1);
+        if (last >= 1) {
+            CgComputePass blur = recording.compute("world.bloom", bloomConstants);
+            for (int l = 1; l <= last; l++) {
+                CgGpuOps.downsample(blur, bloomTarget, l - 1, l, CgGpuOps.Filter.AVERAGE);
+                CgGpuOps.blur(blur, bloomTarget, l, bloomTarget, l, BLOOM_SIGMA);
+            }
+            blur.end();
+        }
+
+        if (bloomMaterial == null) {
+            bloomMaterial = CgMaterial.load(BLOOM_SHADER);
+            bloomStale = true;
+        }
+        if (bloomStale) {
+            bloomMaterial.applyProperties(bloomProperties);
+            bloomStale = false;
+        }
+        CgPipeline add = bloomMaterial.pipeline(CgInstanceKind.OBJECT);
+        if (add == null) return;
+        CgRasterPass composite = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED);
+        chunks = recording.chunks().begin();
+        chunks.draw(add, bindingOf(bloomMaterial, recording), FULLSCREEN);
+        chunks.instance();
+        composite.add(chunks.end());
+        composite.end();
+    }
+
+    /** Whether any link of a material chain has an Emissive pass. */
+    private static boolean emitsLight(CgMaterial material) {
+        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
+            if (link.hasEmissivePass()) return true;
+        }
+        return false;
     }
 
     /** The frustum, the eye and its forward, in the view's camera-relative space. */
@@ -453,6 +674,7 @@ public final class CgWorldRenderer {
         if (keys.length < count) {
             keys = new long[meshes.length];
             phase = new byte[meshes.length];
+            screens = new float[meshes.length * 4];
         }
     }
 
@@ -475,6 +697,7 @@ public final class CgWorldRenderer {
             model.transformAab(bounds[0] - p, bounds[1] - p, bounds[2] - p, bounds[3] + p, bounds[4] + p, bounds[5] + p,
                     min, max);
             if (!frustum.testAabb(min.x, min.y, min.z, max.x, max.y, max.z)) return SKIP;
+            screenOf(i);
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
             cz = (min.z + max.z) * 0.5f;
@@ -484,6 +707,7 @@ public final class CgWorldRenderer {
                 meshes[i] = level;
             }
         } else {
+            screens[i * 4] = Float.NaN;
             if (lods[i] != null) meshes[i] = lods[i].finest();
             cx = model.m30();
             cy = model.m31();
@@ -492,10 +716,21 @@ public final class CgWorldRenderer {
         float distance = Math.max(0f, (cx - eye.x) * forward.x + (cy - eye.y) * forward.y + (cz - eye.z) * forward.z);
         CgMaterial material = materials[i];
         keys[i] = transparent
-                ? CgSortKey.transparent(queue, priorities[i], distance)
-                : CgSortKey.opaque(queue, priorities[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
+                ? transparentKey(i, queue, distance, view)
+                : CgSortKey.opaque(queue, layers[i].rank(), orders[i], material.getMaterialId(), System.identityHashCode(meshes[i]), distance);
         boolean prepass = !transparent && (material.hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
         return prepass ? FORWARD_AND_PREPASS : FORWARD;
+    }
+
+    /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order and distance. */
+    private long transparentKey(int i, int queue, float distance, CgHostView view) {
+        int layer = layers[i].rank();
+        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, orders[i], distance);
+        float gx = (float) (groupPositions[i * 3] - view.x()) - eye.x;
+        float gy = (float) (groupPositions[i * 3 + 1] - view.y()) - eye.y;
+        float gz = (float) (groupPositions[i * 3 + 2] - view.z()) - eye.z;
+        float groupDistance = Math.max(0f, gx * forward.x + gy * forward.y + gz * forward.z);
+        return CgSortKey.transparent(queue, layer, groupDistance, orders[i], distance);
     }
 
     /**
@@ -510,6 +745,52 @@ public final class CgWorldRenderer {
         return r * Math.abs(view.projection().m11()) / w;
     }
 
+    /**
+     * Draw {@code i}'s box {@code min}..{@code max} on screen, into {@link #screens}: what the frame graph cuts a copy
+     * of the target to. A box crossing the near plane is cut by it, its edges' crossings projected with the corners in
+     * front; NaN for a box wholly behind it.
+     */
+    private void screenOf(int i) {
+        Matrix4f m = viewProjection;
+        for (int c = 0; c < 8; c++) {
+            float x = (c & 1) == 0 ? min.x : max.x, y = (c & 2) == 0 ? min.y : max.y, z = (c & 4) == 0 ? min.z : max.z;
+            clipX[c] = m.m00() * x + m.m10() * y + m.m20() * z + m.m30();
+            clipY[c] = m.m01() * x + m.m11() * y + m.m21() * z + m.m31();
+            clipW[c] = m.m03() * x + m.m13() * y + m.m23() * z + m.m33();
+        }
+        float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY, x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY;
+        for (int c = 0; c < 8; c++) {
+            if (clipW[c] >= NEAR_W) {
+                float nx = clipX[c] / clipW[c], ny = clipY[c] / clipW[c];
+                x0 = Math.min(x0, nx);
+                x1 = Math.max(x1, nx);
+                y0 = Math.min(y0, ny);
+                y1 = Math.max(y1, ny);
+            }
+            for (int bit = 1; bit < 8; bit <<= 1) {
+                if ((c & bit) != 0) continue;
+                int d = c | bit;
+                if ((clipW[c] >= NEAR_W) == (clipW[d] >= NEAR_W)) continue;
+                // An edge through the near plane: where it crosses, in front of the eye.
+                float t = (NEAR_W - clipW[c]) / (clipW[d] - clipW[c]);
+                float nx = (clipX[c] + (clipX[d] - clipX[c]) * t) / NEAR_W;
+                float ny = (clipY[c] + (clipY[d] - clipY[c]) * t) / NEAR_W;
+                x0 = Math.min(x0, nx);
+                x1 = Math.max(x1, nx);
+                y0 = Math.min(y0, ny);
+                y1 = Math.max(y1, ny);
+            }
+        }
+        if (x0 > x1) {
+            screens[i * 4] = Float.NaN;
+            return;
+        }
+        screens[i * 4] = (x0 * 0.5f + 0.5f) * targetWidth;
+        screens[i * 4 + 1] = (0.5f - y1 * 0.5f) * targetHeight;
+        screens[i * 4 + 2] = (x1 * 0.5f + 0.5f) * targetWidth;
+        screens[i * 4 + 3] = (0.5f - y0 * 0.5f) * targetHeight;
+    }
+
     /** Draw {@code i}'s model matrix, camera-relative: its position minus the view's, in doubles, then its transform. */
     private void modelOf(int i, CgHostView view) {
         model.set(transforms, i * 16);
@@ -521,8 +802,9 @@ public final class CgWorldRenderer {
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                             boolean depthOnlyPass, CgHostView view) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-                .texture(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthSnapshot)
-                .texture(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colorSnapshot);
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;
@@ -532,17 +814,25 @@ public final class CgWorldRenderer {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-                if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
-                int at = chunks.instance();
-                float[] data = chunks.data();
-                model.get(data, at);
-                normal.get(data, at + 16);
-                System.arraycopy(customs, i * 16, data, at + 32, 16);
+                if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
+                writeInstance(chunks, i);
             }
         }
         pass.add(chunks.end());
         pass.end();
+    }
+
+    /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
+    private void writeInstance(CgChunkBuilder chunks, int i) {
+        if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
+        if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
+        int at = chunks.instance();
+        float[] data = chunks.data();
+        model.get(data, at);
+        normal.get(data, at + 16);
+        data[at + 28] = lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
+        data[at + 29] = lights[i * 2 + 1];
+        System.arraycopy(customs, i * 16, data, at + 32, 16);
     }
 
     /** A material's depth pass, or its forward pass writing depth alone. */
