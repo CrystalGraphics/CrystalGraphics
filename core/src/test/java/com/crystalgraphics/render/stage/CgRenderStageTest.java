@@ -2,6 +2,7 @@ package com.crystalgraphics.render.stage;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -33,6 +34,18 @@ public class CgRenderStageTest {
                 // malformed
             }
         }
+    }
+
+    @Test
+    public void aOncePerFrameRenderer_recordsOnTheFrameFirstFiringOnly_inOrderWithTheRest() {
+        CgRenderStage stage = CgRenderStage.define("cgtest:once-per-frame");
+        StringBuilder order = new StringBuilder();
+        stage.register(1, frame -> order.append('v'));
+        stage.registerOncePerFrame(0, frame -> order.append('S'));
+        stage.record(7);
+        stage.record(7);   // a second firing of frame 7: an anaglyph eye, a portal
+        stage.record(8);
+        assertEquals("SvvSv", order.toString());
     }
 
     @Test
