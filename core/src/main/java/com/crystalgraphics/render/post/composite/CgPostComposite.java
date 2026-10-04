@@ -14,6 +14,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.post.volume.CgImpact;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import java.util.function.Consumer;
@@ -27,11 +28,14 @@ import java.util.function.Consumer;
  * // an effect, at BEFORE_COMPOSITE
  * post.composite().bloom(chain, 1.2f, 1f, 0.9f, 0.8f, false);   // a warm additive glow
  * post.composite().linear();                                     // this firing composites in linear light
+ * post.composite().flash(2f).vignette(0.4f);                     // twice as bright, darker corners
+ * post.composite().impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // speed lines from the centre
  * }</pre>
  *
  * <ul>
  *   <li>Each input switches on a {@link CgCompositeFeature}; a firing with none records nothing.</li>
- *   <li>The form ({@link CgCompositeForm}) is {@code BLEND} unless an input asks for {@code COPY}.</li>
+ *   <li>The form ({@link CgCompositeForm}) is {@code BLEND} unless an input asks for {@code COPY}, as every look but
+ *       bloom does.</li>
  *   <li>Inputs last one firing: the stack clears them before its effects record.</li>
  * </ul>
  */
@@ -51,18 +55,25 @@ public final class CgPostComposite {
     private int active;
     private boolean copy;
     private final Inputs inputs = new Inputs();
-    private final Consumer<CgShaderBindings> properties = b -> b.sampler("_Bloom", 0, inputs.bloom)
-            .set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
-            .set1f("_Conserve", inputs.conserve ? 1f : 0f);
+    private final Consumer<CgShaderBindings> properties = b -> {
+        if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
+        b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
+                .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
+                .set1f("_Vignette", inputs.vignette).set1f("_Chromatic", inputs.chromatic)
+                .vec4("_Impact", inputs.impact, inputs.look, 0f, 0f).vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f);
+    };
 
     /** What the composite's properties hold. */
     private static final class Inputs {
         CgGraphTexture bloom;
         float intensity = Float.NaN, r, g, b;
         boolean conserve;
+        float exposure = 1f, vignette, chromatic, impact, look, focusX = 0.5f, focusY = 0.5f;
 
         boolean same(Inputs o) {
-            return bloom == o.bloom && intensity == o.intensity && r == o.r && g == o.g && b == o.b && conserve == o.conserve;
+            return bloom == o.bloom && intensity == o.intensity && r == o.r && g == o.g && b == o.b && conserve == o.conserve
+                    && exposure == o.exposure && vignette == o.vignette && chromatic == o.chromatic && impact == o.impact
+                    && look == o.look && focusX == o.focusX && focusY == o.focusY;
         }
 
         void copyFrom(Inputs o) {
@@ -72,6 +83,13 @@ public final class CgPostComposite {
             g = o.g;
             b = o.b;
             conserve = o.conserve;
+            exposure = o.exposure;
+            vignette = o.vignette;
+            chromatic = o.chromatic;
+            impact = o.impact;
+            look = o.look;
+            focusX = o.focusX;
+            focusY = o.focusY;
         }
     }
 
@@ -93,13 +111,47 @@ public final class CgPostComposite {
         inputs.g = g;
         inputs.b = b;
         inputs.conserve = conserve;
-        active |= 1 << CgCompositeFeature.BLOOM.ordinal();
-        return this;
+        return on(CgCompositeFeature.BLOOM);
+    }
+
+    /** Multiplies the picture, in linear light, by {@code exposure}: 2 doubles it. Bloom is added after, unscaled. */
+    public CgPostComposite flash(float exposure) {
+        inputs.exposure = exposure;
+        return on(CgCompositeFeature.FLASH);
+    }
+
+    /** Darkens the corners by {@code amount}, 0 to 1. */
+    public CgPostComposite vignette(float amount) {
+        inputs.vignette = amount;
+        return on(CgCompositeFeature.VIGNETTE);
+    }
+
+    /** Splits red and blue apart by {@code amount} (0 to 1) from {@code (x, y)}, 0 to 1 from the bottom left. */
+    public CgPostComposite chromatic(float amount, float x, float y) {
+        inputs.chromatic = amount;
+        inputs.focusX = x;
+        inputs.focusY = y;
+        return on(CgCompositeFeature.CHROMATIC);
+    }
+
+    /** Turns the picture {@code amount} (0 to 1) into {@code look}; speed lines radiate from {@code (x, y)}. */
+    public CgPostComposite impact(CgImpact look, float amount, float x, float y) {
+        inputs.impact = amount;
+        inputs.look = look.ordinal();
+        inputs.focusX = x;
+        inputs.focusY = y;
+        return on(CgCompositeFeature.IMPACT);
     }
 
     /** Composites this firing in linear light ({@link CgCompositeForm#COPY}), at the cost of a copy of the target. */
     public CgPostComposite linear() {
         copy = true;
+        return this;
+    }
+
+    private CgPostComposite on(CgCompositeFeature feature) {
+        active |= 1 << feature.ordinal();
+        if (!feature.blend) copy = true;
         return this;
     }
 
@@ -121,7 +173,9 @@ public final class CgPostComposite {
         CgMaterial material = materials[f];
         if (material == null) material = materials[f] = CgMaterial.newInstance(form.shader);
         if (active != keyed[f]) {
-            for (CgCompositeFeature feature : FEATURES) material.toggleKeyword(feature.keyword, active(feature));
+            for (CgCompositeFeature feature : FEATURES) {
+                if (form == CgCompositeForm.COPY || feature.blend) material.toggleKeyword(feature.keyword, active(feature));
+            }
             keyed[f] = active;
         }
         if (!inputs.same(set[f])) {

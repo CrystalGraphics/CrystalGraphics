@@ -4,6 +4,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.stage.CgFrameResources;
 import com.crystalgraphics.render.stage.CgStageFrame;
 
@@ -21,13 +22,20 @@ public final class CgPostContext {
 
     private final CgPostComposite composite;
     private CgStageFrame stage;
+    private CgPostSettings settings;
 
     CgPostContext(CgPostComposite composite) {
         this.composite = composite;
     }
 
-    void begin(CgStageFrame stage) {
+    void begin(CgStageFrame stage, CgPostSettings settings) {
         this.stage = stage;
+        this.settings = settings;
+    }
+
+    /** Every volume blended at the camera this firing: what the looks are drawn with. Read it; never keep it. */
+    public CgPostSettings settings() {
+        return settings;
     }
 
     /** The stage firing the stack records in. */

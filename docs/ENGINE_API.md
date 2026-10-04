@@ -127,7 +127,18 @@ one composite pass laying the firing's looks over the target. Bloom is its built
 CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none
 CgRenderStage.Registration fx = CgPostStack.get().add(myEffect);    // a mod's effect at its point
 fx.close();
+
+// An effect's look for its moment: a volume, blended by priority and distance, weighed over its life
+CgPostVolume burst = CgPostStack.get().volume(10, new CgPostSettings().flash(1.5f).bloom(2f).chromatic(0.6f))
+        .at(x, y, z).radius(24f).blend(16f);
+burst.weight(1f - age / life);
+burst.close();
+CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
 ```
+
+- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames (`CgImpact`:
+  negative, black and white, speed lines). Flash and impact frames are scaled by the player's `FLASHES` comfort setting.
+- A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`),
