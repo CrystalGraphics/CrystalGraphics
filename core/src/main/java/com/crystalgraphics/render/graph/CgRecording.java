@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
 import com.crystalgraphics.platform.device.command.CgAccess;
@@ -255,6 +256,57 @@ public final class CgRecording {
         CgPass.Update update = new CgPass.Update(buffer, offset, bytes);
         add(update);
         write(update, buffer, CgAccess.COPY_WRITE);
+    }
+
+    /**
+     * Reads {@code size} bytes of {@code buffer} from {@code offset} back to the CPU, as everything recorded before it
+     * left them: {@code sink} gets them on the render thread a few frames after the frame executes, and the request is
+     * done once it has. The buffer needs {@code COPY}.
+     *
+     * <pre>{@code
+     * CgRequest got = recording.readback(counts, 0, 4, data -> alive = data.getInt(0));
+     * }</pre>
+     */
+    public CgRequest readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink) {
+        requireOpen();
+        requireUse(buffer, CgBufferUsage.COPY);
+        if (offset < 0 || size <= 0 || offset + size > buffer.size()) {
+            throw new IllegalArgumentException("a readback of " + size + " bytes at " + offset + " in " + buffer);
+        }
+        CgRequest request = new CgRequest("readback " + buffer.name());
+        CgPass.Readback pass = new CgPass.Readback(buffer, offset, size, sink, request);
+        add(pass);
+        read(pass, buffer, CgAccess.COPY_READ);
+        return request;
+    }
+
+    /**
+     * Reads a {@code w} x {@code h} region at {@code (x, y)} of level {@code level} of {@code texture}'s first colour
+     * attachment back to the CPU, as its texture type ({@link CgReadback#pixels}): rows bottom first, tightly packed.
+     */
+    public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink) {
+        requireOpen();
+        if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
+            throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
+        }
+        if (level < 0 || level >= texture.getLevels()) {
+            throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
+        }
+        CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
+                : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
+        if (format != null && (format.getColorSlot(0) == null || format.isColorRenderbuffer(0))) {
+            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0 to read");
+        }
+        int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > lw || y + h > lh) {
+            throw new IllegalArgumentException("a readback of " + w + "x" + h + " at " + x + "," + y + " in level " + level
+                    + " of " + texture + ", " + lw + "x" + lh);
+        }
+        CgRequest request = new CgRequest("readback " + texture.name());
+        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, w, h, sink, request);
+        add(pass);
+        read(pass, texture, CgAccess.COPY_READ);
+        return request;
     }
 
     /** Writes into {@code target} on the render thread, before any later reader. */

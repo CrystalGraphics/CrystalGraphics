@@ -2498,6 +2498,20 @@ com/crystalgraphics/gl/buffer/CgQuadIndexBuffer
   method public unbind ()V
   method public,static freeAll ()V
   method public,static get ()Lcom/crystalgraphics/gl/buffer/CgQuadIndexBuffer;
+com/crystalgraphics/gl/buffer/CgReadback
+  access public,final
+  extends java/lang/Object
+  method public,static buffer (IJJLcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
+  method public,static pending ()I
+  method public,static pixelBytes (Lcom/crystalgraphics/api/texture/CgTextureType;)I
+  method public,static pixels (IIIIILcom/crystalgraphics/api/texture/CgTextureType;Lcom/crystalgraphics/gl/buffer/CgReadback$Sink;)V
+  method public,static poll ()V
+  method public,static releaseAll ()V
+com/crystalgraphics/gl/buffer/CgReadback$Sink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public failed (Ljava/lang/String;)V
+  method public,abstract accept (Ljava/nio/ByteBuffer;)V
 com/crystalgraphics/gl/buffer/CgStreamBuffer
   access public,abstract
   extends java/lang/Object
@@ -2784,6 +2798,7 @@ com/crystalgraphics/gl/framebuffer/CgFrameBuffer
   method public isOwned ()Z
   method public isScreenSized ()Z
   method public levelHeight (I)I
+  method public levelId (I)I
   method public levelWidth (I)I
   method public reattachColor (ILcom/crystalgraphics/api/texture/CgTexture;)V
   method public reattachColorRaw (III)V
@@ -4256,6 +4271,8 @@ com/crystalgraphics/render/graph/CgRecording
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
   method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public readback (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gl/buffer/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;
+  method public readback (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIILcom/crystalgraphics/gl/buffer/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public release (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public release (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public reset ()V
