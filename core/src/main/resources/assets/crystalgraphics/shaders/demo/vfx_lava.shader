@@ -8,6 +8,11 @@
 Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
 Queue = "Geometry"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"
+}
+
 struct v2f { vec3 worldPos; vec3 objPos; };
 
 Pass {

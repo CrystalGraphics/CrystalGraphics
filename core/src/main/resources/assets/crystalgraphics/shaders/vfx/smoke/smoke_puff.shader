@@ -18,6 +18,7 @@ Properties {
     _Bumps  ("Billows on the ball, share of its radius", float) = 0.45
     _Spin   ("Turns over its life", float) = 0.15
     _Soft   ("Fade into the scene, share of its radius", float) = 0.35
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
 }
 
 struct v2f { vec3 world; vec2 quad; vec3 right; vec3 up; vec3 back; float size; };

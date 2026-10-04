@@ -11,6 +11,7 @@ Queue = "Transparent"
 
 Properties {
     _Density ("How fast it turns white", float) = 3.4
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; };

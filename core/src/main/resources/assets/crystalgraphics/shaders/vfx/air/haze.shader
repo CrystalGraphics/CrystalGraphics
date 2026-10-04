@@ -20,6 +20,7 @@ Properties {
     _Reference ("Within this many blocks the bend is _Strength; farther it shrinks as the haze does on screen", float) = 6
     _Scale    ("Shimmer frequency, a block", float) = 1.6
     _Rise     ("Rising speed, blocks a second", float) = 0.7
+    _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
 struct v2f { vec3 world; };

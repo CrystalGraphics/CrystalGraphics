@@ -16,6 +16,8 @@ Properties {
     _Spin       ("How fast it turns, radians a second", float) = 2.6
     _Scale      ("Filament frequency", float) = 2.6
     _Brightness ("Emission", float) = 1.45
+    _Noise      ("Noise", sampler3D) = "cg_noise"
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
 }
 
 struct v2f { vec3 world; };
@@ -74,7 +76,7 @@ Pass {
         vec3 hot = CG_OBJECT_CUSTOM2.rgb, cool = CG_OBJECT_CUSTOM3.rgb;
         vec3 mid = mix(cool, hot, 0.45) * 1.15;
         // The heart throbs, a violent surge several times a second.
-        float throb = 0.75 + 0.5 * fx_value_noise(vec3(age * 9.0, seed * 7.0, 1.5));
+        float throb = 0.75 + 0.5 * fx_value_noise(vec3(seed * 7.0, 1.5, 0.0) + cg_noise_time(age * 9.0));
         vec3 sum = vec3(0.0);
         for (int s = 0; s < STEPS; s++) {
             vec3 p = o + d * (t0 + (float(s) + jitter) * stride);

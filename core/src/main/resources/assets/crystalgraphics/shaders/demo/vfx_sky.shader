@@ -6,6 +6,10 @@
 Tags { "RenderType" = "Background" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Background"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 dir; };
 
 Pass {
@@ -26,6 +30,6 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 d = normalize(i.dir);
         // A pixel's angular size: the larger of its two screen steps. The length of fwidth overstates it up to 2.5x.
-        fragColor = vec4(vfx_sky(d, CG_TIME, max(length(dFdx(d)), length(dFdy(d)))), 1.0);
+        fragColor = vec4(vfx_sky(_ValueNoise, d, CG_TIME, max(length(dFdx(d)), length(dFdy(d)))), 1.0);
     }
 }

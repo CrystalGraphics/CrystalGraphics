@@ -11,6 +11,10 @@
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 worldPos; };
 
 Pass {

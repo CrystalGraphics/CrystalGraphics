@@ -16,6 +16,7 @@ Properties {
     _Toward ("Glow toward the blast, share of the light", float) = 0.6
     _Clouds ("Cloud undersides, share of the light", float) = 1.6
     _Slab   ("Cloud thickness, blocks", float) = 6.0
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
 }
 
 struct v2f { vec3 world; };

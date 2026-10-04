@@ -7,6 +7,10 @@
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
+Properties {
+    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+}
+
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };
 
 Pass {
@@ -82,7 +86,7 @@ Pass {
         float rim = pow(1.0 - nv, 2.5);
         float scan = 0.6 + 0.4 * sin((i.worldPos.y - t * 0.9) * 110.0);
         float sweep = exp(-pow(fract(i.worldPos.y * 0.35 - t * 0.4) - 0.5, 2.0) * 220.0);
-        float flicker = 0.85 + 0.15 * fx_value_noise(vec3(t * 20.0, 0.0, 0.0));
+        float flicker = 0.85 + 0.15 * fx_value_noise(cg_noise_time(t * 20.0));
         vec3 cyan = vec3(0.25, 0.85, 1.25);
         vec3 color = cyan * (0.04 + rim * 1.3 + lattice * 0.22 + rings * 0.9 + sweep * 1.1)
                 + dots * vec3(0.55, 1.05, 1.45) * 1.25;
