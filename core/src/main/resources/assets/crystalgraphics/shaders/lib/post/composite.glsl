@@ -1,5 +1,5 @@
 // What both forms of the post composite share: noise for dithering onto an 8-bit target, sRGB's exact curve, and the
-// bloom term. Nothing here names cg_*: a shader passes its pixel and frame.
+// copy form's looks (vignette, impact frames). Nothing here names cg_*: a shader passes its pixel, size and frame.
 //
 //     float frame = floor(CG_TIME * 60.0);
 //     vec3 added = post_round8(bloom, gl_FragCoord.xy, frame);   // the blend form: what a blend adds, rounded
@@ -33,4 +33,23 @@ vec3 post_decode_srgb(vec3 c) {
 vec3 post_encode_srgb(vec3 c) {
     c = max(c, 0.0);
     return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+
+// What a vignette leaves of a pixel, 1 at the centre down to 1 - amount in the corners; round whatever the aspect.
+float post_vignette(vec2 uv, vec2 resolution, float amount) {
+    vec2 p = (uv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+    float r = length(p) / length(vec2(0.5 * resolution.x / resolution.y, 0.5));
+    return 1.0 - amount * smoothstep(0.35, 1.0, r);
+}
+
+// An impact frame's look of an encoded colour e: 0 its negative, 1 stark black and white, 2 dark speed lines from
+// focus, a new set each of 24 frames a second.
+vec3 post_impact(vec3 e, float look, vec2 uv, vec2 focus, vec2 resolution, float time) {
+    if (look < 0.5) return 1.0 - clamp(e, 0.0, 1.0);
+    if (look < 1.5) return vec3(step(0.5, dot(clamp(e, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722))));
+    vec2 p = (uv - focus) * vec2(resolution.x / resolution.y, 1.0);
+    float spoke = floor((atan(p.y, p.x) / 6.2831853 + 0.5) * 96.0);
+    float h = fract(sin(spoke * 12.9898 + floor(time * 24.0) * 78.233) * 43758.5453);
+    float line = step(0.7, h) * smoothstep(0.12, 0.5, length(p));
+    return e * (1.0 - line);
 }

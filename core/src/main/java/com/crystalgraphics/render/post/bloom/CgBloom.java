@@ -94,7 +94,7 @@ public final class CgBloom implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return intensity > 0f && post.resources().has(CgFrameKeys.EMISSION);
+        return intensity * post.settings().bloom() > 0f && post.resources().has(CgFrameKeys.EMISSION);
     }
 
     @Override
@@ -103,7 +103,8 @@ public final class CgBloom implements CgPostEffect {
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;
         post.resources().put(CHAIN, glow);
-        post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
+        // A volume scales it: an effect's moment brightening every glow.
+        post.composite().bloom(glow, intensity * post.settings().bloom(), tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
         if (linear) post.composite().linear();
     }
 

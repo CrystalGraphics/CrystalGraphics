@@ -36,6 +36,9 @@ public final class CgGraphicsSettings {
     public static final CgSetting.Number FOV_KICK = FILE.number("comfort", "fov_kick", "Field of view kick",
             "Scales the field-of-view punch of big impacts, on top of Minecraft's FOV Effects.", 1f, 0f, 1f, 0.05f);
 
+    public static final CgSetting.Number FLASHES = FILE.number("comfort", "flashes", "Screen flashes",
+            "Scales full-screen flashes and impact frames; 0 for none, for sensitivity to flashing light.", 1f, 0f, 1f, 0.05f);
+
     private CgGraphicsSettings() {
     }
 }
