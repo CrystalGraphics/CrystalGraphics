@@ -22,6 +22,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Runs a kernel of every shape on this context and checks every buffer and image against values worked out in Java:
@@ -32,12 +33,14 @@ import java.util.List;
  * if (!result.passed()) result.failures().forEach(System.out::println);
  * }</pre>
  *
- * <p>A shipped jar runs it once, at the end of the first frame, with {@code -Dcrystalgraphics.compute.selfTest=true},
- * and logs {@code [crystalgraphics] compute self-test G40: PASS} beside the GPU report; {@code prodSmoke} gathers the
- * line. The harness's {@code compute-tiers} scene runs it at whatever tier it is forced to.</p>
+ * <p>A shipped jar runs it once with {@code -Dcrystalgraphics.compute.selfTest=true}, from the end of the first frame,
+ * and logs {@code [crystalgraphics] compute self-test G40: PASS} a frame or two later, once its reads have arrived
+ * ({@link CgReplayedReads}); {@code prodSmoke} gathers the line. The harness's {@code compute-tiers} scene runs it at
+ * whatever tier it is forced to.</p>
  *
  * <ul>
- *   <li>It writes and reads back its own buffers and images, so it waits on the GPU: a diagnosis, never a frame's work.</li>
+ *   <li>{@link #run()} reads back its own buffers and images at once, so it waits on the GPU: a diagnosis, never a
+ *       frame's work, and refused where the host submits. {@link #runIfAsked()} never waits.</li>
  *   <li>A kernel some tier cannot run must be refused where it is recorded, on every machine; a {@code compute_only}
  *       one below compute too. The test checks both refusals.</li>
  *   <li>The builtins newer than GLSL 3.30 run polyfilled below 4.00 and 4.20, and must give the bits Java works
@@ -56,6 +59,8 @@ public final class CgComputeSelfTest {
     private static final CgFrameBufferFormat RGBA32F = CgFrameBufferFormat.builder("compute_self_test_rgba32f")
             .color(0, CgTextureType.RGBA32F).build();
     private static boolean ran;
+    /** The first run's reads, while they arrive. */
+    private static CgReplayedReads requested;
 
     /**
      * @param tier     the tier the context ran kernels at
@@ -73,23 +78,51 @@ public final class CgComputeSelfTest {
 
     private CgComputeSelfTest() {}
 
-    /** Runs it once per process when {@code -Dcrystalgraphics.compute.selfTest=true}, logging the verdict. Render thread. */
+    /**
+     * With {@code -Dcrystalgraphics.compute.selfTest=true}, once per process: run with every read requested, then run
+     * again once they have arrived, a frame or two later, and log the verdict. No frame waits on the GPU, so it runs
+     * where the host submits too. Render thread, once a frame.
+     */
     public static void runIfAsked() {
-        if (ran || !Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (!Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (requested != null) {
+            if (requested.waiting()) return;
+            CgReplayedReads reads = requested;
+            requested = null;
+            report(() -> run(reads.replay()), reads.failure());
+            return;
+        }
+        if (ran) return;
         ran = true;
+        CgReplayedReads reads = CgReplayedReads.requesting();
         try {
-            Result result = run();
-            if (result.passed()) LOG.info("[crystalgraphics] compute self-test {} ({})", result.verdict(), result.forms().trim());
+            run(reads);
+            requested = reads;
+        } catch (RuntimeException | LinkageError failed) {
+            LOG.error("[crystalgraphics] compute self-test " + CgCapabilities.detect().computeTier() + ": FAIL, threw " + failed, failed);
+        }
+    }
+
+    private static void report(Supplier<Result> run, String lost) {
+        try {
+            Result result = run.get();
+            if (lost != null) LOG.error("[crystalgraphics] compute self-test {}: FAIL, a read never arrived: {}", result.tier(), lost);
+            else if (result.passed()) LOG.info("[crystalgraphics] compute self-test {} ({})", result.verdict(), result.forms().trim());
             else LOG.error("[crystalgraphics] compute self-test {} ({})", result.verdict(), result.forms().trim());
         } catch (RuntimeException | LinkageError failed) {
             LOG.error("[crystalgraphics] compute self-test " + CgCapabilities.detect().computeTier() + ": FAIL, threw " + failed, failed);
         }
     }
 
-    /** Every kernel run and checked on the current context. Render thread; GL state is put back. */
+    /** Every kernel run and checked on the current context, waiting on the GPU. Render thread; GL state is put back. */
     public static Result run() {
+        return run(CgReplayedReads.immediate());
+    }
+
+    /** {@link #run()}, reading through {@code reads}. */
+    public static Result run(CgReplayedReads reads) {
         try (CgGlScope ignored = CgGlState.saveAll()) {
-            return new CgComputeSelfTest.Run().run();
+            return new CgComputeSelfTest.Run(reads).run();
         }
     }
 
@@ -98,6 +131,11 @@ public final class CgComputeSelfTest {
         private final CgCompute kernels = CgCompute.load(PATH);
         private final List<String> failures = new ArrayList<>();
         private final String tier = CgCapabilities.detect().computeTier().name();
+        private final CgReplayedReads reads;
+
+        Run(CgReplayedReads reads) {
+            this.reads = reads;
+        }
 
         Result run() {
             giveBodies();
@@ -187,29 +225,29 @@ public final class CgComputeSelfTest {
                 pass.end();
                 CgImmediate.execute(rec);
 
-                expectWords("FLOATS", read(floats, N * 2), floats(N * 2, w -> {
+                expectWords("FLOATS", reads.words(floats, N * 2), floats(N * 2, w -> {
                     int i = w / 2;
                     if (i % 5 == 0) return w % 2 == 0 ? i : -i;
                     return w % 2 == 0 ? 2 * i : 2 * i - 7;
                 }));
-                expectPairs(read(pairs, N * 8));
-                expectWords("GATHERED", read(gathered, N), floats(N, i -> 3 * ((7 * i) % N) - 7 + 3 * i - 7));
-                expectSpawns(read(spawnCount, 1)[0], read(spawns, SPAWN_CAPACITY * 2));
-                expectWords("BINS", read(bins, 8), words(8, b -> 48));
-                expectWords("MINS", read(mins, 4), floats(4, k -> k - 10));
-                expectWords("MAXS", read(maxs, 4), words(4, k -> 2 * (60 + k)));
-                expectWords("STORED", read(stored, N * 4), words(N * 4, w -> {
+                expectPairs(reads.words(pairs, N * 8));
+                expectWords("GATHERED", reads.words(gathered, N), floats(N, i -> 3 * ((7 * i) % N) - 7 + 3 * i - 7));
+                expectSpawns(reads.words(spawnCount, 1)[0], reads.words(spawns, SPAWN_CAPACITY * 2));
+                expectWords("BINS", reads.words(bins, 8), words(8, b -> 48));
+                expectWords("MINS", reads.words(mins, 4), floats(4, k -> k - 10));
+                expectWords("MAXS", reads.words(maxs, 4), words(4, k -> 2 * (60 + k)));
+                expectWords("STORED", reads.words(stored, N * 4), words(N * 4, w -> {
                     int j = w / 4, c = w % 4;
                     return c == 3 ? 7 : 63 - j + c;
                 }));
-                expectWords("COUNTED", read(counted, COUNTED), words(COUNTED, i -> i < 128 ? i + 100 : 0));
-                expectWords("HALVES", read(halves, 2), new int[] {N / 2, N / 2});
-                expectWords("BIG", read(big, BIG), words(BIG, i -> 3 * i + 1));
-                expectMany(read(manyCount, 1)[0], read(many, MANY));
-                expectWords("DOUBLED", read(doubled, COUNTED), words(COUNTED, i -> i < 128 ? 2 * (i + 100) : 0));
-                expectWords("AFTER", read(after, COUNTED), words(COUNTED, i -> (i < 128 ? 2 * (i + 100) : 0) + 1));
-                if (onlyRuns) expectWords("ONLY", read(only, N), words(N, i -> 5 * i + 1));
-                expectWords("BITS", read(bits, N * BIT_WORDS), bits(tier.equals("V") || tier.equals("G43")));
+                expectWords("COUNTED", reads.words(counted, COUNTED), words(COUNTED, i -> i < 128 ? i + 100 : 0));
+                expectWords("HALVES", reads.words(halves, 2), new int[] {N / 2, N / 2});
+                expectWords("BIG", reads.words(big, BIG), words(BIG, i -> 3 * i + 1));
+                expectMany(reads.words(manyCount, 1)[0], reads.words(many, MANY));
+                expectWords("DOUBLED", reads.words(doubled, COUNTED), words(COUNTED, i -> i < 128 ? 2 * (i + 100) : 0));
+                expectWords("AFTER", reads.words(after, COUNTED), words(COUNTED, i -> (i < 128 ? 2 * (i + 100) : 0) + 1));
+                if (onlyRuns) expectWords("ONLY", reads.words(only, N), words(N, i -> 5 * i + 1));
+                expectWords("BITS", reads.words(bits, N * BIT_WORDS), bits(tier.equals("V") || tier.equals("G43")));
                 expectPicture(picture);
                 expectAccum(accum);
                 List<String> errors = drainErrors();
@@ -406,7 +444,7 @@ public final class CgComputeSelfTest {
         }
 
         private void expectPicture(CgFrameBuffer picture) {
-            ByteBuffer pixels = readPixels(picture, PICTURE, CgGL.GL_UNSIGNED_BYTE, 4);
+            ByteBuffer pixels = reads.pixels(picture.getId(), PICTURE, PICTURE, CgTextureType.RGBA8);
             int wrong = 0;
             String first = null;
             for (int y = 0; y < PICTURE; y++) {
@@ -424,7 +462,7 @@ public final class CgComputeSelfTest {
         }
 
         private void expectAccum(CgFrameBuffer accum) {
-            ByteBuffer pixels = readPixels(accum, ACCUM, CgGL.GL_FLOAT, 16);
+            ByteBuffer pixels = reads.pixels(accum.getId(), ACCUM, ACCUM, CgTextureType.RGBA32F);
             int wrong = 0;
             String first = null;
             for (int y = 0; y < ACCUM; y++) {
@@ -601,17 +639,6 @@ public final class CgComputeSelfTest {
         return buffer;
     }
 
-    private static int[] read(int buffer, int count) {
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, buffer);
-        ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, count * 4L, CgGL.GL_MAP_READ_BIT, null);
-        int[] words = new int[count];
-        mapped.order(ByteOrder.nativeOrder());
-        for (int i = 0; i < count; i++) words[i] = mapped.getInt(i * 4);
-        CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        return words;
-    }
-
     private static CgFrameBuffer image(String name, int size, CgFrameBufferFormat format, float r, float g, float b, float a) {
         CgFrameBuffer fbo = CgFrameBuffer.createOwned("compute_self_test_" + name, size, size, format);
         fbo.bind();
@@ -620,13 +647,5 @@ public final class CgComputeSelfTest {
         CgGL.glClear(CgGL.GL_COLOR_BUFFER_BIT);
         fbo.unbind();
         return fbo;
-    }
-
-    private static ByteBuffer readPixels(CgFrameBuffer fbo, int size, int type, int bytesPerTexel) {
-        ByteBuffer pixels = ByteBuffer.allocateDirect(size * size * bytesPerTexel).order(ByteOrder.nativeOrder());
-        fbo.bind();
-        CgGL.glReadPixels(0, 0, size, size, CgGL.GL_RGBA, type, pixels);
-        fbo.unbind();
-        return pixels;
     }
 }

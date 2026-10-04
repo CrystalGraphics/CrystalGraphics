@@ -11,7 +11,7 @@ is easy to get wrong — is `docs/SHADERS.md` § *Compute*, loaded below.** This
 
 | Package | Holds |
 |---|---|
-| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, one instance per set, holding its checks, form, program and lowered form: `program()`, `prepare()` (the program started ahead of its first dispatch), `glsl()`, `cpu(body)`, `form()`, `runs()`, `check()`, `lowered()`. `CgKernelForm` — how this context runs a kernel, and the every-tier check. `CgDispatchBindings` — what a dispatch below compute binds, in GL names |
+| (root) | `CgCompute` — a file: `load`, `fromSource(key, text)` for generated kernels, `kernel(name)`, `reload`, `releaseAll` (context teardown). `CgKernel` — a kernel and keyword set, one instance per set, holding its checks, form, program and lowered form: `program()`, `prepare()` (the program started ahead of its first dispatch), `glsl()`, `cpu(body)`, `form()`, `runs()`, `check()`, `lowered()`. `CgKernelForm` — how this context runs a kernel, and the every-tier check. `CgDispatchBindings` — what a dispatch below compute binds, in GL names. `CgReplayedReads` — a check's reads without waiting: requested through `CgReadback` on a first run, answered on a second |
 | `source` | What a `.compute` declares, as data, no GL: `CgComputeSource`, `CgKernelDecl` (size, shape, fallback, and what its code reaches), `CgBufferDecl`, `CgImageDecl`, `CgSourcePart` (the code, cut where kernels differ), the vocabularies `CgKernelShape`, `CgBufferAccess`, `CgImageAccess`, `CgImageFormat`, `CgImageDimension`, and the accessors `CgBufferAccessor`/`CgImageAccessor` with the rule for each |
 | `parse` | `CgComputeParser`, GL-free; package-private `TopLevel` (file scope, item by item), `GlslText`, `Std430`, `ConstantInt` |
 | `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits), `CgGlslBuiltins` (each builtin newer than GLSL 3.30, its version and its exact polyfill, or none) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
@@ -141,7 +141,8 @@ buffers. It runs three ways:
 # the harness, forced to each tier, and on the downlevel contexts, which choose their own
 ./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers" -Dcrystalgraphics.compute.tier=G33
 ./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers" -Pharness.downlevel=mac41
-# any installed client, at its first frame: the verdict lands beside the GPU report
+# any installed client, a frame or two after its first: run once with its reads requested, then again with them
+# answered (CgReplayedReads), so it never waits, Minecraft's Vulkan device included
 ./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true
 ```
 

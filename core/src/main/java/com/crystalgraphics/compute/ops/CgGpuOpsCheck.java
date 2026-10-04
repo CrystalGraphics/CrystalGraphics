@@ -4,6 +4,7 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgReplayedReads;
 import com.crystalgraphics.compute.cpu.CgCpuBuffer;
 import com.crystalgraphics.compute.ops.CgGpuOps.Element;
 import com.crystalgraphics.compute.ops.CgGpuOps.Filter;
@@ -30,6 +31,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.function.IntBinaryOperator;
+import java.util.function.Supplier;
 
 /**
  * Runs every {@link CgGpuOps} op on this context, at counts from none to tens of thousands, fixed and read from the
@@ -44,8 +46,10 @@ import java.util.function.IntBinaryOperator;
  *
  * <ul>
  *   <li>With {@code -Dcrystalgraphics.compute.selfTest=true} it runs once beside the compute self-test and logs
- *       {@code [crystalgraphics] gpu ops check G40: PASS}; the harness's {@code gpu-ops} scene runs it at any tier.</li>
- *   <li>It reads its buffers back, so it waits on the GPU: a diagnosis, never a frame's work.</li>
+ *       {@code [crystalgraphics] gpu ops check G40: PASS} once its reads have arrived ({@code CgReplayedReads}), so no
+ *       frame waits; the harness's {@code gpu-ops} scene runs it at any tier.</li>
+ *   <li>{@link #run()} reads its buffers back at once, so it waits on the GPU: a diagnosis, never a frame's work, and
+ *       refused where the host submits.</li>
  *   <li>Every output starts as a sentinel: a word past the count that changed is a failure.</li>
  * </ul>
  */
@@ -60,6 +64,8 @@ public final class CgGpuOpsCheck {
     private static final int[][] IMAGE_SIZES = {{16, 16}, {13, 7}, {1, 9}, {37, 64}};
     private static final float SIGMA = 1.6f, LEVEL_SIGMA = 0.8f;
     private static boolean ran;
+    /** The first run's reads, while they arrive. */
+    private static CgReplayedReads requested;
 
     /**
      * @param tier     the tier the context ran the ops at
@@ -76,21 +82,48 @@ public final class CgGpuOpsCheck {
 
     private CgGpuOpsCheck() {}
 
-    /** Runs it once per process when {@code -Dcrystalgraphics.compute.selfTest=true}, logging the verdict. Render thread. */
+    /**
+     * With {@code -Dcrystalgraphics.compute.selfTest=true}, once per process: run with every read requested, then run
+     * again once they have arrived, and log the verdict, as the compute self-test does. Render thread, once a frame.
+     */
     public static void runIfAsked() {
-        if (ran || !Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (!Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (requested != null) {
+            if (requested.waiting()) return;
+            CgReplayedReads reads = requested;
+            requested = null;
+            report(() -> run(reads.replay()), reads.failure());
+            return;
+        }
+        if (ran) return;
         ran = true;
+        CgReplayedReads reads = CgReplayedReads.requesting();
         try {
-            Result result = run();
-            if (result.passed()) LOG.info("[crystalgraphics] gpu ops check {}", result.verdict());
+            run(reads);
+            requested = reads;
+        } catch (RuntimeException | LinkageError failed) {
+            LOG.error("[crystalgraphics] gpu ops check " + CgCapabilities.detect().computeTier() + ": FAIL, threw " + failed, failed);
+        }
+    }
+
+    private static void report(Supplier<Result> run, String lost) {
+        try {
+            Result result = run.get();
+            if (lost != null) LOG.error("[crystalgraphics] gpu ops check {}: FAIL, a read never arrived: {}", result.tier(), lost);
+            else if (result.passed()) LOG.info("[crystalgraphics] gpu ops check {}", result.verdict());
             else LOG.error("[crystalgraphics] gpu ops check {}", result.verdict());
         } catch (RuntimeException | LinkageError failed) {
             LOG.error("[crystalgraphics] gpu ops check " + CgCapabilities.detect().computeTier() + ": FAIL, threw " + failed, failed);
         }
     }
 
-    /** Every op run and checked on the current context. Render thread; GL state is put back. */
+    /** Every op run and checked on the current context, waiting on the GPU. Render thread; GL state is put back. */
     public static Result run() {
+        return run(CgReplayedReads.immediate());
+    }
+
+    /** {@link #run()}, reading through {@code reads}. */
+    public static Result run(CgReplayedReads reads) {
         try (CgGlScope ignored = CgGlState.saveAll()) {
             List<String> failures = new ArrayList<>();
             List<Case> cases = new ArrayList<>();
@@ -123,14 +156,14 @@ public final class CgGpuOpsCheck {
                 pass.end();
                 CgImmediate.execute(rec);
 
-                for (Case c : cases) c.expect(failures);
-                for (ImageCase c : images) c.expect(failures);
+                for (Case c : cases) c.expect(failures, reads);
+                for (ImageCase c : images) c.expect(failures, reads);
                 int[] r = new int[4], want = new int[DRAWN * 4];
                 for (int e = 0; e < DRAWN; e++) {
                     CgRng.rng4(SEED, e, 3, 1, r);
                     System.arraycopy(r, 0, want, e * 4, 4);
                 }
-                expectWords(failures, "rng", read(drawn, DRAWN * 4), want);
+                expectWords(failures, "rng", reads.words(drawn, DRAWN * 4), want);
                 List<String> errors = drainErrors();
                 if (!errors.isEmpty()) failures.add("GL errors " + errors);
             } finally {
@@ -152,6 +185,8 @@ public final class CgGpuOpsCheck {
         final int gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, gpuLengths, count, fill, iota, copy, args, results,
                 scanA, scanB, scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts, cellKeys,
                 cellValues, bins, expanded;
+        /** What {@link #expect} reads through, while it runs. */
+        CgReplayedReads reads;
 
         Case(String name, int n, int capacity, int countWord) {
             this.name = name;
@@ -238,7 +273,8 @@ public final class CgGpuOpsCheck {
                     imported("expanded", expanded, 2 * outElements), counts, 2);
         }
 
-        void expect(List<String> failures) {
+        void expect(List<String> failures, CgReplayedReads reads) {
+            this.reads = reads;
             IntBinaryOperator sum = Integer::sum, minInt = Math::min,
                     maxUint = (a, b) -> Integer.compareUnsigned(a, b) < 0 ? b : a,
                     maxFloat = (a, b) -> Float.intBitsToFloat(a) < Float.intBitsToFloat(b) ? b : a,
@@ -252,7 +288,7 @@ public final class CgGpuOpsCheck {
             expect(failures, "fill", fill, words(n, e -> 7));
             expect(failures, "iota", iota, words(n, e -> 5 + 3 * e));
             expect(failures, "copy", copy, words(n, e -> uints[e]));
-            expectWords(failures, name + " args", read(args, 8),
+            expectWords(failures, name + " args", reads.words(args, 8),
                     new int[] {SENTINEL, (n + 63) / 64, 1, 1, SENTINEL, SENTINEL, SENTINEL, SENTINEL});
             int[] box = {0x7F800000, 0x7F800000, 0x7F800000, 0xFF800000, 0xFF800000, 0xFF800000};
             for (int e = 0; e < n; e++) {
@@ -261,7 +297,7 @@ public final class CgGpuOpsCheck {
                     box[3 + c] = maxFloat.applyAsInt(box[3 + c], points[4 * e + c]);
                 }
             }
-            expectWords(failures, name + " results", read(results, RESULTS), new int[] {
+            expectWords(failures, name + " results", reads.words(results, RESULTS), new int[] {
                     reduce(uints, sum, 0), reduce(ints, minInt, Integer.MAX_VALUE),
                     reduce(floats, maxFloat, 0xFF800000), reduce(floats, sumFloat, 0),
                     reduce(uints, maxUint, 0), keptCount, keptCount,
@@ -287,11 +323,11 @@ public final class CgGpuOpsCheck {
             int[] binWords = new int[64];
             Arrays.fill(binWords, SENTINEL);
             System.arraycopy(histogram, 0, binWords, 0, BINS);
-            expectWords(failures, name + " histogram", read(bins, 64), binWords);
+            expectWords(failures, name + " histogram", reads.words(bins, 64), binWords);
 
             int[] starts = scan(lengths, n, sum, 0, false);
             int total = n == 0 ? 0 : starts[n - 1] + lengths[n - 1];
-            expectWords(failures, name + " expand total", read(count, 3), new int[] {SENTINEL, countWord, total});
+            expectWords(failures, name + " expand total", reads.words(count, 3), new int[] {SENTINEL, countWord, total});
             int[] pairs = new int[2 * outElements];
             Arrays.fill(pairs, SENTINEL);
             for (int r = 0, j = 0; r < n && j < outElements; r++) {
@@ -300,7 +336,7 @@ public final class CgGpuOpsCheck {
                     pairs[2 * j + 1] = k;
                 }
             }
-            expectWords(failures, name + " expand", read(expanded, 2 * outElements), pairs);
+            expectWords(failures, name + " expand", reads.words(expanded, 2 * outElements), pairs);
         }
 
         /** {@code of}'s first {@code n} words, then sentinels: what a sort may reorder, and what it must not touch. */
@@ -344,7 +380,7 @@ public final class CgGpuOpsCheck {
             int[] full = new int[words];
             Arrays.fill(full, SENTINEL);
             System.arraycopy(want, 0, full, 0, want.length);
-            expectWords(failures, name + " " + op, read(buffer, words), full);
+            expectWords(failures, name + " " + op, reads.words(buffer, words), full);
         }
 
         void delete() {
@@ -368,6 +404,8 @@ public final class CgGpuOpsCheck {
         final double ulp;
         final CgFrameBuffer[] chains = new CgFrameBuffer[Filter.values().length];
         final CgFrameBuffer blurSource, blurTarget, levelBlur;
+        /** What {@link #expect} reads through, while it runs. */
+        CgReplayedReads reads;
 
         ImageCase(CgTextureType type, int w, int h) {
             this.type = type;
@@ -411,7 +449,8 @@ public final class CgGpuOpsCheck {
             CgGpuOps.blur(pass, level, 1, level, 1, LEVEL_SIGMA);
         }
 
-        void expect(List<String> failures) {
+        void expect(List<String> failures, CgReplayedReads reads) {
+            this.reads = reads;
             for (Filter filter : Filter.values()) {
                 CgFrameBuffer chain = chains[filter.ordinal()];
                 float[] above = read(chain, 0);
@@ -498,13 +537,7 @@ public final class CgGpuOpsCheck {
 
         /** Level {@code level} of the colour, as RGBA floats. */
         float[] read(CgFrameBuffer fb, int level) {
-            int n = size(w, level) * size(h, level) * 4;
-            ByteBuffer pixels = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder());
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_2D, fb.getColorTexture(0).getId());
-            CgGL.glGetTexImage(CgGL.GL_TEXTURE_2D, level, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
-            float[] out = new float[n];
-            for (int i = 0; i < n; i++) out[i] = pixels.getFloat(i * 4);
-            return out;
+            return reads.rgba(fb.levelId(level), size(w, level), size(h, level), type);
         }
 
         static int size(int size, int level) {
@@ -598,14 +631,5 @@ public final class CgGpuOpsCheck {
         return buffer;
     }
 
-    private static int[] read(int buffer, int count) {
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, buffer);
-        ByteBuffer mapped = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, count * 4L, CgGL.GL_MAP_READ_BIT, null);
-        int[] words = new int[count];
-        mapped.order(ByteOrder.nativeOrder());
-        for (int i = 0; i < count; i++) words[i] = mapped.getInt(i * 4);
-        CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
-        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-        return words;
-    }
+
 }
