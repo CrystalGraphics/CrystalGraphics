@@ -617,7 +617,7 @@ public final class CgExecutor {
         }
         if (imported(d.args)) CgCpuMirrors.external(b.args());
         CgCpuRunner.dispatch(d.source, runs, d.kernel.keywords(), d.kernel.compute().cpuBody(runs.name()), b, d.values,
-                d.pass.constants, d.kernel.compute().properties());
+                d.pass.constants, d.kernel.compute().properties(), d.samplers);
         advanceHistories(d);
     }
 

@@ -1691,6 +1691,8 @@ com/crystalgraphics/compute/cpu/CgCpuDispatch
   method public property (Ljava/lang/String;)F
   method public property (Ljava/lang/String;I)F
   method public propertyInt (Ljava/lang/String;)I
+  method public texture (Ljava/lang/String;I)Lcom/crystalgraphics/compute/cpu/CgCpuImage;
+  method public textureLevels (Ljava/lang/String;)I
   method public time ()F
   method public x (I)I
   method public y (I)I
@@ -1698,11 +1700,11 @@ com/crystalgraphics/compute/cpu/CgCpuDispatch
 com/crystalgraphics/compute/cpu/CgCpuImage
   access public,final
   extends java/lang/Object
-  method public decl ()Lcom/crystalgraphics/compute/source/CgImageDecl;
   method public depth ()I
   method public height ()I
   method public loadFloat (IIII)F
   method public loadInt (IIII)I
+  method public name ()Ljava/lang/String;
   method public store (IIIFFFF)V
   method public storeInt (IIIIIII)V
   method public width ()I
@@ -1719,7 +1721,7 @@ com/crystalgraphics/compute/cpu/CgCpuMirrors
 com/crystalgraphics/compute/cpu/CgCpuRunner
   access public,final
   extends java/lang/Object
-  method public,static dispatch (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/cpu/CgCpuBody;Lcom/crystalgraphics/compute/CgDispatchBindings;[F[FLcom/crystalgraphics/compute/emit/CgPropertyBlock;)V
+  method public,static dispatch (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/cpu/CgCpuBody;Lcom/crystalgraphics/compute/CgDispatchBindings;[F[FLcom/crystalgraphics/compute/emit/CgPropertyBlock;[Lcom/crystalgraphics/api/texture/CgTexture;)V
   method public,static releaseAll ()V
 com/crystalgraphics/compute/emit/CgGlslBuiltins
   access public,final
@@ -2267,7 +2269,7 @@ com/crystalgraphics/compute/source/CgKernelDecl
   access public,final,record
   extends java/lang/Record
   field public,static,final DEFAULT_SIZE I
-  method public <init> (Ljava/lang/String;IIIILcom/crystalgraphics/compute/source/CgKernelShape;Ljava/lang/String;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;ILjava/util/Set;Z)V
+  method public <init> (Ljava/lang/String;IIIILcom/crystalgraphics/compute/source/CgKernelShape;Ljava/lang/String;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;Ljava/util/Set;ILjava/util/Set;Z)V
   method public accessors ()Ljava/util/Set;
   method public builtins ()Ljava/util/Set;
   method public computeOnly ()Z
@@ -2276,6 +2278,7 @@ com/crystalgraphics/compute/source/CgKernelDecl
   method public functions ()Ljava/util/Set;
   method public groupSize ()I
   method public name ()Ljava/lang/String;
+  method public samplers ()Ljava/util/Set;
   method public shape ()Lcom/crystalgraphics/compute/source/CgKernelShape;
   method public shared ()Ljava/util/Set;
   method public sharedBytes ()I
