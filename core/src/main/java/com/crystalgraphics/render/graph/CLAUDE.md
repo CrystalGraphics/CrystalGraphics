@@ -54,6 +54,7 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 ```
 
 - A pass into level k has the level's viewport, and no depth above level 0; its constants' resolution is the caller's.
+  Above level 0 it reads no copy of its target: `sceneColor` and `sceneDepth(unit)` throw.
 - A level view pins the texture's base and max level when bound (on Vulkan, a view of the one level), so a shader
   reads it at LOD 0 and `textureSize(s, 0)` is the level's. The executor unpins after the pass, and binding the
   texture whole unpins it too.
@@ -189,7 +190,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   (textures) or size class (buffers): two that never live at once share storage.
 - **A compute pass runs on every tier**: each dispatch as its kernel's form (`compute/CLAUDE.md` § *Three forms*),
   chosen when the dispatch is recorded, which is where a kernel that can run nowhere throws. A pass with a dispatch
-  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass.
+  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
+  lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
+  execution ends: ops chained in a frame land only what leaves them.
 - **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
   pass that throws fails its request and the frame goes on.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and

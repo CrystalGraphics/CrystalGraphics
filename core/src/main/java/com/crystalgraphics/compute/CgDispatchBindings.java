@@ -106,6 +106,9 @@ public final class CgDispatchBindings {
 
     // ── Read by the forms ─────────────────────────────────────────────────────
 
+    /** How many buffers the file declares: the indices {@link #buffer} takes. */
+    public int buffers() { return buffer.length; }
+
     /** Buffer {@code index}'s GL name, 0 where none is bound. */
     public int buffer(int index) { return buffer[index]; }
 

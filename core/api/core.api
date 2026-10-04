@@ -1585,6 +1585,7 @@ com/crystalgraphics/compute/CgDispatchBindings
   method public argsOffset ()J
   method public buffer (I)I
   method public buffer (IIJJ)Lcom/crystalgraphics/compute/CgDispatchBindings;
+  method public buffers ()I
   method public bytes (I)J
   method public counter (I)I
   method public counter (IIJ)Lcom/crystalgraphics/compute/CgDispatchBindings;
@@ -1819,6 +1820,7 @@ com/crystalgraphics/compute/lower/CgLoweredKernel
   method public delete ()V
   method public dispatch (Lcom/crystalgraphics/compute/CgDispatchBindings;)V
   method public dispatchBound (Lcom/crystalgraphics/compute/CgDispatchBindings;)V
+  method public dispatchBound (Lcom/crystalgraphics/compute/CgDispatchBindings;Z)V
   method public frame (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
   method public isDeleted ()Z
   method public kernel ()Lcom/crystalgraphics/compute/source/CgKernelDecl;
@@ -1845,8 +1847,13 @@ com/crystalgraphics/compute/lower/CgLoweredResources
   extends java/lang/Object
   method public,static bindOutputs (I)V
   method public,static count ()Lcom/crystalgraphics/compute/lower/CgTexelTarget;
+  method public,static drop (I)V
   method public,static framebuffer ()I
+  method public,static holding ()Z
   method public,static isZero (IJJ)Z
+  method public,static land (I)V
+  method public,static land (Lcom/crystalgraphics/compute/CgDispatchBindings;)V
+  method public,static landAll ()V
   method public,static release (IJ)V
   method public,static release (Lcom/crystalgraphics/compute/lower/CgTexelTarget;)V
   method public,static releaseAll ()V
@@ -1859,7 +1866,8 @@ com/crystalgraphics/compute/lower/CgLoweredTarget
   access public,final,record
   extends java/lang/Record
   field public,static,final GL33 Lcom/crystalgraphics/compute/lower/CgLoweredTarget;
-  method public <init> (Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;IIIIZI)V
+  field public,static,final STAGE_UNITS I
+  method public <init> (Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;IIIIZII)V
   method public bufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   method public drawsGpuCounts ()Z
   method public geometryVertices (I)I
@@ -1868,6 +1876,7 @@ com/crystalgraphics/compute/lower/CgLoweredTarget
   method public maxGeometryVertices ()I
   method public maxTextureBufferSize ()I
   method public maxTextureSize ()I
+  method public stageUnits ()I
   method public storageBlocks ()Z
   method public tierGlsl ()I
   method public,final equals (Ljava/lang/Object;)Z
