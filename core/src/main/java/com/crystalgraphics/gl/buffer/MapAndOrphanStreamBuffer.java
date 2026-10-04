@@ -36,8 +36,6 @@ public class MapAndOrphanStreamBuffer extends CgStreamBuffer {
                 CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_INVALIDATE_BUFFER_BIT, lastMapping);
 
         if (mapped == null) throw new IllegalStateException("glMapBufferRange (orphan) returned null (size=" + sizeBytes + ")");
-        // LWJGL returns the old wrapper for the same address and size, position and all.
-        mapped.clear();
         lastMapping = mapped;
         return mapped;
     }

@@ -75,8 +75,6 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         if (mapped == null) {
             throw new IllegalStateException("glMapBufferRange returned null (offset=" + mappedAt + ", size=" + sizeBytes + ")");
         }
-        // LWJGL returns the old wrapper for the same address and size, position and all.
-        mapped.clear();
         lastMapping = mapped;
         return mapped;
     }
