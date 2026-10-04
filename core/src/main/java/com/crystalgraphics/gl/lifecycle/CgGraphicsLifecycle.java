@@ -15,6 +15,7 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
+import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
@@ -210,6 +211,7 @@ public final class CgGraphicsLifecycle {
                     warmUpDeferredStartupCosts();
                 }
                 CgWorldRenderer.get().install();
+                CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
                 CgWorldProbe.installIfEnabled();
 
@@ -504,6 +506,7 @@ public final class CgGraphicsLifecycle {
         // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
         CgWorldRenderer.get().release();
+        CgPostStack.get().release();
 
         // Step 8b: Shader-graph preview targets.
         //

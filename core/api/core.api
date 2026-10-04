@@ -4327,6 +4327,65 @@ com/crystalgraphics/render/mesh/CgOffsetAllocator
   method public offset (I)I
   method public size ()I
   method public,static fittingSize (I)I
+com/crystalgraphics/render/post/CgPostContext
+  access public,final
+  extends java/lang/Object
+  method public composite ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
+  method public stage ()Lcom/crystalgraphics/render/stage/CgStageFrame;
+  method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+com/crystalgraphics/render/post/CgPostEffect
+  access public,abstract,interface
+  extends java/lang/Object
+  method public order ()I
+  method public,abstract active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public,abstract point ()Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public,abstract record (Lcom/crystalgraphics/render/post/CgPostContext;)V
+com/crystalgraphics/render/post/CgPostPoint
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AFTER_COMPOSITE Lcom/crystalgraphics/render/post/CgPostPoint;
+  field public,static,final AFTER_WORLD Lcom/crystalgraphics/render/post/CgPostPoint;
+  field public,static,final BEFORE_COMPOSITE Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public,static values ()[Lcom/crystalgraphics/render/post/CgPostPoint;
+com/crystalgraphics/render/post/CgPostStack
+  access public,final
+  extends java/lang/Object
+  field public,static,final ORDER I
+  method public add (Lcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
+  method public bloom ()Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public install ()V
+  method public release ()V
+  method public,static get ()Lcom/crystalgraphics/render/post/CgPostStack;
+com/crystalgraphics/render/post/bloom/CgBloom
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/render/post/CgPostEffect
+  method public <init> ()V
+  method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public intensity ()F
+  method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
+com/crystalgraphics/render/post/composite/CgCompositeFeature
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLOOM Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
+  method public keyword ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
+  method public,static values ()[Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
+com/crystalgraphics/render/post/composite/CgPostComposite
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public active (Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;)Z
+  method public begin ()V
+  method public bloom (Lcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
+  method public release ()V
 com/crystalgraphics/render/property/CgEffectTree
   access public,final
   extends java/lang/Object
@@ -4562,10 +4621,9 @@ com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
-  method public bloom (F)V
-  method public bloomScale (F)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public emissionScale (F)V
   method public install ()V
   method public onFrame (Lcom/crystalgraphics/render/world/CgWorldRenderer$FrameListener;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public release ()V
