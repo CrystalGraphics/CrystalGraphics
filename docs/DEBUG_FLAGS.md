@@ -68,7 +68,9 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # to compare with the default blend form; L cycles blend,
                                                      # linear and off in any harness scene with a 3D camera
 -Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
-                                                     # bloom's chain, 0 the glow the composite reads
+                                                     # bloom's chain, 0 the glow the composite reads; =overdraw
+                                                     # transparent fragments per pixel as a heat ramp (blue 1,
+                                                     # green 4, red 16, white 32), CgWorldRenderer.overdraw
 
 -Dcrystalgraphics.world.halfResolution=false        # draws marked halfResolution() at full size, in the transparent
                                                      # pass (H in the harness)

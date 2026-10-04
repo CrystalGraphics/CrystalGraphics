@@ -128,6 +128,8 @@ public final class CgWorldRenderer {
     private static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
+    private static final CgFrameBufferFormat OVERDRAW_FORMAT = CgFrameBufferFormat.builder("cg_world_overdraw")
+            .color(0, CgTextureType.R16F).build();
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
     @FunctionalInterface
@@ -216,6 +218,10 @@ public final class CgWorldRenderer {
     private CgMaterial upsample;
     private CgTexture upsampleBound;
 
+    // The overdraw view: the transparent draws counted again into this target.
+    private boolean overdraw = "overdraw".equals(System.getProperty("crystalgraphics.post.debug"));
+    private CgGraphTexture overdrawTarget;
+
     private boolean installed;
     private boolean irisWarned;
 
@@ -272,6 +278,23 @@ public final class CgWorldRenderer {
 
     public boolean halfResolution() {
         return halfResolution;
+    }
+
+    /**
+     * Whether the transparent pass is counted again, each draw's overdraw variant adding 1 per fragment into an R16F
+     * target published as {@link CgFrameKeys#OVERDRAW}: its own vertex stage, depth test and discard. Off by default,
+     * on under {@code -Dcrystalgraphics.post.debug=overdraw}, which also shows it.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().overdraw(true);   // then read CgFrameKeys.OVERDRAW from a later renderer of the firing
+     * }</pre>
+     */
+    public void overdraw(boolean on) {
+        overdraw = on;
+    }
+
+    public boolean overdraw() {
+        return overdraw;
     }
 
     private float emissionScale() {
@@ -756,7 +779,41 @@ public final class CgWorldRenderer {
                 }
             }
             if (which == TRANSPARENT) recordEmission(stage, recording, view);
+            if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
         }
+    }
+
+    /**
+     * Every transparent draw this stage drew, half-size ones too, again through its overdraw variant into a target of
+     * the stage's size: 1 a fragment, hidden by the stage's depth as its own depth test would hide it.
+     */
+    private void recordOverdraw(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
+            overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
+        }
+        CgRasterPass pass = recording.raster(overdrawTarget, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), null,
+                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (phase[i] == SKIP) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, pipeline.overdraw(), bindingOf(link, recording), i);
+                    continue;
+                }
+                chunks.draw(pipeline.overdraw(), bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                writeInstance(chunks, i);
+            }
+        }
+        pass.add(chunks.end());
+        pass.end();
+        stage.resources().put(CgFrameKeys.OVERDRAW, overdrawTarget);
     }
 
     /**

@@ -23,7 +23,7 @@ CgPostStack     (ORDER 2000)
 | `composite` | `CgPostComposite` (the one pass), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, no copy, adding in the target's encoding, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads `cg_SceneColor`, composites in linear light, triangular dither), chosen each firing from what its inputs ask |
 | `volume` | `CgPostSettings` (looks a volume overrides: bloom scale, flash in stops, vignette, chromatic, impact and its `CgImpact` look, focus), `CgPostVolume` (everywhere, or a radius and blend distance round a point; priority; a weight an effect animates). The stack blends every volume at the camera each firing into `CgPostContext.settings()`, a placed one's focus where it is on screen |
 | `look` | `CgPostLooks`: the built-in effect at `BEFORE_COMPOSITE` turning the blended settings into composite inputs, flash and impact scaled by `CgGraphicsSettings.FLASHES`. Every look but bloom draws in the copy form until dual-source blending lands |
-| `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>`, the emission or a chain level (`CgBloom.CHAIN`) drawn over the frame, last |
+| `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>\|overdraw`, the emission, a chain level (`CgBloom.CHAIN`) or the world renderer's overdraw count (`CgFrameKeys.OVERDRAW`, through a heat ramp) drawn over the frame, last |
 
 Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
 filters in `shaders/lib/post/bloom.glsl`.

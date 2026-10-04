@@ -12,6 +12,12 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<CgGraphTexture> EMISSION = CgFrameKey.of("crystalgraphics:emission", CgGraphTexture.class);
 
+    /**
+     * How many transparent fragments each pixel shaded this firing, R16F: the world renderer's overdraw view, published
+     * only while {@code CgWorldRenderer.overdraw(true)}; {@code -Dcrystalgraphics.post.debug=overdraw} shows it.
+     */
+    public static final CgFrameKey<CgGraphTexture> OVERDRAW = CgFrameKey.of("crystalgraphics:overdraw", CgGraphTexture.class);
+
     private CgFrameKeys() {
     }
 }
