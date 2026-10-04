@@ -19,12 +19,18 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
  * for (...) CgParticleBuffer.put(x, y, z, size,  vx, vy, vz, progress,  seed, spin, heat, opacity,  light);
  * CgParticleBuffer.end();
  * // a draw reading records [base, base + count) passes base and count in its custom data
+ *
+ * // or filled on several threads into an array of the caller's, then uploaded at once
+ * CgParticleBuffer.write(data, i, x, y, z, size,  vx, vy, vz, progress,  seed, spin, heat, opacity,  light);
+ * CgParticleBuffer.upload(data, total);
  * }</pre>
  *
  * <ul>
  *   <li>Write it every frame any particle draws, even when nothing moved: a FRAME buffer read in a frame that did not
  *       write it reads another frame's bytes, silently.</li>
- *   <li>Render thread only; {@link #begin} with the exact number of {@link #put}s that follow.</li>
+ *   <li>Render thread only, but for {@link #write}; {@link #begin} with the exact number of {@link #put}s that follow.
+ *       The class makes its buffer when first touched, so touch it on the render thread first ({@link #RECORD_FLOATS}
+ *       does) before any worker calls {@link #write}.</li>
  *   <li>Positions are whatever space the drawing shader expects; the vfx engine writes them relative to an effect's
  *       origin and passes the origin per draw.</li>
  * </ul>
@@ -44,6 +50,9 @@ public final class CgParticleBuffer {
             .vec4("state")
             .vec4("light")
             .build();
+
+    /** Floats a record takes in {@link #write}'s array. */
+    public static final int RECORD_FLOATS = FORMAT.getFloatCount();
 
     private static final String NAME = "CgParticleBuffer";
 
@@ -86,5 +95,49 @@ public final class CgParticleBuffer {
     /** Uploads this frame's records. */
     public static void end() {
         BUFFER.endWrite();
+    }
+
+    /**
+     * Writes record {@code record} into {@code data}, {@link #RECORD_FLOATS} floats a record: the same record as
+     * {@link #put}, into the caller's own array. Pure, so several threads may fill one array, each its own records.
+     *
+     * <pre>{@code
+     * float[] data = new float[total * CgParticleBuffer.RECORD_FLOATS];
+     * // on any threads, each record once
+     * CgParticleBuffer.write(data, i, x, y, z, size,  vx, vy, vz, progress,  seed, spin, heat, opacity,  light);
+     * // render thread
+     * CgParticleBuffer.upload(data, total);
+     * }</pre>
+     */
+    public static void write(float[] data, int record, float x, float y, float z, float size, float vx, float vy, float vz,
+                             float progress, float seed, float spin, float heat, float opacity, int light) {
+        int at = record * RECORD_FLOATS;
+        data[at + PLACE] = x;
+        data[at + PLACE + 1] = y;
+        data[at + PLACE + 2] = z;
+        data[at + PLACE + 3] = size;
+        data[at + MOTION] = vx;
+        data[at + MOTION + 1] = vy;
+        data[at + MOTION + 2] = vz;
+        data[at + MOTION + 3] = progress;
+        data[at + STATE] = seed;
+        data[at + STATE + 1] = spin;
+        data[at + STATE + 2] = heat;
+        data[at + STATE + 3] = opacity;
+        light(data, record, light);
+    }
+
+    /** Sets record {@code record}'s light in {@code data}: {@code block | sky << 4}, as {@code CgWorldLight.at} answers. */
+    public static void light(float[] data, int record, int light) {
+        int at = record * RECORD_FLOATS + LIGHT;
+        data[at] = light & 0xF;
+        data[at + 1] = light >> 4 & 0xF;
+        data[at + 2] = 0f;
+        data[at + 3] = 0f;
+    }
+
+    /** Uploads the first {@code records} records of {@code data} as this frame's. Render thread; never inside {@link #begin}. */
+    public static void upload(float[] data, int records) {
+        BUFFER.uploadRaw(data, records * RECORD_FLOATS);
     }
 }

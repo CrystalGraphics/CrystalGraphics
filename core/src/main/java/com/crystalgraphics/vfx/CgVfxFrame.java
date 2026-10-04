@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -36,25 +35,42 @@ public final class CgVfxFrame {
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_PARTICLE_MESH = CgTrace.name("vfx.draws.particle-mesh"),
             DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
-            DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons");
+            DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
+            MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
+
+    /**
+     * {@code -Dcrystalgraphics.vfx.skip=haze,body_glow}: layers whose shader path contains any of these draw nothing, to
+     * find what a frame's GPU time is spent on.
+     */
+    private static final String[] SKIP = System.getProperty("crystalgraphics.vfx.skip", "").isEmpty() ? new String[0]
+            : System.getProperty("crystalgraphics.vfx.skip").split(",");
 
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
-    private float alpha;
+    private float alpha, particleAlpha;
 
     CgVfxFrame(CgVfxSystem system) {
         this.system = system;
     }
 
-    void begin(CgWorldRenderer world, float alpha) {
+    void begin(CgWorldRenderer world, float alpha, float particleAlpha) {
         this.world = world;
         this.alpha = alpha;
+        this.particleAlpha = particleAlpha;
     }
 
     /** How far this frame is between the last tick and the next, 0..1: draw positions moved on by this much. */
     public float alpha() {
         return alpha;
+    }
+
+    /**
+     * How far this frame is between a particle's last two steps, 0..1: what {@code CgVfxParticleSet.x(i, alpha)} takes.
+     * Particles step every {@link CgVfxSystem#particleStep()} ticks, so this is not {@link #alpha()}.
+     */
+    public float particleAlpha() {
+        return particleAlpha;
     }
 
     public CgWorldRenderer world() {
@@ -63,7 +79,11 @@ public final class CgVfxFrame {
 
     /** Whether this frame's quality tier is below {@code layer}'s. */
     private boolean skips(CgVfxLayer layer) {
-        return !system.quality().atLeast(layer.from());
+        if (!system.quality().atLeast(layer.from())) return true;
+        for (String token : SKIP) {
+            if (layer.shader().contains(token)) return true;
+        }
+        return false;
     }
 
     /** Puts {@code path} in this frame's path texture and answers its row. */
@@ -74,7 +94,7 @@ public final class CgVfxFrame {
     /** Draws {@code layer} as a tube along {@code path}, at {@code row}, around {@code effect}'s origin. */
     public void tube(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer) {
         if (skips(layer)) return;
-        system.tube().submit(world, layer.isVolume() ? system.sphereMesh() : system.tubeMesh(), system.material(layer), path, row,
+        system.tube().submit(world, layer.isVolume() ? system.volumeMesh() : system.tubeMesh(), system.material(layer), path, row,
                 effect.originX, effect.originY, effect.originZ, layer, effect.values());
     }
 
@@ -133,7 +153,11 @@ public final class CgVfxFrame {
             CgVfxLayer layer = layers.get(k);
             if (!slot.equals(layer.slot()) || skips(layer)) continue;
             switch (emitter.emitter().renderer()) {
-                case MESHES -> particleMeshes(effect, emitter, layer);
+                case MESHES -> {
+                    try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MESHES_ZONE)) {
+                        particleMeshes(effect, emitter, layer);
+                    }
+                }
                 case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
                 case ARCS -> particleDraws(effect, emitter, layer, system.ribbonMesh(), CgVfxRibbons.COUNT,
                         CgVfxRibbons.VERTICES, true);
@@ -145,10 +169,11 @@ public final class CgVfxFrame {
         CgVfxEmitter def = emitter.emitter();
         CgVfxParticleSet p = emitter.particles();
         CgVfxTrace.count(DRAWS_PARTICLE_MESH, p.count());
+        float a = particleAlpha;
         for (int i = 0; i < p.count(); i++) {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
-            mesh(effect, layer, p.x(i, alpha), p.y(i, alpha), p.z(i, alpha), turned, t, p.seed[i], def.opacityAt(t), p.heat[i]);
+            mesh(effect, layer, p.x(i, a), p.y(i, a), p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i]);
         }
     }
 
@@ -168,7 +193,7 @@ public final class CgVfxFrame {
             float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
             float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE, margin = 0f;
             for (int i = start; i < start + n; i++) {
-                float x = p.x(i, alpha), y = p.y(i, alpha), z = p.z(i, alpha);
+                float x = p.x(i, particleAlpha), y = p.y(i, particleAlpha), z = p.z(i, particleAlpha);
                 minX = Math.min(minX, x); maxX = Math.max(maxX, x);
                 minY = Math.min(minY, y); maxY = Math.max(maxY, y);
                 minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
@@ -202,7 +227,7 @@ public final class CgVfxFrame {
                     .custom(1, cx, cy, cz, effect.age);
             color(draw, 2, layer.colorA(), values);
             color(draw, 3, layer.colorB(), values);
-            draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+            draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_BATCH, 1);
         }
     }
@@ -263,7 +288,7 @@ public final class CgVfxFrame {
                 .custom(1, cx, cy, cz, intensity);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
+        draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
         CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
     }
 
@@ -278,7 +303,7 @@ public final class CgVfxFrame {
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        return draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order());
+        return draw.layer(CgVfxSystem.sortLayer(layer)).group(effect.originX, effect.originY, effect.originZ).order(layer.order());
     }
 
     private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {
