@@ -75,6 +75,15 @@ public final class CgComputePass extends CgPass {
         return this;
     }
 
+    /**
+     * Times it on the GPU on its own, under {@code zone}, a name made once with {@code CgGpuTrace.name}. Inside a stage
+     * it splits the stage's own zone, which GPU zones' not nesting allows.
+     */
+    public CgComputePass timed(int zone) {
+        gpuZone = zone;
+        return this;
+    }
+
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
