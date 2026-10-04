@@ -40,6 +40,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
 | `service/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
 | `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |
+| `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device. Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
 | `service/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
 | `service/CgServerPlayers` | Interface + slot | The server's players, server thread: a level's, entity's or player's dimension id, an entity's position, a player's profile id, who has a chunk or an entity loaded, and where the world saves. What core's `CgAudience` composes; `NONE` reaches nobody |
@@ -168,7 +169,7 @@ gl.stats();            // passes, pass breaks, clears folded into load ops, pipe
 | `CgDevice` | Buffers, textures, samplers, SPIR-V modules, pipelines by description, dynamic-rendering passes with load and store ops, one push-descriptor set per draw, frames in flight with release deferred to retirement |
 | `CgTracker` | GL's implicit passes made explicit: a clear before the first draw is the pass's `CLEAR` load op; a copy, blit, readback or texture upload ends the pass and the next draw resumes with `LOAD`; a pipeline per state key; buffer memory renamed when an unretired frame used it |
 | `CgTrackedGLBackend` | GL's objects and selector state over the tracker, one `Tracked*` class per domain in the census's order |
-| `CgGlslCompiler` | `ShadercGlslCompiler` (`runtime/lwjgl/vulkan`) compiles as Minecraft 26.2 does: shaderc on the source as written, then SPIRV-Cross reflection with the binding and location words patched so the stages agree by name |
+| `CgGlslCompiler` | `ShadercGlslCompiler` (`runtime/lwjgl/vulkan`) compiles as Minecraft 26.2 does: shaderc on the source as written, then SPIRV-Cross reflection with the binding and location words patched so the stages agree by name. Given a folder it keeps shaderc's output there by the source's hash, so a second launch runs shaderc on nothing it ran it on before; `CgVulkanDevice` keeps its pipeline cache the same way, one file per driver, written at `close()` |
 
 What is easy to get wrong:
 
@@ -194,6 +195,10 @@ What is easy to get wrong:
   hosted device and GL record it in order (`asyncCompute()` false). On NVIDIA a second queue of the graphics family
   ran 0.3-0.6 ms slower than in order where the compute family saved 0.5 ms (`--mode=async-compute`):
   `-Dcrystalgraphics.vulkan.asyncCompute=graphics` forces it, `false` turns async off.
+- **`compileInBackground()` makes a link return at once**, shaderc running on a worker (`crystalgraphics-shaderc`),
+  as a driver with `KHR_parallel_shader_compile` does: `GL_COMPLETION_STATUS_KHR` says when it is done, and anything
+  else asked of the program waits for it (`shader.spirvWait`) and makes its modules here. Hosts turn it on; tests
+  leave links finished at the call. A relink of the program in use stays synchronous, since draws read it directly.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
   builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
   runs on a device, in both clip conventions.

@@ -27,6 +27,8 @@ import com.crystalgraphics.vulkan.resource.VulkanStaging;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.vma.VmaAllocationCreateInfo;
@@ -71,6 +73,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -83,7 +89,9 @@ import java.util.function.BiConsumer;
 
 import static com.crystalgraphics.vulkan.format.VulkanCheck.check;
 import static org.lwjgl.system.MemoryStack.stackPush;
+import static org.lwjgl.system.MemoryUtil.memAlloc;
 import static org.lwjgl.system.MemoryUtil.memByteBuffer;
+import static org.lwjgl.system.MemoryUtil.memFree;
 import static org.lwjgl.util.vma.Vma.*;
 import static org.lwjgl.vulkan.EXTLineRasterization.VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT;
 import static org.lwjgl.vulkan.KHRPushDescriptor.VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
@@ -107,15 +115,24 @@ import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceProperties2;
  * device.close();                 // before the host closes
  * }</pre>
  *
+ * <p>Given a folder, the device keeps its pipeline cache there across launches, one file per driver:</p>
+ * <pre>{@code
+ * new CgVulkanDevice(host, width, height, CgCacheDirectory.of("vulkan"));   // read here, written at close()
+ * }</pre>
+ *
  * <p>The default framebuffer is an image of the device's own, RGBA8 with depth-stencil, which the host presents;
  * its row 0 is GL's bottom. Owner thread only.</p>
  */
 public final class CgVulkanDevice implements CgDevice, AutoCloseable {
 
+    private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
+
     private final CgVulkanHost host;
     private final VkDevice device;
     private final long vma;
     private final long pipelineCache;
+    /** Where the pipeline cache is kept across launches, or null. */
+    private final Path pipelineCacheFile;
     private final VulkanFormats formats;
     private final CgDeviceInfo info;
     private final float timestampPeriod;
@@ -130,7 +147,13 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     private VulkanBuffer scratch;
     public int barriers;
 
+    /** A device that keeps no pipeline cache across launches. */
     public CgVulkanDevice(CgVulkanHost host, int width, int height) {
+        this(host, width, height, null);
+    }
+
+    /** @param cacheDir where the pipeline cache is read from and written at {@link #close}, or null */
+    public CgVulkanDevice(CgVulkanHost host, int width, int height, Path cacheDir) {
         this.host = host;
         this.device = host.device();
         this.formats = new VulkanFormats(host.physicalDevice());
@@ -143,11 +166,6 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             check(vmaCreateAllocator(ci, pp), "vmaCreateAllocator");
             vma = pp.get(0);
 
-            LongBuffer lp = stack.mallocLong(1);
-            check(vkCreatePipelineCache(device, VkPipelineCacheCreateInfo.calloc(stack).sType$Default(), null, lp),
-                    "vkCreatePipelineCache");
-            pipelineCache = lp.get(0);
-
             VkPhysicalDevicePushDescriptorPropertiesKHR push = VkPhysicalDevicePushDescriptorPropertiesKHR.calloc(stack)
                     .sType$Default();
             VkPhysicalDeviceSubgroupProperties subgroups = VkPhysicalDeviceSubgroupProperties.calloc(stack)
@@ -159,6 +177,18 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             VkPhysicalDeviceProperties props = props2.properties();
             timestampPeriod = props.limits().timestampPeriod();
             info = info(props, subgroups, host);
+
+            pipelineCacheFile = cacheDir == null ? null : cacheDir.resolve("pipelines-" + hex(props.pipelineCacheUUID()) + ".bin");
+            ByteBuffer kept = readPipelineCache(props);
+            VkPipelineCacheCreateInfo cci = VkPipelineCacheCreateInfo.calloc(stack).sType$Default();
+            if (kept != null) cci.pInitialData(kept);
+            LongBuffer lp = stack.mallocLong(1);
+            try {
+                check(vkCreatePipelineCache(device, cci, null, lp), "vkCreatePipelineCache");
+            } finally {
+                if (kept != null) memFree(kept);
+            }
+            pipelineCache = lp.get(0);
         }
         staging = new VulkanStaging(this);
         encoder = new VulkanEncoder(this);
@@ -645,10 +675,64 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     /** Validation errors the host has seen. */
     public int validationErrors() { return host.validationErrors(); }
 
-    /** Waits for the GPU, then destroys everything still alive. Close the host after. */
+    /**
+     * The kept pipeline cache, where its header names this driver: the vendor, the device and the cache UUID, which a
+     * driver changes with every version. Null where there is none, or it is another driver's.
+     */
+    private ByteBuffer readPipelineCache(VkPhysicalDeviceProperties props) {
+        if (pipelineCacheFile == null || !Files.isRegularFile(pipelineCacheFile)) return null;
+        byte[] bytes;
+        try {
+            bytes = Files.readAllBytes(pipelineCacheFile);
+        } catch (IOException e) {
+            LOG.warn("Pipeline cache {} unread: {}", pipelineCacheFile, e.toString());
+            return null;
+        }
+        ByteBuffer data = memAlloc(bytes.length).order(ByteOrder.LITTLE_ENDIAN);
+        data.put(bytes).flip();
+        boolean ours = bytes.length >= 32 && data.getInt(0) >= 32 && data.getInt(4) == VK_PIPELINE_CACHE_HEADER_VERSION_ONE
+                && data.getInt(8) == props.vendorID() && data.getInt(12) == props.deviceID();
+        for (int i = 0; ours && i < VK_UUID_SIZE; i++) ours = data.get(16 + i) == props.pipelineCacheUUID().get(i);
+        if (ours) return data;
+        memFree(data);
+        return null;
+    }
+
+    /** The pipeline cache written to a temporary file and moved over the kept one. */
+    private void writePipelineCache() {
+        try (MemoryStack stack = stackPush()) {
+            PointerBuffer size = stack.mallocPointer(1);
+            check(vkGetPipelineCacheData(device, pipelineCache, size, null), "vkGetPipelineCacheData");
+            if (size.get(0) == 0) return;
+            ByteBuffer data = memAlloc((int) size.get(0));
+            try {
+                check(vkGetPipelineCacheData(device, pipelineCache, size, data), "vkGetPipelineCacheData");
+                byte[] bytes = new byte[(int) size.get(0)];
+                data.duplicate().get(bytes);
+                Path temp = pipelineCacheFile.resolveSibling(pipelineCacheFile.getFileName() + ".tmp");
+                Files.write(temp, bytes);
+                Files.move(temp, pipelineCacheFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                LOG.warn("Pipeline cache {} unwritten: {}", pipelineCacheFile, e.toString());
+            } finally {
+                memFree(data);
+            }
+        }
+    }
+
+    private static String hex(ByteBuffer bytes) {
+        StringBuilder s = new StringBuilder(bytes.remaining() * 2);
+        for (int i = bytes.position(); i < bytes.limit(); i++) {
+            s.append(Character.forDigit(bytes.get(i) >> 4 & 15, 16)).append(Character.forDigit(bytes.get(i) & 15, 16));
+        }
+        return s.toString();
+    }
+
+    /** Waits for the GPU, keeps the pipeline cache where given one, then destroys everything still alive. Close the host after. */
     @Override
     public void close() {
         vkDeviceWaitIdle(device);
+        if (pipelineCacheFile != null) writePipelineCache();
         staging.destroy();
         for (Object o : new ArrayList<>(live)) destroy(o);
         for (VulkanSampler s : samplers.values()) vkDestroySampler(device, s.sampler, null);

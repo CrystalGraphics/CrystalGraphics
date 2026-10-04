@@ -1622,6 +1622,7 @@ com/crystalgraphics/compute/CgKernel
   method public keywords ()Ljava/util/Set;
   method public lowered ()Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
   method public name ()Ljava/lang/String;
+  method public prepare ()Lcom/crystalgraphics/compute/CgKernel;
   method public program ()Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public runs ()Z
   method public toString ()Ljava/lang/String;
@@ -1736,7 +1737,9 @@ com/crystalgraphics/compute/emit/CgGlslBuiltins
 com/crystalgraphics/compute/emit/CgKernelEmitter
   access public,final
   extends java/lang/Object
+  field public,static,final CHECK_BLOCK Ljava/lang/String;
   field public,static,final DISPATCH_UNIFORM Ljava/lang/String;
+  field public,static,final IMAGE_SITES I
   field public,static,final PROPERTY_BLOCK Ljava/lang/String;
   method public,static bitsBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static bufferBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
@@ -1745,13 +1748,17 @@ com/crystalgraphics/compute/emit/CgKernelEmitter
   method public,static counterWord (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static emit (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Ljava/lang/String;
   method public,static properties (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgComputeSource;)V
+  method public,static site (Lcom/crystalgraphics/compute/source/CgBufferDecl;Lcom/crystalgraphics/compute/source/CgBufferAccessor;)I
+  method public,static site (Lcom/crystalgraphics/compute/source/CgImageDecl;Lcom/crystalgraphics/compute/source/CgImageAccessor;)I
 com/crystalgraphics/compute/emit/CgKernelTarget
   access public,final,record
   extends java/lang/Record
+  field public,static,final CHECKED Z
   field public,static,final GL43 Lcom/crystalgraphics/compute/emit/CgKernelTarget;
   field public,static,final NATIVE_SUBGROUPS I
-  method public <init> (ZIZIIIIII)V
+  method public <init> (ZIZIIIIIIZ)V
   method public arb ()Z
+  method public checked ()Z
   method public floatAtomics ()Z
   method public glsl ()I
   method public maxInvocations ()I
@@ -1763,6 +1770,7 @@ com/crystalgraphics/compute/emit/CgKernelTarget
   method public nativeSubgroups ()Z
   method public subgroupOperations ()I
   method public withArb (Z)Lcom/crystalgraphics/compute/emit/CgKernelTarget;
+  method public withChecked (Z)Lcom/crystalgraphics/compute/emit/CgKernelTarget;
   method public withFloatAtomics (Z)Lcom/crystalgraphics/compute/emit/CgKernelTarget;
   method public withGlsl (I)Lcom/crystalgraphics/compute/emit/CgKernelTarget;
   method public withSubgroups (I)Lcom/crystalgraphics/compute/emit/CgKernelTarget;
@@ -2058,6 +2066,12 @@ com/crystalgraphics/compute/parse/CgComputeParser
   method public,static generalOnly (Ljava/lang/String;)Ljava/lang/String;
   method public,static materialBuffers (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/util/List;
   method public,static parse (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgComputeSource;
+com/crystalgraphics/compute/program/CgComputeCheck
+  access public,final
+  extends java/lang/Object
+  method public,static endFrame ()V
+  method public,static release ()V
+  method public,static reported ()Ljava/util/List;
 com/crystalgraphics/compute/program/CgKernelProgram
   access public,final
   extends java/lang/Object
@@ -2084,12 +2098,20 @@ com/crystalgraphics/compute/program/CgKernelProgram
   method public keywords ()Ljava/util/Set;
   method public programId ()I
   method public properties ()Lcom/crystalgraphics/api/shader/CgShaderBindings;
+  method public source ()Lcom/crystalgraphics/compute/source/CgComputeSource;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public use ()Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public,static counterBase (J)J
   method public,static scope ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
+  method public,static submit (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Lcom/crystalgraphics/compute/program/CgKernelProgram$Pending;
+com/crystalgraphics/compute/program/CgKernelProgram$Pending
+  access public,final
+  extends java/lang/Object
+  method public delete ()V
+  method public finish ()Lcom/crystalgraphics/compute/program/CgKernelProgram;
+  method public isDone ()Z
 com/crystalgraphics/compute/source/CgBufferAccess
   access public,final,enum
   extends java/lang/Enum
@@ -2344,7 +2366,8 @@ com/crystalgraphics/compute/source/CgSourcePart$Function
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/compute/source/CgSourcePart
-  method public <init> (Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;I)V
+  method public line ()I
   method public name ()Ljava/lang/String;
   method public text ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
@@ -2372,7 +2395,8 @@ com/crystalgraphics/compute/source/CgSourcePart$Text
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/compute/source/CgSourcePart
-  method public <init> (Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;I)V
+  method public line ()I
   method public text ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -4075,6 +4099,43 @@ com/crystalgraphics/render/graph/CgBufferDesc
   method public,final toString ()Ljava/lang/String;
   method public,static elements (IILcom/crystalgraphics/render/graph/CgBufferUsage;[Lcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgBufferDesc;
   method public,static of (JLcom/crystalgraphics/render/graph/CgBufferUsage;[Lcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgBufferDesc;
+com/crystalgraphics/render/graph/CgBufferInspector
+  access public,final
+  extends java/lang/Object
+  field public,static,final FORGET_AFTER I
+  method public,static read (Lcom/crystalgraphics/render/graph/CgBufferInspector$Site;IILcom/crystalgraphics/render/graph/CgBufferInspector$Sink;)V
+  method public,static sites ()Ljava/util/List;
+  method public,static watch (Z)V
+  method public,static watching ()Z
+com/crystalgraphics/render/graph/CgBufferInspector$Read
+  access public,final
+  extends java/lang/Object
+  method public count ()I
+  method public data ()Ljava/nio/ByteBuffer;
+  method public first ()I
+  method public site ()Lcom/crystalgraphics/render/graph/CgBufferInspector$Site;
+  method public value (ILcom/crystalgraphics/compute/source/CgElementField;)Ljava/lang/String;
+com/crystalgraphics/render/graph/CgBufferInspector$Sink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public failed (Ljava/lang/String;)V
+  method public,abstract accept (Lcom/crystalgraphics/render/graph/CgBufferInspector$Read;)V
+com/crystalgraphics/render/graph/CgBufferInspector$Site
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgBufferDecl;JJJ)V
+  method public buffer ()Ljava/lang/String;
+  method public bytes ()J
+  method public decl ()Lcom/crystalgraphics/compute/source/CgBufferDecl;
+  method public elements ()I
+  method public file ()Ljava/lang/String;
+  method public frame ()J
+  method public kernel ()Ljava/lang/String;
+  method public offset ()J
+  method public pass ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
 com/crystalgraphics/render/graph/CgBufferUsage
   access public,final,enum
   extends java/lang/Enum

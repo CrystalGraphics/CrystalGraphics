@@ -7,6 +7,7 @@ import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Comparator;
@@ -33,10 +34,16 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  * }
  * }</pre>
  *
+ * <p>A host keeps what it compiles across launches, so a second launch runs shaderc on nothing it ran it on before:</p>
+ * <pre>{@code
+ * new ShadercGlslCompiler(CgCacheDirectory.of("spirv"));   // a null folder keeps nothing
+ * }</pre>
+ *
  * <p>Two edits to the source, both checked by the compiler that follows: 26.2's own defines of
  * {@code gl_VertexID}/{@code gl_InstanceID} to their Vulkan names (every draw starts at instance 0, so they agree),
  * and, for the GL-depth vertex stage, {@code main} wrapped to map clip z from GL's range. glslang's relaxed Vulkan
- * rules take loose uniforms into one block per stage. Not thread-safe; one per owner thread.</p>
+ * rules take loose uniforms into one block per stage. Compiles are serialized, so a backend compiling in the
+ * background shares it with its owner thread.</p>
  */
 public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable {
 
@@ -44,18 +51,30 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     private static final Pattern MAIN = Pattern.compile("\\bvoid\\s+main\\s*\\(\\s*(?:void)?\\s*\\)");
     private static final String DEFINES = "#define gl_VertexID gl_VertexIndex\n#define gl_InstanceID gl_InstanceIndex\n";
 
+    /** Every option set below, for the cache's key: a change to them is a new key. */
+    private static final String OPTIONS = "vulkan 1.2, relaxed rules, auto-bound uniforms, auto-mapped locations";
+
     private final long compiler = shaderc_compiler_initialize();
     private final long options = shaderc_compile_options_initialize();
+    private final SpirvCache cache;
 
+    /** A compiler that keeps nothing. */
     public ShadercGlslCompiler() {
+        this(null);
+    }
+
+    /** @param cacheDir where modules are kept across launches, or null for none */
+    public ShadercGlslCompiler(Path cacheDir) {
         shaderc_compile_options_set_target_env(options, shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
         shaderc_compile_options_set_vulkan_rules_relaxed(options, true);
         shaderc_compile_options_set_auto_bind_uniforms(options, true);
         shaderc_compile_options_set_auto_map_locations(options, true);
+        cache = cacheDir == null ? null : new SpirvCache(cacheDir, OPTIONS);
     }
 
     @Override
-    public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations, String label) {
+    public synchronized Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                        String label) {
         String vertex = withDefines(vertexGlsl, label);
         SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
         SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
@@ -130,7 +149,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public ComputeProgram compileCompute(String glsl, String label) {
+    public synchronized ComputeProgram compileCompute(String glsl, String label) {
         SpirvModule m = new SpirvModule(spirv(glsl, shaderc_glsl_compute_shader, label), label);
         int next = 0;
         int loose = has(m.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
@@ -223,6 +242,14 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     private ByteBuffer spirv(String source, int kind, String label) {
+        ByteBuffer kept = cache == null ? null : cache.get(kind, source);
+        if (kept != null) return kept;
+        ByteBuffer words = compile(source, kind, label);
+        if (cache != null) cache.put(kind, source, words);
+        return words;
+    }
+
+    private ByteBuffer compile(String source, int kind, String label) {
         // The source on the native heap: an expanded material outgrows MemoryStack, which the String overload uses.
         ByteBuffer text = memUTF8(source, false);
         long result;

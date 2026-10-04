@@ -38,6 +38,7 @@ final class CgIndirectArgs {
 
     private int buffer;
     private int capacity;
+    private CgKernel kernel;
     private CgDispatchBindings lowered;
     /** Bytes from one command to the next: a command rounded up to the storage offset alignment. */
     private int stride;
@@ -106,8 +107,9 @@ final class CgIndirectArgs {
         return kernel().form().how() != CgKernelForm.How.COMPUTE;
     }
 
-    private static CgKernel kernel() {
-        return CgCompute.load(SOURCE).kernel("DrawArgs");
+    private CgKernel kernel() {
+        if (kernel == null) kernel = CgCompute.load(SOURCE).kernel("DrawArgs");
+        return kernel;
     }
 
     private static void set(CgShaderBindings p, long countOffset, CgIndirect mode, int factor, int[] range, int records,

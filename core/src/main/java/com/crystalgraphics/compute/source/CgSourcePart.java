@@ -6,11 +6,11 @@ package com.crystalgraphics.compute.source;
  */
 public sealed interface CgSourcePart {
 
-    /** Text every kernel carries as written: structs, constants, preprocessor lines. */
-    record Text(String text) implements CgSourcePart {}
+    /** Text every kernel carries as written: structs, constants, preprocessor lines; from the file's {@code line}. */
+    record Text(String text, int line) implements CgSourcePart {}
 
-    /** A function definition at file scope. */
-    record Function(String name, String text) implements CgSourcePart {}
+    /** A function definition at file scope, from the file's {@code line}. */
+    record Function(String name, String text, int line) implements CgSourcePart {}
 
     /** A {@code shared} variable, which only a kernel that reaches it declares. */
     record Shared(String name, String text) implements CgSourcePart {}

@@ -54,6 +54,21 @@ public class CgKernelEmitterTest {
     }
 
     @Test
+    public void checkedTarget_wrapsEachIndexedAccessor_atTheFilesLines() {
+        String plain = emit("Integrate", CgKernelTarget.GL43);
+        String checked = emit("Integrate", CgKernelTarget.GL43.withChecked(true));
+        assertFalse(plain.contains("cg_c_") || plain.contains("#line") || plain.contains("check.glsl"));
+        assertTrue(checked.contains("#include \"crystalgraphics:shaders/env/compute/check.glsl\""));
+        assertTrue(checked.contains("cg_Violation(") && checked.contains(", __LINE__)"));
+
+        String text = CgIO.loadSource(EXAMPLE);
+        int at = text.indexOf("void Integrate(");
+        int line = 1;
+        for (int i = 0; i < at; i++) if (text.charAt(i) == '\n') line++;
+        assertTrue("Integrate's #line is its line in the file", checked.contains("#line " + line + "\nvoid Integrate("));
+    }
+
+    @Test
     public void lowerableShapes_returnPastTheCount_generalDoesNot() {
         assertTrue(emit("Integrate", CgKernelTarget.GL43).contains("if (!CG_IN_RANGE) return;"));
         assertFalse(emit("Reduce", CgKernelTarget.GL43).contains("if (!CG_IN_RANGE) return;"));
@@ -108,9 +123,9 @@ public class CgKernelEmitterTest {
     public void deviceLimits_areChecked() {
         CgComputeSource s = example();
         CgKernelDecl reduce = s.kernel("Reduce");
-        CgKernelTarget small = new CgKernelTarget(false, 0, false, 32768, 128, 1024, 1024, 64, 430);
+        CgKernelTarget small = new CgKernelTarget(false, 0, false, 32768, 128, 1024, 1024, 64, 430, false);
         assertRefused(s, reduce, small, "256 invocations");
-        CgKernelTarget tight = new CgKernelTarget(false, 0, false, 1024, 1024, 1024, 1024, 64, 430);
+        CgKernelTarget tight = new CgKernelTarget(false, 0, false, 1024, 1024, 1024, 1024, 64, 430, false);
         assertRefused(s, reduce, tight, "shared memory");
     }
 

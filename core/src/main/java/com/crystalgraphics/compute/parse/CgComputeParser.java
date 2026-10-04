@@ -560,13 +560,14 @@ public final class CgComputeParser {
     private List<CgSourcePart> parts(List<TopLevel.Item> items) {
         List<CgSourcePart> parts = new ArrayList<>();
         StringBuilder text = new StringBuilder();
-        int cursor = 0;
+        int cursor = 0, textLine = 1;
         for (TopLevel.Item item : items) {
+            if (text.length() == 0) textLine = lineOf(cursor);
             text.append(source, cursor, item.start());
             cursor = item.end();
             String original = source.substring(item.start(), item.end());
             CgSourcePart part = switch (item.kind()) {
-                case FUNCTION -> new CgSourcePart.Function(item.name(), original);
+                case FUNCTION -> new CgSourcePart.Function(item.name(), original, lineOf(item.start()));
                 case SHARED -> new CgSourcePart.Shared(item.name(), original);
                 case BLOCK -> switch (item.name()) {
                     case "Buffers" -> new CgSourcePart.Buffers();
@@ -585,18 +586,26 @@ public final class CgComputeParser {
                 }
             };
             if (part != null) {
-                flush(text, parts);
+                flush(text, textLine, parts);
                 parts.add(part);
             }
         }
+        if (text.length() == 0) textLine = lineOf(cursor);
         text.append(source, cursor, source.length());
-        flush(text, parts);
+        flush(text, textLine, parts);
         return List.copyOf(parts);
     }
 
-    private static void flush(StringBuilder text, List<CgSourcePart> parts) {
-        if (!text.toString().isBlank()) parts.add(new CgSourcePart.Text(text.toString()));
+    private static void flush(StringBuilder text, int line, List<CgSourcePart> parts) {
+        if (!text.toString().isBlank()) parts.add(new CgSourcePart.Text(text.toString(), line));
         text.setLength(0);
+    }
+
+    /** The file's line {@code offset} is on, from 1. */
+    private int lineOf(int offset) {
+        int line = 1;
+        for (int i = 0; i < offset; i++) if (source.charAt(i) == '\n') line++;
+        return line;
     }
 
     // ── Failures ──────────────────────────────────────────────────────────────

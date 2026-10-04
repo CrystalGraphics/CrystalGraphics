@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.lifecycle;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
+import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
@@ -394,6 +395,7 @@ public final class CgGraphicsLifecycle {
 
             CgFontRegistry.get().tickFrame(frameCounter);
             CgSettings.tickFrame();
+            if (initialized) CgComputeCheck.endFrame();   // the frame's checked dispatches, read back
             if (initialized) CgReadback.poll();   // before the listeners, which may read what landed
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
             if (initialized) {

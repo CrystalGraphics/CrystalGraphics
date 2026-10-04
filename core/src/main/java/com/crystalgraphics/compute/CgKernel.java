@@ -17,8 +17,9 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * One kernel of a {@link CgCompute} with a keyword set: a value, cheap to make and to keep. Its program is compiled
- * on the first {@link #program()} and shared by every equal kernel.
+ * One kernel of a {@link CgCompute} with a keyword set. Its file answers the same instance for the same set, which
+ * keeps its checks, its form and its program, so looking it up every frame costs a map read. Its program is compiled
+ * on the first {@link #program()}.
  *
  * <pre>{@code
  * CgKernel blur = CgCompute.load("mymod:shaders/blur.compute").kernel("Blur");
@@ -46,6 +47,9 @@ public final class CgKernel {
     /** The program last answered, while its file has not released it. */
     private volatile CgKernelProgram program;
     private volatile int programGeneration = -1;
+    /** The lowered form last answered, and what it was chosen under, as {@link #program}. */
+    private volatile CgLoweredKernel lowered;
+    private volatile long loweredKey = Long.MIN_VALUE;
     /** The form last chosen, or why there is none, and what it was chosen under. */
     private volatile Choice choice;
     /** What the every-tier check last passed under: the file's generation and the bodies given. */
@@ -58,7 +62,8 @@ public final class CgKernel {
     }
 
     /**
-     * This kernel with exactly {@code keywords} on.
+     * This kernel with exactly {@code keywords} on: the same instance for the same set, so it keeps its checks and its
+     * program, but the set is built each call: a per-frame caller holds the kernel.
      *
      * @throws IllegalArgumentException for a keyword the file does not declare with {@code #pragma cg_feature}
      */
@@ -70,7 +75,8 @@ public final class CgKernel {
                         + compute.source().features());
             }
         }
-        return new CgKernel(compute, name, Collections.unmodifiableSet(set));
+        if (set.isEmpty()) return compute.kernel(name);
+        return compute.shared(new CgKernel(compute, name, Collections.unmodifiableSet(set)));
     }
 
     /** What the file declares about it: size, shape, what it reaches. */
@@ -88,6 +94,26 @@ public final class CgKernel {
         program = held;
         programGeneration = generation;
         return held;
+    }
+
+    /**
+     * Starts this kernel's program for the current context without waiting for it, so its first dispatch need not:
+     * where the driver links on threads of its own ({@code KHR_parallel_shader_compile}) the link runs while frames go
+     * on, and the dispatch that takes it waits only for what is left ({@code compute.compileWait}). A lowered kernel's
+     * passes are built now; a Java body needs nothing. Render thread.
+     *
+     * <pre>{@code
+     * CgKernel simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").prepare();   // at load
+     * }</pre>
+     *
+     * @throws IllegalStateException as {@link #program()} does, for a kernel some tier or this context cannot run
+     */
+    public CgKernel prepare() {
+        check();
+        CgKernelForm f = form();
+        if (f.how() == CgKernelForm.How.COMPUTE) compute.prepare(this);
+        else if (f.how() == CgKernelForm.How.LOWERED) lowered();
+        return this;
     }
 
     /**
@@ -150,8 +176,14 @@ public final class CgKernel {
 
     /** Its lowered form for the current context, built the first time: the kernel, or its fallback. Render thread. */
     public CgLoweredKernel lowered() {
+        Choice c = choice();
+        CgLoweredKernel held = lowered;
+        if (held != null && loweredKey == c.key && !held.isDeleted()) return held;
         CgKernelForm f = form();
-        return compute.lowered(this, f.how() == CgKernelForm.How.LOWERED ? f.runs() : decl());
+        held = compute.lowered(this, f.how() == CgKernelForm.How.LOWERED ? f.runs() : decl());
+        lowered = held;
+        loweredKey = c.key;
+        return held;
     }
 
     /** The GLSL it compiles from on the current context, includes unexpanded: what to read when it misbehaves. */
