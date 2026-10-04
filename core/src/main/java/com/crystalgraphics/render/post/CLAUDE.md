@@ -23,6 +23,7 @@ CgPostStack     (ORDER 2000)
 | `composite` | `CgPostComposite` (the one pass), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, no copy, adding in the target's encoding, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads `cg_SceneColor`, composites in linear light, triangular dither), chosen each firing from what its inputs ask |
 | `volume` | `CgPostSettings` (looks a volume overrides: bloom scale, flash in stops, vignette, chromatic, impact and its `CgImpact` look, focus), `CgPostVolume` (everywhere, or a radius and blend distance round a point; priority; a weight an effect animates). The stack blends every volume at the camera each firing into `CgPostContext.settings()`, a placed one's focus where it is on screen |
 | `look` | `CgPostLooks`: the built-in effect at `BEFORE_COMPOSITE` turning the blended settings into composite inputs, flash and impact scaled by `CgGraphicsSettings.FLASHES`. Every look but bloom draws in the copy form until dual-source blending lands |
+| `distortion` | `CgPostDistortion`: a side input bent by the firing's `CgFrameKeys.DISTORTION` field (`distortion_bend.shader`, GPU zone `post.distortionBend`), each input once a firing; reached through `CgPostContext.distorted` |
 | `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>\|overdraw\|distortion`, the emission, a chain level (`CgBloom.CHAIN`), the world renderer's overdraw count (`CgFrameKeys.OVERDRAW`, through a heat ramp) or its distortion offsets (`CgFrameKeys.DISTORTION`) drawn over the frame, last |
 
 Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
@@ -74,3 +75,5 @@ final class Tint implements CgPostEffect {
 - `order()` sorts effects within a point, ties in the order added. `active` is asked every firing; record nothing
   when inactive, and allocate nothing in either.
 - Read the firing's blackboard (`post.resources()`) and blended looks (`post.settings()`); never hold either.
+- **A side input of the scene (emission, a mask) goes through `post.distorted(texture)`**, or it sits unbent over
+  every haze; the target is bent already.
