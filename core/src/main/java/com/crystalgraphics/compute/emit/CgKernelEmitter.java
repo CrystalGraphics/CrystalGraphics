@@ -57,6 +57,12 @@ public final class CgKernelEmitter {
     /** An append buffer's count, at its own binding point after every buffer's. */
     public static String counterBlock(CgBufferDecl buffer) { return "CgCounter_" + buffer.name(); }
 
+    /**
+     * The word of {@link #counterBlock} an append buffer's count is: the block binds from a storage-aligned offset at
+     * or below the count, wherever in its buffer the count sits.
+     */
+    public static String counterWord(CgBufferDecl buffer) { return "cg_CounterAt_" + buffer.name(); }
+
     public static String emit(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgKernelTarget target) {
         check(source, kernel, keywords, target);
         boolean general = kernel.shape().unrestricted();
@@ -191,7 +197,9 @@ public final class CgKernelEmitter {
                         || uses(kernel, b, CgBufferAccessor.MIN) || uses(kernel, b, CgBufferAccessor.MAX));
             if (floatAtomics) sb.append("layout(std430) buffer ").append(bitsBlock(b)).append(" { uint ").append(a).append("_bits[]; };\n");
             if (b.access() == CgBufferAccess.APPEND) {
-                sb.append("layout(std430) buffer ").append(counterBlock(b)).append(" { uint ").append(a).append("_count; };\n");
+                sb.append("layout(std430) buffer ").append(counterBlock(b)).append(" { uint ").append(a)
+                  .append("_counter[]; };\nuniform int ").append(counterWord(b)).append(";\n#define ").append(a)
+                  .append("_count ").append(a).append("_counter[").append(counterWord(b)).append("]\n");
             }
             for (CgBufferAccessor accessor : CgBufferAccessor.values()) {
                 if (uses(kernel, b, accessor)) accessor(sb, b, accessor, nativeFloatAdd);

@@ -52,7 +52,7 @@ Wired by name after linking, so the source carries no `binding =`:
 | What | Where |
 |---|---|
 | Buffer `i` of `Buffers { }` | storage binding point `i` (`CgBuffer_NAME`; a float atomic's `CgBufferBits_NAME` at the same point) |
-| An append buffer's count | the next point after every buffer, in order (`CgCounter_NAME`): `CgKernelProgram.counter` |
+| An append buffer's count | the next point after every buffer, in order (`CgCounter_NAME`), bound from the storage-aligned offset at or below the count, `cg_CounterAt_NAME` its word there: `CgKernelProgram.counter` |
 | Image `i` of `Images { }` | image unit `i` |
 | A sampler property | texture unit, by its place among the samplers |
 | `Properties` values | `CgKernelBlock` at `CgBindingPoints.MATERIAL_PROPERTIES_UBO` |
