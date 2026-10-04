@@ -737,6 +737,10 @@ final class CgGlRecordingBackend extends CgGLBackend {
     /** Taped as named, so the backend it replays on decides what the barrier is. */
     @Override public void cgBufferBarrier(int buffer, int from, int to) { op(CG_BUFFER_BARRIER); i(buffer); i(from); i(to); }
     @Override public void cgImageBarrier(int texture, int from, int to) { op(CG_IMAGE_BARRIER); i(texture); i(from); i(to); }
+    /** In order, taped as nothing: a replay has no point to wait for, so what they bracket replays where it stands. */
+    @Override public void cgBeginAsync() {}
+    @Override public long cgEndAsync() { return 0L; }
+    @Override public void cgWaitAsync(long point) {}
     @Override public void cgFillBuffer(int buffer, long offset, long size, int value) {
         op(CG_FILL_BUFFER); i(buffer); l(offset); l(size); i(value);
     }

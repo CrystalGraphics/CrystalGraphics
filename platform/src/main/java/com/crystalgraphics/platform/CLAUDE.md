@@ -187,6 +187,13 @@ What is easy to get wrong:
   `finish()` if it is the current one, which a hosted device refuses.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame
   submits it, and a hosted device refuses the wait, since its host submits.
+- **`cgBeginAsync`/`cgEndAsync`/`cgWaitAsync` bracket async compute**: dispatches, barriers and copies between the
+  first two go to the device's compute queue, and a draw, a host section's end or the frame's end inside them throws.
+  `OwnedVulkanHost` takes a compute-only queue family (buffers and images then shared by both, and barriers on it kept
+  to the stages it has), else a second queue of the frame's family, and orders them with two timeline semaphores. A
+  hosted device and GL record it in order (`asyncCompute()` false). On NVIDIA a second queue of the graphics family
+  ran 0.3-0.6 ms slower than in order where the compute family saved 0.5 ms (`--mode=async-compute`):
+  `-Dcrystalgraphics.vulkan.asyncCompute=graphics` forces it, `false` turns async off.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
   builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
   runs on a device, in both clip conventions.

@@ -37,6 +37,7 @@ public final class CgComputePass extends CgPass {
     final float[] constants;
     private final List<CgDispatch> dispatches = new ArrayList<>();
     private boolean again;
+    private boolean async;
     private boolean ended;
 
     CgComputePass(CgRecording recording, String name, float[] constants) {
@@ -80,6 +81,24 @@ public final class CgComputePass extends CgPass {
         return this;
     }
 
+    /**
+     * Runs beside the frame's queue where the device has a compute queue ({@code CgCapabilities.asyncCompute()}): the
+     * steps after it that touch nothing it reads or writes overlap it, and the first that does waits for it. Elsewhere,
+     * and for a pass with a dispatch below compute, it runs in order with the same result.
+     *
+     * <pre>{@code
+     * CgComputePass cull = recording.compute("instances.cull", constants).async();
+     * cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
+     * cull.end();
+     * recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
+     * }</pre>
+     */
+    public CgComputePass async() {
+        requireOpen();
+        async = true;
+        return this;
+    }
+
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
@@ -108,6 +127,10 @@ public final class CgComputePass extends CgPass {
 
     boolean runsAgain() {
         return again;
+    }
+
+    boolean isAsync() {
+        return async;
     }
 
     void requireOpen() {

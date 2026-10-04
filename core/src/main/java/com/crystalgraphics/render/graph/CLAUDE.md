@@ -190,6 +190,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
   lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
   execution ends: ops chained in a frame land only what leaves them.
+- **An `async()` compute pass runs on the device's compute queue** where it has one, and in order elsewhere. The
+  executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
+  to another counts), before a callback, and at the end of the execution (`docs/SHADERS.md` § *Beside the drawing*).
 - **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any
   thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
   once `CgReadback.poll` has run its sink; executing the frame again does not read it again.

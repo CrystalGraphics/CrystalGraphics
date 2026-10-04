@@ -4059,6 +4059,7 @@ com/crystalgraphics/render/graph/CgComputePass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
   method public again ()Lcom/crystalgraphics/render/graph/CgComputePass;
+  method public async ()Lcom/crystalgraphics/render/graph/CgComputePass;
   method public dispatch (Lcom/crystalgraphics/compute/CgKernel;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public dispatch (Lcom/crystalgraphics/compute/CgKernel;III)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public dispatchGroups (Lcom/crystalgraphics/compute/CgKernel;III)Lcom/crystalgraphics/render/graph/CgDispatch;

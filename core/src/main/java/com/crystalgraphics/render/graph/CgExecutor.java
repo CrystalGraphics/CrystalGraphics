@@ -79,6 +79,9 @@ import java.util.function.IntConsumer;
  *       synchronization validation must then report.</li>
  *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
  *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
+ *   <li>An {@code async()} compute pass goes to the device's compute queue, where it has one; the first later step
+ *       touching its storage waits for it, and the execution ends waiting for all of it.
+ *       {@code -Dcrystalgraphics.graph.asyncAll=true} sends every pass that can go.</li>
  * </ul>
  */
 public final class CgExecutor {
@@ -102,6 +105,9 @@ public final class CgExecutor {
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
+    /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
+    private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");    private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
+    private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
      * kernel's later write, which the tracked backend's graphics-to-compute wait already orders; so a process that
@@ -124,6 +130,14 @@ public final class CgExecutor {
     private int startFramebuffer;
     private boolean startNoted, otherBound;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
+    /** This execution's: whether an async pass runs beside the frame's queue. */
+    private boolean asyncCompute;
+    /** Storage async passes touched that the frame's queue has not waited for, each with the point covering it. */
+    private long[] asyncKeys = new long[16], asyncPoints = new long[16];
+    private int asyncCount;
+    private long asyncLatest;
+    private boolean asyncUnwaited;
+    private final long[] keyScratch = new long[2];
 
     private CgExecutor(int depth) {
         ring = CgStreamBuffer.createFrameLocal(CgGL.GL_UNIFORM_BUFFER, 64 * 1024);
@@ -217,6 +231,7 @@ public final class CgExecutor {
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
+        asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another.
         startNoted = frame.readsCurrentDepth || frame.rastersCurrent && frame.rastersOther;
         otherBound = false;
@@ -256,6 +271,7 @@ public final class CgExecutor {
                 }
             }
         } finally {
+            if (asyncUnwaited) waitAsync(asyncLatest);   // nothing after the graph reads what async work has not finished
             if (resolved > 0) {
                 for (CgGraphResource transientResource : frame.transients) {
                     if (isResolved(transientResource)) giveBack(transientResource);
@@ -363,13 +379,16 @@ public final class CgExecutor {
     private void step(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];
         try {
+            boolean async = pass instanceof CgComputePass compute && runsAsync(compute);
+            if (asyncUnwaited && !async) awaitAsync(frame, s);
             if (CgLoweredResources.holding()) landHeld(frame, s);
             if (!(pass instanceof CgComputePass)) barriers(frame, s);
             if (pass instanceof CgRasterPass raster) {
                 raster(frame, raster, frame.rasters[s]);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgComputePass compute) {
-                compute(frame, compute, frame.computes[s]);
+                if (async) computeAsync(frame, s, compute);
+                else compute(frame, compute, frame.computes[s]);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill fill) {
                 int id = bufferStorage(fill.buffer, true);
@@ -472,6 +491,106 @@ public final class CgExecutor {
             }
         }
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+    }
+
+    // ── Async compute ────────────────────────────────────────────────────────
+
+    /** Whether {@code pass} goes beside the frame's queue: asked for, on a device with a compute queue, all compute. */
+    private boolean runsAsync(CgComputePass pass) {
+        if (!asyncCompute || !(pass.isAsync() || ASYNC_ALL)) return false;
+        List<CgDispatch> dispatches = pass.dispatches();
+        for (int d = 0; d < dispatches.size(); d++) {
+            if (dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE) return false;
+        }
+        return true;
+    }
+
+    /** Step {@code s} on the compute queue; the storage it touches is pending until the frame's queue waits for it. */
+    private void computeAsync(CgFrame frame, int s, CgComputePass pass) {
+        CgGL.cgBeginAsync();
+        long point;
+        try {
+            compute(frame, pass, frame.computes[s]);
+        } finally {
+            point = CgGL.cgEndAsync();
+        }
+        CgTrace.add(CgChannels.GL, ASYNC_PASSES, 1);
+        if (point == 0) return;   // the device ran it in order
+        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+            int n = keys(frame.accessView[i]);
+            for (int k = 0; k < n; k++) pend(keyScratch[k], point);
+        }
+        asyncLatest = point;
+        asyncUnwaited = true;
+    }
+
+    /**
+     * The frame's queue waits before step {@code s} for the async work whose storage it touches, under any name the
+     * pool gave it since: everything before a callback, which may touch anything.
+     */
+    private void awaitAsync(CgFrame frame, int s) {
+        long point = 0;
+        if (frame.steps[s] instanceof CgPass.Callback) {
+            point = asyncLatest;
+        } else {
+            for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+                int n = keys(frame.accessView[i]);
+                for (int k = 0; k < n; k++) {
+                    for (int j = 0; j < asyncCount; j++) {
+                        if (asyncKeys[j] == keyScratch[k]) point = Math.max(point, asyncPoints[j]);
+                    }
+                }
+            }
+        }
+        if (point > 0) waitAsync(point);
+    }
+
+    private void waitAsync(long point) {
+        CgGL.cgWaitAsync(point);
+        CgTrace.add(CgChannels.GL, ASYNC_WAITS, 1);
+        int kept = 0;
+        for (int j = 0; j < asyncCount; j++) {
+            if (asyncPoints[j] <= point) continue;
+            asyncKeys[kept] = asyncKeys[j];
+            asyncPoints[kept++] = asyncPoints[j];
+        }
+        asyncCount = kept;
+        asyncUnwaited = point < asyncLatest;
+    }
+
+    private void pend(long key, long point) {
+        for (int j = 0; j < asyncCount; j++) {
+            if (asyncKeys[j] == key) {
+                asyncPoints[j] = point;
+                return;
+            }
+        }
+        if (asyncCount == asyncKeys.length) {
+            asyncKeys = Arrays.copyOf(asyncKeys, asyncCount * 2);
+            asyncPoints = Arrays.copyOf(asyncPoints, asyncCount * 2);
+        }
+        asyncKeys[asyncCount] = key;
+        asyncPoints[asyncCount++] = point;
+    }
+
+    /** The storage {@code view} names now, as {@link CgHazards} keys into {@link #keyScratch}: a history's both versions. */
+    private int keys(CgGraphResource view) {
+        if (view instanceof CgGraphBuffer buffer) {
+            CgGraphBuffer resource = buffer.resource();
+            if (resource.kind() == CgGraphBuffer.Kind.HISTORY) {
+                int[] versions = resource.versions();
+                keyScratch[0] = CgHazards.buffer(versions[0]);
+                keyScratch[1] = CgHazards.buffer(versions[1]);
+                return 2;
+            }
+            keyScratch[0] = CgHazards.buffer(resource.bufferId());
+            return resource.bufferId() == 0 ? 0 : 1;
+        }
+        CgFrameBuffer storage = ((CgGraphTexture) view).framebuffer();
+        CgTexture color = storage == null ? null : storage.getColorTexture(0);
+        if (color == null) return 0;
+        keyScratch[0] = CgHazards.texture(color.getId());
+        return 1;
     }
 
     /** A dispatch below compute (gpu-compute C5): the kernel's lowered passes over what the dispatch bound. */
