@@ -108,12 +108,24 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
   it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
   (`CgWorldAtmosphere`, from `CgHostEnvironment`).
-- **Bloom**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
-  transparent pass that pass is drawn into a smaller target, hidden by the scene's depth, blurred and added over the
-  world. `world.bloom(intensity)` sets the strength (1; 0 for none), `world.bloomScale(scale)` the target's share of
-  the world's size (0.5; 1 for a tighter glow at four times the cost). Off below `CgQuality.MEDIUM`.
+- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
+  transparent pass that pass is drawn into the emission target, hidden by the scene's depth, and published as
+  `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). `world.emissionScale(scale)` is the target's
+  share of the world's size (0.5; 1 for a tighter glow at four times the cost).
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
+
+### The post stack — what runs after the world
+
+`CgPostStack` (`render/post`, its own guide) records on `WORLD_TRANSPARENT` after the world renderer: every active
+`CgPostEffect` at its `CgPostPoint` (`AFTER_WORLD`, `BEFORE_COMPOSITE`, `AFTER_COMPOSITE`), and between the last two
+one composite pass laying the firing's looks over the target. Bloom is its built-in effect.
+
+```java
+CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none. Off below Medium
+CgRenderStage.Registration fx = CgPostStack.get().add(myEffect);    // a mod's effect at its point
+fx.close();
+```
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`), `custom0`–`custom3` 32–47.
