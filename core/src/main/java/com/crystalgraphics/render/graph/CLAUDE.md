@@ -295,9 +295,11 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   26.2's through the queue it leaves unused), and in order elsewhere. On Minecraft's device it may not touch
   Minecraft's own images, which only its graphics queue may use. The
   executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
-  to another counts), before a callback, and at the end of the execution (`docs/SHADERS.md` § *Beside the drawing*).
+  to another counts), in this execution or a later one of the frame, and before a callback. Storage the host may touch
+  (imported, current, requested) is waited for at the end of its execution; the device's frame end waits for the rest.
   The builder runs an async pass and what it depends on as early as the graph allows, and what depends on it as late,
-  so the steps between overlap it; under `asyncAll` that is every compute pass.
+  so the steps between overlap it; under `asyncAll` that is every compute pass. A consumer marks every pass that fits
+  (`docs/SHADERS.md` § *Beside the drawing*).
 - **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any
   thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
   once `CgReadback.poll` has run its sink; executing the frame again does not read it again.
