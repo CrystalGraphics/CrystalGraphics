@@ -1480,7 +1480,8 @@ CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and whic
 - `-Pharness.downlevel=mac41|gl33` runs the harness on Mesa shaped as a real GL 4.1 or 3.3 context, without the
   extensions a forced tier on a desktop driver still has (`gl-debug-harness/AGENTS.md`).
 - `CgComputeSelfTest` ships: one kernel per shape, every result worked out in Java.
-  `-Dcrystalgraphics.compute.selfTest=true` logs its verdict on any client at its first frame, and the harness's
+  `-Dcrystalgraphics.compute.selfTest=true` logs its verdict on any client a frame or two after its first, never
+  waiting on the GPU (Minecraft's Vulkan device included), and the harness's
   `compute-tiers` runs it. `gpu-ops` checks every op against Java; `shader-compile-audit` compiles every shipped
   kernel, and every lowered pass of it, on the driver.
 
