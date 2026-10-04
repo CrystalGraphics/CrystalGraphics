@@ -39,6 +39,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -52,6 +53,7 @@ import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -105,6 +107,10 @@ public final class CgExecutor {
     private static final boolean BARRIERS = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.graph.barriers"));
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
+    private static final int LOWERED_COUNT = CgTrace.name("graph.dispatches.lowered");
+    private static final int CPU_COUNT = CgTrace.name("graph.dispatches.cpu");
+    /** Each compute pass's GPU zone by its name, interned once: a pass is recorded anew each frame. */
+    private static final Map<String, Integer> GPU_ZONES = new HashMap<>();
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
@@ -395,8 +401,18 @@ public final class CgExecutor {
                 raster(frame, raster, frame.rasters[s]);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgComputePass compute) {
-                if (async) computeAsync(frame, s, compute);
-                else compute(frame, compute, frame.computes[s]);
+                if (async) {
+                    computeAsync(frame, s, compute);
+                } else {
+                    // On the detail channel: an enclosing GPU zone is timed around this one, not through it.
+                    boolean gpu = CgTrace.isEnabled(CgChannels.GL_DETAIL) && CgGpuTrace.isMeasuring();
+                    if (gpu) CgGpuTrace.begin(gpuZone(compute.name()));
+                    try {
+                        compute(frame, compute, frame.computes[s]);
+                    } finally {
+                        if (gpu) CgGpuTrace.end();
+                    }
+                }
                 unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill fill) {
                 int id = bufferStorage(fill.buffer, true);
@@ -487,18 +503,34 @@ public final class CgExecutor {
         List<CgDispatch> dispatches = pass.dispatches();
         boolean draws = false;
         for (int d = 0; d < dispatches.size(); d++) draws |= dispatches.get(d).kernel.form().how() != CgKernelForm.How.COMPUTE;
+        int lowered = 0, cpu = 0;
         // A lowered dispatch is draws: what they bind must not reach the passes after, which draw into what is bound.
-        try (CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
+        try (CgTrace.Zone ignored = CgTrace.isEnabled(CgChannels.GL) ? CgTrace.zone(CgChannels.GL, CgTrace.name(pass.name())) : null;
+             CgGlScope scope = draws ? CgLoweredKernel.scope() : null) {
             for (int d = 0; d < dispatches.size(); d++) {
                 CgDispatch dispatch = dispatches.get(d);
                 switch (dispatch.kernel.form().how()) {
                     case COMPUTE -> dispatch(frame, dispatch, packed.bindings[d]);
-                    case LOWERED -> lowered(frame, dispatch, packed.bindings[d]);
-                    case CPU -> cpu(dispatch);
+                    case LOWERED -> {
+                        lowered(frame, dispatch, packed.bindings[d]);
+                        lowered++;
+                    }
+                    case CPU -> {
+                        cpu(dispatch);
+                        cpu++;
+                    }
                 }
             }
         }
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
+        if (lowered > 0) CgTrace.add(CgChannels.GL, LOWERED_COUNT, lowered);
+        if (cpu > 0) CgTrace.add(CgChannels.GL, CPU_COUNT, cpu);
+    }
+
+    private static int gpuZone(String pass) {
+        Integer id = GPU_ZONES.get(pass);
+        if (id == null) GPU_ZONES.put(pass, id = CgGpuTrace.name(pass));
+        return id;
     }
 
     // ── Async compute ────────────────────────────────────────────────────────
