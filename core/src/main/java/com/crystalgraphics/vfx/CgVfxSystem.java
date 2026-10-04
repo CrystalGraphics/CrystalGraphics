@@ -95,6 +95,12 @@ public final class CgVfxSystem {
         simulation = chosen;
     }
 
+    private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
+            WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
+            PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
+            TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
+            EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written");
+
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
     private static final int MAX_TICKS = 12;
@@ -165,16 +171,22 @@ public final class CgVfxSystem {
         int ticks = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim")) {
             while (owed >= TICK && ticks < MAX_TICKS) {
-                air.tick(simulated);
-                for (int i = 0; i < effects.size(); i++) {
-                    CgVfxEffect effect = effects.get(i);
-                    if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+                try (CgTrace.Zone tick = CgTrace.zone(CgVfxTrace.CHANNEL, TICK_ZONE)) {
+                    air.tick(simulated);
+                    for (int i = 0; i < effects.size(); i++) {
+                        CgVfxEffect effect = effects.get(i);
+                        if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+                    }
                 }
                 simulated += TICK;
                 owed -= TICK;
                 ticks++;
             }
         }
+        CgVfxTrace.count(TICKS, ticks);
+        CgTrace.counter(CgVfxTrace.CHANNEL, EFFECTS, effects.size());
+        // A frame that ran every tick it may has fallen behind the clock: the next owes as many again.
+        if (ticks == MAX_TICKS) CgVfxTrace.count(CAPPED, 1);
         if (ticks == MAX_TICKS) owed = Math.min(owed, TICK);
         for (int i = effects.size() - 1; i >= 0; i--) {
             if (effects.get(i).state() == CgVfxEffect.State.DEAD) effects.remove(i);
@@ -213,13 +225,25 @@ public final class CgVfxSystem {
             sphereMesh = CgMeshShapes.sphere(48, 96);
             quadMesh = CgVfxQuads.mesh();
         }
-        warm();
-        frame.begin(world, Math.min(owed / TICK, 1f));
-        paths.begin();
-        for (int i = 0; i < effects.size(); i++) effects.get(i).submit(frame);
-        paths.upload();
-        bindPaths();
-        writeParticles(frame.alpha());
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
+            try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
+                warm();
+            }
+            frame.begin(world, Math.min(owed / TICK, 1f));
+            paths.begin();
+            for (int i = 0; i < effects.size(); i++) {
+                try (CgTrace.Zone effect = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_ZONE)) {
+                    effects.get(i).submit(frame);
+                }
+            }
+            try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
+                paths.upload();
+                bindPaths();
+            }
+            try (CgTrace.Zone write = CgTrace.zone(CgVfxTrace.CHANNEL, PARTICLES_ZONE)) {
+                writeParticles(frame.alpha());
+            }
+        }
     }
 
     /**
@@ -240,6 +264,8 @@ public final class CgVfxSystem {
     /** Every particle drawn this frame into the buffer, once, in the order their bases were handed out. */
     private void writeParticles(float alpha) {
         if (particleRecords > 0) {
+            // CgWorldLight.at runs once per record: the write's time is mostly the light lookups.
+            CgVfxTrace.count(PARTICLES_WRITTEN, particleRecords);
             float ahead = alpha * TICK;
             CgParticleBuffer.begin(particleRecords);
             for (int k = 0; k < particleEmitters.size(); k++) {

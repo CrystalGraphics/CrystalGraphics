@@ -4,9 +4,11 @@ import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -73,6 +75,11 @@ import java.util.List;
 public final class CgEnergyWave extends CgVfxEffect {
 
     public static final CgVfxSchema SCHEMA = new CgVfxSchema();
+
+    /** The trace marker each blast leaves as it starts: where a profile splits a frame's beams from its blasts. */
+    public static final String BLAST_MARKER = "vfx.blast";
+    private static final int STREAM_NS = CgTrace.name("vfx.wave.stream-ns"), GROUND_FILL_NS = CgTrace.name("vfx.wave.ground-fill-ns"),
+            PATH_NS = CgTrace.name("vfx.wave.path-ns"), PATH_RINGS = CgTrace.name("vfx.wave.path-rings");
     /** The slot a layer draws the head in: a sphere at the front, its +z along the body. */
     public static final String SLOT_HEAD = "head";
     /** The charge ball, and after the release the beam's root: a sphere at the muzzle, its +z along the aim. */
@@ -410,8 +417,10 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     @Override
     protected void tick(float dt) {
+        long t = CgVfxTrace.start();
         if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
         stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
+        CgVfxTrace.lap(STREAM_NS, t);
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
         shake();
@@ -423,7 +432,11 @@ public final class CgEnergyWave extends CgVfxEffect {
             playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
         boolean emitted = true;
-        if (blastGround != null) blastGround.fill(CgVfxGround.FILL_PER_TICK);
+        if (blastGround != null) {
+            long fill = CgVfxTrace.start();
+            blastGround.fill(CgVfxGround.FILL_PER_TICK);
+            CgVfxTrace.lap(GROUND_FILL_NS, fill);
+        }
         for (int i = 0; i < blast.size(); i++) {
             tick(blast.get(i), dt);
             emitted &= blast.get(i).finished();
@@ -459,6 +472,7 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
     private void startBlast() {
+        CgTrace.marker(CgVfxTrace.CHANNEL, BLAST_MARKER);
         List<CgVfxEmitter> emitters = look().emitters();
         blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
         for (int i = 0; i < emitters.size(); i++) {
@@ -540,8 +554,11 @@ public final class CgEnergyWave extends CgVfxEffect {
         int needed = (stream.size() + 2) * 3;
         if (points.length < needed) points = new float[needed * 2];
         boolean firing = state() == State.PLAYING && age >= releaseAge;
+        long t = CgVfxTrace.start();
         int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, firing);
         path.build(points, n, get(RING_SPACING));
+        CgVfxTrace.lap(PATH_NS, t);
+        CgVfxTrace.count(PATH_RINGS, path.count());
         if (path.count() < 2) return;
         shape(firing);
         int row = frame.path(path, seed, age);

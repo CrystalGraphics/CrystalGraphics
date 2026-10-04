@@ -46,6 +46,12 @@ public final class CgChannels {
      */
     public static final CgTraceChannel WORLD = CgTrace.channel("crystalgraphics.world");
 
+    /**
+     * The VFX engine: a zone per phase (update, tick, submit, each effect's submit), its per-particle loops as
+     * per-frame time and count counters ({@code com.crystalgraphics.vfx.CgVfxTrace}), and a marker per blast.
+     */
+    public static final CgTraceChannel VFX = CgTrace.channel("crystalgraphics.vfx");
+
     /** Work on background workers. */
     public static final CgTraceChannel ASYNC = CgTrace.channel("crystalgraphics.async");
 
