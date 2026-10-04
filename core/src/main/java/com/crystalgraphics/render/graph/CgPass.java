@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgPipeline;
 
 import javax.annotation.Nullable;
@@ -26,6 +27,9 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     final CgRequest request;
     /** Its GPU zone's name id ({@code CgGpuTrace.name}), or -1 when it is not timed on its own. */
     int gpuZone = -1;
+    /** What its GPU time is charged to, or null. */
+    @Nullable
+    CgGpuBudget budget;
 
     CgPass(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
         this.name = name;
@@ -156,7 +160,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         final long offset, size;
         @Nullable
         final CgGraphTexture texture;
-        final int level, x, y, w, h;
+        final int level, x, y, z, w, h, d;
         private final CgReadback.Sink sink;
 
         Readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
@@ -165,11 +169,12 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             this.offset = offset;
             this.size = size;
             this.texture = null;
-            this.level = this.x = this.y = this.w = this.h = 0;
+            this.level = this.x = this.y = this.z = this.w = this.h = this.d = 0;
             this.sink = sink;
         }
 
-        Readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink, CgRequest request) {
+        Readback(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, CgReadback.Sink sink,
+                 CgRequest request) {
             super("readback " + texture.name() + " level " + level, null, request);
             this.buffer = null;
             this.offset = this.size = 0;
@@ -177,8 +182,10 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             this.level = level;
             this.x = x;
             this.y = y;
+            this.z = z;
             this.w = w;
             this.h = h;
+            this.d = d;
             this.sink = sink;
         }
 

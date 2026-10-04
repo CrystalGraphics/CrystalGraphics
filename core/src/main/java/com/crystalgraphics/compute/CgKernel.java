@@ -27,7 +27,8 @@ import java.util.TreeSet;
  * wide.program().use().image("OUT", target, 0).dispatch(width, height, 1);
  * }</pre>
  *
- * <p>Where no GPU tier can run it, or the CPU tier is forced, a Java body runs instead:</p>
+ * <p>Where the CPU tier is forced, for debugging and tests, a Java body runs instead. No player's tier runs one, so a
+ * shipped kernel has none:</p>
  * <pre>{@code
  * CgKernel simulate = particles.kernel("Simulate").cpu(d -> { ... });   // every keyword set shares it
  * CgKernelForm form = simulate.form();                                  // COMPUTE, LOWERED or CPU, on this context
@@ -36,7 +37,7 @@ import java.util.TreeSet;
  * <p>Every tier a player may have is asked of a kernel the first time it is recorded or its program is made, on any
  * machine ({@link #check}). A kernel meant for compute alone is declared {@code #pragma compute_only} and asked first:</p>
  * <pre>{@code
- * if (sort.runs()) recording.compute(pass -> pass.dispatch(sort, ...));   // false below compute, unless it has a body
+ * if (sort.runs()) recording.compute(pass -> pass.dispatch(sort, ...));   // false below compute
  * }</pre>
  */
 public final class CgKernel {
@@ -52,7 +53,7 @@ public final class CgKernel {
     private volatile long loweredKey = Long.MIN_VALUE;
     /** The form last chosen, or why there is none, and what it was chosen under. */
     private volatile Choice choice;
-    /** What the every-tier check last passed under: the file's generation and the bodies given. */
+    /** The file generation the every-tier check last passed under. */
     private volatile long checkedKey = Long.MIN_VALUE;
 
     CgKernel(CgCompute compute, String name, Set<String> keywords) {
@@ -117,8 +118,9 @@ public final class CgKernel {
     }
 
     /**
-     * Gives this kernel a Java body, which the CPU tier runs: where no GPU tier can run the kernel, or where the CPU
-     * tier is forced. Every keyword set of the kernel shares it; {@link CgCpuDispatch#keyword} tells them apart.
+     * Gives this kernel a Java body, which the CPU tier runs when it is forced: for debugging and tests. No player's
+     * tier runs one, so a shipped kernel needs none. Every keyword set of the kernel shares it;
+     * {@link CgCpuDispatch#keyword} tells them apart.
      */
     public CgKernel cpu(CgCpuBody body) {
         compute.cpu(name, body);
@@ -155,20 +157,20 @@ public final class CgKernel {
 
     /**
      * Asks every tier a player's context may be at whether it can run this kernel, as {@link CgKernelForm#check}
-     * does, once per file generation and body given. Any thread.
+     * does, once per file generation. Any thread.
      *
      * @throws IllegalStateException naming the tier and what stops it
      */
     public void check() {
-        long key = ((long) compute.generation() << 32) ^ compute.bodiesGiven();
+        long key = compute.generation();
         if (checkedKey == key) return;
-        CgKernelForm.check(compute.source(), decl(), n -> compute.cpuBody(n) != null);
+        CgKernelForm.check(compute.source(), decl());
         checkedKey = key;
     }
 
     /**
-     * Whether the current context runs this kernel: false for a {@code compute_only} kernel below compute with no
-     * Java body, which a feature built on it asks before it is offered. Render thread, or once capabilities are known.
+     * Whether the current context runs this kernel: false for a {@code compute_only} kernel below compute (and on the
+     * forced CPU tier, without a Java body), which a feature built on it asks before it is offered. Render thread, or once capabilities are known.
      */
     public boolean runs() {
         return choice().refusal == null;

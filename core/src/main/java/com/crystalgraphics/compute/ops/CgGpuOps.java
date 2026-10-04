@@ -8,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -22,9 +23,11 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -80,6 +83,20 @@ public final class CgGpuOps {
      */
     public enum Filter { AVERAGE, MIN, MAX }
 
+    /** Where {@link #readRows} delivers: the count as the GPU wrote it, and the rows. */
+    @FunctionalInterface
+    public interface Rows {
+
+        /**
+         * {@code count} as written, which may pass the capacity, and {@code min(count, capacity)} rows: {@code rows}'
+         * limit is their bytes. Native order; valid only during the call.
+         */
+        void accept(int count, ByteBuffer rows);
+
+        /** They will never arrive: the context was torn down, a read failed, or {@link #accept} threw. */
+        default void failed(String reason) {}
+    }
+
     /** The colour formats the image ops take. */
     public static final List<CgTextureType> IMAGE_TYPES =
             List.of(CgTextureType.RGBA8, CgTextureType.RGBA16F, CgTextureType.R16F, CgTextureType.R32F);
@@ -113,6 +130,7 @@ public final class CgGpuOps {
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
     private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
     private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
+    private static final String EXPAND_PATH = "crystalgraphics:shaders/env/compute/ops/expand.compute";
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     /** An object record's bytes: what each instance and each kept record of a cull is. */
@@ -234,6 +252,40 @@ public final class CgGpuOps {
                 .bind("SRC", flags).bind("PREFIX", places).bind("DST", outCount).set("_At", word);
     }
 
+    /**
+     * Rows expanded into elements: row r owns the next word r of {@code lengths} elements of {@code out}, and each
+     * learns its row and its index in that row, a {@code uvec2}. How many elements that makes lands at {@code word} of
+     * {@code total}. A kernel claiming k slots per source writes k, expands, and a map fills slot i of source s.
+     *
+     * <pre>{@code
+     * // Each emitter spawns lengths[e] sparks this frame; spark j learns its emitter and which of its spawns it is.
+     * CgGpuOps.expand(pass, lengths, CgGpuCount.at(counts, 0, EMITTERS), spawns, counts, 1);
+     * CgGpuCount spawned = CgGpuCount.at(counts, 1, MAX_SPAWNS);
+     * pass.dispatch(spawn, MAX_SPAWNS).bind("SPAWNS", spawns).bind("COUNT", counts).set("_CountAt", 1);
+     * // spawn.compute: uvec2 s = SPAWNS(CG_ELEMENT);   s.x the emitter, s.y its spawn index
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code out} holds {@code out.size() / 8} elements and none past them is written, but {@code total} counts
+     *       every one: read it as {@code CgGpuCount.at(total, word, out.size() / 8)}, which clamps.</li>
+     *   <li>{@code total} may be the rows' count's own buffer, at another word.</li>
+     * </ul>
+     */
+    public static void expand(CgComputePass pass, CgGraphBuffer lengths, CgGpuCount rows, CgGraphBuffer out,
+                              CgGraphBuffer total, int word) {
+        distinct(lengths, out);
+        distinct(lengths, total);
+        distinct(out, total);
+        CgGraphBuffer starts = words(pass, "ops.expand.starts", rows.capacity());
+        scan(pass, Scan.EXCLUSIVE, Fold.SUM, Element.UINT, lengths, rows, starts);
+        counted(pass.dispatch(Files.expand().kernel("ExpandTotal"), 1), rows, lengths)
+                .bind("LENGTHS", lengths).bind("STARTS", starts).bind("TOTAL", total).set("_TotalAt", word);
+        int elements = (int) Math.min(Integer.MAX_VALUE, out.size() / 8);
+        if (elements == 0) return;
+        counted(pass.dispatch(Files.expand().kernel("Expand"), elements), rows, starts).bind("STARTS", starts)
+                .bind("TOTAL", total).bind("OUT", out).set("_TotalAt", word).set("_Elements", elements);
+    }
+
     /** Level by level into scratch, then the last level's fold at {@code word}. Level 0 reads a word of each record. */
     private static void reduceInto(CgComputePass pass, CgGpuCount count, Fold fold, Element element,
                                    CgGraphBuffer values, int stride, int offset, CgGraphBuffer result, int word) {
@@ -352,8 +404,25 @@ public final class CgGpuOps {
      */
     public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, CgGpuCount count,
                             CgGraphBuffer out, CgGraphBuffer counts, int word) {
+        cull(pass, cull, instances, 0, count, out, counts, word);
+    }
+
+    /**
+     * {@link #cull(CgComputePass, CgCull, CgGraphBuffer, CgGpuCount, CgGraphBuffer, CgGraphBuffer, int)} of the records
+     * of {@code instances} from record {@code first}: several sets sharing one buffer, each its own range.
+     *
+     * <pre>{@code
+     * CgGpuOps.cull(pass, cull, pool, firstOfThisSlot, CgGpuCount.of(slotSize), visible, counts, 0);
+     * }</pre>
+     */
+    public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
+                            CgGraphBuffer out, CgGraphBuffer counts, int word) {
         distinct(instances, out);
         int capacity = count.capacity(), levels = cull.levels();
+        if (first < 0 || (long) (first + capacity) * RECORD_BYTES > instances.size()) {
+            throw new IllegalArgumentException("records " + first + " to " + (first + capacity) + " of " + instances
+                    + ", which holds " + instances.size() / RECORD_BYTES);
+        }
         long region = (long) cullFirst(1, capacity) * RECORD_BYTES;
         if (out.size() < levels * region) {
             throw new IllegalArgumentException(out + " holds " + out.size() + " bytes; a cull of " + capacity
@@ -366,7 +435,7 @@ public final class CgGpuOps {
         for (int l = 0; l < levels; l++) {
             CgDispatch dispatch = counted(pass.dispatch(kernel, capacity), count, instances)
                     .bind("INSTANCES", instances).bind("OUT", out, l * region, region)
-                    .counter("OUT", counts, (word + l) * 4L).set("_Level", l);
+                    .counter("OUT", counts, (word + l) * 4L).set("_Level", l).set("_First", first);
             cull.apply(dispatch);
         }
     }
@@ -603,6 +672,85 @@ public final class CgGpuOps {
         return k;
     }
 
+    // ── Rows to the CPU ──────────────────────────────────────────────────────
+
+    /**
+     * The rows of {@code buffer} a count says were written, read back with the count: an event stream a kernel appends
+     * to, on the CPU a few frames later and never a stall. {@code sink} gets the count as the GPU wrote it and its rows
+     * of {@code stride} bytes from {@code offset}, at most the capacity. Recorded after what writes them.
+     *
+     * <pre>{@code
+     * // Each landing a kernel appended: x, y, z and a speed, 16 bytes
+     * CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDINGS), (count, rows) -> {
+     *     for (int at = 0; at < rows.limit(); at += 16) dust(rows.getFloat(at), rows.getFloat(at + 4), rows.getFloat(at + 8));
+     *     if (Integer.compareUnsigned(count, MAX_LANDINGS) > 0) dropped += count - MAX_LANDINGS;
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>It moves the capacity's rows whatever the count, since a copy's size is fixed when it is recorded: size the
+     *       capacity to the stream.</li>
+     *   <li>Both buffers need {@code COPY}. A fixed count reads that many rows and delivers it as the count.</li>
+     *   <li>The request answered is the rows'; it is done once the sink has run.</li>
+     * </ul>
+     */
+    public static CgRequest readRows(CgRecording recording, CgGraphBuffer buffer, long offset, int stride,
+                                     CgGpuCount count, Rows sink) {
+        int capacity = count.capacity();
+        if (stride <= 0 || capacity == 0) {
+            throw new IllegalArgumentException(capacity + " rows of " + stride + " bytes of " + buffer);
+        }
+        RowsReadback rows = new RowsReadback(sink, stride, capacity);
+        if (count.onGpu()) recording.readback(count.buffer(), count.word() * 4L, 4, rows.count);
+        return recording.readback(buffer, offset, (long) capacity * stride, rows);
+    }
+
+    /**
+     * A count's readback, then its rows': the graph keeps the creation order of passes nothing orders otherwise, and
+     * {@link CgReadback} delivers oldest first, so the count has arrived when the rows do.
+     */
+    static final class RowsReadback implements CgReadback.Sink {
+        private final Rows sink;
+        private final int stride, capacity;
+        private int written;
+        @Nullable private String lost;
+
+        final CgReadback.Sink count = new CgReadback.Sink() {
+            @Override
+            public void accept(ByteBuffer data) {
+                written = data.getInt(0);
+            }
+
+            @Override
+            public void failed(String reason) {
+                lost = reason;
+            }
+        };
+
+        RowsReadback(Rows sink, int stride, int capacity) {
+            this.sink = sink;
+            this.stride = stride;
+            this.capacity = capacity;
+            this.written = capacity;
+        }
+
+        @Override
+        public void accept(ByteBuffer data) {
+            if (lost != null) {
+                sink.failed("its count never arrived: " + lost);
+                return;
+            }
+            int rows = Integer.compareUnsigned(written, capacity) < 0 ? written : capacity;
+            data.limit(rows * stride);
+            sink.accept(written, data);
+        }
+
+        @Override
+        public void failed(String reason) {
+            sink.failed(lost != null ? "its count never arrived: " + lost : reason);
+        }
+    }
+
     // ── Counts, scratch, kernels ─────────────────────────────────────────────
 
     /**
@@ -661,7 +809,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded with its Java bodies the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram, image, cull;
+        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -705,6 +853,15 @@ public final class CgGpuOps {
             synchronized (Files.class) {
                 if (cull == null) cull = CgGpuOpsBodies.cull(CgCompute.load(CULL_PATH));
                 return cull;
+            }
+        }
+
+        static CgCompute expand() {
+            CgCompute f = expand;
+            if (f != null) return f;
+            synchronized (Files.class) {
+                if (expand == null) expand = CgGpuOpsBodies.expand(CgCompute.load(EXPAND_PATH));
+                return expand;
             }
         }
 

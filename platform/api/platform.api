@@ -3231,14 +3231,21 @@ com/crystalgraphics/trace/CgGpuTrace
   access public,final
   extends java/lang/Object
   field public,static,final GPU Lcom/crystalgraphics/trace/CgTraceChannel;
+  field public,static,final NO_BUDGET I
   field public,static,final PREFIX Ljava/lang/String;
   method public,static begin (I)V
+  method public,static begin (II)V
   method public,static begin (Ljava/lang/String;)V
+  method public,static budgetFrame ()J
+  method public,static budgetNanos (I)J
+  method public,static budgetSlot ()I
+  method public,static budgetThrough (I)J
   method public,static collect ()V
   method public,static dispose ()V
   method public,static end ()V
   method public,static isMeasuring ()Z
   method public,static name (Ljava/lang/String;)I
+  method public,static nextBudgetFrame ()V
   method public,static probe ()Lcom/crystalgraphics/trace/CgGpuTrace$Support;
   method public,static resetTotals ()V
   method public,static support ()Lcom/crystalgraphics/trace/CgGpuTrace$Support;

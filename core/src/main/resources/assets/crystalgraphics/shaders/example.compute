@@ -21,8 +21,8 @@
 //     general  anything compute does: shared memory, barrier(), subgroups       compute only
 //
 // The compiler refuses a kernel that reaches past its shape, naming what it reached. Every tier a player's context
-// may be at is asked of a kernel the first time it is recorded, on any machine: a general kernel needs a fallback or
-// a Java body below compute, unless it says it is for compute alone.
+// may be at is asked of a kernel the first time it is recorded, on any machine: a general kernel needs a fallback
+// below compute, unless it says it is for compute alone.
 #pragma kernel Integrate map
 #pragma kernel Spawn 64 append
 #pragma kernel Histogram 128 scatter

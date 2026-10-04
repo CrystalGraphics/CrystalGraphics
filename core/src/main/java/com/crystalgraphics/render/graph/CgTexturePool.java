@@ -23,8 +23,13 @@ final class CgTexturePool {
         ArrayDeque<Entry> bucket = free.get(desc);
         Entry entry = bucket == null ? null : bucket.pollLast();
         if (entry != null) return entry.framebuffer;
-        return CgFrameBuffer.createOwned("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++,
-                desc.width(), desc.height(), desc.format(), desc.levels());
+        return create("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++, desc);
+    }
+
+    /** Storage for {@code desc}: a framebuffer, or a volume's 3D texture. */
+    static CgFrameBuffer create(String name, CgTextureDesc desc) {
+        return desc.isVolume() ? CgFrameBuffer.createVolume(name, desc.width(), desc.height(), desc.depth(), desc.format())
+                : CgFrameBuffer.createOwned(name, desc.width(), desc.height(), desc.format(), desc.levels());
     }
 
     void release(CgTextureDesc desc, CgFrameBuffer framebuffer) {

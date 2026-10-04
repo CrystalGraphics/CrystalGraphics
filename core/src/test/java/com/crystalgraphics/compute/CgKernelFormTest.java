@@ -84,17 +84,18 @@ public class CgKernelFormTest {
     }
 
     @Test
-    public void belowCompute_aKernelThatCannotLower_runsItsCpuBody() {
-        CgKernelForm f = form("Alone", ComputeTier.G40, "Alone");
-        assertEquals(How.CPU, f.how());
-        assertEquals("Alone", f.runs().name());
+    public void belowCompute_aJavaBodyIsNeverAPlayersForm() {
+        for (ComputeTier tier : new ComputeTier[]{ComputeTier.G40, ComputeTier.G33}) {
+            String why = refusal("Alone", tier, "Alone");
+            assertTrue(why, why.contains("compute_only") && !why.contains("kernel.cpu"));
+        }
     }
 
     @Test
-    public void belowCompute_withNoFallbackAndNoBody_throwsNamingTheConstruct() {
+    public void belowCompute_withNoFallback_throwsNamingTheConstruct() {
         String why = refusal("Alone", ComputeTier.G40);
         assertTrue(why, why.contains("Alone") && why.contains("G40") && why.contains("shared memory (partial)"));
-        assertTrue(why, why.contains("kernel.cpu"));
+        assertTrue(why, why.contains("#pragma fallback") && why.contains("compute_only"));
     }
 
     @Test
@@ -107,9 +108,9 @@ public class CgKernelFormTest {
         assertTrue(why, why.contains("Step") && why.contains("kernel.cpu"));
     }
 
-    private static String checkRefusal(String kernel, String... bodies) {
+    private static String checkRefusal(String kernel) {
         try {
-            CgKernelForm.check(SOURCE, SOURCE.kernel(kernel), Set.of(bodies)::contains);
+            CgKernelForm.check(SOURCE, SOURCE.kernel(kernel));
         } catch (IllegalStateException e) {
             return e.getMessage();
         }
@@ -121,7 +122,6 @@ public class CgKernelFormTest {
         String why = checkRefusal("Alone");
         assertNotNull("a general kernel with no fallback and no body passed", why);
         assertTrue(why, why.contains("tier G40") && why.contains("shared memory (partial)") && why.contains("compute_only"));
-        assertNull(checkRefusal("Alone", "Alone"));
         assertNull(checkRefusal("Reduce"));
     }
 
@@ -133,7 +133,9 @@ public class CgKernelFormTest {
             String why = refusal("Only", tier);
             assertTrue(why, why.contains("compute_only") && why.contains("kernel.runs()"));
         }
-        assertEquals(How.CPU, form("Only", ComputeTier.G33, "Only").how());
+        String why = refusal("Only", ComputeTier.G33, "Only");
+        assertTrue(why, why.contains("compute_only"));
+        assertEquals(How.CPU, form("Only", ComputeTier.CPU, "Only").how());
     }
 
     @Test

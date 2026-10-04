@@ -11,6 +11,7 @@ thread. The root holds what every recorder shares; each sub-package is one layer
 |------|------|
 | `CgImmediate` | "Draw this now" through the same recording and executor: chunks into the bound framebuffer, built and executed at once. `CgImmediate.constants()` is what a renderer's immediate `flush` draws under |
 | `CgFrameClock` | The frame's time, advanced once per host frame; every pass's `cg_Time` |
+| `CgGpuBudget` | A consumer's GPU milliseconds a frame and the scale that holds its passes inside them: passes charged with `timed(budget)` are timed through `CgGpuTrace`'s budget slots whatever the trace, and `tickFrame` steps each scale |
 | `CgViewFrustum` | AABB and sphere tests against a view-projection: the world renderer culls by it, the text culler too |
 | `draw/` | Pipelines, binding snapshots, instance kinds, chunks, pass constants, the batcher — what a recorded draw is made of. Its own guide |
 | `graph/` | Recordings, the frame graph, the frame builder and the executor. Its own guide |
