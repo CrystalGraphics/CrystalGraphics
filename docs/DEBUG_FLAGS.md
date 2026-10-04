@@ -64,6 +64,11 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 -Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
                                                      # bloom's chain, 0 the glow the composite reads
 
+# VFX (vfx/CLAUDE.md)
+-Dcrystalgraphics.vfx.sim=gpu                        # cpu|gpu: where effects' particles simulate, cpu by default; V
+                                                     # switches it in any harness scene with a 3D camera. gpu is not
+                                                     # built yet and runs cpu, logged once
+
 # Compute tiers (compute/CLAUDE.md § Three forms)
 -Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
                                                      # context has what it needs; refused, naming it, where not

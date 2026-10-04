@@ -23,6 +23,9 @@ import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -54,6 +57,43 @@ import java.util.List;
  * </ul>
  */
 public final class CgVfxSystem {
+
+    /**
+     * Where every system's particles are simulated and prepared for drawing: today's Java path, or the GPU's.
+     * {@code -Dcrystalgraphics.vfx.sim=cpu|gpu} picks it at launch; {@link #simulation(Simulation)} switches it live.
+     *
+     * <pre>{@code
+     * CgVfxSystem.simulation(CgVfxSystem.Simulation.GPU);   // every system, from the next update
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@link #GPU} is not built yet (plan {@code vfx-gpu} X1): chosen, every system still runs {@link #CPU},
+     *       {@link #built()} says so, and the first update logs it once.</li>
+     * </ul>
+     */
+    public enum Simulation {
+        CPU, GPU;
+
+        /** Whether this path exists; one that does not runs {@link #CPU}. */
+        public boolean built() {
+            return this == CPU;
+        }
+    }
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    private static Simulation simulation =
+            "gpu".equalsIgnoreCase(System.getProperty("crystalgraphics.vfx.sim")) ? Simulation.GPU : Simulation.CPU;
+    private static boolean unbuiltLogged;
+
+    /** The simulation chosen for every system: what a HUD shows, built or not. */
+    public static Simulation simulation() {
+        return simulation;
+    }
+
+    /** Chooses where every system simulates, from its next update. */
+    public static void simulation(Simulation chosen) {
+        simulation = chosen;
+    }
 
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
@@ -112,6 +152,10 @@ public final class CgVfxSystem {
     public void update(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
+        if (!simulation.built() && !unbuiltLogged) {
+            unbuiltLogged = true;
+            LOGGER.warn("[vfx] the {} simulation is not built yet; effects run on the CPU", simulation);
+        }
         if (Double.isNaN(clock)) {
             clock = seconds;
             return;
