@@ -325,6 +325,7 @@ public final class CgFrameBuilder {
 
     private void pack(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
         batcher.reset(pass.order);
+        boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS);   // only then may a group split a batch
         int refs = 0;
         List<CgDrawChunk> chunks = pass.chunkList();
         CgSpatialTree tree = pass.recording.spatial();
@@ -347,7 +348,8 @@ public final class CgFrameBuilder {
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
                 batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
                         chunk.rangeFirst(d), chunk.rangeCount(d),
-                        chunk.indirectCount(d) != null || chunk.objects(d) != null, domain, scissor,
+                        chunk.indirectCount(d) != null || chunk.objects(d) != null, groups ? chunk.gpuGroup(d) : -1,
+                        domain, scissor,
                         domainBounds[0], domainBounds[1], domainBounds[2], domainBounds[3], chunk.sortKey(d), refs);
                 refs++;
             }
@@ -369,6 +371,7 @@ public final class CgFrameBuilder {
             packed.rangeFirst[b] = batcher.batchRangeFirst(b);
             packed.rangeCount[b] = batcher.batchRangeCount(b);
             packed.scissor[b] = batcher.batchScissor(b);
+            packed.group[b] = batcher.batchGroup(b);
             packed.first[b] = frame.instanceFloats[ki] / floats;
             for (int i = batcher.batchStart(b); i < batcher.batchEnd(b); i++) {
                 CgDrawChunk chunk = refChunk[batcher.ref(i)];

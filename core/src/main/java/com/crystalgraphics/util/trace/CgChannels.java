@@ -38,7 +38,7 @@ public final class CgChannels {
     public static final CgTraceChannel GL_DETAIL = CgTrace.detailChannel("crystalgraphics.gl.detail");
 
     /**
-     * A timed raster pass's GPU time by material, as counters {@code gpu:<zone>.<material>}: a timestamp wherever the
+     * A timed raster pass's GPU time by material, as counters {@code gpu:<zone>/<material>}: a timestamp wherever the
      * material changes, so only its full name switches it on. Needs the {@code gpu} channel too.
      */
     public static final CgTraceChannel GPU_GROUPS = CgTrace.detailChannel("crystalgraphics.gpu.groups");

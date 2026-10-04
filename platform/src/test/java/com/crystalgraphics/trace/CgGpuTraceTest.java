@@ -177,8 +177,8 @@ public class CgGpuTraceTest {
         assertEquals(3, gl.countOf("glQueryTimestamp"));
         assertEquals(10 * MS, frame(0).gpuNanos());
         Map<String, Long> counters = counters(0);
-        assertEquals(Long.valueOf(4 * MS), counters.get("gpu:world.opaque"));
-        assertEquals(Long.valueOf(6 * MS), counters.get("gpu:world.glass"));
+        assertEquals(Long.valueOf(4 * MS), counters.get("gpu:world/opaque"));
+        assertEquals(Long.valueOf(6 * MS), counters.get("gpu:world/glass"));
     }
 
     @Test
@@ -195,7 +195,7 @@ public class CgGpuTraceTest {
         CgTrace.frameBegin();
 
         assertEquals(2, gl.countOf("glQueryTimestamp"));
-        assertEquals(Long.valueOf(2 * MS), counters(0).get("gpu:pass.a"));
+        assertEquals(Long.valueOf(2 * MS), counters(0).get("gpu:pass/a"));
     }
 
     @Test

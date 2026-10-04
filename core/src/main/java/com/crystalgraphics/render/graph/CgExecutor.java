@@ -113,6 +113,7 @@ public final class CgExecutor {
     private static final Map<String, Integer> GPU_ZONES = new HashMap<>();
     /** By pipeline id, its GPU group's label plus one: its material's path. */
     private static int[] groupLabels = new int[64];
+    private static final int DEPTH_FROM_GROUP = CgGpuTrace.label("(depth copied in)");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
@@ -974,9 +975,12 @@ public final class CgExecutor {
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS) && CgGpuTrace.isMeasuring();
         int slot = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
-            if (pass.depthFrom() != null) copyDepthFrom(pass);
+            if (pass.depthFrom() != null) {
+                if (groups) CgGpuTrace.mark(DEPTH_FROM_GROUP);
+                copyDepthFrom(pass);
+            }
             for (int b = 0; b < packed.count; b++) {
-                if (groups) CgGpuTrace.mark(groupLabel(packed.pipeline[b]));   // before its target copy, which it pays for
+                if (groups) CgGpuTrace.mark(packed.group[b] >= 0 ? packed.group[b] : groupLabel(packed.pipeline[b]));   // before its target copy, which it pays for
                 int command = packed.counts[b] != null ? slot : -1;
                 int end;
                 if (command >= 0) {
@@ -1101,7 +1105,8 @@ public final class CgExecutor {
     private static boolean joinable(CgFrame.Raster packed, int b, int k) {
         return packed.counts[k] == null && packed.objects[k] == null && packed.copyBefore[k] == 0
                 && packed.pipeline[k] == packed.pipeline[b]
-                && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b];
+                && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b]
+                && packed.group[k] == packed.group[b];
     }
 
     /**
@@ -1113,6 +1118,7 @@ public final class CgExecutor {
         return packed.counts[k] != null && !sharesRecord(packed, k) && packed.copyBefore[k] == 0
                 && packed.pipeline[k] == packed.pipeline[b] && packed.binding[k] == packed.binding[b]
                 && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
+                && packed.group[k] == packed.group[b]
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 

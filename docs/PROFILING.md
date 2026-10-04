@@ -87,7 +87,7 @@ CgTrace.add(CH, "drawcalls", 1);                                            // a
 | **Marker** | `CgTrace.marker(ch, name[, detail])` | an instant: a resize, a reload, a compile — with an attribution in `detail` |
 | **Span** | `long s = CgTrace.spanBegin(ch, name); ...; CgTrace.spanEnd(s)`, `spanDone(ch, name, t)` | a chain that crosses frames or happens outside one; nests per thread |
 | **GPU zone** | `CgGpuTrace.begin(name); ...; CgGpuTrace.end()` | GPU time, GL thread only; lands in the frame 1–4 frames later as `gpuNanos` and a `gpu:<name>` counter |
-| **GPU group** | `CgGpuTrace.mark(label)` inside a GPU zone, `markEnd()` to stop | a zone's time split by label without pausing it: `gpu:<zone>.<label>` counters, which `gpuNanos` leaves out |
+| **GPU group** | `CgGpuTrace.mark(label)` inside a GPU zone, `markEnd()` to stop; a draw's `gpuGroup(label)` (world renderer, chunk builder) | a zone's time split by label without pausing it: `gpu:<zone>/<label>` counters, which `gpuNanos` leaves out. The report's GPU GROUPS section lists each zone's groups by cost. A run is completion to completion, so a zone's first run takes in work still in flight from before it |
 | **Wait** | `static final int SYNC = CgTrace.waitName("frame.sync")`, then an ordinary zone | a zone that is waiting, not working — a sleep holding the rate, a fence, a swap. Reports list it under WAITS and leave it out of every cost table |
 | **Frame** | host only: `CgTrace.frameBegin()` / `frameEnd()` | the boundary. A frame closes at the NEXT `frameBegin`; `frameEnd` is the CPU mark |
 
@@ -114,7 +114,7 @@ channels that register later — except a **detail channel**, which only its ful
 | `crystalgraphics.async` | background workers | varies |
 | `crystalgraphics.misc` | everything else; the harness's own frame phases | light |
 | `gpu` | `CgGpuTrace` timer queries | one per GPU zone |
-| `crystalgraphics.gpu.groups` | **detail** — a timed raster pass split by material, `gpu:<zone>.<shader path>`: a timestamp wherever the material changes. Needs `gpu` too. `--mode=gpu-groups` is its gate | one per material change |
+| `crystalgraphics.gpu.groups` | **detail** — a timed raster pass split by material, `gpu:<zone>/<shader path>`: a timestamp wherever the material changes. Needs `gpu` too. `--mode=gpu-groups` is its gate | one per material change |
 | `images` | a small picture of the frame every 30 frames (`CgFrameImages`) | one readback per 30 frames |
 | `trace`, `trace.*` | the engine's own events; a viewer's own work | — |
 

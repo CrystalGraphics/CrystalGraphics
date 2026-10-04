@@ -168,6 +168,8 @@ public final class CgWorldRenderer {
     private float[] emissions = new float[64];
     /** Per draw: whether it asked to be drawn at half the target's size. */
     private boolean[] halves = new boolean[64];
+    /** Per draw: the GPU group it is charged to, null for its material's. */
+    private String[] gpuGroups = new String[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
@@ -325,6 +327,7 @@ public final class CgWorldRenderer {
         private float blockLight, skyLight;
         private float emission;
         private boolean half;
+        private String gpuGroup;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -348,6 +351,20 @@ public final class CgWorldRenderer {
             blockLight = Float.NaN;
             emission = 1f;
             half = false;
+            gpuGroup = null;
+            return this;
+        }
+
+        /**
+         * Charges its GPU time to {@code label} under {@code crystalgraphics.gpu.groups}, in place of its material's
+         * path: for a consumer whose draws share materials but not purpose.
+         *
+         * <pre>{@code
+         * world.draw(tube, beam).at(x, y, z).gpuGroup("vfx.beam.core").submit();
+         * }</pre>
+         */
+        public Draw gpuGroup(String label) {
+            gpuGroup = label;
             return this;
         }
 
@@ -592,6 +609,7 @@ public final class CgWorldRenderer {
         }
         emissions[count] = d.emission;
         halves[count] = d.half;
+        gpuGroups[count] = d.gpuGroup;
         queues[count] = d.queue;
         orders[count] = d.order;
         layers[count] = d.layer;
@@ -640,6 +658,7 @@ public final class CgWorldRenderer {
         lights = Arrays.copyOf(lights, n * 2);
         emissions = Arrays.copyOf(emissions, n);
         halves = Arrays.copyOf(halves, n);
+        gpuGroups = Arrays.copyOf(gpuGroups, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         layers = Arrays.copyOf(layers, n);
@@ -784,6 +803,7 @@ public final class CgWorldRenderer {
                     continue;
                 }
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                group(chunks, i);
                 writeInstance(chunks, i);
             }
         }
@@ -821,6 +841,7 @@ public final class CgWorldRenderer {
                     continue;
                 }
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                group(chunks, i);
                 writeInstance(chunks, i);
             }
         }
@@ -1009,6 +1030,7 @@ public final class CgWorldRenderer {
                     continue;
                 }
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                group(chunks, i);
                 if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
                 writeInstance(chunks, i);
             }
@@ -1067,11 +1089,16 @@ public final class CgWorldRenderer {
         culledCounts[i] = cullLevels[k];
     }
 
+    private void group(CgChunkBuilder chunks, int i) {
+        if (gpuGroups[i] != null && CgTrace.isEnabled(CgChannels.GPU_GROUPS)) chunks.gpuGroup(gpuGroups[i]);
+    }
+
     /** Set {@code i}'s levels, each an indirect draw of the records its cull kept at that level this stage. */
     private void drawSet(CgChunkBuilder chunks, CgPipeline pipeline, int binding, int i) {
         int capacity = setCounts[i].capacity(), levels = lods[i] != null ? lods[i].levelCount() : 1;
         for (int l = 0; l < levels; l++) {
             chunks.draw(pipeline, binding, lods[i] != null ? lods[i].level(l) : meshes[i]).sortKey(keys[i]);
+            group(chunks, i);
             if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
             if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
             chunks.objects(culled[i], CgGpuOps.cullFirst(l, capacity), capacity)
