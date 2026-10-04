@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlCensus;
@@ -45,9 +46,23 @@ import java.util.Map;
  * CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
  * }</pre>
  *
+ * <p>A stage may fire more than once in a host frame: 1.7.10's anaglyph draws the world once per eye, and a portal
+ * mod once per portal. A renderer that advances state, a simulation stepping its particles, records on the first
+ * firing only, and every later firing and stage reads what it wrote:</p>
+ * <pre>{@code
+ * CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
+ *     CgComputePass step = frame.recording().compute("sparks.step");
+ *     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);   // a history buffer
+ *     step.end();
+ * });
+ * CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> cullAndSort(frame));   // per view
+ * }</pre>
+ *
  * <ul>
  *   <li>An id is {@code namespace:path}, defined once; a second {@link #define} of it throws. Its path names the
  *       stage's trace zone and GPU timer.</li>
+ *   <li>What a once-per-frame renderer writes is read by later firings, so it lives past the firing: a persistent or
+ *       history buffer, never a transient or the blackboard.</li>
  *   <li>Renderers record in ascending order, ties in the order they registered. Any thread may register.</li>
  *   <li>{@link #fire} on the render thread only, from the host's own frame: it opens the host section itself, starts
  *       the engine if nothing has, and does nothing after the engine is torn down.</li>
@@ -70,7 +85,21 @@ public final class CgRenderStage {
         void close();
     }
 
-    private record Entry(int order, long sequence, CgStageRenderer renderer) {}
+    /** A renderer and where it records; {@code lastFrame} is the host frame a once-per-frame one last recorded in. */
+    private static final class Entry {
+        final int order;
+        final long sequence;
+        final CgStageRenderer renderer;
+        final boolean oncePerFrame;
+        long lastFrame = -1;
+
+        Entry(int order, long sequence, CgStageRenderer renderer, boolean oncePerFrame) {
+            this.order = order;
+            this.sequence = sequence;
+            this.renderer = renderer;
+            this.oncePerFrame = oncePerFrame;
+        }
+    }
 
     private final String id;
     private final String path;
@@ -131,12 +160,25 @@ public final class CgRenderStage {
 
     /** Registers {@code renderer}, recording after every lower {@code order} and after this order's earlier ones. */
     public Registration register(int order, CgStageRenderer renderer) {
+        return add(order, renderer, false);
+    }
+
+    /**
+     * Registers {@code renderer} to record on this stage's first firing of each host frame only, ordered as
+     * {@link #register(int, CgStageRenderer)} orders: a simulation, which a second firing of the frame must not step
+     * again. Work that depends on the view (culling, sorting by depth) registers per firing instead.
+     */
+    public Registration registerOncePerFrame(int order, CgStageRenderer renderer) {
+        return add(order, renderer, true);
+    }
+
+    private Registration add(int order, CgStageRenderer renderer, boolean oncePerFrame) {
         Entry entry;
         synchronized (this) {
-            entry = new Entry(order, sequence++, renderer);
+            entry = new Entry(order, sequence++, renderer, oncePerFrame);
             List<Entry> next = new ArrayList<>(renderers);
             next.add(entry);
-            next.sort(Comparator.comparingInt(Entry::order).thenComparingLong(Entry::sequence));
+            next.sort(Comparator.comparingInt((Entry e) -> e.order).thenComparingLong(e -> e.sequence));
             renderers = List.copyOf(next);
         }
         return () -> {
@@ -179,18 +221,28 @@ public final class CgRenderStage {
         try {
             // The engine starts on the first stage a host fires if the host never announced its context.
             CgGraphicsLifecycle.ensureContext(host.width(), host.height());
-            List<Entry> current = renderers;
-            if (current.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
+            if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
             CgGpuTrace.begin(gpuName);
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, path)) {
                 frame.begin(host);
-                for (Entry entry : current) entry.renderer().render(frame);
+                record(CgFrameRing.frame());
                 frame.execute();
             } finally {
                 CgGpuTrace.end();
             }
         } finally {
             CgGL.toHost();
+        }
+    }
+
+    /** Lets every renderer due in host frame {@code hostFrame} record into the stage's frame, in order. */
+    void record(long hostFrame) {
+        for (Entry entry : renderers) {
+            if (entry.oncePerFrame) {
+                if (entry.lastFrame == hostFrame) continue;
+                entry.lastFrame = hostFrame;
+            }
+            entry.renderer.render(frame);
         }
     }
 

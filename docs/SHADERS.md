@@ -683,11 +683,11 @@ void Step() {
 CgKernel step = CgCompute.load("mymod:shaders/sparks.compute").kernel("Step");   // parsed once; any thread
 CgGraphBuffer sparks = CgGraphBuffer.history("sparks", CgBufferDesc.elements(CAPACITY, 32, CgBufferUsage.STORAGE));
 CgGraphBuffer alive = CgGraphBuffer.transientBuffer("sparks.alive", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
-CgGraphBuffer live = CgGraphBuffer.transientBuffer("sparks.live", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
+CgGraphBuffer live = CgGraphBuffer.persistent("sparks.live", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
 CgGraphBuffer count = CgGraphBuffer.persistent("sparks.count", CgBufferDesc.of(16, CgBufferUsage.STORAGE));
 
-// Recorded into the opaque stage's frame ahead of the world renderer, whose draws read the count.
-CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
+// Stepped once a frame, in the opaque stage's first firing, ahead of the world renderer, whose draws read the list.
+CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
     CgComputePass pass = frame.recording().compute("sparks.step");
     pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks).bind("ALIVE", alive).set("_Step", dt);
     CgGpuOps.compact(pass, alive, null, CgGpuCount.of(CAPACITY), live, count, 0);   // live indices, and how many
@@ -705,8 +705,11 @@ world.draw(CgMesh.quads(CAPACITY), sparkMaterial)
   first).
 - **A history buffer is the simulation's state**: `IN` reads the newest version and `OUT` writes the next, so one
   buffer is both without a race. `sparks.previous()` is the version before.
-- **The count is persistent** because the draw may execute in another stage's frame (a transparent material draws in
-  `WORLD_TRANSPARENT`); the transients last one frame of one stage.
+- **The live list and its count are persistent**: the draw may execute in another stage's frame (a transparent
+  material draws in `WORLD_TRANSPARENT`) or in a later firing of this one, and a transient lasts one firing.
+- **Stepped once a frame**: `registerOncePerFrame` records on the stage's first firing of each host frame, so a second
+  firing (1.7.10's anaglyph, a portal mod drawing the world again) draws the same sparks rather than stepping them
+  twice. Work that depends on the view, culling or sorting by depth, registers per firing with `register`.
 - **The material reads the sparks** through its own `Buffers { }`, quad n placed at spark `SPARKS(LIVE(n))`: the
   material is [Reading a kernel's buffers](#reading-a-kernels-buffers)'s example.
 
@@ -906,7 +909,7 @@ sim.end();
 - **What a binding is read or written as comes from the kernel's accessors**: `STATE(i)` reads, `STATE_WRITE` writes.
   The graph orders passes and places every barrier from that; **every buffer and image a kernel uses must be bound**.
 - **Record a kernel ahead of the draw that reads what it writes.** In a world stage that is a renderer registered
-  below `CgWorldRenderer.ORDER`.
+  below `CgWorldRenderer.ORDER`; one that advances state registers with `registerOncePerFrame`.
 - `dispatchGroups(kernel, x, y, z)` dispatches whole groups: `CG_DISPATCH_COUNT` is every invocation they hold. A
   count past the device's group limit runs as several dispatches, each from its own base.
 - A pass is culled when nothing reads what it writes, unless it writes a persistent, history or imported buffer, or a

@@ -139,7 +139,7 @@ from the buffers by the material. [`SHADERS.md` § *Start to finish*](SHADERS.md
 full; the core:
 
 ```java
-CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
+CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {   // stepped once a frame
     CgComputePass pass = frame.recording().compute("sparks.step");
     pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks).bind("ALIVE", alive).set("_Step", dt);
     CgGpuOps.compact(pass, alive, null, CgGpuCount.of(CAPACITY), live, count, 0);   // live indices, and how many
@@ -154,8 +154,10 @@ world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.
 Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));   // quad n draws the nth live spark
 ```
 
-- **`count` is persistent**: a transparent material draws in `WORLD_TRANSPARENT`, another stage's frame, and a
-  transient lasts one stage.
+- **`live` and `count` are persistent**: a transparent material draws in `WORLD_TRANSPARENT`, another stage's frame,
+  and every firing after the first draws them too; a transient lasts one firing.
+- **Once a frame**: a stage may fire twice in a host frame (1.7.10's anaglyph, a portal mod), and
+  `registerOncePerFrame` steps the simulation in the first only. Culling and sorting by the view stay per firing.
 - **`INDICES` × 6** draws six indices per live spark from `CgMesh.quads(CAPACITY)`, never more than the mesh holds.
   `INSTANCES` instead draws the mesh once per element, each instance finding its element as `CG_DRAW_INSTANCE`: a
   billow mesh per live puff.
@@ -385,6 +387,8 @@ spheres, most off screen.
 - **A kernel recorded after the draw reading it** draws last frame's data or nothing: in a world stage, register the
   renderer recording it below `CgWorldRenderer.ORDER`.
 - **A transient count read in another stage**: a count a transparent draw reads must be persistent.
+- **A simulation registered with `register`** steps again in every firing of the frame: twice under 1.7.10's anaglyph,
+  once per portal under a portal mod. Register it with `registerOncePerFrame`.
 - **New buffer storage is not zeroed**: fill a count before an append, write every element before a draw reads it.
 - **`gl_VertexID` or `gl_InstanceID` in a material** draws garbage once draws join; use the `CG_` macros (§9).
 - **A transparent `.instances()` set** draws its instances in no order among themselves: sort them yourself (§5) or
@@ -412,7 +416,8 @@ What a pipeline here cannot do today, so a design does not assume it:
 1. Decide what is per element (GPU) and per effect or draw (CPU), by the rule at the top.
 2. Pick the entry point (§2); prefer the world renderer's `.instances()` or `.indirect()`.
 3. Write kernels in lowerable shapes with `vec4` records; library ops for sort, scan, compact, histogram, bounds.
-4. Record the compute pass ahead of its draws; make every buffer a later stage reads persistent.
+4. Record the compute pass ahead of its draws, a simulation once per frame (`registerOncePerFrame`); make every
+   buffer a later stage or firing reads persistent.
 5. Write the material with the `CG_` macros and `Buffers { }`; one material per look.
 6. Bounds on every indirect draw.
 7. Check: `multiDraw=false` gives the same picture, the counters show the calls you expect, checked mode is quiet,
