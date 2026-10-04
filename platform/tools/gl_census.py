@@ -27,7 +27,7 @@ SKIP_PLATFORM = ('CgGL.java', 'CgGLBackend.java', 'CgGlRecordingBackend.java')
 DOMAINS = [
     ('Context and queries', 'what `CgCapabilities.detect()` and the state providers read before anything draws', [
         'initContext', 'isContextCurrent', 'ownedByCurrentThread', 'glGetInteger', 'glGetBoolean', 'glGetFloat',
-        'glGetError']),
+        'glGetError', 'glGetIntegeri', 'glGetString', 'glGetStringi']),
     ('State', 'the pipeline key, and what the scope suite (D3.5) restores', [
         'glEnable', 'glDisable', 'glBlendFunc', 'glBlendFuncSeparate', 'glBlendEquationSeparate', 'glDepthMask',
         'glDepthFunc', 'glCullFace', 'glFrontFace', 'glColorMask', 'glColorMaski', 'glStencilFunc', 'glStencilOp',
@@ -37,7 +37,8 @@ DOMAINS = [
         'glGenBuffers', 'glDeleteBuffers', 'glBindBuffer', 'glBufferData', 'glBufferSubData', 'glBufferStorage',
         'glMapBufferRange', 'glFlushMappedBufferRange', 'glUnmapBuffer', 'glBindBufferBase', 'glBindBufferRange',
         'glTexBuffer', 'glGenVertexArrays', 'glDeleteVertexArrays', 'glBindVertexArray',
-        'glEnableVertexAttribArray', 'glVertexAttribPointer', 'glVertexAttribDivisor']),
+        'glEnableVertexAttribArray', 'glVertexAttribPointer', 'glVertexAttribIPointer', 'glVertexAttribDivisor',
+        'glCopyBufferSubData', 'cgFillBuffer']),
     ('Programs', 'the link-time rewrite (D3.6) produces the tables these answer from', [
         'glCreateShader', 'glShaderSource', 'glCompileShader', 'glGetShaderi', 'glGetShaderInfoLog',
         'glDeleteShader', 'glCreateProgram', 'glAttachShader', 'glDetachShader', 'glGetAttachedShaders',
@@ -45,7 +46,7 @@ DOMAINS = [
         'glBindAttribLocation', 'glGetUniformLocation', 'glGetActiveUniform', 'glUniform1i', 'glUniform1f',
         'glUniform2f', 'glUniform3f', 'glUniform4f', 'glUniform1', 'glUniformMatrix3', 'glUniformMatrix4',
         'glUniformMatrix4fv', 'glGetUniformBlockIndex', 'glUniformBlockBinding', 'glGetProgramResourceIndex',
-        'glShaderStorageBlockBinding']),
+        'glShaderStorageBlockBinding', 'glTransformFeedbackVaryings']),
     ('Textures and samplers', 'uploads are encoder work outside a pass', [
         'glGenTextures', 'glDeleteTextures', 'glActiveTexture', 'glBindTexture', 'glBindSampler', 'glTexImage2D',
         'glTexSubImage2D', 'glTexImage3D', 'glTexSubImage3D', 'glTexImage2DMultisample', 'glTexParameteri',
@@ -57,7 +58,13 @@ DOMAINS = [
         'glBindRenderbuffer', 'glRenderbufferStorage', 'glRenderbufferStorageMultisample',
         'glFramebufferRenderbuffer']),
     ('Draws and clears', 'the tracker\'s draw, and a clear as a load op', [
-        'glDrawArrays', 'glDrawElements', 'glDrawArraysInstanced', 'glDrawElementsInstanced', 'glClear']),
+        'glDrawArrays', 'glDrawElements', 'glDrawArraysInstanced', 'glDrawElementsInstanced',
+        'glDrawElementsInstancedBaseVertex', 'glDrawArraysIndirect', 'glDrawElementsIndirect',
+        'glMultiDrawArraysIndirect', 'glMultiDrawElementsIndirect', 'glMultiDrawArraysIndirectCount',
+        'glMultiDrawElementsIndirectCount', 'glBeginTransformFeedback', 'glEndTransformFeedback', 'glClear']),
+    ('Compute', 'dispatches, storage images and the barriers the frame graph derives; async work on a compute queue', [
+        'glDispatchCompute', 'glDispatchComputeIndirect', 'glBindImageTexture', 'glMemoryBarrier', 'cgBufferBarrier',
+        'cgImageBarrier', 'cgBeginAsync', 'cgEndAsync', 'cgWaitAsync']),
     ('Sync, timers and readback', 'fences on the frame that recorded them; a readback stalls', [
         'glFenceSync', 'glClientWaitSync', 'glDeleteSync', 'glGenQuery', 'glBeginTimeElapsedQuery',
         'glEndTimeElapsedQuery', 'glIsQueryResultAvailable', 'glGetQueryResultNanos', 'glDeleteQuery',
@@ -139,7 +146,7 @@ def main():
             depth += (cggl[i] == '{') - (cggl[i] == '}')
             i += 1
         body = cggl[m.end():i]
-        to_backend[name] |= set(re.findall(r'\bbackend\.(\w+)\(', body))
+        to_backend[name] |= set(re.findall(r'\b(?:backend|gl\(\))\.(\w+)\(', body))
         to_facade[name] |= {f for f in re.findall(r'(?<![.\w])(\w+)\(', body) if f != name}
 
     def reach(facade, seen):
