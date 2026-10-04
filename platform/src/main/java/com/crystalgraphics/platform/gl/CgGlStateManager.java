@@ -692,7 +692,8 @@ public final class CgGlStateManager {
      * that erases what is behind it rather than drawing nothing. Zero is what GL itself reverts the
      * binding to, so the shadow stays true rather than merely cautious.</p>
      *
-     * <p>Same rule as {@link #vertexArrayChanged}: what can no longer be trusted is dropped.</p>
+     * <p>Same rule as {@link #vertexArrayChanged}: what can no longer be trusted is dropped. An open scope that saved
+     * the name restores 0 too, since binding a deleted name is {@code GL_INVALID_OPERATION}.</p>
      */
     public void textureDeleted(int texture) {
         if (texture == 0) return;
@@ -700,6 +701,13 @@ public final class CgGlStateManager {
             if (current.boundTexture2D[unit] == texture) current.boundTexture2D[unit] = 0;
         }
         forgetPoints(CgGlSlot.IMAGES, current.imageTexture, texture);
+        for (int d = 0; d < depth; d++) {
+            CgGlStateShadow s = frames[d].saved;
+            for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+                if (s.boundTexture2D[unit] == texture) s.boundTexture2D[unit] = 0;
+            }
+            for (int i = 0; i < s.imageTexture.length; i++) if (s.imageTexture[i] == texture) s.imageTexture[i] = 0;
+        }
     }
 
     /** A deleted object's points are left unknown: what GL reverts an indexed binding to is not worth guessing. */
@@ -713,6 +721,11 @@ public final class CgGlStateManager {
         if (fbo == 0) return;
         if (current.drawFbo == fbo) current.drawFbo = 0;
         if (current.readFbo == fbo) current.readFbo = 0;
+        for (int d = 0; d < depth; d++) {
+            CgGlStateShadow s = frames[d].saved;
+            if (s.drawFbo == fbo) s.drawFbo = 0;
+            if (s.readFbo == fbo) s.readFbo = 0;
+        }
     }
 
     /** @see #textureDeleted */
@@ -723,6 +736,22 @@ public final class CgGlStateManager {
         forgetPoints(CgGlSlot.STORAGE_BUFFERS, current.storageBuffer, buffer);
         forgetPoints(CgGlSlot.INDIRECT_BUFFERS, current.indirectBuffer, buffer);
         forgetPoints(CgGlSlot.TRANSFORM_FEEDBACK, current.feedbackBuffer, buffer);
+        for (int d = 0; d < depth; d++) {
+            CgGlStateShadow s = frames[d].saved;
+            if (s.arrayBuffer == buffer) s.arrayBuffer = 0;
+            if (s.elementArrayBuffer == buffer) s.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;   // the VAO's
+            for (int i = 0; i < s.storageBuffer.length; i++) {
+                if (s.storageBuffer[i] != buffer) continue;
+                s.storageBuffer[i] = 0;
+                s.storageSize[i] = 0;
+            }
+            for (int i = 0; i < s.indirectBuffer.length; i++) if (s.indirectBuffer[i] == buffer) s.indirectBuffer[i] = 0;
+            for (int i = 0; i < s.feedbackBuffer.length; i++) {
+                if (s.feedbackBuffer[i] != buffer) continue;
+                s.feedbackBuffer[i] = 0;
+                s.feedbackSize[i] = 0;
+            }
+        }
     }
 
     /** @see #textureDeleted */
@@ -732,12 +761,19 @@ public final class CgGlStateManager {
         current.vertexArray = 0;
         // The element binding belonged to the deleted VAO; VAO 0 carries its own and we never saw it.
         current.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;
+        for (int d = 0; d < depth; d++) {
+            CgGlStateShadow s = frames[d].saved;
+            if (s.vertexArray != array) continue;
+            s.vertexArray = 0;
+            s.elementArrayBuffer = CgGlStateShadow.UNKNOWN_BINDING;
+        }
     }
 
     /** @see #textureDeleted */
     public void programDeleted(int program) {
         if (program == 0) return;
         if (current.programId == program) current.programId = 0;
+        for (int d = 0; d < depth; d++) if (frames[d].saved.programId == program) frames[d].saved.programId = 0;
     }
 
     public boolean activeTextureChanged(int texture) {

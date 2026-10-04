@@ -52,6 +52,8 @@ import java.util.List;
 public final class CgRasterPass extends CgPass {
 
     final CgRecording recording;
+    /** The mip level of the target it draws into. */
+    final int level;
     final CgLoad load;
     final float[] constants;
     @Nullable
@@ -94,10 +96,11 @@ public final class CgRasterPass extends CgPass {
     private int[] textureUnits = new int[0];
     private CgTexture[] textures = new CgTexture[0];
 
-    CgRasterPass(CgRecording recording, String name, CgGraphTexture target, CgLoad load, float[] constants,
+    CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, CgLoad load, float[] constants,
                  @Nullable CgRenderState state, CgOrder order) {
         super(name, target, null);
         this.recording = recording;
+        this.level = level;
         this.load = load;
         this.constants = constants;
         this.state = state;
@@ -116,8 +119,8 @@ public final class CgRasterPass extends CgPass {
             if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
-                CgTexture texture = table.texture(id, t);
-                if (texture instanceof CgGraphTexture graph) recording.read(this, graph, CgAccess.SAMPLED_READ);
+                CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));
+                if (graph != null) recording.read(this, graph, CgAccess.SAMPLED_READ);
             }
             for (int s = 0; s < table.storages(id); s++) {
                 if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
@@ -254,7 +257,8 @@ public final class CgRasterPass extends CgPass {
         textures = Arrays.copyOf(textures, n + 1);
         textureUnits[n] = unit;
         textures[n] = texture;
-        if (texture instanceof CgGraphTexture graph) recording.read(this, graph, CgAccess.SAMPLED_READ);
+        CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        if (graph != null) recording.read(this, graph, CgAccess.SAMPLED_READ);
         return this;
     }
 
@@ -366,6 +370,11 @@ public final class CgRasterPass extends CgPass {
         recording.requireOpen();
         ended = true;
         recording.write(this, target, CgAccess.COLOR_WRITE);
+    }
+
+    /** The mip level of its target it draws into: 0 unless made with one. */
+    public int level() {
+        return level;
     }
 
     public List<CgDrawChunk> chunks() {

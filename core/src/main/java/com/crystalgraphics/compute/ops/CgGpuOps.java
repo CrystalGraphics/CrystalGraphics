@@ -5,7 +5,6 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
-import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
@@ -202,7 +201,7 @@ public final class CgGpuOps {
                     .bind("SRC", flags).bind("PREFIX", flags).bind("DST", outCount).set("_At", word);
             return;
         }
-        CgGraphBuffer places = words("ops.compact.places", count.capacity());
+        CgGraphBuffer places = words(pass, "ops.compact.places", count.capacity());
         scanLevel(pass, count, Fold.SUM, Element.UINT, true, false, flags, places, 0, count.capacity());
         CgDispatch keep = values == null
                 ? pass.dispatch(scanKernel(COMPACT_INDICES, Fold.SUM, Element.UINT, false, false), count.capacity())
@@ -220,7 +219,7 @@ public final class CgGpuOps {
         int level = 0;
         for (int n = count.capacity(); n > BLOCK; n = (n + BLOCK - 1) / BLOCK, level++) {
             int above = (n + BLOCK - 1) / BLOCK;
-            CgGraphBuffer sums = words(SUMS[level], above);
+            CgGraphBuffer sums = words(pass, SUMS[level], above);
             CgDispatch step = counted(pass.dispatch(scanKernel(REDUCE_STEP, fold, element, false, false), above), count, src)
                     .bind("SRC", src).bind("DST", sums).set("_Level", level);
             if (level == 0) step.set("_Stride", stride).set("_Offset", offset);
@@ -240,8 +239,8 @@ public final class CgGpuOps {
         CgGraphBuffer prefixes = null;
         if (n > BLOCK) {
             int above = (n + BLOCK - 1) / BLOCK;
-            CgGraphBuffer sums = words(SUMS[level], above);
-            prefixes = words(PREFIXES[level], above);
+            CgGraphBuffer sums = words(pass, SUMS[level], above);
+            prefixes = words(pass, PREFIXES[level], above);
             counted(pass.dispatch(scanKernel(REDUCE_STEP, fold, element, flags, false), above), count, src)
                     .bind("SRC", src).bind("DST", sums).set("_Level", level);
             scanLevel(pass, count, fold, element, false, false, sums, prefixes, level + 1, above);
@@ -320,11 +319,11 @@ public final class CgGpuOps {
         int groups = Math.min(blocks, SORT_GROUPS), reduce = (groups + SORT_BLOCK - 1) / SORT_BLOCK;
         int cells = 16 * (grouped ? groups : blocks), passes = (bits + 3) / 4;
         CgGpuCount cellCount = CgGpuCount.of(cells);
-        CgGraphBuffer digits = words("ops.sort.digits", cells);
-        CgGraphBuffer offsets = grouped ? null : words("ops.sort.offsets", cells);
-        CgGraphBuffer reduced = grouped ? words("ops.sort.reduced", 16 * reduce) : null;
-        CgGraphBuffer keysIn = keys, keysOut = words("ops.sort.keys", capacity);
-        CgGraphBuffer valuesIn = values, valuesOut = values == null ? null : words("ops.sort.values", capacity);
+        CgGraphBuffer digits = words(pass, "ops.sort.digits", cells);
+        CgGraphBuffer offsets = grouped ? null : words(pass, "ops.sort.offsets", cells);
+        CgGraphBuffer reduced = grouped ? words(pass, "ops.sort.reduced", 16 * reduce) : null;
+        CgGraphBuffer keysIn = keys, keysOut = words(pass, "ops.sort.keys", capacity);
+        CgGraphBuffer valuesIn = values, valuesOut = values == null ? null : words(pass, "ops.sort.values", capacity);
         for (int p = 0; p < passes; p++) {
             CgDispatch scatter;
             if (grouped) {
@@ -445,7 +444,7 @@ public final class CgGpuOps {
                     + " of " + target + " are not one size");
         }
         int radius = (int) Math.ceil(3 * sigma);
-        CgGraphTexture across = CgGraphTexture.transientTexture("ops.blur", new CgTextureDesc(w, h, SCRATCH[f]));
+        CgGraphTexture across = pass.recording().scratch("ops.blur", w, h, SCRATCH[f]);
         pass.dispatch(blurKernel(f, false), w, h, 1).image(SOURCES[f], source, sourceLevel, -1)
                 .image(TARGETS[f], across).set("_Radius", radius).set("_Sigma", sigma);
         pass.dispatch(blurKernel(f, true), w, h, 1).image(SOURCES[f], across)
@@ -505,8 +504,9 @@ public final class CgGpuOps {
         if (read == written) throw new IllegalArgumentException(read + " is both read and written");
     }
 
-    private static CgGraphBuffer words(String name, int count) {
-        return CgGraphBuffer.transientBuffer(name, CgBufferDesc.elements(Math.max(1, count), 4, CgBufferUsage.STORAGE));
+    /** {@code count} words of scratch, the pass's recording's: the same buffer each frame it is reused. */
+    private static CgGraphBuffer words(CgComputePass pass, String name, int count) {
+        return pass.recording().scratch(name, Math.max(1, count) * 4L, CgBufferUsage.STORAGE);
     }
 
     private static String[] levels(String prefix) {

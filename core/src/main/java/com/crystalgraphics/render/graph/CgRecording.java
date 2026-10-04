@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
@@ -84,6 +85,10 @@ public final class CgRecording {
 
     private boolean sealed;
 
+    /** What {@link #scratch} made, kept across {@link #reset()}, and how many of them this use has taken. */
+    private final List<CgGraphResource> scratch = new ArrayList<>();
+    private int scratchUsed;
+
     /** The rounded clips its chunks name, by index. */
     public CgClipTable clips() {
         return clips;
@@ -115,14 +120,72 @@ public final class CgRecording {
     }
 
     /**
+     * A transient texture of one level for this recording's own passes: scratch an op makes for itself. The n-th
+     * asked for since {@link #reset()} is the n-th before it where the name, size and format match, so a recording
+     * reused each frame makes none after its first.
+     *
+     * <pre>{@code
+     * CgGraphTexture across = recording.scratch("blur.across", w, h, format);   // distinct from every other this frame
+     * }</pre>
+     */
+    public CgGraphTexture scratch(String name, int width, int height, CgFrameBufferFormat format) {
+        requireOpen();
+        if (scratchUsed < scratch.size() && scratch.get(scratchUsed) instanceof CgGraphTexture kept) {
+            CgTextureDesc d = kept.desc();
+            if (kept.name().equals(name) && d.width() == width && d.height() == height && d.levels() == 1
+                    && d.format().equals(format)) {
+                scratchUsed++;
+                return kept;
+            }
+        }
+        return keep(CgGraphTexture.transientTexture(name, new CgTextureDesc(width, height, format)));
+    }
+
+    /** A transient buffer of {@code bytes} for {@code usage}, kept as {@link #scratch(String, int, int, CgFrameBufferFormat)} keeps a texture. */
+    public CgGraphBuffer scratch(String name, long bytes, CgBufferUsage usage) {
+        requireOpen();
+        if (scratchUsed < scratch.size() && scratch.get(scratchUsed) instanceof CgGraphBuffer kept) {
+            CgBufferDesc d = kept.desc();
+            if (kept.name().equals(name) && d.bytes() == bytes && d.usages().size() == 1 && d.has(usage)) {
+                scratchUsed++;
+                return kept;
+            }
+        }
+        return keep(CgGraphBuffer.transientBuffer(name, CgBufferDesc.of(bytes, usage)));
+    }
+
+    private <T extends CgGraphResource> T keep(T made) {
+        if (scratchUsed < scratch.size()) scratch.set(scratchUsed, made);
+        else scratch.add(made);
+        scratchUsed++;
+        return made;
+    }
+
+    /**
      * A raster pass into {@code target}.
      *
      * @param state the render state a pipeline's unset slots take, or null to leave them as the target has them
      */
     public CgRasterPass raster(CgGraphTexture target, CgLoad load, CgPassConstants constants,
                                @Nullable CgRenderState state, CgOrder order) {
+        return raster(target, 0, load, constants, state, order);
+    }
+
+    /**
+     * A raster pass into mip level {@code level} of {@code target}: one step of a chain drawn level by level, reading
+     * the level before it through {@link CgGraphTexture#level}. The viewport is the level's size, which
+     * {@code constants}' resolution should be too; a level above 0 has no depth.
+     *
+     * <pre>{@code
+     * CgRasterPass down = rec.raster(bloom, 2, CgLoad.load(), constants.resolution(w >> 2, h >> 2), null, CgOrder.LOOKBACK);
+     * }</pre>
+     */
+    public CgRasterPass raster(CgGraphTexture target, int level, CgLoad load, CgPassConstants constants,
+                               @Nullable CgRenderState state, CgOrder order) {
         requireOpen();
-        CgRasterPass pass = new CgRasterPass(this, "raster " + target.name(), target, load, block(constants), state, order);
+        if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
+        String name = level == 0 ? "raster " + target.name() : "raster " + target.name() + " level " + level;
+        CgRasterPass pass = new CgRasterPass(this, name, target, level, load, block(constants), state, order);
         add(pass);
         return pass;
     }
@@ -304,6 +367,7 @@ public final class CgRecording {
         shapes.reset();
         spatial.reset();
         effects.reset();
+        scratchUsed = 0;
         sealed = false;
     }
 

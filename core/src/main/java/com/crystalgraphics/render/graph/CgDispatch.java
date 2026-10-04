@@ -191,7 +191,8 @@ public final class CgDispatch {
         int unit = kernel.compute().properties().samplerUnit(name);
         if (unit < 0) throw new IllegalArgumentException(source.path() + " has no sampler property '" + name + "'");
         samplers[unit] = texture;
-        if (texture instanceof CgGraphTexture graph) pass.recording.read(pass, graph, CgAccess.SAMPLED_READ);
+        CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        if (graph != null) pass.recording.read(pass, graph, CgAccess.SAMPLED_READ);
         return this;
     }
 

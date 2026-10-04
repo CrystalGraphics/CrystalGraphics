@@ -2,8 +2,10 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.gl.texture.CgTexture2D;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 
 /**
  * A texture a frame graph orders work on: a pass writes it, a draw or a copy reads it. A handle at once, on any
@@ -40,6 +42,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Nullable
     private CgFrameBuffer framebuffer;
 
+    /** Its {@link #level} views, made at first ask. */
+    private Level[] levelViews = new Level[0];
+
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer) {
         super(name);
         this.kind = kind;
@@ -75,6 +80,46 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Nullable
     public CgTextureDesc desc() {
         return desc;
+    }
+
+    /**
+     * Level {@code level} alone, as a texture a draw or a kernel samples: what a pass drawing into another level of it
+     * reads, with no feedback loop on any device. A shader reads it at its base, LOD 0, and its size is the level's.
+     *
+     * <pre>{@code
+     * for (int k = 1; k < bloom.getLevels(); k++) {         // each level drawn from the one above
+     *     CgRasterPass down = rec.raster(bloom, k, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
+     *     int reads = rec.bindings().withTexture(downsample.captureBindings(rec.bindings()), 0, bloom.level(k - 1));
+     *     CgChunkBuilder c = rec.chunks().begin();
+     *     c.draw(downsample.pipeline(CgInstanceKind.OBJECT), reads, CgMesh.quads(1));   // a fullscreen #type none quad
+     *     c.instance();
+     *     down.add(c.end());
+     *     down.end();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read as the whole texture for ordering: a pass sampling a level runs after every pass writing the texture.</li>
+     *   <li>The pin lasts until the texture is next bound whole, and the executor unpins it after the pass.</li>
+     * </ul>
+     */
+    public Level level(int level) {
+        if (level < 0 || level >= getLevels()) throw new IllegalArgumentException(this + " has no level " + level);
+        if (levelViews.length <= level) levelViews = Arrays.copyOf(levelViews, getLevels());
+        Level view = levelViews[level];
+        if (view == null) levelViews[level] = view = new Level(this, level);
+        return view;
+    }
+
+    /** The graph texture binding {@code texture} samples: itself, or a level view's; null for any other. */
+    @Nullable
+    static CgGraphTexture sampled(@Nullable CgTexture texture) {
+        return texture instanceof CgGraphTexture graph ? graph : texture instanceof Level view ? view.texture : null;
+    }
+
+    /** Render thread: samples every level again, if a {@link #level} view pinned one. */
+    void unpinLevels() {
+        if (color() instanceof CgTexture2D color) color.unpinLevels();
     }
 
     @Override
@@ -156,5 +201,71 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Override
     public String toString() {
         return "CgGraphTexture(" + kind + " " + name + ")";
+    }
+
+    /** One level of a graph texture, sampled alone: {@link CgGraphTexture#level}. */
+    public static final class Level implements CgTexture {
+
+        private final CgGraphTexture texture;
+        private final int level;
+
+        private Level(CgGraphTexture texture, int level) {
+            this.texture = texture;
+            this.level = level;
+        }
+
+        public CgGraphTexture texture() {
+            return texture;
+        }
+
+        public int level() {
+            return level;
+        }
+
+        @Override
+        public void bind() {
+            if (texture.color() instanceof CgTexture2D color) color.bindLevel(level);
+        }
+
+        @Override
+        public void bind(int unit) {
+            if (texture.color() instanceof CgTexture2D color) color.bindLevel(unit, level);
+        }
+
+        @Override
+        public int getId() {
+            return texture.getId();
+        }
+
+        @Override
+        public int getWidth() {
+            return Math.max(1, texture.getWidth() >> level);
+        }
+
+        @Override
+        public int getHeight() {
+            return Math.max(1, texture.getHeight() >> level);
+        }
+
+        @Override
+        public int getTarget() {
+            return texture.getTarget();
+        }
+
+        @Override
+        public boolean isDeleted() {
+            return false;
+        }
+
+        /** Refused, as for its texture. */
+        @Override
+        public void delete() {
+            texture.delete();
+        }
+
+        @Override
+        public String toString() {
+            return texture + " level " + level;
+        }
     }
 }

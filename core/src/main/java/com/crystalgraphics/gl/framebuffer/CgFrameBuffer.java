@@ -12,6 +12,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
@@ -130,6 +131,9 @@ public class CgFrameBuffer {
     /** Mip levels of each colour texture, at most its full chain at the current size. */
     @Getter
     private int colorLevels = 1;
+
+    /** Framebuffers drawing into level {@code l} of every colour texture, at {@code l - 1}; made at first use. */
+    private int[] levelFbos = new int[0];
     
      // ── Lazily cached GPU limit ────────────────────────────────────────────────
 
@@ -364,7 +368,7 @@ public class CgFrameBuffer {
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, type.toTextureSpec(),
                             Math.min(colorLevels, CgTexture.fullChain(w, h)));
-                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
+                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);
                 }
                 colorAttachments.put(slot, a);
@@ -395,7 +399,7 @@ public class CgFrameBuffer {
                             + "sampleable texture. Use depthRenderbuffer(...).");
                 } else {
                     CgTexture2D tex = CgTexture2D.createEmpty(w, h, depthType.toTextureSpec());
-                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId());
+                    doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, tex.getId(), 0);
                     a.setTexture(tex);
                 }
                 depthAttachment = a;
@@ -427,6 +431,53 @@ public class CgFrameBuffer {
      */
     public void bind() {
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fboId);
+    }
+
+    /**
+     * Binds it drawing into mip level {@code level} of its colour textures: one pass of a chain drawn level by level.
+     * Level 0 is {@link #bind()}; another is {@link #levelWidth} by {@link #levelHeight} and has no depth.
+     *
+     * <pre>{@code
+     * chain.bindLevel(3);
+     * CgGL.glViewport(0, 0, chain.levelWidth(3), chain.levelHeight(3));
+     * }</pre>
+     */
+    public void bindLevel(int level) {
+        if (level == 0) {
+            bind();
+            return;
+        }
+        CgTexture first = colorAttachments.isEmpty() ? null : colorAttachments.firstEntry().getValue().getTexture();
+        int levels = first == null ? 1 : first.getLevels();
+        if (level < 0 || level >= levels) {
+            throw new IllegalArgumentException("FBO '" + name + "' has " + levels + " colour levels, not level " + level);
+        }
+        if (levelFbos.length < levels - 1) levelFbos = Arrays.copyOf(levelFbos, levels - 1);
+        if (levelFbos[level - 1] != 0) {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, levelFbos[level - 1]);
+            return;
+        }
+        int id = doGenFramebuffer();
+        levelFbos[level - 1] = id;
+        doBindFbo(CgGL.GL_FRAMEBUFFER, id);
+        for (Attachment a : colorAttachments.values()) {
+            if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()), CgGL.GL_TEXTURE_2D,
+                    a.getTexture().getId(), level);
+        }
+        int status = doCheckFramebufferStatus();
+        if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("FBO '" + name + "' level " + level + " incomplete: 0x" + Integer.toHexString(status));
+        }
+    }
+
+    /** Level {@code level}'s width: {@code max(1, width >> level)}. */
+    public int levelWidth(int level) {
+        return Math.max(1, width >> level);
+    }
+
+    /** Level {@code level}'s height: {@code max(1, height >> level)}. */
+    public int levelHeight(int level) {
+        return Math.max(1, height >> level);
     }
 
     /**
@@ -689,7 +740,7 @@ public class CgFrameBuffer {
         if (texture == null) throw new IllegalArgumentException("texture must not be null");
         int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId());
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
         doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
         Attachment a = colorAttachments.get(slot);
         if (a != null) a.setTexture(texture instanceof CgTexture2D ? texture : null);
@@ -706,7 +757,7 @@ public class CgFrameBuffer {
     public void reattachColorRaw(int slot, int glTextureId, int glTarget) {
         int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId);
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId, 0);
         doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
@@ -721,7 +772,7 @@ public class CgFrameBuffer {
         
         int glAttach = depthAttachment.getType().glAttachmentPoint(0);
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
-        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId());
+        doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
         doBindFbo(CgGL.GL_FRAMEBUFFER, 0);
     }
 
@@ -769,6 +820,10 @@ public class CgFrameBuffer {
         if (fboId != 0) {
             deleteFramebuffer(fboId);
             fboId = 0;
+        }
+        for (int l = 0; l < levelFbos.length; l++) {
+            if (levelFbos[l] != 0) deleteFramebuffer(levelFbos[l]);
+            levelFbos[l] = 0;
         }
     }
 
@@ -818,8 +873,8 @@ public class CgFrameBuffer {
      * @param glTextureTarget texture target (e.g. {@code GL_TEXTURE_2D}, cube face)
      * @param texId           GL texture ID, or 0 to detach
      */
-    protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId) {
-        CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, 0);
+    protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId, int level) {
+        CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, level);
     }
 
     /**
@@ -995,7 +1050,7 @@ public class CgFrameBuffer {
         @Override protected void deleteFramebuffer(int id)                             { /* no-op */ }
         @Override protected void deleteRenderbuffer(int id)                            { /* no-op */ }
         @Override protected void doBindFbo(int target, int fboId)                     { /* no-op */ }
-        @Override protected void doFramebufferTexture2D(int t, int ap, int gt, int id){ /* no-op */ }
+        @Override protected void doFramebufferTexture2D(int t, int ap, int gt, int id, int level){ /* no-op */ }
         @Override protected void doFramebufferRenderbuffer(int t, int ap, int rbo)    { /* no-op */ }
         @Override protected int  doGenRenderbuffer()                                   { return 0; }
         @Override protected void doRenderbufferStorage(int fmt, int w, int h)         { /* no-op */ }

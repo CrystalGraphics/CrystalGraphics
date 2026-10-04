@@ -37,6 +37,7 @@ CgFrameBufferRegistry       → single source of truth for all owned FBOs;
 | `bind/bindDraw/bindRead/unbind` — route through `CrossApiTransition` | `CgFrameBuffer` |
 | `drawBuffers(int... slotIds)` — slot indices 0,1,2 → GL_COLOR_ATTACHMENT0+n | `CgFrameBuffer` |
 | `reattachColor/reattachColorRaw/reattachDepth` | `CgFrameBuffer` |
+| `bindLevel(level)`, `levelWidth/levelHeight` — draws into one mip level of every colour texture, no depth above 0; a framebuffer per level, made at first use | `CgFrameBuffer` |
 | `getColorTexture/getDepthTexture/getColorAttachment/getDepthAttachment` | `CgFrameBuffer` |
 | `isScreenSized()` — true if created via `CgFrameBufferRegistry.acquireScreenSized` | `CgFrameBuffer` |
 | `delete()` — frees GL resources; sets `deleted = true`; does NOT touch registry | `CgFrameBuffer` |

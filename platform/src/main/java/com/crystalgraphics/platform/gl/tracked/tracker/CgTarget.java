@@ -34,11 +34,11 @@ public record CgTarget(List<CgTextureView> colors, CgTextureView depth) {
         return depth == null ? h : Math.min(h, depth.height());
     }
 
-    /** Whether {@code texture} is one of the attachments. */
-    public boolean attaches(CgGpuTexture texture) {
+    /** Whether {@code view} reads what an attachment renders to: another level of the same texture does not. */
+    public boolean attaches(CgTextureView view) {
         for (CgTextureView v : colors) {
-            if (v.texture() == texture) return true;
+            if (v.overlaps(view)) return true;
         }
-        return depth != null && depth.texture() == texture;
+        return depth != null && depth.overlaps(view);
     }
 }

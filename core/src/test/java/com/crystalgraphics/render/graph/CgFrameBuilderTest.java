@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.material.CgMaterialTestSupport;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -62,7 +63,7 @@ public class CgFrameBuilderTest {
     }
 
     /** A chunk that samples {@code texture}: what compositing a layer records. */
-    private CgDrawChunk sampling(CgRecording rec, CgGraphTexture texture) {
+    private CgDrawChunk sampling(CgRecording rec, CgTexture texture) {
         int bindings = rec.bindings().begin().texture(0, texture).end();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(quads, bindings);
@@ -220,6 +221,35 @@ public class CgFrameBuilderTest {
         assertEquals(1, frame.transients.size());
         assertEquals("acquired for the layer's pass", 0, frame.acquireAt[0]);
         assertEquals("returned after the composite reads it", 1, frame.releaseAfter[0]);
+    }
+
+    @Test
+    public void aChainDrawnLevelByLevelRunsBeforeItsReader_eachLevelAfterTheOneItSamples() {
+        CgRecording rec = new CgRecording();
+        CgGraphTexture chain = CgGraphTexture.transientTexture("chain", DESC.withMips());
+        CgRasterPass shown = raster(rec, CgGraphTexture.requested("surface", DESC));
+        CgRasterPass top = raster(rec, chain);
+        top.add(quads(rec, 1, 1, 0));
+        top.end();
+        for (int k = 1; k <= 2; k++) {
+            CgRasterPass down = rec.raster(chain, k, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
+            down.add(sampling(rec, chain.level(k - 1)));
+            down.end();
+        }
+        shown.add(sampling(rec, chain.level(2)));
+        shown.end();
+
+        CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
+        assertEquals(4, frame.passes());
+        assertEquals("raster chain", frame.passName(0));
+        assertEquals("raster chain level 1", frame.passName(1));
+        assertEquals("raster chain level 2", frame.passName(2));
+        assertEquals("raster surface", frame.passName(3));
+        assertSame("a level's view is made once", chain.level(1), chain.level(1));
+        assertEquals(16, chain.level(2).getWidth());
+        assertThrows(IllegalArgumentException.class, () -> chain.level(chain.getLevels()));
+        assertThrows(IllegalArgumentException.class, () -> new CgRecording().raster(CgGraphTexture.requested("flat", DESC),
+                1, CgLoad.load(), constants, null, CgOrder.LOOKBACK));
     }
 
     @Test

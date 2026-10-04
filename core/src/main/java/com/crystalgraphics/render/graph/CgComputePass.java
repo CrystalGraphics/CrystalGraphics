@@ -45,6 +45,11 @@ public final class CgComputePass extends CgPass {
         this.constants = constants;
     }
 
+    /** The recording it belongs to: where an op takes its {@linkplain CgRecording#scratch scratch}. */
+    public CgRecording recording() {
+        return recording;
+    }
+
     /** {@code count} elements in one dimension. */
     public CgDispatch dispatch(CgKernel kernel, int count) {
         return dispatch(kernel, count, 1, 1);

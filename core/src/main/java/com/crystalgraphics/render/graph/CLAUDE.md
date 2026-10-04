@@ -39,15 +39,25 @@ int bindings = rec.bindings().begin().storage(CELLS_POINT, state).end();   // a 
 ```
 
 **Mip levels.** A graph texture the graph allocates may hold levels (`CgTextureDesc.withMips()`, or a count): a pass
-draws into level 0, a kernel writes any (`dispatch.image(name, texture, level, -1)`), and anything sampling it filters
-trilinearly. `CgGpuOps.downsample` fills the chain. An imported framebuffer carries its own count
-(`CgFrameBuffer.createOwned(name, w, h, format, levels)`).
+draws into any (`rec.raster(texture, level, ...)`), a kernel writes any (`dispatch.image(name, texture, level, -1)`),
+and anything sampling it filters trilinearly. `texture.level(k)` samples level k alone, which is how a pass drawing one
+level reads another of the same texture with no feedback loop. `CgGpuOps.downsample` fills the chain with kernels. An
+imported framebuffer carries its own count (`CgFrameBuffer.createOwned(name, w, h, format, levels)`).
 
 ```java
 CgGraphTexture bloom = CgGraphTexture.transientTexture("bloom", new CgTextureDesc(w, h, HDR).withMips());
 CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("hi-z").color(0, CgTextureType.R32F).build();
 CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, r32f, 6));   // six levels
+
+CgRasterPass down = rec.raster(bloom, 3, CgLoad.load(), constants, null, CgOrder.LOOKBACK);   // into level 3
+int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, bloom.level(2));
 ```
+
+- A pass into level k has the level's viewport, and no depth above level 0; its constants' resolution is the caller's.
+- A level view pins the texture's base and max level when bound (on Vulkan, a view of the one level), so a shader
+  reads it at LOD 0 and `textureSize(s, 0)` is the level's. The executor unpins after the pass, and binding the
+  texture whole unpins it too.
+- For ordering a level view reads the whole texture: the pass runs after every pass writing it before.
 
 **A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
 with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).
@@ -198,4 +208,6 @@ built on a worker, matched against the CPU's picture, executed again too; with s
 against a direct draw of what its count means, in a graph, executed again and through the world renderer.
 `--mode=material-buffer` is a material reading a kernel's buffers through `Buffers { }`, drawn indirect. All three pass
 forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
-(`compute/CLAUDE.md` § *Tests*).
+(`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
+level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
+validation, and both downlevel contexts.

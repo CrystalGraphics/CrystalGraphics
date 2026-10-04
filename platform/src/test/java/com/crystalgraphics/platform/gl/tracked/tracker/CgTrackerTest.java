@@ -59,6 +59,17 @@ public class CgTrackerTest {
         assertTrue("after a draw, a clear is inside the pass", device.log().get(device.log().size() - 1).startsWith("clearColor"));
     }
 
+    /** A pass may sample another level of the texture it renders into: a mip chain drawn level by level. */
+    @Test
+    public void aTargetAttachesItsLevelAlone() {
+        CgGpuTexture chain = device.createTexture(new CgGpuTexture.Desc("chain", CgGpuTexture.Kind.D2,
+                CgFormat.RGBA8_UNORM, 8, 8, 1, 4, 1, CgGpuTexture.Usage.ALL));
+        CgTarget level2 = new CgTarget(List.of(CgTextureView.attachment(chain, 2, 0)), null);
+        assertFalse(level2.attaches(new CgTextureView(chain, 1, 1, 0, 1)));
+        assertTrue(level2.attaches(new CgTextureView(chain, 2, 1, 0, 1)));
+        assertTrue("every level includes the one drawn", level2.attaches(CgTextureView.whole(chain)));
+    }
+
     @Test
     public void anUploadMidPassBreaksItAndTheNextDrawResumesWithLoad() {
         CgGpuTexture atlas = device.createTexture(new CgGpuTexture.Desc("atlas", CgGpuTexture.Kind.D2,
