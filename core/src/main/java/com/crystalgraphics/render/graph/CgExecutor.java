@@ -894,11 +894,12 @@ public final class CgExecutor {
         CgPipeline pipeline = null;
         boolean usable = false;
         int slot = 0;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
                 int command = packed.counts[b] != null ? slot++ : -1;
-                int end = command < 0 && multiDraw ? joinedEnd(packed, b) : b;
+                int end = command < 0 && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
+                        ? joinRun(packed, b) : b;
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
@@ -921,6 +922,7 @@ public final class CgExecutor {
                     boundBinding = -1;
                 }
                 if (!usable) {
+                    if (end > b) CgMeshStore.get().dropJoined();
                     CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
                     b = end;
                     continue;
@@ -930,12 +932,7 @@ public final class CgExecutor {
                     frame.bindings.bind(boundBinding);
                 }
                 if (end > b) {
-                    CgMeshStore store = CgMeshStore.get();
-                    for (int k = b; k <= end; k++) {
-                        store.join(mesh(packed, k), packed.instances[k], packed.submesh[k], packed.rangeFirst[k],
-                                packed.rangeCount[k], packed.first[k]);
-                    }
-                    store.drawJoined();
+                    CgMeshStore.get().drawJoined();
                     b = end;
                     continue;
                 }
@@ -967,23 +964,28 @@ public final class CgExecutor {
     }
 
     /**
-     * The last batch of the run from {@code b} that one multi-draw call draws: the batches after it under the same
-     * pipeline, bindings and scissor, with no copy of the target between them, drawn directly from meshes
-     * {@link CgMeshStore#joins} joins. {@code b} itself when none follows.
+     * Joins the run of batches from {@code b} that one multi-draw call draws ({@link CgMeshStore#join}), answering its
+     * last: those after it that are {@link #joinable} with it, while the store takes their meshes. {@code b} itself,
+     * nothing left joined, when none follows.
      */
-    private static int joinedEnd(CgFrame.Raster packed, int b) {
+    private static int joinRun(CgFrame.Raster packed, int b) {
         CgMeshStore store = CgMeshStore.get();
-        CgMesh first = mesh(packed, b);
+        if (!join(store, packed, b)) return b;
         int end = b;
-        for (int k = b + 1; k < packed.count; k++) {
-            if (packed.counts[k] != null || packed.copyBefore[k] != 0 || packed.pipeline[k] != packed.pipeline[b]
-                    || packed.binding[k] != packed.binding[b] || packed.scissor[k] != packed.scissor[b]
-                    || !store.joins(first, mesh(packed, k))) {
-                break;
-            }
-            end = k;
-        }
+        while (end + 1 < packed.count && joinable(packed, b, end + 1) && join(store, packed, end + 1)) end++;
+        if (end == b) store.dropJoined();
         return end;
+    }
+
+    private static boolean join(CgMeshStore store, CgFrame.Raster packed, int k) {
+        return store.join(mesh(packed, k), packed.instances[k], packed.submesh[k], packed.rangeFirst[k],
+                packed.rangeCount[k], packed.first[k]);
+    }
+
+    /** Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it. */
+    private static boolean joinable(CgFrame.Raster packed, int b, int k) {
+        return packed.counts[k] == null && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
+                && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b];
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */

@@ -66,8 +66,8 @@ CgObjectData cg_FetchObjectData(int instanceId) {
 // neither: its invocations are env/compute/kernel.glsl's.
 #if defined(CG_VERTEX_STAGE) && defined(CG_MULTI_DRAW)
 // A multi-draw's variant: no uniform changes between its commands, so each command's first instance is its batch's
-// base and its base vertex the mesh's. Indexed draws only: GL gives an array draw's base vertex as 0. Core in 4.6,
-// GL_ARB_shader_draw_parameters below, which the compiler enables. Vulkan's gl_InstanceIndex counts from the first
+// base and its base vertex the mesh's. Every command is drawn by indices, a mesh without them by 0, 1, 2 ...: GL gives
+// an array draw's base vertex as 0. Core in 4.6, GL_ARB_shader_draw_parameters below, which the compiler enables. Vulkan's gl_InstanceIndex counts from the first
 // instance; GL's gl_InstanceID does not.
 #if __VERSION__ >= 460
 #define CG_BASE_INSTANCE gl_BaseInstance
