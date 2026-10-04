@@ -49,6 +49,7 @@ public final class CgStageFrame {
     private final CgRecording recording = new CgRecording();
     private final CgFrameBuilder builder = new CgFrameBuilder();
     private final CgFrameGraph graph = new CgFrameGraph();
+    private final CgFrameResources resources = new CgFrameResources();
     private final CgRenderStage stage;
     private CgHostFrame host;
     private final CgPassConstants hostConstants = new CgPassConstants();
@@ -70,6 +71,14 @@ public final class CgStageFrame {
     /** What the stage's renderers record into. */
     public CgRecording recording() {
         return recording;
+    }
+
+    /**
+     * This firing's blackboard: what one renderer publishes for another recording later in the same firing, by
+     * {@link CgFrameKey}. Empty at the start of every firing.
+     */
+    public CgFrameResources resources() {
+        return resources;
     }
 
     /** The host's target, as the recording names it: whatever the host has bound when the stage executes. */
@@ -136,6 +145,8 @@ public final class CgStageFrame {
         } finally {
             graph.clear();
             recording.reset();
+            // A transient published here dies with this firing's graph: the next firing must not see it.
+            resources.clear();
         }
     }
 }
