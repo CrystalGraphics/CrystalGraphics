@@ -20,7 +20,7 @@ import java.util.Arrays;
  * }</pre>
  *
  * <pre>{@code
- * SPARKS.millis(0.75f);          // a setting changed: the scale follows within a second or so
+ * SPARKS.millis(0.75f);          // a setting changed: the scale drops at once and rises in steps
  * SPARKS.floor(0.25f);           // never below a quarter, whatever it costs
  * float spent = SPARKS.spent();  // ms a frame, smoothed: NaN until measured
  * }</pre>

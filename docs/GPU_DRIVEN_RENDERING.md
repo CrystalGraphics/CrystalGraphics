@@ -28,10 +28,11 @@ spawn schedule are the CPU's; every particle's position, cull, sort and draw com
 10. [Designing the pipeline](#10-designing-the-pipeline)
 11. [Every tier](#11-every-tier)
 12. [What it costs](#12-what-it-costs)
-13. [Checking it](#13-checking-it)
-14. [Easy to get wrong](#14-easy-to-get-wrong)
-15. [Not available yet](#15-not-available-yet)
-16. [Checklist for an agent](#16-checklist-for-an-agent)
+13. [Scaling to the GPU it runs on: `CgGpuBudget`](#13-scaling-to-the-gpu-it-runs-on-cggpubudget)
+14. [Checking it](#14-checking-it)
+15. [Easy to get wrong](#15-easy-to-get-wrong)
+16. [Not available yet](#16-not-available-yet)
+17. [Checklist for an agent](#17-checklist-for-an-agent)
 
 ## 1. The pipeline
 
@@ -266,7 +267,7 @@ draw has:
 - **Ordering decides adjacency.** The world renderer sorts opaque draws by sort layer, material, distance, mesh, so
   draws of one material and slab tend to sit together; transparent draws sort back to front, a `.group()` as one.
 - **The picture never changes**: joining is a pure call reduction, and `-Dcrystalgraphics.mesh.multiDraw=false` proves
-  it (§13).
+  it (§14).
 
 ## 9. Writing the material
 
@@ -348,7 +349,7 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 | GPU cull | compute | compute | lowered | lowered, counts read back | Java body |
 | Async compute | the owned device's compute queue; in order on Minecraft's | in order | in order | in order | in order |
 
-The picture is the same on every tier; each one's gate is the same scene compared byte for byte (§13).
+The picture is the same on every tier; each one's gate is the same scene compared byte for byte (§14).
 
 ## 12. What it costs
 
@@ -372,7 +373,75 @@ spheres, most off screen.
   culled set landing in one call.
 - **Async**: beside eight 1080p blurs (2.5 ms), half of 1 ms of fill-bound drawing disappears on the Vulkan device.
 
-## 13. Checking it
+## 13. Scaling to the GPU it runs on: `CgGpuBudget`
+
+An effect sized on the author's GPU runs on a Mac, an integrated GPU or a lowered tier at a fraction of the speed, and
+takes the player's frame rate with it. A **budget** is a consumer's share of the GPU frame in milliseconds: the passes
+charged to it are timed on the GPU, and `scale()`, from the floor to 1, is what the consumer multiplies its work by so
+that they fit. No device is named anywhere. Niagara's scalability is the use; Unreal's dynamic resolution heuristic is
+the controller.
+
+```java
+static final CgGpuBudget SPARKS = CgGpuBudget.define("sparks", 1.5f);   // 1.5 ms of GPU a frame; once per consumer
+
+CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
+    int spawned = Math.round(wantedThisFrame * SPARKS.scale());          // the scale thins the spawns
+    CgComputePass pass = frame.recording().compute("sparks.step").timed(SPARKS);   // charged to it
+    pass.dispatch(spawn, Math.max(spawned, 1)).bind("STATE", sparks).set("_Count", spawned);
+    pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks);
+    pass.end();
+});
+```
+
+A pass of your own drawing what the kernels wrote is charged the same way, so the budget holds the drawing too:
+
+```java
+CgRasterPass draw = recording.raster(target, CgLoad.load(), camera, null, CgOrder.SORTED).timed(SPARKS);
+```
+
+At run time, from a setting or a debug overlay:
+
+```java
+SPARKS.millis(settings.effectsBudgetMs());   // a slider: the scale drops at once and rises in steps
+SPARKS.floor(0.25f);                         // the effect must stay recognisable, whatever it costs
+overlay.text(String.format("sparks %.2f ms at %.2f", SPARKS.spent(), SPARKS.scale()));
+```
+
+**What to scale.** Spawn counts first: every later pass scales with the elements. Then optional stages at a threshold
+of the scale (a second collision pass, sub-steps, sorting an additive pool), then resolution (a volume's, a grid's).
+Never storage: capacity is sized by the tier, which a budget does not change
+([`SHADERS.md` § *Designing for every tier*](SHADERS.md#designing-for-every-tier), rule 6).
+
+**How the scale moves.**
+
+| | |
+|---|---|
+| It starts | at the tier's share: 1 as compute (V, G43), 0.5 lowered (G40, G33), 0.25 on the CPU tier |
+| It measures | every pass charged to it, zones nested inside them included, frame by frame as the GPU answers: one to three frames late, never waiting |
+| It judges | the median of the nine frames recorded since its last change, so a frame the driver stretched moves nothing and a change is judged by what it caused |
+| Over by 5% | down at once, in proportion to the overshoot, at most halving |
+| Under 85% for 20 judgements | up by what the measured time says fits, at most a quarter |
+| Between | held |
+| It never goes | below the floor (0.1 unless `floor(f)`) or above 1 |
+| Without timer queries | it stays at its start |
+
+`spent()` is the median it judged, NaN before any frame came back. A pass charged to a budget is timed whatever the
+trace; with the `gpu` channel on it keeps its own zone, and one without a zone shows as `gpu:budget.<name>`.
+
+- **Charge every pass of the consumer**, or the scale holds the wrong time. Draws through `CgWorldRenderer` are in the
+  world's passes and are not charged: give the budget headroom for them, or draw a heavy pool in a pass of your own.
+- **An `async()` pass on a device with a compute queue** runs beside the timer and is not counted.
+- **A large fixed cost may never fit**: a lowered tier's dispatches cost something whatever their size, and a budget
+  below that stops at the floor. Budget at least what the consumer costs doing nothing useful.
+- **It follows, a few frames late**: a burst of spawns lands before the scale answers it. Leave headroom for spikes,
+  or spread a burst over frames.
+- **Read `scale()` where the work is sized**, once a frame; any thread may read it.
+
+Its gate is `--mode=gpu-budget`: a pass of fills measured at full size and at a tenth, then held under its fixed cost
+plus a third of the rest. On an RTX 4070 SUPER it holds 0.211 ms against a 0.207 ms budget on GL and 0.224
+against 0.221 on Vulkan, inside the 5% it allows over.
+
+## 14. Checking it
 
 | Check | How |
 |---|---|
@@ -383,8 +452,9 @@ spheres, most off screen.
 | A missing barrier | the Vulkan device with `-Dcrystalgraphics.vulkan.syncValidation=true`; `-Dcrystalgraphics.graph.asyncAll=true` checks every async wait |
 | Every tier | `-Dcrystalgraphics.compute.tier=G43|G40|G33|CPU` on your GPU; `-Pharness.downlevel=mac41|gl33` for a context that lacks the features |
 | Its cost | the `profiling` skill; a pass's CPU zone is its name, its GPU zone on `crystalgraphics.gl.detail` |
+| Its budget holds | `budget.spent()` against `budget.millis()` while `scale()` settles; `--mode=gpu-budget` for the mechanism on a context (§13) |
 
-## 14. Easy to get wrong
+## 15. Easy to get wrong
 
 - **A kernel recorded after the draw reading it** draws last frame's data or nothing: in a world stage, register the
   renderer recording it below `CgWorldRenderer.ORDER`.
@@ -399,8 +469,10 @@ spheres, most off screen.
 - **`INSTANCES` draws of the frame's records never join**: a mesh per element wants `objects()` or `.instances()`.
 - **No bounds** on an indirect draw: the count is unknown when it is culled, so it is culled by its mesh's box alone.
 - **`CgKernelProgram`** orders nothing after it and does not run below compute; a graph's dispatch does both.
+- **Work sized for the author's GPU**: on a weak one it takes the frame rate. Charge the passes to a `CgGpuBudget` and
+  scale the spawns by it (§13).
 
-## 15. Not available yet
+## 16. Not available yet
 
 What a pipeline here cannot do today, so a design does not assume it:
 
@@ -410,7 +482,7 @@ What a pipeline here cannot do today, so a design does not assume it:
 - Clustered lights and decals, an order-independent transparent queue, bindless textures.
 - Multi-draw on macOS's GL: each draw is its own call there.
 
-## 16. Checklist for an agent
+## 17. Checklist for an agent
 
 1. Decide what is per element (GPU) and per effect or draw (CPU), by the rule at the top.
 2. Pick the entry point (§2); prefer the world renderer's `.instances()` or `.indirect()`.
@@ -418,7 +490,7 @@ What a pipeline here cannot do today, so a design does not assume it:
 4. Record the compute pass ahead of its draws, a simulation once per frame (`registerOncePerFrame`); make every
    buffer a later stage or firing reads persistent.
 5. Write the material with the `CG_` macros and `Buffers { }`; one material per look.
-6. Bounds on every indirect draw; the passes charged to a `CgGpuBudget`, and the work scaled by it.
+6. Bounds on every indirect draw; every pass charged to a `CgGpuBudget` and the spawns scaled by it (§13).
 7. Check: `multiDraw=false` gives the same picture, the counters show the calls you expect, checked mode is quiet,
    synchronization validation is clean, and it passes forced to G40, G33 and CPU.
 8. Measure before and after with the profiler, warm.
