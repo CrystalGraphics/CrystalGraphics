@@ -106,6 +106,8 @@ public final class CgExecutor {
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
+    /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
+    private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
     private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
@@ -920,6 +922,10 @@ public final class CgExecutor {
                 } else {
                     end = packed.objects[b] == null && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
                             ? joinRun(packed, b) : b;
+                    if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
+                            && breaksOnBinding(packed, b, end + 1)) {
+                        CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
+                    }
                 }
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
@@ -1038,6 +1044,14 @@ public final class CgExecutor {
     /** Whether every instance of indirect batch {@code b} reads its one record: an INSTANCES draw of the frame's. */
     private static boolean sharesRecord(CgFrame.Raster packed, int b) {
         return packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+    }
+
+    /** Whether batch {@code k} would join {@code b}'s run but for its bindings: what bindless would join. */
+    private static boolean breaksOnBinding(CgFrame.Raster packed, int b, int k) {
+        return packed.objects[b] == null && packed.counts[k] == null && packed.objects[k] == null
+                && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
+                && packed.binding[k] != packed.binding[b] && packed.scissor[k] == packed.scissor[b]
+                && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 
     /** Binds a GPU buffer of object records where {@code CG_OBJECT_DATA} reads the frame's own. */
