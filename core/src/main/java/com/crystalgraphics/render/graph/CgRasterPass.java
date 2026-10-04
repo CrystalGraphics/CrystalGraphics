@@ -131,6 +131,15 @@ public final class CgRasterPass extends CgPass {
         return this;
     }
 
+    /**
+     * Times it on the GPU on its own, under {@code zone}, a name made once with {@code CgGpuTrace.name}. Inside a stage
+     * it splits the stage's own zone, which GPU zones' not nesting allows.
+     */
+    public CgRasterPass timed(int zone) {
+        gpuZone = zone;
+        return this;
+    }
+
     /** Draws the chunks added from now on inside {@code (x, y, w, h)}, in the target's bottom-left pixels. */
     public CgRasterPass scissor(int x, int y, int w, int h) {
         return useScissor(scissor(-1, x, y, w, h));

@@ -37,6 +37,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -359,6 +360,19 @@ public final class CgExecutor {
 
     private void step(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];
+        if (pass.gpuZone < 0) {
+            run(frame, s, pass);
+            return;
+        }
+        CgGpuTrace.begin(pass.gpuZone);
+        try {
+            run(frame, s, pass);
+        } finally {
+            CgGpuTrace.end();
+        }
+    }
+
+    private void run(CgFrame frame, int s, CgPass pass) {
         try {
             if (!(pass instanceof CgComputePass)) barriers(frame, s);
             if (pass instanceof CgRasterPass raster) {

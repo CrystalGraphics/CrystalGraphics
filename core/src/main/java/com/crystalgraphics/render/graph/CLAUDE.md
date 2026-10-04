@@ -49,6 +49,9 @@ CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("hi-z").color(0, CgTextur
 CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, r32f, 6));   // six levels
 ```
 
+**A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
+with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).
+
 **Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
 name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues
 `cgBufferBarrier`/`cgImageBarrier` wherever a kernel takes part: exact on the tracked backend, the reader's

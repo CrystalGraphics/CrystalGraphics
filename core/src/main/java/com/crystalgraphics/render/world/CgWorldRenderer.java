@@ -37,6 +37,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -115,6 +116,9 @@ public final class CgWorldRenderer {
     /** The deepest mip level bloom blurs and sums (bloom.shader reads 1 to 5), and each level's blur in its texels. */
     private static final int BLOOM_LEVELS = 5;
     private static final float BLOOM_SIGMA = 1.5f;
+    /** Bloom's passes on the GPU, each timed on its own. */
+    private static final int GPU_EMISSION = CgGpuTrace.name("bloom.emission"), GPU_CHAIN = CgGpuTrace.name("bloom.chain"),
+            GPU_COMPOSITE = CgGpuTrace.name("bloom.composite");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
@@ -611,7 +615,7 @@ public final class CgWorldRenderer {
         bloomConstants.read(constantsBlock, 0).resolution(w, h);
 
         CgRasterPass glow = recording.raster(bloomTarget, CgLoad.clear(0f, 0f, 0f, 0f), bloomConstants, EMISSIVE_STATE,
-                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target());
+                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (!emits[i]) continue;
@@ -630,7 +634,7 @@ public final class CgWorldRenderer {
 
         int last = Math.min(BLOOM_LEVELS, bloomTarget.getLevels() - 1);
         if (last >= 1) {
-            CgComputePass blur = recording.compute("world.bloom", bloomConstants);
+            CgComputePass blur = recording.compute("world.bloom", bloomConstants).timed(GPU_CHAIN);
             for (int l = 1; l <= last; l++) {
                 CgGpuOps.downsample(blur, bloomTarget, l - 1, l, CgGpuOps.Filter.AVERAGE);
                 CgGpuOps.blur(blur, bloomTarget, l, bloomTarget, l, BLOOM_SIGMA);
@@ -648,7 +652,8 @@ public final class CgWorldRenderer {
         }
         CgPipeline add = bloomMaterial.pipeline(CgInstanceKind.OBJECT);
         if (add == null) return;
-        CgRasterPass composite = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED);
+        CgRasterPass composite = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
+                .timed(GPU_COMPOSITE);
         chunks = recording.chunks().begin();
         chunks.draw(add, bindingOf(bloomMaterial, recording), FULLSCREEN);
         chunks.instance();
