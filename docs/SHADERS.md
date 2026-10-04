@@ -935,6 +935,13 @@ state = recording.resize(state, CgBufferDesc.elements(capacity, 32, CgBufferUsag
 `resize` answers a new handle of the buffer's kind holding what each version held, up to the smaller size, and releases
 the old one: use the new handle from then on, and bind it again wherever the old one was bound (`material.buffer`).
 
+A graph texture's region is written the same way, its bytes copied when recorded, rows bottom first and tightly packed
+in the texture type, as a texture readback answers them:
+
+```java
+recording.update(heights, 0, 32, 0, 16, 16, slab);          // level 0, a 16x16 region at (32, 0); the rest kept
+```
+
 A buffer declares every use it is put to: `STORAGE` for a kernel or a storage block, `INDIRECT` for
 `dispatchIndirect`'s arguments, `COPY` for a fill, update or copy; `VERTEX`, `INDEX` and `UNIFORM` for draws. **New
 storage holds whatever the driver gives**: fill it, or write every element, before anything reads it.

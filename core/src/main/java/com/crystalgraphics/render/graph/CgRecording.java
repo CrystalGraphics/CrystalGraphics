@@ -2,9 +2,11 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
+import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -14,6 +16,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -289,24 +292,79 @@ public final class CgRecording {
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
         }
+        region(texture, level, x, y, w, h, "a readback");
+        CgRequest request = new CgRequest("readback " + texture.name());
+        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, w, h, sink, request);
+        add(pass);
+        read(pass, texture, CgAccess.COPY_READ);
+        return request;
+    }
+
+    /**
+     * Writes {@code data}'s remaining bytes, copied now, into a {@code w} x {@code h} region at {@code (x, y)} of level
+     * {@code level} of {@code texture}'s first colour attachment: rows bottom first, tightly packed, as its texture type,
+     * which is how {@link #readback(CgGraphTexture, int, int, int, int, int, CgReadback.Sink)} answers them. The rest
+     * keeps what it held.
+     *
+     * <pre>{@code
+     * recording.update(heights, 0, 32, 0, 16, 16, slab);   // a 16x16 R32F slab at (32, 0)
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code data} holds {@code w * h * CgReadback.pixelBytes(type)} bytes, or it throws.</li>
+     *   <li>Written once when a frame executes again, as an {@link #upload} is.</li>
+     * </ul>
+     */
+    public CgRequest update(CgGraphTexture texture, int level, int x, int y, int w, int h, ByteBuffer data) {
+        requireOpen();
+        CgFrameBufferFormat format = region(texture, level, x, y, w, h, "an update");
+        if (format == null || format.isMultisampled()) {
+            throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known type to update");
+        }
+        CgTextureType type = format.getColorSlot(0);
+        long want = (long) w * h * CgReadback.pixelBytes(type);
+        if (data.remaining() != want) {
+            throw new IllegalArgumentException(w + "x" + h + " of " + type + " is " + want + " bytes, not " + data.remaining());
+        }
+        byte[] bytes = new byte[data.remaining()];
+        data.duplicate().get(bytes);
+        int pixelFormat = type.glBaseFormat, pixelType = type.glType;
+        return upload(texture, target -> {
+            if (!(target.getColorTexture(0) instanceof CgTexture2D colour)) {
+                throw new IllegalStateException(texture + "'s attachment 0 is no texture the engine owns");
+            }
+            colour.uploadRegion(level, x, y, w, h, texels(bytes), pixelFormat, pixelType);
+        });
+    }
+
+    /** An update's bytes on the render thread, where every upload runs: one buffer serves them all. */
+    private static ByteBuffer texels;
+
+    private static ByteBuffer texels(byte[] bytes) {
+        if (texels == null || texels.capacity() < bytes.length) texels = CgBufferUtils.createByteBuffer(Math.max(bytes.length, 4096));
+        texels.clear();
+        texels.put(bytes).flip();
+        return texels;
+    }
+
+    /** The format of {@code texture}, null where unknown, after checking the region lies in level {@code level}. */
+    @Nullable
+    private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int w, int h, String what) {
+        if (texture.kind() == CgGraphTexture.Kind.CURRENT) throw new IllegalArgumentException("the current target is no texture");
         if (level < 0 || level >= texture.getLevels()) {
             throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
         }
         CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
                 : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
         if (format != null && (format.getColorSlot(0) == null || format.isColorRenderbuffer(0))) {
-            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0 to read");
+            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
         }
         int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
         if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > lw || y + h > lh) {
-            throw new IllegalArgumentException("a readback of " + w + "x" + h + " at " + x + "," + y + " in level " + level
+            throw new IllegalArgumentException(what + " of " + w + "x" + h + " at " + x + "," + y + " in level " + level
                     + " of " + texture + ", " + lw + "x" + lh);
         }
-        CgRequest request = new CgRequest("readback " + texture.name());
-        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, w, h, sink, request);
-        add(pass);
-        read(pass, texture, CgAccess.COPY_READ);
-        return request;
+        return format;
     }
 
     /** Writes into {@code target} on the render thread, before any later reader. */

@@ -3418,6 +3418,7 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public unpinLevels ()V
   method public upload (IILjava/nio/ByteBuffer;II)V
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
+  method public uploadRegion (IIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createDirect (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
@@ -4408,6 +4409,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public shapes ()Lcom/crystalgraphics/gl/render/CgShapeTable;
   method public spatial ()Lcom/crystalgraphics/render/property/CgSpatialTree;
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JLjava/nio/ByteBuffer;)V
+  method public update (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIILjava/nio/ByteBuffer;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public upload (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgUpload;)Lcom/crystalgraphics/render/graph/CgRequest;
 com/crystalgraphics/render/graph/CgReplay
   access public,final

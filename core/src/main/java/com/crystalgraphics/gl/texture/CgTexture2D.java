@@ -193,6 +193,27 @@ public final class CgTexture2D extends CgTextureAbstract {
         gpu.run(pixels, data -> texImage(width, height, data, pixelFormat, pixelType));
     }
 
+    /**
+     * Writes a {@code width} x {@code height} region at {@code (x, y)} of level {@code level}: rows bottom first, tightly
+     * packed, in {@code pixelFormat} and {@code pixelType}. The rest of the texture keeps what it held.
+     *
+     * <pre>{@code
+     * heights.uploadRegion(0, 32, 0, 16, 16, slab, GL_RED, GL_FLOAT);   // a 16x16 R32F slab at (32, 0)
+     * }</pre>
+     */
+    public void uploadRegion(int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
+                             int pixelType) {
+        checkNotDeleted();
+        gpu.run(pixels, data -> {
+            CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, pixelFormat, pixelType, data);
+            } finally {
+                CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+            }
+        });
+    }
+
     private void texImage(int width, int height, @Nullable ByteBuffer pixels, int pixelFormat, int pixelType) {
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
