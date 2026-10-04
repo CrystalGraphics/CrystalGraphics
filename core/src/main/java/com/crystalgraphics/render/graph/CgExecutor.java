@@ -83,7 +83,8 @@ import java.util.function.IntConsumer;
  *   <li>A compute pass needs a context that runs compute shaders, and throws naming the tier where it does not; so
  *       does a raster pass holding an indirect draw, whose command a kernel writes before the pass begins.</li>
  *   <li>An {@code async()} compute pass goes to the device's compute queue, where it has one; the first later step
- *       touching its storage waits for it, and the execution ends waiting for all of it.
+ *       touching its storage waits for it, in this execution or a later one of the frame. An execution ends waiting
+ *       only for its async work on imported, current or requested storage, which the host may touch.
  *       {@code -Dcrystalgraphics.graph.asyncAll=true} sends every pass that can go.</li>
  * </ul>
  */
@@ -148,11 +149,16 @@ public final class CgExecutor {
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
     /** This execution's: whether an async pass runs beside the frame's queue, and whether runs of draws join. */
     private boolean asyncCompute, multiDraw;
-    /** Storage async passes touched that the frame's queue has not waited for, each with the point covering it. */
-    private long[] asyncKeys = new long[16], asyncPoints = new long[16];
-    private int asyncCount;
-    private long asyncLatest;
-    private boolean asyncUnwaited;
+    /**
+     * Storage async passes touched that the frame's queue has not waited for, each with the point covering it: across
+     * the frame's executions, and dropped at the next, whose start the device orders after all of it.
+     */
+    private static long[] asyncKeys = new long[16], asyncPoints = new long[16];
+    private static int asyncCount;
+    private static long asyncLatest, asyncWaited, asyncFrame = -1;
+    private static boolean asyncUnwaited;
+    /** This execution's: the newest async point covering storage outside the graph, waited for at its end. */
+    private long asyncEnd;
     private final long[] keyScratch = new long[2];
 
     private CgExecutor(int depth) {
@@ -240,6 +246,11 @@ public final class CgExecutor {
         KEPT.clear();
         HAZARDS.clear();
         CgBufferInspector.reset();
+        // The next device's timelines start again at 0.
+        asyncCount = 0;
+        asyncLatest = asyncWaited = 0;
+        asyncFrame = -1;
+        asyncUnwaited = false;
     }
 
     private void run(CgFrame frame) {
@@ -250,6 +261,11 @@ public final class CgExecutor {
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
+        if (asyncUnwaited && CgFrameRing.frame() != asyncFrame) {   // the last frame's end waited for all of it
+            asyncCount = 0;
+            asyncUnwaited = false;
+        }
+        asyncEnd = 0;
         multiDraw = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another.
         startNoted = frame.readsCurrentDepth || frame.rastersCurrent && frame.rastersOther;
@@ -290,7 +306,7 @@ public final class CgExecutor {
                 }
             }
         } finally {
-            if (asyncUnwaited) waitAsync(asyncLatest);   // nothing after the graph reads what async work has not finished
+            waitAsync(asyncEnd);   // what the host may touch; the rest waits for its reader, or the frame's end
             if (resolved > 0) {
                 for (CgGraphResource transientResource : frame.transients) {
                     if (isResolved(transientResource)) giveBack(transientResource);
@@ -590,11 +606,23 @@ public final class CgExecutor {
         CgTrace.add(CgChannels.GL, ASYNC_PASSES, 1);
         if (point == 0) return;   // the device ran it in order
         for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            int n = keys(frame.accessView[i]);
+            CgGraphResource view = frame.accessView[i];
+            int n = keys(view);
             for (int k = 0; k < n; k++) pend(keyScratch[k], point);
+            if (!graphOnly(view)) asyncEnd = point;
         }
         asyncLatest = point;
         asyncUnwaited = true;
+        asyncFrame = CgFrameRing.frame();
+    }
+
+    /**
+     * Whether nothing outside the graph reaches {@code view}'s storage, so its async work may be waited for by its
+     * first reader in a later execution of the frame. Imported, current and requested storage the host may touch.
+     */
+    private static boolean graphOnly(CgGraphResource view) {
+        if (view instanceof CgGraphBuffer buffer) return buffer.resource().kind() != CgGraphBuffer.Kind.IMPORTED;
+        return ((CgGraphTexture) view).kind() == CgGraphTexture.Kind.TRANSIENT;
     }
 
     /**
@@ -619,7 +647,9 @@ public final class CgExecutor {
     }
 
     private void waitAsync(long point) {
+        if (point <= asyncWaited) return;
         CgGL.cgWaitAsync(point);
+        asyncWaited = point;
         CgTrace.add(CgChannels.GL, ASYNC_WAITS, 1);
         int kept = 0;
         for (int j = 0; j < asyncCount; j++) {
