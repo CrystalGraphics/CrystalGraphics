@@ -167,6 +167,7 @@ com/crystalgraphics/platform/device/command/CgCommandEncoder
   method public,abstract readBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLjava/nio/ByteBuffer;)V
   method public,abstract readTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
   method public,abstract resolve (Lcom/crystalgraphics/platform/device/resource/CgTextureView;Lcom/crystalgraphics/platform/device/resource/CgTextureView;)V
+  method public,abstract timestamp (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
   method public,abstract waitAsync (J)V
   method public,abstract writeBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLjava/nio/ByteBuffer;)V
   method public,abstract writeTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Ljava/nio/ByteBuffer;)V
@@ -1582,6 +1583,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glPointSize (F)V
   method public,static glPolygonMode (II)V
   method public,static glPolygonOffset (FF)V
+  method public,static glQueryTimestamp (I)V
   method public,static glReadBuffer (I)V
   method public,static glReadPixels (IIIIIIJ)V
   method public,static glReadPixels (IIIIIILjava/nio/ByteBuffer;)V
@@ -1763,6 +1765,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glPointSize (F)V
   method public,abstract glPolygonMode (II)V
   method public,abstract glPolygonOffset (FF)V
+  method public,abstract glQueryTimestamp (I)V
   method public,abstract glReadBuffer (I)V
   method public,abstract glReadPixels (IIIIIIJ)V
   method public,abstract glReadPixels (IIIIIILjava/nio/ByteBuffer;)V
@@ -2230,6 +2233,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glPointSize (F)V
   method public glPolygonMode (II)V
   method public glPolygonOffset (FF)V
+  method public glQueryTimestamp (I)V
   method public glReadBuffer (I)V
   method public glReadPixels (IIIIIIJ)V
   method public glReadPixels (IIIIIILjava/nio/ByteBuffer;)V
@@ -3231,6 +3235,7 @@ com/crystalgraphics/trace/CgGpuTrace
   access public,final
   extends java/lang/Object
   field public,static,final GPU Lcom/crystalgraphics/trace/CgTraceChannel;
+  field public,static,final GROUP Ljava/lang/String;
   field public,static,final NO_BUDGET I
   field public,static,final PREFIX Ljava/lang/String;
   method public,static begin (I)V
@@ -3244,6 +3249,9 @@ com/crystalgraphics/trace/CgGpuTrace
   method public,static dispose ()V
   method public,static end ()V
   method public,static isMeasuring ()Z
+  method public,static label (Ljava/lang/String;)I
+  method public,static mark (I)V
+  method public,static markEnd ()V
   method public,static name (Ljava/lang/String;)I
   method public,static nextBudgetFrame ()V
   method public,static probe ()Lcom/crystalgraphics/trace/CgGpuTrace$Support;
