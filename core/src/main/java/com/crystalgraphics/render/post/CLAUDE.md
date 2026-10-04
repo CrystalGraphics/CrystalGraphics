@@ -20,7 +20,7 @@ CgPostStack     (ORDER 2000)
 |---|---|
 | (root) | `CgPostStack` (the singleton: registration, the effect list, recording), `CgPostEffect` (the SPI the engine's and a mod's effects implement), `CgPostPoint`, `CgPostContext` (what an effect records with) |
 | `bloom` | `CgBloom`: the built-in bloom and its settings. `CgBloomChain`: its chain as raster passes, CoD's scheme (13-tap down with Karis on the first step, tent up), each level drawn through `CgGraphTexture.level(k)`; each level's share of the glow is set in the upsample's blend (`ONE, SRC_ALPHA`: keep `WEIGHTS[k]` of the level, add the tent below), so level 0 holds the whole glow and the composite reads it once |
-| `composite` | `CgPostComposite` (the one pass, `shaders/post/composite.shader`), `CgCompositeFeature` (each look, a keyword) |
+| `composite` | `CgPostComposite` (the one pass), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, no copy, adding in the target's encoding, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads `cg_SceneColor`, composites in linear light, triangular dither), chosen each firing from what its inputs ask |
 
 Shaders: `shaders/post/` — `composite.shader`; bloom's passes under `shaders/post/bloom/` (`down`, `up`), their
 filters in `shaders/lib/post/bloom.glsl`.
@@ -35,4 +35,6 @@ filters in `shaders/lib/post/bloom.glsl`.
 - **A mod's effect cannot join the composite** (Unreal's blendables run as their own passes too): it records at a point.
 - **Nothing is asked of the world renderer.** With bloom off, nothing reads the emission target and the graph culls
   its pass; there is no flag between the two.
+- **Dither the blend form by stochastic rounding, never by +-1 noise** (`post_round8`): an 8-bit attachment clamps a
+  fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **Recording allocates nothing**: the effect list is an array snapshot, replaced whole by `add` and removal.

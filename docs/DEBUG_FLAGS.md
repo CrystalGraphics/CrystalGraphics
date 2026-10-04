@@ -57,6 +57,10 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 -Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
                                                      # validation must catch on --mode=compute-graph
 
+# Post stack (render/post/CLAUDE.md)
+-Dcrystalgraphics.post.bloom.linear=true             # bloom composited in linear light (the copy form) from the start,
+                                                     # to compare with the default blend form
+
 # Compute tiers (compute/CLAUDE.md § Three forms)
 -Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
                                                      # context has what it needs; refused, naming it, where not

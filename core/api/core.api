@@ -4397,9 +4397,20 @@ com/crystalgraphics/render/post/bloom/CgBloom
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
   method public intensity ()F
   method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public linear (Z)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+  method public mode ()Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public mode (Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
   method public release ()V
+  method public tint (FFF)Lcom/crystalgraphics/render/post/bloom/CgBloom;
+com/crystalgraphics/render/post/bloom/CgBloom$Mode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADDITIVE Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  field public,static,final ENERGY_CONSERVING Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
+  method public,static values ()[Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
 com/crystalgraphics/render/post/composite/CgCompositeFeature
   access public,final,enum
   extends java/lang/Enum
@@ -4407,13 +4418,22 @@ com/crystalgraphics/render/post/composite/CgCompositeFeature
   method public keyword ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   method public,static values ()[Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
+com/crystalgraphics/render/post/composite/CgCompositeForm
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLEND Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
+  field public,static,final COPY Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
+  method public,static values ()[Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
 com/crystalgraphics/render/post/composite/CgPostComposite
   access public,final
   extends java/lang/Object
   method public <init> ()V
   method public active (Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;)Z
   method public begin ()V
-  method public bloom (Lcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public bloom (Lcom/crystalgraphics/render/graph/CgGraphTexture;FFFFZ)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public form ()Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
+  method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public release ()V
 com/crystalgraphics/render/property/CgEffectTree
