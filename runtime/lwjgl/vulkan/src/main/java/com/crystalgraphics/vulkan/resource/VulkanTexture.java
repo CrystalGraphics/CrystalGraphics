@@ -3,6 +3,7 @@ package com.crystalgraphics.vulkan.resource;
 import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
+import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -92,7 +93,19 @@ public final class VulkanTexture implements CgGpuTexture {
      */
     public int transition(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout,
                    int dstStage, int dstAccess) {
+        requireUsableOn(cmd);
         return move(cmd, baseMip, mips, baseLayer, count, layout, 0, 0, dstStage, dstAccess, false);
+    }
+
+    /**
+     * Refuses a host's image in a command buffer for another queue family: the host made it for its own family
+     * alone, and another family reads undefined contents from it.
+     */
+    public void requireUsableOn(VkCommandBuffer cmd) {
+        if (borrowed() && cmd instanceof VulkanComputeCommandBuffer) {
+            throw new IllegalStateException(desc.label() + " is the host's image: an async pass on another queue "
+                    + "family cannot use it");
+        }
     }
 
     public int transitionAll(VkCommandBuffer cmd, int layout, int dstStage, int dstAccess) {
@@ -106,6 +119,7 @@ public final class VulkanTexture implements CgGpuTexture {
      * @return barriers recorded
      */
     public int barrier(VkCommandBuffer cmd, int layout, int srcStage, int srcAccess, int dstStage, int dstAccess) {
+        requireUsableOn(cmd);
         if (allIn(layout)) {
             VulkanBarriers.image(cmd, image, aspect, 0, desc.mips(), 0, layers, layout, layout, srcStage, srcAccess,
                     dstStage, dstAccess);

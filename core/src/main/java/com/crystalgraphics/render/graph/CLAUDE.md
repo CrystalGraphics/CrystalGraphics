@@ -291,7 +291,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
   lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
   execution ends: ops chained in a frame land only what leaves them.
-- **An `async()` compute pass runs on the device's compute queue** where it has one, and in order elsewhere. The
+- **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device, and Minecraft
+  26.2's through the queue it leaves unused), and in order elsewhere. On Minecraft's device it may not touch
+  Minecraft's own images, which only its graphics queue may use. The
   executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
   to another counts), before a callback, and at the end of the execution (`docs/SHADERS.md` § *Beside the drawing*).
 - **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any

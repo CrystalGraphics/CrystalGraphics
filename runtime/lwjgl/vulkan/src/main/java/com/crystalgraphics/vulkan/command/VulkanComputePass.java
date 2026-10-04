@@ -51,6 +51,7 @@ final class VulkanComputePass implements CgComputePass {
     public void pushBindings(CgBindings b) {
         if (pipeline == null) throw new IllegalStateException("Bindings pushed before a pipeline");
         for (int i = 0; i < b.count(); i++) {
+            if (b.type(i) == CgBindingLayout.Type.SAMPLED_TEXTURE) ((VulkanTexture) b.view(i).texture()).requireUsableOn(cmd());
             if (b.type(i) != CgBindingLayout.Type.STORAGE_IMAGE) continue;
             CgTextureView view = b.view(i);
             device.barriers += ((VulkanTexture) view.texture()).transition(cmd(), view.baseMip(), 1, view.baseLayer(), 1,
