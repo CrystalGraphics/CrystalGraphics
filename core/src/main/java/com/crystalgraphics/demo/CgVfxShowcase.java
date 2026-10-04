@@ -101,9 +101,10 @@ public final class CgVfxShowcase {
     /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
     private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
     /** Heat haze on its own, at the spheres' height just in front of the front row, two spheres behind it. */
-    private static final float[] HAZE_AT = {0f, HEIGHT, 1.5f * SPACING + 2.6f};
-    private static final float HAZE_RADIUS = 2.6f;
-    private static final float HAZE_INTENSITY = 1.5f;
+    private static final float HAZE_RADIUS = 4f;
+    private static final float[] HAZE_AT = {0f, HEIGHT, 1.5f * SPACING + HAZE_RADIUS};
+    /** Its strongest bend up close stays under 0.09 of the screen's height, inside the apply's copy margin of 0.1. */
+    private static final float HAZE_INTENSITY = 2.2f;
 
     /** Where one wave fires from and at, and its look: slower so it is seen growing, harder-homing so it bends sharply. */
     private static final class Lane {
