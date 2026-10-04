@@ -108,7 +108,7 @@ GUI paint back at −1..1 and 1.0), and found what no code diff could:
 
 | # | What the host leaves at our entry | Versions | Ours | Status |
 |---|---|---|---|---|
-| 22 | **Sampler objects bound on units 0–2**, which override a texture's own filtering, wrapping and LOD | 1.21.11 → 26.2 (`GlRenderPass` binds one per draw, never unbinds, caches none) | `CgHostSamplers` parks them for our world passes (2747aba) and CrystalGUI's frame through its composite (CrystalGUI acd355d7), and puts them back | adapted |
+| 22 | **Sampler objects bound on units 0–2**, which override a texture's own filtering, wrapping and LOD | 1.21.11 → 26.2 (`GlRenderPass` binds one per draw, never unbinds, caches none) | `CgHostSamplers` unbinds them for our world passes (2747aba) and CrystalGUI's frame through its composite (CrystalGUI acd355d7): every unit, unread, since reading the bindings back was a `glGet` per unit; Minecraft rebinds its own per draw | adapted |
 | 23 | **Scissor test on** at the world passes (26.2 Fabric), and a small box set (1.21.11 NeoForge) | 26.2; any | The world passes save `SCISSOR` and disable the test (2747aba); CrystalGUI's frame already did | adapted |
 | 24 | `UNPACK_ROW_LENGTH` 64–512 and skips set | 1.21.11 → 26.2 | `CgTightUnpack` resets the unpack state around our uploads | adapted |
 | 25 | Alpha writes off (`COLOR_WRITEMASK 1 1 1 0`) at a GUI paint | 1.21.11 → 26.2 | `CgUiPaintContext.beginFrame` sets all four | adapted |
