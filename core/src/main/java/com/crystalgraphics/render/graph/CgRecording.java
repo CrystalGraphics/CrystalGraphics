@@ -168,8 +168,24 @@ public final class CgRecording {
      */
     public CgRasterPass raster(CgGraphTexture target, CgLoad load, CgPassConstants constants,
                                @Nullable CgRenderState state, CgOrder order) {
+        return raster(target, 0, load, constants, state, order);
+    }
+
+    /**
+     * A raster pass into mip level {@code level} of {@code target}: one step of a chain drawn level by level, reading
+     * the level before it through {@link CgGraphTexture#level}. The viewport is the level's size, which
+     * {@code constants}' resolution should be too; a level above 0 has no depth.
+     *
+     * <pre>{@code
+     * CgRasterPass down = rec.raster(bloom, 2, CgLoad.load(), constants.resolution(w >> 2, h >> 2), null, CgOrder.LOOKBACK);
+     * }</pre>
+     */
+    public CgRasterPass raster(CgGraphTexture target, int level, CgLoad load, CgPassConstants constants,
+                               @Nullable CgRenderState state, CgOrder order) {
         requireOpen();
-        CgRasterPass pass = new CgRasterPass(this, "raster " + target.name(), target, load, block(constants), state, order);
+        if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
+        String name = level == 0 ? "raster " + target.name() : "raster " + target.name() + " level " + level;
+        CgRasterPass pass = new CgRasterPass(this, name, target, level, load, block(constants), state, order);
         add(pass);
         return pass;
     }

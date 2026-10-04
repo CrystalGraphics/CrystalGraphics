@@ -63,6 +63,9 @@ public final class CgTexture2D extends CgTextureAbstract {
     /** Levels specified at allocation; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
 
+    /** Whether {@link #bindLevel} narrowed what it samples. Render thread. */
+    private boolean pinned;
+
     private CgTexture2D(int textureId, int width, int height, CgTextureSpec spec, String sourcePath) {
         super(textureId, width, height, spec);
         this.sourcePath = sourcePath;
@@ -229,6 +232,54 @@ public final class CgTexture2D extends CgTextureAbstract {
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "[CgTexture2D] Exception reloading " + sourcePath, e);
         }
+    }
+
+    /** Binds it sampling every level, undoing a {@link #bindLevel}. */
+    @Override
+    public void bind() {
+        super.bind();
+        if (pinned) sampleLevels(0, getLevels() - 1, false);
+    }
+
+    /** Binds it at {@code unit} sampling every level, undoing a {@link #bindLevel}. */
+    @Override
+    public void bind(int unit) {
+        super.bind(unit);
+        if (pinned) sampleLevels(0, getLevels() - 1, false);
+    }
+
+    /**
+     * Render thread: binds it at {@code unit} sampling level {@code level} alone, until it is next bound whole. What lets
+     * a pass draw into one level while reading another without a feedback loop: GL's rule, and on Vulkan a view of the
+     * one level. A shader reads the level as the texture's base, at LOD 0.
+     *
+     * <pre>{@code
+     * chain.bindLevel(0, 2);            // a pass drawing into level 3 reads level 2
+     * // ... draws ...
+     * chain.unpinLevels();              // every level sampled again, bound on the active unit
+     * }</pre>
+     */
+    public void bindLevel(int unit, int level) {
+        CgTexture.active(unit);
+        bindLevel(level);
+    }
+
+    /** {@link #bindLevel(int, int)} on the active unit. */
+    public void bindLevel(int level) {
+        if (level < 0 || level >= getLevels()) throw new IllegalArgumentException("level " + level + " of " + getLevels());
+        super.bind();
+        sampleLevels(level, level, true);
+    }
+
+    /** Render thread: after {@link #bindLevel}, binds it on the active unit sampling every level. Nothing when none is pinned. */
+    public void unpinLevels() {
+        if (pinned) bind();
+    }
+
+    private void sampleLevels(int base, int max, boolean pin) {
+        CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_BASE_LEVEL, base);
+        CgGL.glTexParameteri(GL_TEXTURE_2D, CgGL.GL_TEXTURE_MAX_LEVEL, max);
+        pinned = pin;
     }
 
     @Override public int getTarget() { return GL_TEXTURE_2D; }
