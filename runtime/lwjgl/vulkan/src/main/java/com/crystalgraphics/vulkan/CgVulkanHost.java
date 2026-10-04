@@ -113,6 +113,9 @@ public interface CgVulkanHost {
     /** Whether the device was created with {@code drawIndirectFirstInstance}. */
     boolean indirectFirstInstance();
 
+    /** Whether the device was created with {@code shaderDrawParameters}: a draw's bases and {@code gl_DrawID} in a shader. */
+    boolean drawParameters();
+
     /** Whether {@link #beginAsync} records onto a compute queue of its own, overlapping the frame's other work. */
     boolean asyncCompute();
 

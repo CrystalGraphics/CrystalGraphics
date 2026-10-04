@@ -275,6 +275,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     @Override public boolean indirectFirstInstance() { return false; }
 
+    /** Only a multi-draw reads them, and a hosted device has none. */
+    @Override public boolean drawParameters() { return false; }
+
     /** The host owns the queues: async work is recorded in order, with the same result. */
     @Override public final boolean asyncCompute() { return false; }
 

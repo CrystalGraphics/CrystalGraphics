@@ -152,6 +152,11 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
 | `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
+A run of draws the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) binds every pass's
+`CG_MULTI_DRAW` variant, in which `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` and `CG_VERTEX_ID` take each draw's bases from
+its command instead of the two uniforms. They answer the same values, so a shader reading them never knows; one
+reading `cg_InstanceBase` or `cg_VertexBase` directly does not compile in that variant.
+
 #### Vertex Attribute Aliases
 
 Available in the vertex stage only. Locations are bound by `CgShaderFactory` before link — no `layout(location=N)` needed in shader code:

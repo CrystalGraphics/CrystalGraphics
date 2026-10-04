@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.gl.material.CgMaterialShader;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
+import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -99,6 +100,7 @@ public class EngineOnTrackedBackendTest {
             }
             CgParsedShader parsed = shader.getLastParsed();
             CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+            List<String> multiDrawn = new ArrayList<>();
             for (CgParsedPass pass : parsed.passes()) {
                 List<Set<String>> variants = pass == forward ? subsets(parsed.featureNames()) : List.of(Set.of());
                 for (Set<String> keywords : variants) {
@@ -106,6 +108,16 @@ public class EngineOnTrackedBackendTest {
                     if (shader.getOrCompile(pass.name(), keywords) == null)
                         failures.add(path + " pass " + pass.name() + " " + keywords + ": did not link (see log)");
                 }
+                multiDrawn.add(pass.name());
+            }
+            for (CgRenderPassVariant generated : List.of(CgRenderPassVariant.DEPTH, CgRenderPassVariant.SHADOW)) {
+                String name = generated.lightModeName();
+                if (parsed.getPassByName(name) == null && shader.hasCompiledPass(name)) multiDrawn.add(name);
+            }
+            for (String pass : multiDrawn) {   // what an executor binds for a run of draws joined into one call
+                programs++;
+                if (shader.getOrCompile(pass, Set.of(CgMaterialShaderCompiler.MULTI_DRAW)) == null)
+                    failures.add(path + " pass " + pass + " multi-draw: did not link (see log)");
             }
             CgMaterial material = CgMaterial.newInstance(path);
             if (CgMaterialShader.SHADOWS_SUPPORTED && material.hasShadowCasterPass() && !shader.hasCompiledPass(CgRenderPassVariant.SHADOW.lightModeName()))

@@ -36,6 +36,7 @@ import org.lwjgl.vulkan.VkPhysicalDeviceFeatures2;
 import org.lwjgl.vulkan.VkPhysicalDeviceLineRasterizationFeaturesEXT;
 import org.lwjgl.vulkan.VkPhysicalDeviceFeatures;
 import org.lwjgl.vulkan.VkPhysicalDeviceProperties;
+import org.lwjgl.vulkan.VkPhysicalDeviceVulkan11Features;
 import org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features;
 import org.lwjgl.vulkan.VkPresentInfoKHR;
 import org.lwjgl.vulkan.VkQueue;
@@ -117,7 +118,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private final VkDevice device;
     private final int family;
     private boolean bresenhamLines;
-    private boolean multiDrawIndirect, indirectCount, indirectFirstInstance;
+    private boolean multiDrawIndirect, indirectCount, indirectFirstInstance, drawParameters;
     private final VkQueue queue;
     /** Async compute's queue and its family; null and -1 where there is none, or it is turned off. */
     private final VkQueue asyncQueue;
@@ -218,6 +219,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public boolean multiDrawIndirect() { return multiDrawIndirect; }
     @Override public boolean indirectCount() { return indirectCount; }
     @Override public boolean indirectFirstInstance() { return indirectFirstInstance; }
+
+    @Override public boolean drawParameters() { return drawParameters; }
 
     @Override public boolean asyncCompute() { return asyncQueue != null; }
 
@@ -818,10 +821,13 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         boolean hasLines = extensions(stack, physical).contains(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME);
         VkPhysicalDeviceLineRasterizationFeaturesEXT hasLineModes = VkPhysicalDeviceLineRasterizationFeaturesEXT.calloc(stack)
                 .sType$Default();
-        VkPhysicalDeviceVulkan12Features has12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
+        VkPhysicalDeviceVulkan11Features has11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default()
                 .pNext(hasLines ? hasLineModes.address() : 0L);
+        VkPhysicalDeviceVulkan12Features has12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
+                .pNext(has11.address());
         vkGetPhysicalDeviceFeatures2(physical, VkPhysicalDeviceFeatures2.calloc(stack).sType$Default().pNext(has12.address()));
         bresenhamLines = hasLines && hasLineModes.bresenhamLines();
+        drawParameters = has11.shaderDrawParameters();
         indirectCount = has12.drawIndirectCount();
         indirectFirstInstance = has.drawIndirectFirstInstance();
         multiDrawIndirect = has.multiDrawIndirect();
@@ -840,9 +846,12 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         asyncFamily = has12.timelineSemaphore() ? chooseAsyncFamily(stack) : -1;
+        // A multi-draw's bases and gl_DrawID in a shader.
+        VkPhysicalDeviceVulkan11Features v11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default()
+                .shaderDrawParameters(drawParameters).pNext(dynamic.address());
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
                 .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount).timelineSemaphore(asyncFamily >= 0)
-                .pNext(dynamic.address());
+                .pNext(v11.address());
 
         List<String> names = new ArrayList<>(List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME));
