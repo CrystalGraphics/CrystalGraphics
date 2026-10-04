@@ -937,11 +937,16 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
 | an image | the graph texture, sampled by a material | every tier |
 | a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
+| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material | every tier; below GL 4.3 as a buffer texture |
 
 ```java
 // A count: a quad per live spark, or a mesh instanced once per element
 world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
 world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+
+// Object records: a rock per record a cull kept, as many as it counted
+chunks.draw(rocks.pipeline(CgInstanceKind.OBJECT), bindings, rock).objects(visible, 0, capacity)
+      .indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
 
 // An image: written by a kernel, sampled by the material's first sampler in a pass recorded after it
 CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("heat").color(0, CgTextureType.RGBA8).build();
@@ -954,7 +959,8 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 
 - `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the
   range count × factor times, each instance reading the draw's one object record, and `CG_DRAW_INSTANCE` is which
-  element it is.
+  element it is. On a draw of `objects(records, first, n)` instance i reads record `first + i`, and the count draws no more than
+  n.
 - **A buffer of records** is [Reading a kernel's buffers](#reading-a-kernels-buffers): the material declares it as the
   kernel does, `readonly`, and the graph orders the draw after the pass writing it.
 

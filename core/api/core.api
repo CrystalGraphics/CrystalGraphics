@@ -3926,6 +3926,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public objects (Lcom/crystalgraphics/render/draw/CgBufferHandle;II)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public range (III)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public reset ()V
   method public sortKey (J)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
@@ -3951,6 +3952,7 @@ com/crystalgraphics/render/draw/CgDrawChunk
   method public instances (I)I
   method public kind (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public mesh (I)Lcom/crystalgraphics/api/mesh/CgMesh;
+  method public objects (I)Lcom/crystalgraphics/render/draw/CgBufferHandle;
   method public pipeline (I)I
   method public rangeCount (I)I
   method public rangeFirst (I)I

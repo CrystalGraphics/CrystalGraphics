@@ -17,6 +17,7 @@ import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgImageDimension;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
@@ -91,6 +92,7 @@ public final class CgExecutor {
     private static final int TARGET_COPY_PIXELS = CgTrace.name("graph.target-copy-pixels");
     private static final int KINDS = CgInstanceKind.values().length;
     private static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
+    private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
     /** What every QUAD and CURVE instance expands. */
     private static final CgMesh UNIT_QUAD = CgMesh.quads(1);
 
@@ -892,14 +894,14 @@ public final class CgExecutor {
             CgGL.glScissor(damage[0], damage[1], damage[2], damage[3]);
         }
         CgPipeline pipeline = null;
-        boolean usable = false;
+        boolean usable = false, objectsBound = false;
         int slot = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
                 int command = packed.counts[b] != null ? slot++ : -1;
-                int end = command < 0 && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
-                        ? joinRun(packed, b) : b;
+                int end = command < 0 && packed.objects[b] == null && multiDraw && b + 1 < packed.count
+                        && joinable(packed, b, b + 1) ? joinRun(packed, b) : b;
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
@@ -936,7 +938,15 @@ public final class CgExecutor {
                     b = end;
                     continue;
                 }
-                if (command >= 0 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
+                if (packed.objects[b] != null) {
+                    bindObjects(packed.objects[b]);
+                    objectsBound = true;
+                } else if (objectsBound && packed.kind[b] == OBJECT) {
+                    instanceBuffers[OBJECT].bind();
+                    objectsBound = false;
+                }
+                if (command >= 0 && packed.objects[b] == null
+                        && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
                     pipeline.sharedInstance(packed.first[b]);
                 } else {
                     pipeline.instanceBase(packed.first[b]);
@@ -984,8 +994,20 @@ public final class CgExecutor {
 
     /** Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it. */
     private static boolean joinable(CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] == null && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
+        return packed.counts[k] == null && packed.objects[k] == null && packed.copyBefore[k] == 0
+                && packed.pipeline[k] == packed.pipeline[b]
                 && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b];
+    }
+
+    /** Binds a GPU buffer of object records where {@code CG_OBJECT_DATA} reads the frame's own. */
+    private static void bindObjects(CgBufferHandle objects) {
+        int id = objects instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : objects.bufferId();
+        if (CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO) {
+            CgBufferTextures.bind(CgBindingPoints.OBJECT_DATA.tbo(), CgGL.GL_RGBA32F, id);
+            CgTexture.active(0);
+        } else {
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, CgBindingPoints.OBJECT_DATA.ssbo(), id);
+        }
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
@@ -1027,7 +1049,8 @@ public final class CgExecutor {
                 }
                 long countBytes = count instanceof CgGraphBuffer graph ? graph.size() : packed.countOffsets[b] + 4;
                 commands.write(slot++, countId, packed.countOffsets[b], countBytes,
-                        CgIndirect.values()[packed.countModes[b] & 3], packed.countModes[b] >>> 2, range, packed.instances[b]);
+                        CgIndirect.values()[packed.countModes[b] & 3], packed.countModes[b] >>> 2, range, packed.instances[b],
+                        packed.objects[b] != null ? packed.instances[b] : -1);
             }
         }
         barrier(true, args, CgAccess.INDIRECT);
@@ -1047,6 +1070,7 @@ public final class CgExecutor {
             held = Integer.toUnsignedLong(countWord[0]);
         }
         long n = held * (packed.countModes[b] >>> 2);
+        if (packed.objects[b] != null) n = Math.min(n, packed.instances[b]);
         CgMeshStore store = CgMeshStore.get();
         int submesh = Math.max(0, packed.submesh[b]);
         if ((packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
