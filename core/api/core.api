@@ -4657,6 +4657,7 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public group (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public instances (Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public light (FF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public order (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;

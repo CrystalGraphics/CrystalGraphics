@@ -11,6 +11,8 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.ops.CgCull;
+import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -26,7 +28,10 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
@@ -75,6 +80,9 @@ import java.util.function.Consumer;
  *
  * // How much of the mesh draws comes from a count a kernel wrote this frame
  * world.draw(CgMesh.quads(capacity), sparks).indirect(live, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
+ *
+ * // Thousands of one mesh from a GPU buffer of object records, culled and given levels on the GPU
+ * world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
  * }</pre>
  *
  * <ul>
@@ -143,6 +151,9 @@ public final class CgWorldRenderer {
     private long[] countOffsets = new long[64];
     private CgIndirect[] countModes = new CgIndirect[64];
     private int[] countFactors = new int[64];
+    /** Per draw: the object records a set of instances draws, else null, and how many of them. */
+    private CgGraphBuffer[] sets = new CgGraphBuffer[64];
+    private CgGpuCount[] setCounts = new CgGpuCount[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
     private float[] transforms = new float[64 * 16];
@@ -170,6 +181,15 @@ public final class CgWorldRenderer {
     private final CgViewFrustum frustum = new CgViewFrustum();
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
+
+    // Sets culled on the GPU: one cull, its values copied into each dispatch; the stage's depth pyramid; per draw, the
+    // records and level counts its cull wrote this stage; and the k-th set culled in a stage writes the k-th buffers.
+    private final CgCull cull = new CgCull();
+    private CgGraphTexture pyramid;
+    private boolean pyramidBuilt;
+    private CgGraphBuffer[] culled = new CgGraphBuffer[64], culledCounts = new CgGraphBuffer[64];
+    private CgGraphBuffer[] cullOut = new CgGraphBuffer[4], cullLevels = new CgGraphBuffer[4];
+    private int setsCulled;
 
     // Bloom: the target Emissive passes draw into, its constants, and the material adding it back.
     private boolean[] emits = new boolean[64];
@@ -274,6 +294,9 @@ public final class CgWorldRenderer {
         private long indirectOffset;
         private CgIndirect indirectMode;
         private int indirectFactor;
+        private CgGraphBuffer set;
+        private CgGpuCount setCount;
+        private final float[] meshBox = new float[6];
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
 
@@ -294,6 +317,8 @@ public final class CgWorldRenderer {
             boundsSet = false;
             pad = 0f;
             indirect = null;
+            set = null;
+            setCount = null;
             blockLight = Float.NaN;
             return this;
         }
@@ -352,6 +377,37 @@ public final class CgWorldRenderer {
             this.indirectOffset = offset;
             this.indirectMode = mode;
             this.indirectFactor = factor;
+            return this;
+        }
+
+        /**
+         * Draws the mesh once per object record of {@code records} ({@code CgInstanceKind.OBJECT}'s layout, each in this
+         * draw's own space), as many as {@code count} says, culled on the GPU in every stage that draws it: against the
+         * view, by screen height for a {@link CgMeshLods}, and against the depth drawn before the world renderer (in
+         * Minecraft, the terrain). Each level kept draws as one indirect draw, the levels one call where draws join.
+         *
+         * <pre>{@code
+         * CgGraphBuffer rocks = CgGraphBuffer.persistent("rocks", CgBufferDesc.elements(n, CgGpuOps.cullRecordBytes(),
+         *         CgBufferUsage.STORAGE, CgBufferUsage.COPY));                       // filled once, by update or a kernel
+         * world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
+         *
+         * // A count a kernel wrote: the live ones of a buffer of capacity records
+         * world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).at(x, y, z).submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>{@link #bounds} is the whole set's box, culled on the CPU; without it the set is culled per instance
+         *       only. Each instance is culled by its mesh's box, grown by {@link #pad}.</li>
+         *   <li>A record's model matrix places it in this draw's space, and its customs are its own; every kept record
+         *       is lit by this draw's light ({@link #light}, else the world's at its position).</li>
+         *   <li>A transparent set draws its instances in no order among themselves.</li>
+         *   <li>Not with {@link #indirect}: the cull writes the count. The mesh needs bounds, and a {@link CgMeshLods} at
+         *       most {@link CgCull#MAX_LEVELS} levels.</li>
+         * </ul>
+         */
+        public Draw instances(CgGraphBuffer records, CgGpuCount count) {
+            set = Objects.requireNonNull(records, "records");
+            setCount = Objects.requireNonNull(count, "count");
             return this;
         }
 
@@ -436,6 +492,15 @@ public final class CgWorldRenderer {
         }
 
         public void submit() {
+            if (set != null) {
+                if (indirect != null) throw new IllegalStateException("instances() takes its count from its cull: not indirect() too");
+                if ((lods != null ? lods.finest() : mesh).bounds(meshBox) == null) {
+                    throw new IllegalArgumentException(mesh + " has no bounds to cull its instances by");
+                }
+                if (lods != null && lods.levelCount() > CgCull.MAX_LEVELS) {
+                    throw new IllegalArgumentException(lods.levelCount() + " levels; a set's cull takes " + CgCull.MAX_LEVELS);
+                }
+            }
             add(this);
         }
     }
@@ -482,6 +547,8 @@ public final class CgWorldRenderer {
         countOffsets[count] = d.indirectOffset;
         countModes[count] = d.indirectMode;
         countFactors[count] = d.indirectFactor;
+        sets[count] = d.set;
+        setCounts[count] = d.setCount;
         count++;
     }
 
@@ -491,6 +558,10 @@ public final class CgWorldRenderer {
         Arrays.fill(materials, 0, count, null);
         Arrays.fill(counts, 0, count, null);
         Arrays.fill(layers, 0, count, null);
+        Arrays.fill(sets, 0, count, null);
+        Arrays.fill(setCounts, 0, count, null);
+        Arrays.fill(culled, 0, count, null);
+        Arrays.fill(culledCounts, 0, count, null);
         count = 0;
     }
 
@@ -516,6 +587,10 @@ public final class CgWorldRenderer {
         countOffsets = Arrays.copyOf(countOffsets, n);
         countModes = Arrays.copyOf(countModes, n);
         countFactors = Arrays.copyOf(countFactors, n);
+        sets = Arrays.copyOf(sets, n);
+        setCounts = Arrays.copyOf(setCounts, n);
+        culled = Arrays.copyOf(culled, n);
+        culledCounts = Arrays.copyOf(culledCounts, n);
     }
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
@@ -560,6 +635,10 @@ public final class CgWorldRenderer {
             targetWidth = stage.host().width();
             targetHeight = stage.host().height();
             prepare(view);
+            Arrays.fill(culled, 0, count, null);
+            Arrays.fill(culledCounts, 0, count, null);
+            setsCulled = 0;
+            pyramidBuilt = false;
             boolean prepass = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
@@ -575,6 +654,7 @@ public final class CgWorldRenderer {
             CgPassConstants constants = stage.constants();
             bindings.clear();
             if (drawn > 0) {
+                cullSets(stage, recording, view, false);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
                 recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
             }
@@ -601,6 +681,7 @@ public final class CgWorldRenderer {
         }
         CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
         if (emitting == 0) return;
+        cullSets(stage, recording, view, true);
 
         int w = Math.max(1, (int) (targetWidth * bloomScale)), h = Math.max(1, (int) (targetHeight * bloomScale));
         if (bloomTarget == null || bloomTarget.getWidth() != w || bloomTarget.getHeight() != h) {
@@ -621,6 +702,10 @@ public final class CgWorldRenderer {
                 if (!link.hasEmissivePass()) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
+                    continue;
+                }
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
                 writeInstance(chunks, i);
             }
@@ -683,12 +768,15 @@ public final class CgWorldRenderer {
         int queue = queues[i];
         boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return SKIP;
+        if (sets[i] != null && setCounts[i].capacity() == 0) return SKIP;
         modelOf(i, view);
         float cx, cy, cz;
         float[] bounds;
         if (boundsStated[i]) {
             System.arraycopy(drawBounds, i * 6, meshBounds, 0, 6);
             bounds = meshBounds;
+        } else if (sets[i] != null) {
+            bounds = null;   // a set's instances are culled one by one, on the GPU
         } else {
             bounds = (lods[i] != null ? lods[i].finest() : meshes[i]).bounds(meshBounds);
         }
@@ -701,7 +789,7 @@ public final class CgWorldRenderer {
             cx = (min.x + max.x) * 0.5f;
             cy = (min.y + max.y) * 0.5f;
             cz = (min.z + max.z) * 0.5f;
-            if (lods[i] != null) {
+            if (lods[i] != null && sets[i] == null) {
                 CgMesh level = lods[i].pick(screenHeight(cx, cy, cz, view));
                 if (level == null) return SKIP;
                 meshes[i] = level;
@@ -813,6 +901,10 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
+                    continue;
+                }
                 chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
                 if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
                 writeInstance(chunks, i);
@@ -820,6 +912,68 @@ public final class CgWorldRenderer {
         }
         pass.add(chunks.end());
         pass.end();
+    }
+
+    /**
+     * Culls on the GPU every set this stage draws that it has not culled yet: those the stage's passes draw, or with
+     * {@code emitting}, those its bloom draws. The first builds the stage's depth pyramid from its target as it stands.
+     */
+    private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, boolean emitting) {
+        CgComputePass pass = null;
+        for (int i = 0; i < count; i++) {
+            if (sets[i] == null || culled[i] != null || (emitting ? !emits[i] : phase[i] == SKIP)) continue;
+            if (pass == null) {
+                if (!pyramidBuilt) {
+                    int w = (int) targetWidth, h = (int) targetHeight;
+                    if (pyramid == null || pyramid.getWidth() != w || pyramid.getHeight() != h) {
+                        pyramid = CgGraphTexture.transientTexture("cg_world.pyramid",
+                                new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
+                    }
+                    CgGpuOps.depthPyramid(recording, stage.target(), stage.constants(), pyramid);
+                    pyramidBuilt = true;
+                }
+                cull.view(view.view(), view.projection()).pyramid(pyramid);
+                pass = recording.compute("world.cull");
+            }
+            cullSet(pass, i, view);
+        }
+        if (pass != null) pass.end();
+    }
+
+    /** Set {@code i}'s cull into the stage's next output buffers, placed by its model. */
+    private void cullSet(CgComputePass pass, int i, CgHostView view) {
+        if (lods[i] != null) cull.mesh(lods[i]);
+        else cull.mesh(meshes[i]);
+        modelOf(i, view);
+        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]);
+        int capacity = setCounts[i].capacity(), k = setsCulled++;
+        if (k == cullOut.length) {
+            cullOut = Arrays.copyOf(cullOut, k * 2);
+            cullLevels = Arrays.copyOf(cullLevels, k * 2);
+        }
+        long bytes = (long) CgGpuOps.cullRecords(cull, capacity) * CgGpuOps.cullRecordBytes();
+        if (cullOut[k] == null || cullOut[k].size() < bytes) {
+            cullOut[k] = CgGraphBuffer.transientBuffer("cg_world.culled", CgBufferDesc.of(bytes, CgBufferUsage.STORAGE));
+        }
+        if (cullLevels[k] == null) {
+            cullLevels[k] = CgGraphBuffer.transientBuffer("cg_world.kept",
+                    CgBufferDesc.of(CgCull.MAX_LEVELS * 4L, CgBufferUsage.STORAGE, CgBufferUsage.INDIRECT));
+        }
+        CgGpuOps.cull(pass, cull, sets[i], setCounts[i], cullOut[k], cullLevels[k], 0);
+        culled[i] = cullOut[k];
+        culledCounts[i] = cullLevels[k];
+    }
+
+    /** Set {@code i}'s levels, each an indirect draw of the records its cull kept at that level this stage. */
+    private void drawSet(CgChunkBuilder chunks, CgPipeline pipeline, int binding, int i) {
+        int capacity = setCounts[i].capacity(), levels = lods[i] != null ? lods[i].levelCount() : 1;
+        for (int l = 0; l < levels; l++) {
+            chunks.draw(pipeline, binding, lods[i] != null ? lods[i].level(l) : meshes[i]).sortKey(keys[i]);
+            if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
+            if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
+            chunks.objects(culled[i], CgGpuOps.cullFirst(l, capacity), capacity)
+                    .indirect(culledCounts[i], l * 4L, CgIndirect.INSTANCES, 1);
+        }
     }
 
     /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
