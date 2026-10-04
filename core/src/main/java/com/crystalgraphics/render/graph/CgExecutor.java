@@ -998,7 +998,11 @@ public final class CgExecutor {
                         CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
                     }
                 }
-                if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+                if (packed.copyBefore[b] != 0) {
+                    try (CgTrace.Zone copying = CgTrace.zone(CgChannels.GL, "graph.targetCopy")) {
+                        copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+                    }
+                }
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
                     if (boundScissor == CgRasterPass.NO_SCISSOR) {
@@ -1015,8 +1019,10 @@ public final class CgExecutor {
                 if (id != boundPipeline) {
                     boundPipeline = id;
                     pipeline = CgPipeline.byId(id);
-                    if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
-                    usable = pipeline.bind();
+                    try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_PIPELINE)) {
+                        if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
+                        usable = pipeline.bind();
+                    }
                     boundBinding = -1;
                 }
                 if (!usable) {
@@ -1027,7 +1033,9 @@ public final class CgExecutor {
                 }
                 if (packed.binding[b] != boundBinding) {
                     boundBinding = packed.binding[b];
-                    frame.bindings.bind(boundBinding);
+                    try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_BINDINGS)) {
+                        frame.bindings.bind(boundBinding);
+                    }
                 }
                 if (packed.objects[b] != null) {
                     bindObjects(packed.objects[b]);
@@ -1037,11 +1045,13 @@ public final class CgExecutor {
                     objectsBound = false;
                 }
                 if (end > b) {
-                    if (command >= 0) {
-                        CgMeshStore.get().drawIndirectJoined(mesh(packed, b), commands.buffer(), commands.offset(command),
-                                end - b + 1, commands.stride());
-                    } else {
-                        CgMeshStore.get().drawJoined();
+                    try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
+                        if (command >= 0) {
+                            CgMeshStore.get().drawIndirectJoined(mesh(packed, b), commands.buffer(),
+                                    commands.offset(command), end - b + 1, commands.stride());
+                        } else {
+                            CgMeshStore.get().drawJoined();
+                        }
                     }
                     b = end;
                     continue;
@@ -1053,14 +1063,16 @@ public final class CgExecutor {
                     pipeline.instanceBase(packed.first[b]);
                 }
                 CgMesh mesh = mesh(packed, b);
-                if (command >= 0 && gpuCounts) {
-                    CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
-                            commands.offset(command));
-                } else if (command >= 0) {
-                    drawCounted(mesh, pipeline, packed, b);
-                } else {
-                    CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
-                            packed.rangeCount[b]);
+                try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
+                    if (command >= 0 && gpuCounts) {
+                        CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
+                                commands.offset(command));
+                    } else if (command >= 0) {
+                        drawCounted(mesh, pipeline, packed, b);
+                    } else {
+                        CgMeshStore.get().draw(mesh, pipeline, packed.instances[b], packed.submesh[b], packed.rangeFirst[b],
+                                packed.rangeCount[b]);
+                    }
                 }
             }
         } finally {
@@ -1070,6 +1082,9 @@ public final class CgExecutor {
         }
         CgGL.glBindVertexArray(0);
     }
+
+    private static final int BATCH_PIPELINE = CgTrace.name("graph.batch.pipeline"),
+            BATCH_BINDINGS = CgTrace.name("graph.batch.bindings"), BATCH_DRAW = CgTrace.name("graph.batch.draw");
 
     private static int groupLabel(int pipeline) {
         if (pipeline >= groupLabels.length) groupLabels = Arrays.copyOf(groupLabels, Math.max(pipeline + 1, groupLabels.length * 2));
@@ -1280,12 +1295,14 @@ public final class CgExecutor {
      * Copies what {@code bits} name from the pass's target for the draws sampling it, colour in the rect at {@code at}
      * of {@code rects}, and binds the copies.
      */
-    private static void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
+    private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
         CgGraphTexture target = pass.target;
         CgTargetCopy copy = pass.targetCopy();
         long pixels;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
-            pixels = copy.copy(CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING), null, 0, 0, bits, rects, at, POOL);
+            // What the execution began on, as bindTarget binds it; a glGet would wait for the driver to drain every
+            // draw queued before it.
+            pixels = copy.copy(startFramebuffer, null, startViewport.get(2), startViewport.get(3), bits, rects, at, POOL);
         } else {
             CgFrameBuffer storage = storage(target);
             pixels = copy.copy(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), bits,

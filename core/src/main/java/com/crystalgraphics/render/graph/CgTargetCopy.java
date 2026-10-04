@@ -8,6 +8,8 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -125,8 +127,15 @@ final class CgTargetCopy {
 
     /** Blits {@code mask} from {@code source} into the same rect of the copy. */
     private void blit(int source, int mask, int x0, int y0, int x1, int y1) {
-        if (mask != 0) CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
+        if (mask == 0) return;
+        int zone = (mask & CgGL.GL_COLOR_BUFFER_BIT) == 0 ? DEPTH_ZONE : mask == CgGL.GL_COLOR_BUFFER_BIT ? COLOR_ZONE : BOTH_ZONE;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, zone)) {
+            CgFrameBuffer.blitFrom(source, storage.getId(), x0, y0, x1, y1, x0, y0, x1, y1, mask, CgGL.GL_NEAREST);
+        }
     }
+
+    private static final int COLOR_ZONE = CgTrace.name("graph.copy.color"), DEPTH_ZONE = CgTrace.name("graph.copy.depth"),
+            BOTH_ZONE = CgTrace.name("graph.copy.colorDepth");
 
     /** Gives the copy's framebuffer back to the pool. When the pass ends. */
     void release(CgTexturePool pool) {
