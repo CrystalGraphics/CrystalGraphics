@@ -142,7 +142,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     public final CgTrackedGLBackend openBackend(int width, int height) {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
         device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
-        gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify);
+        gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify)
+                .compileInBackground();
         CgGlState.setProvider(new CgTrackedStateProvider(gl));
         return gl;
     }

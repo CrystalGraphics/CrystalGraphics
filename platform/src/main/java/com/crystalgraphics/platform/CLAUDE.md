@@ -195,6 +195,10 @@ What is easy to get wrong:
   hosted device and GL record it in order (`asyncCompute()` false). On NVIDIA a second queue of the graphics family
   ran 0.3-0.6 ms slower than in order where the compute family saved 0.5 ms (`--mode=async-compute`):
   `-Dcrystalgraphics.vulkan.asyncCompute=graphics` forces it, `false` turns async off.
+- **`compileInBackground()` makes a link return at once**, shaderc running on a worker (`crystalgraphics-shaderc`),
+  as a driver with `KHR_parallel_shader_compile` does: `GL_COMPLETION_STATUS_KHR` says when it is done, and anything
+  else asked of the program waits for it (`shader.spirvWait`) and makes its modules here. Hosts turn it on; tests
+  leave links finished at the call. A relink of the program in use stays synchronous, since draws read it directly.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
   builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
   runs on a device, in both clip conventions.

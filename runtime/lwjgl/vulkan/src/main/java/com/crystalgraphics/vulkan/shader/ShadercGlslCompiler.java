@@ -42,7 +42,8 @@ import static org.lwjgl.util.shaderc.Shaderc.*;
  * <p>Two edits to the source, both checked by the compiler that follows: 26.2's own defines of
  * {@code gl_VertexID}/{@code gl_InstanceID} to their Vulkan names (every draw starts at instance 0, so they agree),
  * and, for the GL-depth vertex stage, {@code main} wrapped to map clip z from GL's range. glslang's relaxed Vulkan
- * rules take loose uniforms into one block per stage. Not thread-safe; one per owner thread.</p>
+ * rules take loose uniforms into one block per stage. Compiles are serialized, so a backend compiling in the
+ * background shares it with its owner thread.</p>
  */
 public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable {
 
@@ -72,7 +73,8 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations, String label) {
+    public synchronized Program compile(String vertexGlsl, String fragmentGlsl, Map<String, Integer> attribLocations,
+                                        String label) {
         String vertex = withDefines(vertexGlsl, label);
         SpirvModule glDepth = new SpirvModule(spirv(wrapMain(vertex, label), shaderc_glsl_vertex_shader, label), label);
         SpirvModule zeroToOne = new SpirvModule(spirv(vertex, shaderc_glsl_vertex_shader, label), label);
@@ -147,7 +149,7 @@ public final class ShadercGlslCompiler implements CgGlslCompiler, AutoCloseable 
     }
 
     @Override
-    public ComputeProgram compileCompute(String glsl, String label) {
+    public synchronized ComputeProgram compileCompute(String glsl, String label) {
         SpirvModule m = new SpirvModule(spirv(glsl, shaderc_glsl_compute_shader, label), label);
         int next = 0;
         int loose = has(m.uniformBuffers, SpirvModule.DEFAULT_BLOCK) ? next++ : -1;
