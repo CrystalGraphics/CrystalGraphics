@@ -59,6 +59,9 @@ public final class CgChunkBuilder {
     private long[] countOffsets;
     @Nullable
     private int[] countModes;
+    /** Per draw: the buffer its object records are in, null for records written here. Null until one is drawn. */
+    @Nullable
+    private CgBufferHandle[] objects;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
     private boolean boundsSet;
@@ -135,6 +138,7 @@ public final class CgChunkBuilder {
             ranges[d * 3 + 2] = -1;
         }
         if (counts != null) counts[d] = null;
+        if (objects != null) objects[d] = null;
         sortKeys[d] = 0;
         boundsSet = false;
         drawingFloats = pipeline.kind().floats();
@@ -145,6 +149,7 @@ public final class CgChunkBuilder {
     /** Reserves one zeroed record for the open draw and answers its first float in {@link #data()}. */
     public int instance() {
         if (drawing < 0) throw new IllegalStateException("instance() with no draw open: draw() first");
+        if (objects != null && objects[drawing] != null) throw new IllegalStateException("instance() on a draw of objects()");
         float[] data = instances[drawingKind];
         int at = records[drawingKind] * drawingFloats;
         if (data == null || at + drawingFloats > data.length) {
@@ -161,6 +166,7 @@ public final class CgChunkBuilder {
     /** Appends {@code count} whole records of the open draw's kind, read from {@code records} at float {@code from}. */
     public CgChunkBuilder instances(float[] records, int from, int count) {
         if (drawing < 0) throw new IllegalStateException("instances() with no draw open: draw() first");
+        if (objects != null && objects[drawing] != null) throw new IllegalStateException("instances() on a draw of objects()");
         int floats = count * drawingFloats;
         float[] data = instances[drawingKind];
         int at = this.records[drawingKind] * drawingFloats;
@@ -255,6 +261,38 @@ public final class CgChunkBuilder {
         return this;
     }
 
+    /**
+     * Draws the open draw's mesh once per object record in {@code records}, {@code count} of them from {@code first},
+     * in place of records written here: {@link CgInstanceKind#OBJECT}'s layout, written on the GPU by a kernel or a
+     * cull. Every material reads them as it reads any draw's, through {@code CG_OBJECT_DATA}.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, rock).objects(rocks, 0, 500);                       // records 0 to 499
+     * chunks.draw(pipeline, bindings, rockLod1).objects(visible, capacity, capacity)
+     *       .indirect(counts, 4, CgIndirect.INSTANCES, 1);                                // as many as the GPU counted
+     * }</pre>
+     *
+     * <ul>
+     *   <li>With an {@link CgIndirect#INSTANCES} count, instance i reads record {@code first + i} and the count draws
+     *       no more than {@code count}.</li>
+     *   <li>{@link #instance()} has nothing to write for such a draw, and refuses.</li>
+     *   <li>A graph buffer is read after the pass writing it; it needs {@code STORAGE}.</li>
+     *   <li>It never batches with another draw.</li>
+     * </ul>
+     */
+    public CgChunkBuilder objects(CgBufferHandle records, int first, int count) {
+        if (drawing < 0 || meshes == null || meshes[drawing] == null) {
+            throw new IllegalStateException("objects() on a draw with no mesh");
+        }
+        if (instanceCounts[drawing] > 0) throw new IllegalStateException("objects() on a draw that wrote its own records");
+        if (count < 1 || first < 0) throw new IllegalArgumentException("first " + first + ", count " + count);
+        if (objects == null) objects = new CgBufferHandle[pipelines.length];
+        objects[drawing] = records;
+        firsts[drawing] = first;
+        instanceCounts[drawing] = count;
+        return this;
+    }
+
     /** What a sorted pass orders the open draw by, ascending. */
     public CgChunkBuilder sortKey(long key) {
         sortKeys[drawing] = key;
@@ -275,13 +313,15 @@ public final class CgChunkBuilder {
                 Arrays.copyOf(firsts, count), Arrays.copyOf(instanceCounts, count),
                 meshes == null ? null : Arrays.copyOf(meshes, count), ranges == null ? null : Arrays.copyOf(ranges, count * 3),
                 counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
-                counts == null ? null : Arrays.copyOf(countModes, count), Arrays.copyOf(bounds, count * 4),
+                counts == null ? null : Arrays.copyOf(countModes, count),
+                objects == null ? null : Arrays.copyOf(objects, count), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), kept);
         open = false;
         count = 0;
         Arrays.fill(records, 0);
         if (meshes != null) Arrays.fill(meshes, null);
         if (counts != null) Arrays.fill(counts, null);
+        if (objects != null) Arrays.fill(objects, null);
         return chunk;
     }
 
@@ -293,6 +333,7 @@ public final class CgChunkBuilder {
         Arrays.fill(records, 0);
         if (meshes != null) Arrays.fill(meshes, null);
         if (counts != null) Arrays.fill(counts, null);
+        if (objects != null) Arrays.fill(objects, null);
     }
 
     /** Keeps the open draw if it has instances; a draw without bounds covers everything. */
@@ -313,7 +354,8 @@ public final class CgChunkBuilder {
     }
 
     private void checkIndirect(int d) {
-        if ((countModes[d] & 3) == CgIndirect.INSTANCES.ordinal() && instanceCounts[d] != 1) {
+        boolean ofObjects = objects != null && objects[d] != null;
+        if ((countModes[d] & 3) == CgIndirect.INSTANCES.ordinal() && !ofObjects && instanceCounts[d] != 1) {
             throw new IllegalStateException("an INSTANCES indirect draw holds one record, which every instance reads; "
                     + "this one holds " + instanceCounts[d]);
         }
@@ -339,6 +381,7 @@ public final class CgChunkBuilder {
             countOffsets = Arrays.copyOf(countOffsets, n);
             countModes = Arrays.copyOf(countModes, n);
         }
+        if (objects != null) objects = Arrays.copyOf(objects, n);
         bounds = Arrays.copyOf(bounds, n * 4);
         sortKeys = Arrays.copyOf(sortKeys, n);
     }

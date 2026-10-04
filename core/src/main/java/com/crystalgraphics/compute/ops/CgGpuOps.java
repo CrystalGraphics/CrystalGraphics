@@ -1,15 +1,27 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
+import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.graph.CgRasterPass;
+import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 
 import javax.annotation.Nullable;
@@ -18,7 +30,8 @@ import java.util.List;
 
 /**
  * What every GPU-driven consumer otherwise writes for itself (gpu-compute C7): fills, sequences, copies, reductions,
- * scans, compaction, sorting, histograms and bounds over buffers, and mip chains and blurs over textures, dispatched
+ * scans, compaction, sorting, histograms and bounds over buffers, culling instances (C9b), and mip chains, depth
+ * pyramids and blurs over textures, dispatched
  * into the caller's compute pass and run on every tier (as compute, lowered below it, or by Java bodies on the CPU
  * tier) with the same answer on each.
  *
@@ -71,6 +84,10 @@ public final class CgGpuOps {
     public static final List<CgTextureType> IMAGE_TYPES =
             List.of(CgTextureType.RGBA8, CgTextureType.RGBA16F, CgTextureType.R16F, CgTextureType.R32F);
 
+    /** A depth pyramid's: one float a texel, the eye depth. */
+    public static final CgFrameBufferFormat PYRAMID_FORMAT =
+            CgFrameBufferFormat.builder("cg_depth_pyramid").color(0, CgTextureType.R32F).build();
+
     /** What one element of a level folds of the level below it. */
     static final int BLOCK = 16;
 
@@ -95,6 +112,11 @@ public final class CgGpuOps {
     private static final CgKernel[][] SORT_VARIANTS = new CgKernel[SORT_KERNELS.length][3 * 2];
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
     private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
+    private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
+    private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
+    /** An object record's bytes: what each instance and each kept record of a cull is. */
+    private static final int RECORD_BYTES = CgInstanceKind.OBJECT.floats() * 4;
     /** Per image type: its kernels and images in image.compute. */
     static final String[] DOWNSAMPLE_KERNELS = {"DownsampleRgba8", "DownsampleRgba16f", "DownsampleR16f", "DownsampleR32f"},
             BLUR_KERNELS = {"BlurRgba8", "BlurRgba16f", "BlurR16f", "BlurR32f"},
@@ -298,6 +320,100 @@ public final class CgGpuOps {
             dispatch = pass.dispatch(Files.histogram().kernel("Histogram"), capacity);
         }
         counted(dispatch, count, keys).bind("KEYS", keys).bind("BINS", bins).set("_Shift", shift).set("_Bins", binCount);
+    }
+
+    // ── Culling ──────────────────────────────────────────────────────────────
+
+    /**
+     * Culls the count's instances of one mesh as {@code CgWorldRenderer} culls a draw: each record of
+     * {@code instances} ({@code CgInstanceKind.OBJECT}'s layout, in the set's own space) placed by {@code cull}, its
+     * box tested against the view's frustum, given the level its screen height picks, and, with a pyramid, tested
+     * against the scene's depth. Each one kept is written into {@code out} as the record a draw reads: level l's from
+     * record {@link #cullFirst}{@code (l, capacity)}, as many as word {@code word + l} of {@code counts} says.
+     *
+     * <pre>{@code
+     * CgGraphBuffer visible = CgGraphBuffer.transientBuffer("rocks.visible",
+     *         CgBufferDesc.elements(CgGpuOps.cullRecords(cull, n), CgGpuOps.cullRecordBytes(), CgBufferUsage.STORAGE));
+     * CgGpuOps.cull(pass, cull, rocks, CgGpuCount.of(n), visible, counts, 0);
+     * pass.end();
+     * for (int l = 0; l < cull.levels(); l++) {
+     *     chunks.draw(pipeline, bindings, lods.level(l)).objects(visible, CgGpuOps.cullFirst(l, n), n)
+     *           .indirect(counts, l * 4L, CgIndirect.INSTANCES, 1);
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Kept records keep the order they were in on every tier but compute, where they come in any order.</li>
+     *   <li>{@code counts} needs {@link CgBufferUsage#STORAGE} and the draws' {@code INDIRECT} use; the op zeroes its
+     *       words first.</li>
+     *   <li>The box is tested as it stands under the view: an instance whose shader moves its vertices states the
+     *       box they stay in, with {@link CgCull#box} or {@link CgCull#pad}.</li>
+     * </ul>
+     */
+    public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, CgGpuCount count,
+                            CgGraphBuffer out, CgGraphBuffer counts, int word) {
+        distinct(instances, out);
+        int capacity = count.capacity(), levels = cull.levels();
+        long region = (long) cullFirst(1, capacity) * RECORD_BYTES;
+        if (out.size() < levels * region) {
+            throw new IllegalArgumentException(out + " holds " + out.size() + " bytes; a cull of " + capacity
+                    + " instances at " + levels + " levels writes " + levels * region + ": size it by cullRecords");
+        }
+        counted(pass.dispatch(Files.fill().kernel("FillAt"), levels), CgGpuCount.of(levels), counts)
+                .bind("DST", counts).set("_At", word).set("_Value", 0);
+        if (capacity == 0) return;
+        CgKernel kernel = Files.cull().kernel("Cull");
+        for (int l = 0; l < levels; l++) {
+            CgDispatch dispatch = counted(pass.dispatch(kernel, capacity), count, instances)
+                    .bind("INSTANCES", instances).bind("OUT", out, l * region, region)
+                    .counter("OUT", counts, (word + l) * 4L).set("_Level", l);
+            cull.apply(dispatch);
+        }
+    }
+
+    /** Where level {@code level}'s kept records start in a cull's output, of {@code capacity} instances. */
+    public static int cullFirst(int level, int capacity) {
+        return level * ((capacity + 3) & ~3);   // a whole number of 256-byte binding offsets
+    }
+
+    /** The records a cull's output holds: a level's region for each of its levels. */
+    public static int cullRecords(CgCull cull, int capacity) {
+        return cullFirst(cull.levels(), capacity);
+    }
+
+    /** An object record's bytes: the stride of a cull's instances and its output. */
+    public static int cullRecordBytes() {
+        return RECORD_BYTES;
+    }
+
+    /**
+     * The scene's depth as {@link #cull} reads it: level 0 the eye depth of each texel of {@code depthOf}'s depth
+     * under {@code constants}' projection and depth convention, each level after it the farthest of what it covers.
+     * {@code pyramid} is {@link #PYRAMID_FORMAT} with mips, the size of {@code depthOf}. Recorded where it stands: after
+     * whatever should hide the instances has drawn.
+     *
+     * <pre>{@code
+     * CgGraphTexture depth = CgGraphTexture.transientTexture("hiz",
+     *         new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
+     * CgGpuOps.depthPyramid(recording, CgGraphTexture.current(), constants, depth);
+     * cull.pyramid(depth);
+     * }</pre>
+     */
+    public static void depthPyramid(CgRecording recording, CgGraphTexture depthOf, CgPassConstants constants,
+                                    CgGraphTexture pyramid) {
+        if (pyramid.getLevels() < 2) throw new IllegalArgumentException(pyramid + " has one level: describe it withMips()");
+        CgMaterial seed = CgMaterial.load(PYRAMID_SHADER);
+        CgPipeline pipeline = seed.pipeline(CgInstanceKind.OBJECT);
+        CgRasterPass pass = recording.raster(pyramid, CgLoad.load(), constants, null, CgOrder.LOOKBACK)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthOf);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        chunks.draw(pipeline, seed.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.instance();
+        pass.add(chunks.end());
+        pass.end();
+        CgComputePass chain = recording.compute("cg.depthPyramid");
+        downsample(chain, pyramid, Filter.MAX);
+        chain.end();
     }
 
     /**
@@ -545,7 +661,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded with its Java bodies the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram, image;
+        private static volatile CgCompute fill, scan, sort, histogram, image, cull;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -580,6 +696,15 @@ public final class CgGpuOps {
             synchronized (Files.class) {
                 if (histogram == null) histogram = CgGpuOpsBodies.histogram(CgCompute.load(HISTOGRAM_PATH));
                 return histogram;
+            }
+        }
+
+        static CgCompute cull() {
+            CgCompute f = cull;
+            if (f != null) return f;
+            synchronized (Files.class) {
+                if (cull == null) cull = CgGpuOpsBodies.cull(CgCompute.load(CULL_PATH));
+                return cull;
             }
         }
 

@@ -1,9 +1,11 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -117,6 +119,10 @@ public final class CgRasterPass extends CgPass {
         CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
             if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
+            if (chunk.objects(d) instanceof CgGraphBuffer objects) {
+                recording.read(this, objects, CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO
+                        ? CgAccess.SAMPLED_READ : CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+            }
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));

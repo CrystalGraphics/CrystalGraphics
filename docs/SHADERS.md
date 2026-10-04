@@ -152,6 +152,11 @@ Shaders never branch on the path — the macro surface is identical regardless:
 | `CG_VERTEX_ID` | `gl_VertexID - cg_VertexBase` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from. `cg_VertexBase` is the mesh's base vertex — 0 unless the draw sets it (`CgPipeline.vertexBase`) |
 | `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
 
+A run of draws the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) binds every pass's
+`CG_MULTI_DRAW` variant, in which `CG_INSTANCE_ID`, `CG_DRAW_INSTANCE` and `CG_VERTEX_ID` take each draw's bases from
+its command instead of the two uniforms. They answer the same values, so a shader reading them never knows; one
+reading `cg_InstanceBase` or `cg_VertexBase` directly does not compile in that variant.
+
 #### Vertex Attribute Aliases
 
 Available in the vertex stage only. Locations are bound by `CgShaderFactory` before link — no `layout(location=N)` needed in shader code:
@@ -952,11 +957,16 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
 | an image | the graph texture, sampled by a material | every tier |
 | a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
+| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material; or `.instances(records, count)` on a world draw, culled on the GPU (below) | every tier; below GL 4.3 as a buffer texture |
 
 ```java
 // A count: a quad per live spark, or a mesh instanced once per element
 world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
 world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+
+// Object records: a rock per record a cull kept, as many as it counted
+chunks.draw(rocks.pipeline(CgInstanceKind.OBJECT), bindings, rock).objects(visible, 0, capacity)
+      .indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
 
 // An image: written by a kernel, sampled by the material's first sampler in a pass recorded after it
 CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("heat").color(0, CgTextureType.RGBA8).build();
@@ -969,9 +979,45 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 
 - `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the
   range count × factor times, each instance reading the draw's one object record, and `CG_DRAW_INSTANCE` is which
-  element it is.
+  element it is. On a draw of `objects(records, first, n)` instance i reads record `first + i`, and the count draws no more than
+  n.
 - **A buffer of records** is [Reading a kernel's buffers](#reading-a-kernels-buffers): the material declares it as the
   kernel does, `readonly`, and the graph orders the draw after the pass writing it.
+
+### Reading what a kernel wrote, on the CPU
+
+```java
+CgRequest got = recording.readback(counts, 0, 4, data -> alive = data.getInt(0));   // after the pass writing it
+recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heights));   // texture, level, region
+```
+
+- **It never stalls**: the GPU copies into memory the CPU maps, and the sink runs on the render thread once the GPU has
+  finished, from `CgGraphicsLifecycle.tickFrame`: usually a frame or two later. Steer by what arrived, not by what was
+  asked this frame. The request is done once the sink has run, and failed if the context goes first.
+- `data` is valid only during the call, in native byte order; a texture region is its rows bottom first, tightly
+  packed, in the texture type's base format and pixel type (`CgReadback.pixelBytes`).
+- A buffer needs `COPY`; a texture is read from its first colour attachment.
+- Outside a graph, `CgReadback.buffer(glBuffer, offset, size, sink)` and `CgReadback.pixels(fbo, x, y, w, h, type,
+  sink)` do the same on GL names.
+
+### Beside the drawing: `async()`
+
+```java
+CgComputePass cull = recording.compute("instances.cull", constants).async();
+cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
+cull.end();
+recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
+```
+
+- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device), the pass runs on
+  it, after everything recorded before it. The steps after it that touch nothing it reads or writes run beside it; the
+  first that does waits for it, as does a callback and the end of the execution.
+- **Everywhere else it runs in order**, with the same result: GL, Minecraft's Vulkan device, and a pass with a
+  dispatch below compute.
+- Worth it for compute that leaves the GPU idle — barriers between small dispatches, a reduction's last levels — beside
+  drawing that fills it. `--mode=async-compute` measures it: beside eight 1080p blurs (2.5 ms), half of 1 ms of
+  fill-bound drawing disappears on an RTX 4070 SUPER.
+- `-Dcrystalgraphics.graph.asyncAll=true` sends every pass that can go async, which is how the gates check the waits.
 
 ### Every tier
 
@@ -1041,7 +1087,8 @@ particles.kernel("Simulate").cpu(d -> {                     // every keyword set
 - A `map`, `gather`, `append` or `image` body runs on several worker threads at once, each over its range
   (`d.first()` to `d.end()`), writing its own elements only. A `scatter` or `general` body runs once, on one thread,
   over every element.
-- `CgCpuDispatch`: `buffer(name)`, `image(name)`, `property(name[, component])`, `propertyInt(name)`,
+- `CgCpuDispatch`: `buffer(name)`, `image(name)`, `texture(name, level)` (a sampler property's level, as `texelFetch`
+  reads it), `property(name[, component])`, `propertyInt(name)`,
   `keyword(name)`, `time()` (`CG_TIME`), `count(axis)` and `x(e)`, `y(e)`, `z(e)`; to append,
   `int i = d.append("SPAWNED")` then write element `i` of `d.appended("SPAWNED")`, and `appendCount(name)` is
   `NAME_COUNT()`.
@@ -1081,6 +1128,8 @@ pass.end();
 | `histogram(pass, keys, count, bins, binCount, shift)` | bin `min(key >>> shift, binCount - 1)` counted; exact to 2^24 a bin |
 | `downsample(pass, texture, filter)`, `(pass, texture, from, to, filter)` | each mip level from the one above: `AVERAGE` (area-weighted), `MIN` or `MAX` (a depth pyramid) |
 | `blur(pass, source, target, sigma)`, `(pass, source, level, target, level, sigma)` | a separable Gaussian; in place at a small level is the cheap blur |
+| `depthPyramid(recording, depthOf, constants, pyramid)` | a target's depth as eye depth, each level the farthest it covers: what a cull tests against |
+| `cull(pass, cull, instances, count, out, counts, word)` | instances of one mesh culled as `CgWorldRenderer` culls a draw (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many |
 
 - **A count is fixed or a word on the GPU** (`CgGpuCount.of(n)`, `CgGpuCount.at(buffer, word, capacity)`). A GPU count
   dispatches the capacity and every kernel stops at the count it reads, so no op needs it on the CPU.
@@ -1099,6 +1148,38 @@ CgGpuOps.downsample(pass, bloom, Filter.AVERAGE);            // each level from 
 CgGpuOps.blur(pass, bloom, 3, bloom, 3, 2f);                 // in place, at an eighth the size
 CgGpuOps.downsample(pass, depth, Filter.MAX);                // a depth pyramid: each texel the farthest it covers
 ```
+
+**Culling a set of instances** (`CgCull`): records in `CgInstanceKind.OBJECT`'s layout, in the set's own space, culled
+against the view and drawn level by level from what the GPU kept, with no count on the CPU. In the world, a set is one
+draw: `CgWorldRenderer` builds the pyramid from the stage's depth ahead of its own passes (in Minecraft, the terrain),
+culls the set in every stage that draws it, and draws each level kept.
+
+```java
+world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
+```
+
+By hand, into a recording:
+
+```java
+CgCull cull = new CgCull().mesh(rockLods);                           // once
+CgGpuOps.depthPyramid(recording, stage.target(), stage.constants(), depth);   // after what hides them drew
+CgComputePass pass = recording.compute("rocks.cull");
+CgGpuOps.cull(pass, cull.view(view, projection).place(place).pyramid(depth), rocks, CgGpuCount.of(n), visible, counts, 0);
+pass.end();
+for (int l = 0; l < cull.levels(); l++) {
+    chunks.draw(pipeline, bindings, rockLods.level(l)).objects(visible, CgGpuOps.cullFirst(l, n), n)
+          .indirect(counts, l * 4L, CgIndirect.INSTANCES, 1);
+}
+```
+
+- `visible` holds `CgGpuOps.cullRecords(cull, n)` records; `counts` a word a level. The place and the view are
+  camera-relative, the camera subtracted in doubles.
+- The pyramid is `CgGpuOps.PYRAMID_FORMAT` with mips, the size of the target it reads; one built from this frame's
+  depth hides what is behind the host's world as drawn so far.
+- Where draws join and the GPU writes the commands (compute, and G40 with indirect draws), the levels are one
+  multi-draw call (`render/graph/CLAUDE.md` § *Multi-draw*).
+- Its gate is `--mode=gpu-cull`: the same picture as the world renderer's CPU cull, byte for byte, on every tier, by
+  hand and as a world draw.
 
 **`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, any element drawing
 its own numbers in any order, integer-exact on every tier, with `CgRng` giving the same bits in Java. Key an element

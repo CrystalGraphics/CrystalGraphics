@@ -419,7 +419,7 @@ public final class TrackedFramebuffers {
         GlPixels.pack(texels, f, width, height, format, type, pack, out);
     }
 
-    /** {@code glReadPixels} into the pixel-pack buffer, without waiting: only where the layouts already agree. */
+    /** {@code glReadPixels} into the pixel-pack buffer, without waiting: only where GL's layout is the device's texels. */
     public void readPixels(int x, int y, int width, int height, int format, int type, long offset) {
         TrackedBuffers.GlBuffer pbo = buffers.get(buffers.pixelPack);
         if (pbo == null) { errors.invalidOperation("glReadPixels to an offset with no pixel-pack buffer"); return; }
@@ -427,9 +427,7 @@ public final class TrackedFramebuffers {
         if (src == null) { errors.invalidFramebufferOperation("glReadPixels with nothing attached"); return; }
         CgTextureView v = readView(src);
         CgFormat f = v.texture().desc().format();
-        boolean direct = (f == CgFormat.RGBA8_UNORM || f == CgFormat.RGBA8_SRGB) && format == CgGL.GL_RGBA && type == CgGL.GL_UNSIGNED_BYTE
-                || f == CgFormat.RGBA32_FLOAT && format == CgGL.GL_RGBA && type == CgGL.GL_FLOAT;
-        if (!direct) throw new UnsupportedOperationException("glReadPixels of " + f + " into a buffer as 0x"
+        if (!GlPixels.sameLayout(format, type, f)) throw new UnsupportedOperationException("glReadPixels of " + f + " into a buffer as 0x"
                 + Integer.toHexString(format) + "/0x" + Integer.toHexString(type));
         CgAllocation a = pbo.storage.allocation();
         tracker.transfer().copyTextureToBuffer(v.texture(), new CgTextureRegion(v.baseMip(), x, y, v.baseLayer(), width, height, 1),

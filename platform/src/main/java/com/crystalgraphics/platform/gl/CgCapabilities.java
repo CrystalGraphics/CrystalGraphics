@@ -224,7 +224,7 @@ public final class CgCapabilities {
     // backend, the device. @see #computeTier
     @Getter(AccessLevel.NONE)
     boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
-            drawParameters, feedbackCount, asyncCompute, bindless;
+            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless;
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
     /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
     @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
@@ -359,9 +359,12 @@ public final class CgCapabilities {
         caps.drawIndirect      = device != null || gl.OpenGL40() || gl.GL_ARB_draw_indirect();
         caps.multiDrawIndirect = device != null ? device.multiDrawIndirect() : gl.OpenGL43() || gl.GL_ARB_multi_draw_indirect();
         caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
-        caps.drawParameters    = device == null && (gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters());
+        caps.drawParameters    = device != null ? device.drawParameters() : gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters();
+        boolean firstInstance  = device != null ? device.indirectFirstInstance() : gl.OpenGL42() || gl.GL_ARB_base_instance();
+        caps.multiDraw         = caps.multiDrawIndirect && caps.drawParameters && firstInstance
+                && !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.multiDraw"));
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
-        caps.asyncCompute      = false;
+        caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
         caps.computeTier       = computeTier(caps, device != null);
         caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
@@ -498,13 +501,20 @@ public final class CgCapabilities {
     /** The draw count from a buffer too: GL 4.6 or {@code ARB_indirect_parameters}, or a device that enabled it. */
     public boolean indirectCount() { return indirectCount; }
 
-    /** {@code gl_DrawID} in a multi-draw: GL 4.6 or {@code ARB_shader_draw_parameters}. No device enables it. */
+    /** {@code gl_DrawID} and a draw's bases in a shader: GL 4.6 or {@code ARB_shader_draw_parameters}, or a device. */
     public boolean drawParameters() { return drawParameters; }
+
+    /**
+     * Meshes drawn as one multi-draw, each command carrying its bases: {@link #multiDrawIndirect()},
+     * {@link #drawParameters()} and a command's first instance (GL 4.2, {@code ARB_base_instance}, or a device's
+     * {@code drawIndirectFirstInstance}). {@code -Dcrystalgraphics.mesh.multiDraw=false} turns it off.
+     */
+    public boolean multiDraw() { return multiDraw; }
 
     /** A captured transform-feedback stream drawn by its own count: GL 4.0 or {@code ARB_transform_feedback2}. */
     public boolean feedbackCount() { return feedbackCount; }
 
-    /** Kernels on a queue beside the frame's. Always false: every device submits on one queue. */
+    /** Kernels on a queue beside the frame's: a device with a compute queue of its own, the owned Vulkan device's. */
     public boolean asyncCompute() { return asyncCompute; }
 
     /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */

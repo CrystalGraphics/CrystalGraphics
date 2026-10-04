@@ -17,7 +17,7 @@ import java.nio.ByteOrder;
  * CgBufferReadback.readWords(counts, 12, count, 0, 1);
  * }</pre>
  *
- * <p>An asynchronous read, delivered frames later without a stall, is gpu-compute C8's.</p>
+ * <p>{@link CgReadback} reads without a stall, delivered frames later; this is for what is needed now.</p>
  */
 public final class CgBufferReadback {
 

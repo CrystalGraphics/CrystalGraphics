@@ -89,6 +89,10 @@ world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // 
 world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
 world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
 
+// A set of instances in a GPU buffer of object records, culled on the GPU: a count the CPU knows, or one a kernel wrote
+world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
+world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).at(x, y, z).submit();
+
 // A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 ```
@@ -438,6 +442,7 @@ CgGraphicsLifecycle.ensureContext(width, height);
 | 6 | `CgMaterialRegistry.get().deleteAll()` | Material instances + GL shader programs |
 | 6b | `CgCompute.releaseAll()` | Kernel programs and their blocks; the parsed files stay for the next context |
 | 6c | `CgBufferTextures.releaseAll()` | The buffer textures materials and lowered kernels read buffers through, one per unit, and the zero buffer an unbound one reads |
+| 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/TBO/UBO resources |
 | 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
 | 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |

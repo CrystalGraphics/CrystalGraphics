@@ -100,6 +100,12 @@ public final class CgMaterialShaderCompiler {
 
     private static final String ENV_INCLUDE = "crystalgraphics:shaders/env/cg_env.glsl";
 
+    /**
+     * The engine's keyword for a multi-draw's variant of any pass: {@code cg_env.glsl} takes a draw's bases from its
+     * command rather than from uniforms. Defined whether or not the shader declares it.
+     */
+    public static final String MULTI_DRAW = "CG_MULTI_DRAW";
+
     private CgMaterialShaderCompiler() {
         throw new AssertionError("CgMaterialShaderCompiler is not instantiable");
     }
@@ -289,7 +295,7 @@ public final class CgMaterialShaderCompiler {
                 shadowFragmentBody,
                 shadowFragOutput);
 
-        return compile(shader, shadowPass, attachedBuffers, matPropsUbo, CompileConfig.DEFAULT);
+        return compile(shader, shadowPass, attachedBuffers, matPropsUbo, config);
     }
 
     /**
@@ -354,7 +360,7 @@ public final class CgMaterialShaderCompiler {
                 depthFragmentBody,
                 depthFragOutput);
 
-        return compile(shader, depthPass, attachedBuffers, matPropsUbo, CompileConfig.DEFAULT);
+        return compile(shader, depthPass, attachedBuffers, matPropsUbo, config);
     }
 
     /**
@@ -423,10 +429,15 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+        int version = glslVersion(useSsbo, config);
+        sb.append("#version ").append(version).append(" core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
+        // Before any code, which a hoisted #include may already be: cg_env.glsl reads a multi-draw's bases from it.
+        if (version < 460 && config.activeKeywords().contains(MULTI_DRAW)) {
+            sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
+        }
 
         // Step 2: CG_VERTEX_STAGE define.
         //
@@ -511,7 +522,7 @@ public final class CgMaterialShaderCompiler {
         StringBuilder sb = new StringBuilder(1024);
 
         // Step 1: #version
-        sb.append(useSsbo ? "#version 430 core\n" : "#version 330 core\n");
+        sb.append("#version ").append(glslVersion(useSsbo, config)).append(" core\n");
 
         // Keyword #define injection — in featureNames declaration order, before user #-lines
         appendKeywordDefines(sb, shader.featureNames(), config.activeKeywords());
@@ -598,6 +609,15 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
+    /**
+     * 430 with storage blocks, 330 without; a multi-draw variant at the context's own above that, since glslang
+     * declares the draw parameters from 450 and 4.6 has them in core.
+     */
+    private static int glslVersion(boolean useSsbo, CompileConfig config) {
+        if (!useSsbo) return 330;
+        return config.activeKeywords().contains(MULTI_DRAW) ? Math.max(430, CgCapabilities.detect().glslVersion()) : 430;
+    }
+
     private static void appendKeywordDefines(StringBuilder sb, List<String> featureNames,
                                               Set<String> activeKeywords) {
         if (activeKeywords.isEmpty()) return;
@@ -606,6 +626,7 @@ public final class CgMaterialShaderCompiler {
                 sb.append("#define ").append(name).append(" 1\n");
             }
         }
+        if (activeKeywords.contains(MULTI_DRAW)) sb.append("#define ").append(MULTI_DRAW).append(" 1\n");
     }
 
     /**

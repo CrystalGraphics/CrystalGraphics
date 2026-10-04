@@ -145,9 +145,48 @@ chunks.instance();                                                              
 - `INDICES` and `VERTICES` draw count x factor of the range, never more than it holds; `INSTANCES` draws the range
   count x factor times, every instance reading the draw's one record, and `CG_DRAW_INSTANCE` is which element it is.
 - An indirect draw is a batch of its own, and its command's first instance is 0 on every device: the instance base is
-  `cg_InstanceBase`, as for any draw.
+  `cg_InstanceBase`, as for any draw. A command a multi-draw draws is the exception (below).
 - Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
   kernels writing them share nothing and need no barrier between them.
+
+**Object records from a buffer** (gpu-compute C9b): `CgChunkBuilder.objects(records, first, n)` draws a mesh once per
+record of a GPU buffer in `CgInstanceKind.OBJECT`'s layout, instead of records written into the chunk. The executor
+binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingPoints.OBJECT_DATA`: a storage block, or a buffer texture on
+the TBO path) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
+records back for the next batch that reads them. With `.indirect(count, offset, INSTANCES, factor)` the GPU's count says how many, held to n by
+the command's kernel (`_Most`) or, read back, by the executor.
+
+```java
+chunks.draw(pipeline, bindings, rock).objects(visible, 0, capacity).indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
+```
+
+- The raster pass reads the buffer as a vertex and fragment stage would (sampled on the TBO path), so the pass writing
+  it runs first and, below compute, lands it.
+- Such a draw is a batch of its own, joined into a multi-draw only with indirect draws of the same buffer (below); a
+  pass whose only object draws are of `objects()` uploads no object records.
+
+**Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
+bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page,
+are one `glMultiDrawElementsIndirect`. The store takes each draw while its mesh joins the run (`CgMeshStore.join`)
+and writes the commands into the frame ring (`drawJoined`); the executor binds the pipeline's `multiDraw()` variant,
+which reads each draw's first instance and base vertex from its command rather than `cg_InstanceBase` and
+`cg_VertexBase`. A run of one is drawn the plain way.
+
+Indirect draws join too, where their commands are written on the GPU (compute, and G40 with indirect draws):
+consecutive indirect batches under one pipeline, bindings and scissor, reading the same object records, from meshes
+that join (`CgMeshStore.joins`). The executor decides the runs before the pass, when it writes the commands: each into
+consecutive slots, in the joined form (`joinedRange`) with the batch's instance base as its first instance, then draws
+the run with `drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one
+call however many levels. An `INSTANCES` draw of the frame's records never joins, since every instance reads one
+record and the multi-draw variant has no shared record.
+
+- Every joined draw is by indices: a mesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an
+  array draw's base vertex as 0 where Vulkan gives its first vertex. Meshes with and without indices never share a
+  call.
+- The picture is the same either way: `--mode=multi-draw` draws 78 instances of 76 meshes in 4 calls, then with
+  `CgMeshStore.multiDraw(false)` in 77, and compares the two byte for byte; `--mode=gpu-cull` does the same for a
+  culled set's levels. `-Dcrystalgraphics.mesh.multiDraw=false`
+  turns it off for a process.
 
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
@@ -207,8 +246,12 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
   lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
   execution ends: ops chained in a frame land only what leaves them.
-- **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
-  pass that throws fails its request and the frame goes on.
+- **An `async()` compute pass runs on the device's compute queue** where it has one, and in order elsewhere. The
+  executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
+  to another counts), before a callback, and at the end of the execution (`docs/SHADERS.md` § *Beside the drawing*).
+- **Requests** (`upload`, `callback`, `compile`, `readback`) report `DONE`/`FAILED` on `CgRequest`, readable from any
+  thread; a pass that throws fails its request and the frame goes on. A readback's is done frames after its execution,
+  once `CgReadback.poll` has run its sink; executing the frame again does not read it again.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
   draws each batch's range through `cg_InstanceBase`. A nested execution (an immediate inside a callback) gets its
   own buffers and ring.
@@ -227,4 +270,5 @@ against a direct draw of what its count means, in a graph, executed again and th
 forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
 (`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
 level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
-validation, and both downlevel contexts.
+validation, and both downlevel contexts. `--mode=multi-draw` is the joined draws': the same picture joined and
+separate, and the calls each took.

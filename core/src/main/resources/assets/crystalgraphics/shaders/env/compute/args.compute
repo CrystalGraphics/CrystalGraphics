@@ -12,6 +12,8 @@ Properties {
     _Elements  ("The range's elements",      int) = 0
     _Base      ("Base vertex",               int) = 0
     _Instances ("Records, but for INSTANCES", int) = 1
+    _Most      ("Most INSTANCES, -1 any",     int) = -1
+    _FirstInstance ("A joined command's first instance", int) = 0
     _Indexed   ("Drawn by indices",          int) = 0
 }
 
@@ -21,16 +23,17 @@ Buffers {
 }
 
 // GL's DrawElementsIndirectCommand and DrawArraysIndirectCommand, which are Vulkan's byte for byte: count, instances,
-// first, then the base vertex for indices, then the first instance. That is always 0: CG_INSTANCE_ID adds
-// cg_InstanceBase on every device, and Vulkan's gl_InstanceIndex would count a first instance twice.
+// first, then the base vertex for indices, then the first instance. That is 0 but in a multi-draw's command:
+// CG_INSTANCE_ID adds cg_InstanceBase on every device, and Vulkan's gl_InstanceIndex would count it twice.
 void DrawArgs() {
     uint n = COUNT(_Count) * uint(_Factor);
     uint elements = uint(_Elements);
     bool instances = _Mode == 0;
     uint word = 0u;
     if (CG_ELEMENT == 0) word = instances ? elements : min(n, elements);
-    else if (CG_ELEMENT == 1) word = instances ? n : uint(_Instances);
+    else if (CG_ELEMENT == 1) word = instances ? min(n, uint(_Most)) : uint(_Instances);
     else if (CG_ELEMENT == 2) word = uint(_First);
     else if (CG_ELEMENT == 3) word = _Indexed != 0 ? uint(_Base) : 0u;
+    else word = uint(_FirstInstance);
     ARGS_WRITE(word);
 }

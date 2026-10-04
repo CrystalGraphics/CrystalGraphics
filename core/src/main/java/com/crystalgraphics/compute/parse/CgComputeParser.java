@@ -465,6 +465,8 @@ public final class CgComputeParser {
                 if (why != null) throw fail(id, kernel + " reaches " + id + ", which " + why + "; declare it general");
             }
         }
+        Set<String> samplers = new LinkedHashSet<>();
+        for (CgMaterialProperty p : properties) if (p.getType().isSampler() && used.contains(p.getName())) samplers.add(p.getName());
         if (!k.shape().unrestricted() && !shared.isEmpty()) {
             String first = shared.iterator().next();
             throw fail(first, kernel + " reaches shared " + first + ": shared memory is a general kernel's");
@@ -484,7 +486,8 @@ public final class CgComputeParser {
         }
         return new CgKernelDecl(k.name(), k.x(), k.y(), k.z(), k.dimensions(), k.shape(), fallbacks.get(k.name()),
                 Collections.unmodifiableSet(functions), Collections.unmodifiableSet(shared),
-                Collections.unmodifiableSet(accessors), Collections.unmodifiableSet(subgroups), sharedBytes(k, shared),
+                Collections.unmodifiableSet(accessors), Collections.unmodifiableSet(samplers),
+                Collections.unmodifiableSet(subgroups), sharedBytes(k, shared),
                 Collections.unmodifiableSet(builtins), computeOnly.containsKey(k.name()));
     }
 

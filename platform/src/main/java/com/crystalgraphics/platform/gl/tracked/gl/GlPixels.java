@@ -137,7 +137,8 @@ public final class GlPixels {
 
     // ── layouts ────────────────────────────────────────────────────────────────
 
-    private static boolean sameLayout(int format, int type, CgFormat dst) {
+    /** Whether GL's {@code (format, type)} is {@code dst}'s tightly packed texels as they are. */
+    static boolean sameLayout(int format, int type, CgFormat dst) {
         switch (dst) {
             case R8_UNORM: return format == CgGL.GL_RED && type == CgGL.GL_UNSIGNED_BYTE;
             case RG8_UNORM: return format == CgGL.GL_RG && type == CgGL.GL_UNSIGNED_BYTE;

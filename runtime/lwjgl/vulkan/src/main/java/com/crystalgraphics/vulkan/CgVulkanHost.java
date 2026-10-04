@@ -112,4 +112,28 @@ public interface CgVulkanHost {
 
     /** Whether the device was created with {@code drawIndirectFirstInstance}. */
     boolean indirectFirstInstance();
+
+    /** Whether the device was created with {@code shaderDrawParameters}: a draw's bases and {@code gl_DrawID} in a shader. */
+    boolean drawParameters();
+
+    /** Whether {@link #beginAsync} records onto a compute queue of its own, overlapping the frame's other work. */
+    boolean asyncCompute();
+
+    /**
+     * The queue family async work runs on when it is not {@link #queueFamily()}, else -1: buffers and images are then
+     * shared by both, so neither queue's use of them needs an ownership transfer.
+     */
+    int asyncFamily();
+
+    /**
+     * {@link #commandBuffer()} becomes the compute queue's, its work starting after everything recorded before it, until
+     * {@link #endAsync}. A host without one keeps recording in order.
+     */
+    void beginAsync();
+
+    /** Back to the frame's queue: the point {@link #waitAsync} waits for, 0 for a host that recorded it in order. */
+    long endAsync();
+
+    /** What is recorded from here runs after the async work up to {@code point}. */
+    void waitAsync(long point);
 }

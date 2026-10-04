@@ -275,6 +275,20 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     @Override public boolean indirectFirstInstance() { return false; }
 
+    /** Only a multi-draw reads them, and a hosted device has none. */
+    @Override public boolean drawParameters() { return false; }
+
+    /** The host owns the queues: async work is recorded in order, with the same result. */
+    @Override public final boolean asyncCompute() { return false; }
+
+    @Override public final int asyncFamily() { return -1; }
+
+    @Override public final void beginAsync() {}
+
+    @Override public final long endAsync() { return 0L; }
+
+    @Override public final void waitAsync(long point) {}
+
     @Override
     public final void submitAndWait() {
         throw new IllegalStateException(hostName + " submits this device's frames: a wait for one would deadlock");
