@@ -97,6 +97,8 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 ```
 
+- **Drawing what kernels wrote** (`.indirect`, `.instances`) is its own workflow:
+  [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
