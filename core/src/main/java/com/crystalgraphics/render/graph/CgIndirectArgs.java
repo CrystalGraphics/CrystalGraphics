@@ -22,7 +22,7 @@ import java.util.function.IntConsumer;
  *
  * <pre>{@code
  * int args = commands.reserve(indirects, freed);  // the buffer, big enough for the pass's commands
- * commands.write(slot, count, countOffset, mode, factor, range, records);
+ * commands.write(slot, count, countOffset, countBytes, mode, factor, range, records, most);
  * store.drawIndirect(mesh, pipeline, submesh, commands.buffer(), commands.offset(slot));
  * }</pre>
  */
@@ -69,20 +69,21 @@ final class CgIndirectArgs {
 
     /**
      * Writes command {@code slot}: the {@code uint} at byte {@code countOffset} in GL buffer {@code count}, times
-     * {@code factor}, read as {@code mode}, over {@code range} as {@code CgMeshStore.range} answered it.
+     * {@code factor}, read as {@code mode}, over {@code range} as {@code CgMeshStore.range} answered it. An
+     * {@code INSTANCES} command draws at most {@code most} instances, -1 for any number.
      */
     void write(int slot, int count, long countOffset, long countBytes, CgIndirect mode, int factor, int[] range,
-               int records) {
+               int records, int most) {
         CgKernel kernel = kernel();
         if (kernel.form().how() == CgKernelForm.How.COMPUTE) {
             CgKernelProgram program = kernel.program();
             program.use();
-            set(program.properties(), countOffset, mode, factor, range, records);
+            set(program.properties(), countOffset, mode, factor, range, records, most);
             program.buffer("COUNT", count).buffer("ARGS", buffer, offset(slot), COMMAND_BYTES).dispatch(5);
             return;
         }
         CgLoweredKernel program = kernel.lowered();
-        set(program.properties(), countOffset, mode, factor, range, records);
+        set(program.properties(), countOffset, mode, factor, range, records, most);
         if (lowered == null) lowered = new CgDispatchBindings(kernel.compute().source());
         lowered.buffer(kernel.compute().source().buffer("COUNT").index(), count, 0, countBytes)
                 .buffer(kernel.compute().source().buffer("ARGS").index(), buffer, offset(slot), COMMAND_BYTES)
@@ -100,7 +101,8 @@ final class CgIndirectArgs {
         return CgCompute.load(SOURCE).kernel("DrawArgs");
     }
 
-    private static void set(CgShaderBindings p, long countOffset, CgIndirect mode, int factor, int[] range, int records) {
+    private static void set(CgShaderBindings p, long countOffset, CgIndirect mode, int factor, int[] range, int records,
+                            int most) {
         p.set1i("_Count", (int) (countOffset >>> 2))
                 .set1i("_Mode", mode.ordinal())
                 .set1i("_Factor", factor)
@@ -108,7 +110,8 @@ final class CgIndirectArgs {
                 .set1i("_Elements", range[1])
                 .set1i("_Base", range[2])
                 .set1i("_Indexed", range[3])
-                .set1i("_Instances", records);
+                .set1i("_Instances", records)
+                .set1i("_Most", most);
     }
 
     /** At context teardown; the GL name is answered to {@code freed}. */

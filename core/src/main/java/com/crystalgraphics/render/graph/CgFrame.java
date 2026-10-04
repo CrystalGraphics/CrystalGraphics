@@ -293,6 +293,8 @@ public final class CgFrame {
         CgBufferHandle[] counts = new CgBufferHandle[16];
         long[] countOffsets = new long[16];
         int[] countModes = new int[16];
+        /** Per batch, the buffer a batch of {@code objects()} reads its records from, else null. Such a batch is one draw. */
+        CgBufferHandle[] objects = new CgBufferHandle[16];
         /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
         int[] copyBefore = new int[16];
         /**
@@ -328,11 +330,13 @@ public final class CgFrame {
                 counts = new CgBufferHandle[n];
                 countOffsets = new long[n];
                 countModes = new int[n];
+                objects = new CgBufferHandle[n];
                 copyBefore = new int[n];
                 copyRect = new int[n * 4];
             } else {
                 Arrays.fill(mesh, 0, count, null);
                 Arrays.fill(counts, 0, count, null);
+                Arrays.fill(objects, 0, count, null);
             }
             count = batches;
             kinds = 0;

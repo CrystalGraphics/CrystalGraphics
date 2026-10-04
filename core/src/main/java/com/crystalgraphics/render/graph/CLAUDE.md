@@ -132,6 +132,22 @@ chunks.instance();                                                              
 - Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
   kernels writing them share nothing and need no barrier between them.
 
+**Object records from a buffer** (gpu-compute C9b): `CgChunkBuilder.objects(records, first, n)` draws a mesh once per
+record of a GPU buffer in `CgInstanceKind.OBJECT`'s layout, instead of records written into the chunk. The executor
+binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingPoints.OBJECT_DATA`: a storage block, or a buffer texture on
+the TBO path) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
+records back for the next batch that reads them. With `.indirect(count, offset, INSTANCES, factor)` the GPU's count says how many, held to n by
+the command's kernel (`_Most`) or, read back, by the executor.
+
+```java
+chunks.draw(pipeline, bindings, rock).objects(visible, 0, capacity).indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
+```
+
+- The raster pass reads the buffer as a vertex and fragment stage would (sampled on the TBO path), so the pass writing
+  it runs first and, below compute, lands it.
+- Such a draw is a batch of its own and never joins a multi-draw; a pass whose only object draws are of `objects()`
+  uploads no object records.
+
 **Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
 bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page,
 are one `glMultiDrawElementsIndirect`. The store takes each draw while its mesh joins the run (`CgMeshStore.join`)

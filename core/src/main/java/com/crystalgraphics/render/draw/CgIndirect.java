@@ -15,7 +15,8 @@ public enum CgIndirect {
 
     /**
      * The draw's range, drawn count x factor times. Every instance reads the draw's one record
-     * ({@code CG_OBJECT_DATA}), and {@code CG_DRAW_INSTANCE} is which element it is.
+     * ({@code CG_OBJECT_DATA}), and {@code CG_DRAW_INSTANCE} is which element it is; on a draw of
+     * {@code CgChunkBuilder.objects(records, n)} instance i reads record i, and no more than n are drawn.
      */
     INSTANCES,
     /** Count x factor of the range's indices, at most the range's own. The mesh is indexed. */
