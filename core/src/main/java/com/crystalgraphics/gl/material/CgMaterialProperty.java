@@ -6,9 +6,11 @@ import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
+import com.crystalgraphics.gl.texture.CgEngineTextures;
 import lombok.Getter;
 
 import java.util.Locale;
+import java.util.function.Supplier;
 
 /**
  * A material property — declaration, current value, and binding logic for one
@@ -157,6 +159,8 @@ public final class CgMaterialProperty {
     private int       samplerUnit    = -1;   // -1 = not yet set
     @Getter
     private CgTexture samplerTexture = null;
+    /** The engine texture the default names ({@link CgEngineTextures}), found at first use. */
+    private Supplier<CgTexture> namedDefault;
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -340,9 +344,19 @@ public final class CgMaterialProperty {
      */
     public void bindSamplerTexture() {
         if (!type.isSampler()) throw new IllegalStateException("bindSamplerTexture() called on non-sampler property: " + name);
-        
-        if (samplerUnit >= 0 && samplerTexture != null) 
+
+        if (samplerUnit >= 0 && samplerTexture != null)
             samplerTexture.bind(samplerUnit);
+    }
+
+    /**
+     * The texture this sampler reads: the one set, else the engine texture its default names
+     * ({@code = "white"}, {@code = "cg_noise"}: {@link CgEngineTextures}); null for neither.
+     */
+    public CgTexture boundTexture() {
+        if (samplerTexture != null || rawDefault == null) return samplerTexture;
+        if (namedDefault == null) namedDefault = CgEngineTextures.supplier(rawDefault);
+        return namedDefault == null ? null : namedDefault.get();
     }
     
     // ── Default reset ─────────────────────────────────────────────────────────
