@@ -410,10 +410,11 @@ public class CgFrameBuffer {
                 CgGL.glDrawBuffer(CgGL.GL_NONE);
                 CgGL.glReadBuffer(CgGL.GL_NONE);
             }
+            drawEveryColorSlot();
 
             // ── Completeness check ─────────────────────────────────────────────
             int status = doCheckFramebufferStatus();
-            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) 
+            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE)
                 throw new IllegalStateException("FBO '" + name + "' incomplete: 0x" + Integer.toHexString(status));
 
         } catch (RuntimeException e) {
@@ -464,10 +465,24 @@ public class CgFrameBuffer {
             if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()), CgGL.GL_TEXTURE_2D,
                     a.getTexture().getId(), level);
         }
+        drawEveryColorSlot();
         int status = doCheckFramebufferStatus();
         if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
             throw new IllegalStateException("FBO '" + name + "' level " + level + " incomplete: 0x" + Integer.toHexString(status));
         }
+    }
+
+    /**
+     * On the bound framebuffer, made with more than one colour slot: draws into every one. A framebuffer draws into
+     * attachment 0 alone until told otherwise, so a fragment's other outputs would be dropped. The state is the
+     * framebuffer object's, set once.
+     */
+    private void drawEveryColorSlot() {
+        if (colorAttachments.size() < 2) return;
+        IntBuffer buf = CgBufferUtils.createIntBuffer(colorAttachments.size());
+        for (int slot : colorAttachments.keySet()) buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
+        buf.flip();
+        CgGL.glDrawBuffers(buf);
     }
 
     /** Level {@code level}'s width: {@code max(1, width >> level)}. */

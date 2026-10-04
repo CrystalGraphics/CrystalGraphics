@@ -72,6 +72,10 @@ fbo.drawBuffers(0, 1, 2);  // slot INDICES, not GL_COLOR_ATTACHMENT0+n constants
 
 `drawBuffers(int... slotIds)` converts internally to `GL_COLOR_ATTACHMENT0 + n`.
 
+A format with more than one colour slot draws into every slot from creation, its level framebuffers too
+(`drawEveryColorSlot`): GL's default is attachment 0 alone, which dropped every other output of a graph pass.
+`drawBuffers` narrows it for a caller that wants fewer.
+
 ---
 
 ## Depth-Only FBOs
