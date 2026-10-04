@@ -68,6 +68,10 @@ public final class CgCompute {
     private final Map<String, CgLoweredKernel> lowered = new HashMap<>();
     /** Java bodies by kernel name, kept across reloads. */
     private final Map<String, CgCpuBody> bodies = new ConcurrentHashMap<>();
+    /** Each kernel with no keywords, made once: a kernel keeps its checks and its program across calls. */
+    private final Map<String, CgKernel> kernels = new ConcurrentHashMap<>();
+    /** Each kernel with keywords, made once, as {@link #kernels}. */
+    private final Map<CgKernel, CgKernel> variants = new ConcurrentHashMap<>();
     /** Counts every body given: a kernel's form chosen before one may change. */
     private volatile int bodiesGiven;
 
@@ -85,7 +89,8 @@ public final class CgCompute {
      * @throws IllegalArgumentException if nothing is at {@code path}
      */
     public static CgCompute load(String path) {
-        return LOADED.computeIfAbsent(path, p -> new CgCompute(p, read(p), false));
+        CgCompute loaded = LOADED.get(path);
+        return loaded != null ? loaded : LOADED.computeIfAbsent(path, p -> new CgCompute(p, read(p), false));
     }
 
     /** Kernels from text under {@code key}: the instance already under it when the text is the same. */
@@ -98,12 +103,19 @@ public final class CgCompute {
         return created;
     }
 
-    /** The kernel {@code name}, with no keywords. */
+    /** The kernel {@code name}, with no keywords: the same instance every call, so a per-frame caller makes nothing. */
     public CgKernel kernel(String name) {
         if (source.kernel(name) == null) {
             throw new IllegalArgumentException("[" + path + "] has no kernel '" + name + "': " + kernelNames());
         }
-        return new CgKernel(this, name, Set.of());
+        CgKernel kernel = kernels.get(name);
+        return kernel != null ? kernel : kernels.computeIfAbsent(name, n -> new CgKernel(this, n, Set.of()));
+    }
+
+    /** The one instance equal to {@code made}: what {@link CgKernel#withKeywords} answers. */
+    CgKernel shared(CgKernel made) {
+        CgKernel held = variants.putIfAbsent(made, made);
+        return held != null ? held : made;
     }
 
     public CgComputeSource source() {

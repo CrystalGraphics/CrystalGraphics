@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 
 public class CgKernelFormTest {
 
-    private static final CgComputeSource SOURCE = CgComputeParser.parse(String.join("\n",
+    private static final String TEXT = String.join("\n",
             "#pragma kernel Step map",
             "#pragma kernel Reduce general",
             "#pragma kernel ReduceLowered scatter",
@@ -23,6 +23,7 @@ public class CgKernelFormTest {
             "#pragma kernel Gathers map",
             "#pragma fallback Reduce ReduceLowered",
             "#pragma compute_only Only",
+            "#pragma cg_feature WIDE",
             "Buffers {",
             "    VALS (\"Vals\", float, readwrite)",
             "    SUMS (\"Sums\", uint,  counter)",
@@ -38,7 +39,8 @@ public class CgKernelFormTest {
             "void Only() { partial[CG_LOCAL_INDEX] = 0u; barrier(); }",
             "void Bits() { VALS_WRITE(float(bitCount(uint(CG_ELEMENT))) + unpackHalf2x16(7u).x); }",
             "void Gathers() { VALS_WRITE(float(textureGather(_Tex, vec2(0.5)).x)); }",
-            ""), "test:shaders/form.compute");
+            "");
+    private static final CgComputeSource SOURCE = CgComputeParser.parse(TEXT, "test:shaders/form.compute");
 
     private static CgKernelForm form(String kernel, ComputeTier tier, String... bodies) {
         Predicate<String> hasBody = Set.of(bodies)::contains;
@@ -53,6 +55,15 @@ public class CgKernelFormTest {
         }
         fail(kernel + " found a form at " + tier);
         return null;
+    }
+
+    @Test
+    public void aKernelAndEachKeywordSet_isOneInstance_soItsChecksAndProgramAreKept() {
+        CgCompute file = CgCompute.fromSource("test:form", TEXT);
+        assertSame(file.kernel("Step"), file.kernel("Step"));
+        assertSame(file.kernel("Step").withKeywords("WIDE"), file.kernel("Step").withKeywords("WIDE"));
+        assertNotSame(file.kernel("Step"), file.kernel("Step").withKeywords("WIDE"));
+        assertSame(file.kernel("Step"), file.kernel("Step").withKeywords());
     }
 
     @Test
