@@ -300,6 +300,20 @@ public abstract class CgGLBackend {
     private ByteBuffer fillPattern;
     private int fillValue;
 
+    /**
+     * What follows, kernels, barriers and transfers but no draw, runs on a compute queue beside the frame's, after
+     * everything before it, until {@link #cgEndAsync}. GL has one queue: in order, as here.
+     */
+    public void cgBeginAsync() {}
+
+    /** Back to the frame's queue: the point {@link #cgWaitAsync} waits for, 0 where the work ran in order. */
+    public long cgEndAsync() {
+        return 0L;
+    }
+
+    /** What follows on the frame's queue runs after the async work up to {@code point}. */
+    public void cgWaitAsync(long point) {}
+
     /** {@link #cgBufferBarrier} for a texture. */
     public void cgImageBarrier(int texture, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);

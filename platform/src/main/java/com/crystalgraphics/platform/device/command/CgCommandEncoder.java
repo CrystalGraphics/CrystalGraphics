@@ -72,6 +72,28 @@ public interface CgCommandEncoder {
     void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion region, CgGpuBuffer dst, long dstOffset);
 
     /**
+     * What follows, dispatches, barriers and transfers but no render pass, goes to a compute queue beside the frame's
+     * and starts after everything recorded before it, until {@link #endAsync}. A device with no such queue records it in
+     * order. Outside a pass.
+     *
+     * <pre>{@code
+     * enc.beginAsync();
+     * ... a compute pass ...
+     * long done = enc.endAsync();
+     * ... draws that do not touch what it wrote, overlapping it ...
+     * enc.waitAsync(done);
+     * ... what reads it ...
+     * }</pre>
+     */
+    void beginAsync();
+
+    /** Back to the frame's queue: answers the point {@link #waitAsync} waits for, 0 on a device that ran it in order. */
+    long endAsync();
+
+    /** What follows on the frame's queue runs after the async work up to {@code point}. Outside a pass. */
+    void waitAsync(long point);
+
+    /**
      * Runs everything recorded this frame and waits for it, the frame staying open: what reading host-visible memory
      * the GPU wrote this frame needs. Outside a render pass.
      *

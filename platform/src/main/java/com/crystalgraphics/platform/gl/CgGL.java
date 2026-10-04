@@ -1215,6 +1215,34 @@ public final class CgGL {
         gl().cgImageBarrier(texture, from, to);
     }
 
+    /**
+     * What follows, kernels, barriers and transfers but no draw, runs on a compute queue beside the frame's where the
+     * device has one ({@code CgCapabilities.asyncCompute()}), starting after everything before it, until
+     * {@link #cgEndAsync}. Elsewhere, GL included, it runs in order with the same result. The frame graph's executor
+     * brackets an {@code async()} compute pass with these.
+     *
+     * <pre>{@code
+     * CgGL.cgBeginAsync();
+     * ... the pass's dispatches ...
+     * long done = CgGL.cgEndAsync();
+     * ... draws touching nothing it touched, overlapping it ...
+     * CgGL.cgWaitAsync(done);   // before anything that does
+     * }</pre>
+     */
+    public static void cgBeginAsync() {
+        gl().cgBeginAsync();
+    }
+
+    /** Back to the frame's queue: the point {@link #cgWaitAsync} waits for, 0 where the work ran in order. */
+    public static long cgEndAsync() {
+        return gl().cgEndAsync();
+    }
+
+    /** What follows on the frame's queue runs after the async work up to {@code point}. */
+    public static void cgWaitAsync(long point) {
+        gl().cgWaitAsync(point);
+    }
+
     // =========================================================================
     // GL state
     // =========================================================================

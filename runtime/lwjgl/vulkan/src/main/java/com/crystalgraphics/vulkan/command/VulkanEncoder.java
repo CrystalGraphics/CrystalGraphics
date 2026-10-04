@@ -469,6 +469,26 @@ public final class VulkanEncoder implements CgCommandEncoder {
         device.host().submitAndWait();
     }
 
+    @Override
+    public void beginAsync() {
+        outsidePass("beginAsync");
+        if (openCompute != null) throw new IllegalStateException("beginAsync inside a compute pass");
+        device.host().beginAsync();
+    }
+
+    @Override
+    public long endAsync() {
+        if (openCompute != null) throw new IllegalStateException("endAsync inside a compute pass");
+        return device.host().endAsync();
+    }
+
+    @Override
+    public void waitAsync(long point) {
+        outsidePass("waitAsync");
+        if (openCompute != null) throw new IllegalStateException("waitAsync inside a compute pass");
+        device.host().waitAsync(point);
+    }
+
     private void copyOut(VulkanTexture t, CgTextureRegion region, VulkanBuffer dst, long dstOffset) {
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
         VkCommandBuffer cmd = cmd();

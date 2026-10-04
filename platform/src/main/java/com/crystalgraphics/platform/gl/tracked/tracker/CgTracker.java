@@ -77,6 +77,8 @@ public final class CgTracker {
     private CgTarget passTarget;
 
     private CgComputePass compute;
+    /** Between {@link #beginAsync} and {@link #endAsync}: what is recorded goes to the compute queue. */
+    private boolean async;
     private CgComputePipeline computePipeline;
     private boolean drawnSinceCompute = true;
 
@@ -474,6 +476,32 @@ public final class CgTracker {
         compute = null;
     }
 
+    /** {@code cgBeginAsync}: what follows goes to the device's compute queue, after everything recorded before it. */
+    public void beginAsync() {
+        if (async) throw new IllegalStateException("cgBeginAsync inside async work");
+        outsideRenderPass();
+        endCompute();
+        device.encoder().beginAsync();
+        async = true;
+        stats.asyncSections++;
+    }
+
+    /** {@code cgEndAsync}: back to the frame's queue; the point {@link #waitAsync} waits for. */
+    public long endAsync() {
+        if (!async) throw new IllegalStateException("cgEndAsync with no async work open");
+        endCompute();
+        async = false;
+        return device.encoder().endAsync();
+    }
+
+    /** {@code cgWaitAsync}: what follows runs after the async work up to {@code point}. */
+    public void waitAsync(long point) {
+        if (async) throw new IllegalStateException("cgWaitAsync inside async work");
+        outsideRenderPass();
+        endCompute();
+        device.encoder().waitAsync(point);
+    }
+
     // ── passes ─────────────────────────────────────────────────────────────────
 
     /**
@@ -491,6 +519,7 @@ public final class CgTracker {
      * never records into a pass of ours.
      */
     public void toHost() {
+        if (async) throw new IllegalStateException("A host section ends inside async work");
         flushPendingClears();
         if (pass != null) endPass();
         endCompute();
@@ -503,6 +532,7 @@ public final class CgTracker {
     }
 
     public void endFrame() {
+        if (async) throw new IllegalStateException("The frame ends inside async work");
         flushPendingClears();
         if (pass != null) endPass();
         endCompute();
@@ -530,6 +560,7 @@ public final class CgTracker {
     }
 
     private void beginPass() {
+        if (async) throw new IllegalStateException("A draw or clear inside async work: a compute queue draws nothing");
         endCompute();
         drawnSinceCompute = true;
         List<CgPassDesc.Color> colors = new ArrayList<>(target.colors().size());

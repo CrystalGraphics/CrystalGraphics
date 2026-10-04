@@ -4,6 +4,7 @@ import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.CgVulkanHost;
 import com.crystalgraphics.vulkan.CgVulkanImage;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
+import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
@@ -40,10 +41,12 @@ import org.lwjgl.vulkan.VkPresentInfoKHR;
 import org.lwjgl.vulkan.VkQueue;
 import org.lwjgl.vulkan.VkQueueFamilyProperties;
 import org.lwjgl.vulkan.VkSemaphoreCreateInfo;
+import org.lwjgl.vulkan.VkSemaphoreTypeCreateInfo;
 import org.lwjgl.vulkan.VkSubmitInfo;
 import org.lwjgl.vulkan.VkSurfaceCapabilitiesKHR;
 import org.lwjgl.vulkan.VkSurfaceFormatKHR;
 import org.lwjgl.vulkan.VkSwapchainCreateInfoKHR;
+import org.lwjgl.vulkan.VkTimelineSemaphoreSubmitInfo;
 
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
@@ -69,10 +72,11 @@ import static org.lwjgl.vulkan.KHRSwapchain.*;
 import static org.lwjgl.vulkan.VK10.*;
 import static org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceFeatures2;
 import static org.lwjgl.vulkan.VK12.VK_API_VERSION_1_2;
+import static org.lwjgl.vulkan.VK12.VK_SEMAPHORE_TYPE_TIMELINE;
 
 /**
- * A Vulkan device of its own, presenting to a GLFW window: instance, device, one graphics queue, the swapchain,
- * and {@link #FRAMES} frames in flight. What the harness and an application with no Vulkan device run on.
+ * A Vulkan device of its own, presenting to a GLFW window: instance, device, a graphics queue and one for async compute,
+ * the swapchain, and {@link #FRAMES} frames in flight. What the harness and an application with no Vulkan device run on.
  *
  * <pre>{@code
  * GLFW.glfwWindowHint(GLFW.GLFW_CLIENT_API, GLFW.GLFW_NO_API);   // no GL context on this window
@@ -90,6 +94,11 @@ import static org.lwjgl.vulkan.VK12.VK_API_VERSION_1_2;
  *       or wrong barrier between passes, which the default checks do not see. Its shader-access analysis is on
  *       with it, since without it the layer cannot see a shader's accesses through pushed descriptors.</li>
  *   <li>The frame is presented the right way up: {@link #endFrame} flips it, the one flip there is.</li>
+ *   <li>Async compute runs on a family that computes and does not draw where the device has one, its buffers and
+ *       images shared by both families; else on a second queue of the frame's family; else in order
+ *       ({@code -Dcrystalgraphics.vulkan.asyncCompute=false|graphics}). A frame is recorded as segments, split where
+ *       async work begins, ends or is waited for, each on its queue and ordered by two timeline semaphores; all are
+ *       submitted in order when the frame ends, its fence after every async segment.</li>
  *   <li>Close the device before the host, and the host before the window.</li>
  * </ul>
  */
@@ -110,10 +119,25 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private boolean bresenhamLines;
     private boolean multiDrawIndirect, indirectCount, indirectFirstInstance;
     private final VkQueue queue;
+    /** Async compute's queue and its family; null and -1 where there is none, or it is turned off. */
+    private final VkQueue asyncQueue;
+    private int asyncFamily = -1;
+    /** What each queue signals and the other waits on, counting up over the device's life. */
+    private long mainTimeline, asyncTimeline;
+    private long mainValue, asyncValue, asyncWaited;
 
-    private final long[] pools = new long[FRAMES];
-    private final VkCommandBuffer[] buffers = new VkCommandBuffer[FRAMES];
+    private final long[] pools = new long[FRAMES], asyncPools = new long[FRAMES];
+    /** Per slot and queue, every command buffer a frame has recorded into; reused once the slot's pools reset. */
+    @SuppressWarnings("unchecked")
+    private final List<VkCommandBuffer>[] buffers = new List[FRAMES], asyncBuffers = new List[FRAMES];
+    private final int[] used = new int[FRAMES], asyncUsed = new int[FRAMES];
     private final VkCommandBuffer[] setups = new VkCommandBuffer[FRAMES];
+    /** Where commands go now, and the frame's segments before it. */
+    private VkCommandBuffer current;
+    private boolean recordingAsync;
+    private long currentWaitMain, currentWaitAsync;
+    private final List<Segment> segments = new ArrayList<>();
+    private int segmentCount;
     private boolean setupOpen;
     private final long[] fences = new long[FRAMES];
     private final long[] acquired = new long[FRAMES];
@@ -151,6 +175,14 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             PointerBuffer pp = stack.mallocPointer(1);
             vkGetDeviceQueue(device, family, 0, pp);
             queue = new VkQueue(pp.get(0), device);
+            if (asyncFamily >= 0) {
+                vkGetDeviceQueue(device, asyncFamily, asyncFamily == family ? 1 : 0, pp);
+                asyncQueue = new VkQueue(pp.get(0), device);
+                mainTimeline = timeline(stack);
+                asyncTimeline = timeline(stack);
+            } else {
+                asyncQueue = null;
+            }
             createFrames(stack);
         }
         createSwapchain();
@@ -166,7 +198,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public int queueFamily() { return family; }
     @Override public int apiVersion() { return VK_API_VERSION_1_2; }
     @Override public int framesInFlight() { return FRAMES; }
-    @Override public VkCommandBuffer commandBuffer() { return buffers[slot()]; }
+    @Override public VkCommandBuffer commandBuffer() { return current; }
 
     @Override
     public VkCommandBuffer setupCommandBuffer() {
@@ -187,6 +219,36 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     @Override public boolean indirectCount() { return indirectCount; }
     @Override public boolean indirectFirstInstance() { return indirectFirstInstance; }
 
+    @Override public boolean asyncCompute() { return asyncQueue != null; }
+
+    @Override public int asyncFamily() { return asyncFamily == family ? -1 : asyncFamily; }
+
+    @Override
+    public void beginAsync() {
+        if (asyncQueue == null) return;
+        if (recordingAsync) throw new IllegalStateException("beginAsync inside async work");
+        endSegment(++mainValue, 0);
+        beginSegment(true, mainValue, 0);
+    }
+
+    @Override
+    public long endAsync() {
+        if (asyncQueue == null) return 0L;
+        if (!recordingAsync) throw new IllegalStateException("endAsync with no async work open");
+        endSegment(0, ++asyncValue);
+        beginSegment(false, 0, 0);
+        return asyncValue;
+    }
+
+    @Override
+    public void waitAsync(long point) {
+        if (asyncQueue == null || point <= asyncWaited) return;
+        if (recordingAsync) throw new IllegalStateException("waitAsync inside async work");
+        endSegment(0, 0);
+        beginSegment(false, 0, point);
+        asyncWaited = point;
+    }
+
     @Override
     public void whenFrameRetired(long f, Runnable action) {
         if (f <= retired) action.run();
@@ -195,20 +257,13 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
     @Override
     public void endFrame(CgVulkanImage output) {
+        if (recordingAsync) throw new IllegalStateException("The frame ends inside async work");
         int s = slot();
-        VkCommandBuffer cmd = buffers[s];
         int image = acquire();
-        if (image >= 0) present(cmd, output, images[image]);
-        check(vkEndCommandBuffer(cmd), "vkEndCommandBuffer");
+        if (image >= 0) present(current, output, images[image]);
+        submitSegments(image);
+        submitted[s] = true;
         try (MemoryStack stack = stackPush()) {
-            VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(commands(stack, s));
-            if (image >= 0) {
-                submit.waitSemaphoreCount(1).pWaitSemaphores(stack.longs(acquired[s]))
-                        .pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_TRANSFER_BIT))
-                        .pSignalSemaphores(stack.longs(presentReady[image]));
-            }
-            check(vkQueueSubmit(queue, submit, fences[s]), "vkQueueSubmit");
-            submitted[s] = true;
             if (image >= 0) {
                 VkPresentInfoKHR info = VkPresentInfoKHR.calloc(stack).sType$Default()
                         .pWaitSemaphores(stack.longs(presentReady[image])).swapchainCount(1)
@@ -224,19 +279,15 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
     @Override
     public void submitAndWait() {
+        if (recordingAsync) throw new IllegalStateException("submitAndWait inside async work");
         int s = slot();
-        VkCommandBuffer cmd = buffers[s];
-        check(vkEndCommandBuffer(cmd), "vkEndCommandBuffer");
-        try (MemoryStack stack = stackPush()) {
-            VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default().pCommandBuffers(commands(stack, s));
-            check(vkQueueSubmit(queue, submit, fences[s]), "vkQueueSubmit");
-        }
+        submitSegments(-1);
         check(vkWaitForFences(device, fences[s], true, -1L), "vkWaitForFences");
         check(vkResetFences(device, fences[s]), "vkResetFences");
         // A fence covers everything submitted before it: every earlier frame is finished too.
         retireThrough(frame - 1);
-        check(vkResetCommandPool(device, pools[s], 0), "vkResetCommandPool");
-        begin(cmd);
+        resetPools(s);
+        beginSegment(false, 0, 0);
     }
 
     @Override
@@ -258,6 +309,11 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             vkDestroyFence(device, fences[i], null);
             vkDestroySemaphore(device, acquired[i], null);
             vkDestroyCommandPool(device, pools[i], null);
+            if (asyncQueue != null) vkDestroyCommandPool(device, asyncPools[i], null);
+        }
+        if (asyncQueue != null) {
+            vkDestroySemaphore(device, mainTimeline, null);
+            vkDestroySemaphore(device, asyncTimeline, null);
         }
         vkDestroyDevice(device, null);
         vkDestroySurfaceKHR(instance, surface, null);
@@ -279,16 +335,137 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             check(vkResetFences(device, fences[s]), "vkResetFences");
             retireThrough(frame - FRAMES);
         }
-        check(vkResetCommandPool(device, pools[s], 0), "vkResetCommandPool");
-        begin(buffers[s]);
+        resetPools(s);
+        beginSegment(false, 0, 0);
     }
 
-    /** The setup buffer, when anything was recorded into it, then the frame's own. */
-    private PointerBuffer commands(MemoryStack stack, int s) {
-        if (!setupOpen) return stack.pointers(buffers[s]);
+    private void resetPools(int s) {
+        check(vkResetCommandPool(device, pools[s], 0), "vkResetCommandPool");
+        used[s] = 0;
+        if (asyncQueue != null) {
+            check(vkResetCommandPool(device, asyncPools[s], 0), "vkResetCommandPool");
+            asyncUsed[s] = 0;
+        }
+    }
+
+    /** A stretch of the frame on one queue, with the timeline values it waits for and signals; 0 for none. */
+    private static final class Segment {
+        VkCommandBuffer cmd;
+        boolean async;
+        long waitMain, waitAsync, signalMain, signalAsync;
+    }
+
+    private void beginSegment(boolean async, long waitMain, long waitAsync) {
+        current = take(async);
+        begin(current);
+        recordingAsync = async;
+        currentWaitMain = waitMain;
+        currentWaitAsync = waitAsync;
+    }
+
+    private void endSegment(long signalMain, long signalAsync) {
+        check(vkEndCommandBuffer(current), "vkEndCommandBuffer");
+        if (segmentCount == segments.size()) segments.add(new Segment());
+        Segment g = segments.get(segmentCount++);
+        g.cmd = current;
+        g.async = recordingAsync;
+        g.waitMain = currentWaitMain;
+        g.waitAsync = currentWaitAsync;
+        g.signalMain = signalMain;
+        g.signalAsync = signalAsync;
+    }
+
+    /** The slot's next command buffer for a queue, allocated the first time a frame needs this many. */
+    private VkCommandBuffer take(boolean async) {
+        int s = slot();
+        List<VkCommandBuffer> list = async ? asyncBuffers[s] : buffers[s];
+        int next = async ? asyncUsed[s]++ : used[s]++;
+        if (next == list.size()) {
+            try (MemoryStack stack = stackPush()) {
+                PointerBuffer pp = stack.mallocPointer(1);
+                check(vkAllocateCommandBuffers(device, VkCommandBufferAllocateInfo.calloc(stack).sType$Default()
+                        .commandPool(async ? asyncPools[s] : pools[s]).level(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+                        .commandBufferCount(1), pp), "vkAllocateCommandBuffers");
+                boolean computeOnly = async && asyncFamily != family;
+                list.add(computeOnly ? new VulkanComputeCommandBuffer(pp.get(0), device) : new VkCommandBuffer(pp.get(0), device));
+            }
+        }
+        return list.get(next);
+    }
+
+    /**
+     * Ends the current segment and submits the frame's, each to its queue in the order recorded: the setup buffer
+     * with the first, the swapchain's semaphores on the last when {@code image} is one. The fence goes after every
+     * async segment, so retiring the frame retires their resources too.
+     */
+    private void submitSegments(int image) {
+        endSegment(0, 0);
+        int s = slot();
+        boolean joinAsync = asyncValue > asyncWaited;
+        try (MemoryStack stack = stackPush()) {
+            for (int i = 0; i < segmentCount; i++) {
+                Segment g = segments.get(i);
+                boolean last = i == segmentCount - 1;
+                boolean present = last && image >= 0;
+                LongBuffer waitOn = stack.mallocLong(3), waitValues = stack.mallocLong(3);
+                IntBuffer stages = stack.mallocInt(3);
+                LongBuffer signal = stack.mallocLong(3), signalValues = stack.mallocLong(3);
+                if (g.waitMain > 0) wait(waitOn, waitValues, stages, mainTimeline, g.waitMain, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                if (g.waitAsync > 0) wait(waitOn, waitValues, stages, asyncTimeline, g.waitAsync, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                if (present) wait(waitOn, waitValues, stages, acquired[s], 0L, VK_PIPELINE_STAGE_TRANSFER_BIT);
+                if (g.signalMain > 0) signal(signal, signalValues, mainTimeline, g.signalMain);
+                if (g.signalAsync > 0) signal(signal, signalValues, asyncTimeline, g.signalAsync);
+                if (present) signal(signal, signalValues, presentReady[image], 0L);
+                waitOn.flip();
+                waitValues.flip();
+                stages.flip();
+                signal.flip();
+                signalValues.flip();
+
+                VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default()
+                        .pCommandBuffers(i == 0 ? commands(stack, s, g.cmd) : stack.pointers(g.cmd))
+                        .waitSemaphoreCount(waitOn.remaining()).pWaitSemaphores(waitOn).pWaitDstStageMask(stages)
+                        .pSignalSemaphores(signal);
+                if (asyncQueue != null) {
+                    submit.pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
+                            .waitSemaphoreValueCount(waitValues.remaining()).pWaitSemaphoreValues(waitValues)
+                            .signalSemaphoreValueCount(signalValues.remaining()).pSignalSemaphoreValues(signalValues)
+                            .address());
+                }
+                long fence = last && !joinAsync ? fences[s] : VK_NULL_HANDLE;
+                check(vkQueueSubmit(g.async ? asyncQueue : queue, submit, fence), "vkQueueSubmit");
+            }
+            if (joinAsync) {
+                VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default().waitSemaphoreCount(1)
+                        .pWaitSemaphores(stack.longs(asyncTimeline))
+                        .pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT))
+                        .pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
+                                .waitSemaphoreValueCount(1).pWaitSemaphoreValues(stack.longs(asyncValue)).address());
+                check(vkQueueSubmit(queue, submit, fences[s]), "vkQueueSubmit");
+                asyncWaited = asyncValue;
+            }
+        }
+        segmentCount = 0;
+    }
+
+    /** A semaphore to wait on, with its timeline value (ignored for a binary one) and the stage that waits. */
+    private static void wait(LongBuffer on, LongBuffer values, IntBuffer stages, long semaphore, long value, int stage) {
+        on.put(semaphore);
+        values.put(value);
+        stages.put(stage);
+    }
+
+    private static void signal(LongBuffer on, LongBuffer values, long semaphore, long value) {
+        on.put(semaphore);
+        values.put(value);
+    }
+
+    /** The setup buffer, when anything was recorded into it, then {@code cmd}. */
+    private PointerBuffer commands(MemoryStack stack, int s, VkCommandBuffer cmd) {
+        if (!setupOpen) return stack.pointers(cmd);
         check(vkEndCommandBuffer(setups[s]), "vkEndCommandBuffer");
         setupOpen = false;
-        return stack.pointers(setups[s], buffers[s]);
+        return stack.pointers(setups[s], cmd);
     }
 
     private static void begin(VkCommandBuffer cmd) {
@@ -307,20 +484,37 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
     private void createFrames(MemoryStack stack) {
         LongBuffer lp = stack.mallocLong(1);
-        PointerBuffer two = stack.mallocPointer(2);
+        PointerBuffer pp = stack.mallocPointer(1);
         for (int i = 0; i < FRAMES; i++) {
             check(vkCreateCommandPool(device, VkCommandPoolCreateInfo.calloc(stack).sType$Default()
                     .flags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT).queueFamilyIndex(family), null, lp), "vkCreateCommandPool");
             pools[i] = lp.get(0);
             check(vkAllocateCommandBuffers(device, VkCommandBufferAllocateInfo.calloc(stack).sType$Default()
-                    .commandPool(pools[i]).level(VK_COMMAND_BUFFER_LEVEL_PRIMARY).commandBufferCount(2), two),
+                    .commandPool(pools[i]).level(VK_COMMAND_BUFFER_LEVEL_PRIMARY).commandBufferCount(1), pp),
                     "vkAllocateCommandBuffers");
-            buffers[i] = new VkCommandBuffer(two.get(0), device);
-            setups[i] = new VkCommandBuffer(two.get(1), device);
+            buffers[i] = new ArrayList<>();
+            setups[i] = new VkCommandBuffer(pp.get(0), device);
+            if (asyncQueue != null) {
+                check(vkCreateCommandPool(device, VkCommandPoolCreateInfo.calloc(stack).sType$Default()
+                        .flags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT).queueFamilyIndex(asyncFamily), null, lp),
+                        "vkCreateCommandPool");
+                asyncPools[i] = lp.get(0);
+                asyncBuffers[i] = new ArrayList<>();
+            }
             check(vkCreateFence(device, VkFenceCreateInfo.calloc(stack).sType$Default(), null, lp), "vkCreateFence");
             fences[i] = lp.get(0);
             acquired[i] = semaphore(stack);
         }
+    }
+
+    /** A timeline semaphore, at 0. */
+    private long timeline(MemoryStack stack) {
+        LongBuffer lp = stack.mallocLong(1);
+        VkSemaphoreTypeCreateInfo type = VkSemaphoreTypeCreateInfo.calloc(stack).sType$Default()
+                .semaphoreType(VK_SEMAPHORE_TYPE_TIMELINE);
+        check(vkCreateSemaphore(device, VkSemaphoreCreateInfo.calloc(stack).sType$Default().pNext(type.address()), null, lp),
+                "vkCreateSemaphore");
+        return lp.get(0);
     }
 
     private long semaphore(MemoryStack stack) {
@@ -583,6 +777,27 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         }
     }
 
+    /**
+     * Where async compute runs: a family that computes and does not draw (the GPU's async compute engine), else a
+     * second queue of the frame's family, else nowhere (-1). {@code -Dcrystalgraphics.vulkan.asyncCompute=false} turns
+     * it off, {@code =graphics} takes the frame's family.
+     */
+    private int chooseAsyncFamily(MemoryStack stack) {
+        String mode = System.getProperty("crystalgraphics.vulkan.asyncCompute", "");
+        if (mode.equals("false")) return -1;
+        IntBuffer n = stack.mallocInt(1);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, null);
+        VkQueueFamilyProperties.Buffer families = VkQueueFamilyProperties.malloc(n.get(0), stack);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, families);
+        if (!mode.equals("graphics")) {
+            for (int i = 0; i < families.limit(); i++) {
+                int flags = families.get(i).queueFlags();
+                if ((flags & VK_QUEUE_COMPUTE_BIT) != 0 && (flags & VK_QUEUE_GRAPHICS_BIT) == 0) return i;
+            }
+        }
+        return families.get(family).queueCount() >= 2 ? family : -1;
+    }
+
     private int drawAndPresentFamily(MemoryStack stack, VkPhysicalDevice pd) {
         IntBuffer n = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(pd, n, null);
@@ -624,8 +839,10 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 .sType$Default().bresenhamLines(true);
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
+        asyncFamily = has12.timelineSemaphore() ? chooseAsyncFamily(stack) : -1;
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
-                .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount).pNext(dynamic.address());
+                .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount).timelineSemaphore(asyncFamily >= 0)
+                .pNext(dynamic.address());
 
         List<String> names = new ArrayList<>(List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
                 VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME, VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME));
@@ -636,8 +853,11 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         for (String name : names) ext.put(stack.UTF8(name));
         ext.flip();
 
-        VkDeviceQueueCreateInfo.Buffer queues = VkDeviceQueueCreateInfo.calloc(1, stack).sType$Default()
-                .queueFamilyIndex(family).pQueuePriorities(stack.floats(1f));
+        boolean second = asyncFamily >= 0 && asyncFamily != family;
+        VkDeviceQueueCreateInfo.Buffer queues = VkDeviceQueueCreateInfo.calloc(second ? 2 : 1, stack);
+        queues.get(0).sType$Default().queueFamilyIndex(family)
+                .pQueuePriorities(asyncFamily == family ? stack.floats(1f, 1f) : stack.floats(1f));
+        if (second) queues.get(1).sType$Default().queueFamilyIndex(asyncFamily).pQueuePriorities(stack.floats(1f));
         VkDeviceCreateInfo ci = VkDeviceCreateInfo.calloc(stack).sType$Default().pNext(v12.address())
                 .pQueueCreateInfos(queues).ppEnabledExtensionNames(ext).pEnabledFeatures(enable);
         PointerBuffer pp = stack.mallocPointer(1);

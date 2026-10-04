@@ -969,6 +969,25 @@ recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heigh
 - Outside a graph, `CgReadback.buffer(glBuffer, offset, size, sink)` and `CgReadback.pixels(fbo, x, y, w, h, type,
   sink)` do the same on GL names.
 
+### Beside the drawing: `async()`
+
+```java
+CgComputePass cull = recording.compute("instances.cull", constants).async();
+cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
+cull.end();
+recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
+```
+
+- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device), the pass runs on
+  it, after everything recorded before it. The steps after it that touch nothing it reads or writes run beside it; the
+  first that does waits for it, as does a callback and the end of the execution.
+- **Everywhere else it runs in order**, with the same result: GL, Minecraft's Vulkan device, and a pass with a
+  dispatch below compute.
+- Worth it for compute that leaves the GPU idle — barriers between small dispatches, a reduction's last levels — beside
+  drawing that fills it. `--mode=async-compute` measures it: beside eight 1080p blurs (2.5 ms), half of 1 ms of
+  fill-bound drawing disappears on an RTX 4070 SUPER.
+- `-Dcrystalgraphics.graph.asyncAll=true` sends every pass that can go async, which is how the gates check the waits.
+
 ### Every tier
 
 | Tier | Context | A kernel runs |

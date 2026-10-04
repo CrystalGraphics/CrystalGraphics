@@ -361,7 +361,7 @@ public final class CgCapabilities {
         caps.indirectCount     = device != null ? device.indirectCount() : gl.OpenGL46() || gl.GL_ARB_indirect_parameters();
         caps.drawParameters    = device == null && (gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters());
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
-        caps.asyncCompute      = false;
+        caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
         caps.computeTier       = computeTier(caps, device != null);
         caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
