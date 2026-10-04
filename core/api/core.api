@@ -4099,6 +4099,43 @@ com/crystalgraphics/render/graph/CgBufferDesc
   method public,final toString ()Ljava/lang/String;
   method public,static elements (IILcom/crystalgraphics/render/graph/CgBufferUsage;[Lcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgBufferDesc;
   method public,static of (JLcom/crystalgraphics/render/graph/CgBufferUsage;[Lcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgBufferDesc;
+com/crystalgraphics/render/graph/CgBufferInspector
+  access public,final
+  extends java/lang/Object
+  field public,static,final FORGET_AFTER I
+  method public,static read (Lcom/crystalgraphics/render/graph/CgBufferInspector$Site;IILcom/crystalgraphics/render/graph/CgBufferInspector$Sink;)V
+  method public,static sites ()Ljava/util/List;
+  method public,static watch (Z)V
+  method public,static watching ()Z
+com/crystalgraphics/render/graph/CgBufferInspector$Read
+  access public,final
+  extends java/lang/Object
+  method public count ()I
+  method public data ()Ljava/nio/ByteBuffer;
+  method public first ()I
+  method public site ()Lcom/crystalgraphics/render/graph/CgBufferInspector$Site;
+  method public value (ILcom/crystalgraphics/compute/source/CgElementField;)Ljava/lang/String;
+com/crystalgraphics/render/graph/CgBufferInspector$Sink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public failed (Ljava/lang/String;)V
+  method public,abstract accept (Lcom/crystalgraphics/render/graph/CgBufferInspector$Read;)V
+com/crystalgraphics/render/graph/CgBufferInspector$Site
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgBufferDecl;JJJ)V
+  method public buffer ()Ljava/lang/String;
+  method public bytes ()J
+  method public decl ()Lcom/crystalgraphics/compute/source/CgBufferDecl;
+  method public elements ()I
+  method public file ()Ljava/lang/String;
+  method public frame ()J
+  method public kernel ()Ljava/lang/String;
+  method public offset ()J
+  method public pass ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
 com/crystalgraphics/render/graph/CgBufferUsage
   access public,final,enum
   extends java/lang/Enum

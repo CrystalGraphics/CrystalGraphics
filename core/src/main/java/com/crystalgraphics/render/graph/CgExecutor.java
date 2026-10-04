@@ -235,6 +235,7 @@ public final class CgExecutor {
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
         HAZARDS.clear();
+        CgBufferInspector.reset();
     }
 
     private void run(CgFrame frame) {
@@ -413,6 +414,7 @@ public final class CgExecutor {
                         if (gpu) CgGpuTrace.end();
                     }
                 }
+                if (CgBufferInspector.watching()) inspect(compute);
                 unpinLevels(frame, s);
             } else if (pass instanceof CgPass.Fill fill) {
                 int id = bufferStorage(fill.buffer, true);
@@ -525,6 +527,18 @@ public final class CgExecutor {
         CgTrace.add(CgChannels.GL, DISPATCH_COUNT, dispatches.size());
         if (lowered > 0) CgTrace.add(CgChannels.GL, LOWERED_COUNT, lowered);
         if (cpu > 0) CgTrace.add(CgChannels.GL, CPU_COUNT, cpu);
+    }
+
+    /** What {@code pass} bound, noted for {@link CgBufferInspector}, and the reads armed for it copied as it left them. */
+    private void inspect(CgComputePass pass) {
+        CgBufferInspector.note(pass);
+        for (CgBufferInspector.Request read = CgBufferInspector.due(); read != null; read = CgBufferInspector.due()) {
+            if (asyncUnwaited) waitAsync(asyncLatest);
+            int id = bufferStorage(read.view(), false);
+            CgLoweredResources.land(id);
+            barrier(true, id, CgAccess.COPY_READ);
+            CgReadback.buffer(id, read.offset(), read.size(), read);
+        }
     }
 
     private static int gpuZone(String pass) {

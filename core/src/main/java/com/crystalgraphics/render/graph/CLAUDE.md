@@ -171,6 +171,22 @@ record and the multi-draw variant has no shared record.
   culled set's levels. `-Dcrystalgraphics.mesh.multiDraw=false`
   turns it off for a process.
 
+**Inspecting a buffer** (gpu-compute C10): `CgBufferInspector` is a debugger's buffer view. While watching, each
+compute pass notes the buffers its dispatches bind, a `Site` each (the buffer, the pass, the kernel's declaration of
+it); a read of one is served right after its pass next runs (`CgExecutor.inspect`: landed, barriered, copied as a
+`CgReadback`), and `Read.value(i, field)` decodes a field by its GLSL type.
+
+```java
+CgBufferInspector.watch(true);
+CgBufferInspector.Site site = CgBufferInspector.sites().get(0);   // sparks after particles.step: 4096 x Spark, ...
+CgBufferInspector.read(site, 0, 64, read -> show(read.value(0, site.decl().field("positionLife"))));
+```
+
+- Not watching costs a check per compute pass. A read waits for its pass to run again, so it fails once a pass stops
+  running and its site is dropped (`FORGET_AFTER` frames).
+- Its gate is `--mode=readback`: words an iota wrote, read through the inspector each frame and checked, on every
+  tier and on `vulkan` with every pass async.
+
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
 pass writing a requested texture too. It is how a compositor moves something without a recording. A compute pass or buffer operation that writes
