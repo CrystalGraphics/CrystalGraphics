@@ -732,7 +732,7 @@ kernel, what it reached and the line, helpers and macros included.
 | `append` | as `map`, and appends elements | `NAME_APPEND(v)` | every tier |
 | `scatter` | at computed indices: stores, adds, minima, maxima, counters | `NAME_STORE`, `_ADD`, `_MIN`, `_MAX`, `_INC` | every tier |
 | `image` | its own texel of each output image | an image's `NAME_WRITE(v)` | every tier |
-| `general` | anything compute does: `shared` memory, `barrier()`, subgroups, raw atomics, any index of any image | everything, and `NAME_DATA[i]` | compute only, unless given a fallback or a Java body |
+| `general` | anything compute does: `shared` memory, `barrier()`, subgroups, raw atomics, any index of any image | everything, and `NAME_DATA[i]` | compute only, unless given a fallback |
 
 Only a `general` kernel may name `barrier()` and the memory barriers, `atomic*`, `imageLoad`/`imageStore`/`imageSize`,
 `subgroup*` and `CG_SUBGROUP_*`, `CG_ATOMIC_*`, `shared` variables, or anything of a work group (`gl_LocalInvocationID`,
@@ -1048,7 +1048,7 @@ recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the c
 |---|---|---|
 | `V` | CrystalGraphics' Vulkan device | as compute |
 | `G43` | GL 4.3, or 4.2 with the compute and storage-image extensions | as compute |
-| `G40` | GL 4.0 and up without compute: macOS's 4.1 | lowered; else its fallback lowered; else its Java body; else its fallback's |
+| `G40` | GL 4.0 and up without compute: macOS's 4.1 | lowered; else its fallback lowered; else not at all (`runs()` is false) |
 | `G33` | GL 3.3 | as `G40`, a count a draw takes read back first |
 | `CPU` | forced | its Java body, else its fallback's |
 
@@ -1076,17 +1076,16 @@ captured by transform feedback; a `scatter` kernel is points blended into a targ
 
 ```
 [mymod:shaders/bins.compute] kernel Bin cannot run at tier G40 …, which has no compute: general and uses shared
-memory (cache). Give it a lowerable #pragma fallback or a Java body with kernel.cpu(...), or declare it
-'#pragma compute_only Bin' and ask kernel.runs() before dispatching it
+memory (cache). Give it a lowerable #pragma fallback, or declare it '#pragma compute_only Bin' and ask
+kernel.runs() before dispatching it
 ```
 
 Two ways out, for a `general` kernel: a lowerable `#pragma fallback`, or `#pragma compute_only` and a `runs()` check
-where it is used. A Java body quiets the check too, and G40 and G33 run it, but it is not for shipped work
-([A Java body](#a-java-body)):
+where it is used. A Java body is not one: no player's tier runs it ([A Java body](#a-java-body)).
 
 ```java
 CgKernel sort = kernels.kernel("Sort");                     // #pragma compute_only Sort
-if (sort.runs()) pass.dispatch(sort, count).bind("KEYS", keys);   // false below compute without a Java body
+if (sort.runs()) pass.dispatch(sort, count).bind("KEYS", keys);   // false below compute
 else sortAnotherWay(keys);
 ```
 
@@ -1256,8 +1255,8 @@ refuses the first on the author's machine; the second is the design's to answer.
 #pragma fallback Bin BinScatter
 ```
 
-Never answer the check with a Java body: `kernel.cpu(...)` is a debugging tool. A kernel with no lowerable form is
-`compute_only`, and below compute the feature is absent or done another way.
+A kernel with no lowerable form is `compute_only`, and below compute the feature is absent or done another way: a
+Java body (`kernel.cpu(...)`) runs only when the CPU tier is forced, for debugging.
 
 **2. Lay records out in `vec4`s.** Below `general` a struct holds `vec4`, `ivec4` and `uvec4` only: pack scalars into
 lanes rather than adding fields.

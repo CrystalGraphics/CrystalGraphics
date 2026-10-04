@@ -15,11 +15,13 @@
 #pragma kernel Big map
 #pragma kernel Many append
 #pragma kernel Doubled general
+#pragma kernel DoubledLowered map
 #pragma kernel After map
 #pragma kernel Stuck general
 #pragma kernel Only general
 #pragma kernel Bits map
 #pragma fallback Bin BinLowered
+#pragma fallback Doubled DoubledLowered
 #pragma compute_only Only
 
 struct Pair { vec4 a; uvec4 b; };
@@ -134,19 +136,23 @@ void Many() {
     if (CG_ELEMENT % 3 == 0) MANY_APPEND(uint(CG_ELEMENT));
 }
 
-// General with no fallback: below compute only its Java body runs it, between lowered kernels that write what it reads
-// and read what it writes.
+// General, so below compute its fallback runs, between lowered kernels that write what it reads and read what it
+// writes.
 void Doubled() {
     doubled[CG_LOCAL_INDEX] = COUNTED(CG_ELEMENT) * 2u;
     barrier();
     DOUBLED_WRITE(doubled[CG_LOCAL_INDEX]);
 }
 
+void DoubledLowered() {
+    DOUBLED_WRITE(COUNTED(CG_ELEMENT) * 2u);
+}
+
 void After() {
     AFTER_WRITE(DOUBLED(CG_ELEMENT) + 1u);
 }
 
-// General, with no fallback and no Java body: below compute it can run nowhere, and recording it says why.
+// General, with no fallback: below compute it can run nowhere, and recording it says why.
 void Stuck() {
     stuck[CG_LOCAL_INDEX] = 1u;
     barrier();

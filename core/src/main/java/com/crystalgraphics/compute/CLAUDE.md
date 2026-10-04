@@ -87,7 +87,8 @@ property the kernel names (`CgKernelDecl.samplers`) is read whole, every level, 
 
 **The every-tier check** (§6.6): `CgKernelForm.check`, GL-free, asks G43, G40 and G33 for the form each would choose
 and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.20, 4.00, 3.30) against
-`CgGlslBuiltins`. `CgKernel` caches the answer per file generation and bodies given; a reload or a new body asks again.
+`CgGlslBuiltins`. A Java body answers nothing there: G40 and G33 never choose one, only the forced CPU tier does
+(decision 11). `CgKernel` caches the answer per file generation; a reload asks again.
 
 ## Ops, inside
 
