@@ -479,6 +479,12 @@ public class CgFrameBuffer {
      */
     private void drawEveryColorSlot() {
         if (colorAttachments.size() < 2) return;
+        // Output location i writes draw buffer i: slots 0 and 2 would send RT2 nowhere and RT1 to slot 2. The right
+        // array has GL_NONE in the gap, which the tracked backend refuses.
+        if (colorAttachments.lastKey() != colorAttachments.size() - 1) {
+            throw new IllegalArgumentException("FBO '" + name + "' has colour slots " + colorAttachments.keySet()
+                    + ": a format with more than one must number them from 0 with no gap");
+        }
         IntBuffer buf = CgBufferUtils.createIntBuffer(colorAttachments.size());
         for (int slot : colorAttachments.keySet()) buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
         buf.flip();
