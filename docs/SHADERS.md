@@ -1067,7 +1067,8 @@ particles.kernel("Simulate").cpu(d -> {                     // every keyword set
 - A `map`, `gather`, `append` or `image` body runs on several worker threads at once, each over its range
   (`d.first()` to `d.end()`), writing its own elements only. A `scatter` or `general` body runs once, on one thread,
   over every element.
-- `CgCpuDispatch`: `buffer(name)`, `image(name)`, `property(name[, component])`, `propertyInt(name)`,
+- `CgCpuDispatch`: `buffer(name)`, `image(name)`, `texture(name, level)` (a sampler property's level, as `texelFetch`
+  reads it), `property(name[, component])`, `propertyInt(name)`,
   `keyword(name)`, `time()` (`CG_TIME`), `count(axis)` and `x(e)`, `y(e)`, `z(e)`; to append,
   `int i = d.append("SPAWNED")` then write element `i` of `d.appended("SPAWNED")`, and `appendCount(name)` is
   `NAME_COUNT()`.

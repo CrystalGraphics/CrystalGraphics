@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute.cpu;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.compute.source.CgBufferAccess;
@@ -12,6 +13,7 @@ import com.crystalgraphics.compute.source.CgImageFormat;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.compute.source.CgKernelShape;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -32,7 +34,7 @@ import java.util.concurrent.RecursiveAction;
  * before the next pass, so the GPU and the CPU see one buffer. Render thread, at the dispatch's place in the frame.
  *
  * <pre>{@code
- * CgCpuRunner.dispatch(source, kernel, keywords, body, bindings, values, constants);
+ * CgCpuRunner.dispatch(source, kernel, keywords, body, bindings, values, constants, block, samplers);
  * }</pre>
  *
  * <ul>
@@ -40,7 +42,8 @@ import java.util.concurrent.RecursiveAction;
  *       general kernel's runs once over every element, on the calling thread, so its writes at any index are ordered.</li>
  *   <li>Appends land in element order however the ranges ran, after what the counter held, and only while they fit;
  *       the counter counts every one, as on the GPU.</li>
- *   <li>An image is read whole before the body runs and written whole after, where the kernel writes it.</li>
+ *   <li>An image is read whole before the body runs and written whole after, where the kernel writes it; a sampler
+ *       property's texture is read whole, every level, where the kernel names it.</li>
  * </ul>
  */
 public final class CgCpuRunner {
@@ -77,6 +80,7 @@ public final class CgCpuRunner {
         final CgCpuBuffer[] views;
         final int[] counts;
         final CgCpuImage[] images;
+        final CgCpuImage[][] textures;
         CgCpuDispatch[] ranges = new CgCpuDispatch[0];
         Range[] tasks = new Range[0];
         /** The ranges the dispatch running now uses. */
@@ -88,6 +92,7 @@ public final class CgCpuRunner {
             for (CgBufferDecl b : source.buffers()) views[b.index()] = new CgCpuBuffer(b, null, 0, 0);
             counts = new int[views.length];
             images = new CgCpuImage[source.images().size()];
+            textures = new CgCpuImage[source.properties().size()][];
         }
     }
 
@@ -120,11 +125,12 @@ public final class CgCpuRunner {
 
     /**
      * Runs {@code body} as kernel {@code kernel} of {@code source} over what {@code b} binds, with its property
-     * {@code values} as {@code block} lays them out and the pass's {@code constants} (null for none).
+     * {@code values} as {@code block} lays them out, the pass's {@code constants} (null for none) and the textures of
+     * its sampler properties by unit.
      */
     public static void dispatch(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgCpuBody body,
                                 CgDispatchBindings b, @Nullable float[] values, @Nullable float[] constants,
-                                CgPropertyBlock block) {
+                                CgPropertyBlock block, CgTexture[] samplers) {
         State state = STATES.computeIfAbsent(source, State::new);
         int cx, cy, cz;
         if (b.isIndirect()) {
@@ -145,6 +151,7 @@ public final class CgCpuRunner {
         if (plan == null) state.plans.put(kernel, plan = new Plan(source, kernel));
         try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, RUN)) {
             bind(source, b, state);
+            readTextures(kernel, block, samplers, state);
             run(source, kernel, keywords, body, values, constants, block, state, cx, cy, cz, (int) total);
             appendAll(source, plan, b, state);
             uploadWrites(source, plan, b, state);
@@ -184,7 +191,8 @@ public final class CgCpuRunner {
             int depth = b.layer(i) >= 0 ? 1 : b.depth(i);
             CgCpuImage held = state.images[i];
             if (held == null || held.width() != b.width(i) || held.height() != b.height(i) || held.depth() != depth) {
-                held = state.images[i] = new CgCpuImage(image, b.width(i), b.height(i), depth);
+                held = state.images[i] = new CgCpuImage(image.name(), image.format().kind == CgImageFormat.Kind.FLOAT,
+                        b.width(i), b.height(i), depth);
             }
             read(image, b, held);
         }
@@ -202,7 +210,7 @@ public final class CgCpuRunner {
             state.ranges = Arrays.copyOf(state.ranges, ranges);
             state.tasks = Arrays.copyOf(state.tasks, ranges);
             for (int r = had; r < ranges; r++) {
-                state.ranges[r] = new CgCpuDispatch(source, state.views, state.counts, state.images);
+                state.ranges[r] = new CgCpuDispatch(source, state.views, state.counts, state.images, state.textures);
                 state.tasks[r] = new Range();
             }
         }
@@ -291,6 +299,27 @@ public final class CgCpuRunner {
 
 
     // ── Images ────────────────────────────────────────────────────────────────
+
+    /** Every level of each sampler property the kernel names, as floats; the rest left unread. */
+    private static void readTextures(CgKernelDecl kernel, CgPropertyBlock block, CgTexture[] samplers, State state) {
+        Arrays.fill(state.textures, null);
+        for (String name : kernel.samplers()) {
+            int unit = block.samplerUnit(name);
+            CgTexture texture = unit < samplers.length ? samplers[unit] : null;
+            if (texture == null) continue;
+            int levels = texture instanceof CgGraphTexture graph ? graph.getLevels() : 1;
+            CgCpuImage[] read = new CgCpuImage[levels];
+            CgGL.glBindTexture(texture.getTarget(), texture.getId());
+            for (int l = 0; l < levels; l++) {
+                int w = Math.max(1, texture.getWidth() >> l), h = Math.max(1, texture.getHeight() >> l);
+                ByteBuffer pixels = texels((long) w * h * 16);
+                CgGL.glGetTexImage(texture.getTarget(), l, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
+                CgCpuImage image = read[l] = new CgCpuImage(name, true, w, h, 1);
+                for (int c = 0; c < w * h * 4; c++) image.floats[c] = pixels.getFloat(c * 4);
+            }
+            state.textures[unit] = read;
+        }
+    }
 
     private static void read(CgImageDecl decl, CgDispatchBindings b, CgCpuImage image) {
         int i = decl.index();
