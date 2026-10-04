@@ -3,6 +3,7 @@ package com.crystalgraphics.compute;
 import com.crystalgraphics.compute.cpu.CgCpuBody;
 import com.crystalgraphics.compute.cpu.CgCpuMirrors;
 import com.crystalgraphics.compute.cpu.CgCpuRunner;
+import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.compute.lower.CgLoweredKernel;
 import com.crystalgraphics.compute.lower.CgLoweredResources;
@@ -61,6 +62,8 @@ public final class CgCompute {
     private static final Queue<CgCompute> RETIRED = new ConcurrentLinkedQueue<>();
     private static final int COMPILE = CgTrace.name("compute.compile"), COMPILE_LOWERED = CgTrace.name("compute.compileLowered");
     private static final int COMPILES = CgTrace.name("compute.compiles");
+    private static final int PREPARE = CgTrace.name("compute.prepare"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
+    private static final int COMPILE_WAITS = CgTrace.name("compute.compile-waits");
 
     private final String path;
     private final boolean generated;
@@ -70,6 +73,8 @@ public final class CgCompute {
     /** Counts every release: a kernel holding a program from before asks again. */
     private volatile int generation;
     private final Map<String, CgKernelProgram> programs = new HashMap<>();
+    /** Programs {@link CgKernel#prepare} started and no dispatch has taken yet. */
+    private final Map<String, CgKernelProgram.Pending> preparing = new HashMap<>();
     private final Map<String, CgLoweredKernel> lowered = new HashMap<>();
     /** Java bodies by kernel name, kept across reloads. */
     private final Map<String, CgCpuBody> bodies = new ConcurrentHashMap<>();
@@ -146,15 +151,41 @@ public final class CgCompute {
         String key = kernel.name() + kernel.keywords();
         CgKernelProgram program = programs.get(key);
         if (program == null || program.isDeleted()) {
-            CgKernelDecl decl = source.kernel(kernel.name());
-            if (decl == null) throw new IllegalStateException("[" + path + "] no longer has kernel '" + kernel.name() + "'");
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
-                program = CgKernelProgram.build(source, decl, kernel.keywords());
+            CgKernelProgram.Pending pending = preparing.remove(key);
+            if (pending != null && pending.isDone()) {
+                program = pending.finish();
+            } else if (pending != null) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE_WAIT)) {
+                    program = pending.finish();
+                }
+                CgTrace.add(CgChannels.GL, COMPILE_WAITS, 1);
+            } else {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
+                    program = CgKernelProgram.build(source, decl(kernel), kernel.keywords());
+                }
+                CgTrace.add(CgChannels.GL, COMPILES, 1);
             }
-            CgTrace.add(CgChannels.GL, COMPILES, 1);
             programs.put(key, program);
         }
         return program;
+    }
+
+    /** Starts {@code kernel}'s program without waiting, unless it is compiled or started. Render thread. */
+    synchronized void prepare(CgKernel kernel) {
+        for (CgCompute retired; (retired = RETIRED.poll()) != null; ) retired.release();
+        String key = kernel.name() + kernel.keywords();
+        CgKernelProgram program = programs.get(key);
+        if (program != null && !program.isDeleted() || preparing.containsKey(key)) return;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
+            preparing.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));
+        }
+        CgTrace.add(CgChannels.GL, COMPILES, 1);
+    }
+
+    private CgKernelDecl decl(CgKernel kernel) {
+        CgKernelDecl decl = source.kernel(kernel.name());
+        if (decl == null) throw new IllegalStateException("[" + path + "] no longer has kernel '" + kernel.name() + "'");
+        return decl;
     }
 
     /** The lowered form of {@code kernel}, running {@code runs} (itself or its fallback), built the first time. */
@@ -200,6 +231,8 @@ public final class CgCompute {
     public synchronized void release() {
         for (CgKernelProgram program : programs.values()) program.delete();
         programs.clear();
+        for (CgKernelProgram.Pending pending : preparing.values()) pending.delete();
+        preparing.clear();
         for (CgLoweredKernel kernel : lowered.values()) kernel.delete();
         lowered.clear();
         generation++;

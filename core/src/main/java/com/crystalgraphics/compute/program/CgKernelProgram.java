@@ -118,16 +118,69 @@ public final class CgKernelProgram {
     /** As {@link #build(CgComputeSource, CgKernelDecl, Set)}, for a target this context runs: subgroups emulated. */
     public static CgKernelProgram build(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords,
                                         CgKernelTarget target) {
+        return submit(source, kernel, keywords, target).finish();
+    }
+
+    /**
+     * {@link #build}, returning before the driver has linked: where it links on threads of its own
+     * ({@code KHR_parallel_shader_compile}), the link runs while frames go on.
+     *
+     * <pre>{@code
+     * CgKernelProgram.Pending pending = CgKernelProgram.submit(source, decl, keywords, CgKernelTarget.current());
+     * // later frames:
+     * if (pending.isDone()) program = pending.finish();   // throws as build would
+     * }</pre>
+     */
+    public static Pending submit(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords,
+                                 CgKernelTarget target) {
         String glsl = CgKernelEmitter.emit(source, kernel, keywords, target);
         String expanded = new CgShaderPreprocessor().process(glsl, source.path());
-        CgShaderProgram program;
-        try {
-            program = CgShaderProgram.compileCompute(expanded);
-        } catch (IllegalStateException e) {
-            throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
-                    + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
+        CgShaderProgram program = CgShaderProgram.create();
+        program.submitComputeLink(expanded);
+        return new Pending(source, kernel, keywords, glsl, expanded, program, target.checked());
+    }
+
+    /** A kernel's program linking: {@link #finish} makes it, waiting for the driver only if it has not finished. */
+    public static final class Pending {
+        private final CgComputeSource source;
+        private final CgKernelDecl kernel;
+        private final Set<String> keywords;
+        private final String glsl, expanded;
+        private final CgShaderProgram program;
+        private final boolean checked;
+
+        private Pending(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, String glsl, String expanded,
+                        CgShaderProgram program, boolean checked) {
+            this.source = source;
+            this.kernel = kernel;
+            this.keywords = keywords;
+            this.glsl = glsl;
+            this.expanded = expanded;
+            this.program = program;
+            this.checked = checked;
         }
-        return new CgKernelProgram(source, kernel, keywords, glsl, program, target.checked());
+
+        /** Whether {@link #finish} would return without waiting. */
+        public boolean isDone() {
+            return program.isLinkDone();
+        }
+
+        /** @throws IllegalStateException with the driver's log, and the emitted source, if it failed to compile or link */
+        public CgKernelProgram finish() {
+            try {
+                program.finishLink();
+            } catch (IllegalStateException e) {
+                program.delete();
+                throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + keywords + ": "
+                        + e.getMessage() + "\n--- emitted ---\n" + numbered(expanded), e);
+            }
+            return new CgKernelProgram(source, kernel, keywords, glsl, program, checked);
+        }
+
+        /** Drops a link nobody will finish. */
+        public void delete() {
+            program.delete();
+        }
     }
 
     private void wire() {
