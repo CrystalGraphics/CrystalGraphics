@@ -92,6 +92,7 @@ public final class CgPostStack {
     /** Forgets what it made on the GPU. At context teardown. */
     public void release() {
         composite.release();
+        bloom.release();
     }
 
     private void record(CgStageFrame stage) {

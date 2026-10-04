@@ -4399,6 +4399,7 @@ com/crystalgraphics/render/post/bloom/CgBloom
   method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
+  method public release ()V
 com/crystalgraphics/render/post/composite/CgCompositeFeature
   access public,final,enum
   extends java/lang/Enum
