@@ -183,7 +183,8 @@ What is easy to get wrong:
   indices, a draw buffer after `GL_NONE`, `glReadPixels` into a pack buffer in a layout other than the
   texture's own.
 - **A copy from or into device-local storage is a device copy at the call**, ending the pass like an upload;
-  between host-visible buffers the CPU copies, through the destination's rename. Mapping a host-visible buffer
+  between host-visible buffers the CPU copies, through the destination's rename, unless a frame in flight uses the
+  source: a kernel writing it has not run yet, so that is a device copy too. Mapping a host-visible buffer
   to read waits for the frame that last used it: nothing once it retired (`CgReadback` polls its fence first),
   `finish()` if it is the current one, which a hosted device refuses.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame

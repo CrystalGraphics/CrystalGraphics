@@ -111,15 +111,15 @@ public class CgTrackedBuffersTest {
         int visible = buffer(CgGL.GL_ARRAY_BUFFER, 32, 0x88E8 /* GL_DYNAMIC_DRAW */);
 
         int mark = device.log().size();
-        copy(staging, local, 0, 16);
-        assertTrue(device.logSince(mark).stream().anyMatch(line -> line.startsWith("copyBuffer")));
-
-        mark = device.log().size();
         copy(staging, visible, 8, 8);
         assertTrue("host-visible to host-visible records nothing",
                 device.logSince(mark).stream().noneMatch(line -> line.startsWith("copyBuffer")));
         CgAllocation to = gl.bufferObjects().get(visible).storage.allocation();
         assertEquals(7, to.memory().getInt(8));
+
+        mark = device.log().size();
+        copy(staging, local, 0, 16);
+        assertTrue(device.logSince(mark).stream().anyMatch(line -> line.startsWith("copyBuffer")));
 
         mark = device.log().size();
         copy(local, visible, 0, 8);
@@ -129,6 +129,18 @@ public class CgTrackedBuffersTest {
         ByteBuffer read = gl.glMapBufferRange(CgGL.GL_ARRAY_BUFFER, 0, 8, CgGL.GL_MAP_READ_BIT, null);
         assertEquals("a read map waits for the copy", 7, read.order(ByteOrder.nativeOrder()).getInt(0));
         gl.glUnmapBuffer(CgGL.GL_ARRAY_BUFFER);
+    }
+
+    @Test
+    public void aHostVisibleSourceAFrameInFlightUses_IsCopiedOnTheDevice() {
+        int written = buffer(CgGL.GL_ARRAY_BUFFER, 16, 0x88E8 /* GL_DYNAMIC_DRAW: host-visible */);
+        int into = buffer(CgGL.GL_ARRAY_BUFFER, 16, 0x88E8);
+        gl.tracker().markUsed(gl.bufferObjects().get(written).storage.allocation());   // a kernel writes it this frame
+
+        int mark = device.log().size();
+        copy(written, into, 0, 16);
+        assertTrue("the kernel has not run yet: the copy follows it on the device",
+                device.logSince(mark).stream().anyMatch(line -> line.startsWith("copyBuffer")));
     }
 
     private void copy(int from, int to, long writeOffset, long size) {

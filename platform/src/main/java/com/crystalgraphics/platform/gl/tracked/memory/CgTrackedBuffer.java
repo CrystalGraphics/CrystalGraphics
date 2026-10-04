@@ -72,12 +72,13 @@ public final class CgTrackedBuffer {
 
     /**
      * {@code glCopyBufferSubData}. From or into device-local storage it is a device copy, ordered with the draws around
-     * it; between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds.
-     * A device-local source into a host-visible destination is a readback, which a read {@link #map} waits for.
+     * it; between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds,
+     * unless the source is still in use by a frame in flight: a kernel writing it there has not run yet, so that is a
+     * device copy too. A device copy into a host-visible destination is a readback, which a read {@link #map} waits for.
      */
     public void copyFrom(CgTrackedBuffer src, long srcOffset, long dstOffset, long size) {
         CgAllocation from = src.require(), to = require();
-        if (!to.hostVisible() || !from.hostVisible()) {
+        if (!to.hostVisible() || !from.hostVisible() || !tracker.writable(from)) {
             tracker.transfer().copyBuffer(from.buffer, from.offset + srcOffset, to.buffer, to.offset + dstOffset, size);
             tracker.markUsed(from);
             tracker.markUsed(to);
