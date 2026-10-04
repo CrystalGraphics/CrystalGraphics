@@ -430,6 +430,26 @@ Pass {
 - Unlit and fogged additively whatever the material's tags. `CG_EMISSIVE_PASS` is defined in both stages, so a body
   it shares with the Forward pass can tell them apart.
 - It takes the material's keywords, as the Forward pass does.
+- **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
+  `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
+  (`CG_OBJECT_EMISSION`). The compiler multiplies an Emissive pass's output by it, unless the pass's code names
+  `CG_EMISSION` itself. Declared with defaults of white and 1, a material glows as before; the unit is times the
+  screen's white.
+
+```glsl
+Properties {
+    _EmissionColor    ("Glow colour", color) = (1, 0.6, 0.2, 1)
+    _EmissionStrength ("Glow strength", float) = 2.0
+}
+Pass { Tags { "LightMode" = "Emissive" } }                       // what Forward draws, times CG_EMISSION
+Pass { Tags { "LightMode" = "Emissive" }                         // or authored, applying it where it wants
+    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(CG_EMISSION * mask(i.uv), 0.0); } }
+```
+
+- **A glow that draws nothing in the scene** is `crystalgraphics:shaders/emission_only.shader`: its Emissive pass
+  blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
+- `-Dcrystalgraphics.post.debug=emission` draws the emission target over the frame; `=level<N>` one level of bloom's
+  chain (`docs/DEBUG_FLAGS.md`).
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

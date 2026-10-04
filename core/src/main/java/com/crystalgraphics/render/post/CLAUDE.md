@@ -21,8 +21,9 @@ CgPostStack     (ORDER 2000)
 | (root) | `CgPostStack` (the singleton: registration, the effect list, recording), `CgPostEffect` (the SPI the engine's and a mod's effects implement), `CgPostPoint`, `CgPostContext` (what an effect records with) |
 | `bloom` | `CgBloom`: the built-in bloom and its settings. `CgBloomChain`: its chain as raster passes, CoD's scheme (13-tap down with Karis on the first step, tent up), each level drawn through `CgGraphTexture.level(k)`; each level's share of the glow is set in the upsample's blend (`ONE, SRC_ALPHA`: keep `WEIGHTS[k]` of the level, add the tent below), so level 0 holds the whole glow and the composite reads it once. R11G11B10F; the top level at most 512 tall, an emission more than twice that halved first (`prefilter.shader`), the levels down to about 16 tall so the glow reaches as far at every resolution; Low's filters are `CHEAP` (4x4 box down, four taps up, 4 levels), High and up weigh the first step by Karis's average |
 | `composite` | `CgPostComposite` (the one pass), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, no copy, adding in the target's encoding, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads `cg_SceneColor`, composites in linear light, triangular dither), chosen each firing from what its inputs ask |
+| `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>`, the emission or a chain level (`CgBloom.CHAIN`) drawn over the frame, last |
 
-Shaders: `shaders/post/` — `composite.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
+Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
 filters in `shaders/lib/post/bloom.glsl`.
 
 ## Rules

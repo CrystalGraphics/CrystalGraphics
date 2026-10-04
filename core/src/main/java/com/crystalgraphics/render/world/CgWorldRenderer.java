@@ -142,6 +142,8 @@ public final class CgWorldRenderer {
     private float[] customs = new float[64 * 16];
     /** Per draw: block and sky light, 0 to 15. */
     private float[] lights = new float[64 * 2];
+    /** Per draw: its emission scale, CG_OBJECT_EMISSION. */
+    private float[] emissions = new float[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
@@ -260,6 +262,7 @@ public final class CgWorldRenderer {
         private int indirectFactor;
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
+        private float emission;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -279,6 +282,7 @@ public final class CgWorldRenderer {
             pad = 0f;
             indirect = null;
             blockLight = Float.NaN;
+            emission = 1f;
             return this;
         }
 
@@ -381,6 +385,19 @@ public final class CgWorldRenderer {
             return light(15f, 15f);
         }
 
+        /**
+         * Scales its glow: what its material's Emissive pass draws, through {@code CG_EMISSION}. 1 by default; 0 takes
+         * it out of the bloom, its Emissive pass not drawn.
+         *
+         * <pre>{@code
+         * world.draw(orb, plasma).at(x, y, z).emission(1f - age / life).submit();   // a glow fading with its effect
+         * }</pre>
+         */
+        public Draw emission(float scale) {
+            emission = Math.max(0f, scale);
+            return this;
+        }
+
         /** Overrides the material's authored queue: {@link CgRenderQueue} values. */
         public Draw queue(int queue) {
             this.queue = queue;
@@ -447,6 +464,7 @@ public final class CgWorldRenderer {
             lights[count * 2] = d.blockLight;
             lights[count * 2 + 1] = d.skyLight;
         }
+        emissions[count] = d.emission;
         queues[count] = d.queue;
         orders[count] = d.order;
         layers[count] = d.layer;
@@ -487,6 +505,7 @@ public final class CgWorldRenderer {
         transforms = Arrays.copyOf(transforms, n * 16);
         customs = Arrays.copyOf(customs, n * 16);
         lights = Arrays.copyOf(lights, n * 2);
+        emissions = Arrays.copyOf(emissions, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         layers = Arrays.copyOf(layers, n);
@@ -577,7 +596,7 @@ public final class CgWorldRenderer {
         for (int i = 0; i < count; i++) {
             int queue = queues[i];
             // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
-            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emitsLight(materials[i])
+            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
                     && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
             emits[i] = e;
             if (e) emitting++;
@@ -789,6 +808,7 @@ public final class CgWorldRenderer {
         normal.get(data, at + 16);
         data[at + 28] = lights[i * 2];   // CG_OBJECT_LIGHT: the normal matrix's unused column
         data[at + 29] = lights[i * 2 + 1];
+        data[at + 30] = emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
         System.arraycopy(customs, i * 16, data, at + 32, 16);
     }
 

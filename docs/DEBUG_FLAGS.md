@@ -60,6 +60,8 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 # Post stack (render/post/CLAUDE.md)
 -Dcrystalgraphics.post.bloom.linear=true             # bloom composited in linear light (the copy form) from the start,
                                                      # to compare with the default blend form
+-Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
+                                                     # bloom's chain, 0 the glow the composite reads
 
 # Compute tiers (compute/CLAUDE.md § Three forms)
 -Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
