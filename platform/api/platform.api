@@ -156,6 +156,7 @@ com/crystalgraphics/platform/device/command/CgCommandEncoder
   method public,abstract copyTextureToBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
   method public,abstract endTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
   method public,abstract fillBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJI)V
+  method public,abstract finish ()V
   method public,abstract generateMipmaps (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)V
   method public,abstract imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;II)V
   method public,abstract memoryBarrier (II)V

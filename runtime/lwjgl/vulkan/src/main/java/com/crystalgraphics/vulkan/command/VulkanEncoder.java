@@ -463,6 +463,12 @@ public final class VulkanEncoder implements CgCommandEncoder {
         copyOut((VulkanTexture) src, region, (VulkanBuffer) dst, dstOffset);
     }
 
+    @Override
+    public void finish() {
+        outsidePass("finish");
+        device.host().submitAndWait();
+    }
+
     private void copyOut(VulkanTexture t, CgTextureRegion region, VulkanBuffer dst, long dstOffset) {
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
         VkCommandBuffer cmd = cmd();

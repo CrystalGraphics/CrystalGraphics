@@ -71,6 +71,14 @@ public interface CgCommandEncoder {
     /** Copies texels into a buffer, tightly packed, without waiting. */
     void copyTextureToBuffer(CgGpuTexture src, CgTextureRegion region, CgGpuBuffer dst, long dstOffset);
 
+    /**
+     * Runs everything recorded this frame and waits for it, the frame staying open: what reading host-visible memory
+     * the GPU wrote this frame needs. Outside a render pass.
+     *
+     * @throws IllegalStateException on a device whose host submits, since waiting for it would deadlock
+     */
+    void finish();
+
     /** Allowed inside a pass. */
     void beginTimer(CgTimerQuery query);
 
