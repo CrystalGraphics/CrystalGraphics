@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedStateProvider;
+import com.crystalgraphics.platform.service.CgCacheDirectory;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.CgVulkanHost;
 import com.crystalgraphics.vulkan.CgVulkanImage;
@@ -140,8 +141,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     /** Builds the device over this host and GL's semantics over that, and makes it CgGL's state provider. Once. */
     public final CgTrackedGLBackend openBackend(int width, int height) {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
-        device = new CgVulkanDevice(this, width, height);
-        gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(), verify);
+        device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
+        gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify);
         CgGlState.setProvider(new CgTrackedStateProvider(gl));
         return gl;
     }
