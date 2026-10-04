@@ -10,21 +10,23 @@ import javax.annotation.Nullable;
 import java.util.function.Predicate;
 
 /**
- * How a context runs a kernel (gpu-compute §6.5): as compute, lowered below compute, or by its Java body on the CPU;
- * and which kernel that is, itself or the {@code #pragma fallback} it names. A frame never mixes forms for one kernel.
+ * How a context runs a kernel (gpu-compute §6.5): as compute, lowered below compute, or by its Java body on the forced
+ * CPU tier; and which kernel that is, itself or the {@code #pragma fallback} it names. A frame never mixes forms for one
+ * kernel.
  *
  * <pre>{@code
  * CgKernelForm form = kernel.form();                   // render thread: the context's tier
  * if (form.how() == CgKernelForm.How.LOWERED) ...
  * CgKernelForm atG40 = CgKernelForm.choose(source, decl, ComputeTier.G40, name -> false);   // GL-free
- * CgKernelForm.check(source, decl, name -> false);     // every tier a player may have, or throws naming one
+ * CgKernelForm.check(source, decl);                    // every tier a player may have, or throws naming one
  * }</pre>
  *
  * <ul>
  *   <li>On V and G43 every kernel runs as compute.</li>
- *   <li>On G40 and G33: the kernel lowered; else its fallback lowered; else its CPU body; else its fallback's. A
- *       {@code compute_only} kernel is never lowered.</li>
- *   <li>On CPU: its CPU body, else its fallback's.</li>
+ *   <li>On G40 and G33: the kernel lowered; else its fallback lowered. A {@code compute_only} kernel is never
+ *       lowered.</li>
+ *   <li>On CPU, which is only ever forced: its Java body, else its fallback's. A player's tier never runs a body, so
+ *       a shipped kernel needs none (decision 11).</li>
  *   <li>A kernel that can run nowhere throws when its form is chosen, which is before any dispatch of it runs,
  *       naming what stops it.</li>
  * </ul>
@@ -46,49 +48,50 @@ public record CgKernelForm(How how, ComputeTier tier, CgKernelDecl runs) {
     public static CgKernelForm choose(CgComputeSource source, CgKernelDecl kernel, ComputeTier tier,
                                       Predicate<String> hasCpuBody) {
         CgKernelDecl fallback = kernel.fallback() == null ? null : source.kernel(kernel.fallback());
-        String refusal = null;
+        String named = "[" + source.path() + "] kernel " + kernel.name() + " cannot run at tier " + tier + describe(tier);
         switch (tier) {
             case V, G43:
                 return new CgKernelForm(How.COMPUTE, tier, kernel);
-            case G40, G33:
-                refusal = kernel.computeOnly() ? "it is declared compute_only" : CgLowering.refusal(source, kernel);
-                if (refusal == null) return new CgKernelForm(How.LOWERED, tier, kernel);
+            case G40, G33: {
+                String refusal = kernel.computeOnly() ? null : CgLowering.refusal(source, kernel);
+                if (!kernel.computeOnly() && refusal == null) return new CgKernelForm(How.LOWERED, tier, kernel);
                 if (fallback != null && CgLowering.refusal(source, fallback) == null) {
                     return new CgKernelForm(How.LOWERED, tier, fallback);
                 }
-                break;
-            default:
-                break;
+                if (kernel.computeOnly()) {
+                    throw new IllegalStateException(named + ", which has no compute, and it is declared compute_only: "
+                            + "ask kernel.runs() before dispatching it");
+                }
+                throw new IllegalStateException(named + ", which has no compute: " + refusal + ". Give it a lowerable "
+                        + "#pragma fallback, or declare it '#pragma compute_only " + kernel.name() + "' and ask "
+                        + "kernel.runs() before dispatching it");
+            }
+            default: {
+                if (hasCpuBody.test(kernel.name())) return new CgKernelForm(How.CPU, tier, kernel);
+                if (fallback != null && hasCpuBody.test(fallback.name())) return new CgKernelForm(How.CPU, tier, fallback);
+                if (kernel.computeOnly()) {
+                    throw new IllegalStateException(named + ", and it is declared compute_only: ask kernel.runs() before "
+                            + "dispatching it, or give it a Java body with kernel.cpu(...) to debug it here");
+                }
+                throw new IllegalStateException(named + ": the CPU tier runs a kernel's Java body, and it has none: "
+                        + "give it one with kernel.cpu(...)");
+            }
         }
-        if (hasCpuBody.test(kernel.name())) return new CgKernelForm(How.CPU, tier, kernel);
-        if (fallback != null && hasCpuBody.test(fallback.name())) return new CgKernelForm(How.CPU, tier, fallback);
-        String named = "[" + source.path() + "] kernel " + kernel.name() + " cannot run at tier " + tier + describe(tier);
-        if (kernel.computeOnly()) {
-            throw new IllegalStateException(named + ", which has no compute, and it is declared compute_only: ask "
-                    + "kernel.runs() before dispatching it, or give it a Java body with kernel.cpu(...)");
-        }
-        if (tier == ComputeTier.CPU) {
-            throw new IllegalStateException(named + ": the CPU tier runs a kernel's Java body, and it has none: "
-                    + "give it one with kernel.cpu(...)");
-        }
-        throw new IllegalStateException(named + ", which has no compute: " + refusal + ". Give it a lowerable "
-                + "#pragma fallback or a Java body with kernel.cpu(...), or declare it '#pragma compute_only "
-                + kernel.name() + "' and ask kernel.runs() before dispatching it");
     }
 
     /**
      * Asks every tier a player's context may be at, not only this one's (decision 13): the form each takes, and that
      * each compiles the builtins the kernel it runs names, polyfilled where its GLSL lacks them. GL-free, so the
-     * author's machine finds what a player's would. A {@code compute_only} kernel is asked only of compute.
+     * author's machine finds what a player's would. A {@code compute_only} kernel is asked only of compute, and a Java
+     * body answers nothing here: no player's tier runs one.
      *
      * @throws IllegalStateException naming the kernel, the tier and what stops it
      */
-    public static void check(CgComputeSource source, CgKernelDecl kernel, Predicate<String> hasCpuBody) {
+    public static void check(CgComputeSource source, CgKernelDecl kernel) {
         for (ComputeTier tier : PLAYER_TIERS) {
             boolean lowered = tier == ComputeTier.G40 || tier == ComputeTier.G33;
             if (lowered && kernel.computeOnly()) continue;
-            CgKernelForm form = choose(source, kernel, tier, hasCpuBody);
-            if (form.how() == How.CPU) continue;
+            CgKernelForm form = choose(source, kernel, tier, name -> false);
             int glsl = lowestGlsl(tier);
             String why = CgGlslBuiltins.refusal(form.runs().builtins(), glsl);
             if (why == null) continue;
