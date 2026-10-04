@@ -6,6 +6,8 @@ compiles and wires it, and runs it in whichever form the context can: compute, l
 **Writing and running a kernel — the format, the built-ins, the graph's compute pass, the tiers, `CgGpuOps` and what
 is easy to get wrong — is `docs/SHADERS.md` § *Compute*, loaded below.** This guide is the package's inside.
 `crystalgraphics:shaders/example.compute` is the reference file; the graph's half is `render/graph/CLAUDE.md`.
+**A pass of real work with drawing before its reader runs `async()`**: mark every one that fits (`SHADERS.md` §
+*Beside the drawing*).
 
 ## Packages
 

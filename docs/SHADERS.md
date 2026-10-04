@@ -1129,16 +1129,41 @@ CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDI
 ### Beside the drawing: `async()`
 
 ```java
+// A simulation stepped at the opaque stage and drawn at the transparent one: the world draws beside it.
+CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(order, frame -> {
+    CgComputePass step = frame.recording().compute("sparks.step").async();
+    step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
+    step.end();
+});
+
+// A cull ahead of a shadow map that touches neither buffer: drawn while the cull runs, wherever recorded.
 CgComputePass cull = recording.compute("instances.cull", constants).async();
 cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
 cull.end();
-recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
+recording.raster(shadowMap, ...);
 ```
+
+**Mark every pass that fits.** `async()` is opt-in, not optional: a pass that fits and is left in order costs the
+frame its whole time, where async it costs little or nothing. A pass fits when all three hold:
+
+1. **It is all compute.** A pass with a dispatch below compute runs in order anyway.
+2. **It is big enough to hide**: thousands of elements, or dispatches with barriers between them (a simulation step,
+   a sort, a scan, a cull, a reduction's last levels). A pass of a few hundred elements costs more to hand between
+   queues than it hides.
+3. **Drawing runs between it and its first reader** in the frame: a step at the opaque stage drawn at the transparent
+   one, a cull or sort recorded ahead of passes that do not use it. Recording order and stage boundaries do not
+   matter (below); only what the frame does in between.
+
+Leave it off a small pass, a pass whose reader is the next thing the frame does, and heavy compute beside heavy
+compute, which only fight for the same units.
 
 - **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device, and Minecraft
   26.2's, whose own compute queue Minecraft leaves unused), the pass runs on it, after every step placed before it.
-  The steps after it that touch nothing it reads or writes run beside it; the first that does waits for it, as does a
-  callback and the end of the execution.
+  The steps after it that touch nothing it reads or writes run beside it, and the first that does waits for it, in
+  this stage or a later one of the frame; a callback waits for all of it.
+- **Its waits cross stages for what only the graph reaches**: graph buffers (not imported ones) and transient
+  textures. An imported, current or requested texture or an imported buffer the host may touch outside the graph, so
+  work on one is waited for at the end of its stage. The frame's end waits for everything.
 - **The builder places it, not the recording**: the pass and what it reads go as early as the graph allows, and what
   reads its results as late, so the drawing recorded after its consumer still runs beside it. On every device: the
   order is one the reads and writes allow, so the result is the same.
@@ -1146,9 +1171,8 @@ recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the c
   and a pass with a dispatch below compute.
 - **On Minecraft's device an async pass may not use Minecraft's own textures** (its main target, the lightmap): only
   Minecraft's graphics queue may, and the pass throws naming the texture.
-- Worth it for compute that leaves the GPU idle — barriers between small dispatches, a reduction's last levels — beside
-  drawing that fills it. `--mode=async-compute` measures it: beside eight 1080p blurs (2.5 ms), half of 1 ms of
-  fill-bound drawing disappears on an RTX 4070 SUPER.
+- `--mode=async-compute` measures it: beside eight 1080p blurs (2.5 ms), half of 1 ms of fill-bound drawing disappears
+  on an RTX 4070 SUPER; a sort in one stage with the drawing in the next overlaps the same way.
 - `-Dcrystalgraphics.graph.asyncAll=true` sends every pass that can go async, which is how the gates check the waits.
 
 ### Every tier
