@@ -40,6 +40,10 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 # GL errors (LWJGL3 hosts, needs a debug context -- every dev client has one)
 -Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a
                                                      # debug message names the call; .limit=N for more
+-Dcrystalgraphics.gl.debugPerf=true                  # each distinct driver performance message once, with
+                                                     # the stack of the call it came on, and counts: names a
+                                                     # CPU stall ("pixel transfer is synchronized"). The
+                                                     # harness asks for a debug context under it
 
 # GL issued where none may be (any host)
 -Dcrystalgraphics.gl.threadCheck=true                # log each CgGL call site inside a GL-free section
