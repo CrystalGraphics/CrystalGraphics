@@ -6,6 +6,7 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Chunks drawn into one target: its load, its pass constants, the render state its pipelines' unset slots take,
@@ -148,6 +150,17 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has ended");
         recording.requireOpen();
         gpuZone = zone;
+        return this;
+    }
+
+    /**
+     * Charges its GPU time to {@code budget}, which scales its consumer's work to fit. Timed whatever the trace, under
+     * the budget's zone unless {@link #timed(int)} names one.
+     */
+    public CgRasterPass timed(CgGpuBudget budget) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        recording.requireOpen();
+        this.budget = Objects.requireNonNull(budget, "budget");
         return this;
     }
 

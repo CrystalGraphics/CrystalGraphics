@@ -32,6 +32,7 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -393,11 +394,13 @@ public final class CgExecutor {
 
     private void step(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];
-        if (pass.gpuZone < 0) {
+        CgGpuBudget budget = pass.budget;
+        if (pass.gpuZone < 0 && budget == null) {
             run(frame, s, pass);
             return;
         }
-        CgGpuTrace.begin(pass.gpuZone);
+        CgGpuTrace.begin(pass.gpuZone >= 0 ? pass.gpuZone : budget.zone(),
+                budget != null ? budget.slot() : CgGpuTrace.NO_BUDGET);
         try {
             run(frame, s, pass);
         } finally {

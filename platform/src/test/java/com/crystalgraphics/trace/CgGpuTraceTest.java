@@ -158,6 +158,66 @@ public class CgGpuTraceTest {
         assertTrue(CgGpuTrace.totals().size() == 1);
     }
 
+    @Test
+    public void aBudgetZoneIsTimedWithTheChannelOff_andAFrameCountsOnceItsSuccessorAnswers() {
+        CgTrace.resetForTesting();
+        int slot = CgGpuTrace.budgetSlot();
+        gl.queriesReady = true;
+        gl.queryNanos = MS;
+        long first = CgGpuTrace.budgetFrame();
+        budgetZone(slot);
+        budgetZone(slot);
+        zone("ui");
+        CgGpuTrace.collect();
+        assertEquals(2, gl.countOf("glBeginTimeElapsedQuery"));
+        assertEquals("its frame may still issue more", 0L, CgGpuTrace.budgetNanos(slot));
+        assertTrue("nothing reaches the trace with the channel off", CgGpuTrace.totals().isEmpty());
+
+        CgGpuTrace.nextBudgetFrame();
+        CgGpuTrace.nextBudgetFrame();   // a frame with no work of the slot: zero
+        budgetZone(slot);
+        CgGpuTrace.collect();
+        assertEquals(2 * MS, CgGpuTrace.budgetNanos(slot));
+        assertEquals("the first frame and the empty one", first + 2, CgGpuTrace.budgetThrough(slot));
+    }
+
+    @Test
+    public void aZoneInsideABudgetZoneIsChargedToItsBudget_andThePausedZoneResumes() {
+        int slot = CgGpuTrace.budgetSlot();
+        gl.queriesReady = true;
+        gl.queryNanos = MS;
+        CgTrace.frameBegin();
+        CgGpuTrace.begin(CgGpuTrace.name("sparks"), slot);
+        CgGpuTrace.begin("sparks.step");
+        CgGpuTrace.end();
+        CgGpuTrace.end();
+        zone("ui");
+        CgGpuTrace.nextBudgetFrame();
+        budgetZone(slot);
+        CgGpuTrace.collect();
+        assertEquals("sparks, then sparks.step, then sparks resumed", 3 * MS, CgGpuTrace.budgetNanos(slot));
+        assertEquals(5, gl.countOf("glBeginTimeElapsedQuery"));
+    }
+
+    @Test
+    public void theNearestTimedZoneResumes_pastAnUntimedOneBetween() {
+        CgTrace.resetForTesting();
+        int slot = CgGpuTrace.budgetSlot();
+        CgGpuTrace.begin(CgGpuTrace.name("sparks"), slot);
+        CgGpuTrace.begin("untimed with the channel off");
+        CgGpuTrace.begin(CgGpuTrace.name("inner"), slot);
+        CgGpuTrace.end();
+        CgGpuTrace.end();
+        CgGpuTrace.end();
+        assertEquals("sparks, inner, sparks resumed", 3, gl.countOf("glBeginTimeElapsedQuery"));
+        assertEquals(3, gl.countOf("glEndTimeElapsedQuery"));
+    }
+
+    private static void budgetZone(int slot) {
+        CgGpuTrace.begin(CgGpuTrace.name("sparks"), slot);
+        CgGpuTrace.end();
+    }
+
     private static void zone(String name) {
         CgGpuTrace.begin(name);
         CgGpuTrace.end();

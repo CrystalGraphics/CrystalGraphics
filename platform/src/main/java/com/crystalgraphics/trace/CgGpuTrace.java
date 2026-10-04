@@ -39,6 +39,10 @@ import java.util.Map;
  *   <li>A zone opened while a {@link CgGlRecording} captures is not timed, since nothing reaches the GPU
  *       then; a zone around the replay times the work.</li>
  * </ul>
+ *
+ * <p>A zone opened with a budget slot ({@link #budgetSlot}), and every zone inside it, is timed whatever the
+ * channel, and adds its nanoseconds to that slot under the budget frame it ran in ({@link #budgetFrame}): what
+ * {@code CgGpuBudget} measures, frame by frame, as the GPU answers.</p>
  */
 public final class CgGpuTrace {
 
@@ -66,21 +70,44 @@ public final class CgGpuTrace {
     /** Pushed for a zone that issued no query, so its end has nothing to stop. */
     private static final int UNMEASURED = -1;
 
+    /** A zone's budget when it names none: it takes its parent's. */
+    public static final int NO_BUDGET = -1;
+
+    /** Budget slots at most: one a consumer, defined once. */
+    private static final int BUDGETS = 64;
+
     private static final int NESTED_FLATTENED = CgTraceNames.intern("gpu.nestedFlattened");
     private static final int DROPPED = CgTraceNames.intern("gpu.droppedInFlightFull");
     private static final int LEAKED = CgTraceNames.intern("gpu.leakedAcrossFrame");
 
     private static volatile Support support = Support.UNKNOWN;
 
-    private record Pending(int query, int nameId, long frame, int generation) {}
+    /** A query in flight; pooled, since a budget times passes in every frame. */
+    private static final class Pending {
+        int query, nameId, generation, budget;
+        long frame, budgetFrame;
+        /** Opened with the channel on: its time goes to the trace as well as to its budget. */
+        boolean traced;
+    }
 
     // All GL-thread only.
     private static final ArrayDeque<Pending> PENDING = new ArrayDeque<>();
+    private static final ArrayDeque<Pending> SPARE = new ArrayDeque<>();
     private static int[] freeQueries = new int[16];
     private static int freeCount;
     private static int[] open = new int[8];
+    private static int[] openBudget = new int[8];
     private static int openDepth;
     private static boolean running;
+
+    /** Per slot: the nanoseconds of every budget frame before {@link #BUDGET_THROUGH}, all of which have come back. */
+    private static final long[] BUDGET_NANOS = new long[BUDGETS];
+    private static final long[] BUDGET_THROUGH = new long[BUDGETS];
+    /** Per slot: the budget frame whose results are still coming back, -1 for none yet, and their sum so far. */
+    private static final long[] BUDGET_AT = new long[BUDGETS];
+    private static final long[] BUDGET_SUM = new long[BUDGETS];
+    private static int budgetSlots;
+    private static long budgetFrame;
 
     /** Resolved but not yet written: frame index to (name id to nanos). */
     private static final Map<Long, Map<Integer, Long>> RESOLVED = new LinkedHashMap<>();
@@ -123,14 +150,28 @@ public final class CgGpuTrace {
 
     /** Opens a GPU zone by an id from {@link #name(String)}. Pair with exactly one {@link #end()}. */
     public static void begin(int nameId) {
-        if (nameId != UNMEASURED && (!CgTrace.isEnabled(GPU) || !supported() || CgGL.isRecording())) nameId = UNMEASURED;
+        begin(nameId, NO_BUDGET);
+    }
+
+    /**
+     * Opens a GPU zone charged to {@code budget}, a slot from {@link #budgetSlot}, or to its parent's with
+     * {@link #NO_BUDGET}. Timed while the channel is on, or whatever the channel when it has a budget. Pair with exactly
+     * one {@link #end()}.
+     */
+    public static void begin(int nameId, int budget) {
+        if (budget == NO_BUDGET && openDepth > 0) budget = openBudget[openDepth - 1];
+        if (nameId != UNMEASURED && !measures(budget)) nameId = UNMEASURED;
         if (nameId != UNMEASURED && running) {
             stopQuery();
             count(NESTED_FLATTENED);
         }
-        if (nameId != UNMEASURED) startQuery(nameId);
-        if (openDepth == open.length) open = Arrays.copyOf(open, openDepth * 2);
-        open[openDepth++] = nameId;
+        if (nameId != UNMEASURED) startQuery(nameId, budget);
+        if (openDepth == open.length) {
+            open = Arrays.copyOf(open, openDepth * 2);
+            openBudget = Arrays.copyOf(openBudget, openDepth * 2);
+        }
+        open[openDepth] = nameId;
+        openBudget[openDepth++] = budget;
     }
 
     /** Closes the innermost zone, resuming the one it paused. */
@@ -139,8 +180,42 @@ public final class CgGpuTrace {
         int nameId = open[--openDepth];
         if (nameId == UNMEASURED) return;
         stopQuery();
-        int parent = openDepth > 0 ? open[openDepth - 1] : UNMEASURED;
-        if (parent != UNMEASURED && CgTrace.isEnabled(GPU)) startQuery(parent);
+        // The nearest timed zone resumes: an untimed one between them never stopped it.
+        for (int i = openDepth - 1; i >= 0; i--) {
+            if (open[i] == UNMEASURED) continue;
+            if (measures(openBudget[i])) startQuery(open[i], openBudget[i]);
+            return;
+        }
+    }
+
+    /** A new budget slot. At most {@value #BUDGETS} in a process; any thread. */
+    public static synchronized int budgetSlot() {
+        if (budgetSlots == BUDGETS) throw new IllegalStateException("every one of " + BUDGETS + " budget slots is taken");
+        BUDGET_AT[budgetSlots] = -1L;
+        return budgetSlots++;
+    }
+
+    /**
+     * The GPU nanoseconds of the slot's budget frames before {@link #budgetThrough}: each such frame has come back
+     * whole, one with no zone of the slot as zero. GL thread.
+     */
+    public static long budgetNanos(int slot) {
+        return BUDGET_NANOS[slot];
+    }
+
+    /** The budget frame before which the slot's frames have come back whole: a frame or three behind the work. */
+    public static long budgetThrough(int slot) {
+        return BUDGET_THROUGH[slot];
+    }
+
+    /** The budget frame a zone opened now is charged to. */
+    public static long budgetFrame() {
+        return budgetFrame;
+    }
+
+    /** Starts the next budget frame: {@code CgGpuBudget}'s, once per host frame. GL thread. */
+    public static void nextBudgetFrame() {
+        budgetFrame++;
     }
 
     /**
@@ -155,15 +230,20 @@ public final class CgGpuTrace {
             resolvedGeneration = generation;
         }
         // Queries complete in issue order: the first unfinished one ends the scan.
-        while (!PENDING.isEmpty() && CgGL.glIsQueryResultAvailable(PENDING.peekFirst().query())) {
+        while (!PENDING.isEmpty() && CgGL.glIsQueryResultAvailable(PENDING.peekFirst().query)) {
             Pending done = PENDING.pollFirst();
-            long nanos = CgGL.glGetQueryResultNanos(done.query());
-            release(done.query());
-            long[] total = TOTALS.computeIfAbsent(done.nameId(), k -> new long[2]);
-            total[0] += nanos;
-            total[1]++;
-            if (done.generation() != generation || done.frame() < 0L) continue;
-            RESOLVED.computeIfAbsent(done.frame(), k -> new HashMap<>()).merge(done.nameId(), nanos, Long::sum);
+            long nanos = CgGL.glGetQueryResultNanos(done.query);
+            release(done.query);
+            if (done.budget != NO_BUDGET) charge(done.budget, done.budgetFrame, nanos);
+            if (done.traced) {
+                long[] total = TOTALS.computeIfAbsent(done.nameId, k -> new long[2]);
+                total[0] += nanos;
+                total[1]++;
+                if (done.generation == generation && done.frame >= 0L) {
+                    RESOLVED.computeIfAbsent(done.frame, k -> new HashMap<>()).merge(done.nameId, nanos, Long::sum);
+                }
+            }
+            SPARE.addLast(done);
         }
         long current = CgTrace.currentFrameIndex();
         for (Iterator<Map.Entry<Long, Map<Integer, Long>>> it = RESOLVED.entrySet().iterator(); it.hasNext(); ) {
@@ -209,7 +289,7 @@ public final class CgGpuTrace {
 
     /** Releases every query object. GL thread, with the context still current. */
     public static void dispose() {
-        for (Pending p : PENDING) CgGL.glDeleteQuery(p.query());
+        for (Pending p : PENDING) CgGL.glDeleteQuery(p.query);
         for (int i = 0; i < freeCount; i++) CgGL.glDeleteQuery(freeQueries[i]);
         PENDING.clear();
         RESOLVED.clear();
@@ -229,12 +309,28 @@ public final class CgGpuTrace {
 
     private static boolean stillPending(long index, int generation) {
         for (Pending p : PENDING) {
-            if (p.generation() == generation && p.frame() == index) return true;
+            if (p.traced && p.generation == generation && p.frame == index) return true;
         }
         return false;
     }
 
-    private static void startQuery(int nameId) {
+    /** Queries answer in issue order, so the first of a later frame closes the frame before it. */
+    private static void charge(int slot, long frame, long nanos) {
+        if (frame != BUDGET_AT[slot]) {
+            if (BUDGET_AT[slot] >= 0L) BUDGET_NANOS[slot] += BUDGET_SUM[slot];
+            BUDGET_THROUGH[slot] = frame;
+            BUDGET_AT[slot] = frame;
+            BUDGET_SUM[slot] = 0L;
+        }
+        BUDGET_SUM[slot] += nanos;
+    }
+
+    /** Whether a zone opened now with {@code budget} would be timed. */
+    private static boolean measures(int budget) {
+        return (budget != NO_BUDGET || CgTrace.isEnabled(GPU)) && supported() && !CgGL.isRecording();
+    }
+
+    private static void startQuery(int nameId, int budget) {
         if (PENDING.size() >= MAX_IN_FLIGHT) {
             // Skipped rather than waited for: this must never be what stalls a frame.
             count(DROPPED);
@@ -242,7 +338,15 @@ public final class CgGpuTrace {
         }
         int query = freeCount > 0 ? freeQueries[--freeCount] : CgGL.glGenQuery();
         CgGL.glBeginTimeElapsedQuery(query);
-        PENDING.addLast(new Pending(query, nameId, CgTrace.currentFrameIndex(), CgTrace.generation()));
+        Pending p = SPARE.isEmpty() ? new Pending() : SPARE.pollFirst();
+        p.query = query;
+        p.nameId = nameId;
+        p.budget = budget;
+        p.budgetFrame = budgetFrame;
+        p.traced = CgTrace.isEnabled(GPU);
+        p.frame = CgTrace.currentFrameIndex();
+        p.generation = CgTrace.generation();
+        PENDING.addLast(p);
         running = true;
     }
 
