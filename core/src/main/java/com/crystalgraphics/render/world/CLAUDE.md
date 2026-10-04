@@ -34,5 +34,11 @@
   blurring and compositing are the post stack's (`render/post`), and with bloom off nothing reads the target, so the
   graph culls the pass. Its gate is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at emission scales
   1 and 0.5, on gl and vulkan.
+- **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
+  `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
+  size, reading the target's depth through `sceneDepth(unit, from)`; then `world_half_upsample.shader` adds it over
+  the target, each pixel weighing the four texels round it by bilinear distance and by how near the depth each was
+  drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
+  adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

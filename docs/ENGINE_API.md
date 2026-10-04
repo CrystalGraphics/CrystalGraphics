@@ -118,6 +118,10 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it. A draw's
   `.emission(scale)` scales its glow (0 leaves it out), and a material's `_EmissionColor`/`_EmissionStrength` its
   material's, both through `CG_EMISSION`.
+- **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
+  `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
+  depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
+  with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 

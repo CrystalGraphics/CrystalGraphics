@@ -4,9 +4,9 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -104,12 +104,15 @@ public final class CgVfxTube {
                 scale.scaling(maxX - minX + 2f * reach, maxY - minY + 2f * reach, maxZ - minZ + 2f * reach);
             }
             int owned = last == count - 1 ? last - first + 1 : SPANS;
-            world.draw(mesh, material).at(ox + cx, oy + cy, oz + cz).transform(scale)
+            CgWorldRenderer.Draw draw = world.draw(mesh, material).at(ox + cx, oy + cy, oz + cz).transform(scale)
                     .custom(0, row, first, scaleOf, layer.parameter())
                     .custom(1, cx, cy, cz, owned)
                     .custom(2, a0, a1, a2, a3)
                     .custom(3, b0, b1, b2, b3)
-                    .layer(CgSortLayer.EFFECTS).group(ox, oy, oz).order(layer.order()).submit();
+                    .layer(CgVfxSystem.sortLayer(layer)).group(ox, oy, oz).order(layer.order());
+            // A volume is soft light that adds: a quarter of the pixels draws it as well.
+            if (layer.isVolume()) draw.halfResolution();
+            draw.submit();
             CgVfxTrace.count(layer.isVolume() ? DRAWS_TUBE_VOLUME : DRAWS_TUBE, 1);
         }
     }
