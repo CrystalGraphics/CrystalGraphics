@@ -71,7 +71,8 @@ final class CgBloomChain {
 
     /**
      * Records the chain from {@code emission} under the frame's {@code frame} constants, with {@code tier}'s filters;
-     * answers it, its glow in level 0.
+     * answers it, its glow in level 0. Null, recording nothing, while a pass's program is not ready: a level never
+     * cleared would be blended over as the pool left it.
      */
     CgGraphTexture record(CgRecording recording, CgGraphTexture emission, CgPassConstants frame, CgQuality tier) {
         int ew = emission.getWidth(), eh = emission.getHeight();
@@ -92,6 +93,11 @@ final class CgBloomChain {
             chain = CgGraphTexture.transientTexture("cg_bloom_chain", new CgTextureDesc(w, h, FORMAT, levels));
         }
         ensureMaterials(emission, levels, tier);
+        for (int j = 0; j < halvings; j++) if (halve[j].pipeline(CgInstanceKind.OBJECT) == null) return null;
+        for (int k = 0; k < levels; k++) {
+            if (down[k].pipeline(CgInstanceKind.OBJECT) == null) return null;
+            if (k < levels - 1 && up[k].pipeline(CgInstanceKind.OBJECT) == null) return null;
+        }
         frame.write(block, 0);
         for (int j = 0; j < halvings; j++) {
             draw(recording, prefilter, j, CgLoad.clear(0f, 0f, 0f, 0f), halve[j]);
@@ -117,7 +123,6 @@ final class CgBloomChain {
 
     private void draw(CgRecording recording, CgGraphTexture target, int level, CgLoad load, CgMaterial material) {
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return;
         constants.read(block, 0).resolution(Math.max(1, target.getWidth() >> level), Math.max(1, target.getHeight() >> level));
         CgRasterPass pass = recording.raster(target, level, load, constants, null, CgOrder.SORTED).timed(GPU);
         CgChunkBuilder chunks = recording.chunks().begin();

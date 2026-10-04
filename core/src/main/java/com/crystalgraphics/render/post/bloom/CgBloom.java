@@ -97,6 +97,7 @@ public final class CgBloom implements CgPostEffect {
     public void record(CgPostContext post) {
         CgGraphTexture emission = post.resources().get(CgFrameKeys.EMISSION);
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
+        if (glow == null) return;
         post.composite().bloom(glow, intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
         if (linear) post.composite().linear();
     }
