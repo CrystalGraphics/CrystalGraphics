@@ -120,7 +120,7 @@ CgQuadIndexBuffer (global singleton)
 | `SubDataStreamBuffer.java` | The subdata tier: CPU staging + `glBufferSubData`. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
 | `CgBufferTextures.java` | One buffer texture per texture unit, pointed at whatever buffer a material or a lowered kernel reads there; 0 reads 16 zero bytes. Freed by `CgGraphicsLifecycle.destroyContext()`. |
-| `CgReadback.java` | A buffer range or framebuffer region read back without a stall: copied on the GPU into pooled `GL_STREAM_READ` staging behind a fence, handed to a sink from `poll()` in `tickFrame`. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
+| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled `GL_STREAM_READ` staging behind a fence, handed to a sink from `poll()` in `tickFrame`. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown, beside `CgBufferTextures` |
 | `CgBufferReadback.java` | A buffer's words read now, a stall: for a count a draw needs this frame (G33) and the CPU tier's copies |
 
 ---

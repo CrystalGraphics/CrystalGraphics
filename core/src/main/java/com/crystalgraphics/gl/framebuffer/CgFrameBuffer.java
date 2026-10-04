@@ -9,6 +9,7 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import java.nio.IntBuffer;
@@ -134,6 +135,10 @@ public class CgFrameBuffer {
 
     /** Framebuffers drawing into level {@code l} of every colour texture, at {@code l - 1}; made at first use. */
     private int[] levelFbos = new int[0];
+
+    /** Whether it is a volume's storage ({@link #createVolume}): a 3D colour texture and no framebuffer object. */
+    @Getter
+    private boolean volume;
     
      // ── Lazily cached GPU limit ────────────────────────────────────────────────
 
@@ -284,6 +289,48 @@ public class CgFrameBuffer {
     }
 
     /**
+     * Storage for a 3D texture: {@code format}'s slot 0 as a {@link CgTexture3D} of {@code depth} slices, and no
+     * framebuffer object, since nothing draws into a volume: a kernel writes it as a {@code 3d} image and a draw samples
+     * it. What the frame graph keeps a volume in ({@code CgTextureDesc.volume}); any caller owns it outright.
+     *
+     * <pre>{@code
+     * CgFrameBuffer field = CgFrameBuffer.createVolume("wind", 32, 32, 32, rgba16f);
+     * CgGraphTexture wind = CgGraphTexture.imported("wind", field);   // a kernel's 3d image, a material's sampler3D
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Binding it, a blit, a clear, a reattachment or a resize throws; {@link #getId()} is 0.</li>
+     *   <li>Sampled through the format type's spec: linear, or nearest for an integer type, clamped.</li>
+     * </ul>
+     */
+    public static CgFrameBuffer createVolume(String name, int width, int height, int depth, CgFrameBufferFormat format) {
+        if (width <= 0 || height <= 0 || depth <= 0) {
+            throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a volume of " + width + "x" + height + "x" + depth);
+        }
+        CgTextureType type = format.getColorSlot(0);
+        if (format.colorSlotCount() != 1 || type == null || format.isColorRenderbuffer(0) || format.hasDepth()
+                || format.isMultisampled()) {
+            throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a volume is one single-sampled colour "
+                    + "texture at slot 0, not " + format);
+        }
+        CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
+        fbo.volume = true;
+        Attachment a = new Attachment(0, type, false, fbo);
+        a.setTexture(CgTexture3D.createEmpty(width, height, depth, type.toTextureSpec()));
+        fbo.colorAttachments.put(0, a);
+        return fbo;
+    }
+
+    /** A volume's slices; 1 for any other framebuffer. */
+    public int getDepth() {
+        return volume && getColorTexture(0) instanceof CgTexture3D texture ? texture.getDepth() : 1;
+    }
+
+    private void requireFramebuffer(String what) {
+        if (volume) throw new IllegalStateException("FBO '" + name + "' is a volume, with no framebuffer to " + what);
+    }
+
+    /**
      * Returns (or lazily creates) a screen-sized FBO managed by
      * {@link CgFrameBufferRegistry}.
      *
@@ -431,6 +478,7 @@ public class CgFrameBuffer {
      * Routes through {@link CrossApiTransition} to handle cross-API transitions.
      */
     public void bind() {
+        requireFramebuffer("bind");
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fboId);
     }
 
@@ -453,6 +501,7 @@ public class CgFrameBuffer {
      * {@link #getId()} for level 0, colour only above it.
      */
     public int levelId(int level) {
+        requireFramebuffer("bind");
         if (level == 0) return fboId;
         CgTexture first = colorAttachments.isEmpty() ? null : colorAttachments.firstEntry().getValue().getTexture();
         int levels = first == null ? 1 : first.getLevels();
@@ -511,6 +560,7 @@ public class CgFrameBuffer {
      * Binds this FBO as the draw framebuffer only ({@code GL_DRAW_FRAMEBUFFER}).
      */
     public void bindDraw() {
+        requireFramebuffer("bind");
         CgGL.glBindFramebuffer(CgGL.GL_DRAW_FRAMEBUFFER, fboId);
     }
 
@@ -518,6 +568,7 @@ public class CgFrameBuffer {
      * Binds this FBO as the read framebuffer only ({@code GL_READ_FRAMEBUFFER}).
      */
     public void bindRead() {
+        requireFramebuffer("bind");
         CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, fboId);
     }
 
@@ -554,7 +605,7 @@ public class CgFrameBuffer {
     public void drawBuffers(int... slotIds) {
         if (slotIds == null || slotIds.length == 0) 
             throw new IllegalArgumentException("At least one draw buffer slot must be specified");
-        
+        requireFramebuffer("draw into");
         IntBuffer buf = CgBufferUtils.createIntBuffer(slotIds.length);
         for (int slot : slotIds) 
             buf.put(CgGL.GL_COLOR_ATTACHMENT0 + slot);
@@ -606,6 +657,7 @@ public class CgFrameBuffer {
 
     /** Blits from {@code source} into this FBO. Extracts GL id and dimensions from the source. */
     public void blitFrom(CgFrameBuffer source, int mask, int filter) {
+        source.requireFramebuffer("blit from");
         blitFrom(source.getId(), source.getWidth(), source.getHeight(), mask, filter);
     }
 
@@ -616,6 +668,7 @@ public class CgFrameBuffer {
 
     /** Blits from {@code sourceFboId} into this FBO with explicit source dimensions and filter. */
     public void blitFrom(int sourceFboId, int sourceWidth, int sourceHeight, int mask, int filter) {
+        requireFramebuffer("blit into");
         blitFrom(sourceFboId, fboId, 0, 0, width, height, 0, 0, sourceWidth, sourceHeight, mask, filter);
     }
 
@@ -704,6 +757,7 @@ public class CgFrameBuffer {
      * Restores the previously bound framebuffer on exit.
      */
     public void clear(int mask, float r, float g, float b, float a, double depthValue, int stencilValue) {
+        requireFramebuffer("clear");
         try (CgGlScope scope = CgGlState.save(FBO)) {
             bind();
             if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) CgGL.glClearColor(r, g, b, a);
@@ -765,6 +819,7 @@ public class CgFrameBuffer {
      */
     public void reattachColor(int slot, CgTexture texture) {
         if (texture == null) throw new IllegalArgumentException("texture must not be null");
+        requireFramebuffer("attach to");
         int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
         doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
@@ -782,6 +837,7 @@ public class CgFrameBuffer {
      * @param glTarget    GL texture target (e.g. {@code GL_TEXTURE_CUBE_MAP_POSITIVE_X + face})
      */
     public void reattachColorRaw(int slot, int glTextureId, int glTarget) {
+        requireFramebuffer("attach to");
         int glAttach = CgGL.GL_COLOR_ATTACHMENT0 + slot;
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
         doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, glTarget, glTextureId, 0);
@@ -796,7 +852,7 @@ public class CgFrameBuffer {
      */
     public void reattachDepth(CgTexture texture) {
         if (depthAttachment == null) throw new IllegalStateException("FBO '" + name + "' has no depth attachment");
-        
+
         int glAttach = depthAttachment.getType().glAttachmentPoint(0);
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
         doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, glAttach, CgGL.GL_TEXTURE_2D, texture.getId(), 0);
@@ -814,6 +870,7 @@ public class CgFrameBuffer {
      * @param newHeight new height in pixels (must be &gt; 0)
      */
     public void resize(int newWidth, int newHeight) {
+        requireFramebuffer("resize");
         freeGlResources();
         this.width  = newWidth;
         this.height = newHeight;

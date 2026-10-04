@@ -2,9 +2,12 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgShapeTable;
+import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgBindingTable;
@@ -14,6 +17,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgEffectTree;
 import com.crystalgraphics.render.property.CgSpatialTree;
+import com.crystalgraphics.util.CgBufferUtils;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
@@ -185,6 +189,9 @@ public final class CgRecording {
                                @Nullable CgRenderState state, CgOrder order) {
         requireOpen();
         if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
+        if (target.isVolume()) {
+            throw new IllegalArgumentException(target + " is a volume: kernels write it as a 3d image, and no pass draws into one");
+        }
         String name = level == 0 ? "raster " + target.name() : "raster " + target.name() + " level " + level;
         CgRasterPass pass = new CgRasterPass(this, name, target, level, load, block(constants), state, order);
         add(pass);
@@ -215,6 +222,7 @@ public final class CgRecording {
         if (from.kind() == CgGraphTexture.Kind.CURRENT || to.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("a copy names its framebuffers; the current target has none");
         }
+        if (from.isVolume() || to.isVolume()) throw new IllegalArgumentException("a copy is between 2D textures, not volumes");
         CgPass.Copy copy = new CgPass.Copy(from, x, y, w, h, to, tx, ty, tw, th, linear);
         add(copy);
         read(copy, from, CgAccess.COPY_READ);
@@ -285,28 +293,115 @@ public final class CgRecording {
      * attachment back to the CPU, as its texture type ({@link CgReadback#pixels}): rows bottom first, tightly packed.
      */
     public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink) {
+        return readback(texture, level, x, y, 0, w, h, 1, sink);
+    }
+
+    /**
+     * Reads a {@code w} x {@code h} x {@code d} box at {@code (x, y, z)} of a volume back to the CPU: slices from
+     * {@code z} up, each as the 2D form answers a region. On a 2D texture {@code z} is 0 and {@code d} 1.
+     *
+     * <pre>{@code
+     * recording.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));   // slices 40 and 41
+     * }</pre>
+     */
+    public CgRequest readback(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
+                              CgReadback.Sink sink) {
         requireOpen();
         if (texture.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
         }
+        region(texture, level, x, y, z, w, h, d, "a readback");
+        CgRequest request = new CgRequest("readback " + texture.name());
+        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, z, w, h, d, sink, request);
+        add(pass);
+        read(pass, texture, CgAccess.COPY_READ);
+        return request;
+    }
+
+    /**
+     * Writes {@code data}'s remaining bytes, copied now, into a {@code w} x {@code h} region at {@code (x, y)} of level
+     * {@code level} of {@code texture}'s first colour attachment: rows bottom first, tightly packed, as its texture type,
+     * which is how {@link #readback(CgGraphTexture, int, int, int, int, int, CgReadback.Sink)} answers them. The rest
+     * keeps what it held.
+     *
+     * <pre>{@code
+     * recording.update(heights, 0, 32, 0, 16, 16, slab);   // a 16x16 R32F slab at (32, 0)
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code data} holds {@code w * h * CgReadback.pixelBytes(type)} bytes, or it throws.</li>
+     *   <li>Written once when a frame executes again, as an {@link #upload} is.</li>
+     * </ul>
+     */
+    public CgRequest update(CgGraphTexture texture, int level, int x, int y, int w, int h, ByteBuffer data) {
+        return update(texture, level, x, y, 0, w, h, 1, data);
+    }
+
+    /**
+     * Writes a {@code w} x {@code h} x {@code d} box at {@code (x, y, z)} of a volume, laid out as
+     * {@link #readback(CgGraphTexture, int, int, int, int, int, int, int, CgReadback.Sink)} answers one: what a window
+     * scrolling through a world uploads, a slab of new slices. On a 2D texture {@code z} is 0 and {@code d} 1.
+     *
+     * <pre>{@code
+     * recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 slices from 32, R8UI: 128 * 96 * 16 bytes
+     * }</pre>
+     */
+    public CgRequest update(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, ByteBuffer data) {
+        requireOpen();
+        CgFrameBufferFormat format = region(texture, level, x, y, z, w, h, d, "an update");
+        if (format == null || format.isMultisampled()) {
+            throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known type to update");
+        }
+        CgTextureType type = format.getColorSlot(0);
+        long want = (long) w * h * d * CgReadback.pixelBytes(type);
+        if (data.remaining() != want) {
+            throw new IllegalArgumentException(w + "x" + h + "x" + d + " of " + type + " is " + want + " bytes, not "
+                    + data.remaining());
+        }
+        byte[] bytes = new byte[data.remaining()];
+        data.duplicate().get(bytes);
+        int pixelFormat = type.glBaseFormat, pixelType = type.glType;
+        return upload(texture, target -> {
+            if (target.getColorTexture(0) instanceof CgTexture2D colour) {
+                colour.uploadRegion(level, x, y, w, h, texels(bytes), pixelFormat, pixelType);
+            } else if (target.getColorTexture(0) instanceof CgTexture3D volume) {
+                volume.uploadRegion(level, x, y, z, w, h, d, texels(bytes), pixelFormat, pixelType);
+            } else {
+                throw new IllegalStateException(texture + "'s attachment 0 is no texture the engine owns");
+            }
+        });
+    }
+
+    /** An update's bytes on the render thread, where every upload runs: one buffer serves them all. */
+    private static ByteBuffer texels;
+
+    private static ByteBuffer texels(byte[] bytes) {
+        if (texels == null || texels.capacity() < bytes.length) texels = CgBufferUtils.createByteBuffer(Math.max(bytes.length, 4096));
+        texels.clear();
+        texels.put(bytes).flip();
+        return texels;
+    }
+
+    /** The format of {@code texture}, null where unknown, after checking the box lies in level {@code level}. */
+    @Nullable
+    private static CgFrameBufferFormat region(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d,
+                                              String what) {
+        if (texture.kind() == CgGraphTexture.Kind.CURRENT) throw new IllegalArgumentException("the current target is no texture");
         if (level < 0 || level >= texture.getLevels()) {
             throw new IllegalArgumentException(texture + " has " + texture.getLevels() + " levels, not level " + level);
         }
         CgFrameBufferFormat format = texture.desc() != null ? texture.desc().format()
                 : texture.framebuffer() != null ? texture.framebuffer().getFormat() : null;
         if (format != null && (format.getColorSlot(0) == null || format.isColorRenderbuffer(0))) {
-            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0 to read");
+            throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
         }
         int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
-        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > lw || y + h > lh) {
-            throw new IllegalArgumentException("a readback of " + w + "x" + h + " at " + x + "," + y + " in level " + level
-                    + " of " + texture + ", " + lw + "x" + lh);
+        int ld = texture.getDepth();
+        if (x < 0 || y < 0 || z < 0 || w <= 0 || h <= 0 || d <= 0 || x + w > lw || y + h > lh || z + d > ld) {
+            throw new IllegalArgumentException(what + " of " + w + "x" + h + "x" + d + " at " + x + "," + y + "," + z
+                    + " in level " + level + " of " + texture + ", " + lw + "x" + lh + "x" + ld);
         }
-        CgRequest request = new CgRequest("readback " + texture.name());
-        CgPass.Readback pass = new CgPass.Readback(texture, level, x, y, w, h, sink, request);
-        add(pass);
-        read(pass, texture, CgAccess.COPY_READ);
-        return request;
+        return format;
     }
 
     /** Writes into {@code target} on the render thread, before any later reader. */
@@ -355,6 +450,41 @@ public final class CgRecording {
         CgPass.Release pass = new CgPass.Release(requested);
         add(pass);
         write(pass, requested, 0);
+    }
+
+    /**
+     * A persistent or history buffer at another size: a new handle of {@code buffer}'s kind and name, made at
+     * {@code desc}, holding what each of {@code buffer}'s versions held up to the smaller of the two sizes; then
+     * {@code buffer} is released. A pool grows this way when the CPU's count outgrows it, and shrinks on a quiet frame.
+     *
+     * <pre>{@code
+     * if (needed > capacity) {
+     *     capacity = sizeClass(needed);
+     *     particles = recording.resize(particles, CgBufferDesc.elements(capacity, 64, STORAGE, COPY));
+     *     particleMaterial.buffer("PARTICLES", particles);   // a binding of the old handle reads nothing
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Use the handle it answers from here on, in this recording and every later one; the old one is gone once
+     *       this recording executes.</li>
+     *   <li>Past the old size the new storage holds whatever the driver gives, as new storage does.</li>
+     *   <li>Both descs need {@code COPY}, since the bytes move by copies.</li>
+     * </ul>
+     */
+    public CgGraphBuffer resize(CgGraphBuffer buffer, CgBufferDesc desc) {
+        requireOpen();
+        boolean history = buffer.kind() == CgGraphBuffer.Kind.HISTORY;
+        if (!history && buffer.kind() != CgGraphBuffer.Kind.PERSISTENT || buffer.isPreviousVersion()) {
+            throw new IllegalArgumentException("only a persistent or history buffer is resized: " + buffer);
+        }
+        CgGraphBuffer next = history ? CgGraphBuffer.history(buffer.name(), desc) : CgGraphBuffer.persistent(buffer.name(), desc);
+        long bytes = Math.min(buffer.size(), desc.bytes());
+        // Each copy into a history makes its next version, so the previous version goes first and stays previous.
+        if (history) copy(buffer.previous(), 0, next, 0, bytes);
+        copy(buffer, 0, next, 0, bytes);
+        release(buffer);
+        return next;
     }
 
     /** Frees a persistent or history buffer's storage once everything before it used it. */

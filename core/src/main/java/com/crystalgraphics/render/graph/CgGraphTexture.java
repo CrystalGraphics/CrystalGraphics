@@ -18,13 +18,15 @@ import java.util.Arrays;
  * CgGraphTexture layer = CgGraphTexture.transientTexture("layer", new CgTextureDesc(w, h, CgTextureDesc.RGBA8));
  * CgGraphTexture view  = CgGraphTexture.requested("preview", desc);               // kept across frames
  * CgGraphTexture here  = CgGraphTexture.current();                                // what is bound when execution begins
+ * CgGraphTexture grid  = CgGraphTexture.requested("grid", CgTextureDesc.volume(64, 64, 64, r16f));   // 3D
  * }</pre>
  *
  * <ul>
  *   <li><b>Transient</b>: storage from a pool for the passes between its first and last use in one frame; its
  *       contents do not survive the frame. Two that never live at once may share storage.</li>
  *   <li><b>Requested</b>: storage made on first use and kept until {@code recording.release(texture)}.</li>
- *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's.</li>
+ *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's:
+ *       a volume as a {@code 3d} image, any other as a {@code 2d} one. A draw samples a volume as a {@code sampler3D}.</li>
  *   <li>Binding one outside the passes that resolve it binds nothing. {@link #delete()} refuses: the graph owns it.</li>
  * </ul>
  */
@@ -207,6 +209,16 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return framebuffer != null ? framebuffer.getHeight() : desc != null ? desc.height() : 0;
     }
 
+    /** Whether it is a 3D texture: its description says so, or an imported framebuffer is a volume's storage. */
+    public boolean isVolume() {
+        return desc != null ? desc.isVolume() : framebuffer != null && framebuffer.isVolume();
+    }
+
+    /** A volume's slices; 1 for a 2D texture. */
+    public int getDepth() {
+        return desc != null ? desc.depth() : framebuffer != null ? framebuffer.getDepth() : 1;
+    }
+
     /** Its colour's mip levels: the description's, or an imported framebuffer's. */
     @Override
     public int getLevels() {
@@ -256,12 +268,16 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
         @Override
         public void bind() {
-            if (texture.color() instanceof CgTexture2D color) color.bindLevel(level);
+            CgTexture color = texture.color();
+            if (color instanceof CgTexture2D flat) flat.bindLevel(level);
+            else if (color != null) color.bind();   // a volume: one level, the whole texture
         }
 
         @Override
         public void bind(int unit) {
-            if (texture.color() instanceof CgTexture2D color) color.bindLevel(unit, level);
+            CgTexture color = texture.color();
+            if (color instanceof CgTexture2D flat) flat.bindLevel(unit, level);
+            else if (color != null) color.bind(unit);
         }
 
         @Override

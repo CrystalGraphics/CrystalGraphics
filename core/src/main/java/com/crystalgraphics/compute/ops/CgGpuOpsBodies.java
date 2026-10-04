@@ -48,6 +48,32 @@ final class CgGpuOpsBodies {
         return file;
     }
 
+    static CgCompute expand(CgCompute file) {
+        file.kernel("ExpandTotal").cpu(d -> {
+            if (d.first() != 0 || d.end() == 0) return;
+            CgCpuBuffer lengths = d.buffer("LENGTHS"), starts = d.buffer("STARTS");
+            int n = count(d);
+            d.buffer("TOTAL").setInt(d.propertyInt("_TotalAt"), n == 0 ? 0 : starts.getInt(n - 1) + lengths.getInt(n - 1));
+        });
+        file.kernel("Expand").cpu(d -> {
+            CgCpuBuffer starts = d.buffer("STARTS"), out = d.buffer("OUT");
+            int n = count(d), total = d.buffer("TOTAL").getInt(d.propertyInt("_TotalAt")), elements = d.propertyInt("_Elements");
+            if (!below(total, elements)) total = elements;
+            for (int j = d.first(); j < d.end(); j++) {
+                if (!below(j, total)) continue;
+                int lo = 0, hi = n;
+                while (hi - lo > 1) {
+                    int mid = (lo + hi) >>> 1;
+                    if (Integer.compareUnsigned(starts.getInt(mid), j) <= 0) lo = mid;
+                    else hi = mid;
+                }
+                out.setInt(j, 0, lo);
+                out.setInt(j, 1, j - starts.getInt(lo));
+            }
+        });
+        return file;
+    }
+
     static CgCompute scan(CgCompute file) {
         file.kernel("ReduceStep").cpu(d -> {
             Fold f = new Fold(d);
@@ -145,7 +171,7 @@ final class CgGpuOpsBodies {
     static CgCompute cull(CgCompute file) {
         file.kernel("Cull").cpu(d -> {
             CgCpuBuffer in = d.buffer("INSTANCES"), out = d.appended("OUT");
-            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels");
+            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels"), first = d.propertyInt("_First");
             float[] place = columns(d, "_Place", 4), normal = columns(d, "_PlaceNormal", 3);
             float[] clip = columns(d, "_Clip", 0), planes = new float[24], heights = new float[8];
             for (int i = 0; i < 6; i++) for (int c = 0; c < 4; c++) planes[i * 4 + c] = d.property("_Plane" + i, c);
@@ -156,7 +182,7 @@ final class CgGpuOpsBodies {
             float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
             for (int e = d.first(); e < d.end(); e++) {
                 if (!below(e, n)) continue;
-                for (int w = 0; w < 48; w++) r[w] = in.getFloat(e, w);
+                for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + e, w);
                 for (int c = 0; c < 4; c++) {
                     for (int row = 0; row < 4; row++) {
                         m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]

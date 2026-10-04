@@ -14,6 +14,7 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.platform.device.command.CgAccess;
 
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
 
@@ -167,6 +168,10 @@ public final class CgDispatch {
         if (layer >= 0 && image.dimension() != CgImageDimension.D2) {
             throw new IllegalArgumentException(name + " is " + image.dimension().token + ": it binds every layer");
         }
+        if ((image.dimension() == CgImageDimension.D3) != texture.isVolume()) {
+            throw new IllegalArgumentException(name + " is a " + image.dimension().token + " image, and " + texture
+                    + (texture.isVolume() ? " is a volume: declare the image 3d" : " is 2D: bind a CgTextureDesc.volume"));
+        }
         int access = 0;
         for (CgImageAccessor a : CgImageAccessor.values()) {
             if (!uses(name + a.suffix)) continue;
@@ -190,8 +195,13 @@ public final class CgDispatch {
         pass.requireOpen();
         int unit = kernel.compute().properties().samplerUnit(name);
         if (unit < 0) throw new IllegalArgumentException(source.path() + " has no sampler property '" + name + "'");
-        samplers[unit] = texture;
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        boolean volume = graph != null ? graph.isVolume() : texture.getTarget() == CgGL.GL_TEXTURE_3D;
+        if (volume != kernel.compute().properties().isVolume(name)) {
+            throw new IllegalArgumentException("'" + name + "' samples " + (volume ? "2D, and " + texture + " is a volume"
+                    : "a sampler3D, and " + texture + " is no 3D texture"));
+        }
+        samplers[unit] = texture;
         if (graph != null) pass.recording.read(pass, graph, CgAccess.SAMPLED_READ);
         return this;
     }

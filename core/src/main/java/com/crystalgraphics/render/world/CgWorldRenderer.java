@@ -161,6 +161,7 @@ public final class CgWorldRenderer {
     private int[] countFactors = new int[64];
     /** Per draw: the object records a set of instances draws, else null, and how many of them. */
     private CgGraphBuffer[] sets = new CgGraphBuffer[64];
+    private int[] setFirsts = new int[64];
     private CgGpuCount[] setCounts = new CgGpuCount[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
@@ -371,6 +372,7 @@ public final class CgWorldRenderer {
         private CgIndirect indirectMode;
         private int indirectFactor;
         private CgGraphBuffer set;
+        private int setFirst;
         private CgGpuCount setCount;
         private final float[] meshBox = new float[6];
         /** Block and sky light; NaN block for the world's at its position. */
@@ -397,6 +399,7 @@ public final class CgWorldRenderer {
             pad = 0f;
             indirect = null;
             set = null;
+            setFirst = 0;
             setCount = null;
             blockLight = Float.NaN;
             emission = 1f;
@@ -522,7 +525,24 @@ public final class CgWorldRenderer {
          * </ul>
          */
         public Draw instances(CgGraphBuffer records, CgGpuCount count) {
+            return instances(records, 0, count);
+        }
+
+        /**
+         * {@link #instances(CgGraphBuffer, CgGpuCount)} of the records from {@code first}: many sets in one buffer, each
+         * a draw of its own range, as a pool's mesh slots are.
+         *
+         * <pre>{@code
+         * for (int s = 0; s < slots; s++) {
+         *     world.draw(meshOf[s], materialOf[s]).instances(pool, slotFirst[s], CgGpuCount.at(slotCounts, s, slotSize[s]))
+         *          .at(x, y, z).bounds(box).submit();
+         * }
+         * }</pre>
+         */
+        public Draw instances(CgGraphBuffer records, int first, CgGpuCount count) {
+            if (first < 0) throw new IllegalArgumentException("a set's first record is " + first);
             set = Objects.requireNonNull(records, "records");
+            setFirst = first;
             setCount = Objects.requireNonNull(count, "count");
             return this;
         }
@@ -699,6 +719,7 @@ public final class CgWorldRenderer {
         countModes[count] = d.indirectMode;
         countFactors[count] = d.indirectFactor;
         sets[count] = d.set;
+        setFirsts[count] = d.setFirst;
         setCounts[count] = d.setCount;
         count++;
     }
@@ -742,6 +763,7 @@ public final class CgWorldRenderer {
         countModes = Arrays.copyOf(countModes, n);
         countFactors = Arrays.copyOf(countFactors, n);
         sets = Arrays.copyOf(sets, n);
+        setFirsts = Arrays.copyOf(setFirsts, n);
         setCounts = Arrays.copyOf(setCounts, n);
         culled = Arrays.copyOf(culled, n);
         culledCounts = Arrays.copyOf(culledCounts, n);
@@ -1323,7 +1345,7 @@ public final class CgWorldRenderer {
             cullLevels[k] = CgGraphBuffer.transientBuffer("cg_world.kept",
                     CgBufferDesc.of(CgCull.MAX_LEVELS * 4L, CgBufferUsage.STORAGE, CgBufferUsage.INDIRECT));
         }
-        CgGpuOps.cull(pass, cull, sets[i], setCounts[i], cullOut[k], cullLevels[k], 0);
+        CgGpuOps.cull(pass, cull, sets[i], setFirsts[i], setCounts[i], cullOut[k], cullLevels[k], 0);
         culled[i] = cullOut[k];
         culledCounts[i] = cullLevels[k];
     }

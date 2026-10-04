@@ -139,6 +139,35 @@ public class CgComputeGraphTest {
     }
 
     @Test
+    public void aResizedHistory_isANewHandleHoldingBothVersions_andTheOldOneIsReleasedAfter() {
+        CgGraphBuffer state = CgGraphBuffer.history("state", DESC);
+        CgBufferDesc bigger = CgBufferDesc.elements(256, 16, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+        CgRecording rec = new CgRecording();
+        CgComputePass sim = rec.compute("sim");
+        sim.dispatch(step, 64).bind("IN", state).bind("OUT", state);
+        sim.end();
+        CgGraphBuffer grown = rec.resize(state, bigger);
+        assertNotSame(state, grown);
+        assertEquals(CgGraphBuffer.Kind.HISTORY, grown.kind());
+        assertEquals(bigger.bytes(), grown.size());
+        assertEquals(List.of("sim", "copy state.previous -> state", "copy state -> state", "release state"), names(build(rec)));
+    }
+
+    @Test
+    public void aResizedPersistentBuffer_copiesTheSmallerSize_andOnlyKeptBuffersResize() {
+        CgGraphBuffer counts = CgGraphBuffer.persistent("counts", DESC);
+        CgBufferDesc smaller = CgBufferDesc.elements(16, 16, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
+        CgRecording rec = new CgRecording();
+        rec.fill(counts, 0);
+        CgGraphBuffer shrunk = rec.resize(counts, smaller);
+        assertEquals(CgGraphBuffer.Kind.PERSISTENT, shrunk.kind());
+        assertEquals(List.of("fill counts", "copy counts -> counts", "release counts"), names(build(rec)));
+        CgRecording other = new CgRecording();
+        assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.transientBuffer("t", DESC), DESC));
+        assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.history("h", DESC).previous(), DESC));
+    }
+
+    @Test
     public void aReadbackKeepsTheTransientWriterItReads_andIsNeverCulled() {
         CgGraphBuffer scratch = CgGraphBuffer.transientBuffer("scratch", DESC);
         CgRecording rec = new CgRecording();
@@ -337,6 +366,35 @@ public class CgComputeGraphTest {
         assertThrows(IllegalArgumentException.class, () -> d.bind("DST", vertices));
         assertThrows(IllegalArgumentException.class, () -> new CgRecording().compute("i").dispatchIndirect(produce,
                 CgGraphBuffer.persistent("args", DESC), 0));
+    }
+
+    @Test
+    public void aVolumeBindsOnlyAs3d_andNothingDrawsIntoIt() {
+        CgCompute images = CgCompute.fromSource("test:volumes", """
+                #pragma kernel Flat 8 8 image
+                #pragma kernel Deep 4 4 4 image
+                Properties { _Grid ("Grid", sampler3D) = "black" }
+                Images {
+                    FLAT ("Flat", r32f, writeonly)
+                    DEEP ("Deep", r32f, writeonly, 3d)
+                }
+                void Flat() { FLAT_WRITE(vec4(0.0)); }
+                void Deep() { DEEP_WRITE(textureLod(_Grid, vec3(0.5), 0.0)); }
+                """);
+        CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("volumes").color(0, CgTextureType.R32F).build();
+        CgGraphTexture volume = CgGraphTexture.transientTexture("volume", CgTextureDesc.volume(8, 8, 8, r32f));
+        CgGraphTexture grid = CgGraphTexture.transientTexture("grid", CgTextureDesc.volume(4, 4, 4, r32f));
+        CgGraphTexture flat = CgGraphTexture.transientTexture("flat", new CgTextureDesc(8, 8, r32f));
+        CgComputePass pass = new CgRecording().compute("volumes");
+        pass.dispatch(images.kernel("Deep"), 8, 8, 8).image("DEEP", volume).texture("_Grid", grid);
+
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).image("DEEP", flat));
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", volume));
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).texture("_Grid", flat));
+        assertThrows(IllegalArgumentException.class,
+                () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
+        assertThrows(IllegalArgumentException.class, () -> CgTextureDesc.volume(8, 8, 1, r32f));
+        assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2));
     }
 
     // ── The executor's walk, GL-free ──────────────────────────────────────────

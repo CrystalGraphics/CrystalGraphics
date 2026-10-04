@@ -30,23 +30,31 @@ public final class CgPropertyBlock {
     private final CgBufferFormat format;
     private final float[] defaults;
     private final List<String> samplers;
+    /** The {@code sampler3D} ones. */
+    private final List<String> volumes;
 
-    private CgPropertyBlock(@Nullable CgBufferFormat format, float[] defaults, List<String> samplers) {
+    private CgPropertyBlock(@Nullable CgBufferFormat format, float[] defaults, List<String> samplers, List<String> volumes) {
         this.format = format;
         this.defaults = defaults;
         this.samplers = samplers;
+        this.volumes = volumes;
     }
 
     public static CgPropertyBlock of(List<CgMaterialProperty> properties) {
         CgMaterialProperties all = new CgMaterialProperties(properties);
-        List<String> samplers = new ArrayList<>();
-        for (CgMaterialProperty p : all.all()) if (p.getType().isSampler()) samplers.add(p.getName());
-        if (!all.hasUboProps()) return new CgPropertyBlock(null, new float[0], Collections.unmodifiableList(samplers));
+        List<String> samplers = new ArrayList<>(), volumes = new ArrayList<>();
+        for (CgMaterialProperty p : all.all()) {
+            if (p.getType().isSampler()) samplers.add(p.getName());
+            if (p.getType() == CgMaterialProperty.Type.SAMPLER3D) volumes.add(p.getName());
+        }
+        samplers = Collections.unmodifiableList(samplers);
+        volumes = Collections.unmodifiableList(volumes);
+        if (!all.hasUboProps()) return new CgPropertyBlock(null, new float[0], samplers, volumes);
         CgBufferFormat format = all.buildUboFormat();
         CgBufferWriter writer = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
         all.writeUboProps(writer);
         float[] defaults = Arrays.copyOf(writer.rawData(), format.getFloatCount());
-        return new CgPropertyBlock(format, defaults, Collections.unmodifiableList(samplers));
+        return new CgPropertyBlock(format, defaults, samplers, volumes);
     }
 
     /** Whether there are values to bind: samplers alone need no block. */
@@ -116,5 +124,10 @@ public final class CgPropertyBlock {
     /** The unit sampler {@code name} is read from, or -1. */
     public int samplerUnit(String name) {
         return samplers.indexOf(name);
+    }
+
+    /** Whether sampler {@code name} is a {@code sampler3D}. */
+    public boolean isVolume(String name) {
+        return volumes.contains(name);
     }
 }

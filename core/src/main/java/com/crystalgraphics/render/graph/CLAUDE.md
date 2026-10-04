@@ -26,6 +26,8 @@ builder.recycle(frame);
 versions, every write making the next) or imported — and on graph textures as storage images. A dispatch's bindings
 say what it reads and writes, taken from the accessors its kernel uses, so ordering, culling and lifetimes come from
 them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write.
+`resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
+capacity.
 
 ```java
 CgGraphBuffer state = CgGraphBuffer.history("particles", CgBufferDesc.elements(n, 32, CgBufferUsage.STORAGE));
@@ -59,6 +61,29 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
   reads it at LOD 0 and `textureSize(s, 0)` is the level's. The executor unpins after the pass, and binding the
   texture whole unpins it too.
 - For ordering a level view reads the whole texture: the pass runs after every pass writing it before.
+
+**Volumes** (gpu-compute C11, E3). A 3D graph texture (`CgTextureDesc.volume(w, h, d, format)`): kernels write it as a
+`3d` image, kernels and materials sample it as a `sampler3D`, and boxes of it are updated and read back. Its storage is
+`CgFrameBuffer.createVolume`, a `CgTexture3D` and no framebuffer object, since nothing draws into it.
+
+```java
+CgFrameBufferFormat r8ui = CgFrameBufferFormat.builder("voxels").color(0, CgTextureType.R8UI).build();
+CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, r8ui));
+pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);                 // Images { VOXELS (..., r8ui, writeonly, 3d) }
+step.dispatch(collide, n).texture("_Voxels", voxels);                       // Properties { _Voxels (..., sampler3D) }
+rec.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);                         // 16 new slices from z 32
+rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // slices 40 and 41
+```
+
+- A `3d` image takes a volume and a `2d` one anything else, and a `sampler3D` property a volume, or the dispatch throws;
+  a raster pass into a volume and a copy of one throw.
+- One level, one colour attachment. Its format's type decides the filter: linear, nearest for an integer type, clamped.
+- Below compute an `image` kernel writes a volume as a draw per slice; one that loads the volume it writes is refused
+  there, as for any image other than 2D. The CPU tier reads a volume whole and writes it whole.
+- A readback attaches each slice in turn to one framebuffer bound for reading (`CgReadback.slices`): on a device a
+  slice of a 3D image is no draw target, but a copy reads it at its z.
+- `--mode=volumes` is the gate: two volumes filled, spread across slices and sampled, a third updated by boxes, every
+  texel read back and checked, on `gl` at every tier, on both downlevel contexts and on `vulkan`.
 
 **More than one colour attachment.** A graph texture whose format has `color(1, ...)` and up is drawn into whole by a
 raster pass: every slot is a draw buffer (`CgFrameBuffer` sets them at creation), so a fragment's `: RT1` output lands

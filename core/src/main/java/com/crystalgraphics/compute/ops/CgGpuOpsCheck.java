@@ -145,12 +145,13 @@ public final class CgGpuOpsCheck {
     /** One count: its inputs, every op's output buffer, and what each must hold. */
     private static final class Case {
         final String name;
-        final int n, capacity, words;
+        final int n, capacity, words, outElements;
         /** The count's word on the GPU, -1 for a fixed count. */
         final int countWord;
-        final int[] uints, ints, floats, flags, points, cells;
-        final int gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, count, fill, iota, copy, args, results, scanA, scanB,
-                scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts, cellKeys, cellValues, bins;
+        final int[] uints, ints, floats, flags, points, cells, lengths;
+        final int gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, gpuLengths, count, fill, iota, copy, args, results,
+                scanA, scanB, scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts, cellKeys,
+                cellValues, bins, expanded;
 
         Case(String name, int n, int capacity, int countWord) {
             this.name = name;
@@ -158,12 +159,14 @@ public final class CgGpuOpsCheck {
             this.capacity = capacity;
             this.countWord = countWord;
             words = capacity + PAD;
+            outElements = words + n / 4;   // from 300 rows up, fewer than they expand to
             uints = new int[words];
             ints = new int[words];
             floats = new int[words];
             flags = new int[words];
             points = new int[4 * words];
             cells = new int[words];
+            lengths = new int[words];
             for (int i = 0; i < 4 * words; i++) {
                 points[i] = Float.floatToRawIntBits((CgRng.rng(capacity, i, 1, 0) >>> 12) / 4099f - 500f);
             }
@@ -174,12 +177,14 @@ public final class CgGpuOpsCheck {
                 int keep = CgRng.rng(capacity, i, 0, 3);
                 flags[i] = Integer.remainderUnsigned(keep, 3) == 0 ? keep | 1 : 0;
                 cells[i] = (CgRng.rng(capacity, i, 0, 4) & 0xFFFFF000) | Integer.remainderUnsigned(CgRng.rng(capacity, i, 0, 5), 700);
+                lengths[i] = Integer.remainderUnsigned(CgRng.rng(capacity, i, 0, 6), 4);
             }
             gpuUints = buffer(uints);
             gpuInts = buffer(ints);
             gpuFloats = buffer(floats);
             gpuFlags = buffer(flags);
             gpuPoints = buffer(points);
+            gpuLengths = buffer(lengths);
             count = buffer(new int[] {SENTINEL, countWord, SENTINEL});
             fill = buffer(words);
             iota = buffer(words);
@@ -198,10 +203,12 @@ public final class CgGpuOpsCheck {
             cellKeys = buffer(head(cells));
             cellValues = buffer(head(words(words, e -> e)));
             bins = buffer(64);
+            expanded = buffer(2 * outElements);
         }
 
         void record(CgComputePass pass) {
-            CgGpuCount at = countWord < 0 ? CgGpuCount.of(n) : CgGpuCount.at(imported("count", count, 3), 1, capacity);
+            CgGraphBuffer counts = imported("count", count, 3);
+            CgGpuCount at = countWord < 0 ? CgGpuCount.of(n) : CgGpuCount.at(counts, 1, capacity);
             CgGraphBuffer u = imported("uints", gpuUints, words), i = imported("ints", gpuInts, words),
                     f = imported("floats", gpuFloats, words), r = imported("results", results, RESULTS);
             CgGpuOps.fill(pass, imported("fill", fill, words), 7, at);
@@ -227,6 +234,8 @@ public final class CgGpuOpsCheck {
             CgGpuOps.sort(pass, 12, Order.ASCENDING, imported("cellKeys", cellKeys, words),
                     imported("cellValues", cellValues, words), at);
             CgGpuOps.histogram(pass, u, at, imported("bins", bins, 64), BINS, 26);
+            CgGpuOps.expand(pass, imported("lengths", gpuLengths, words), at,
+                    imported("expanded", expanded, 2 * outElements), counts, 2);
         }
 
         void expect(List<String> failures) {
@@ -279,6 +288,19 @@ public final class CgGpuOpsCheck {
             Arrays.fill(binWords, SENTINEL);
             System.arraycopy(histogram, 0, binWords, 0, BINS);
             expectWords(failures, name + " histogram", read(bins, 64), binWords);
+
+            int[] starts = scan(lengths, n, sum, 0, false);
+            int total = n == 0 ? 0 : starts[n - 1] + lengths[n - 1];
+            expectWords(failures, name + " expand total", read(count, 3), new int[] {SENTINEL, countWord, total});
+            int[] pairs = new int[2 * outElements];
+            Arrays.fill(pairs, SENTINEL);
+            for (int r = 0, j = 0; r < n && j < outElements; r++) {
+                for (int k = 0; k < lengths[r] && j < outElements; k++, j++) {
+                    pairs[2 * j] = r;
+                    pairs[2 * j + 1] = k;
+                }
+            }
+            expectWords(failures, name + " expand", read(expanded, 2 * outElements), pairs);
         }
 
         /** {@code of}'s first {@code n} words, then sentinels: what a sort may reorder, and what it must not touch. */
@@ -326,9 +348,9 @@ public final class CgGpuOpsCheck {
         }
 
         void delete() {
-            for (int b : new int[] {gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, count, fill, iota, copy, args,
-                    results, scanA, scanB, scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts,
-                    cellKeys, cellValues, bins}) {
+            for (int b : new int[] {gpuUints, gpuInts, gpuFloats, gpuFlags, gpuPoints, gpuLengths, count, fill, iota, copy,
+                    args, results, scanA, scanB, scanC, indices, values, sortedKeys, sortedValues, sortedFloats, sortedInts,
+                    cellKeys, cellValues, bins, expanded}) {
                 CgGL.glDeleteBuffers(b);
             }
         }

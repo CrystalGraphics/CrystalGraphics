@@ -1550,9 +1550,23 @@ public final class CgGL {
     // Buffer mapping
     // =========================================================================
 
-    /** @return the mapped buffer, or {@code null} if mapping fails */
+    /**
+     * Maps {@code length} bytes of the bound buffer from {@code offset}: answered at position 0 with its limit at
+     * {@code length}, or {@code null} if mapping fails. {@code oldBuffer}, an earlier answer offered so its wrapper can
+     * be reused, is cleared first.
+     *
+     * <pre>{@code
+     * ByteBuffer mapped = CgGL.glMapBufferRange(GL_COPY_READ_BUFFER, 0, bytes, GL_MAP_READ_BIT, last);
+     * last = mapped;
+     * }</pre>
+     */
     public static ByteBuffer glMapBufferRange(int target, long offset, long length, int access, ByteBuffer oldBuffer) {
-        return gl().glMapBufferRange(target, offset, length, access, oldBuffer);
+        // LWJGL 3 reuses the wrapper when its address plus its position is the new mapping's: one written through to its end
+        // matched the range after it, and the next write went into the old range.
+        if (oldBuffer != null) oldBuffer.clear();
+        ByteBuffer mapped = gl().glMapBufferRange(target, offset, length, access, oldBuffer);
+        if (mapped != null) mapped.clear();   // LWJGL 2 hands the old wrapper back as its caller left it
+        return mapped;
     }
 
     public static boolean glUnmapBuffer(int target) {
