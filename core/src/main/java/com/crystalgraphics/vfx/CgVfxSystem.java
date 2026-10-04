@@ -122,10 +122,10 @@ public final class CgVfxSystem {
 
     /**
      * Layers whose shader path contains any of these draw nothing, in every system: to see or time a frame without
-     * them. {@code -Dcrystalgraphics.vfx.skip=haze,body_glow} sets it at launch and {@link #skip(String...)} live.
+     * them. {@code -Dcrystalgraphics.vfx.skip=haze,body_light} sets it at launch and {@link #skip(String...)} live.
      *
      * <pre>{@code
-     * CgVfxSystem.skip("body_glow", "orb_glow");   // the beams' halos off
+     * CgVfxSystem.skip("body_light", "orb_light");  // the beams' light pools off
      * CgVfxSystem.skip();                           // everything back
      * }</pre>
      */

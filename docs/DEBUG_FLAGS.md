@@ -83,8 +83,9 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # built yet and runs cpu, logged once
 -Dcrystalgraphics.vfx.threads=1                      # threads the CPU path runs emitters on, the render thread one of
                                                      # them; one per core by default, 1 for all on the render thread
--Dcrystalgraphics.vfx.skip=body_glow,haze            # layers whose shader path contains any of these draw nothing:
-                                                     # what a frame's GPU time is spent on, one profile per group
+-Dcrystalgraphics.vfx.skip=body_light,haze           # layers whose shader path contains any of these draw nothing:
+                                                     # what a frame's GPU time is spent on, one profile per group;
+                                                     # CgVfxSystem.skip live
 -Dcrystalgraphics.vfx.coarseVolumes=true            # measurement: volume layers on a 12x24 sphere, not 48x96
 -Dcrystalgraphics.vfx.sharedDistortion=true         # measurement: distortion layers after every effect, one copy
 -Dcrystalgraphics.vfx.particleStep=1                 # ticks a particle step spans: 2 by default (particles at 60 Hz,

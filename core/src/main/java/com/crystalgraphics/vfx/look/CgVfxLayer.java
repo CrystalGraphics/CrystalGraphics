@@ -37,11 +37,11 @@ public final class CgVfxLayer {
      * by distance alone, so two tube layers sharing one interleave chunk by chunk and never instance.
      *
      * <p>Layers that bend the scene ({@link #ORDER_DISTORTION}) write the world renderer's Distortion pass and bend what
-     * sorts before them: smoke, light and glow volumes. {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and
+     * sorts before them: smoke and light pools. {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and
      * {@link #ORDER_CORE} are marked {@code Draw.afterDistortion}, so their own haze never smears a bright body into the
      * air round it (as a fire in Unreal draws after its distortion), while a nearer effect's haze still bends them.</p>
      */
-    public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2, ORDER_VOLUME = 3;
+    public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2;
     /**
      * Layers that bend the scene behind them (heat haze, a shock front), through a Distortion pass: every haze of the
      * frame adds into one offset target, applied once. A haze also leaves its own hot body unbent.
@@ -175,7 +175,7 @@ public final class CgVfxLayer {
 
         /**
          * Draws each chunk of a tube layer on a sphere around it rather than along it, for a shader that sums the light
-         * of the chunk's own rings ({@code vfx/beam/body_glow.shader}): a sphere's far wall covers each pixel once, which a
+         * of the chunk's own rings ({@code vfx/beam/body_light.shader}): a sphere's far wall covers each pixel once, which a
          * bent tube's does not, so the chunks add up to the whole with nothing counted twice. The radius is then how far
          * the light reaches, in the rings' radii.
          */
