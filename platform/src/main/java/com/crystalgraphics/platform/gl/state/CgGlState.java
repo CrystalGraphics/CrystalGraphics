@@ -51,9 +51,12 @@ public final class CgGlState {
      *
      * <p>For the boundaries that are not scopes: frame start, render-pass entry, context creation, resource
      * reload, and any code that resets GL state wholesale with raw GL that {@link CgGL} cannot see.</p>
+     *
+     * <p>Forgets nothing where the provider says the host keeps the shadow
+     * ({@link CgGlStateProvider#hostKeepsShadow}); raw GL there goes inside {@link #hostForeign}.</p>
      */
     public static void invalidateAllIfPresent() {
-        manager.invalidateAll();
+        manager.invalidateAtBoundary();
     }
 
     /** Discards the shadow. Call on GL context destruction — a shadow describes exactly one context. */
