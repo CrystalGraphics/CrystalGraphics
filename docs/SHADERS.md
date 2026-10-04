@@ -912,8 +912,10 @@ captured by transform feedback; a `scatter` kernel is points blended into a targ
   `NAME_ADD` **whose result is used** is refused, since a blend answers nothing.
 - Refused, by name: an appended element wider than 64 words, a cube image, an SNORM image written, and reading two
   levels of the texture a kernel writes. Reading one level while writing another works.
-- Each buffer a dispatch writes lands through one read-back, which costs the driver 15-70 µs of CPU: see the cost
-  table below.
+- In a frame graph, what a dispatch writes stays in its target while only lowered kernels read it, and lands in the
+  buffer through one read-back (15-70 µs of driver CPU) before anything else reads it: a draw, a CPU body, a fill or a
+  copy, a callback, the end of the execution. Ops chained in one graph land only what leaves them; a dispatch outside a
+  graph lands at once.
 
 **Every tier is asked at a kernel's first record, on any machine**: the first `dispatch` of it, or its first
 `program()`, asks the form G43, G40 and G33 would choose, and compiles the builtins it reaches at each tier's GLSL
@@ -1023,18 +1025,18 @@ by an id it carries, never its slot, or compaction reshuffles its numbers.
 
 | Op | compute (G43) | lowered (G40, G33) |
 |---|---|---|
-| fill, iota, copy | 0.02-0.04 | 0.08-0.15 |
-| reduce | 0.03 | 0.4-0.5 |
-| scan, compact | 0.08, 0.11 | 0.7, 1.0 |
-| bounds | 0.29 | 2.7 |
-| histogram, 64 bins | 0.01 | 0.44 |
-| sort, 32 bits | 0.42 | 12 |
-| downsample, blur | 0.03-0.53 | 0.16-0.55 |
+| fill, iota, copy | 0.02-0.04 | 0.08-0.09 |
+| reduce | 0.03 | 0.25 |
+| scan, compact | 0.08, 0.11 | 0.39, 0.64 |
+| bounds | 0.29 | 1.3 |
+| histogram, 64 bins | 0.01 | 0.41 |
+| sort, 32 bits | 0.42 | 8.0 |
+| downsample, blur | 0.03-0.53 | 0.08-0.45 |
 
-Lowered, each buffer a dispatch writes lands through one `glReadPixels`, which costs this driver 15-70 µs of CPU:
-0.1-1 ms per op, and 7 ms for a 32-bit sort, whose every digit pass lands several buffers. The CPU tier takes 3-19 ms
-for the buffer ops and 360 ms for a 32-bit sort. **Below compute, sort fewer bits**: a depth key quantised to 16 bits
-sorts in four passes, not eight.
+Lowered, an op run alone lands its result once, a `glReadPixels` costing this driver 15-70 µs of CPU, and its CPU is
+0.1-0.5 ms; a 32-bit sort takes 3.2 ms of CPU, its eighty dispatches' draws rather than landing. The CPU tier takes
+3-19 ms for the buffer ops and 360 ms for a 32-bit sort. **Below compute, sort fewer bits**: a depth key quantised to
+16 bits sorts in four passes, not eight.
 
 ### Easy to get wrong
 

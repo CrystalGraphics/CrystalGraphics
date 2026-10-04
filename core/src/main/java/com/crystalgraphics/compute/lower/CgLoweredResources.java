@@ -1,9 +1,15 @@
 package com.crystalgraphics.compute.lower;
 
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.cpu.CgCpuMirrors;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.nio.IntBuffer;
 import java.util.ArrayList;
@@ -129,6 +135,164 @@ public final class CgLoweredResources {
         outputsDrawn = targets;
     }
 
+    // ── Outputs held in their targets ─────────────────────────────────────────
+
+    /**
+     * Buffers whose newest words are still in a target: what a frame graph's lowered dispatch wrote, read back only when
+     * something other than a lowered kernel's own reads needs them. Buffer, target, first byte and texels, in parallel;
+     * a few at most, so scanned.
+     */
+    private static int[] residentBuffer = new int[8];
+    private static CgTexelTarget[] residentTarget = new CgTexelTarget[8];
+    private static long[] residentAt = new long[8], residentTexels = new long[8];
+    private static int residentCount;
+    private static final int LANDINGS = CgTrace.name("compute.lowered-landings");
+    private static final int HELD = CgTrace.name("compute.lowered-held");
+
+    /**
+     * Target {@code t}'s first {@code texels} are {@code buffer}'s words from byte {@code at}, kept there until
+     * {@link #land} reads them back; this owns {@code t} from here. What the buffer held in a target before lands first,
+     * unless this span covers it.
+     */
+    static void hold(CgTexelTarget t, int buffer, long at, long texels) {
+        written(buffer);
+        int i = residentIndex(buffer);
+        if (i >= 0) {
+            long end = residentAt[i] + residentTexels[i] * texelBytes(residentTarget[i]);
+            if (at <= residentAt[i] && at + texels * texelBytes(t) >= end) {
+                release(residentTarget[i]);
+                remove(i);
+            } else {
+                landAt(i);
+            }
+        }
+        if (residentCount == residentBuffer.length) {
+            residentBuffer = Arrays.copyOf(residentBuffer, residentCount * 2);
+            residentTarget = Arrays.copyOf(residentTarget, residentCount * 2);
+            residentAt = Arrays.copyOf(residentAt, residentCount * 2);
+            residentTexels = Arrays.copyOf(residentTexels, residentCount * 2);
+        }
+        residentBuffer[residentCount] = buffer;
+        residentTarget[residentCount] = t;
+        residentAt[residentCount] = at;
+        residentTexels[residentCount] = texels;
+        residentCount++;
+        CgTrace.add(CgChannels.GL, HELD, 1);
+    }
+
+    /** Whether any buffer's words are held in a target. */
+    public static boolean holding() {
+        return residentCount > 0;
+    }
+
+    /** The index of {@code buffer}'s held span, or -1: what a lowered pass reads it through. */
+    static int residentIndex(int buffer) {
+        for (int i = 0; i < residentCount; i++) if (residentBuffer[i] == buffer) return i;
+        return -1;
+    }
+
+    static CgTexelTarget residentTarget(int i) {
+        return residentTarget[i];
+    }
+
+    /** Span {@code i}'s first byte. */
+    static long residentAt(int i) {
+        return residentAt[i];
+    }
+
+    static long residentTexels(int i) {
+        return residentTexels[i];
+    }
+
+    /** {@code buffer}'s held words read back into it, if a target holds them. */
+    public static void land(int buffer) {
+        int i = residentIndex(buffer);
+        if (i < 0) return;
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO)) {
+            landAt(i);
+        }
+    }
+
+    /** Every buffer, counter and argument buffer {@code b} binds, read back where a target holds it: before anything but a lowered kernel's own reads. */
+    public static void land(CgDispatchBindings b) {
+        if (residentCount == 0) return;
+        for (int i = 0; i < b.buffers(); i++) {
+            land(b.buffer(i));
+            land(b.counter(i));
+        }
+        if (b.isIndirect()) land(b.args());
+    }
+
+    /** Every held span read back: at the end of the frame graph execution that made them, and before what nothing tracks. */
+    public static void landAll() {
+        if (residentCount == 0) return;
+        try (CgGlScope scope = CgGlState.save(CgGlSlot.FBO)) {
+            while (residentCount > 0) landAt(residentCount - 1);
+        }
+    }
+
+    /** Span {@code i}'s target, owned by the caller from here: no longer held, and never landed. */
+    static CgTexelTarget take(int i) {
+        CgTexelTarget t = residentTarget[i];
+        remove(i);
+        return t;
+    }
+
+    /** {@code buffer} is freed or nothing will read it: what a target holds of it is dropped unread. */
+    public static void drop(int buffer) {
+        int i = residentIndex(buffer);
+        if (i < 0) return;
+        release(residentTarget[i]);
+        remove(i);
+    }
+
+    private static void landAt(int i) {
+        CgTexelTarget t = residentTarget[i];
+        int buffer = residentBuffer[i];
+        long at = residentAt[i], texels = residentTexels[i];
+        remove(i);
+        land(t, buffer, at, texels);
+        release(t);
+    }
+
+    private static void remove(int i) {
+        residentCount--;
+        residentBuffer[i] = residentBuffer[residentCount];
+        residentTarget[i] = residentTarget[residentCount];
+        residentAt[i] = residentAt[residentCount];
+        residentTexels[i] = residentTexels[residentCount];
+        residentTarget[residentCount] = null;
+    }
+
+    /**
+     * Target {@code t}'s first {@code texels} read into {@code buffer} from byte {@code at} on the GPU, whole rows then
+     * what is left of the last. A target of more than one row is the widest texture, so a row's bytes are a multiple of 8
+     * and no pack alignment pads them; the pack row length and skips are the host's zeros. Leaves its read framebuffer
+     * bound.
+     */
+    static void land(CgTexelTarget t, int buffer, long at, long texels) {
+        int words = texelWords(t);
+        int format = words == 1 ? CgGL.GL_RED_INTEGER : words == 2 ? CgGL.GL_RG_INTEGER : CgGL.GL_RGBA_INTEGER;
+        long row = (long) t.width() * words * 4;
+        int rows = (int) (texels / t.width()), rest = (int) (texels % t.width());
+        CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, t.framebuffer());
+        CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, buffer);
+        if (rows > 0) CgGL.glReadPixels(0, 0, t.width(), rows, format, CgGL.GL_UNSIGNED_INT, at);
+        if (rest > 0) CgGL.glReadPixels(0, rows, rest, 1, format, CgGL.GL_UNSIGNED_INT, at + rows * row);
+        CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
+        written(buffer);
+        CgTrace.add(CgChannels.GL, LANDINGS, 1);
+    }
+
+    /** Words in one texel of {@code t}. */
+    static int texelWords(CgTexelTarget t) {
+        return t.type() == CgTextureType.R32UI ? 1 : t.type() == CgTextureType.RG32UI ? 2 : 4;
+    }
+
+    private static long texelBytes(CgTexelTarget t) {
+        return texelWords(t) * 4L;
+    }
+
     // ── Counters a fill zeroed ────────────────────────────────────────────────
 
     /** Bytes {@code [offset, offset + size)} of {@code buffer} hold zero, a fill having written them in {@code frame}. */
@@ -169,6 +333,10 @@ public final class CgLoweredResources {
 
     /** Every buffer, texture and framebuffer here, and the helper programs. At context teardown. */
     public static void releaseAll() {
+        while (residentCount > 0) {
+            residentTarget[residentCount - 1].delete();
+            remove(residentCount - 1);
+        }
         for (int i = 0; i < createdCount; i++) CgGL.glDeleteBuffers(created[i]);
         createdCount = 0;
         freeScratchCount = 0;

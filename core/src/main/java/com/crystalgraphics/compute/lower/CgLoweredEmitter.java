@@ -17,6 +17,7 @@ import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.compute.source.CgSourcePart;
 import com.crystalgraphics.gl.buffer.shader.CgEngineBufferRegistry;
 import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
+import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.gl.material.parse.CgGlslEmitter;
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -75,6 +76,36 @@ public final class CgLoweredEmitter {
     public static String sampler(CgImageDecl image) { return "_cg_smp_" + image.name(); }
 
     public static String level(CgImageDecl image) { return "_cg_level_" + image.name(); }
+
+    /** The target holding a buffer's newest words, when a frame graph's lowered dispatch left them there. */
+    static String resident(CgBufferDecl b) { return "_cg_res_" + b.name(); }
+
+    /** {@link #resident}'s width, the buffer texel its texel 0 holds, and how many it holds: 0 when it holds none. */
+    static String residentSpan(CgBufferDecl b) { return "_cg_rspan_" + b.name(); }
+
+    /**
+     * Whether {@code kernel}'s passes read a buffer's words from the target a lowered dispatch left them in
+     * ({@code CgLoweredResources.hold}), through a unit per buffer beside its buffer texture: when every unit fits.
+     */
+    static boolean residentReads(CgComputeSource source, CgKernelDecl kernel, CgLoweredTarget target) {
+        int touched = 0;
+        for (CgBufferDecl b : source.buffers()) if (CgLowering.touches(kernel, b)) touched++;
+        return units(source, kernel) + touched <= target.stageUnits();
+    }
+
+    /** The units a pass of {@code kernel} reads through besides resident targets: samplers, buffers, counts, images, arguments. */
+    static int units(CgComputeSource source, CgKernelDecl kernel) {
+        int units = 1;
+        for (CgMaterialProperty p : source.properties()) if (p.getType().isSampler()) units++;
+        for (CgBufferDecl b : source.buffers()) {
+            if (!CgLowering.touches(kernel, b)) continue;
+            units += b.access() == CgBufferAccess.APPEND ? 2 : 1;
+        }
+        for (CgImageDecl i : source.images()) {
+            if (CgLowering.uses(kernel, i, CgImageAccessor.LOAD) || CgLowering.uses(kernel, i, CgImageAccessor.SIZE)) units++;
+        }
+        return units;
+    }
 
     // ── Element words ─────────────────────────────────────────────────────────
 
@@ -188,7 +219,7 @@ public final class CgLoweredEmitter {
             else if (part instanceof CgSourcePart.Function f) {
                 if (kernel.functions().contains(f.name())) sb.append(CgKernelEmitter.code(f.text(), kernel, target.glsl()));
             }
-            else if (part instanceof CgSourcePart.Buffers) buffers(sb, source, kernel, pass);
+            else if (part instanceof CgSourcePart.Buffers) buffers(sb, source, kernel, pass, residentReads(source, kernel, target));
             else if (part instanceof CgSourcePart.Images) images(sb, source, kernel, pass);
         }
         main(sb, kernel, pass);
@@ -269,7 +300,7 @@ public final class CgLoweredEmitter {
 
     // ── Buffers ───────────────────────────────────────────────────────────────
 
-    private static void buffers(StringBuilder sb, CgComputeSource source, CgKernelDecl kernel, Pass pass) {
+    private static void buffers(StringBuilder sb, CgComputeSource source, CgKernelDecl kernel, Pass pass, boolean resident) {
         sb.append("// Buffers { }, lowered\n");
         for (CgBufferDecl b : source.buffers()) {
             if (!CgLowering.touches(kernel, b)) continue;
@@ -279,7 +310,8 @@ public final class CgLoweredEmitter {
             if (b.access() == CgBufferAccess.APPEND) {
                 sb.append("uniform usamplerBuffer ").append(counterTbo(b)).append(";\nuniform int ").append(counterAt(b)).append(";\n");
             }
-            load(sb, b, true);
+            if (resident) word(sb, b);
+            load(sb, b, true, resident);
             if (pass.kind() == Kind.APPEND && pass.buffer() == b) capture(sb, b);
             if (pass.kind() == Kind.OUTPUT && pass.buffers().contains(b)) sb.append(e).append(" _cg_out_").append(b.name()).append(";\n");
             for (CgBufferAccessor accessor : CgBufferAccessor.values()) {
@@ -303,32 +335,55 @@ public final class CgLoweredEmitter {
             return;
         }
         sb.append("uniform usamplerBuffer ").append(tbo(b)).append(";\n");
-        load(sb, b, false);
+        load(sb, b, false, false);
         indexed(sb, e + " " + b.name(), "", "return _cg_load_" + b.name() + "(int(i));");
     }
 
     /** The storage block {@link #reader} declares. */
     public static String readerBlock(CgBufferDecl b) { return "CgMaterialBuffer_" + b.name(); }
 
-    /** {@code _cg_load_NAME(i)}: element {@code i} of the buffer, from its words; of the view from {@link #base} if {@code view}. */
-    private static void load(StringBuilder sb, CgBufferDecl b, boolean view) {
+    /**
+     * {@code _cg_load_NAME(i)}: element {@code i} of the buffer, from its words; of the view from {@link #base} if
+     * {@code view}; through {@code _cg_word_NAME} if {@code resident}.
+     */
+    private static void load(StringBuilder sb, CgBufferDecl b, boolean view, boolean resident) {
         String e = b.element();
         int k = texelsPerElement(b);
         sb.append(e).append(" _cg_load_").append(b.name()).append("(int i) {\n    int t = ")
           .append(view ? "(" + base(b) + " + i)" : "i").append(" * ").append(k).append(";\n");
         if (!b.struct()) {
-            int words = texelWords(b);
-            String fetch = "texelFetch(" + tbo(b) + ", t)" + (words == 1 ? ".r" : words == 2 ? ".rg" : "");
-            sb.append("    return ").append(unpack(e, fetch)).append(";\n}\n");
+            sb.append("    return ").append(unpack(e, fetch(b, "t", resident))).append(";\n}\n");
             return;
         }
         sb.append("    ").append(e).append(" v;\n");
         for (int j = 0; j < b.fields().size(); j++) {
             CgElementField f = b.fields().get(j);
-            sb.append("    v.").append(f.name()).append(" = ")
-              .append(unpack(f.type(), "texelFetch(" + tbo(b) + ", t + " + j + ")")).append(";\n");
+            sb.append("    v.").append(f.name()).append(" = ").append(unpack(f.type(), fetch(b, "t + " + j, resident))).append(";\n");
         }
         sb.append("    return v;\n}\n");
+    }
+
+    /** Texel {@code t} of the buffer's words. */
+    private static String fetch(CgBufferDecl b, String t, boolean resident) {
+        return resident ? "_cg_word_" + b.name() + "(" + t + ")" : "texelFetch(" + tbo(b) + ", " + t + ")" + swizzle(texelWords(b));
+    }
+
+    private static String swizzle(int words) {
+        return words == 1 ? ".r" : words == 2 ? ".rg" : "";
+    }
+
+    /**
+     * {@code _cg_word_NAME(t)}: texel {@code t} of the buffer's words, from {@link #resident} where its span holds it,
+     * else from the buffer. Every invocation takes the same side but at the span's edge.
+     */
+    private static void word(StringBuilder sb, CgBufferDecl b) {
+        String span = residentSpan(b), swizzle = swizzle(texelWords(b));
+        sb.append("uniform usampler2D ").append(resident(b)).append(";\nuniform int ").append(span).append("[3];\n")
+          .append(uintType(texelWords(b))).append(" _cg_word_").append(b.name()).append("(int t) {\n")
+          .append("    int r = t - ").append(span).append("[1];\n")
+          .append("    if (r >= 0 && r < ").append(span).append("[2]) return texelFetch(").append(resident(b))
+          .append(", ivec2(r % ").append(span).append("[0], r / ").append(span).append("[0]), 0)").append(swizzle).append(";\n")
+          .append("    return texelFetch(").append(tbo(b)).append(", t)").append(swizzle).append(";\n}\n");
     }
 
     /** The texel of element {@code v} an output pass's fragment writes: its words, or field {@code _cg_j}'s of a struct. */
