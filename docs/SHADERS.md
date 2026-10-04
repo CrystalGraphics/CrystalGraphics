@@ -930,6 +930,24 @@ try (CgGlScope scope = CgKernelProgram.scope()) {           // saves what a disp
 CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);   // the reader barriers
 ```
 
+#### Before the first dispatch
+
+A kernel compiles at its first dispatch, on the render thread. `prepare()` starts it earlier — at load, on a loading
+screen — so that frame finds it compiled:
+
+```java
+CgCompute particles = CgCompute.load("mymod:shaders/particles.compute");
+particles.kernel("Simulate").prepare();                 // each kernel and keyword set the effect dispatches
+particles.kernel("Simulate").withKeywords("WIND").prepare();
+```
+
+- Where the driver links on its own threads (`KHR_parallel_shader_compile`), the link runs while frames go on; the
+  dispatch that takes the program waits for what is left (`compute.compileWait`, counted by `compute.compile-waits`).
+- A lowered kernel's passes are built at once; a Java body needs nothing.
+- On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
+  (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as
+  long.
+
 ### Drawing what a kernel wrote
 
 | A kernel wrote | A draw reads it | Tiers |

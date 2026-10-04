@@ -97,6 +97,26 @@ public final class CgKernel {
     }
 
     /**
+     * Starts this kernel's program for the current context without waiting for it, so its first dispatch need not:
+     * where the driver links on threads of its own ({@code KHR_parallel_shader_compile}) the link runs while frames go
+     * on, and the dispatch that takes it waits only for what is left ({@code compute.compileWait}). A lowered kernel's
+     * passes are built now; a Java body needs nothing. Render thread.
+     *
+     * <pre>{@code
+     * CgKernel simulate = CgCompute.load("mymod:shaders/particles.compute").kernel("Simulate").prepare();   // at load
+     * }</pre>
+     *
+     * @throws IllegalStateException as {@link #program()} does, for a kernel some tier or this context cannot run
+     */
+    public CgKernel prepare() {
+        check();
+        CgKernelForm f = form();
+        if (f.how() == CgKernelForm.How.COMPUTE) compute.prepare(this);
+        else if (f.how() == CgKernelForm.How.LOWERED) lowered();
+        return this;
+    }
+
+    /**
      * Gives this kernel a Java body, which the CPU tier runs: where no GPU tier can run the kernel, or where the CPU
      * tier is forced. Every keyword set of the kernel shares it; {@link CgCpuDispatch#keyword} tells them apart.
      */
