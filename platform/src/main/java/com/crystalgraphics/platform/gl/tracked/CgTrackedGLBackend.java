@@ -135,6 +135,21 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     public CgTrackerStats stats() { return tracker.stats(); }
 
+    /**
+     * Compiles in the background from now on: a link returns at once with shaderc running on a worker, and the
+     * program's first use waits for what is left, as a driver with {@code KHR_parallel_shader_compile} does. A host
+     * turns it on; a test leaves every link finished at its call.
+     *
+     * <pre>{@code
+     * CgTrackedGLBackend gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(spirvCache), false)
+     *         .compileInBackground();
+     * }</pre>
+     */
+    public CgTrackedGLBackend compileInBackground() {
+        programs.compileInBackground();
+        return this;
+    }
+
     /** Ends the frame: every pass ends and the device submits. The host presents after it. */
     public void endFrame() { tracker.endFrame(); }
 

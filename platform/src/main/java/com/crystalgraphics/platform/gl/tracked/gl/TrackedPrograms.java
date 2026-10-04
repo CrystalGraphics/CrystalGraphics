@@ -24,6 +24,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Shaders and programs. A compile keeps the source; the link compiles the program's stages through a
@@ -42,6 +47,7 @@ public final class TrackedPrograms {
     static final int CONSTANT_BINDING = 15;
     private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
     private static final int SPIRV = CgTrace.name("shader.spirv"), PIPELINE = CgTrace.name("shader.computePipeline");
+    private static final int SPIRV_WAIT = CgTrace.name("shader.spirvWait");
 
     static final class Shader {
         final int type;
@@ -72,6 +78,9 @@ public final class TrackedPrograms {
         int[] blockBinding, storageBinding, samplerUnit, imageUnit;
         final List<int[]> locations = new ArrayList<>();          // {0 uniform | 1 sampler | 2 image, index, element}
         final Map<String, Integer> locationByName = new HashMap<>();
+        /** A link whose shaderc runs on the worker; the first use of the program finishes it. */
+        Future<CgGlslCompiler.Reflection> pending;
+        String pendingLabel;
 
         Program(int name) { this.name = name; }
     }
@@ -95,12 +104,28 @@ public final class TrackedPrograms {
     private final Map<List<CgPipelineDesc.VertexBuffer>, Map<List<CgPipelineDesc.VertexAttrib>, List<CgPipelineDesc.VertexBuffer>>>
             withConstants = new HashMap<>();
     private CgAllocation constantValues;
+    /** Where links run shaderc, from {@link #compileInBackground}; null: at the link. */
+    private ExecutorService worker;
 
     public TrackedPrograms(CgTracker tracker, CgGlslCompiler compiler, TrackedGlErrors errors) {
         this.tracker = tracker;
         this.device = tracker.device();
         this.compiler = compiler;
         this.errors = errors;
+    }
+
+    /**
+     * Links run shaderc on a worker from now on, as a driver with {@code KHR_parallel_shader_compile} compiles on its
+     * own threads: {@code GL_COMPLETION_STATUS_KHR} says when it is done, and anything else asked of the program
+     * waits for it, then makes its modules and pipeline here. The compiler must be safe to call from both threads.
+     */
+    public void compileInBackground() {
+        if (worker != null) return;
+        worker = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "crystalgraphics-shaderc");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     // ── shaders ────────────────────────────────────────────────────────────────
@@ -167,7 +192,8 @@ public final class TrackedPrograms {
     }
 
     public void link(int program) {
-        Program p = program(program);
+        Program p = lookup(program);
+        drop(p);
         Shader vs = null, fs = null, cs = null;
         for (int s : p.attached) {
             Shader sh = shader(s);
@@ -177,51 +203,103 @@ public final class TrackedPrograms {
         }
         String label = "program " + program;
         if (cs != null) {
-            if (vs != null || fs != null) fail(p, "A compute shader links alone");
-            else linkCompute(p, cs, label);
+            if (vs != null || fs != null) {
+                fail(p, "A compute shader links alone");
+                return;
+            }
+            String source = cs.source;
+            compile(p, label, () -> compiler.compileCompute(source, label));
             return;
         }
         if (vs == null || fs == null) {
             fail(p, "A program needs a vertex and a fragment shader");
             return;
         }
-        CgGlslCompiler.Program t;
-        try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
-            t = compiler.compile(vs.source, fs.source, p.attribBindings, label);
-        } catch (CgShaderModule.CompileException e) {
-            fail(p, e.getMessage());
-            return;
-        }
-        releaseLinked(p);
-        CgBindingLayout layout = device.createBindingLayout(label, t.slots());
-        CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
-        CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
-        CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
-        p.objects.addAll(List.of(vertexGl, vertexZero, fragment, layout));
-        p.tracked = new CgTrackedProgram(label, layout, vertexGl, vertexZero, fragment);
-        p.vertexData = uniformBlock(t.vertexUniformBinding(), t.vertexUniformSize());
-        p.fragmentData = uniformBlock(t.fragmentUniformBinding(), t.fragmentUniformSize());
-        linked(p, t);
+        String vertex = vs.source, fragment = fs.source;
+        Map<String, Integer> attribs = new HashMap<>(p.attribBindings);
+        compile(p, label, () -> compiler.compile(vertex, fragment, attribs, label));
     }
 
-    private void linkCompute(Program p, Shader cs, String label) {
-        CgGlslCompiler.ComputeProgram t;
-        try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
-            t = compiler.compileCompute(cs.source, label);
-        } catch (CgShaderModule.CompileException e) {
-            fail(p, e.getMessage());
+    /**
+     * shaderc on the worker, finished at the program's next use; at once without a worker, or for the program in use,
+     * whose draws read it directly.
+     */
+    private void compile(Program p, String label, Callable<CgGlslCompiler.Reflection> spirv) {
+        if (worker == null || p == current) {
+            CgGlslCompiler.Reflection t;
+            try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
+                t = spirv.call();
+            } catch (CgShaderModule.CompileException e) {
+                fail(p, e.getMessage());
+                return;
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+            install(p, t, label);
             return;
         }
-        releaseLinked(p);
-        CgBindingLayout layout = device.createBindingLayout(label, t.slots());
-        CgShaderModule module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
-        try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
-            p.pipeline = device.createComputePipeline(label, module, layout);
+        p.pending = worker.submit(() -> {
+            try (CgTrace.Zone ignored = CgTrace.zone(GL, SPIRV)) {
+                return spirv.call();
+            }
+        });
+        p.pendingLabel = label;
+    }
+
+    /** Waits for a link's shaderc, then makes its modules and pipeline: here, on the owner thread. */
+    private void finish(Program p) {
+        Future<CgGlslCompiler.Reflection> pending = p.pending;
+        String label = p.pendingLabel;
+        p.pending = null;
+        p.pendingLabel = null;
+        CgGlslCompiler.Reflection t;
+        try (CgTrace.Zone ignored = pending.isDone() ? null : CgTrace.zone(GL, SPIRV_WAIT)) {
+            t = pending.get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof CgShaderModule.CompileException compile) {
+                fail(p, compile.getMessage());
+                return;
+            }
+            throw new IllegalStateException(label + ": shaderc failed", e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(label + ": interrupted waiting for shaderc", e);
         }
-        p.objects.addAll(List.of(p.pipeline, module, layout));
-        p.vertexData = uniformBlock(t.uniformBinding(), t.uniformSize());
-        p.fragmentData = null;
-        linked(p, t);
+        install(p, t, label);
+    }
+
+    /** A link nobody will finish: superseded by another, or the program deleted. */
+    private static void drop(Program p) {
+        if (p.pending == null) return;
+        p.pending.cancel(false);
+        p.pending = null;
+        p.pendingLabel = null;
+    }
+
+    /** The device's half of a link: the binding layout, the modules and, for a kernel, its pipeline. */
+    private void install(Program p, CgGlslCompiler.Reflection reflection, String label) {
+        releaseLinked(p);
+        if (reflection instanceof CgGlslCompiler.ComputeProgram t) {
+            CgBindingLayout layout = device.createBindingLayout(label, t.slots());
+            CgShaderModule module = device.createShaderModule(CgShaderModule.Stage.COMPUTE, t.spirv(), label);
+            try (CgTrace.Zone ignored = CgTrace.zone(GL, PIPELINE)) {
+                p.pipeline = device.createComputePipeline(label, module, layout);
+            }
+            p.objects.addAll(List.of(p.pipeline, module, layout));
+            p.vertexData = uniformBlock(t.uniformBinding(), t.uniformSize());
+            p.fragmentData = null;
+        } else {
+            CgGlslCompiler.Program t = (CgGlslCompiler.Program) reflection;
+            CgBindingLayout layout = device.createBindingLayout(label, t.slots());
+            CgShaderModule vertexGl = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexGlDepth(), label);
+            CgShaderModule vertexZero = device.createShaderModule(CgShaderModule.Stage.VERTEX, t.vertexZeroToOne(), label);
+            CgShaderModule fragment = device.createShaderModule(CgShaderModule.Stage.FRAGMENT, t.fragment(), label);
+            p.objects.addAll(List.of(vertexGl, vertexZero, fragment, layout));
+            p.tracked = new CgTrackedProgram(label, layout, vertexGl, vertexZero, fragment);
+            p.vertexData = uniformBlock(t.vertexUniformBinding(), t.vertexUniformSize());
+            p.fragmentData = uniformBlock(t.fragmentUniformBinding(), t.fragmentUniformSize());
+        }
+        linked(p, reflection);
     }
 
     private static void fail(Program p, String log) {
@@ -269,6 +347,10 @@ public final class TrackedPrograms {
     }
 
     public int programi(int program, int pname) {
+        if (pname == CgGL.GL_COMPLETION_STATUS_KHR) {
+            Program pending = lookup(program);
+            return pending.pending == null || pending.pending.isDone() ? CgGL.GL_TRUE : CgGL.GL_FALSE;
+        }
         Program p = program(program);
         CgGlslCompiler.Reflection t = p.table;
         switch (pname) {
@@ -307,7 +389,8 @@ public final class TrackedPrograms {
 
     public void deleteProgram(int program) {
         if (!names.exists(program)) return;
-        Program p = program(program);
+        Program p = lookup(program);
+        drop(p);
         p.deleteRequested = true;
         if (p != current) destroy(p);
     }
@@ -626,7 +709,14 @@ public final class TrackedPrograms {
         return s;
     }
 
+    /** The program, its link finished: everything asked of a program but its completion status waits for it. */
     private Program program(int name) {
+        Program p = lookup(name);
+        if (p.pending != null) finish(p);
+        return p;
+    }
+
+    private Program lookup(int name) {
         Object o = names.get(name);
         if (!(o instanceof Program p)) throw new IllegalArgumentException(name + " is not a program");
         return p;
