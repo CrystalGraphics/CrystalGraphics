@@ -6,9 +6,11 @@ import com.crystalgraphics.platform.gl.CgGlRecording;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * What the GPU spent on a frame — timer queries issued against the frame they belong to, landing in
@@ -38,6 +40,26 @@ import java.util.Map;
  *       under {@code gpu.nestedFlattened}.</li>
  *   <li>A zone opened while a {@link CgGlRecording} captures is not timed, since nothing reaches the GPU
  *       then; a zone around the replay times the work.</li>
+ * </ul>
+ *
+ * <h3>Groups inside a zone</h3>
+ * Marks split a zone's time by label without pausing it: each mark starts a run charged to its label, and the next
+ * mark, or the zone's end, closes it. A frame's runs land as counters {@code gpu:<zone>.<label>} beside the zone's own
+ * figure, which stays whole and alone in {@link CgFrameRecord#gpuNanos()}.
+ *
+ * <pre>{@code
+ * int opaque = CgGpuTrace.label("opaque"), glass = CgGpuTrace.label("glass");   // once
+ * CgGpuTrace.begin("world");
+ * CgGpuTrace.mark(opaque);
+ * drawOpaque();
+ * CgGpuTrace.mark(glass);
+ * drawGlass();
+ * CgGpuTrace.end();            // "gpu:world.opaque" and "gpu:world.glass", summing to "gpu:world"
+ * }</pre>
+ *
+ * <ul>
+ *   <li>A mark outside a measured zone does nothing; a zone opened inside a run is charged to that run too.</li>
+ *   <li>A series belongs to the zone it began in: a mark in a zone nested inside it does nothing.</li>
  * </ul>
  */
 public final class CgGpuTrace {
@@ -72,15 +94,38 @@ public final class CgGpuTrace {
 
     private static volatile Support support = Support.UNKNOWN;
 
-    private record Pending(int query, int nameId, long frame, int generation) {}
+    /** A {@link Pending#label()} for a timer query; else the pending entry is a timestamp. */
+    private static final int TIMER = -1;
+    /** A timestamp closing its series: it ends the last run and starts none. */
+    private static final int SERIES_END = -2;
+
+    /**
+     * A timer, or a timestamp of a mark series: {@code nameId} its zone, {@code label} what the run it starts is
+     * charged to, {@code restart} when a dropped stamp before it means the gap since the last one is no run.
+     */
+    private record Pending(int query, int nameId, long frame, int generation, int label, boolean restart) {}
 
     // All GL-thread only.
     private static final ArrayDeque<Pending> PENDING = new ArrayDeque<>();
     private static int[] freeQueries = new int[16];
     private static int freeCount;
+    /** Apart from the timers: GL fixes a query's target at its first use. */
+    private static int[] freeStamps = new int[16];
+    private static int freeStampCount;
     private static int[] open = new int[8];
     private static int openDepth;
     private static boolean running;
+    /** The label of the run a mark opened, at {@link #markDepth}, else {@link #SERIES_END}. */
+    private static int markLabel = SERIES_END;
+    private static int markDepth;
+    private static boolean markDropped;
+
+    /** The last resolved stamp of the open series: its zone, label (or {@link #SERIES_END}), clock and frame. */
+    private static int stampZone, stampLabel = SERIES_END, stampGeneration;
+    private static long stampNanos, stampFrame;
+    /** {@code zone << 32 | label} to the counter {@code gpu:<zone>.<label>}, and those counters. */
+    private static final Map<Long, Integer> GROUP_NAMES = new HashMap<>();
+    private static final Set<Integer> GROUPS = new HashSet<>();
 
     /** Resolved but not yet written: frame index to (name id to nanos). */
     private static final Map<Long, Map<Integer, Long>> RESOLVED = new LinkedHashMap<>();
@@ -133,9 +178,34 @@ public final class CgGpuTrace {
         open[openDepth++] = nameId;
     }
 
+    /** Interns a mark's label, the form a call site holds. */
+    public static int label(String label) {
+        return CgTraceNames.intern(label);
+    }
+
+    /**
+     * Starts a run charged to {@code label} (from {@link #label(String)}) in the innermost zone, closing the run
+     * before it. GL thread.
+     */
+    public static void mark(int label) {
+        if (openDepth == 0 || open[openDepth - 1] == UNMEASURED || CgGL.isRecording()) return;
+        if (markLabel != SERIES_END && (markDepth != openDepth || markLabel == label)) return;
+        stamp(open[openDepth - 1], label);
+        markLabel = label;
+        markDepth = openDepth;
+    }
+
+    /** Closes the innermost zone's run, starting none: what follows in the zone is charged to no label. */
+    public static void markEnd() {
+        if (markLabel == SERIES_END || markDepth != openDepth) return;
+        stamp(open[openDepth - 1], SERIES_END);
+        markLabel = SERIES_END;
+    }
+
     /** Closes the innermost zone, resuming the one it paused. */
     public static void end() {
         if (openDepth == 0) return;
+        markEnd();
         int nameId = open[--openDepth];
         if (nameId == UNMEASURED) return;
         stopQuery();
@@ -158,7 +228,12 @@ public final class CgGpuTrace {
         while (!PENDING.isEmpty() && CgGL.glIsQueryResultAvailable(PENDING.peekFirst().query())) {
             Pending done = PENDING.pollFirst();
             long nanos = CgGL.glGetQueryResultNanos(done.query());
-            release(done.query());
+            if (done.label() == TIMER) release(done.query());
+            else releaseStamp(done.query());
+            if (done.label() != TIMER) {
+                resolveStamp(done, nanos, generation);
+                continue;
+            }
             long[] total = TOTALS.computeIfAbsent(done.nameId(), k -> new long[2]);
             total[0] += nanos;
             total[1]++;
@@ -173,7 +248,7 @@ public final class CgGpuTrace {
             if (index >= current || stillPending(index, generation)) continue;
             long sum = 0L;
             for (Map.Entry<Integer, Long> zone : frame.getValue().entrySet()) {
-                sum += zone.getValue();
+                if (!GROUPS.contains(zone.getKey())) sum += zone.getValue();
                 CgTrace.counterAt(GPU, zone.getKey(), index, zone.getValue());
             }
             CgTrace.setGpu(index, sum);
@@ -188,6 +263,8 @@ public final class CgGpuTrace {
      */
     static void closeLeaked() {
         if (openDepth == 0) return;
+        if (markLabel != SERIES_END) stamp(open[markDepth - 1], SERIES_END);
+        markLabel = SERIES_END;
         stopQuery();
         openDepth = 0;
         count(LEAKED);
@@ -211,12 +288,17 @@ public final class CgGpuTrace {
     public static void dispose() {
         for (Pending p : PENDING) CgGL.glDeleteQuery(p.query());
         for (int i = 0; i < freeCount; i++) CgGL.glDeleteQuery(freeQueries[i]);
+        for (int i = 0; i < freeStampCount; i++) CgGL.glDeleteQuery(freeStamps[i]);
+        freeStampCount = 0;
         PENDING.clear();
         RESOLVED.clear();
         TOTALS.clear();
         freeCount = 0;
         openDepth = 0;
         running = false;
+        markLabel = SERIES_END;
+        stampLabel = SERIES_END;
+        markDropped = false;
         support = Support.UNKNOWN;
     }
 
@@ -242,8 +324,49 @@ public final class CgGpuTrace {
         }
         int query = freeCount > 0 ? freeQueries[--freeCount] : CgGL.glGenQuery();
         CgGL.glBeginTimeElapsedQuery(query);
-        PENDING.addLast(new Pending(query, nameId, CgTrace.currentFrameIndex(), CgTrace.generation()));
+        PENDING.addLast(new Pending(query, nameId, CgTrace.currentFrameIndex(), CgTrace.generation(), TIMER, false));
         running = true;
+    }
+
+    private static void stamp(int zone, int label) {
+        if (PENDING.size() >= MAX_IN_FLIGHT) {
+            count(DROPPED);
+            markDropped = true;
+            return;
+        }
+        int query = freeStampCount > 0 ? freeStamps[--freeStampCount] : CgGL.glGenQuery();
+        CgGL.glQueryTimestamp(query);
+        PENDING.addLast(new Pending(query, zone, CgTrace.currentFrameIndex(), CgTrace.generation(), label, markDropped));
+        markDropped = false;
+    }
+
+    /** Charges the run the last stamp opened, up to this one, to that stamp's label and frame. */
+    private static void resolveStamp(Pending done, long nanos, int generation) {
+        if (stampLabel != SERIES_END && !done.restart() && nanos >= stampNanos) {
+            Integer name = groupName(stampZone, stampLabel);
+            long[] total = TOTALS.computeIfAbsent(name, k -> new long[2]);
+            total[0] += nanos - stampNanos;
+            total[1]++;
+            if (stampGeneration == generation && stampFrame >= 0L) {
+                RESOLVED.computeIfAbsent(stampFrame, k -> new HashMap<>()).merge(name, nanos - stampNanos, Long::sum);
+            }
+        }
+        stampZone = done.nameId();
+        stampLabel = done.label();
+        stampNanos = nanos;
+        stampFrame = done.frame();
+        stampGeneration = done.generation();
+    }
+
+    private static Integer groupName(int zone, int label) {
+        long key = (long) zone << 32 | (label & 0xFFFFFFFFL);
+        Integer name = GROUP_NAMES.get(key);
+        if (name == null) {
+            name = CgTraceNames.intern(CgTraceNames.nameOf(zone) + "." + CgTraceNames.nameOf(label));
+            GROUP_NAMES.put(key, name);
+            GROUPS.add(name);
+        }
+        return name;
     }
 
     private static void stopQuery() {
@@ -255,6 +378,11 @@ public final class CgGpuTrace {
     private static void release(int query) {
         if (freeCount == freeQueries.length) freeQueries = Arrays.copyOf(freeQueries, freeCount * 2);
         freeQueries[freeCount++] = query;
+    }
+
+    private static void releaseStamp(int query) {
+        if (freeStampCount == freeStamps.length) freeStamps = Arrays.copyOf(freeStamps, freeStampCount * 2);
+        freeStamps[freeStampCount++] = query;
     }
 
     private static void count(int nameId) {

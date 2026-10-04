@@ -3,7 +3,9 @@ package com.crystalgraphics.platform.gl;
 import java.nio.*;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A {@link CgGLBackend} that records call names instead of talking to a driver.
@@ -53,6 +55,9 @@ public final class RecordingGlBackend extends CgGLBackend {
     /** What every timer query answers: whether it has finished, and with how many nanoseconds. */
     public boolean queriesReady;
     public long queryNanos;
+    /** What a timestamp written now answers; a test advances it between marks. */
+    public long clock;
+    private final Map<Integer, Long> stamps = new HashMap<>();
     private int lastQuery;
 
     /** Installs a fresh instance as {@link CgGL}'s backend and returns it. */
@@ -111,9 +116,14 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void glTexBuffer(int target, int internalFormat, int buffer) { record("glTexBuffer"); }
     @Override public int glGenQuery() { record("glGenQuery"); return ++lastQuery; }
     @Override public void glBeginTimeElapsedQuery(int query) { record("glBeginTimeElapsedQuery"); }
+    @Override public void glQueryTimestamp(int query) { record("glQueryTimestamp"); stamps.put(query, clock); }
     @Override public void glEndTimeElapsedQuery() { record("glEndTimeElapsedQuery"); }
     @Override public boolean glIsQueryResultAvailable(int query) { record("glIsQueryResultAvailable"); return queriesReady; }
-    @Override public long glGetQueryResultNanos(int query) { record("glGetQueryResultNanos"); return queryNanos; }
+    @Override public long glGetQueryResultNanos(int query) {
+        record("glGetQueryResultNanos");
+        Long stamp = stamps.remove(query);
+        return stamp != null ? stamp : queryNanos;
+    }
     @Override public void glDeleteQuery(int query) { record("glDeleteQuery"); }
     @Override public int glGenVertexArrays() { record("glGenVertexArrays"); return 0; }
     @Override public void glBindVertexArray(int array) { record("glBindVertexArray"); }

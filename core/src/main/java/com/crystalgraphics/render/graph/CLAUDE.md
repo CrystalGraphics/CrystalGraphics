@@ -76,6 +76,9 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 
 **A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
 with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).
+With `crystalgraphics.gpu.groups` on, the executor marks each batch's material inside that zone (or the stage's, for
+an untimed pass), so the pass's time also lands per material as `gpu:<zone>.<shader path>`; the target copy a batch
+needs is charged to it.
 
 **Barriers are the executor's** (`CgHazards`): before each access it compares the storage's last accesses — per GL
 name, so pooled transients, a history's two versions and a buffer used across frames each come out right — and issues

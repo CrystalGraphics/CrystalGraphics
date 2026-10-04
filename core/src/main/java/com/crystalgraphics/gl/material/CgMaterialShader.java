@@ -116,6 +116,7 @@ public final class CgMaterialShader {
     /** Resource path to the {@code .shader} file. For a generated shader this is a synthetic label
      * ({@code "generated:<hash>"}) rather than anything {@code CgIO} can load — it exists so log lines
      * and parse errors still name something a human can find. */
+    @Getter
     private final String resourcePath;
 
     /**

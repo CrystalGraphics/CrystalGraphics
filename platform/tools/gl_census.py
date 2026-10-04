@@ -67,7 +67,7 @@ DOMAINS = [
         'cgImageBarrier', 'cgBeginAsync', 'cgEndAsync', 'cgWaitAsync']),
     ('Sync, timers and readback', 'fences on the frame that recorded them; a readback stalls', [
         'glFenceSync', 'glClientWaitSync', 'glDeleteSync', 'glGenQuery', 'glBeginTimeElapsedQuery',
-        'glEndTimeElapsedQuery', 'glIsQueryResultAvailable', 'glGetQueryResultNanos', 'glDeleteQuery',
+        'glEndTimeElapsedQuery', 'glQueryTimestamp', 'glIsQueryResultAvailable', 'glGetQueryResultNanos', 'glDeleteQuery',
         'glReadPixels', 'glGetTexImage']),
     ('Fixed function', 'accepted, ignored, one warning each -- a core profile has none of them either', [
         'glAlphaFunc', 'glLineWidth', 'glPointSize', 'glPolygonMode']),
