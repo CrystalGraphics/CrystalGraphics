@@ -158,6 +158,9 @@ float cg_LinearEyeDepth(float windowDepth) {
     return p32 / (ndc + p22);
 }
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(texture(cg_DepthBuffer, (uv)).r)
+// A Distortion pass's output: the offset in UV units, the chromatic split, and the eye depth the haze starts at. The
+// apply pulls nothing nearer than that depth into the bend. Alpha is the closeness, kept by a MAX blend.
+#define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
 // How far behind the scene an Emissive pass's fragment may be and still bloom: an opaque emissive surface is at the
 // depth it wrote, give or take the depth buffer's precision. Eye units.

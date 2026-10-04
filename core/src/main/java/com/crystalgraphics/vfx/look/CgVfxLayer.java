@@ -36,10 +36,10 @@ public final class CgVfxLayer {
      * group at its origin in {@code CgSortLayer.EFFECTS}, so these order nothing outside it. Layers of one order sort
      * by distance alone, so two tube layers sharing one interleave chunk by chunk and never instance.
      *
-     * <p>Layers that bend the scene ({@link #ORDER_DISTORTION}) write the world renderer's Distortion pass, applied once
-     * after the transparent pass: it bends smoke, light and glow volumes, while {@link #ORDER_SURFACE},
-     * {@link #ORDER_BANDS} and {@link #ORDER_CORE} draw after the apply ({@code Draw.afterDistortion}) and are never bent,
-     * so a bright body is never smeared into the air round it (as a fire in Unreal draws after its distortion).</p>
+     * <p>Layers that bend the scene ({@link #ORDER_DISTORTION}) write the world renderer's Distortion pass and bend what
+     * sorts before them: smoke, light and glow volumes. {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and
+     * {@link #ORDER_CORE} are marked {@code Draw.afterDistortion}, so their own haze never smears a bright body into the
+     * air round it (as a fire in Unreal draws after its distortion), while a nearer effect's haze still bends them.</p>
      */
     public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2, ORDER_VOLUME = 3;
     /**
@@ -47,7 +47,7 @@ public final class CgVfxLayer {
      * frame adds into one offset target, applied once. A haze also leaves its own hot body unbent.
      */
     public static final int ORDER_DISTORTION = 4;
-    /** Sharp emissive layers, drawn after the distortion apply: never bent. */
+    /** Sharp emissive layers: never bent by their own effect's haze. */
     public static final int ORDER_SURFACE = 5, ORDER_BANDS = 6, ORDER_CORE = 7;
     /** The slot a layer draws in unless given another: an effect's main body. */
     public static final String SLOT_BODY = "body";

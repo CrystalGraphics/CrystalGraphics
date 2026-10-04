@@ -459,8 +459,9 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
 
 #### The Distortion pass
 
-What a material draws in its Distortion pass is where each pixel behind it takes its colour from: `xy` an offset in UV
-units, `z` a chromatic split, `w` the split's weight. `CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
+What a material draws in its Distortion pass is where each pixel behind it takes its colour from: an offset in UV
+units, a chromatic split, and the eye depth the haze starts at, packed by `CG_DISTORTION(offset, split, eyeDepth)`.
+`CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
 target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's distortion
 vectors). A heat haze or a shockwave writes an offset here instead of sampling `cg_SceneColor` itself.
 
@@ -472,29 +473,37 @@ Pass {
     Tags { "LightMode" = "Distortion" }
     void fragment(in v2f i, out vec4 offset) {
         vec2 bend = haze(i.uv) * 0.02;            // UV units: 0.02 is 2% of the screen
-        offset = vec4(bend, 0.3, 0.0);            // split 0.3: red bends 1.3x as far, blue 0.7x
+        // split 0.3: red bends 1.3x as far, blue 0.7x; a flat surface starts where it is drawn
+        offset = CG_DISTORTION(bend, 0.3, cg_LinearEyeDepth(gl_FragCoord.z));
     }
 }
 
-// A haze that fades: offset and split scaled by the fade, the fade as the weight
-offset = vec4(bend * fade, 0.3 * fade, fade);
+// A haze traced in a volume it draws the far wall of: it starts where its ray enters (fx_depth.glsl)
+offset = CG_DISTORTION(bend * fade, 0.3 * fade, FX_EYE_DEPTH(ray, enter));
 ```
 
 - **Offsets add**: overlapping hazes sum rather than each bending the last, and nothing seams where they meet. Fade one
   out by scaling its offset, never by alpha.
-- **Splits average where weighted**: the apply divides `z` by `w` where `w` is above 0, so draws writing
-  `split * weight` and `weight` blend their splits instead of summing them. With `w` 0 the summed `z` is the split.
+- **Splits add too**, held to 0.3; scale a fading haze's split with its offset.
+- **The blend is the engine's**: whatever a Distortion pass's `RenderState` says, offsets and split add and the alpha
+  keeps the nearest haze (`MAX`), so the pass sets no `Blend`.
 - **A pure haze draws nothing in the scene**: give its Forward pass `ColorMask 0` and `DepthWrite OFF`, and the world
   renderer skips it (`CgRenderState.writesNothing()`), leaving the Distortion pass the whole cost.
-- **One apply bends everything drawn before it**, near or far. A draw that must stay sharp over a haze goes after it:
-  `Queue = "AfterDistortion"` for a material, `.afterDistortion()` for one draw of a material other draws share.
+- **A haze bends what sorts before it**, as each haze reading its own copy would. A draw that must not be bent by the
+  hazes sorted before it (`Queue = "AfterDistortion"` for a material, `.afterDistortion()` for one draw) gets an apply of
+  those hazes placed just before it in the transparent pass, cut to their rect; nearer hazes still bend it. Up to four
+  such applies overlap on screen; past that it draws after the final apply, over nearer transparent draws.
   Blended after the apply, such a draw covers nearer transparent draws of other effects.
 - **Hidden by the scene, not by a depth test**, as an Emissive pass is: a fragment behind the scene's depth is discarded
-  before `fragment()` runs; `DepthTest ALWAYS` turns that off. With no `RenderState` it adds ONE ONE, no depth test,
-  back faces culled.
-- **The apply** mirrors UVs at the screen's borders, refuses a sample nearer than its pixel (it would pull the
-  foreground into the bent region), and spreads red and blue by the split. A frame where nothing distorts records
-  neither pass.
+  before `fragment()` runs; `DepthTest ALWAYS` turns that off. With no `RenderState` it has no depth test and culls back
+  faces.
+- **The apply** mirrors UVs at the screen's borders and spreads red and blue by the split. It bends in whatever is
+  behind the nearest haze, an opaque thing between it and the sky included, as Unreal's does. A bend whose farthest tap
+  would read anything nearer than that haze is shortened to stop at that edge: the foreground is never pulled in, and
+  the bend fades out at its silhouette. The eye depth a haze gives is what decides this, so give the depth where it
+  starts, not its far wall's. A frame where nothing distorts records neither pass.
+- **The glow bends too**: the emission bloom blurs is bent by the same offsets first, as a bloom taken from the
+  distorted scene would be. Any post effect reading a side input of the scene does the same with `post.distorted(texture)`.
 - `CG_DISTORTION_PASS` is defined in both stages; the pass takes the material's keywords. Unlit, unfogged, one output.
 - `-Dcrystalgraphics.post.debug=distortion` shows the target (|offset| x 50 in red and green, the split in blue);
   `--mode=distortion` is the gate.
