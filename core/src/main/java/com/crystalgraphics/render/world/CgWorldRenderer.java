@@ -9,6 +9,7 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.ops.CgCull;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -16,6 +17,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgViewFrustum;
@@ -95,6 +97,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: after the transparent pass that pass is drawn
  *       into the emission target ({@link #emissionScale} of the world's size), where the scene's depth hides it, and
  *       published as {@code CgFrameKeys.EMISSION} for the post stack to bloom.</li>
+ *   <li>A transparent draw marked {@link Draw#halfResolution()} draws at half the target's size before the transparent
+ *       pass and is added over the target, depth-aware ({@link #halfResolution(boolean)} turns it off).</li>
  * </ul>
  */
 public final class CgWorldRenderer {
@@ -119,6 +123,11 @@ public final class CgWorldRenderer {
     private static final CgFrameBufferFormat EMISSION_FORMAT = CgFrameBufferFormat.builder("cg_emission")
             .color(0, CgTextureType.R11F_G11F_B10F).build();
     private static final int GPU_EMISSION = CgGpuTrace.name("world.emission");
+    private static final CgFrameBufferFormat HALF_FORMAT = CgFrameBufferFormat.builder("cg_world_half")
+            .color(0, CgTextureType.R11F_G11F_B10F).build();
+    private static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
+    private static final int GPU_HALF = CgGpuTrace.name("world.half"), GPU_HALF_ADD = CgGpuTrace.name("world.halfAdd");
 
     /** Called once a frame, before the first world stage records, with the host's camera. */
     @FunctionalInterface
@@ -157,6 +166,8 @@ public final class CgWorldRenderer {
     private float[] lights = new float[64 * 2];
     /** Per draw: its emission scale, CG_OBJECT_EMISSION. */
     private float[] emissions = new float[64];
+    /** Per draw: whether it asked to be drawn at half the target's size. */
+    private boolean[] halves = new boolean[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
@@ -196,6 +207,13 @@ public final class CgWorldRenderer {
     private final CgPassConstants emissionConstants = new CgPassConstants();
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
+    // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
+    private boolean halfResolution = !"false".equals(System.getProperty("crystalgraphics.world.halfResolution"));
+    private CgGraphTexture halfTarget;
+    private final CgPassConstants halfConstants = new CgPassConstants();
+    private CgMaterial upsample;
+    private CgTexture upsampleBound;
+
     private boolean installed;
     private boolean irisWarned;
 
@@ -219,6 +237,8 @@ public final class CgWorldRenderer {
         clear();
         frame = -1;
         depthOnly.clear();
+        upsample = null;
+        upsampleBound = null;
     }
 
     /**
@@ -234,6 +254,22 @@ public final class CgWorldRenderer {
     public void emissionScale(float scale) {
         if (!(scale >= 0f && scale <= 1f)) throw new IllegalArgumentException("an emission scale of " + scale + ": 0 to 1");
         emissionScale = scale;
+    }
+
+    /**
+     * Whether draws that ask for it ({@link Draw#halfResolution()}) draw at half the target's size, on by default. Off,
+     * they draw in the transparent pass at full size: the comparison.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().halfResolution(false);   // every glow at full size again
+     * }</pre>
+     */
+    public void halfResolution(boolean on) {
+        halfResolution = on;
+    }
+
+    public boolean halfResolution() {
+        return halfResolution;
     }
 
     private float emissionScale() {
@@ -288,6 +324,7 @@ public final class CgWorldRenderer {
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
         private float emission;
+        private boolean half;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -310,6 +347,28 @@ public final class CgWorldRenderer {
             setCount = null;
             blockLight = Float.NaN;
             emission = 1f;
+            half = false;
+            return this;
+        }
+
+        /**
+         * Draws it at half the target's size, then adds it over the target where the scene's depth agrees: for soft
+         * light that adds (a glow, a volume), at a quarter of the pixels. A transparent draw only, before the
+         * transparent pass; with {@link CgWorldRenderer#halfResolution(boolean)} off it draws in that pass as any other.
+         *
+         * <pre>{@code
+         * world.draw(sphere, glow).at(x, y, z).transform(scale).halfResolution().submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Its material adds (Blend ONE ONE): what it draws is added over the target, never blended.</li>
+         *   <li>The half-size target has no depth: a material that hides itself behind the scene does it from
+         *       {@code cg_DepthBuffer} ({@code CG_SCENE_EYE_DEPTH} at {@code gl_FragCoord.xy / CG_RESOLUTION}), with
+         *       {@code DepthTest ALWAYS}.</li>
+         * </ul>
+         */
+        public Draw halfResolution() {
+            half = true;
             return this;
         }
 
@@ -532,6 +591,7 @@ public final class CgWorldRenderer {
             lights[count * 2 + 1] = d.skyLight;
         }
         emissions[count] = d.emission;
+        halves[count] = d.half;
         queues[count] = d.queue;
         orders[count] = d.order;
         layers[count] = d.layer;
@@ -579,6 +639,7 @@ public final class CgWorldRenderer {
         customs = Arrays.copyOf(customs, n * 16);
         lights = Arrays.copyOf(lights, n * 2);
         emissions = Arrays.copyOf(emissions, n);
+        halves = Arrays.copyOf(halves, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         layers = Arrays.copyOf(layers, n);
@@ -600,7 +661,7 @@ public final class CgWorldRenderer {
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
     private static final int OPAQUE = 0, TRANSPARENT = 1;
-    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1;
+    private static final byte SKIP = -1, FORWARD = 0, FORWARD_AND_PREPASS = 1, HALF = 2;
     /** The clip-space w a draw's screen rect is cut at: nearer than any host's near plane (Minecraft's is 0.05). */
     private static final float NEAR_W = 0.01f;
 
@@ -654,6 +715,15 @@ public final class CgWorldRenderer {
                 prepass |= p == FORWARD_AND_PREPASS;
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
+            int halfDrawn = 0;
+            if (which == TRANSPARENT && halfResolution) {
+                for (int i = 0; i < count; i++) {
+                    if (phase[i] == SKIP || !halves[i]) continue;
+                    phase[i] = HALF;
+                    halfDrawn++;
+                }
+                CgTrace.counter(CgChannels.WORLD, "world.halfDraws", halfDrawn);
+            }
 
             CgRecording recording = stage.recording();
             CgPassConstants constants = stage.constants();
@@ -661,7 +731,10 @@ public final class CgWorldRenderer {
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, view);
-                recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+                if (halfDrawn > 0) recordHalf(stage, recording, view);
+                if (drawn > halfDrawn) {
+                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, view);
+                }
             }
             if (which == TRANSPARENT) recordEmission(stage, recording, view);
         }
@@ -717,6 +790,58 @@ public final class CgWorldRenderer {
         glow.add(chunks.end());
         glow.end();
         stage.resources().put(CgFrameKeys.EMISSION, emissionTarget);
+    }
+
+    /**
+     * The draws asking for half resolution ({@link #HALF}) into a target half the stage's size, cleared, then added over
+     * the stage's target with a depth-aware upsample: each pixel weighs the four half-size texels round it by how close
+     * the scene's depth where each was drawn is to its own, so light does not bleed across a silhouette. Before the
+     * transparent pass, so what draws after (a haze bending it, smoke over it) sees it in the target.
+     */
+    private void recordHalf(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        int w = Math.max(1, (int) (targetWidth * 0.5f)), h = Math.max(1, (int) (targetHeight * 0.5f));
+        if (halfTarget == null || halfTarget.getWidth() != w || halfTarget.getHeight() != h) {
+            halfTarget = CgGraphTexture.transientTexture("cg_world_half", new CgTextureDesc(w, h, HALF_FORMAT));
+        }
+        stage.constants().write(constantsBlock, 0);
+        halfConstants.read(constantsBlock, 0).resolution(w, h);
+        CgRasterPass pass = recording.raster(halfTarget, CgLoad.clear(0f, 0f, 0f, 0f), halfConstants, TRANSPARENT_STATE,
+                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (phase[i] != HALF) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+                if (pipeline == null) continue;
+                if (sets[i] != null) {
+                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
+                    continue;
+                }
+                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+                writeInstance(chunks, i);
+            }
+        }
+        pass.add(chunks.end());
+        pass.end();
+
+        if (upsample == null) upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
+        if (halfTarget != upsampleBound) {
+            CgTexture half = halfTarget;
+            upsample.applyProperties(b -> b.sampler("_Half", 0, half));
+            upsampleBound = half;
+        }
+        CgPipeline pipeline = upsample.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
+        CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
+        CgChunkBuilder upsampled = recording.chunks().begin();
+        upsampled.draw(pipeline, upsample.captureBindings(recording.bindings()), FULLSCREEN);
+        upsampled.instance();
+        add.add(upsampled.end());
+        add.end();
     }
 
     /** Whether any link of a material chain has an Emissive pass. */
@@ -873,7 +998,7 @@ public final class CgWorldRenderer {
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;
+            if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)) continue;
             modelOf(i, view);
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
