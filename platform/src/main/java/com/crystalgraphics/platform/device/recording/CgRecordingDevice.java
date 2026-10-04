@@ -489,6 +489,13 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
+        public void finish() {
+            outsidePass("finish");
+            if (!ownsSubmission) throw new IllegalStateException("A hosted device cannot wait for frame " + frame);
+            record("finish");
+        }
+
+        @Override
         public void beginTimer(CgTimerQuery query) {
             use(query);
             record("beginTimer " + ref(query));

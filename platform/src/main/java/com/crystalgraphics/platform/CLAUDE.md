@@ -179,10 +179,12 @@ What is easy to get wrong:
   under a partial write mask is drawn through the mask (a device's clear writes every channel), and a fence
   waited on with `GL_SYNC_FLUSH_COMMANDS_BIT` submits its frame.
 - **What GL allows and a device cannot do throws** naming it — sampler objects, texture swizzles, 8-bit
-  indices, a draw buffer after `GL_NONE`, a `glCopyBufferSubData` from device-local storage into a
-  host-visible buffer (a readback).
-- **A copy into device-local storage is a device copy at the call**, ending the pass like an upload; between
-  host-visible buffers the CPU copies, through the destination's rename.
+  indices, a draw buffer after `GL_NONE`, `glReadPixels` into a pack buffer in a layout other than the
+  texture's own.
+- **A copy from or into device-local storage is a device copy at the call**, ending the pass like an upload;
+  between host-visible buffers the CPU copies, through the destination's rename. Mapping a host-visible buffer
+  to read waits for the frame that last used it: nothing once it retired (`CgReadback` polls its fence first),
+  `finish()` if it is the current one, which a hosted device refuses.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame
   submits it, and a hosted device refuses the wait, since its host submits.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
