@@ -192,7 +192,8 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
 
 Authoring: `docs/SHADERS.md` § *The Distortion pass*. The parser forces its name to `Distortion`; a pass with no
 `void vertex(` takes the first Forward pass's v2f, declarations and vertex body, its own declarations (up to
-`void fragment(`) appended (step 7e''), and refuses an MRT output. With no `RenderState` it is `EMISSIVE_STATE`. The
+`void fragment(`) appended (step 7e''), and refuses an MRT output. With no `RenderState` it is `EMISSIVE_STATE`'s depth and
+cull; its blend is always `DISTORTION_BLEND` (RGB adds, alpha `MAX`), the target's encoding. The
 compiler adds `CG_DISTORTION_PASS` and the same scene-depth discard as an Emissive pass; it is neither lit nor fogged.
 
 ## `#pragma cg_feature` Stop Conditions

@@ -42,16 +42,25 @@
   the target, each pixel weighing the four texels round it by bilinear distance and by how near the depth each was
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
-- **Distortion** (`recordDistortion`, after the transparent pass): every transparent draw of the stage whose chain has a
-  Distortion pass draws it into a transient RGBA16F target of the stage's size, reading the target's depth through
-  `sceneDepth(unit, from)`, and `world_distortion_apply.shader` bends the target by it in one full-screen pass reading
-  one `sceneColor` copy. Then the after-distortion pass: transparent draws in `CgRenderQueue.AFTER_DISTORTION` and up
-  (`Draw.afterDistortion()`), sharp. Published as `CgFrameKeys.DISTORTION`. Its gate is `--mode=distortion`, every
-  pixel against where it should have sampled, on gl, gl33 and vulkan with synchronization validation.
+- **Distortion** (`CgWorldDistortion`, reading the draws through its `Draws` view): every transparent draw of the stage whose chain has a
+  Distortion pass draws it into a transient RGBA16F target of `distortionScale` (0.5) of the stage's size, its
+  constants' resolution that size, reading the target's depth through `sceneDepth(unit, from)`, and
+  `world_distortion_apply.shader` bends the target by it over its hazes' rect, the offsets read bilinearly, reading
+  a `sceneColor` copy cut to that rect. `plan` keeps the per-haze order: walking the transparent draws in key order, a draw
+  in `CgRenderQueue.AFTER_DISTORTION` and up (`Draw.afterDistortion()`) that the hazes pending before it overlap gets
+  their apply as a draw in the transparent pass, sorted just before it and cut to their rect, drawn from one of four
+  slot targets whose applies never overlap (recorded ahead of the pass, so it keeps one depth copy); it then draws in
+  place. Where no slot is free it draws in the after-distortion pass, after the final apply, which takes every haze
+  left. Published as `CgFrameKeys.DISTORTION`, a `CgDistortionField` of every target; the emission is published
+  unbent, and bloom bends it by the field (`CgPostContext.distorted`). Its gate is `--mode=distortion`, every
+  pixel against where it should have sampled at `distortionScale(1)`, on gl, gl33 and vulkan with synchronization
+  validation.
 - **The overdraw view** (`recordOverdraw`, last, only while `overdraw(true)`, which
   `-Dcrystalgraphics.post.debug=overdraw` sets): every transparent draw of the stage, half-size ones too, again
   through `CgPipeline.overdraw()` into an R16F target of the stage's size, published as `CgFrameKeys.OVERDRAW`. The
   variant keeps the draw's vertex stage and `discard`, makes its depth test a discard behind the stage's depth, and
-  adds 1 a fragment. Its gate is `--mode=overdraw-count`, exact on gl and vulkan.
+  adds 1 a fragment. Its gate is `--mode=overdraw-count`, exact on gl and vulkan. While the `crystalgraphics` trace
+  channel records, the count is read back into counters a frame or two later: `world.overdraw-covered` (the share of
+  pixels reached), and over those `-mean`, `-p95` and `-max`. Half-size draws count at full size.
 - **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
   alpha of 0, which ADDITIVE multiplies away.

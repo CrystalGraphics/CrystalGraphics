@@ -50,7 +50,6 @@ Pass {
     Tags { "LightMode" = "Distortion" }
     // Its own depth fade, from the scene's distance.
     RenderState {
-        Blend ONE ONE
         DepthTest ALWAYS
         DepthWrite OFF
         Cull FRONT
@@ -90,6 +89,6 @@ Pass {
         float far = min(1.0, _Reference / max(enter, 1.0e-3));
         vec2 offset = wobble * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
         float fade = smoothstep(0.0, 0.1, strength);
-        distortion = vec4(offset * fade, 0.0, fade);
+        distortion = CG_DISTORTION(offset * fade, 0.0, FX_EYE_DEPTH(ray, enter));
     }
 }

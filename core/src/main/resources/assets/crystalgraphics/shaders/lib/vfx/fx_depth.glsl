@@ -6,3 +6,5 @@
 // Fragment stage only; a macro, since the frame block is declared after any included file.
 #define FX_SCENE_DISTANCE(ray) (CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION) / max(dot(ray, -vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2])), 1.0e-4))
 #endif
+// The eye depth of the point {@code distance} along a view ray: what CG_DISTORTION takes for where a haze starts.
+#define FX_EYE_DEPTH(ray, distance) ((distance) * max(dot(ray, -vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2])), 1.0e-4))

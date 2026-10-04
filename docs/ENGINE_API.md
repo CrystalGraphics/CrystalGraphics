@@ -55,7 +55,7 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
   that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
-  `DISTORTION`, its distortion target once applied; `OVERDRAW`, its overdraw count while that view is on.
+  `DISTORTION`, its distortion field once applied (`CgDistortionField`); `OVERDRAW`, its overdraw count while that view is on.
 
 ```java
 public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);
@@ -126,10 +126,13 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
   with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
 - **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
-  adds an offset into a full-size RGBA16F target after the transparent pass, hidden by the scene's depth; one
-  full-screen apply then bends the target by it, reading one copy of the scene. Everything drawn before bends; a draw
-  marked `.afterDistortion()` (or a material in `Queue = "AfterDistortion"`) draws after the apply, sharp. GPU zones
-  `world.distortion` and `world.distortionApply`; a frame with no distortion records neither.
+  adds an offset into an RGBA16F target half the world's size (`world.distortionScale(scale)`) after the transparent
+  pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets
+  bilinearly and a copy of the scene. A haze bends what sorts before it; a draw marked `.afterDistortion()` (or a material in `Queue = "AfterDistortion"`) is not bent by the hazes sorted before it:
+  their apply is placed just before it in the transparent pass, and nearer hazes bend it after. GPU zones
+  `world.distortion` and `world.distortionApply`; a frame with no distortion records neither. The field is published
+  as `CgFrameKeys.DISTORTION`, and a post effect bends a side input by it with `post.distorted(texture)`: bloom
+  bends the emission so the glow moves with the scene beneath it.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).

@@ -75,8 +75,15 @@ public final class CgShaderParser {
                     CgGL.GL_FUNC_ADD, CgGL.GL_FUNC_ADD))
             .depth(CgDepthState.NONE).cull(CgCullState.BACK).build();
 
+    /**
+     * Every Distortion pass's blend, whatever its RenderState says, since it is the target's encoding: offsets and
+     * split add, alpha keeps the nearest haze's closeness.
+     */
+    private static final CgBlendState DISTORTION_BLEND = new CgBlendState(true, CgGL.GL_ONE, CgGL.GL_ONE,
+            CgGL.GL_ONE, CgGL.GL_ONE, CgGL.GL_FUNC_ADD, CgGL.GL_MAX);
+
     /** A Distortion pass with no RenderState block adds into the distortion target, which has no depth either. */
-    private static final CgRenderState DISTORTION_STATE = EMISSIVE_STATE;
+    private static final CgRenderState DISTORTION_STATE = EMISSIVE_STATE.withBlend(DISTORTION_BLEND);
 
     /** A single field parsed from the {@code struct v2f { }} block.
      * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
@@ -313,7 +320,8 @@ public final class CgShaderParser {
                 String own = CgStructureParser.parsePassGlobalDecls(passBody, "void fragment(", resourcePath);
                 CgStructureParser.validatePassBody(passBody, passName, resourcePath);
                 passes.add(new CgParsedPass(lightMode, passName,
-                        CgRenderStateParser.parse(passBody, resourcePath, DISTORTION_STATE), forward.v2fStructBody(),
+                        CgRenderStateParser.parse(passBody, resourcePath, DISTORTION_STATE).withBlend(DISTORTION_BLEND),
+                        forward.v2fStructBody(),
                         own.isEmpty() ? forward.globalDecls() : forward.globalDecls() + "\n" + own, forward.vertexBody(),
                         fragmentBody, fragOutput));
                 continue;
@@ -323,6 +331,7 @@ public final class CgShaderParser {
             CgRenderState renderState = CgRenderStateParser.parse(passBody, resourcePath,
                     CgParsedPass.LIGHT_MODE_EMISSIVE.equals(lightMode) ? EMISSIVE_STATE
                             : CgParsedPass.LIGHT_MODE_DISTORTION.equals(lightMode) ? DISTORTION_STATE : CgRenderState.DEFAULT);
+            if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(lightMode)) renderState = renderState.withBlend(DISTORTION_BLEND);
 
             // 7f. Resolve v2f body (per-pass override or shared fallback)
             String v2fBody = CgStructureParser.parsePassV2fBody(passBody, sharedV2f, resourcePath);

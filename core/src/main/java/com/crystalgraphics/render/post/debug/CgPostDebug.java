@@ -16,6 +16,7 @@ import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.stage.CgFrameKey;
+import com.crystalgraphics.render.stage.CgDistortionField;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 
 /**
@@ -70,13 +71,17 @@ public final class CgPostDebug implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return post.resources().has(key());
+        return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION) : post.resources().has(key());
     }
 
     @Override
     public void record(CgPostContext post) {
         CgTexture source;
-        if (level < 0) {
+        if (level == DISTORTION) {
+            // The field's last target: the final apply's offsets, else the last slot's.
+            CgDistortionField field = post.resources().get(CgFrameKeys.DISTORTION);
+            source = field.offsets(field.count() - 1);
+        } else if (level < 0) {
             source = post.resources().get(key());
         } else {
             CgGraphTexture chain = post.resources().get(CgBloom.CHAIN);
@@ -102,8 +107,7 @@ public final class CgPostDebug implements CgPostEffect {
     }
 
     private CgFrameKey<CgGraphTexture> key() {
-        return level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW
-                : level == DISTORTION ? CgFrameKeys.DISTORTION : CgBloom.CHAIN;
+        return level == EMISSION ? CgFrameKeys.EMISSION : level == OVERDRAW ? CgFrameKeys.OVERDRAW : CgBloom.CHAIN;
     }
 
     /** Forgets its material, which the material registry frees with the context. */
