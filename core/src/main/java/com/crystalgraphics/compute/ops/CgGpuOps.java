@@ -8,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.framebuffer.CgFrameBuffer;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -22,9 +23,11 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -79,6 +82,20 @@ public final class CgGpuOps {
      * it touches (a depth pyramid's nearest or farthest).
      */
     public enum Filter { AVERAGE, MIN, MAX }
+
+    /** Where {@link #readRows} delivers: the count as the GPU wrote it, and the rows. */
+    @FunctionalInterface
+    public interface Rows {
+
+        /**
+         * {@code count} as written, which may pass the capacity, and {@code min(count, capacity)} rows: {@code rows}'
+         * limit is their bytes. Native order; valid only during the call.
+         */
+        void accept(int count, ByteBuffer rows);
+
+        /** They will never arrive: the context was torn down, a read failed, or {@link #accept} threw. */
+        default void failed(String reason) {}
+    }
 
     /** The colour formats the image ops take. */
     public static final List<CgTextureType> IMAGE_TYPES =
@@ -653,6 +670,85 @@ public final class CgGpuOps {
             BLUR_VARIANTS[type][vertical ? 1 : 0] = k;
         }
         return k;
+    }
+
+    // ── Rows to the CPU ──────────────────────────────────────────────────────
+
+    /**
+     * The rows of {@code buffer} a count says were written, read back with the count: an event stream a kernel appends
+     * to, on the CPU a few frames later and never a stall. {@code sink} gets the count as the GPU wrote it and its rows
+     * of {@code stride} bytes from {@code offset}, at most the capacity. Recorded after what writes them.
+     *
+     * <pre>{@code
+     * // Each landing a kernel appended: x, y, z and a speed, 16 bytes
+     * CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDINGS), (count, rows) -> {
+     *     for (int at = 0; at < rows.limit(); at += 16) dust(rows.getFloat(at), rows.getFloat(at + 4), rows.getFloat(at + 8));
+     *     if (Integer.compareUnsigned(count, MAX_LANDINGS) > 0) dropped += count - MAX_LANDINGS;
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>It moves the capacity's rows whatever the count, since a copy's size is fixed when it is recorded: size the
+     *       capacity to the stream.</li>
+     *   <li>Both buffers need {@code COPY}. A fixed count reads that many rows and delivers it as the count.</li>
+     *   <li>The request answered is the rows'; it is done once the sink has run.</li>
+     * </ul>
+     */
+    public static CgRequest readRows(CgRecording recording, CgGraphBuffer buffer, long offset, int stride,
+                                     CgGpuCount count, Rows sink) {
+        int capacity = count.capacity();
+        if (stride <= 0 || capacity == 0) {
+            throw new IllegalArgumentException(capacity + " rows of " + stride + " bytes of " + buffer);
+        }
+        RowsReadback rows = new RowsReadback(sink, stride, capacity);
+        if (count.onGpu()) recording.readback(count.buffer(), count.word() * 4L, 4, rows.count);
+        return recording.readback(buffer, offset, (long) capacity * stride, rows);
+    }
+
+    /**
+     * A count's readback, then its rows': the graph keeps the creation order of passes nothing orders otherwise, and
+     * {@link CgReadback} delivers oldest first, so the count has arrived when the rows do.
+     */
+    static final class RowsReadback implements CgReadback.Sink {
+        private final Rows sink;
+        private final int stride, capacity;
+        private int written;
+        @Nullable private String lost;
+
+        final CgReadback.Sink count = new CgReadback.Sink() {
+            @Override
+            public void accept(ByteBuffer data) {
+                written = data.getInt(0);
+            }
+
+            @Override
+            public void failed(String reason) {
+                lost = reason;
+            }
+        };
+
+        RowsReadback(Rows sink, int stride, int capacity) {
+            this.sink = sink;
+            this.stride = stride;
+            this.capacity = capacity;
+            this.written = capacity;
+        }
+
+        @Override
+        public void accept(ByteBuffer data) {
+            if (lost != null) {
+                sink.failed("its count never arrived: " + lost);
+                return;
+            }
+            int rows = Integer.compareUnsigned(written, capacity) < 0 ? written : capacity;
+            data.limit(rows * stride);
+            sink.accept(written, data);
+        }
+
+        @Override
+        public void failed(String reason) {
+            sink.failed(lost != null ? "its count never arrived: " + lost : reason);
+        }
     }
 
     // ── Counts, scratch, kernels ─────────────────────────────────────────────

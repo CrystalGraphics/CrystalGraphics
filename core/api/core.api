@@ -1997,6 +1997,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static fill (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)V
   method public,static histogram (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)V
   method public,static iota (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static readRows (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/compute/ops/CgGpuOps$Rows;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public,static reduce (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static scan (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public,static sort (Lcom/crystalgraphics/render/graph/CgComputePass;ILcom/crystalgraphics/compute/ops/CgGpuOps$Order;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
@@ -2032,6 +2033,11 @@ com/crystalgraphics/compute/ops/CgGpuOps$Order
   field public,static,final DESCENDING Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
   method public,static values ()[Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;
+com/crystalgraphics/compute/ops/CgGpuOps$Rows
+  access public,abstract,interface
+  extends java/lang/Object
+  method public failed (Ljava/lang/String;)V
+  method public,abstract accept (ILjava/nio/ByteBuffer;)V
 com/crystalgraphics/compute/ops/CgGpuOps$Scan
   access public,final,enum
   extends java/lang/Enum

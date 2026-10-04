@@ -47,7 +47,8 @@ CPU, per frame: O(draws)                          GPU, per frame: O(elements)
 - **Recording order is the only ordering you write.** A compute pass recorded before a draw that reads its buffers
   runs first; the graph derives every barrier from what each step reads and writes, on every device.
 - **Nothing waits.** A count goes from the kernel that wrote it to the command that draws it on the GPU. What the CPU
-  wants to know (live bounds, events, a count for a budget) comes back through `CgReadback` frames later.
+  wants to know (live bounds, events, a count for a budget) comes back through `CgReadback` frames later; an event
+  stream comes back as the rows its count says were written, with the count (`CgGpuOps.readRows`).
 
 ## 2. Which entry point
 
