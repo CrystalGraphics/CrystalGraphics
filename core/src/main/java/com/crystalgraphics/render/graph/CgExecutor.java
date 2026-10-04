@@ -261,6 +261,7 @@ public final class CgExecutor {
                     if (isResolved(transientResource)) giveBack(transientResource);
                 }
             }
+            CgLoweredResources.landAll();   // what lowered dispatches left in their targets, before anything outside reads it
         }
     }
 
@@ -311,6 +312,7 @@ public final class CgExecutor {
             texture.resolve(null);
         } else {
             CgGraphBuffer buffer = (CgGraphBuffer) resource;
+            CgLoweredResources.drop(buffer.bufferId());   // its last reader ran: what a target held of it goes unread
             BUFFERS.release(buffer.desc(), buffer.bufferId());
             buffer.resolve(0);
         }
@@ -374,6 +376,7 @@ public final class CgExecutor {
 
     private void run(CgFrame frame, int s, CgPass pass) {
         try {
+            if (CgLoweredResources.holding()) landHeld(frame, s);
             if (!(pass instanceof CgComputePass)) barriers(frame, s);
             if (pass instanceof CgRasterPass raster) {
                 raster(frame, raster, frame.rasters[s]);
@@ -439,6 +442,29 @@ public final class CgExecutor {
         }
     }
 
+    /**
+     * What a lowered dispatch left in a target, read back into its buffer before a step other than a compute pass touches
+     * the buffer; everything before a callback, which may read anything. A compute pass decides per dispatch.
+     */
+    private static void landHeld(CgFrame frame, int s) {
+        CgPass pass = frame.steps[s];
+        if (pass instanceof CgComputePass || pass instanceof CgPass.BufferRelease) return;
+        if (pass instanceof CgPass.Callback) {
+            CgLoweredResources.landAll();
+            return;
+        }
+        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+            if (!(frame.accessView[i] instanceof CgGraphBuffer view)) continue;
+            CgGraphBuffer buffer = view.resource();
+            if (buffer.kind() == CgGraphBuffer.Kind.HISTORY) {
+                CgLoweredResources.land(buffer.versions()[0]);
+                CgLoweredResources.land(buffer.versions()[1]);
+            } else {
+                CgLoweredResources.land(buffer.bufferId());
+            }
+        }
+    }
+
     // ── Compute ──────────────────────────────────────────────────────────────
 
     private void compute(CgFrame frame, CgComputePass pass, CgFrame.Compute packed) {
@@ -464,7 +490,7 @@ public final class CgExecutor {
         CgLoweredKernel kernel = d.kernel.lowered();
         frame.bindings.bind(bindings);
         for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
-        kernel.dispatchBound(bind(d));
+        kernel.dispatchBound(bind(d), true);
         advanceHistories(d);
     }
 
@@ -472,6 +498,7 @@ public final class CgExecutor {
     private void cpu(CgDispatch d) {
         CgKernelDecl runs = d.kernel.form().runs();
         CgDispatchBindings b = bind(d);
+        CgLoweredResources.land(b);   // the body reads and writes the buffers themselves
         for (int i = 0; i < d.buffers.length; i++) {
             if (imported(d.buffers[i])) CgCpuMirrors.external(b.buffer(i));
             if (imported(d.counters[i])) CgCpuMirrors.external(b.counter(i));
@@ -639,6 +666,7 @@ public final class CgExecutor {
     /** GL buffer {@code buffer} is freed: what is known of it goes with it. */
     private static void forget(int buffer) {
         HAZARDS.forget(CgHazards.buffer(buffer));
+        CgLoweredResources.drop(buffer);
         CgLoweredResources.written(buffer);
     }
 
@@ -898,6 +926,13 @@ public final class CgExecutor {
         scissorRect[3] = Math.max(0, y1 - y0);
     }
 
+    /** What a step sampled one level of samples every level again: no pin outlives the pass that made it. */
+    private static void unpinLevels(CgFrame frame, int s) {
+        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
+            if (frame.accessView[i] instanceof CgGraphTexture texture && texture.framebuffer() != null) texture.unpinLevels();
+        }
+    }
+
     /**
      * Copies what {@code bits} name from the pass's target for the draws sampling it, colour in the rect at {@code at}
      * of {@code rects}, and binds the copies.
@@ -936,13 +971,6 @@ public final class CgExecutor {
         storage.bindLevel(level);
         CgGL.glViewport(0, 0, storage.levelWidth(level), storage.levelHeight(level));
         otherBound = startNoted;
-    }
-
-    /** What a step sampled one level of samples every level again: no pin outlives the pass that made it. */
-    private static void unpinLevels(CgFrame frame, int s) {
-        for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            if (frame.accessView[i] instanceof CgGraphTexture texture && texture.framebuffer() != null) texture.unpinLevels();
-        }
     }
 
     /** A texture's storage now: a requested one's is made on first use. */

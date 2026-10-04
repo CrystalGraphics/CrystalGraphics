@@ -266,7 +266,7 @@ public final class CgRasterPass extends CgPass {
 
     /**
      * Lets draws whose shader reads {@code cg_SceneColor} sample the target's colour at {@code unit}, as it stands
-     * after every draw sorted before them.
+     * after every draw sorted before them. A pass into a mip level above 0 takes no copy.
      *
      * <pre>{@code
      * recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
@@ -276,6 +276,7 @@ public final class CgRasterPass extends CgPass {
      */
     public CgRasterPass sceneColor(int unit) {
         if (ended) throw new IllegalStateException(this + " has ended");
+        requireLevelZero();
         sceneColorUnit = unit;
         if (targetCopy == null) targetCopy = new CgTargetCopy();
         return this;
@@ -284,9 +285,15 @@ public final class CgRasterPass extends CgPass {
     /** As {@link #sceneColor}, for the target's depth and {@code cg_DepthBuffer}. */
     public CgRasterPass sceneDepth(int unit) {
         if (ended) throw new IllegalStateException(this + " has ended");
+        requireLevelZero();
         sceneDepthUnit = unit;
         if (targetCopy == null) targetCopy = new CgTargetCopy();
         return this;
+    }
+
+    /** A target copy is of level 0: a pass drawing another would read the wrong picture. */
+    private void requireLevelZero() {
+        if (level != 0) throw new IllegalStateException(this + " draws level " + level + ", and reads no copy of its target");
     }
 
     /**

@@ -636,7 +636,7 @@ public final class CgMaterialShaderCompiler {
         if (!useSsbo && CgBindingPoints.isInitialized()) {
             int samplers = 0;
             for (CgMaterialProperty p : shader.properties()) if (p.getType().isSampler()) samplers++;
-            int free = Math.min(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;   // the lowest reserved unit
             if (samplers + shader.buffers().size() > free) {
                 throw new CgShaderParseException("'Buffers': " + samplers + " samplers and " + shader.buffers().size()
                         + " buffers read as textures need " + (samplers + shader.buffers().size())

@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute.lower;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
 
@@ -15,22 +16,28 @@ import com.crystalgraphics.platform.gl.CgGL;
  * @param drawsGpuCounts an indirect draw takes its count from a buffer ({@code ARB_draw_indirect}, and not tier G33)
  * @param tierGlsl       the lowest GLSL of the context's tier: 400 at G40, 330 at G33, so a tier forced on a newer
  *                       context compiles as its weakest would
+ * @param stageUnits     the texture units a lowered pass reads through: 16, or fewer where the engine's own sit lower
  */
 public record CgLoweredTarget(CgCapabilities.ShaderBufferPath bufferPath, int maxGeometryVertices,
                               int maxGeometryComponents, int maxTextureSize, int maxTextureBufferSize,
-                              boolean drawsGpuCounts, int tierGlsl) {
+                              boolean drawsGpuCounts, int tierGlsl, int stageUnits) {
+
+    /** What one stage of GL 3.3 samples, at least. */
+    public static final int STAGE_UNITS = 16;
 
     /** GL 3.3's guaranteed limits, buffers as textures, no indirect draws. */
     public static final CgLoweredTarget GL33 = new CgLoweredTarget(CgCapabilities.ShaderBufferPath.TBO, 256, 1024, 1024,
-            65536, false, 330);
+            65536, false, 330, STAGE_UNITS);
 
     /** The current context's. */
     public static CgLoweredTarget current() {
         CgCapabilities caps = CgCapabilities.detect();
         boolean g33 = caps.computeTier() == CgCapabilities.ComputeTier.G33;
+        int reserved = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
         return new CgLoweredTarget(caps.shaderBufferPath(), CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_OUTPUT_VERTICES),
                 CgGL.glGetInteger(CgGL.GL_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS), CgGL.glGetInteger(CgGL.GL_MAX_TEXTURE_SIZE),
-                caps.getMaxTextureBufferSize(), caps.drawIndirect() && !g33, g33 ? 330 : 400);
+                caps.getMaxTextureBufferSize(), caps.drawIndirect() && !g33, g33 ? 330 : 400,
+                Math.min(STAGE_UNITS, reserved > 0 ? reserved : STAGE_UNITS));
     }
 
     /** Engine buffers as storage blocks, as on a context with them; else as buffer textures. */
