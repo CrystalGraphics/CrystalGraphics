@@ -110,8 +110,8 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   (`CgWorldAtmosphere`, from `CgHostEnvironment`).
 - **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
   transparent pass that pass is drawn into the emission target, hidden by the scene's depth, and published as
-  `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). `world.emissionScale(scale)` is the target's
-  share of the world's size (0.5; 1 for a tighter glow at four times the cost).
+  `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). The target is R11G11B10F, at the tier's share of
+  the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 
@@ -122,7 +122,7 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
 one composite pass laying the firing's looks over the target. Bloom is its built-in effect.
 
 ```java
-CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none. Off below Medium
+CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none
 CgRenderStage.Registration fx = CgPostStack.get().add(myEffect);    // a mod's effect at its point
 fx.close();
 ```

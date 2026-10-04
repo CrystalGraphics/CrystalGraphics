@@ -27,7 +27,7 @@ public final class CgGraphicsSettings {
             false);
 
     public static final CgSetting.Choice<CgQuality> QUALITY = FILE.choice("effects", "quality", "Quality",
-            "How much each effect draws. Low drops distortion, bloom and optional layers, and halves optional particles.",
+            "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional particles.",
             CgQuality.HIGH);
 
     public static final CgSetting.Number SHAKE = FILE.number("comfort", "shake", "Camera shake",

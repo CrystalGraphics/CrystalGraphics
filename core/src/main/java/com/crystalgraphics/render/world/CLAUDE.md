@@ -25,7 +25,8 @@
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.
 - **Emission** (`recordEmission`, after the transparent pass): every visible draw whose chain has an Emissive pass
-  draws that pass into a transient RGBA16F target with mips, `emissionScale` of the target's size, reading the stage
+  draws that pass into a transient R11G11B10F target, the tier's share of the target's size (Low 0.25, Ultra 1, else 0.5;
+  `emissionScale` overrides it), reading the stage
   target's depth through `sceneDepth(unit, from)`, and publishes it as `CgFrameKeys.EMISSION`. **It produces and stops**:
   blurring and compositing are the post stack's (`render/post`), and with bloom off nothing reads the target, so the
   graph culls the pass. Its gate is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at emission scales
