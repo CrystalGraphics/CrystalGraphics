@@ -19,10 +19,11 @@ CgPostStack     (ORDER 2000)
 | Package | Holds |
 |---|---|
 | (root) | `CgPostStack` (the singleton: registration, the effect list, recording), `CgPostEffect` (the SPI the engine's and a mod's effects implement), `CgPostPoint`, `CgPostContext` (what an effect records with) |
-| `bloom` | `CgBloom`: the built-in bloom, its settings and its chain |
+| `bloom` | `CgBloom`: the built-in bloom and its settings. `CgBloomChain`: its chain as raster passes, CoD's scheme (13-tap down with Karis on the first step, tent up), each level drawn through `CgGraphTexture.level(k)`; each level's share of the glow is set in the upsample's blend (`ONE, SRC_ALPHA`: keep `WEIGHTS[k]` of the level, add the tent below), so level 0 holds the whole glow and the composite reads it once |
 | `composite` | `CgPostComposite` (the one pass, `shaders/post/composite.shader`), `CgCompositeFeature` (each look, a keyword) |
 
-Shaders: `shaders/post/` — `composite.shader`; bloom's passes under `shaders/post/bloom/`.
+Shaders: `shaders/post/` — `composite.shader`; bloom's passes under `shaders/post/bloom/` (`down`, `up`), their
+filters in `shaders/lib/post/bloom.glsl`.
 
 ## Rules
 

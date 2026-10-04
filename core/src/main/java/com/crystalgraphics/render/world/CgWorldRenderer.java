@@ -576,7 +576,7 @@ public final class CgWorldRenderer {
 
         int w = Math.max(1, (int) (targetWidth * emissionScale)), h = Math.max(1, (int) (targetHeight * emissionScale));
         if (emissionTarget == null || emissionTarget.getWidth() != w || emissionTarget.getHeight() != h) {
-            emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT).withMips());
+            emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(w, h);

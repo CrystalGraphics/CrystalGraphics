@@ -56,7 +56,7 @@ public final class CgPostComposite {
         bloom = null;
     }
 
-    /** Adds {@code chain}'s levels 1 to 5 over the target, times {@code intensity}. */
+    /** Adds {@code chain}'s level 0, the whole glow, over the target, times {@code intensity}. */
     public CgPostComposite bloom(CgGraphTexture chain, float intensity) {
         bloom = chain;
         bloomIntensity = intensity;

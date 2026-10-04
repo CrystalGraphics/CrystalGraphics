@@ -2,7 +2,7 @@
 // look is a feature keyword, so a frame compiles and runs only what is active. One triangle over the screen.
 // CgPostComposite draws it; nothing else should.
 //
-//   BLOOM  the bloom chain, its levels summed, each wider and fainter than the last, added over the target
+//   BLOOM  the bloom chain's level 0, every level already summed into it, added over the target
 #type none
 #pragma cg_feature BLOOM
 
@@ -35,11 +35,8 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 c = vec3(0.0);
 #ifdef BLOOM
-        c += (textureLod(_Bloom, i.uv, 1.0).rgb * 0.30
-            + textureLod(_Bloom, i.uv, 2.0).rgb * 0.25
-            + textureLod(_Bloom, i.uv, 3.0).rgb * 0.20
-            + textureLod(_Bloom, i.uv, 4.0).rgb * 0.15
-            + textureLod(_Bloom, i.uv, 5.0).rgb * 0.10) * _Intensity;
+        // The chain's upsample already summed every level into level 0, smoothed by its tents.
+        c += textureLod(_Bloom, i.uv, 0.0).rgb * _Intensity;
 #endif
         fragColor = vec4(c, 0.0);
     }
