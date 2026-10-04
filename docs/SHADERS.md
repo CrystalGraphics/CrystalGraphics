@@ -641,8 +641,9 @@ Raw shaders can use the same standard library as `.shader` materials. Include an
 ## Compute — `.compute` kernels
 
 A `.compute` holds **kernels**: GLSL functions the GPU runs once per element. A kernel is written once and runs on
-every context a player may have, with the same answer on each: as a compute shader where the context has them, as
-draws where it does not (macOS's GL 4.1, a GL 3.3 context), and as a Java body where no GPU form can run it.
+every context a player may have, with the same answer on each: as a compute shader where the context has them, and as
+draws where it does not (macOS's GL 4.1, a GL 3.3 context). A Java body (`kernel.cpu`) is for debugging and tests:
+shipped kernels carry none ([A Java body](#a-java-body)).
 **`crystalgraphics:shaders/example.compute` is the reference**: every part of the format, annotated, compiled by the
 tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Designing one
 that runs well on all of them: [Designing for every tier](#designing-for-every-tier). Plan:
@@ -1079,8 +1080,9 @@ memory (cache). Give it a lowerable #pragma fallback or a Java body with kernel.
 '#pragma compute_only Bin' and ask kernel.runs() before dispatching it
 ```
 
-Three ways out, for a `general` kernel: a lowerable `#pragma fallback`; a Java body; or `#pragma compute_only` and a
-`runs()` check where it is used:
+Two ways out, for a `general` kernel: a lowerable `#pragma fallback`, or `#pragma compute_only` and a `runs()` check
+where it is used. A Java body quiets the check too, and G40 and G33 run it, but it is not for shipped work
+([A Java body](#a-java-body)):
 
 ```java
 CgKernel sort = kernels.kernel("Sort");                     // #pragma compute_only Sort
@@ -1094,6 +1096,10 @@ instructions for one. One no polyfill gives exactly (`textureGather`, `textureQu
 the tiers below its version. A function of the file's own named as a builtin keeps its own body.
 
 #### A Java body
+
+**For debugging and tests, never shipped.** Forcing the CPU tier (`-Dcrystalgraphics.compute.tier=CPU`) runs a
+kernel's Java body: a breakpoint inside a kernel, or a reference to check a GPU form against. A shipped kernel carries
+none: below compute it runs lowered, as its fallback lowered, or not at all behind `runs()`.
 
 ```java
 particles.kernel("Simulate").cpu(d -> {                     // every keyword set of the kernel shares it
@@ -1249,6 +1255,9 @@ refuses the first on the author's machine; the second is the design's to answer.
 #pragma kernel BinScatter scatter        // the same counts by blended adds: what G40 and G33 run
 #pragma fallback Bin BinScatter
 ```
+
+Never answer the check with a Java body: `kernel.cpu(...)` is a debugging tool. A kernel with no lowerable form is
+`compute_only`, and below compute the feature is absent or done another way.
 
 **2. Lay records out in `vec4`s.** Below `general` a struct holds `vec4`, `ivec4` and `uvec4` only: pack scalars into
 lanes rather than adding fields.
