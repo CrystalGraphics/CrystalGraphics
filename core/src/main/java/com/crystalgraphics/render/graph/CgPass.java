@@ -160,7 +160,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         final long offset, size;
         @Nullable
         final CgGraphTexture texture;
-        final int level, x, y, w, h;
+        final int level, x, y, z, w, h, d;
         private final CgReadback.Sink sink;
 
         Readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
@@ -169,11 +169,12 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             this.offset = offset;
             this.size = size;
             this.texture = null;
-            this.level = this.x = this.y = this.w = this.h = 0;
+            this.level = this.x = this.y = this.z = this.w = this.h = this.d = 0;
             this.sink = sink;
         }
 
-        Readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink, CgRequest request) {
+        Readback(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, CgReadback.Sink sink,
+                 CgRequest request) {
             super("readback " + texture.name() + " level " + level, null, request);
             this.buffer = null;
             this.offset = this.size = 0;
@@ -181,8 +182,10 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             this.level = level;
             this.x = x;
             this.y = y;
+            this.z = z;
             this.w = w;
             this.h = h;
+            this.d = d;
             this.sink = sink;
         }
 

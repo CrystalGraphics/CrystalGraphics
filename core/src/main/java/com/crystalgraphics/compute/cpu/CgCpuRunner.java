@@ -1,6 +1,7 @@
 package com.crystalgraphics.compute.cpu;
 
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.compute.source.CgBufferAccess;
@@ -307,15 +308,18 @@ public final class CgCpuRunner {
             int unit = block.samplerUnit(name);
             CgTexture texture = unit < samplers.length ? samplers[unit] : null;
             if (texture == null) continue;
-            int levels = texture instanceof CgGraphTexture graph ? graph.getLevels() : 1;
+            int levels = texture.getLevels();
+            int depth = texture instanceof CgGraphTexture graph ? graph.getDepth()
+                    : texture instanceof CgTexture3D volume ? volume.getDepth() : 1;
             CgCpuImage[] read = new CgCpuImage[levels];
             CgGL.glBindTexture(texture.getTarget(), texture.getId());
             for (int l = 0; l < levels; l++) {
                 int w = Math.max(1, texture.getWidth() >> l), h = Math.max(1, texture.getHeight() >> l);
-                ByteBuffer pixels = texels((long) w * h * 16);
+                int d = Math.max(1, depth >> l);
+                ByteBuffer pixels = texels((long) w * h * d * 16);
                 CgGL.glGetTexImage(texture.getTarget(), l, CgGL.GL_RGBA, CgGL.GL_FLOAT, pixels);
-                CgCpuImage image = read[l] = new CgCpuImage(name, true, w, h, 1);
-                for (int c = 0; c < w * h * 4; c++) image.floats[c] = pixels.getFloat(c * 4);
+                CgCpuImage image = read[l] = new CgCpuImage(name, true, w, h, d);
+                for (int c = 0; c < w * h * d * 4; c++) image.floats[c] = pixels.getFloat(c * 4);
             }
             state.textures[unit] = read;
         }

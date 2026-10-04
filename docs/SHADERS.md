@@ -835,7 +835,8 @@ qualifiers: `rgba32f`, `rgba16f`, `rg32f`, `rg16f`, `r11f_g11f_b10f`, `r32f`, `r
 | `NAME_STORE(p, v)` | any texel | `general` |
 | `NAME_ADD`/`_MIN`/`_MAX(p, v)` | an atomic, on `r32i` or `r32ui`, `readwrite` | `general` |
 
-A texel reads and writes as `vec4`, `ivec4` or `uvec4` by its format.
+A texel reads and writes as `vec4`, `ivec4` or `uvec4` by its format. A `3d` image binds a volume of the frame graph
+and a `2d` one any other texture, or the dispatch throws ([Volumes](#volumes)).
 
 #### Everything else
 
@@ -942,6 +943,33 @@ in the texture type, as a texture readback answers them:
 recording.update(heights, 0, 32, 0, 16, 16, slab);          // level 0, a 16x16 region at (32, 0); the rest kept
 ```
 
+#### Volumes
+
+A 3D graph texture: written by kernels that declare it a `3d` image, sampled by kernels and materials as a `sampler3D`,
+updated and read back by boxes, slices from `z` up, each laid out as a region is. The voxels of a world window, a gas
+grid, a vector field.
+
+```glsl
+Properties { _Wind ("Wind", sampler3D) = "black" }
+Images { VOXELS ("Voxels", r8ui, writeonly, 3d) }
+// in an image kernel dispatched (w, h, d): CG_TEXEL.xyz is the texel, VOXELS_SIZE() an ivec3
+// anywhere: textureLod(_Wind, uvw, 0.0) filters across slices as within one
+```
+
+```java
+CgFrameBufferFormat r8ui = CgFrameBufferFormat.builder("voxels").color(0, CgTextureType.R8UI).build();
+CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, r8ui));
+pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);
+step.dispatch(move, n).texture("_Wind", wind);
+recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 new slices from z 32: 128 * 96 * 16 bytes
+int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, voxels);   // a material's sampler3D
+```
+
+- One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws.
+- Its format's type is its filter: linear, nearest for an integer type, clamped at every face.
+- Below compute an `image` kernel writes a volume as a draw per slice, and one loading the volume it writes is refused.
+- In `textureLod` from a kernel, give the level: a kernel run as compute has no derivatives.
+
 A buffer declares every use it is put to: `STORAGE` for a kernel or a storage block, `INDIRECT` for
 `dispatchIndirect`'s arguments, `COPY` for a fill, update or copy; `VERTEX`, `INDEX` and `UNIFORM` for draws. **New
 storage holds whatever the driver gives**: fill it, or write every element, before anything reads it.
@@ -992,7 +1020,7 @@ The whole workflow, from a kernel to culled draws joined into one call, with rec
 | A kernel wrote | A draw reads it | Tiers |
 |---|---|---|
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
-| an image | the graph texture, sampled by a material | every tier |
+| an image | the graph texture, sampled by a material; a volume as a `sampler3D` | every tier |
 | a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
 | object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material; or `.instances(records, count)` on a world draw, culled on the GPU (below) | every tier; below GL 4.3 as a buffer texture |
 
@@ -1026,6 +1054,7 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 ```java
 CgRequest got = recording.readback(counts, 0, 4, data -> alive = data.getInt(0));   // after the pass writing it
 recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heights));   // texture, level, region
+recording.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));   // a volume's box: slices 40 and 41
 
 // An event stream a kernel appended to: the rows its count says were written, with the count
 CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDINGS), (count, rows) -> {

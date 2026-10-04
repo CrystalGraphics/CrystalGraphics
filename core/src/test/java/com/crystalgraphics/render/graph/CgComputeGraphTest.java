@@ -368,6 +368,35 @@ public class CgComputeGraphTest {
                 CgGraphBuffer.persistent("args", DESC), 0));
     }
 
+    @Test
+    public void aVolumeBindsOnlyAs3d_andNothingDrawsIntoIt() {
+        CgCompute images = CgCompute.fromSource("test:volumes", """
+                #pragma kernel Flat 8 8 image
+                #pragma kernel Deep 4 4 4 image
+                Properties { _Grid ("Grid", sampler3D) = "black" }
+                Images {
+                    FLAT ("Flat", r32f, writeonly)
+                    DEEP ("Deep", r32f, writeonly, 3d)
+                }
+                void Flat() { FLAT_WRITE(vec4(0.0)); }
+                void Deep() { DEEP_WRITE(textureLod(_Grid, vec3(0.5), 0.0)); }
+                """);
+        CgFrameBufferFormat r32f = CgFrameBufferFormat.builder("volumes").color(0, CgTextureType.R32F).build();
+        CgGraphTexture volume = CgGraphTexture.transientTexture("volume", CgTextureDesc.volume(8, 8, 8, r32f));
+        CgGraphTexture grid = CgGraphTexture.transientTexture("grid", CgTextureDesc.volume(4, 4, 4, r32f));
+        CgGraphTexture flat = CgGraphTexture.transientTexture("flat", new CgTextureDesc(8, 8, r32f));
+        CgComputePass pass = new CgRecording().compute("volumes");
+        pass.dispatch(images.kernel("Deep"), 8, 8, 8).image("DEEP", volume).texture("_Grid", grid);
+
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).image("DEEP", flat));
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", volume));
+        assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).texture("_Grid", flat));
+        assertThrows(IllegalArgumentException.class,
+                () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
+        assertThrows(IllegalArgumentException.class, () -> CgTextureDesc.volume(8, 8, 1, r32f));
+        assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2));
+    }
+
     // ── The executor's walk, GL-free ──────────────────────────────────────────
 
     /** The barriers the executor's rule gives the frame, one storage per resource. */
