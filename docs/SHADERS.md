@@ -1135,11 +1135,14 @@ cull.end();
 recording.raster(shadowMap, ...);   // touches neither buffer: drawn while the cull runs
 ```
 
-- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device), the pass runs on
-  it, after everything recorded before it. The steps after it that touch nothing it reads or writes run beside it; the
-  first that does waits for it, as does a callback and the end of the execution.
-- **Everywhere else it runs in order**, with the same result: GL, Minecraft's Vulkan device, and a pass with a
-  dispatch below compute.
+- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device, and Minecraft
+  26.2's, whose own compute queue Minecraft leaves unused), the pass runs on it, after everything recorded before it.
+  The steps after it that touch nothing it reads or writes run beside it; the first that does waits for it, as does a
+  callback and the end of the execution.
+- **Everywhere else it runs in order**, with the same result: GL, a Minecraft device with no compute queue of its own,
+  and a pass with a dispatch below compute.
+- **On Minecraft's device an async pass may not use Minecraft's own textures** (its main target, the lightmap): only
+  Minecraft's graphics queue may, and the pass throws naming the texture.
 - Worth it for compute that leaves the GPU idle — barriers between small dispatches, a reduction's last levels — beside
   drawing that fills it. `--mode=async-compute` measures it: beside eight 1080p blurs (2.5 ms), half of 1 ms of
   fill-bound drawing disappears on an RTX 4070 SUPER.

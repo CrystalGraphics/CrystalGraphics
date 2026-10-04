@@ -66,8 +66,11 @@ its desktop and HUD from there on those nodes.
   from 26.3, which has no GLFW, takes a device that is not Vulkan as GL. 26.3 under Vulkan stands down for
   now: Forge's world hooks run inside the render pass Minecraft opens for terrain, where Blaze3D refuses our
   submit, and the 26.3 bring-up settles them (plan platform-transparent-pass). `-Dcrystalgraphics.host.verify=true`
-  checks every hand-over. At the shutdown signal our device's close is queued on Blaze3D's destroy queue,
-  which runs it once our last submit has completed or inside `VulkanDevice.close`, before the device goes.
+  checks every hand-over. An `async()` compute pass runs on the compute queue Minecraft creates and never submits
+  to (`computeQueue()`, guarded per version by a Stonecutter range: 26.2 and 26.3 checked), waiting on a value our
+  hand-over signals in Minecraft's submit; a version outside the range runs it in order. At the shutdown signal
+  our device's close is queued on Blaze3D's destroy queue, which runs it once our last submit has completed or
+  inside `VulkanDevice.close`, before the device goes.
 - **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
   `SdlInputService` and `SdlCursorService` there, chosen per node with `//? if >=26.3`, since a 26.3 node
   cannot load a GLFW class at all.

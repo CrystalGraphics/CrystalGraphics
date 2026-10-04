@@ -193,7 +193,10 @@ What is easy to get wrong:
   first two go to the device's compute queue, and a draw, a host section's end or the frame's end inside them throws.
   `OwnedVulkanHost` takes a compute-only queue family (buffers and images then shared by both, and barriers on it kept
   to the stages it has), else a second queue of the frame's family, and orders them with two timeline semaphores. A
-  hosted device and GL record it in order (`asyncCompute()` false). On NVIDIA a second queue of the graphics family
+  hosted device runs it on a compute queue its host made and never submits to (`HostedVulkanHost.computeQueue`:
+  Minecraft 26.2 and 26.3's own), each async stretch submitted at once and waiting on a value the host's submit
+  signals later, and an async pass there refuses the host's images; else in order, as GL records it
+  (`asyncCompute()` false). On NVIDIA a second queue of the graphics family
   ran 0.3-0.6 ms slower than in order where the compute family saved 0.5 ms (`--mode=async-compute`):
   `-Dcrystalgraphics.vulkan.asyncCompute=graphics` forces it, `false` turns async off.
 - **`compileInBackground()` makes a link return at once**, shaderc running on a worker (`crystalgraphics-shaderc`),

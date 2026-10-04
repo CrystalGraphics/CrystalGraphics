@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 
 import static org.lwjgl.vulkan.VK10.VK_IMAGE_LAYOUT_GENERAL;
 import static org.lwjgl.vulkan.VK12.VK_API_VERSION_1_2;
+import static org.lwjgl.vulkan.VK13.VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 *///?}
 
 /**
@@ -138,6 +139,25 @@ public final class Blaze3dVulkanHost
 
     @Override protected boolean isClosed(GpuTexture texture) { return texture.isClosed(); }
 
+    // Minecraft's compute queue where it is a queue of its own rather than its graphics queue again.
+    @Override
+    protected VkQueue computeQueue() {
+        return COMPUTE_QUEUE_UNUSED && minecraft.computeQueue() != minecraft.graphicsQueue()
+                ? minecraft.computeQueue().vkQueue() : null;
+    }
+
+    @Override protected int computeQueueFamily() { return minecraft.computeQueue().queueFamilyIndex(); }
+
+    @Override
+    protected void waitInSubmit(long semaphore, long value) {
+        encoder.waitSemaphore(semaphore, value, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    }
+
+    @Override
+    protected void signalInSubmit(long semaphore, long value) {
+        encoder.signalSemaphore(semaphore, value, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
+    }
+
     private static CgFormat cgFormat(GpuFormat format) {
         return switch (format) {
             case D32_FLOAT -> CgFormat.DEPTH32_FLOAT;
@@ -161,4 +181,12 @@ public final class Blaze3dVulkanHost
     // Minecraft's device enables no line rasterization extension.
     @Override public boolean bresenhamLines() { return false; }
     *///?}
+
+    // Minecraft creates a compute queue it never submits to: in 26.2 and 26.3 no class but VulkanDevice and
+    // VulkanPhysicalDevice names it. A version not yet checked records async compute in order.
+    //? if >=26.2 <=26.3 {
+    /*private static final boolean COMPUTE_QUEUE_UNUSED = true;
+    *///?} else {
+    private static final boolean COMPUTE_QUEUE_UNUSED = false;
+    //?}
 }
