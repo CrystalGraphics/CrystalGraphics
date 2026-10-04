@@ -138,6 +138,32 @@ public class CgComputeGraphTest {
         assertEquals(List.of("fill counts", "add", "copy copy -> counts"), names(build(rec)));
     }
 
+    @Test
+    public void aReadbackKeepsTheTransientWriterItReads_andIsNeverCulled() {
+        CgGraphBuffer scratch = CgGraphBuffer.transientBuffer("scratch", DESC);
+        CgRecording rec = new CgRecording();
+        CgComputePass write = rec.compute("write");
+        write.dispatch(produce, 64).bind("DST", scratch);
+        write.end();
+        CgComputePass wasted = rec.compute("wasted");
+        wasted.dispatch(produce, 64).bind("DST", CgGraphBuffer.transientBuffer("nobody", DESC));
+        wasted.end();
+        CgRequest got = rec.readback(scratch, 16, 32, data -> { });
+        CgFrame frame = build(rec);
+        assertEquals(List.of("write", "readback scratch"), names(frame));
+        assertEquals(CgAccess.COPY_READ, bitsOf(frame, 1, scratch));
+        assertEquals("answered once the bytes land, frames after the frame executes", CgRequest.Status.PENDING, got.status());
+    }
+
+    @Test
+    public void aReadbackOutsideItsBufferOrOfANonCopyBufferIsRefused() {
+        CgRecording rec = new CgRecording();
+        CgGraphBuffer storageOnly = CgGraphBuffer.transientBuffer("storage", CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE));
+        assertThrows(IllegalArgumentException.class, () -> rec.readback(storageOnly, 0, 4, data -> { }));
+        CgGraphBuffer counts = CgGraphBuffer.persistent("counts", DESC);
+        assertThrows(IllegalArgumentException.class, () -> rec.readback(counts, DESC.bytes() - 4, 8, data -> { }));
+    }
+
     // ── Lifetimes and accesses ────────────────────────────────────────────────
 
     @Test

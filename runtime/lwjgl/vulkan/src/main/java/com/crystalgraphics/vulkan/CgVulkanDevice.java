@@ -186,7 +186,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         return new CgDeviceInfo(props.deviceNameString(), "vendor 0x" + Integer.toHexString(props.vendorID()),
                 (v >>> 22) + "." + ((v >>> 12) & 0x3FF) + "." + (v & 0xFFF), limits,
                 l.timestampComputeAndGraphics(), l.maxSamplerAnisotropy() > 1f, true,
-                host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance());
+                host.multiDrawIndirect(), host.indirectCount(), host.indirectFirstInstance(), host.asyncCompute(),
+                host.drawParameters());
     }
 
     @Override
@@ -270,6 +271,10 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             long size = Math.max(4, desc.size());
             VkBufferCreateInfo bci = VkBufferCreateInfo.calloc(stack).sType$Default().size(size).usage(usage)
                     .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
+            if (host.asyncFamily() >= 0) {
+                bci.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(2)
+                        .pQueueFamilyIndices(stack.ints(host.queueFamily(), host.asyncFamily()));
+            }
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO);
             if (desc.hostVisible()) {
                 aci.flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
@@ -311,6 +316,10 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
                     .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
             ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
+            if (host.asyncFamily() >= 0) {
+                ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(2)
+                        .pQueueFamilyIndices(stack.ints(host.queueFamily(), host.asyncFamily()));
+            }
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             LongBuffer lp = stack.mallocLong(1);
             PointerBuffer pp = stack.mallocPointer(1);

@@ -91,6 +91,7 @@ public final class CgDisabledExtensions {
         @Override public boolean GL_ARB_shader_draw_parameters() {
             return on(gl.GL_ARB_shader_draw_parameters(), "GL_ARB_shader_draw_parameters");
         }
+        @Override public boolean GL_ARB_base_instance() { return on(gl.GL_ARB_base_instance(), "GL_ARB_base_instance"); }
         @Override public boolean GL_ARB_transform_feedback2() { return on(gl.GL_ARB_transform_feedback2(), "GL_ARB_transform_feedback2"); }
         @Override public boolean GL_KHR_shader_subgroup() { return on(gl.GL_KHR_shader_subgroup(), "GL_KHR_shader_subgroup"); }
         @Override public boolean GL_NV_shader_atomic_float() { return on(gl.GL_NV_shader_atomic_float(), "GL_NV_shader_atomic_float"); }

@@ -38,6 +38,7 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
 - **A sampler's unit is its index among the shader's declared samplers.** `CgMaterialShader` wires every program
   that way at compile, so nothing per material is left to wire at execution.
 - **`cg_InstanceBase`** is what `CG_INSTANCE_ID` adds to `gl_InstanceID`; it defaults to 0, so a draw that uploads
-  its own instances needs nothing.
+  its own instances needs nothing. A pipeline's `multiDraw()` sibling, compiled with `CG_MULTI_DRAW`, has neither it
+  nor `cg_VertexBase`: each draw of a multi-draw carries its own in its command (`render/graph/CLAUDE.md`).
 - A pipeline lives for the session, and is keyed by the *identity* of its render state: the first compile reuses the
   parse of unchanged source, so a key named before it is the one that draws after it.

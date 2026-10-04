@@ -34,7 +34,8 @@ import java.util.Set;
  *   <li>Elements are numbered as {@code CG_ELEMENT}, x fastest; {@link #x}, {@link #y} and {@link #z} take one apart.</li>
  *   <li>An append lands after what the buffer's counter held, in element order, and the counter grows by every append
  *       made, even past the buffer's end, as on the GPU.</li>
- *   <li>Sampler properties are not reachable here: a texture's texels are the GPU's.</li>
+ *   <li>A sampler property's texture is read whole, every level, before the body runs, where the kernel's code names
+ *       it: {@link #texture} answers what {@code texelFetch} would.</li>
  *   <li>Keep nothing from it past the body's return: the engine reuses it for the next range.</li>
  * </ul>
  */
@@ -47,6 +48,8 @@ public final class CgCpuDispatch {
     /** Per append buffer: the counter's value when the dispatch began. */
     final int[] counts;
     final CgCpuImage[] images;
+    /** Per sampler unit: its texture's levels, or null where the kernel names none. */
+    final CgCpuImage[][] textures;
     private CgKernelDecl kernel;
     private Set<String> keywords;
     @Nullable
@@ -58,11 +61,13 @@ public final class CgCpuDispatch {
     private int first, end;
 
     /** A range's view of {@code source}'s dispatches, sharing its buffers, counts and images with the others. */
-    CgCpuDispatch(CgComputeSource source, CgCpuBuffer[] buffers, int[] counts, CgCpuImage[] images) {
+    CgCpuDispatch(CgComputeSource source, CgCpuBuffer[] buffers, int[] counts, CgCpuImage[] images,
+                  CgCpuImage[][] textures) {
         this.source = source;
         this.buffers = buffers;
         this.counts = counts;
         this.images = images;
+        this.textures = textures;
         this.appended = new CgCpuBuffer[buffers.length];
         for (CgBufferDecl b : source.buffers()) {
             if (b.access() == CgBufferAccess.APPEND) appended[b.index()] = CgCpuBuffer.staging(b);
@@ -146,6 +151,36 @@ public final class CgCpuDispatch {
         CgCpuImage image = images[decl.index()];
         if (image == null) throw new IllegalStateException(kernel.name() + ": image " + name + " is not bound");
         return image;
+    }
+
+    /**
+     * Level {@code level} of sampler property {@code name}'s texture, in floats, four a texel: what
+     * {@code texelFetch(name, p, level)} answers.
+     *
+     * <pre>{@code
+     * CgCpuImage depth = d.texture("_Pyramid", level);
+     * float farthest = depth.loadFloat(x, y, 0, 0);
+     * }</pre>
+     */
+    public CgCpuImage texture(String name, int level) {
+        CgCpuImage[] levels = levels(name);
+        if (level < 0 || level >= levels.length) {
+            throw new IllegalArgumentException(name + " has " + levels.length + " levels, not " + (level + 1));
+        }
+        return levels[level];
+    }
+
+    /** How many levels sampler property {@code name}'s texture has. */
+    public int textureLevels(String name) {
+        return levels(name).length;
+    }
+
+    private CgCpuImage[] levels(String name) {
+        int unit = block.samplerUnit(name);
+        if (unit < 0) throw new IllegalArgumentException(source.path() + " has no sampler property '" + name + "'");
+        CgCpuImage[] levels = textures[unit];
+        if (levels == null) throw new IllegalStateException(kernel.name() + " names no " + name + ", or nothing is bound to it");
+        return levels;
     }
 
     /** A float property's value. */

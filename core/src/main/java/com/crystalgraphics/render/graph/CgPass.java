@@ -1,12 +1,14 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.render.draw.CgPipeline;
 
 import javax.annotation.Nullable;
+import java.nio.ByteBuffer;
 
 /**
  * One unit of graph work, made through a {@link CgRecording}: a raster pass ({@link CgRasterPass}), a compute pass
- * ({@link CgComputePass}), or a copy, an upload, a fill, a callback, a compile or a release. Ordered by what it reads
+ * ({@link CgComputePass}), or a copy, an upload, a fill, a readback, a callback, a compile or a release. Ordered by what it reads
  * and writes, not by when it was made.
  *
  * <ul>
@@ -15,7 +17,7 @@ import javax.annotation.Nullable;
  * </ul>
  */
 public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Callback,
-        CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease {
+        CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease, CgPass.Readback {
 
     final String name;
     @Nullable
@@ -144,6 +146,52 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
             this.to = to;
             this.toOffset = toOffset;
             this.size = size;
+        }
+    }
+
+    /** A buffer range, or a region of one texture level, read back to the CPU and handed to a sink frames later. */
+    static final class Readback extends CgPass implements CgReadback.Sink {
+        @Nullable
+        final CgGraphBuffer buffer;
+        final long offset, size;
+        @Nullable
+        final CgGraphTexture texture;
+        final int level, x, y, w, h;
+        private final CgReadback.Sink sink;
+
+        Readback(CgGraphBuffer buffer, long offset, long size, CgReadback.Sink sink, CgRequest request) {
+            super("readback " + buffer.name(), null, request);
+            this.buffer = buffer;
+            this.offset = offset;
+            this.size = size;
+            this.texture = null;
+            this.level = this.x = this.y = this.w = this.h = 0;
+            this.sink = sink;
+        }
+
+        Readback(CgGraphTexture texture, int level, int x, int y, int w, int h, CgReadback.Sink sink, CgRequest request) {
+            super("readback " + texture.name() + " level " + level, null, request);
+            this.buffer = null;
+            this.offset = this.size = 0;
+            this.texture = texture;
+            this.level = level;
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+            this.sink = sink;
+        }
+
+        @Override
+        public void accept(ByteBuffer data) {
+            sink.accept(data);
+            request.complete();
+        }
+
+        @Override
+        public void failed(String reason) {
+            request.fail(reason);
+            sink.failed(reason);
         }
     }
 

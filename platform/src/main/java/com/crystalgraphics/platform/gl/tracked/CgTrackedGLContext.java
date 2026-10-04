@@ -60,6 +60,8 @@ public final class CgTrackedGLContext implements CgGLContext {
 
     @Override public boolean GL_ARB_shader_draw_parameters() { return false; }
 
+    @Override public boolean GL_ARB_base_instance() { return true; }
+
     /** Transform feedback is not carried: a device has compute instead. */
     @Override public boolean GL_ARB_transform_feedback2() { return false; }
 

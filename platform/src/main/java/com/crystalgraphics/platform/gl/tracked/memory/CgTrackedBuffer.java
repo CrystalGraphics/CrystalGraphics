@@ -71,25 +71,16 @@ public final class CgTrackedBuffer {
     }
 
     /**
-     * {@code glCopyBufferSubData}. Into device-local storage it is a device copy, ordered with the draws around it;
-     * between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds.
-     * A device-local source into a host-visible destination is a readback: it waits for the GPU, as GL's map after it
-     * would.
+     * {@code glCopyBufferSubData}. From or into device-local storage it is a device copy, ordered with the draws around
+     * it; between host-visible buffers the CPU copies, which keeps a host-visible buffer's memory what GL says it holds.
+     * A device-local source into a host-visible destination is a readback, which a read {@link #map} waits for.
      */
     public void copyFrom(CgTrackedBuffer src, long srcOffset, long dstOffset, long size) {
         CgAllocation from = src.require(), to = require();
-        if (!to.hostVisible()) {
+        if (!to.hostVisible() || !from.hostVisible()) {
             tracker.transfer().copyBuffer(from.buffer, from.offset + srcOffset, to.buffer, to.offset + dstOffset, size);
             tracker.markUsed(from);
             tracker.markUsed(to);
-            return;
-        }
-        if (!from.hostVisible()) {
-            if (!persistent && !tracker.writable(to)) to = rename(true);
-            ByteBuffer out = to.memory().duplicate();
-            out.limit((int) (dstOffset + size)).position((int) dstOffset);
-            tracker.transfer().readBuffer(from.buffer, from.offset + srcOffset, out);
-            tracker.markUsed(from);
             return;
         }
         ByteBuffer bytes = from.memory();
@@ -112,7 +103,8 @@ public final class CgTrackedBuffer {
     }
 
     /**
-     * {@code glMapBufferRange}: the bytes to write, or to read once the GPU has written them.
+     * {@code glMapBufferRange}: the bytes to write, or to read once the GPU has written them: at once when the frame
+     * that last used them retired, else after waiting, running this frame's commands first if it was this one.
      *
      * @param invalidateBuffer the old contents may go: new storage
      * @param unsynchronized   the caller keeps the GPU off the range itself (core's frame ring): the memory as is
@@ -126,7 +118,8 @@ public final class CgTrackedBuffer {
             return staging;
         }
         if (read) {
-            if (a.lastUse > tracker.device().retiredFrame()) tracker.device().waitRetired(a.lastUse);
+            if (a.lastUse >= tracker.device().frameIndex()) tracker.transfer().finish();
+            else if (a.lastUse > tracker.device().retiredFrame()) tracker.device().waitRetired(a.lastUse);
         } else if (invalidateBuffer && !persistent) {
             a = rename(false);
         } else if (!persistent && !unsynchronized && !tracker.writable(a)) {

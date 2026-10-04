@@ -444,32 +444,38 @@ public class CgFrameBuffer {
      * }</pre>
      */
     public void bindLevel(int level) {
-        if (level == 0) {
-            bind();
-            return;
-        }
+        if (level == 0) bind();
+        else CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, levelId(level));
+    }
+
+    /**
+     * The framebuffer {@link #bindLevel} binds for {@code level}, made at first use with the binding left as it was:
+     * {@link #getId()} for level 0, colour only above it.
+     */
+    public int levelId(int level) {
+        if (level == 0) return fboId;
         CgTexture first = colorAttachments.isEmpty() ? null : colorAttachments.firstEntry().getValue().getTexture();
         int levels = first == null ? 1 : first.getLevels();
         if (level < 0 || level >= levels) {
             throw new IllegalArgumentException("FBO '" + name + "' has " + levels + " colour levels, not level " + level);
         }
         if (levelFbos.length < levels - 1) levelFbos = Arrays.copyOf(levelFbos, levels - 1);
-        if (levelFbos[level - 1] != 0) {
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, levelFbos[level - 1]);
-            return;
-        }
+        if (levelFbos[level - 1] != 0) return levelFbos[level - 1];
         int id = doGenFramebuffer();
         levelFbos[level - 1] = id;
-        doBindFbo(CgGL.GL_FRAMEBUFFER, id);
-        for (Attachment a : colorAttachments.values()) {
-            if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()), CgGL.GL_TEXTURE_2D,
-                    a.getTexture().getId(), level);
+        try (CgGlScope ignored = CgGlState.save(FBO)) {
+            doBindFbo(CgGL.GL_FRAMEBUFFER, id);
+            for (Attachment a : colorAttachments.values()) {
+                if (a.getTexture() != null) doFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, a.getType().glAttachmentPoint(a.getSlot()),
+                        CgGL.GL_TEXTURE_2D, a.getTexture().getId(), level);
+            }
+            drawEveryColorSlot();
+            int status = doCheckFramebufferStatus();
+            if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+                throw new IllegalStateException("FBO '" + name + "' level " + level + " incomplete: 0x" + Integer.toHexString(status));
+            }
         }
-        drawEveryColorSlot();
-        int status = doCheckFramebufferStatus();
-        if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
-            throw new IllegalStateException("FBO '" + name + "' level " + level + " incomplete: 0x" + Integer.toHexString(status));
-        }
+        return id;
     }
 
     /**

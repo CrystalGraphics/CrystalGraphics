@@ -77,6 +77,7 @@ public final class Lwjgl2GLContext implements CgGLContext {
     @Override public boolean GL_ARB_multi_draw_indirect() { return caps().GL_ARB_multi_draw_indirect; }
     @Override public boolean GL_ARB_indirect_parameters() { return caps().GL_ARB_indirect_parameters; }
     @Override public boolean GL_ARB_shader_draw_parameters() { return caps().GL_ARB_shader_draw_parameters; }
+    @Override public boolean GL_ARB_base_instance() { return caps().GL_ARB_base_instance; }
     @Override public boolean GL_ARB_transform_feedback2() { return caps().GL_ARB_transform_feedback2; }
     @Override public boolean GL_KHR_shader_subgroup() { caps(); return subgroups; }
     @Override public boolean GL_NV_shader_atomic_float() { return caps().GL_NV_shader_atomic_float; }

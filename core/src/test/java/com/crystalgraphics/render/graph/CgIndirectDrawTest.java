@@ -23,8 +23,8 @@ import static org.junit.Assert.*;
 
 /**
  * gpu-compute C4, GL-free: an indirect draw orders its pass after the kernel that writes its count, reads the count as
- * a kernel does (its command's kernel), never batches, and carries its count to the frame; and what the builder
- * refuses.
+ * a kernel does (its command's kernel), never batches, and carries its count to the frame; a draw of {@code objects()}
+ * the same with its records' buffer (C9b); and what the builder refuses.
  */
 public class CgIndirectDrawTest {
 
@@ -138,6 +138,62 @@ public class CgIndirectDrawTest {
         c.instance();
         c.instance();
         assertRefused(c::end, "holds 2");
+    }
+
+    @Test
+    public void aDrawOfObjectsRunsAfterTheKernelWritingThem_andDrawsAloneFromTheirBuffer() {
+        CgGraphBuffer records = CgGraphBuffer.transientBuffer("records",
+                CgBufferDesc.elements(64, CgInstanceKind.OBJECT.floats() * 4, CgBufferUsage.STORAGE));
+        CgGraphBuffer live = CgGraphBuffer.persistent("live", DESC);
+        CgMesh quad = CgMesh.quads(1);
+        CgRecording rec = new CgRecording();
+        int bindings = rec.bindings().begin().end();
+        CgRasterPass draw = raster(rec);
+        CgComputePass write = rec.compute("records");
+        write.dispatch(count, 1).bind("COUNTS", records);
+        write.end();
+        CgChunkBuilder c = rec.chunks().begin();
+        c.draw(pipeline, bindings, quad).objects(records, 8, 40);
+        c.draw(pipeline, bindings, quad).objects(records, 0, 40).indirect(live, 0, CgIndirect.INSTANCES, 1);
+        for (int i = 0; i < 2; i++) {
+            c.draw(pipeline, bindings, quad);
+            c.instance();
+        }
+        draw.add(c.end());
+        draw.end();
+
+        CgFrame frame = build(rec);
+        assertEquals(List.of("records", "raster target"), names(frame));
+        assertEquals(CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ, bitsOf(frame, 1, records));
+        CgFrame.Raster packed = frame.rasters[1];
+        assertEquals("each draw of objects alone, the two of records together", 3, packed.count);
+        assertSame(records, packed.objects[0]);
+        assertEquals(40, packed.instances[0]);
+        assertEquals("records from the first named", 8, packed.first[0]);
+        assertSame(records, packed.objects[1]);
+        assertSame(live, packed.counts[1]);
+        assertNull(packed.objects[2]);
+        assertEquals(2, packed.instances[2]);
+        assertEquals("only the records written here are the frame's", 1 << CgInstanceKind.OBJECT.ordinal(), packed.kinds);
+    }
+
+    @Test
+    public void theBuilderRefusesObjectsBesideRecordsOfItsOwn() {
+        CgGraphBuffer records = CgGraphBuffer.persistent("records", DESC);
+        CgRecording rec = new CgRecording();
+        int bindings = rec.bindings().begin().end();
+        CgChunkBuilder c = rec.chunks().begin();
+
+        c.draw(pipeline, bindings, CgMesh.quads(1)).objects(records, 0, 4);
+        assertRefused(c::instance, "objects()");
+        c.draw(pipeline, bindings, CgMesh.quads(1));
+        c.instance();
+        assertRefused(() -> c.objects(records, 0, 4), "wrote its own records");
+        c.draw(pipeline, bindings, CgMesh.quads(1));
+        assertRefused(() -> c.objects(records, 0, 0), "count 0");
+        assertRefused(() -> c.objects(records, -1, 4), "first -1");
+        c.draw(quadPipeline, bindings);
+        assertRefused(() -> c.objects(records, 0, 4), "no mesh");
     }
 
     private static void assertRefused(Runnable call, String saying) {

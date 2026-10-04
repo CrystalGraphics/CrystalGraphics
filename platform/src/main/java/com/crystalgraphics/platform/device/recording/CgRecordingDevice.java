@@ -59,7 +59,7 @@ public final class CgRecordingDevice implements CgDevice {
 
     private static final CgDeviceInfo INFO = new CgDeviceInfo("recording", "CrystalGraphics", "0",
             new CgDeviceInfo.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 16, 1 << 26,
-                    256, 256, 16, 16384, 16f, CgDeviceInfo.Compute.MINIMUM), true, true, true, true, true, true);
+                    256, 256, 16, 16384, 16f, CgDeviceInfo.Compute.MINIMUM), true, true, true, true, true, true, true, true);
 
     private final List<String> log = new ArrayList<>();
     private final List<CgPassDesc> passes = new ArrayList<>();
@@ -75,6 +75,8 @@ public final class CgRecordingDevice implements CgDevice {
     private int live;
     private int draws;
     private boolean logging = true;
+    private boolean async;
+    private long asyncPoint;
     private Pass open;
     private ComputePass openCompute;
     private Texture surfaceColor, surfaceDepth;
@@ -249,6 +251,7 @@ public final class CgRecordingDevice implements CgDevice {
     @Override
     public void endFrame() {
         if (open != null) throw new IllegalStateException("endFrame with pass '" + open.desc.label() + "' open");
+        if (async) throw new IllegalStateException("endFrame inside async work");
         record("endFrame " + frame);
         frame++;
         retireThrough(frame - 1 - framesInFlight);
@@ -341,6 +344,7 @@ public final class CgRecordingDevice implements CgDevice {
         public CgRenderPass beginPass(CgPassDesc desc) {
             outsidePass("beginPass");
             noCompute("beginPass");
+            if (async) throw new IllegalStateException("A render pass inside async work: a compute queue draws nothing");
             StringBuilder s = new StringBuilder("beginPass ").append(desc.label()).append(" colors=[");
             for (int i = 0; i < desc.colors().size(); i++) {
                 CgPassDesc.Color c = desc.colors().get(i);
@@ -486,6 +490,38 @@ public final class CgRecordingDevice implements CgDevice {
             outsidePass("copyTextureToBuffer");
             use(src, dst);
             record("copyTextureToBuffer " + ref(src) + " " + region(r) + " " + ref(dst) + "+" + dstOffset);
+        }
+
+        /** Recorded in order: async on paper, so a test sees where the tracker puts the brackets. */
+        @Override
+        public void beginAsync() {
+            outsidePass("beginAsync");
+            if (async) throw new IllegalStateException("beginAsync inside async work");
+            async = true;
+            record("beginAsync");
+        }
+
+        @Override
+        public long endAsync() {
+            if (!async) throw new IllegalStateException("endAsync with no async work open");
+            if (openCompute != null) throw new IllegalStateException("endAsync with a compute pass open");
+            async = false;
+            record("endAsync " + ++asyncPoint);
+            return asyncPoint;
+        }
+
+        @Override
+        public void waitAsync(long point) {
+            outsidePass("waitAsync");
+            if (async) throw new IllegalStateException("waitAsync inside async work");
+            record("waitAsync " + point);
+        }
+
+        @Override
+        public void finish() {
+            outsidePass("finish");
+            if (!ownsSubmission) throw new IllegalStateException("A hosted device cannot wait for frame " + frame);
+            record("finish");
         }
 
         @Override

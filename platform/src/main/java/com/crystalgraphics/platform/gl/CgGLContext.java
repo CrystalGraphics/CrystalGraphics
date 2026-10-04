@@ -111,6 +111,9 @@ public interface CgGLContext {
     /** {@code gl_DrawID} and the base vertex and instance in a shader. */
     boolean GL_ARB_shader_draw_parameters();
 
+    /** A first instance in a draw, an indirect command's included: below it the command's field must be 0. */
+    boolean GL_ARB_base_instance();
+
     /** A transform-feedback stream drawn with its captured count. */
     boolean GL_ARB_transform_feedback2();
 

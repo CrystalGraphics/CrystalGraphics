@@ -49,6 +49,8 @@ public final class CgDrawChunk {
     private final long[] countOffsets;
     @Nullable
     private final int[] countModes;
+    @Nullable
+    private final CgBufferHandle[] objects;
     private final float[] bounds;
     private final long[] sortKeys;
 
@@ -58,7 +60,7 @@ public final class CgDrawChunk {
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
-                float[] bounds, long[] sortKeys, float[][] instances) {
+                @Nullable CgBufferHandle[] objects, float[] bounds, long[] sortKeys, float[][] instances) {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -74,6 +76,7 @@ public final class CgDrawChunk {
         this.counts = counts;
         this.countOffsets = countOffsets;
         this.countModes = countModes;
+        this.objects = objects;
         this.bounds = bounds;
         this.sortKeys = sortKeys;
         this.instances = instances;
@@ -116,7 +119,7 @@ public final class CgDrawChunk {
         return CgInstanceKind.of(kinds[draw]);
     }
 
-    /** The draw's first instance, in records, within {@link #data(CgInstanceKind)} of its kind. */
+    /** The draw's first instance, in records, within {@link #data(CgInstanceKind)} of its kind, or its {@link #objects}. */
     public int first(int draw) {
         return firsts[draw];
     }
@@ -166,6 +169,12 @@ public final class CgDrawChunk {
         return countModes[draw] >>> 2;
     }
 
+    /** The buffer a draw of {@code objects()} reads its object records from; null for records in this chunk. */
+    @Nullable
+    public CgBufferHandle objects(int draw) {
+        return objects == null ? null : objects[draw];
+    }
+
     public float x0(int draw) {
         return bounds[draw * 4];
     }
@@ -196,7 +205,7 @@ public final class CgDrawChunk {
                             @Nullable float[][] instances) {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
-                countOffsets, countModes, bounds, sortKeys, instances != null ? instances : this.instances);
+                countOffsets, countModes, objects, bounds, sortKeys, instances != null ? instances : this.instances);
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */

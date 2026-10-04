@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.material.CgMaterialShader;
+import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import javax.annotation.Nullable;
@@ -54,6 +55,11 @@ public final class CgPipeline {
     private final Set<String> keywords;
     private final CgRenderState state;
     private final CgInstanceKind kind;
+    private final boolean multiDraw;
+    /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
+    private final Set<String> compiled;
+    @Nullable
+    private CgPipeline multi;
 
     @Nullable
     private CgShader program;
@@ -72,6 +78,15 @@ public final class CgPipeline {
         this.keywords = key.keywords;
         this.state = key.state;
         this.kind = key.kind;
+        this.multiDraw = key.multiDraw;
+        Set<String> passKeywords = pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE
+                ? keywords : Collections.emptySet();
+        if (multiDraw) {
+            Set<String> both = new TreeSet<>(passKeywords);
+            both.add(CgMaterialShaderCompiler.MULTI_DRAW);
+            passKeywords = Collections.unmodifiableSet(both);
+        }
+        this.compiled = passKeywords;
     }
 
     /**
@@ -85,7 +100,25 @@ public final class CgPipeline {
         Set<String> variant = (pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE) && !keywords.isEmpty()
                 ? Collections.unmodifiableSet(new TreeSet<>(keywords))
                 : Collections.emptySet();
-        return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind), CgPipeline::register);
+        return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, false), CgPipeline::register);
+    }
+
+    /**
+     * This pipeline as a multi-draw binds it: the same pass compiled with
+     * {@link CgMaterialShaderCompiler#MULTI_DRAW}, each draw's bases taken from its command. What an executor binds
+     * for a run of draws it makes one call, where {@code CgCapabilities.multiDraw()}. Render thread.
+     *
+     * <pre>{@code
+     * CgPipeline multi = pipeline.multiDraw();
+     * if (multi.bind()) CgGL.glMultiDrawElementsIndirect(mode, CgGL.GL_UNSIGNED_INT, offset, commands, 20);
+     * }</pre>
+     */
+    public CgPipeline multiDraw() {
+        if (multiDraw) return this;
+        if (multi == null) {
+            multi = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, true), CgPipeline::register);
+        }
+        return multi;
     }
 
     private static CgPipeline register(Key key) {
@@ -172,9 +205,8 @@ public final class CgPipeline {
         int revision = shader.getRevisionNumber();
         if (program != null && programRevision == revision) return program;
         program = pass == CgRenderPassVariant.FORWARD
-                ? shader.getOrCompileForwardPass(keywords)
-                : shader.getOrCompile(pass.lightModeName(),
-                        pass == CgRenderPassVariant.EMISSIVE ? keywords : Collections.emptySet());
+                ? shader.getOrCompileForwardPass(compiled)
+                : shader.getOrCompile(pass.lightModeName(), compiled);
         programRevision = revision;
         instanceBaseLocation = UNRESOLVED;
         vertexBaseLocation = UNRESOLVED;
@@ -221,16 +253,16 @@ public final class CgPipeline {
 
     @Override
     public String toString() {
-        return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + ")";
+        return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "") + ")";
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */
     private record Key(CgMaterialShader shader, CgRenderPassVariant pass, Set<String> keywords, CgRenderState state,
-                       CgInstanceKind kind) {
+                       CgInstanceKind kind, boolean multiDraw) {
         @Override
         public boolean equals(Object o) {
             return o instanceof Key k && k.shader == shader && k.pass == pass && k.keywords.equals(keywords)
-                    && k.state == state && k.kind == kind;
+                    && k.state == state && k.kind == kind && k.multiDraw == multiDraw;
         }
 
         @Override
@@ -239,7 +271,8 @@ public final class CgPipeline {
             h = h * 31 + pass.ordinal();
             h = h * 31 + keywords.hashCode();
             h = h * 31 + System.identityHashCode(state);
-            return h * 31 + kind.ordinal();
+            h = h * 31 + kind.ordinal();
+            return h * 2 + (multiDraw ? 1 : 0);
         }
     }
 }
