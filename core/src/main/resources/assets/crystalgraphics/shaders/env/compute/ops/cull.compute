@@ -1,0 +1,150 @@
+// CgGpuOps.cull (gpu-compute C9b): instances of one mesh, each placed in the camera-relative world, tested against the
+// view's frustum, given the level its screen height picks and, with a depth pyramid, tested against the scene's depth.
+// Each kept at this dispatch's level is appended as the object record a draw reads. One dispatch a level, every one
+// testing every instance: an append writes one buffer. CgWorldRenderer's tests on the CPU, step for step;
+// CgGpuOpsBodies.cull is the CPU tier's twin, line for line.
+#pragma kernel Cull append
+
+Properties {
+    _CountAt      ("The count's word in COUNT, -1 for none",           int)  = -1
+    _Capacity     ("Instances dispatched",                             int)  = 0
+    _Level        ("The level this dispatch keeps",                    int)  = 0
+    _Levels       ("Levels by screen height; 0 for one never culled",  int)  = 0
+    _Heights0     ("Screen heights of levels 0 to 3",                  vec4) = (0, 0, 0, 0)
+    _Heights1     ("Screen heights of levels 4 to 7",                  vec4) = (0, 0, 0, 0)
+    _Min          ("The mesh's box, padded: low corner",               vec4) = (0, 0, 0, 0)
+    _Max          ("The mesh's box, padded: high corner",              vec4) = (0, 0, 0, 0)
+    _Place0       ("Where the set sits, camera-relative: column 0",    vec4) = (1, 0, 0, 0)
+    _Place1       ("Column 1",                                         vec4) = (0, 1, 0, 0)
+    _Place2       ("Column 2",                                         vec4) = (0, 0, 1, 0)
+    _Place3       ("Column 3",                                         vec4) = (0, 0, 0, 1)
+    _PlaceNormal0 ("Its normal matrix: column 0",                      vec4) = (1, 0, 0, 0)
+    _PlaceNormal1 ("Column 1",                                         vec4) = (0, 1, 0, 0)
+    _PlaceNormal2 ("Column 2",                                         vec4) = (0, 0, 1, 0)
+    _ClipX        ("Projection times view: row 0",                     vec4) = (1, 0, 0, 0)
+    _ClipY        ("Row 1",                                            vec4) = (0, 1, 0, 0)
+    _ClipZ        ("Row 2",                                            vec4) = (0, 0, 1, 0)
+    _ClipW        ("Row 3",                                            vec4) = (0, 0, 0, 1)
+    _Plane0       ("The frustum's planes, JOML's order",               vec4) = (0, 0, 0, 1)
+    _Plane1       ("Plane 1",                                                 vec4) = (0, 0, 0, 1)
+    _Plane2       ("Plane 2",                                                 vec4) = (0, 0, 0, 1)
+    _Plane3       ("Plane 3",                                                 vec4) = (0, 0, 0, 1)
+    _Plane4       ("Plane 4",                                                 vec4) = (0, 0, 0, 1)
+    _Plane5       ("Plane 5",                                                 vec4) = (0, 0, 0, 1)
+    _Eye          ("Projection [2][2], [2][3], [3][2], [3][3]",        vec4) = (-1, -1, 0, 0)
+    _ScreenY      ("|projection [1][1]|",                              float) = 1.0
+    _Pyramid      ("Eye depth, each level the farthest it covers",     sampler2D) = "white"
+    _PyramidSize  ("Its width, height and levels; no levels, no test", vec4) = (0, 0, 0, 0)
+    _Light        ("Block and sky light stamped; z 1 to stamp",        vec4) = (0, 0, 0, 0)
+}
+
+struct CullRecord {   // CgInstanceKind.OBJECT's 48 floats
+    vec4 model0; vec4 model1; vec4 model2; vec4 model3;
+    vec4 normal0; vec4 normal1; vec4 normal2; vec4 normal3;
+    vec4 custom0; vec4 custom1; vec4 custom2; vec4 custom3;
+};
+
+Buffers {
+    COUNT     ("The count",   uint,       readonly)
+    INSTANCES ("Instances",   CullRecord, readonly)
+    OUT       ("Kept",        CullRecord, append)
+}
+
+// The point a clip-space depth over w stands for, as cg_LinearEyeDepth reads the pyramid's.
+float eyeDepth(float ndc) {
+    if (_Eye.y == 0.0) return (_Eye.z - ndc) / _Eye.x;
+    float p22 = -_Eye.x / _Eye.y;
+    float p32 = _Eye.z + p22 * _Eye.w;
+    return p32 / (ndc + p22);
+}
+
+// The level-0 texel a clip-space coordinate falls in, clamped to the pyramid while still a float.
+int texel(float ndc, int size) {
+    return int(clamp(floor((ndc * 0.5 + 0.5) * float(size)), 0.0, float(size - 1)));
+}
+
+// Whether the box min..max hides behind the pyramid's depth: its nearest point farther than the farthest the scene
+// holds over every texel its screen rect touches, at the level where that rect spans two texels at most.
+bool occluded(vec3 lo, vec3 hi) {
+    int levels = int(_PyramidSize.z);
+    if (levels <= 0) return false;
+    float x0 = 3.4e38, y0 = 3.4e38, x1 = -3.4e38, y1 = -3.4e38, nearest = 3.4e38;
+    for (int c = 0; c < 8; c++) {
+        vec4 p = vec4((c & 1) == 0 ? lo.x : hi.x, (c & 2) == 0 ? lo.y : hi.y, (c & 4) == 0 ? lo.z : hi.z, 1.0);
+        float w = dot(_ClipW, p);
+        if (w < 0.01) return false;   // crossing the near plane: CgWorldRenderer's NEAR_W
+        float nx = dot(_ClipX, p) / w, ny = dot(_ClipY, p) / w;
+        x0 = min(x0, nx);
+        x1 = max(x1, nx);
+        y0 = min(y0, ny);
+        y1 = max(y1, ny);
+        nearest = min(nearest, eyeDepth(dot(_ClipZ, p) / w));
+    }
+    int width = int(_PyramidSize.x), height = int(_PyramidSize.y);
+    int tx0 = texel(x0, width), tx1 = texel(x1, width), ty0 = texel(y0, height), ty1 = texel(y1, height);
+    int level = 0;
+    while (level < levels - 1 && ((tx1 >> level) - (tx0 >> level) > 1 || (ty1 >> level) - (ty0 >> level) > 1)) level++;
+    int lastX = max(1, width >> level) - 1, lastY = max(1, height >> level) - 1;
+    int ax = min(tx0 >> level, lastX), bx = min(tx1 >> level, lastX);
+    int ay = min(ty0 >> level, lastY), by = min(ty1 >> level, lastY);
+    float farthest = max(max(texelFetch(_Pyramid, ivec2(ax, ay), level).r, texelFetch(_Pyramid, ivec2(bx, ay), level).r),
+                         max(texelFetch(_Pyramid, ivec2(ax, by), level).r, texelFetch(_Pyramid, ivec2(bx, by), level).r));
+    return nearest > farthest;
+}
+
+bool outside(vec4 plane, vec3 lo, vec3 hi) {
+    return plane.x * (plane.x < 0.0 ? lo.x : hi.x) + plane.y * (plane.y < 0.0 ? lo.y : hi.y)
+            + plane.z * (plane.z < 0.0 ? lo.z : hi.z) < -plane.w;
+}
+
+void Cull() {
+    uint n = _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+    if (uint(CG_ELEMENT) >= n) return;
+    CullRecord r = INSTANCES(CG_ELEMENT);
+    mat4 place = mat4(_Place0, _Place1, _Place2, _Place3);
+    mat4 m = place * mat4(r.model0, r.model1, r.model2, r.model3);
+
+    // The box in the camera-relative world: JOML's transformAab, term for term.
+    vec3 lo = m[3].xyz, hi = m[3].xyz;
+    for (int a = 0; a < 3; a++) {
+        vec3 p = m[a].xyz * _Min[a], q = m[a].xyz * _Max[a];
+        lo += min(p, q);
+        hi += max(p, q);
+    }
+    if (outside(_Plane0, lo, hi) || outside(_Plane1, lo, hi) || outside(_Plane2, lo, hi)
+            || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return;
+
+    int level = 0;
+    if (_Levels > 0) {
+        vec3 c = (lo + hi) * 0.5;
+        float radius = 0.5 * length(hi - lo);
+        float w = dot(_ClipW, vec4(c, 1.0));
+        float screen = w <= radius ? 3.4e38 : radius * _ScreenY / w;
+        level = -1;
+        for (int i = 0; i < _Levels; i++) {
+            float height = i < 4 ? _Heights0[i] : _Heights1[i - 4];
+            if (screen >= height) {
+                level = i;
+                break;
+            }
+        }
+    }
+    if (level != _Level || occluded(lo, hi)) return;
+
+    mat3 normal = mat3(_PlaceNormal0.xyz, _PlaceNormal1.xyz, _PlaceNormal2.xyz)
+            * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz);
+    CullRecord o;
+    o.model0 = m[0];
+    o.model1 = m[1];
+    o.model2 = m[2];
+    o.model3 = m[3];
+    o.normal0 = vec4(normal[0], r.normal0.w);
+    o.normal1 = vec4(normal[1], r.normal1.w);
+    o.normal2 = vec4(normal[2], r.normal2.w);
+    o.normal3 = _Light.z > 0.5 ? vec4(_Light.xy, r.normal3.zw) : r.normal3;   // CG_OBJECT_LIGHT
+    o.custom0 = r.custom0;
+    o.custom1 = r.custom1;
+    o.custom2 = r.custom2;
+    o.custom3 = r.custom3;
+    OUT_APPEND(o);
+}

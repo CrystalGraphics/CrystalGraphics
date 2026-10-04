@@ -33,6 +33,11 @@ final class CgGpuOpsBodies {
             int n = count(d);
             for (int e = d.first(); e < d.end(); e++) if (below(e, n)) dst.setInt(e, src.getInt(e));
         });
+        file.kernel("FillAt").cpu(d -> {
+            CgCpuBuffer dst = d.buffer("DST");
+            int n = count(d), at = d.propertyInt("_At"), value = d.propertyInt("_Value");
+            for (int e = d.first(); e < d.end(); e++) if (below(e, n)) dst.setInt(at + e, value);
+        });
         file.kernel("DispatchArgs").cpu(d -> {
             CgCpuBuffer dst = d.buffer("DST");
             int n = count(d), group = d.propertyInt("_Group"), at = d.propertyInt("_At");
@@ -134,6 +139,132 @@ final class CgGpuOpsBodies {
             }
         });
         return file;
+    }
+
+    /** {@code cull.compute}'s kernel, step for step: the same tests in the same order, then the same record. */
+    static CgCompute cull(CgCompute file) {
+        file.kernel("Cull").cpu(d -> {
+            CgCpuBuffer in = d.buffer("INSTANCES"), out = d.appended("OUT");
+            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels");
+            float[] place = columns(d, "_Place", 4), normal = columns(d, "_PlaceNormal", 3);
+            float[] clip = columns(d, "_Clip", 0), planes = new float[24], heights = new float[8];
+            for (int i = 0; i < 6; i++) for (int c = 0; c < 4; c++) planes[i * 4 + c] = d.property("_Plane" + i, c);
+            for (int c = 0; c < 4; c++) {
+                heights[c] = d.property("_Heights0", c);
+                heights[4 + c] = d.property("_Heights1", c);
+            }
+            float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
+            for (int e = d.first(); e < d.end(); e++) {
+                if (!below(e, n)) continue;
+                for (int w = 0; w < 48; w++) r[w] = in.getFloat(e, w);
+                for (int c = 0; c < 4; c++) {
+                    for (int row = 0; row < 4; row++) {
+                        m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]
+                                + place[8 + row] * r[c * 4 + 2] + place[12 + row] * r[c * 4 + 3];
+                    }
+                }
+                for (int k = 0; k < 3; k++) lo[k] = hi[k] = m[12 + k];
+                for (int a = 0; a < 3; a++) {
+                    float min = d.property("_Min", a), max = d.property("_Max", a);
+                    for (int k = 0; k < 3; k++) {
+                        float p = m[a * 4 + k] * min, q = m[a * 4 + k] * max;
+                        lo[k] += Math.min(p, q);
+                        hi[k] += Math.max(p, q);
+                    }
+                }
+                boolean outside = false;
+                for (int i = 0; i < 6 && !outside; i++) {
+                    float x = planes[i * 4], y = planes[i * 4 + 1], z = planes[i * 4 + 2];
+                    outside = x * (x < 0f ? lo[0] : hi[0]) + y * (y < 0f ? lo[1] : hi[1]) + z * (z < 0f ? lo[2] : hi[2])
+                            < -planes[i * 4 + 3];
+                }
+                if (outside) continue;
+                int level = 0;
+                if (levels > 0) {
+                    float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
+                    float dx = hi[0] - lo[0], dy = hi[1] - lo[1], dz = hi[2] - lo[2];
+                    float radius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+                    float w = clip[12] * cx + clip[13] * cy + clip[14] * cz + clip[15];
+                    float screen = w <= radius ? 3.4e38f : radius * d.property("_ScreenY") / w;
+                    level = -1;
+                    for (int i = 0; i < levels; i++) {
+                        if (screen >= heights[i]) {
+                            level = i;
+                            break;
+                        }
+                    }
+                }
+                if (level != keep || occluded(d, clip, lo, hi)) continue;
+
+                int at = d.append("OUT");
+                for (int w = 0; w < 16; w++) out.setFloat(at, w, m[w]);
+                for (int c = 0; c < 3; c++) {
+                    for (int row = 0; row < 3; row++) {
+                        out.setFloat(at, 16 + c * 4 + row, normal[row] * r[16 + c * 4] + normal[4 + row] * r[16 + c * 4 + 1]
+                                + normal[8 + row] * r[16 + c * 4 + 2]);
+                    }
+                    out.setFloat(at, 16 + c * 4 + 3, r[16 + c * 4 + 3]);
+                }
+                boolean stamp = d.property("_Light", 2) > 0.5f;
+                out.setFloat(at, 28, stamp ? d.property("_Light", 0) : r[28]);
+                out.setFloat(at, 29, stamp ? d.property("_Light", 1) : r[29]);
+                out.setFloat(at, 30, r[30]);
+                out.setFloat(at, 31, r[31]);
+                for (int w = 32; w < 48; w++) out.setFloat(at, w, r[w]);
+            }
+        });
+        return file;
+    }
+
+    /** Vec4 properties {@code prefix0} on as one array of columns; 0 columns reads {@code _ClipX} to {@code _ClipW}. */
+    private static float[] columns(CgCpuDispatch d, String prefix, int columns) {
+        String[] names = columns == 0 ? new String[]{"_ClipX", "_ClipY", "_ClipZ", "_ClipW"} : new String[columns];
+        for (int i = 0; i < columns; i++) names[i] = prefix + i;
+        float[] out = new float[names.length * 4];
+        for (int i = 0; i < names.length; i++) for (int c = 0; c < 4; c++) out[i * 4 + c] = d.property(names[i], c);
+        return out;
+    }
+
+    /** {@code cull.compute}'s {@code occluded}: the box's nearest point beyond the farthest depth its rect covers. */
+    private static boolean occluded(CgCpuDispatch d, float[] clip, float[] lo, float[] hi) {
+        int levels = (int) d.property("_PyramidSize", 2);
+        if (levels <= 0) return false;
+        float x0 = 3.4e38f, y0 = 3.4e38f, x1 = -3.4e38f, y1 = -3.4e38f, nearest = 3.4e38f;
+        for (int c = 0; c < 8; c++) {
+            float px = (c & 1) == 0 ? lo[0] : hi[0], py = (c & 2) == 0 ? lo[1] : hi[1], pz = (c & 4) == 0 ? lo[2] : hi[2];
+            float w = clip[12] * px + clip[13] * py + clip[14] * pz + clip[15];
+            if (w < 0.01f) return false;
+            float nx = (clip[0] * px + clip[1] * py + clip[2] * pz + clip[3]) / w;
+            float ny = (clip[4] * px + clip[5] * py + clip[6] * pz + clip[7]) / w;
+            x0 = Math.min(x0, nx);
+            x1 = Math.max(x1, nx);
+            y0 = Math.min(y0, ny);
+            y1 = Math.max(y1, ny);
+            nearest = Math.min(nearest, eyeDepth(d, (clip[8] * px + clip[9] * py + clip[10] * pz + clip[11]) / w));
+        }
+        int width = (int) d.property("_PyramidSize", 0), height = (int) d.property("_PyramidSize", 1);
+        int tx0 = texel(x0, width), tx1 = texel(x1, width), ty0 = texel(y0, height), ty1 = texel(y1, height);
+        int level = 0;
+        while (level < levels - 1 && ((tx1 >> level) - (tx0 >> level) > 1 || (ty1 >> level) - (ty0 >> level) > 1)) level++;
+        int lastX = Math.max(1, width >> level) - 1, lastY = Math.max(1, height >> level) - 1;
+        int ax = Math.min(tx0 >> level, lastX), bx = Math.min(tx1 >> level, lastX);
+        int ay = Math.min(ty0 >> level, lastY), by = Math.min(ty1 >> level, lastY);
+        CgCpuImage depth = d.texture("_Pyramid", level);
+        float farthest = Math.max(Math.max(depth.loadFloat(ax, ay, 0, 0), depth.loadFloat(bx, ay, 0, 0)),
+                Math.max(depth.loadFloat(ax, by, 0, 0), depth.loadFloat(bx, by, 0, 0)));
+        return nearest > farthest;
+    }
+
+    private static float eyeDepth(CgCpuDispatch d, float ndc) {
+        float p22 = d.property("_Eye", 0), p23 = d.property("_Eye", 1), p32 = d.property("_Eye", 2), p33 = d.property("_Eye", 3);
+        if (p23 == 0f) return (p32 - ndc) / p22;
+        float a = -p22 / p23;
+        float b = p32 + a * p33;
+        return b / (ndc + a);
+    }
+
+    private static int texel(float ndc, int size) {
+        return (int) Math.max(0.0, Math.min(size - 1, Math.floor((ndc * 0.5f + 0.5f) * size)));
     }
 
     static CgCompute image(CgCompute file) {

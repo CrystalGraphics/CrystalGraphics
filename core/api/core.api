@@ -1938,6 +1938,21 @@ com/crystalgraphics/compute/lower/CgTexelTarget
   method public type ()Lcom/crystalgraphics/api/texture/CgTextureType;
   method public width ()I
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureType;II)Lcom/crystalgraphics/compute/lower/CgTexelTarget;
+com/crystalgraphics/compute/ops/CgCull
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_LEVELS I
+  method public <init> ()V
+  method public box (FFFFFF)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public levels ()I
+  method public light (FF)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public ownLight ()Lcom/crystalgraphics/compute/ops/CgCull;
+  method public pad (F)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public place (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public pyramid (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public view (Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/compute/ops/CgCull;
 com/crystalgraphics/compute/ops/CgGpuCount
   access public,final,record
   extends java/lang/Record
@@ -1955,11 +1970,17 @@ com/crystalgraphics/compute/ops/CgGpuOps
   access public,final
   extends java/lang/Object
   field public,static,final IMAGE_TYPES Ljava/util/List;
+  field public,static,final PYRAMID_FORMAT Lcom/crystalgraphics/api/framebuffer/CgFrameBufferFormat;
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgGraphTexture;IF)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;F)V
   method public,static bounds (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static compact (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static copy (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static cull (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
+  method public,static cullFirst (II)I
+  method public,static cullRecordBytes ()I
+  method public,static cullRecords (Lcom/crystalgraphics/compute/ops/CgCull;I)I
+  method public,static depthPyramid (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public,static dispatchArgs (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuCount;ILcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static downsample (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/compute/ops/CgGpuOps$Filter;)V
   method public,static downsample (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/compute/ops/CgGpuOps$Filter;)V
