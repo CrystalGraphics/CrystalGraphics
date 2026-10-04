@@ -99,10 +99,10 @@ public class CgBatcherTest {
     public void drawsOfOtherRangesOfOneMeshNeverShareABatch() {
         Object mesh = new Object();
         batcher.reset(CgOrder.SORTED);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, false, 0, 0, 0, 0, 1, 1, 10, 0);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 600, 600, false, 0, 0, 0, 0, 1, 1, 10, 1);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, false, 0, 0, 0, 0, 1, 1, 10, 2);
-        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 0, 0, 0, 0, 1, 1, 10, 3);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, false, -1, 0, 0, 0, 0, 1, 1, 10, 0);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 600, 600, false, -1, 0, 0, 0, 0, 1, 1, 10, 1);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, 0, 0, 600, false, -1, 0, 0, 0, 0, 1, 1, 10, 2);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, -1, 0, 0, 0, 0, 1, 1, 10, 3);
         batcher.finish();
         assertEquals("[0][1][2][3]", batches());
         assertEquals(600, batcher.batchRangeFirst(1));
@@ -113,12 +113,24 @@ public class CgBatcherTest {
         Object mesh = new Object();
         for (CgOrder order : CgOrder.values()) {
             batcher.reset(order);
-            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, true, 0, 0, 0, 0, 1, 1, 10, 0);
-            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, true, 0, 0, 0, 0, 1, 1, 10, 1);
-            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 0, 0, 0, 0, 1, 1, 10, 2);
-            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 0, 0, 0, 0, 1, 1, 10, 3);
+            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, true, -1, 0, 0, 0, 0, 1, 1, 10, 0);
+            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, true, -1, 0, 0, 0, 0, 1, 1, 10, 1);
+            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, -1, 0, 0, 0, 0, 1, 1, 10, 2);
+            batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, -1, 0, 0, 0, 0, 1, 1, 10, 3);
             batcher.finish();
             assertEquals(order.toString(), "[0][1][23]", batches());
         }
+    }
+
+    @Test
+    public void drawsOfOtherGpuGroupsNeverShareABatch() {
+        Object mesh = new Object();
+        batcher.reset(CgOrder.SORTED);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 7, 0, 0, 0, 0, 1, 1, 10, 0);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 7, 0, 0, 0, 0, 1, 1, 10, 1);
+        batcher.add(1, 0, CgInstanceKind.OBJECT, mesh, -1, 0, -1, false, 8, 0, 0, 0, 0, 1, 1, 10, 2);
+        batcher.finish();
+        assertEquals("[01][2]", batches());
+        assertEquals(8, batcher.batchGroup(1));
     }
 }

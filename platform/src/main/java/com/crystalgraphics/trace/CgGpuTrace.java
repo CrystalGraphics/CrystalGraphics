@@ -44,7 +44,7 @@ import java.util.Set;
  *
  * <h3>Groups inside a zone</h3>
  * Marks split a zone's time by label without pausing it: each mark starts a run charged to its label, and the next
- * mark, or the zone's end, closes it. A frame's runs land as counters {@code gpu:<zone>.<label>} beside the zone's own
+ * mark, or the zone's end, closes it. A frame's runs land as counters {@code gpu:<zone>/<label>} beside the zone's own
  * figure, which stays whole and alone in {@link CgFrameRecord#gpuNanos()}.
  *
  * <pre>{@code
@@ -54,7 +54,7 @@ import java.util.Set;
  * drawOpaque();
  * CgGpuTrace.mark(glass);
  * drawGlass();
- * CgGpuTrace.end();            // "gpu:world.opaque" and "gpu:world.glass", summing to "gpu:world"
+ * CgGpuTrace.end();            // "gpu:world/opaque" and "gpu:world/glass", summing to "gpu:world"
  * }</pre>
  *
  * <ul>
@@ -70,6 +70,9 @@ public final class CgGpuTrace {
 
     /** What counters and zone names carry, so a GPU figure is told apart from a CPU one by name alone. */
     public static final String PREFIX = "gpu:";
+
+    /** What parts a group's counter from its zone's name, which never holds one: {@code gpu:world.transparent/glass}. */
+    public static final String GROUP = "/";
 
     public enum Support {
         /** No zone has been opened on a context yet, so nothing has been asked. */
@@ -123,7 +126,7 @@ public final class CgGpuTrace {
     /** The last resolved stamp of the open series: its zone, label (or {@link #SERIES_END}), clock and frame. */
     private static int stampZone, stampLabel = SERIES_END, stampGeneration;
     private static long stampNanos, stampFrame;
-    /** {@code zone << 32 | label} to the counter {@code gpu:<zone>.<label>}, and those counters. */
+    /** {@code zone << 32 | label} to the counter {@code gpu:<zone>/<label>}, and those counters. */
     private static final Map<Long, Integer> GROUP_NAMES = new HashMap<>();
     private static final Set<Integer> GROUPS = new HashSet<>();
 
@@ -362,7 +365,7 @@ public final class CgGpuTrace {
         long key = (long) zone << 32 | (label & 0xFFFFFFFFL);
         Integer name = GROUP_NAMES.get(key);
         if (name == null) {
-            name = CgTraceNames.intern(CgTraceNames.nameOf(zone) + "." + CgTraceNames.nameOf(label));
+            name = CgTraceNames.intern(CgTraceNames.nameOf(zone) + GROUP + CgTraceNames.nameOf(label));
             GROUP_NAMES.put(key, name);
             GROUPS.add(name);
         }

@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -64,6 +65,9 @@ public final class CgChunkBuilder {
     private CgBufferHandle[] objects;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
+    /** Per draw: its GPU group's label, -1 for its material's. Null until one is named. */
+    @Nullable
+    private int[] groups;
     private boolean boundsSet;
 
     /** Per kind ordinal: records written so far, and their floats. */
@@ -139,6 +143,7 @@ public final class CgChunkBuilder {
         }
         if (counts != null) counts[d] = null;
         if (objects != null) objects[d] = null;
+        if (groups != null) groups[d] = -1;
         sortKeys[d] = 0;
         boundsSet = false;
         drawingFloats = pipeline.kind().floats();
@@ -293,6 +298,24 @@ public final class CgChunkBuilder {
         return this;
     }
 
+    /**
+     * Charges the open draw's GPU time to {@code label} under {@code crystalgraphics.gpu.groups}, in place of its
+     * material's path. Draws of different groups never batch while that channel is on, and always may while it is off.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, beam).gpuGroup("vfx.beam.core");
+     * }</pre>
+     */
+    public CgChunkBuilder gpuGroup(String label) {
+        if (drawing < 0) throw new IllegalStateException("gpuGroup() with no draw open: draw() first");
+        if (groups == null) {
+            groups = new int[pipelines.length];
+            Arrays.fill(groups, -1);
+        }
+        groups[drawing] = CgGpuTrace.label(label);
+        return this;
+    }
+
     /** What a sorted pass orders the open draw by, ascending. */
     public CgChunkBuilder sortKey(long key) {
         sortKeys[drawing] = key;
@@ -315,7 +338,7 @@ public final class CgChunkBuilder {
                 counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
                 counts == null ? null : Arrays.copyOf(countModes, count),
                 objects == null ? null : Arrays.copyOf(objects, count), Arrays.copyOf(bounds, count * 4),
-                Arrays.copyOf(sortKeys, count), kept);
+                Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept);
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -382,6 +405,7 @@ public final class CgChunkBuilder {
             countModes = Arrays.copyOf(countModes, n);
         }
         if (objects != null) objects = Arrays.copyOf(objects, n);
+        if (groups != null) groups = Arrays.copyOf(groups, n);
         bounds = Arrays.copyOf(bounds, n * 4);
         sortKeys = Arrays.copyOf(sortKeys, n);
     }

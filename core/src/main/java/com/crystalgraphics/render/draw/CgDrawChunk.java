@@ -53,6 +53,8 @@ public final class CgDrawChunk {
     private final CgBufferHandle[] objects;
     private final float[] bounds;
     private final long[] sortKeys;
+    @Nullable
+    private final int[] groups;
 
     /** Instance records per kind ordinal, each trimmed to what the chunk wrote. */
     private final float[][] instances;
@@ -60,7 +62,8 @@ public final class CgDrawChunk {
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
-                @Nullable CgBufferHandle[] objects, float[] bounds, long[] sortKeys, float[][] instances) {
+                @Nullable CgBufferHandle[] objects, float[] bounds, long[] sortKeys, @Nullable int[] groups,
+                float[][] instances) {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -79,6 +82,7 @@ public final class CgDrawChunk {
         this.objects = objects;
         this.bounds = bounds;
         this.sortKeys = sortKeys;
+        this.groups = groups;
         this.instances = instances;
     }
 
@@ -196,6 +200,11 @@ public final class CgDrawChunk {
         return sortKeys[draw];
     }
 
+    /** The label {@code CgChunkBuilder.gpuGroup} gave the draw, from {@code CgGpuTrace.label}; -1 for its material's. */
+    public int gpuGroup(int draw) {
+        return groups == null ? -1 : groups[draw];
+    }
+
     /**
      * This chunk positioned in {@code spatial}, naming its snapshots in {@code bindings} by {@code bindingIds}, over
      * {@code instances}, each null for this chunk's own: how a replay adds kept drawing to a later recording once it
@@ -205,7 +214,7 @@ public final class CgDrawChunk {
                             @Nullable float[][] instances) {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
-                countOffsets, countModes, objects, bounds, sortKeys, instances != null ? instances : this.instances);
+                countOffsets, countModes, objects, bounds, sortKeys, groups, instances != null ? instances : this.instances);
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */

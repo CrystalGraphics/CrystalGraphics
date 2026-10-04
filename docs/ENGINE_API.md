@@ -124,6 +124,9 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
   depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
   with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
+- **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
+  (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
+  (`docs/PROFILING.md`).
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 

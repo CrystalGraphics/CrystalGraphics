@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -115,6 +116,7 @@ public final class CgTraceReport {
         waits(out, a);
         selfTime(out, a, full ? Integer.MAX_VALUE : 15);
         counters(out, a);
+        gpuGroups(out, a);
         markers(out, a, full ? Integer.MAX_VALUE : 8);
         hints(out, a, Integer.MAX_VALUE);
         slowest(out, a, full ? 10 : 5);
@@ -824,6 +826,48 @@ public final class CgTraceReport {
                     name, counterValue(name, medianOf(acc.sums)), counterValue(name, most), acc.sums.size(),
                     a.frames.size(), medianOf(writes)));
         }
+    }
+
+    /** Each GPU zone split into groups ({@code gpu:<zone>/<label>}): mean ms per measured frame, and share of the zone. */
+    private void gpuGroups(StringBuilder out, Analysis a) {
+        Map<String, List<String>> byZone = new TreeMap<>();
+        for (String name : a.counters.keySet()) {
+            int cut = name.indexOf(CgGpuTrace.GROUP);
+            if (name.startsWith(CgGpuTrace.PREFIX) && cut > 0) {
+                byZone.computeIfAbsent(name.substring(0, cut), k -> new ArrayList<>()).add(name);
+            }
+        }
+        if (byZone.isEmpty()) return;
+        int width = "(outside every group)".length();
+        for (Map.Entry<String, List<String>> zone : byZone.entrySet()) {
+            width = Math.max(width, zone.getKey().length() - 2);
+            for (String group : zone.getValue()) width = Math.max(width, group.length() - zone.getKey().length() - 1);
+        }
+        String zoneRow = "  %-" + (width + 2) + "s %8.3f%n", groupRow = "    %-" + width + "s %8.3f %5.1f%%%n";
+        out.append("\nGPU GROUPS  mean ms over the frames each zone was measured, and the group's share of it\n");
+        for (Map.Entry<String, List<String>> zone : byZone.entrySet()) {
+            CounterAcc whole = a.counters.get(zone.getKey());
+            int frames = whole != null ? whole.sums.size() : 0;
+            if (frames == 0) continue;
+            double zoneMs = sumOf(whole.sums) / 1e6 / frames, grouped = 0;
+            List<String> groups = zone.getValue();
+            groups.sort((x, y) -> Long.compare(sumOf(a.counters.get(y).sums), sumOf(a.counters.get(x).sums)));
+            out.append(String.format(Locale.ROOT, zoneRow, zone.getKey(), zoneMs));
+            for (String group : groups) {
+                double ms = sumOf(a.counters.get(group).sums) / 1e6 / frames;
+                grouped += ms;
+                out.append(String.format(Locale.ROOT, groupRow, group.substring(zone.getKey().length() + 1), ms,
+                        100 * ms / zoneMs));
+            }
+            out.append(String.format(Locale.ROOT, groupRow, "(outside every group)", zoneMs - grouped,
+                    100 * (zoneMs - grouped) / zoneMs));
+        }
+    }
+
+    private static long sumOf(List<Long> values) {
+        long sum = 0;
+        for (long each : values) sum += each;
+        return sum;
     }
 
     /** Instants, and for a blame marker the call sites it named. */

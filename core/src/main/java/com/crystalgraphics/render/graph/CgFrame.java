@@ -283,6 +283,8 @@ public final class CgFrame {
         int[] instances = new int[16];
         /** Per batch, an index into its pass's scissor rects, or a {@code CgRasterPass} sentinel. */
         int[] scissor = new int[16];
+        /** Per batch, its GPU group's label, or -1 for its material's. */
+        int[] group = new int[16];
         CgMesh[] mesh = new CgMesh[16];
         /** Per batch, the range of its mesh: submesh (-1 for all, whole), first, count (-1 to the end). */
         int[] submesh = new int[16], rangeFirst = new int[16], rangeCount = new int[16];
@@ -323,6 +325,7 @@ public final class CgFrame {
                 first = new int[n];
                 instances = new int[n];
                 scissor = new int[n];
+                group = new int[n];
                 mesh = new CgMesh[n];
                 submesh = new int[n];
                 rangeFirst = new int[n];
