@@ -1019,6 +1019,11 @@ int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings(
 ```java
 CgRequest got = recording.readback(counts, 0, 4, data -> alive = data.getInt(0));   // after the pass writing it
 recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heights));   // texture, level, region
+
+// An event stream a kernel appended to: the rows its count says were written, with the count
+CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDINGS), (count, rows) -> {
+    for (int at = 0; at < rows.limit(); at += 16) dust(rows.getFloat(at), rows.getFloat(at + 4), rows.getFloat(at + 8));
+});
 ```
 
 - **It never stalls**: the GPU copies into memory the CPU maps, and the sink runs on the render thread once the GPU has
@@ -1027,6 +1032,9 @@ recording.readback(heat, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(heigh
 - `data` is valid only during the call, in native byte order; a texture region is its rows bottom first, tightly
   packed, in the texture type's base format and pixel type (`CgReadback.pixelBytes`).
 - A buffer needs `COPY`; a texture is read from its first colour attachment.
+- **Rows with their count** (`CgGpuOps.readRows`): the sink gets the count as the GPU wrote it, which may pass the
+  capacity, and at most the capacity's rows (`rows.limit()` is their bytes). The capacity's rows are copied whatever
+  the count, so size the capacity to the stream.
 - Outside a graph, `CgReadback.buffer(glBuffer, offset, size, sink)` and `CgReadback.pixels(fbo, x, y, w, h, type,
   sink)` do the same on GL names.
 
