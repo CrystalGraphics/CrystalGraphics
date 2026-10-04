@@ -9,6 +9,9 @@ package com.crystalgraphics.render.post;
  */
 public enum CgPostPoint {
 
+    // Declared in the order they record: CgPostStack sorts effects by ordinal and walks each point's run in turn, so a
+    // point out of order would have its effects skipped.
+
     /** After the world, before anything of the stack's: a pass that reads the scene (its colour or depth). */
     AFTER_WORLD,
     /** Effects that make the composite's inputs: bloom's chain, a flash's level. */

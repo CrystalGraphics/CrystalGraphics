@@ -85,6 +85,7 @@ public final class CgComputePass extends CgPass {
      * it splits the stage's own zone, which GPU zones' not nesting allows.
      */
     public CgComputePass timed(int zone) {
+        requireOpen();
         gpuZone = zone;
         return this;
     }
