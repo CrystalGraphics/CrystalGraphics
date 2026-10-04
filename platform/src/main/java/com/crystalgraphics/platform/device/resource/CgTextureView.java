@@ -26,4 +26,10 @@ public record CgTextureView(CgGpuTexture texture, int baseMip, int mips, int bas
 
     /** The height of {@link #baseMip}. */
     public int height() { return Math.max(1, texture.desc().height() >> baseMip); }
+
+    /** Whether the two share a subresource: the same texture, overlapping in mips and in layers. */
+    public boolean overlaps(CgTextureView o) {
+        return texture == o.texture && baseMip < o.baseMip + o.mips && o.baseMip < baseMip + mips
+                && baseLayer < o.baseLayer + o.layers && o.baseLayer < baseLayer + layers;
+    }
 }

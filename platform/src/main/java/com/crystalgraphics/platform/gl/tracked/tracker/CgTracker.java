@@ -277,7 +277,7 @@ public final class CgTracker {
         }
         for (int i = 0; i < state.bindings.count(); i++) {
             if (state.bindings.type(i) == CgBindingLayout.Type.SAMPLED_TEXTURE) {
-                if (debug && passTarget.attaches(state.bindings.view(i).texture()))
+                if (debug && passTarget.attaches(state.bindings.view(i)))
                     throw new IllegalStateException(state.program.label + " samples '"
                             + state.bindings.view(i).texture().label() + "', which the pass renders to");
             } else {
