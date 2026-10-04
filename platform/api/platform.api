@@ -2582,7 +2582,15 @@ com/crystalgraphics/platform/gl/tracked/memory/CgAllocation
   method public lastUse ()J
   method public memory ()Ljava/nio/ByteBuffer;
   method public offset ()J
+  method public put (JLjava/nio/ByteBuffer;)V
   method public size ()J
+com/crystalgraphics/platform/gl/tracked/memory/CgFrameArena
+  access public,final
+  extends java/lang/Object
+  field public,static,final PAGE J
+  method public <init> (Lcom/crystalgraphics/platform/gl/tracked/memory/CgSlabAllocator;J)V
+  method public allocate (JJJ)J
+  method public page ()Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
 com/crystalgraphics/platform/gl/tracked/memory/CgSlabAllocator
   access public,final
   extends java/lang/Object
@@ -2679,6 +2687,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public endFrame ()V
   method public forgetPipelines (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram;)V
   method public frameAllocate (J)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
+  method public frameOffset ()J
   method public free (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
   method public fromHost ()V
   method public imageBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;II)V

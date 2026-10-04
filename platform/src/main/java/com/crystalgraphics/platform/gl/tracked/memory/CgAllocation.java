@@ -37,6 +37,19 @@ public final class CgAllocation {
     /** The newest frame whose GPU work used it; -1 if none has. */
     public long lastUse() { return lastUse; }
 
+    /**
+     * Copies {@code from}'s whole capacity into the range from byte {@code at}, its position left alone. Host-visible
+     * only; allocates nothing, unlike {@link #memory()}.
+     */
+    public void put(long at, ByteBuffer from) {
+        ByteBuffer to = buffer.mapped();
+        int base = (int) (offset + at), n = from.capacity(), i = 0;
+        if (from.order() == to.order()) {
+            for (; i + 8 <= n; i += 8) to.putLong(base + i, from.getLong(i));
+        }
+        for (; i < n; i++) to.put(base + i, from.get(i));
+    }
+
     /** The range's memory, positioned at 0 and limited to its size. Host-visible only. */
     public ByteBuffer memory() {
         ByteBuffer b = buffer.mapped().duplicate();

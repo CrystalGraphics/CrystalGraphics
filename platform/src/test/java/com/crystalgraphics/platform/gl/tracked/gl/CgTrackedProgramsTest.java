@@ -10,6 +10,7 @@ import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import org.junit.Test;
 
+import java.nio.ByteBuffer;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -63,9 +64,20 @@ public class CgTrackedProgramsTest {
         return p;
     }
 
-    private CgAllocation looseBlock() {
+    /** The loose uniforms' upload the last draw bound: a range of this frame's uploads. */
+    private ByteBuffer looseBlock() {
         CgDrawState s = gl.tracker().state;
-        return s.bindingAllocation(s.bindings.indexOf(0));
+        int i = s.bindings.indexOf(0);
+        ByteBuffer m = s.bindingAllocation(i).memory();
+        m.position((int) (s.bindings.offset(i) - s.bindingAllocation(i).offset()));
+        return m.slice().order(m.order());
+    }
+
+    /** Where that upload is: its buffer and offset. */
+    private String looseAt() {
+        CgDrawState s = gl.tracker().state;
+        int i = s.bindings.indexOf(0);
+        return s.bindingAllocation(i).buffer().label() + "@" + s.bindings.offset(i);
     }
 
     @Test
@@ -74,18 +86,19 @@ public class CgTrackedProgramsTest {
         gl.glUniform4f(gl.glGetUniformLocation(p, "u_color"), 1, 2, 3, 4);
         gl.glUniform1f(gl.glGetUniformLocation(p, "u_list[2]"), 9);
         gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
-        CgAllocation first = looseBlock();
-        assertEquals(4f, first.memory().getFloat(12), 0f);
-        assertEquals("u_list[2] is two 16-byte elements past u_list", 9f, first.memory().getFloat(32 + 32), 0f);
+        ByteBuffer first = looseBlock();
+        String firstAt = looseAt();
+        assertEquals(4f, first.getFloat(12), 0f);
+        assertEquals("u_list[2] is two 16-byte elements past u_list", 9f, first.getFloat(32 + 32), 0f);
 
         gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
-        assertSame("nothing changed: the upload is reused", first, looseBlock());
+        assertEquals("nothing changed: the upload is reused", firstAt, looseAt());
 
         gl.glUniform1f(gl.glGetUniformLocation(p, "u_scale"), 0.5f);
         gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
-        assertNotSame(first, looseBlock());
-        assertEquals("the earlier draws keep their bytes", 0f, first.memory().getFloat(16), 0f);
-        assertEquals(0.5f, looseBlock().memory().getFloat(16), 0f);
+        assertNotEquals(firstAt, looseAt());
+        assertEquals("the earlier draws keep their bytes", 0f, first.getFloat(16), 0f);
+        assertEquals(0.5f, looseBlock().getFloat(16), 0f);
     }
 
     @Test
