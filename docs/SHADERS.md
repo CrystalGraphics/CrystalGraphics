@@ -1157,6 +1157,7 @@ pass.end();
 | `bounds(pass, records, stride, offset, count, out, word)` | the box of the points at `offset` of each record: min xyz then max xyz |
 | `scan(pass, scan, fold, element, values, count, out)` | `INCLUSIVE` or `EXCLUSIVE` prefix fold |
 | `compact(pass, flags, values, count, out, outCount, word)` | the indices of non-zero flags in order (or their `values`), and how many |
+| `expand(pass, lengths, rows, out, total, word)` | row r's `lengths[r]` elements, one after another: each a `uvec2` of its row and its index in it, and how many. What a kernel claiming k slots a source writes before a map fills them |
 | `sort(pass, element, order, keys, values, count)` | LSD radix sort, stable, moving `values` with the keys when given |
 | `sort(pass, bits, order, keys, values, count)` | by the low `bits` bits of `uint` keys: a 12-bit cell id in three passes, not eight |
 | `histogram(pass, keys, count, bins, binCount, shift)` | bin `min(key >>> shift, binCount - 1)` counted; exact to 2^24 a bin |

@@ -413,7 +413,7 @@ What a pipeline here cannot do today, so a design does not assume it:
 
 1. Decide what is per element (GPU) and per effect or draw (CPU), by the rule at the top.
 2. Pick the entry point (§2); prefer the world renderer's `.instances()` or `.indirect()`.
-3. Write kernels in lowerable shapes with `vec4` records; library ops for sort, scan, compact, histogram, bounds.
+3. Write kernels in lowerable shapes with `vec4` records; library ops for sort, scan, compact, expand, histogram, bounds.
 4. Record the compute pass ahead of its draws, a simulation once per frame (`registerOncePerFrame`); make every
    buffer a later stage or firing reads persistent.
 5. Write the material with the `CG_` macros and `Buffers { }`; one material per look.
