@@ -1,4 +1,4 @@
-package com.crystalgraphics.world;
+package com.crystalgraphics.vfx.camera;
 
 import org.junit.Test;
 
@@ -42,7 +42,8 @@ public class CgShakeModelTest {
 
     @Test
     public void aRumbleAddsWhileHeldAndLapsesWhenLeftAlone() {
-        CgCameraShake.Rumble rumble = new CgCameraShake.Rumble(model).radii(4f, 24f).at(0.0, 0.0, 0.0);
+        CgCameraShake.Held rumble = new CgCameraShake.Held(
+                CgCameraShake.builder().trauma(1f).radii(4f, 24f).build(), model).at(0.0, 0.0, 0.0);
         rumble.level(0.5f);
         assertEquals(0.25f, step(0.05f), 1e-6f);
         clock += CgShakeModel.RUMBLE_EXPIRES + 0.01;

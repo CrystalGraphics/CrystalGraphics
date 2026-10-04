@@ -16,11 +16,11 @@ import com.crystalgraphics.api.state.CgRenderState;
  * <p>All fields are non-null by contract:</p>
  * <ul>
  *   <li>{@link #lightMode()} — one of {@link #LIGHT_MODE_FORWARD}, {@link #LIGHT_MODE_SHADOW_CASTER},
- *       or {@link #LIGHT_MODE_DEPTH}. Auto-defaulted to {@code "Forward"} by the parser if absent
- *       or unknown.</li>
+ *       {@link #LIGHT_MODE_DEPTH} or {@link #LIGHT_MODE_EMISSIVE}. Auto-defaulted to {@code "Forward"} by the
+ *       parser if absent or unknown.</li>
  *   <li>{@link #name()} — auto-assigned by the parser if absent:
  *       Forward passes → {@code "Pass0"}, {@code "Pass1"}, …;
- *       ShadowCaster → {@code "ShadowCaster"}; Depth → {@code "Depth"}.</li>
+ *       ShadowCaster → {@code "ShadowCaster"}; Depth → {@code "Depth"}; Emissive is always {@code "Emissive"}.</li>
  *   <li>{@link #renderState()} — defaults to {@link CgRenderState#DEFAULT} when the
  *       {@code RenderState { }} block is absent from the pass.</li>
  *   <li>{@link #v2fStructBody()}, {@link #globalDecls()}, {@link #vertexBody()},
@@ -73,4 +73,7 @@ public record CgParsedPass(String lightMode, String name, CgRenderState renderSt
 
     /** LightMode tag value for depth-only pre-pass (v2 — not executed in MVP). */
     static final String LIGHT_MODE_DEPTH = CgRenderPassVariant.DEPTH.lightModeName();
+
+    /** LightMode tag value for the light a surface emits, drawn into the bloom target. */
+    static final String LIGHT_MODE_EMISSIVE = CgRenderPassVariant.EMISSIVE.lightModeName();
 }

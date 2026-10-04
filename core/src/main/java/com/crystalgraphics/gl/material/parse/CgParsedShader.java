@@ -44,6 +44,17 @@ import java.util.List;
  *     {@code "CastShadows" = "Off"}; {@code true} in all other cases (including
  *     when the tag is absent). Controls whether the shadow auto-generation ladder
  *     runs during {@code recompile()}.
+ * @param sceneColorMargin
+ *     How far past its own geometry a draw samples {@code cg_SceneColor}, a share of the target's height: the
+ *     material-level {@code "SceneColorMargin"} tag, NaN when absent, and required of a shader that reads it. The
+ *     frame graph copies the target that much wider round a reader.
+ * @param unlit
+ *     {@code true} when the material-level {@code Tags} block says {@code "Lighting" = "Unlit"}: its Forward colour is
+ *     not multiplied by the host's lightmap, as a material drawn with an object record ({@link #readsObjectRecord})
+ *     otherwise is.
+ * @param unfogged
+ *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
+ *     otherwise is, lit or not.
  * @param passes
  *     Ordered, unmodifiable list of parsed {@link CgParsedPass} records.
  *     Contains at least one entry — the parser throws
@@ -58,13 +69,29 @@ import java.util.List;
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
-                              String renderType, boolean castShadows,
+                              String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
+                              boolean unfogged,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
 
     /** The declared buffer of that name, or null. */
     public CgBufferDecl buffer(String name) {
         for (int i = 0; i < buffers.size(); i++) if (buffers.get(i).name().equals(name)) return buffers.get(i);
         return null;
+    }
+
+    /** Whether its draws carry the object record ({@code CG_OBJECT_DATA}): every material but the quad and curve renderers'. */
+    public boolean readsObjectRecord() {
+        return !engineBuffers.contains("quad") && !engineBuffers.contains("curve");
+    }
+
+    /** Whether the compiler multiplies its Forward colour by the host's lightmap. */
+    public boolean lit() {
+        return !unlit && readsObjectRecord();
+    }
+
+    /** Whether the compiler puts its Forward colour behind the host's fog. */
+    public boolean fogged() {
+        return !unfogged && readsObjectRecord();
     }
 
     /**

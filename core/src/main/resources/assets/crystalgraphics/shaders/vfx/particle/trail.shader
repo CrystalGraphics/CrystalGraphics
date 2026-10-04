@@ -4,7 +4,7 @@
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 struct v2f { vec2 trail; };
@@ -39,3 +39,6 @@ Pass {
         fragColor = vec4(col * fade * CG_OBJECT_CUSTOM0.a, 1.0);
     }
 }
+
+// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
+Pass { Tags { "LightMode" = "Emissive" } }

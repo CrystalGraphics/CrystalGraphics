@@ -4,7 +4,7 @@
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_common.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 struct v2f { vec3 worldPos; vec3 normalWs; vec3 objPos; };

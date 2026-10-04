@@ -4,9 +4,9 @@
 
 | Type | Role |
 |------|------|
-| `CgWorldRenderer` | Registered on `WORLD_OPAQUE` and `WORLD_TRANSPARENT` at `ORDER` (1000). Holds the frame's draws flat (absolute positions in doubles, local transforms, customs, queue, priority); at each stage culls them against the stage's view, picks a `CgMeshLods` draw's level by its screen height, sorts them, and records the depth snapshot callback, the prepass, and the opaque or transparent pass onto the host's target. `onFrame` listeners run once a frame, before the first world stage records |
-| `CgDepthSnapshot` | The scene's depth for `cg_DepthBuffer`: blitted from the host's main framebuffer by a callback pass, its format matched to the source's. It is itself the `CgTexture` each world pass binds, so a format change never leaves a pass holding a deleted texture |
-| `CgSortKey` | Filament's key layout with a log-quantised distance: slot, priority, material, distance, mesh. No far plane |
+| `CgWorldRenderer` | Registered on `WORLD_OPAQUE` and `WORLD_TRANSPARENT` at `ORDER` (1000). Holds the frame's draws flat (absolute positions in doubles, local transforms, customs, queue, sort layer, order, group); at each stage culls them against the stage's view, picks a `CgMeshLods` draw's level by its screen height, sorts them, and records the prepass and the opaque or transparent pass onto the host's target, each declaring `sceneDepth`/`sceneColor` so its readers sample the target as it stands. `onFrame` listeners run once a frame, before the first world stage records |
+| `CgSortKey` | Filament's key layout with a log-quantised distance: slot, sort layer, then opaque order, material, distance, mesh, or transparent group distance, order, distance. No far plane |
+| `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`; a mod defines its own `before`/`after` one in a static field |
 
 ## Rules
 
@@ -15,11 +15,19 @@
   view's origin, `cg_WorldOrigin` at the host's absolute position.
 - **A draw lives one ring frame** (`CgFrameRing.frame()`); a stage drops the previous frame's draws before it records.
   A host advancing no ring frame (a test) keeps them.
-- **The snapshot is taken once a frame**, at the first world stage whose draws include a material reading
-  `cg_DepthBuffer` (`CgMaterial.readsSceneDepth`).
+- **`cg_DepthBuffer` and `cg_SceneColor` are the graph's copies of the target** (`CgRasterPass.sceneDepth`,
+  `sceneColor`): a reader sees every draw sorted before it except readers in a row with it, so a heat haze bends what is sorted
+  under it and nothing above. `render/graph/AGENTS.md` § *Reading the target*.
 - **Material chains** (`setNextPass`) are drawn as further draws on the same instances, in the forward passes only.
 - **An indirect draw** (`.indirect(count, offset, mode, factor)`) carries its count into each pass's chunk. Its
   culling is by the bounds it states: what the count will be is unknown when it is culled. A count written in the same
   stage comes from a renderer registered below `ORDER` recording a compute pass into the stage's frame.
 - The prepass takes a material's depth pass when it has one, else its forward pipeline with colour writes off
   (`CgRenderState.withColorMask`), cached per render state.
+- **Bloom** (`recordBloom`, after the transparent pass): every visible draw whose chain has an Emissive pass draws
+  that pass into a transient RGBA16F target with mips, `bloomScale` of the target's size, reading the stage target's
+  depth through `sceneDepth(unit, from)`. A compute pass downsamples and blurs five levels, and `bloom.shader` adds
+  their sum over the target. It is skipped below `CgQuality.MEDIUM`, at intensity 0, and when nothing emits. Its gate
+  is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at bloom scales 1 and 0.5, on gl and vulkan.
+- **The emissive state is ONE ONE, never `CgBlendState.ADDITIVE`** (SRC_ALPHA ONE): emission is written with an
+  alpha of 0, which ADDITIVE multiplies away.

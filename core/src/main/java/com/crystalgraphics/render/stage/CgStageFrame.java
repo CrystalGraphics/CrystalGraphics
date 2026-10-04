@@ -77,11 +77,15 @@ public final class CgStageFrame {
         return CgGraphTexture.current();
     }
 
-    /** Fills {@code constants} with the frame's time, the host target's size and depth convention; the camera is the caller's. */
+    /**
+     * Fills {@code constants} with the frame's time, the host target's size and depth convention, and the world's sun
+     * and fog ({@link CgWorldAtmosphere}); the camera is the caller's.
+     */
     public CgPassConstants defaults(CgPassConstants constants) {
-        return constants.time(CgFrameClock.seconds())
+        constants.time(CgFrameClock.seconds())
                 .resolution(host.width(), host.height())
                 .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne());
+        return CgWorldAtmosphere.apply(host.environment(), constants);
     }
 
     /**

@@ -5,7 +5,7 @@
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_halo.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 struct v2f { vec3 worldPos; };

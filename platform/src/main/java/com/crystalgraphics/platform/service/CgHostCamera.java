@@ -4,8 +4,8 @@ import com.crystalgraphics.platform.CgService;
 
 /**
  * Moves the host's camera by a little for one frame: what a shake and an FOV kick are. A host applies the last offset
- * it was given where it sets its camera up, once a frame; {@code com.crystalgraphics.world.CgCameraShake} sums every
- * effect's shake into the one offset it gives, so a host only adds numbers.
+ * it was given where it sets its camera up, once a frame; core sums every playing
+ * {@code com.crystalgraphics.vfx.camera.CgCameraShake} into the one offset it gives, so a host only adds numbers.
  *
  * <pre>{@code
  * // core, once a frame

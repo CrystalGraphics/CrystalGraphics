@@ -4,18 +4,23 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 
 /**
  * The 64-bit key a world draw sorts by: Filament's {@code RenderPass} layout, with the depth bucket a log-quantised
- * distance so no far plane is needed.
+ * distance so no far plane is needed. Its {@link CgSortLayer} outranks everything but the slot; a transparent draw then
+ * sorts in Niagara's levels: its group (an effect) back to front, then within it by its own order and distance.
  *
  * <pre>
- * 63    60 59    56 55          40 39          24 23          8 7     0
- * | slot  | prio  | material id  | depth bucket | mesh id     | 0     |
+ * opaque       63    60 59      52 51  48 47          32 31          16 15          0
+ *              | slot  | layer    | ord  | material id  | depth bucket | mesh id     |
+ * transparent  63    60 59      52 51          36 35  32 31          16 15          0
+ *              | slot  | layer    | group bucket | ord  | depth bucket | 0           |
  * </pre>
  *
  * <ul>
- *   <li>Slot: opaque 0, alpha test 1, transparent 2, from {@link CgRenderQueue}'s thresholds. Priority: 0 to 15,
- *       higher later.</li>
+ *   <li>Slot: opaque 0, alpha test 1, transparent 2, from {@link CgRenderQueue}'s thresholds. Layer: a
+ *       {@link CgSortLayer}'s rank. Order: 0 to 15, higher later, within the layer or the group.</li>
  *   <li>Opaque groups by material, then front to back, then by mesh, so neighbours that can instance are adjacent.
- *       Transparent is back to front alone: blending needs the order more than the batching.</li>
+ *       Transparent is back to front alone: blending needs the order more than the batching. A group draws whole,
+ *       back to front among the other groups and draws of its layer, so a haze nearer than an effect bends all of it,
+ *       and a group's own orders decide what of it its haze bends.</li>
  *   <li>Ids are 16-bit hashes. A collision costs a batch, never a wrong picture: batches merge on the real
  *       pipeline, snapshot and mesh.</li>
  * </ul>
@@ -28,21 +33,30 @@ final class CgSortKey {
     private CgSortKey() {
     }
 
-    static long opaque(int queue, int priority, int materialId, int meshId, float distance) {
-        return head(queue, priority)
-                | ((long) (materialId & 0xFFFF)) << 40
-                | ((long) bucket(distance)) << 24
-                | ((long) (meshId & 0xFFFF)) << 8;
+    static long opaque(int queue, int layer, int order, int materialId, int meshId, float distance) {
+        return head(queue, layer)
+                | ((long) (order & 0xF)) << 48
+                | ((long) (materialId & 0xFFFF)) << 32
+                | ((long) bucket(distance)) << 16
+                | (meshId & 0xFFFF);
     }
 
-    static long transparent(int queue, int priority, float distance) {
-        return head(queue, priority) | ((long) (0xFFFF - bucket(distance))) << 24;
+    /**
+     * A draw in a group at {@code groupDistance}, at {@code order} within it. A draw in no group is its own: its
+     * distance in both places.
+     */
+    static long transparent(int queue, int layer, float groupDistance, int order, float distance) {
+        return head(queue, layer)
+                | ((long) (0xFFFF - bucket(groupDistance))) << 36
+                | ((long) (order & 0xF)) << 32
+                | ((long) (0xFFFF - bucket(distance))) << 16;
     }
 
-    private static long head(int queue, int priority) {
-        return ((long) (slot(queue) & 0xF)) << 60 | ((long) (priority & 0xF)) << 56;
+    private static long head(int queue, int layer) {
+        return ((long) (slot(queue) & 0xF)) << 60 | ((long) (layer & 0xFF)) << 52;
     }
 
+    /** At most 3: a slot of 8 or more would set the sign bit, and the keys compare as signed longs. */
     static int slot(int queue) {
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD) return 3;
         if (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD) return 2;

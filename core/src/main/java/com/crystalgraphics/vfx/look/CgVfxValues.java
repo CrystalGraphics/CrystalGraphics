@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 
 /**
  * A value for every parameter of one {@link CgVfxSchema}: a look's defaults, or a playing effect's own copy of them.
@@ -10,6 +11,7 @@ import com.crystalgraphics.easing.CgKeyframes;
  * values.set(CgEnergyWave.RADIUS, 0.9f);
  * float green = values.get(CgEnergyWave.CORE, 1);   // a colour's second component
  * float size = values.curve(CgEnergyWave.CHARGE_SIZE).at(0.5f);
+ * values.set(CgEnergyWave.BLAST_SHAKE, CgCameraShakes.IMPACT);
  * }</pre>
  *
  * <ul>
@@ -21,12 +23,13 @@ public final class CgVfxValues {
 
     private final CgVfxSchema schema;
     private final float[] values;
-    private final CgKeyframes[] curves;
+    // Curves and shakes.
+    private final Object[] objects;
 
-    CgVfxValues(CgVfxSchema schema, float[] values, CgKeyframes[] curves) {
+    CgVfxValues(CgVfxSchema schema, float[] values, Object[] objects) {
         this.schema = schema;
         this.values = values;
-        this.curves = curves;
+        this.objects = objects;
     }
 
     public CgVfxSchema schema() {
@@ -61,24 +64,43 @@ public final class CgVfxValues {
     }
 
     public CgKeyframes curve(CgVfxParam param) {
-        schema.check(param);
-        if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
-        return curves[param.offset];
+        curveParam(param);
+        return (CgKeyframes) objects[param.offset];
     }
 
     public CgVfxValues set(CgVfxParam param, CgKeyframes curve) {
-        schema.check(param);
-        if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
-        curves[param.offset] = curve;
+        curveParam(param);
+        objects[param.offset] = curve;
+        return this;
+    }
+
+    public CgCameraShake shake(CgVfxParam param) {
+        shakeParam(param);
+        return (CgCameraShake) objects[param.offset];
+    }
+
+    public CgVfxValues set(CgVfxParam param, CgCameraShake shake) {
+        shakeParam(param);
+        objects[param.offset] = shake;
         return this;
     }
 
     private void scalar(CgVfxParam param) {
         schema.check(param);
-        if (param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is a curve");
+        if (param.size <= 0) throw new IllegalArgumentException("'" + param.name + "' is not a number");
+    }
+
+    private void curveParam(CgVfxParam param) {
+        schema.check(param);
+        if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
+    }
+
+    private void shakeParam(CgVfxParam param) {
+        schema.check(param);
+        if (!param.isShake()) throw new IllegalArgumentException("'" + param.name + "' is not a shake");
     }
 
     public CgVfxValues copy() {
-        return new CgVfxValues(schema, values.clone(), curves.clone());
+        return new CgVfxValues(schema, values.clone(), objects.clone());
     }
 }

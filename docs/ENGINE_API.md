@@ -65,6 +65,7 @@ world.onFrame(view -> {                                // once a frame, before t
          .at(x, y, z)                                  // absolute, in doubles
          .transform(rotationScale)                     // optional, about that position
          .custom(0, r, g, b, a)                        // CG_OBJECT_CUSTOM0
+         .light(15f, sky)                              // optional: the world's light at its position otherwise
          .submit();
 });
 world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
@@ -84,18 +85,28 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
 
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
-  (`CgSortKey`): opaque by material, front to back, then mesh; transparent back to front. Equal neighbours instance.
-- `WORLD_OPAQUE` records the depth snapshot (only when a drawn material reads `cg_DepthBuffer`), a prepass (materials
-  with a depth pass, and alpha-tested ones) and the opaque pass; `WORLD_TRANSPARENT` a snapshot of its own (again only
-  for a reader, holding the opaque draws) and the transparent pass. Every world pass binds the snapshot as a
-  pass texture.
+  (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
+  defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a
+  `.group(x, y, z)` sorting as one at its position (Niagara's system; every VFX effect is one) and its draws by their
+  `.order(0..15)` within it. Equal neighbours instance.
+- `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
+  `WORLD_TRANSPARENT` the transparent pass. Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
+  for a reader only where one draws.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
+- **Lit by the world** (`docs/SHADERS.md` § *Lighting and fog*): each draw carries the block and sky light at its
+  position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
+  it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
+  (`CgWorldAtmosphere`, from `CgHostEnvironment`).
+- **Bloom**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows. After the
+  transparent pass that pass is drawn into a smaller target, hidden by the scene's depth, blurred and added over the
+  world. `world.bloom(intensity)` sets the strength (1; 0 for none), `world.bloomScale(scale)` the target's share of
+  the world's size (0.5; 1 for a tighter glow at four times the cost). Off below `CgQuality.MEDIUM`.
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
-shader reads its 3×3), `custom0`–`custom3` 32–47.
+shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`), `custom0`–`custom3` 32–47.
 
 **An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
 constants:
@@ -282,7 +293,7 @@ CgRenderState.DEFAULT          // blend OFF, depth TEST_WRITE, cull BACK, stenci
 CgDepthState.TEST_WRITE        // depth test LEQUAL + depth write ON
 CgDepthState.TEST_ONLY         // depth test LEQUAL + depth write OFF
 CgBlendState.ALPHA             // SRC_ALPHA / ONE_MINUS_SRC_ALPHA
-CgBlendState.ADDITIVE          // ONE / ONE
+CgBlendState.ADDITIVE          // SRC_ALPHA / ONE: adds nothing where alpha is 0
 CgCullState.BACK               // GL_BACK face culling
 ```
 

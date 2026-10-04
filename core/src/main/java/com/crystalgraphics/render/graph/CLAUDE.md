@@ -54,6 +54,7 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 ```
 
 - A pass into level k has the level's viewport, and no depth above level 0; its constants' resolution is the caller's.
+  Above level 0 it reads no copy of its target: `sceneColor` and `sceneDepth(unit)` throw.
 - A level view pins the texture's base and max level when bound (on Vulkan, a view of the one level), so a shader
   reads it at LOD 0 and `textureSize(s, 0)` is the level's. The executor unpins after the pass, and binding the
   texture whole unpins it too.
@@ -66,6 +67,47 @@ name, so pooled transients, a history's two versions and a buffer used across fr
 `-Dcrystalgraphics.graph.barriers=false` keeps the bookkeeping and issues nothing; synchronization validation must then
 fail `--mode=compute-graph`. Below compute (G40, G33, CPU) the bookkeeping runs and no barrier is issued: a lowered
 kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
+
+**Reading the target** (`CgRasterPass.sceneColor(unit)`, `sceneDepth(unit)`): a draw whose shader reads
+`cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
+pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:
+colour by any draw with colour writes on, depth only by a depth write. The pass starts with neither copied, so its
+first reader always copies. A reader's own writes leave what it reads clean, so readers in a row share one copy and
+never see each other (Godot's screen-texture rule). There is no cap: a colour copy is cut to the union of its
+readers' screen bounds, each grown by its shader's `SceneColorMargin` tag (a share of the target's height: how far
+it samples past its geometry, required of every shader reading `cg_SceneColor`, which otherwise fails to parse), and
+refreshed in place in one texture per pass; a reader whose rect the last copy holds and no draw since wrote into
+takes none. Depth is copied whole. A world draw's bounds are its box projected to the screen, cut at the near plane,
+so only an eye inside the box covers the whole screen; a draw with none copies the whole target. The executor blits before the batch, scissor off, and binds the copy at the pass's
+unit (`graph.target-copies`, `graph.target-copy-pixels`); a blit is ordered among draws by the backend, as any copy
+is.
+
+```java
+CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
+        .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)    // haze, glass, water: the target as drawn so far
+        .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);         // soft particles, depth fades
+```
+
+- Each pass copies into one framebuffer from the transient pool, held from its first copy to its end; a later copy
+  overwrites the earlier, so nesting and passes of other sizes never disturb it, and a steady frame allocates nothing.
+- The copy has the target's formats (a float target keeps its range); the current target's colour is RGBA8 and its
+  depth in its own format, the viewport's size.
+- Sort order decides what a reader sees: it bends what sorted before it. The world renderer's groups and orders
+  place a haze after what it should bend (`render/world/AGENTS.md`).
+
+**Another target's depth** (`sceneDepth(unit, from)`): a pass into a target of its own (a bloom target, any size)
+reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
+Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The world's bloom is the user (`render/world/CLAUDE.md`).
+
+```java
+recording.raster(glow, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED)
+        .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
+```
+
+- **`CgGraphTexture.current()` is the framebuffer and viewport bound when the execution began**, not whatever is
+  bound now: after a pass into another target the executor binds it back, so a pass into `current()` after a bloom
+  pass draws onto the host's target rather than the bloom's.
+- Give the pass the host's depth convention (`CgStageFrame.defaults`), or the eye depths disagree.
 
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the

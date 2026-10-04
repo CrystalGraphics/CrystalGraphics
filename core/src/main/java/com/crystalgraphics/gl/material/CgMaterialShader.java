@@ -310,6 +310,8 @@ public final class CgMaterialShader {
             }
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                 parsed = CgShaderParser.parse(source, resourcePath);
+                requireMargin(parsed, source);
+                requireUnits(parsed);
             } catch (CgShaderParseException e) {
                 parseFailed = true;
                 LOGGER.error("Cannot parse '{}': {}", resourcePath, e.getMessage());
@@ -414,6 +416,8 @@ public final class CgMaterialShader {
             if (parsed == null || !source.equals(parsedSource)) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
                     parsed = CgShaderParser.parse(source, resourcePath);
+                    requireMargin(parsed, source);
+                    requireUnits(parsed);
                 } catch (CgShaderParseException e) {
                     if (isFirst) throw e;
                     LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
@@ -1085,12 +1089,48 @@ public final class CgMaterialShader {
         return parsedSource == null || sceneColor;
     }
 
+    /**
+     * How far past its geometry it samples {@code cg_SceneColor}, a share of the target's height: its
+     * {@code "SceneColorMargin"} tag. NaN until parsed and for a shader that does not read it.
+     */
+    public float sceneColorMargin() {
+        CgParsedShader parsed = lastParsed;
+        return parsed == null ? Float.NaN : parsed.sceneColorMargin();
+    }
+
+    /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
+    private void requireMargin(CgParsedShader parsed, String source) {
+        if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
+            throw new CgShaderParseException("[" + resourcePath + "] samples cg_SceneColor without a SceneColorMargin: "
+                    + "add the share of the target's height it samples past its geometry to the top-level Tags, "
+                    + "e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }");
+        }
+    }
+
+    /**
+     * A shader's samplers take units from 0, and the engine's reserved units count down from the top: one whose
+     * samplers reach the lowest reserved unit would have the engine's texture overwrite one, or does not parse.
+     * Unchecked before the context sizes the reserved units (a headless parse).
+     */
+    private void requireUnits(CgParsedShader parsed) {
+        if (!CgBindingPoints.isInitialized()) return;
+        int samplers = 0;
+        for (CgMaterialProperty property : parsed.properties()) {
+            if (property.getType().isSampler()) samplers++;
+        }
+        int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
+        if (samplers > free) {
+            throw new CgShaderParseException("[" + resourcePath + "] declares " + samplers + " samplers, and this GPU "
+                    + "leaves materials " + free + " texture units below the engine's reserved ones");
+        }
+    }
+
     private boolean sceneColorIn(String source) {
         return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR");
     }
 
     /**
-     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries no light direction, shadow
+     * Whether the engine has a shadow system: it does not. {@code CgFrameBlock} carries the sun's direction but no shadow
      * matrix or shadow params, so an auto-generated shadow-caster pass names uniforms that do not exist. Turning
      * this on needs those three in the block in the same change; {@code CgShadowUniformContractTest} holds it.
      */
@@ -1110,12 +1150,14 @@ public final class CgMaterialShader {
         for (CgAttachedBuffer ab : attachedBuffers) ab.getBuffer().wireShader(shader);
     }
 
-    /** The scene snapshots' units, and each sampler property's: its index among the declared samplers. */
+    /** The scene snapshots' and the lightmap's units, and each sampler property's: its index among the declared samplers. */
     private void wireShaderSamplers(CgShader shader) {
         int loc = shader.getUniformLocation(CgBindingPoints.DEPTH_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         loc = shader.getUniformLocation(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM);
         if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        loc = shader.getUniformLocation(CgBindingPoints.LIGHTMAP_TEXTURE_UNIFORM);
+        if (loc >= 0) shader.getProgram().setUniform1i(loc, CgBindingPoints.LIGHTMAP_TEXTURE_UNIT);
         CgParsedShader parsed = lastParsed;
         if (parsed == null) return;
         int unit = 0;

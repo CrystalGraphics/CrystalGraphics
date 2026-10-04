@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -192,7 +193,7 @@ public final class CgVfxFrame {
                     .custom(1, cx, cy, cz, effect.age);
             color(draw, 2, layer.colorA(), values);
             color(draw, 3, layer.colorB(), values);
-            draw.priority(layer.priority()).submit();
+            draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
         }
     }
 
@@ -251,7 +252,7 @@ public final class CgVfxFrame {
                 .custom(1, cx, cy, cz, intensity);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        draw.priority(layer.priority()).submit();
+        draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order()).submit();
     }
 
     /** A draw of {@code layer} on {@code mesh} with the per-draw data every effect shader reads, for the caller to submit. */
@@ -265,7 +266,7 @@ public final class CgVfxFrame {
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
-        return draw.priority(layer.priority());
+        return draw.layer(CgSortLayer.EFFECTS).group(effect.originX, effect.originY, effect.originZ).order(layer.order());
     }
 
     private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {

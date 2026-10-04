@@ -11,7 +11,10 @@ import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
+import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
+import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gl.buffer.shader.CgUniformBuffer;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
@@ -433,6 +436,7 @@ public final class CgMaterialShaderCompiler {
         // guard evaluate identically in both stages, i.e. do nothing: that is how sdf.glsl's
         // fwidth() reached the vertex shader, which NVIDIA accepted and AMD correctly rejected.
         sb.append("#define CG_VERTEX_STAGE 1\n");
+        appendPassDefine(sb, pass);
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
@@ -515,6 +519,8 @@ public final class CgMaterialShaderCompiler {
         // Stage define — the symmetric counterpart of CG_VERTEX_STAGE, and like it, emitted before
         // the user directive block so a guard inside an included lib can actually see it.
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
+        appendPassDefine(sb, pass);
+        sb.append("#define CG_FOG_MODE ").append(fogMode(pass)).append('\n');
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
         String directiveLines = gd[0];
@@ -560,7 +566,7 @@ public final class CgMaterialShaderCompiler {
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
-        appendFragmentMain(sb, v2fFields, pass);
+        appendFragmentMain(sb, v2fFields, pass, shader);
 
         return sb.toString();
     }
@@ -630,7 +636,7 @@ public final class CgMaterialShaderCompiler {
         if (!useSsbo && CgBindingPoints.isInitialized()) {
             int samplers = 0;
             for (CgMaterialProperty p : shader.properties()) if (p.getType().isSampler()) samplers++;
-            int free = Math.min(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            int free = CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;   // the lowest reserved unit
             if (samplers + shader.buffers().size() > free) {
                 throw new CgShaderParseException("'Buffers': " + samplers + " samplers and " + shader.buffers().size()
                         + " buffers read as textures need " + (samplers + shader.buffers().size())
@@ -742,16 +748,44 @@ public final class CgMaterialShaderCompiler {
         }
     }
 
+    /** {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart. */
+    private static void appendPassDefine(StringBuilder sb, CgParsedPass pass) {
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
+    }
+
+    /** How {@code cg_Fog} treats the pass's output: mixed toward the fog (0), premultiplied (1), added (2). */
+    private static int fogMode(CgParsedPass pass) {
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) return 2;   // added onto the scene by bloom
+        CgBlendState blend = pass.renderState().getBlend();
+        if (blend == null || !blend.enabled()) return 0;
+        if (blend.dstRgb() == CgGL.GL_ONE) return 2;
+        return blend.srcRgb() == CgGL.GL_ONE ? 1 : 0;
+    }
+
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
-                                            CgParsedPass pass) {
+                                            CgParsedPass pass, CgParsedShader shader) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
             sb.append("  _v2f_local.").append(f.name())
               .append(" = _cg_v2f.").append(f.name()).append(";\n");
         }
+        if (shader.readsObjectRecord()) sb.append("  cg_Light = CG_OBJECT_LIGHT;\n");
+        boolean emissive = CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode());
+        CgDepthState depth = pass.renderState().getDepth();
+        if (emissive && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)) {
+            // The bloom target has no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
+            // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
+            sb.append("  if (cg_LinearEyeDepth(gl_FragCoord.z) > CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION)"
+                    + " * CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;\n");
+        }
         if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+            // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
+            // light is not lit, only faded by the fog.
+            boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());
+            if (forward && shader.lit()) sb.append("  _cg_fragColor = cg_Lit(_cg_fragColor);\n");
+            if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

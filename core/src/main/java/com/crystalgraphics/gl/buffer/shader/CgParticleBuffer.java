@@ -16,7 +16,7 @@ import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
  *
  * <pre>{@code
  * CgParticleBuffer.begin(total);
- * for (...) CgParticleBuffer.put(x, y, z, size,  vx, vy, vz, progress,  seed, spin, heat, opacity);
+ * for (...) CgParticleBuffer.put(x, y, z, size,  vx, vy, vz, progress,  seed, spin, heat, opacity,  light);
  * CgParticleBuffer.end();
  * // a draw reading records [base, base + count) passes base and count in its custom data
  * }</pre>
@@ -34,11 +34,15 @@ public final class CgParticleBuffer {
     /** The {@code attach()} macro shaders read records through. */
     public static final String MACRO_NAME = "PARTICLE_DATA";
 
-    /** place: position and size; motion: velocity and progress through life; state: seed, spin, heat, opacity. */
+    /**
+     * place: position and size; motion: velocity and progress through life; state: seed, spin, heat, opacity; light: block
+     * and sky light, 0 to 15, then two unused.
+     */
     public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticle", STD430)
             .vec4("place")
             .vec4("motion")
             .vec4("state")
+            .vec4("light")
             .build();
 
     private static final String NAME = "CgParticleBuffer";
@@ -50,6 +54,7 @@ public final class CgParticleBuffer {
     private static final int PLACE = WRITER.offsetOf("place", CgGpuType.VEC4);
     private static final int MOTION = WRITER.offsetOf("motion", CgGpuType.VEC4);
     private static final int STATE = WRITER.offsetOf("state", CgGpuType.VEC4);
+    private static final int LIGHT = WRITER.offsetOf("light", CgGpuType.VEC4);
 
     private CgParticleBuffer() {
     }
@@ -67,13 +72,14 @@ public final class CgParticleBuffer {
         BUFFER.beginWrite(count);
     }
 
-    /** Writes the next record. */
+    /** Writes the next record; {@code light} is {@code block | sky << 4}, as {@code CgWorldLight.at} answers. */
     public static void put(float x, float y, float z, float size, float vx, float vy, float vz, float progress,
-                           float seed, float spin, float heat, float opacity) {
+                           float seed, float spin, float heat, float opacity, int light) {
         WRITER.beginRecord();
         WRITER.vec4At(PLACE, x, y, z, size);
         WRITER.vec4At(MOTION, vx, vy, vz, progress);
         WRITER.vec4At(STATE, seed, spin, heat, opacity);
+        WRITER.vec4At(LIGHT, light & 0xF, light >> 4 & 0xF, 0f, 0f);
         BUFFER.endRecord();
     }
 

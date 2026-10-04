@@ -86,6 +86,19 @@ float fx_warped(vec3 p, float strength) {
     return fx_fbm(p + warp * strength, 4);
 }
 
+// How hot air bends a ray at p (in noise units, so the caller's scale sets the ripple size), about -1..1 on each axis:
+// fine ripples churning in place as they rise, pushed around by slow broad swells, the whole of it gusting on a third,
+// slower field. So it never cycles, and neighbouring patches never move as one. rise is in noise units a second.
+vec2 fx_heat(vec3 p, float time, float rise, float seed) {
+    vec3 s = p + seed * 11.0;
+    vec3 c = s * 0.5 + vec3(0.13 * time, -0.5 * rise * time, 0.07 * time);
+    vec3 swell = vec3(fx_noise(c), fx_noise(c + vec3(31.7, 4.1, 17.3)), fx_noise(c + vec3(9.2, 23.5, 3.3)));
+    vec3 f = s + swell * 0.9 + vec3(0.0, -rise * time, 0.0);
+    vec2 fine = vec2(fx_noise(f + vec3(0.0, 0.0, 0.6 * time)), fx_noise(f + vec3(19.1, 7.3, 3.7 - 0.6 * time)));
+    float gust = 0.35 + 0.65 * smoothstep(-0.4, 0.6, fx_noise(s * 0.25 + vec3(0.3 * time, -0.2 * time, 0.0)));
+    return (fine * 0.7 + swell.xy * 0.5) * gust;
+}
+
 // A brightness about 1, jittering many times a second and never the same twice.
 float fx_flicker(float time, float seed) {
     float fast = fx_noise(vec3(time * 19.0, seed * 31.0, 0.5));

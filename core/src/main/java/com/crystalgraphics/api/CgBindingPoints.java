@@ -172,6 +172,15 @@ public final class CgBindingPoints {
 
     public static final String SCENE_COLOR_TEXTURE_UNIFORM = "cg_SceneColor";
 
+    /**
+     * GL texture unit reserved for {@code cg_Lightmap}, the host's lightmap: what every raster pass binds there, the
+     * host's in a world pass and white elsewhere. The lowest reserved unit. Shader authors must not use it in material
+     * Properties.
+     */
+    public static int LIGHTMAP_TEXTURE_UNIT = -1;
+
+    public static final String LIGHTMAP_TEXTURE_UNIFORM = "cg_Lightmap";
+
     // ── User buffers — allocated from bottom of available range ──────────────
 
     /**
@@ -233,6 +242,7 @@ public final class CgBindingPoints {
         // ── Texture bindings ───────────────────────────────────────────────────────────────
         DEPTH_TEXTURE_UNIT = --maxTextureUnits;
         SCENE_COLOR_TEXTURE_UNIT = --maxTextureUnits;
+        LIGHTMAP_TEXTURE_UNIT = --maxTextureUnits;
     }
 
     /**
