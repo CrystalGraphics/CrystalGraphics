@@ -3033,6 +3033,7 @@ com/crystalgraphics/gl/material/parse/CgGlslEmitter
 com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
   access public,final
   extends java/lang/Object
+  field public,static,final MULTI_DRAW Ljava/lang/String;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/gl/material/parse/CgParsedPass;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Ljava/util/List;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
@@ -4021,6 +4022,7 @@ com/crystalgraphics/render/draw/CgPipeline
   method public instanceBase (I)V
   method public keywords ()Ljava/util/Set;
   method public kind ()Lcom/crystalgraphics/render/draw/CgInstanceKind;
+  method public multiDraw ()Lcom/crystalgraphics/render/draw/CgPipeline;
   method public pass ()Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   method public prepare ()Z
   method public program ()Lcom/crystalgraphics/api/shader/CgShader;
@@ -4362,8 +4364,14 @@ com/crystalgraphics/render/mesh/CgMeshStore
   extends java/lang/Object
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;I)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIII)V
+  method public drawCalls ()J
   method public drawIndirect (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/render/draw/CgPipeline;IIJ)V
+  method public drawJoined ()V
   method public drawnVertices ()J
+  method public join (Lcom/crystalgraphics/api/mesh/CgMesh;IIIII)V
+  method public joins (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/mesh/CgMesh;)Z
+  method public multiDraw ()Z
+  method public multiDraw (Z)V
   method public place (Lcom/crystalgraphics/api/mesh/CgMesh;)V
   method public range (Lcom/crystalgraphics/api/mesh/CgMesh;III[I)Z
   method public releaseAll ()V

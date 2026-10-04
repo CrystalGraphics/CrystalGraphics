@@ -132,6 +132,17 @@ chunks.instance();                                                              
 - Each command has a slot of its own, aligned for a storage binding (`CgCapabilities.storageOffsetAlignment`), so the
   kernels writing them share nothing and need no barrier between them.
 
+**Multi-draw** (gpu-compute C9a): where `CgCapabilities.multiDraw()` holds, consecutive batches under one pipeline,
+bindings and scissor, with no target copy between them, drawn directly from meshes in one slab or one ring page
+(`CgMeshStore.joins`), are one `glMultiDrawElementsIndirect`. The executor binds the pipeline's `multiDraw()` variant,
+which reads each draw's first instance and base vertex from its command rather than `cg_InstanceBase` and
+`cg_VertexBase`, and the store writes the commands into the frame ring (`join`, `drawJoined`).
+
+- Indexed draws only: GL gives an array draw's base vertex as 0 where Vulkan gives its first vertex.
+- The picture is the same either way: `--mode=multi-draw` draws 68 instances of 66 meshes in 2 calls, then with
+  `CgMeshStore.multiDraw(false)` in 67, and compares the two byte for byte. `-Dcrystalgraphics.mesh.multiDraw=false`
+  turns it off for a process.
+
 **A frame executes again** (`CgExecutor.executeAgain(frame, keepRequested)`) with what its passes read as it stands
 now — property values, above all — and its uploads, compiles and releases not repeated; `keepRequested` skips every
 pass writing a requested texture too. It is how a compositor moves something without a recording. A compute pass or buffer operation that writes
@@ -214,4 +225,5 @@ against a direct draw of what its count means, in a graph, executed again and th
 forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
 (`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
 level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
-validation, and both downlevel contexts.
+validation, and both downlevel contexts. `--mode=multi-draw` is the joined draws': the same picture joined and
+separate, and the calls each took.

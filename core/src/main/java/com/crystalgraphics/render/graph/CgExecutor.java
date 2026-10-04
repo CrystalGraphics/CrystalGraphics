@@ -106,7 +106,8 @@ public final class CgExecutor {
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
-    private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");    private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
+    private static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
+    private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
     private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
@@ -130,8 +131,8 @@ public final class CgExecutor {
     private int startFramebuffer;
     private boolean startNoted, otherBound;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
-    /** This execution's: whether an async pass runs beside the frame's queue. */
-    private boolean asyncCompute;
+    /** This execution's: whether an async pass runs beside the frame's queue, and whether runs of draws join. */
+    private boolean asyncCompute, multiDraw;
     /** Storage async passes touched that the frame's queue has not waited for, each with the point covering it. */
     private long[] asyncKeys = new long[16], asyncPoints = new long[16];
     private int asyncCount;
@@ -232,6 +233,7 @@ public final class CgExecutor {
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
+        multiDraw = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
         // The current target, noted before any pass binds its own: rebound for a pass into it after one into another.
         startNoted = frame.readsCurrentDepth || frame.rastersCurrent && frame.rastersOther;
         otherBound = false;
@@ -896,6 +898,7 @@ public final class CgExecutor {
             if (pass.depthFrom() != null) copyDepthFrom(pass);
             for (int b = 0; b < packed.count; b++) {
                 int command = packed.counts[b] != null ? slot++ : -1;
+                int end = command < 0 && multiDraw ? joinedEnd(packed, b) : b;
                 if (packed.copyBefore[b] != 0) copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
                 if (packed.scissor[b] != boundScissor) {
                     boundScissor = packed.scissor[b];
@@ -909,15 +912,31 @@ public final class CgExecutor {
                         CgGL.glScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
                     }
                 }
-                if (packed.pipeline[b] != boundPipeline) {
-                    boundPipeline = packed.pipeline[b];
-                    pipeline = CgPipeline.byId(boundPipeline);
+                int id = end > b ? CgPipeline.byId(packed.pipeline[b]).multiDraw().id() : packed.pipeline[b];
+                if (id != boundPipeline) {
+                    boundPipeline = id;
+                    pipeline = CgPipeline.byId(id);
                     if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
                     usable = pipeline.bind();
                     boundBinding = -1;
                 }
                 if (!usable) {
-                    CgTrace.add(CgChannels.GL, "graph.batches.skipped", 1);
+                    CgTrace.add(CgChannels.GL, "graph.batches.skipped", end - b + 1);
+                    b = end;
+                    continue;
+                }
+                if (packed.binding[b] != boundBinding) {
+                    boundBinding = packed.binding[b];
+                    frame.bindings.bind(boundBinding);
+                }
+                if (end > b) {
+                    CgMeshStore store = CgMeshStore.get();
+                    for (int k = b; k <= end; k++) {
+                        store.join(mesh(packed, k), packed.instances[k], packed.submesh[k], packed.rangeFirst[k],
+                                packed.rangeCount[k], packed.first[k]);
+                    }
+                    store.drawJoined();
+                    b = end;
                     continue;
                 }
                 if (command >= 0 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal()) {
@@ -925,11 +944,7 @@ public final class CgExecutor {
                 } else {
                     pipeline.instanceBase(packed.first[b]);
                 }
-                if (packed.binding[b] != boundBinding) {
-                    boundBinding = packed.binding[b];
-                    frame.bindings.bind(boundBinding);
-                }
-                CgMesh mesh = packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
+                CgMesh mesh = mesh(packed, b);
                 if (command >= 0 && gpuCounts) {
                     CgMeshStore.get().drawIndirect(mesh, pipeline, packed.submesh[b], commands.buffer(),
                             commands.offset(command));
@@ -945,6 +960,30 @@ public final class CgExecutor {
             if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
+    }
+
+    private static CgMesh mesh(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
+    }
+
+    /**
+     * The last batch of the run from {@code b} that one multi-draw call draws: the batches after it under the same
+     * pipeline, bindings and scissor, with no copy of the target between them, drawn directly from meshes
+     * {@link CgMeshStore#joins} joins. {@code b} itself when none follows.
+     */
+    private static int joinedEnd(CgFrame.Raster packed, int b) {
+        CgMeshStore store = CgMeshStore.get();
+        CgMesh first = mesh(packed, b);
+        int end = b;
+        for (int k = b + 1; k < packed.count; k++) {
+            if (packed.counts[k] != null || packed.copyBefore[k] != 0 || packed.pipeline[k] != packed.pipeline[b]
+                    || packed.binding[k] != packed.binding[b] || packed.scissor[k] != packed.scissor[b]
+                    || !store.joins(first, mesh(packed, k))) {
+                break;
+            }
+            end = k;
+        }
+        return end;
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */

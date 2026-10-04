@@ -37,6 +37,12 @@ import java.util.Map;
  * // An indirect draw: its command is written on the GPU from what range() answers, before the pass
  * store.range(mesh, submesh, first, count, range);
  * store.drawIndirect(mesh, pipeline, submesh, args, offset);
+ *
+ * // Draws of meshes that join, as one call (CgCapabilities.multiDraw()): each with its own first instance
+ * pipeline.multiDraw().bind();
+ * store.join(a, 1, -1, 0, -1, firstA);
+ * store.join(b, 1, -1, 0, -1, firstB);      // store.joins(a, b)
+ * store.drawJoined();
  * }</pre>
  *
  * <ul>
@@ -65,6 +71,10 @@ public final class CgMeshStore {
     private static final int DRAWN_INDIRECT = CgTrace.name("mesh.indirect-draws");
     private static final int RING_BYTES = CgTrace.name("mesh.ring-bytes");
     private static final int EDITED_EVERY_FRAME = CgTrace.name("mesh.edited-every-frame");
+    private static final int MULTI_DRAWS = CgTrace.name("mesh.multi-draws");
+    private static final int MULTI_COMMANDS = CgTrace.name("mesh.multi-draw-commands");
+    /** An indexed indirect command: count, instances, first index, base vertex, first instance. */
+    private static final int COMMAND_WORDS = 5;
 
     /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
     private static final int EVERY_FRAME = 60;
@@ -72,7 +82,8 @@ public final class CgMeshStore {
     /** {@code -Dcrystalgraphics.mesh.frameRing=false}: FRAME meshes take slab ranges, as before the ring path. */
     private static final boolean FRAME_RING = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.frameRing"));
 
-    private long drawing, drawn;
+    private long drawing, drawn, calls;
+    private boolean multiDraw = true;
 
     public static CgMeshStore get() {
         return STORE;
@@ -81,6 +92,23 @@ public final class CgMeshStore {
     /** The vertices the last whole frame drew, every instance's, an index counting as one. */
     public long drawnVertices() {
         return drawn;
+    }
+
+    /** Every draw call the store has made, for a check to difference around a frame: a multi-draw counts as one. */
+    public long drawCalls() {
+        return calls;
+    }
+
+    /**
+     * Whether an executor joins runs of draws into multi-draw calls ({@link #join}), where
+     * {@code CgCapabilities.multiDraw()} holds. On; a check turns it off to draw the same frame one call a draw.
+     */
+    public void multiDraw(boolean on) {
+        multiDraw = on;
+    }
+
+    public boolean multiDraw() {
+        return multiDraw;
     }
 
     /** Where one mesh's copy is, and the revision and draw facts it was made from. */
@@ -103,6 +131,8 @@ public final class CgMeshStore {
         int ringPage;
         int[] submeshes = new int[4];
         int submeshCount;
+        /** Every submesh drawn by indices: what a multi-draw joins. */
+        boolean indexed;
     }
 
     private final Map<CgVertexFormat, CgMeshPool> pools = new HashMap<>();
@@ -122,6 +152,13 @@ public final class CgMeshStore {
     private CgMeshRing ring;
     /** Ring placements, forgotten when a frame passes without them. */
     private final ArrayList<Placement> ringLive = new ArrayList<>();
+
+    /** The commands joined since the last {@link #drawJoined}, and the placement whose buffers they draw from. */
+    private int[] joined = new int[COMMAND_WORDS * 16];
+    private int joinedCount;
+    @Nullable
+    private Placement joinedFrom;
+    private CgStreamBuffer commands;
 
     private final CgMeshChanges changes = new CgMeshChanges();
     private final int[] nodes = new int[2], submesh = new int[4];
@@ -279,9 +316,11 @@ public final class CgMeshStore {
         p.mode = glMode(mesh.topology());
         p.submeshCount = mesh.submeshCount();
         if (p.submeshes.length < p.submeshCount * 4) p.submeshes = new int[p.submeshCount * 4];
+        p.indexed = p.submeshCount > 0;
         for (int s = 0; s < p.submeshCount; s++) {
             mesh.submesh(s, submesh);
             System.arraycopy(submesh, 0, p.submeshes, s * 4, 4);
+            p.indexed &= submesh[1] > 0;
         }
     }
 
@@ -416,6 +455,7 @@ public final class CgMeshStore {
             int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
             if (n <= 0) continue;
             drawing += (long) n * instances;
+            calls++;
             CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
             pipeline.vertexBase(base);
             if (indexCount > 0) {
@@ -464,7 +504,78 @@ public final class CgMeshStore {
         if (p.submeshes[s * 4 + 1] > 0) CgGL.glDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset);
         else CgGL.glDrawArraysIndirect(p.mode, offset);
         CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        calls++;
         CgTrace.add(CgChannels.GL, DRAWN_INDIRECT, 1);
+    }
+
+    /**
+     * Whether {@code a} and {@code b} can be drawn by one multi-draw call: from the same vertex array and indices, in
+     * one topology, every submesh by indices. Array draws never join, since GL's {@code gl_BaseVertexARB} is 0 for
+     * them. Places either mesh if the frame did not.
+     */
+    public boolean joins(CgMesh a, CgMesh b) {
+        Placement p = placed(a), q = placed(b);
+        if (p == null || q == null || !p.indexed || !q.indexed || p.mode != q.mode || p.ring != q.ring) return false;
+        return p.ring ? p.ringPage == q.ringPage && p.mesh.format().equals(q.mesh.format()) : p.slab == q.slab;
+    }
+
+    /**
+     * Adds a draw to the call {@link #drawJoined} makes: a range as {@link #draw(CgMesh, CgPipeline, int, int, int, int)}
+     * takes, its instances counted from {@code firstInstance} rather than {@code cg_InstanceBase}. Every mesh joined
+     * before that call must {@link #joins} the first.
+     *
+     * <pre>{@code
+     * multi = pipeline.multiDraw();          // CG_INSTANCE_ID and CG_VERTEX_ID from each command
+     * multi.bind();
+     * for (int i = 0; i < n; i++) store.join(meshes[i], 1, -1, 0, -1, firsts[i]);
+     * store.drawJoined();
+     * }</pre>
+     */
+    public void join(CgMesh mesh, int instances, int submesh, int first, int count, int firstInstance) {
+        Placement p = placed(mesh);
+        if (p == null) return;
+        if (joinedFrom == null) joinedFrom = p;
+        int from = submesh < 0 ? 0 : submesh, to = submesh < 0 ? p.submeshCount : Math.min(submesh + 1, p.submeshCount);
+        for (int s = from; s < to; s++) {
+            int firstIndex = p.submeshes[s * 4], total = p.submeshes[s * 4 + 1];
+            int start = submesh < 0 ? 0 : Math.min(first, total);
+            int n = submesh < 0 || count < 0 ? total - start : Math.min(count, total - start);
+            if (n <= 0) continue;
+            drawing += (long) n * instances;
+            CgTrace.add(CgChannels.GL, DRAWN, (long) n * instances);
+            if ((joinedCount + 1) * COMMAND_WORDS > joined.length) joined = Arrays.copyOf(joined, joined.length * 2);
+            int at = joinedCount++ * COMMAND_WORDS;
+            joined[at] = n;
+            joined[at + 1] = instances;
+            joined[at + 2] = p.firstIndex + firstIndex + start;
+            joined[at + 3] = p.baseVertex + p.submeshes[s * 4 + 2];
+            joined[at + 4] = firstInstance;
+        }
+    }
+
+    /**
+     * Draws everything {@link #join}ed since the last call as one {@code glMultiDrawElementsIndirect}, its commands
+     * written to the frame ring, with a {@link CgPipeline#multiDraw()} pipeline bound. Leaves the vertex array bound,
+     * as {@link #draw} does.
+     */
+    public void drawJoined() {
+        Placement p = joinedFrom;
+        int n = joinedCount;
+        joinedFrom = null;
+        joinedCount = 0;
+        if (n == 0) return;
+        bind(p, p.mesh);
+        if (commands == null) commands = CgStreamBuffer.create(CgGL.GL_DRAW_INDIRECT_BUFFER, 64 << 10);
+        int bytes = n * COMMAND_WORDS * 4;
+        ByteBuffer out = commands.map(bytes).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < n * COMMAND_WORDS; i++) out.putInt(joined[i]);
+        int offset = commands.commit(bytes);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, commands.getGlBufferId());
+        CgGL.glMultiDrawElementsIndirect(p.mode, CgGL.GL_UNSIGNED_INT, offset, n, COMMAND_WORDS * 4);
+        CgGL.glBindBuffer(CgGL.GL_DRAW_INDIRECT_BUFFER, 0);
+        calls++;
+        CgTrace.add(CgChannels.GL, MULTI_DRAWS, 1);
+        CgTrace.add(CgChannels.GL, MULTI_COMMANDS, n);
     }
 
     /** {@code mesh}'s placement this frame, placed now if it was not placed with the frame; null with nothing to draw. */
@@ -569,6 +680,10 @@ public final class CgMeshStore {
         if (ring != null) ring.delete();
         ring = null;
         ringLive.clear();
+        if (commands != null) commands.delete();
+        commands = null;
+        joinedFrom = null;
+        joinedCount = 0;
         slabBytes = 0;
         frame = Long.MIN_VALUE;
     }

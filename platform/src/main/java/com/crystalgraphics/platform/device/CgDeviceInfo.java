@@ -10,11 +10,12 @@ package com.crystalgraphics.platform.device;
  * @param indirectCount         a draw's count may come from a buffer
  * @param indirectFirstInstance an indirect command's first instance may be other than 0
  * @param asyncCompute          a compute queue beside the frame's, so async work overlaps the frame's other work
+ * @param drawParameters        {@code gl_DrawID} and a draw's base vertex and instance in a shader
  */
 public record CgDeviceInfo(String name, String vendor, String driver, Limits limits,
                            boolean timestamps, boolean anisotropy, boolean nonSolidFill,
                            boolean multiDrawIndirect, boolean indirectCount, boolean indirectFirstInstance,
-                           boolean asyncCompute) {
+                           boolean asyncCompute, boolean drawParameters) {
 
     public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
                          int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,

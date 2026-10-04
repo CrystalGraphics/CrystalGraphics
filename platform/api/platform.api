@@ -64,9 +64,10 @@ com/crystalgraphics/platform/device/CgDevice
 com/crystalgraphics/platform/device/CgDeviceInfo
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZZZ)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZZZZ)V
   method public anisotropy ()Z
   method public asyncCompute ()Z
+  method public drawParameters ()Z
   method public driver ()Ljava/lang/String;
   method public indirectCount ()Z
   method public indirectFirstInstance ()Z
@@ -984,6 +985,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public maxComputeSharedMemory ()I
   method public maxComputeWorkGroupCount (I)I
   method public maxComputeWorkGroupSize (I)I
+  method public multiDraw ()Z
   method public multiDrawIndirect ()Z
   method public shaderBufferPath ()Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   method public shaderStreamTier ()Lcom/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier;
@@ -1811,6 +1813,7 @@ com/crystalgraphics/platform/gl/CgGLBackend
 com/crystalgraphics/platform/gl/CgGLContext
   access public,abstract,interface
   extends java/lang/Object
+  method public,abstract GL_ARB_base_instance ()Z
   method public,abstract GL_ARB_bindless_texture ()Z
   method public,abstract GL_ARB_buffer_storage ()Z
   method public,abstract GL_ARB_compute_shader ()Z
@@ -2281,6 +2284,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLContext
   extends java/lang/Object
   implements com/crystalgraphics/platform/gl/CgGLContext
   method public <init> ()V
+  method public GL_ARB_base_instance ()Z
   method public GL_ARB_bindless_texture ()Z
   method public GL_ARB_buffer_storage ()Z
   method public GL_ARB_compute_shader ()Z
