@@ -22,10 +22,13 @@ public final class CgPostSettings {
 
     public static final int BLOOM = 1, FLASH = 1 << 1, VIGNETTE = 1 << 2, CHROMATIC = 1 << 3, IMPACT = 1 << 4, FOCUS = 1 << 5;
 
-    int overrides;
-    float bloom = 1f, flash, vignette, chromatic, impact;
-    CgImpact impactLook = CgImpact.INVERT;
-    float focusX = 0.5f, focusY = 0.5f;
+    // Volatile: written on any thread, read on the render thread.
+    volatile int overrides;
+    volatile float bloom = 1f, flash, vignette, chromatic, impact;
+    volatile CgImpact impactLook = CgImpact.INVERT;
+    volatile float focusX = 0.5f, focusY = 0.5f;
+    /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
+    private float focusWeight;
 
     /** Multiplies the bloom's intensity: 2 doubles the glow. */
     public CgPostSettings bloom(float scale) {
@@ -115,9 +118,13 @@ public final class CgPostSettings {
         flash = vignette = chromatic = impact = 0f;
         impactLook = CgImpact.INVERT;
         focusX = focusY = 0.5f;
+        focusWeight = 0f;
     }
 
-    /** Moves each value {@code from} overrides {@code weight} (0 to 1) of the way to it; a look takes the heavier's. */
+    /**
+     * Moves each value {@code from} overrides {@code weight} (0 to 1) of the way to it; a look takes the heavier's, and
+     * the focus is the weighted average of every volume's that sets one.
+     */
     public void blend(CgPostSettings from, float weight, float focusX, float focusY) {
         int o = from.overrides;
         if ((o & BLOOM) != 0) bloom += (from.bloom - bloom) * weight;
@@ -128,9 +135,12 @@ public final class CgPostSettings {
             if (weight * from.impact >= impact) impactLook = from.impactLook;
             impact += (from.impact - impact) * weight;
         }
-        if ((o & (CHROMATIC | IMPACT | FOCUS)) != 0) {
-            this.focusX += (focusX - this.focusX) * weight;
-            this.focusY += (focusY - this.focusY) * weight;
+        if ((o & (CHROMATIC | IMPACT | FOCUS)) != 0 && weight > 0f) {
+            // A position, so averaged by weight: one volume keeps its own focus however faint it is.
+            float total = focusWeight + weight;
+            this.focusX = (this.focusX * focusWeight + focusX * weight) / total;
+            this.focusY = (this.focusY * focusWeight + focusY * weight) / total;
+            focusWeight = total;
         }
         overrides |= o;
     }
