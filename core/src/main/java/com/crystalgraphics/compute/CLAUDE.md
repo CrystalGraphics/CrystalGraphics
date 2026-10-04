@@ -70,9 +70,12 @@ the buffer's words, drawn by one fragment pass over its texels, and up to eight 
 Appends are emitted by a geometry stage, captured by transform feedback and counted into a 1x1 float target with
 additive blending. A scatter is points into a target laid out element to texel, blended for adds, minima and maxima,
 and an image is a fragment pass. Buffers are read as buffer textures. Every pass reads what the buffers held before
-the dispatch; after the last, each target is read into its buffer on the GPU (`glReadPixels` into a pixel pack
-buffer). G40 sizes an indirect dispatch's draws from the GPU's count (`glDrawArraysIndirect`); G33 reads the count
-back, a stall counted as `buffer.readbacks`. A device has no transform feedback, so a lowered tier forced on one is
+the dispatch. After the last, a frame graph's dispatch holds each target as its buffer's words
+(`CgLoweredResources.hold`): a later lowered pass reads them from it (`_cg_word_NAME`, a unit per buffer beside its
+buffer texture, where the kernel's units allow), a scatter into the whole view starts from it, and the executor reads it
+into the buffer (`glReadPixels` into a pixel pack buffer) before anything else touches the buffer and when the
+execution ends. A dispatch outside a graph lands at once. G40 sizes an indirect dispatch's draws from the GPU's count
+(`glDrawArraysIndirect`); G33 reads the count back, a stall counted as `buffer.readbacks`. A device has no transform feedback, so a lowered tier forced on one is
 refused at startup.
 
 **The CPU tier** (`cpu`, §6.4): the body runs over CPU copies of the bound buffers (`CgCpuMirrors`), read back the
@@ -104,6 +107,9 @@ and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.
 
 ## Easy to get wrong, inside
 
+- **A held buffer is current only in its target.** Anything reading a graph buffer's storage during an execution other
+  than a lowered pass's loads lands it first: the executor does for its steps (`landHeld`), a dispatch for what its
+  helper programs read through a buffer texture (`landInputs`). New code reading a buffer there does the same.
 - **Below compute, what a dispatch binds lands in GL state**: the executor scopes it, so the next pass draws into what
   it bound itself. A lowered dispatch outside a graph opens `CgLoweredKernel.scope()`.
 - **A lowered dispatch takes every texel target before binding any output**: `CgTexelTarget.create` binds its own

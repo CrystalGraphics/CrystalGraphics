@@ -12,6 +12,7 @@ import com.crystalgraphics.compute.lower.CgLowering.Kind;
 import com.crystalgraphics.compute.lower.CgLowering.Op;
 import com.crystalgraphics.compute.lower.CgLowering.Pass;
 import com.crystalgraphics.compute.source.CgBufferAccess;
+import com.crystalgraphics.compute.source.CgBufferAccessor;
 import com.crystalgraphics.compute.source.CgBufferDecl;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgImageAccessor;
@@ -58,6 +59,9 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>Every pass reads what the bound buffers and images held before the dispatch; what the passes write to buffers
  *       is held in render targets and read back into them after the last, so a pass never sees another's output.</li>
+ *   <li>A frame graph's dispatch leaves what it wrote in those targets ({@link #dispatchBound(CgDispatchBindings,
+ *       boolean)}): a later lowered kernel reads a buffer from its target, and the graph reads it back before anything
+ *       else touches it ({@code CgLoweredResources.land}).</li>
  *   <li>A frame graph binds the property block and sampler properties itself and calls {@link #dispatchBound}.</li>
  *   <li>No memory barrier is needed or issued: rendering, transform feedback and reading pixels into a buffer are
  *       ordinary GL writes.</li>
@@ -67,8 +71,6 @@ import java.util.stream.Collectors;
 public final class CgLoweredKernel {
 
     private static final int LOWERED_PASSES = CgTrace.name("compute.lowered-passes");
-    /** What one stage of GL 3.3 samples, at least. */
-    private static final int STAGE_UNITS = 16;
 
     private final CgComputeSource source;
     private final CgKernelDecl kernel;
@@ -76,13 +78,16 @@ public final class CgLoweredKernel {
     private final CgLoweredTarget target;
     private final List<PassProgram> passes = new ArrayList<>();
     private final int samplers;
-    /** Per declared buffer, the unit it is read through, or -1; per append buffer, its count's; per image read, its. */
-    private final int[] bufferUnit, counterUnit, imageUnit;
+    /**
+     * Per declared buffer, the unit it is read through, or -1; and the unit of the target holding its words, or -1. Per
+     * append buffer, its count's; per image read, its.
+     */
+    private final int[] bufferUnit, residentUnit, counterUnit, imageUnit;
     /** Per image: whether the kernel loads it, and what its copy is made as when it loads one it writes. */
     private final boolean[] loads;
     private final CgTextureType[] copyType;
     private final int argsUnit;
-    private final IntBuffer dispatchValues = CgBufferUtils.createIntBuffer(6);
+    private final IntBuffer dispatchValues = CgBufferUtils.createIntBuffer(6), spanValues = CgBufferUtils.createIntBuffer(3);
     private final CgMaterialProperties properties;
     private final CgUniformBuffer propertyBlock;
     private CgUniformBuffer frameBlock;
@@ -91,7 +96,7 @@ public final class CgLoweredKernel {
 
     /** A pass's program and the uniforms a dispatch sets on it. */
     private record PassProgram(Pass pass, CgShaderProgram program, int dispatch, int argsAt, int layer, int texelsX,
-                               int texelsY, int[] base, int[] length, int[] counterAt, int[] level) {
+                               int texelsY, int[] base, int[] length, int[] span, int[] counterAt, int[] level) {
     }
 
     private CgLoweredKernel(CgComputeSource source, CgKernelDecl kernel, Set<String> keywords, CgLoweredTarget target) {
@@ -128,8 +133,11 @@ public final class CgLoweredKernel {
             imageUnit[i.index()] = reads ? next++ : -1;
         }
         argsUnit = next++;
-        int limit = Math.min(STAGE_UNITS, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT > 0
-                ? CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT : STAGE_UNITS);
+        seeds = new CgTexelTarget[source.buffers().size()];
+        residentUnit = new int[source.buffers().size()];
+        boolean resident = CgLoweredEmitter.residentReads(source, kernel, target);
+        for (CgBufferDecl b : source.buffers()) residentUnit[b.index()] = resident && CgLowering.touches(kernel, b) ? next++ : -1;
+        int limit = target.stageUnits();
         if (next > limit) {
             throw new IllegalStateException("[" + source.path() + "] kernel " + kernel.name() + " reads " + next
                     + " textures and buffers lowered; below compute a stage reads " + limit);
@@ -192,10 +200,12 @@ public final class CgLoweredKernel {
         unit(id, CgBindingPoints.DEPTH_TEXTURE_UNIFORM, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         unit(id, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIFORM, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         int n = source.buffers().size(), m = source.images().size();
-        int[] base = new int[n], length = new int[n], counterAt = new int[n], level = new int[m];
+        int[] base = new int[n], length = new int[n], span = new int[n], counterAt = new int[n], level = new int[m];
         for (CgBufferDecl b : source.buffers()) {
             int i = b.index();
             if (bufferUnit[i] >= 0) unit(id, CgLoweredEmitter.tbo(b), bufferUnit[i]);
+            if (residentUnit[i] >= 0) unit(id, CgLoweredEmitter.resident(b), residentUnit[i]);
+            span[i] = CgGL.glGetUniformLocation(id, CgLoweredEmitter.residentSpan(b));
             if (counterUnit[i] >= 0) unit(id, CgLoweredEmitter.counterTbo(b), counterUnit[i]);
             base[i] = CgGL.glGetUniformLocation(id, CgLoweredEmitter.base(b));
             length[i] = CgGL.glGetUniformLocation(id, CgLoweredEmitter.length(b));
@@ -209,7 +219,7 @@ public final class CgLoweredKernel {
         return new PassProgram(pass, program, CgGL.glGetUniformLocation(id, CgKernelEmitter.DISPATCH_UNIFORM),
                 CgGL.glGetUniformLocation(id, CgLoweredEmitter.ARGS_AT), CgGL.glGetUniformLocation(id, CgLoweredEmitter.LAYER),
                 CgGL.glGetUniformLocation(id, CgLoweredEmitter.TEXELS_X), CgGL.glGetUniformLocation(id, CgLoweredEmitter.TEXELS_Y),
-                base, length, counterAt, level);
+                base, length, span, counterAt, level);
     }
 
     // ── Use ───────────────────────────────────────────────────────────────────
@@ -258,11 +268,26 @@ public final class CgLoweredKernel {
 
     /**
      * Runs every pass with only what is bound now for blocks and sampler properties: a frame graph binds those
-     * itself, as for a compute dispatch, and the engine buffers the file uses.
+     * itself, as for a compute dispatch, and the engine buffers the file uses. What it writes is in its buffers after.
      */
     public void dispatchBound(CgDispatchBindings b) {
+        dispatchBound(b, false);
+    }
+
+    /**
+     * {@link #dispatchBound(CgDispatchBindings)}, leaving what it writes in its targets when {@code hold}: a frame
+     * graph's dispatch, whose executor reads each back before anything but a lowered kernel touches it.
+     *
+     * <pre>{@code
+     * kernel.dispatchBound(b, true);
+     * // ... later lowered dispatches read the held words from their targets ...
+     * CgLoweredResources.landAll();     // before the graph's execution ends
+     * }</pre>
+     */
+    public void dispatchBound(CgDispatchBindings b, boolean hold) {
         long elements = b.isIndirect() ? -1 : (long) b.x() * b.y() * b.z();
         if (elements == 0) return;
+        landInputs(b);
         CgGL.glBindVertexArray(CgLoweredResources.vertexArray());
         CgGL.glDisable(CgGL.GL_DEPTH_TEST);
         CgGL.glDisable(CgGL.GL_CULL_FACE);
@@ -296,14 +321,63 @@ public final class CgLoweredKernel {
             }
         } catch (RuntimeException e) {
             if (scatter != null) CgLoweredResources.release(scatter);
+            for (int i = 0; i < seeds.length; i++) {
+                if (seeds[i] != null) CgLoweredResources.release(seeds[i]);
+                seeds[i] = null;
+            }
             for (int p = 0; p < landCount; p++) CgLoweredResources.release(landing[p]);
             landCount = 0;
             throw e;
         }
         CgGL.glDisable(CgGL.GL_BLEND);
         if (command != 0) CgLoweredResources.release(command, 16);
-        land();
+        finish(hold);
         CgGL.glBindVertexArray(0);
+    }
+
+    /**
+     * What this dispatch reads other than through its passes' loads, read back first where a target holds it: a
+     * scatter's or an append's buffer, which a helper reads itself, counts, indirect arguments, and a buffer no pass can
+     * read held (no unit for it, or held as texels of another width).
+     */
+    private void landInputs(CgDispatchBindings b) {
+        if (!CgLoweredResources.holding()) return;
+        for (CgBufferDecl buffer : source.buffers()) {
+            int i = buffer.index(), held = CgLoweredResources.residentIndex(b.buffer(i));
+            if (held >= 0 && (residentUnit[i] < 0 || CgLoweredResources.texelWords(CgLoweredResources.residentTarget(held))
+                    != CgLoweredEmitter.texelWords(buffer))) {
+                CgLoweredResources.land(b.buffer(i));
+            }
+            CgLoweredResources.land(b.counter(i));
+        }
+        for (PassProgram p : passes) {
+            Kind kind = p.pass().kind();
+            if (kind != Kind.SCATTER && kind != Kind.APPEND) continue;
+            CgBufferDecl buffer = p.pass().buffer();
+            int i = buffer.index();
+            if (kind == Kind.SCATTER && !p.pass().floats() && seeds[i] == null) seeds[i] = heldSeed(buffer, b);
+            if (seeds[i] == null) CgLoweredResources.land(b.buffer(i));
+        }
+        if (b.isIndirect()) CgLoweredResources.land(b.args());
+    }
+
+    /**
+     * The target holding scattered buffer {@code buffer}'s view, taken to scatter into as it is: what its seed would be
+     * drawn as, so it is neither landed nor drawn again. Null unless it holds that view whole, in the seed's layout, and
+     * no pass reads the buffer, since a pass drawing into a target may not read it.
+     */
+    private CgTexelTarget heldSeed(CgBufferDecl buffer, CgDispatchBindings b) {
+        int i = buffer.index();
+        int held = CgLoweredResources.residentIndex(b.buffer(i));
+        if (held < 0 || CgLowering.uses(kernel, buffer, CgBufferAccessor.READ)) return null;
+        for (PassProgram p : passes) if (p.pass().kind() == Kind.OUTPUT && p.pass().buffers().contains(buffer)) return null;
+        for (int j = 0; j < b.buffers(); j++) if (j != i && b.buffer(j) == b.buffer(i)) return null;   // read through another name
+        long texels = b.bytes(i) / buffer.stride() * CgLoweredEmitter.texelsPerElement(buffer);
+        int width = width(texels);
+        CgTexelTarget t = CgLoweredResources.residentTarget(held);
+        boolean whole = CgLoweredResources.residentAt(held) == b.offset(i) && CgLoweredResources.residentTexels(held) == texels;
+        if (!whole || t.type() != texelType(buffer) || t.width() != width || t.height() != height(texels, width, buffer)) return null;
+        return CgLoweredResources.take(held);
     }
 
     // ── Passes ────────────────────────────────────────────────────────────────
@@ -416,6 +490,11 @@ public final class CgLoweredKernel {
     /** A scatter target holding buffer {@code buffer}'s view: its words, or its scalars as floats. */
     private CgTexelTarget scatterTarget(CgBufferDecl buffer, boolean floats, CgDispatchBindings b) {
         int i = buffer.index();
+        if (!floats && seeds[i] != null) {
+            CgTexelTarget seed = seeds[i];
+            seeds[i] = null;
+            return seed;
+        }
         int k = CgLoweredEmitter.texelsPerElement(buffer);
         long texels = b.bytes(i) / buffer.stride() * k;
         int width = width(texels), height = height(texels, width, buffer);
@@ -583,6 +662,7 @@ public final class CgLoweredKernel {
                         + "as a texture of at most " + target.maxTextureBufferSize());
             }
             CgBufferTextures.bind(bufferUnit[i], CgLoweredEmitter.texelFormat(buffer), b.buffer(i));
+            if (residentUnit[i] >= 0) resident(pass, buffer, b.buffer(i));
             CgGL.glUniform1i(pass.base()[i], (int) (b.offset(i) / buffer.stride()));
             CgGL.glUniform1i(pass.length()[i], (int) (b.bytes(i) / buffer.stride()));
             if (counterUnit[i] >= 0) {
@@ -602,6 +682,23 @@ public final class CgLoweredKernel {
         if (b.isIndirect()) dispatchValues.put(3, -1).put(4, -1).put(5, -1);
         else dispatchValues.put(3, b.x()).put(4, b.y()).put(5, b.z());
         CgGL.glUniform1(pass.dispatch(), dispatchValues);
+    }
+
+    /** Binds the target holding {@code name}'s words at the buffer's resident unit, and its span; an empty span for none. */
+    private void resident(PassProgram pass, CgBufferDecl buffer, int name) {
+        int held = CgLoweredResources.residentIndex(name);
+        int unit = residentUnit[buffer.index()];
+        if (held < 0) {
+            texture(unit, CgGL.GL_TEXTURE_2D, 0);
+            spanValues.put(0, 1).put(1, 0).put(2, 0);
+        } else {
+            CgTexelTarget t = CgLoweredResources.residentTarget(held);
+            texture(unit, CgGL.GL_TEXTURE_2D, t.texture());
+            long texelBytes = CgLoweredEmitter.texelWords(buffer) * 4L;
+            spanValues.put(0, t.width()).put(1, (int) (CgLoweredResources.residentAt(held) / texelBytes))
+                    .put(2, (int) CgLoweredResources.residentTexels(held));
+        }
+        CgGL.glUniform1(pass.span()[buffer.index()], spanValues);
     }
 
     /**
@@ -657,7 +754,9 @@ public final class CgLoweredKernel {
     private long readCount;
     private final int[] groups = new int[3];
     private final CgTexelTarget[] outputs = new CgTexelTarget[CgLowering.MAX_TARGETS];
-    /** Targets read back into a buffer once every pass has read what the buffers held, and per target buffer, at, texels. */
+    /** Per buffer, a held target a scatter starts from as it is ({@link #heldSeed}), until its first scatter pass. */
+    private final CgTexelTarget[] seeds;
+    /** Targets read back into a buffer, or held, once every pass has read what the buffers held; per target buffer, at, texels. */
     private CgTexelTarget[] landing = new CgTexelTarget[8];
     private long[] landingAt = new long[8 * 3];
     private int landCount;
@@ -679,29 +778,21 @@ public final class CgLoweredKernel {
         landCount++;
     }
 
-    /**
-     * Every queued target read into its buffer, whole rows then what is left of the last. A target of more than one
-     * row is the widest texture, so a row's bytes are a multiple of 8 and no pack alignment pads them; the pack row
-     * length and skips are the host's zeros, as for every readback here.
-     */
-    private void land() {
+    /** Every queued target: its buffer's words held in it when {@code hold}, else read back into the buffer now. */
+    private void finish(boolean hold) {
         for (int p = 0; p < landCount; p++) {
             CgTexelTarget t = landing[p];
             int buffer = (int) landingAt[p * 3];
             long at = landingAt[p * 3 + 1], texels = landingAt[p * 3 + 2];
-            int words = t.type() == CgTextureType.R32UI ? 1 : t.type() == CgTextureType.RG32UI ? 2 : 4;
-            int format = words == 1 ? CgGL.GL_RED_INTEGER : words == 2 ? CgGL.GL_RG_INTEGER : CgGL.GL_RGBA_INTEGER;
-            long row = (long) t.width() * words * 4;
-            int rows = (int) (texels / t.width()), rest = (int) (texels % t.width());
-            CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, t.framebuffer());
-            CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, buffer);
-            if (rows > 0) CgGL.glReadPixels(0, 0, t.width(), rows, format, CgGL.GL_UNSIGNED_INT, at);
-            if (rest > 0) CgGL.glReadPixels(0, rows, rest, 1, format, CgGL.GL_UNSIGNED_INT, at + rows * row);
-            CgLoweredResources.written(buffer);
-            CgLoweredResources.release(t);
             landing[p] = null;
+            if (hold) {
+                CgLoweredResources.hold(t, buffer, at, texels);
+            } else {
+                CgLoweredResources.land(buffer);   // what a target held of it before goes under what this wrote
+                CgLoweredResources.land(t, buffer, at, texels);
+                CgLoweredResources.release(t);
+            }
         }
-        if (landCount > 0) CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
         landCount = 0;
     }
 

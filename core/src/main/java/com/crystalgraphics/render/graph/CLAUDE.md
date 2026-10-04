@@ -145,7 +145,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   (textures) or size class (buffers): two that never live at once share storage.
 - **A compute pass runs on every tier**: each dispatch as its kernel's form (`compute/CLAUDE.md` § *Three forms*),
   chosen when the dispatch is recorded, which is where a kernel that can run nowhere throws. A pass with a dispatch
-  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass.
+  below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
+  lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
+  execution ends: ops chained in a frame land only what leaves them.
 - **Requests** (`upload`, `callback`, `compile`) report `DONE`/`FAILED` on `CgRequest`, readable from any thread; a
   pass that throws fails its request and the frame goes on.
 - **One upload per kind per frame.** The executor binds its own instance buffers at the engine binding points and
