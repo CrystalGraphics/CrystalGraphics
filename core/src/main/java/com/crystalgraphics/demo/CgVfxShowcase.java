@@ -93,6 +93,8 @@ public final class CgVfxShowcase {
             new Lane("galickGun", CgEnergyWave.galickGun(), 6.6f, new float[]{0f, 2.5f, -10f}, new float[]{0f, 0f, -1f},
                     new float[]{0f, 3f, -28f}, new float[][]{{-26f, 3f, -40f}, {26f, 3f, -40f}}),
     };
+    /** A stress lane's first shot lands this many seconds after the one before, so every beam holds at once. */
+    private static final float STRESS_STAGGER = 0.1f;
     /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
     private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
     /** Heat haze on its own, at the spheres' height just in front of the front row, two spheres behind it. */
@@ -135,11 +137,71 @@ public final class CgVfxShowcase {
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
     private final float[] impacts = new float[12];
     private final CgVfxSystem vfx = new CgVfxSystem();
+    private final Lane[] lanes;
     /** Each lane's wave and the shot it is on. */
-    private final CgEnergyWave[] waves = new CgEnergyWave[LANES.length];
-    private final int[] shots = filled(LANES.length, -1);
+    private final CgEnergyWave[] waves;
+    private final int[] shots;
     private CgVfxHeatHaze haze;
     private double waveX = Double.NaN, waveY, waveZ;
+
+    /** The showcase with its three lanes. */
+    public CgVfxShowcase() {
+        this(LANES);
+    }
+
+    private CgVfxShowcase(Lane[] lanes) {
+        this.lanes = lanes;
+        this.waves = new CgEnergyWave[lanes.length];
+        this.shots = filled(lanes.length, -1);
+    }
+
+    /**
+     * The showcase with {@code beams} lanes instead of three, fired from a ring round the grid outward, across it and
+     * round it, every shot of every lane holding at once: a baseline for a frame full of effects.
+     *
+     * <pre>{@code
+     * CgVfxShowcase stress = CgVfxShowcase.stress(30);   // lanes beam00 .. beam29
+     * }</pre>
+     */
+    public static CgVfxShowcase stress(int beams) {
+        CgVfxLook[] bases = {CgEnergyWave.kamehameha(), CgEnergyWave.finalFlash(), CgEnergyWave.galickGun()};
+        Lane[] lanes = new Lane[beams];
+        for (int i = 0; i < beams; i++) {
+            float angle = i * 2.39996f;
+            float cos = (float) Math.cos(angle), sin = (float) Math.sin(angle);
+            float ring = 9f + 5f * hash(i, 0, 1);
+            float[] from = {cos * ring, 1.5f + 6f * hash(i, 0, 2), sin * ring};
+            float rise = 0.25f * (hash(i, 0, 3) - 0.3f);
+            // Outward from the grid, across it to the far side, or round it.
+            float[] aim = switch (i % 3) {
+                case 0 -> normalized(cos, rise, sin);
+                case 1 -> normalized(-cos, rise * 0.5f, -sin);
+                default -> normalized(-sin, rise, cos);
+            };
+            float reach = 14f + 8f * hash(i, 0, 4);
+            float[] via = {from[0] + aim[0] * reach, from[1] + aim[1] * reach, from[2] + aim[2] * reach};
+            float[][] targets = new float[2][];
+            for (int side = 0; side < 2; side++) {
+                float turn = (side == 0 ? 1f : -1f) * (0.5f + 0.6f * hash(i, side, 5));
+                float c = (float) Math.cos(turn), s = (float) Math.sin(turn);
+                float dx = aim[0] * c - aim[2] * s, dz = aim[0] * s + aim[2] * c;
+                float onward = 25f + 10f * hash(i, side, 6);
+                targets[side] = new float[]{via[0] + dx * onward, 1f + 13f * hash(i, side, 7), via[2] + dz * onward};
+            }
+            lanes[i] = new Lane(String.format("beam%02d", i), bases[i % 3], i * STRESS_STAGGER, from, aim, via, targets);
+        }
+        return new CgVfxShowcase(lanes);
+    }
+
+    private static float[] normalized(float x, float y, float z) {
+        float length = (float) Math.sqrt(x * x + y * y + z * z);
+        return new float[]{x / length, y / length, z / length};
+    }
+
+    /** How many lanes fire waves: three, or a stress showcase's beams. */
+    public int laneCount() {
+        return lanes.length;
+    }
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
@@ -242,7 +304,7 @@ public final class CgVfxShowcase {
 
     /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
     public String laneOf(CgVfxEffect effect) {
-        for (Lane lane : LANES) {
+        for (Lane lane : lanes) {
             if (effect.look() == lane.look) return lane.name;
         }
         return null;
@@ -268,8 +330,8 @@ public final class CgVfxShowcase {
             waveY = y;
             waveZ = z;
         }
-        for (int k = 0; k < LANES.length; k++) {
-            Lane lane = LANES[k];
+        for (int k = 0; k < lanes.length; k++) {
+            Lane lane = lanes[k];
             float t = seconds - lane.offset;
             if (t < 0f) continue;
             int shot = (int) Math.floor(t / WAVE_CYCLE);
