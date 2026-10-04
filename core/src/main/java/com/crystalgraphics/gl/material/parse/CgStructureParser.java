@@ -225,6 +225,11 @@ final class CgStructureParser {
      * @return global declarations text for this pass; {@code ""} if absent; never {@code null}
      */
     static String parsePassGlobalDecls(String passBody, String resourcePath) {
+        return parsePassGlobalDecls(passBody, "void vertex(", resourcePath);
+    }
+
+    /** As {@link #parsePassGlobalDecls(String, String)}, ending at {@code before}: a pass with no vertex function's. */
+    static String parsePassGlobalDecls(String passBody, String before, String resourcePath) {
         // globalDecls starts after all dedicated-parser-owned structural sections.
         // Tags and RenderState are already consumed by CgTagParser / CgRenderStateParser;
         // struct v2f is consumed by parsePassV2fBody. Find the rightmost end of any of
@@ -242,7 +247,7 @@ final class CgStructureParser {
             regionStart    = Math.max(regionStart, semi >= 0 ? semi + 1 : braceClose + 1);
         }
 
-        int vertexStart = passBody.indexOf("void vertex(");
+        int vertexStart = passBody.indexOf(before);
         if (vertexStart == -1) return "";
         if (regionStart >= vertexStart) return "";
 

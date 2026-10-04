@@ -70,7 +70,9 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 -Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
                                                      # bloom's chain, 0 the glow the composite reads; =overdraw
                                                      # transparent fragments per pixel as a heat ramp (blue 1,
-                                                     # green 4, red 16, white 32), CgWorldRenderer.overdraw
+                                                     # green 4, red 16, white 32), CgWorldRenderer.overdraw;
+                                                     # =distortion the distortion target, |offset| x 50 in red
+                                                     # and green, the split in blue
 
 -Dcrystalgraphics.world.halfResolution=false        # draws marked halfResolution() at full size, in the transparent
                                                      # pass (H in the harness)

@@ -830,8 +830,8 @@ public final class CgMaterial {
     }
 
     /**
-     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD} and
-     * {@link CgRenderPassVariant#EMISSIVE} only.
+     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD},
+     * {@link CgRenderPassVariant#EMISSIVE} and {@link CgRenderPassVariant#DISTORTION} only.
      *
      * @return null when the shader does not parse
      */
@@ -841,18 +841,19 @@ public final class CgMaterial {
         if (cgMaterialShader == null) return null;
         CgParsedShader parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return null;
-        boolean emissive = pass == CgRenderPassVariant.EMISSIVE;
+        int slot = pass == CgRenderPassVariant.FORWARD ? 0 : pass == CgRenderPassVariant.EMISSIVE ? 1
+                : pass == CgRenderPassVariant.DISTORTION ? 2 : -1;
         List<String> declared = parsed.featureNames();
         int mask = keywordMask(declared);
-        if ((pass != CgRenderPassVariant.FORWARD && !emissive) || mask < 0) {
+        if (slot < 0 || mask < 0) {
             return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
         }
         int kinds = CgInstanceKind.values().length, variants = 1 << declared.size();
         if (pipelinesParse != parsed || pipelines == null) {
-            pipelines = new CgPipeline[2 * kinds * variants];
+            pipelines = new CgPipeline[3 * kinds * variants];
             pipelinesParse = parsed;
         }
-        int at = ((emissive ? kinds : 0) + kind.ordinal()) * variants + mask;
+        int at = (slot * kinds + kind.ordinal()) * variants + mask;
         CgPipeline pipeline = pipelines[at];
         if (pipeline == null) {
             pipelines[at] = pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
@@ -1201,6 +1202,16 @@ public final class CgMaterial {
         if (cgMaterialShader == null) return false;
         CgParsedShader parsed = cgMaterialShader.ensureParsed();
         return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
+    }
+
+    /**
+     * Whether this material authors a Distortion pass: the world renderer then adds it into the distortion target, which
+     * bends the scene after the transparent pass. A parse, never a compile.
+     */
+    public boolean hasDistortionPass() {
+        if (cgMaterialShader == null) return false;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.DISTORTION.lightModeName()) != null;
     }
 
     /**

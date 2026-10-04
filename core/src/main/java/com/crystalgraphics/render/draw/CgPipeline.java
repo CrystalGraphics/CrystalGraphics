@@ -86,8 +86,7 @@ public final class CgPipeline {
         this.kind = key.kind;
         this.multiDraw = key.multiDraw;
         this.overdraw = key.overdraw;
-        Set<String> passKeywords = pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE
-                ? keywords : Collections.emptySet();
+        Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
         if (multiDraw || overdraw) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
@@ -101,14 +100,21 @@ public final class CgPipeline {
      * The pipeline for this variant, state and kind, made on first use.
      *
      * @param keywords the enabled {@code #pragma cg_feature} names; ignored for any pass but
-     *                 {@link CgRenderPassVariant#FORWARD} and {@link CgRenderPassVariant#EMISSIVE}
+     *                 {@link CgRenderPassVariant#FORWARD}, {@link CgRenderPassVariant#EMISSIVE} and
+     *                 {@link CgRenderPassVariant#DISTORTION}
      */
     public static CgPipeline of(CgMaterialShader shader, CgRenderPassVariant pass, Set<String> keywords,
                                 CgRenderState state, CgInstanceKind kind) {
-        Set<String> variant = (pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE) && !keywords.isEmpty()
+        Set<String> variant = takesKeywords(pass) && !keywords.isEmpty()
                 ? Collections.unmodifiableSet(new TreeSet<>(keywords))
                 : Collections.emptySet();
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, false, false), CgPipeline::register);
+    }
+
+    /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
+    private static boolean takesKeywords(CgRenderPassVariant pass) {
+        return pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE
+                || pass == CgRenderPassVariant.DISTORTION;
     }
 
     /**

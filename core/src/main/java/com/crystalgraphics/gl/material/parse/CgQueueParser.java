@@ -46,7 +46,7 @@ final class CgQueueParser {
         } catch (IllegalArgumentException e) {
             throw new CgShaderParseException(
                     "[" + resourcePath + "] Unknown Queue name '" + raw
-                    + "'. Valid: Background, Geometry, AlphaTest, Transparent, Overlay, or a numeric value.");
+                    + "'. Valid: Background, Geometry, AlphaTest, Transparent, AfterDistortion, Overlay, or a numeric value.");
         }
     }
 }

@@ -783,6 +783,7 @@ public final class CgMaterialShaderCompiler {
      */
     private static void appendPassDefine(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
+        if (CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode())) sb.append("#define CG_DISTORTION_PASS 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
@@ -816,11 +817,13 @@ public final class CgMaterialShaderCompiler {
         }
         if (shader.readsObjectRecord()) sb.append("  cg_Light = CG_OBJECT_LIGHT;\n");
         boolean emissive = CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode());
+        boolean distortion = CgParsedPass.LIGHT_MODE_DISTORTION.equals(pass.lightMode());
         CgDepthState depth = pass.renderState().getDepth();
         // The overdraw view's target has no depth either: its test is the pass's own, as a discard.
         boolean overdrawTested = overdraw && (depth == null || depth.test() && depth.compareFunc() != CgGL.GL_ALWAYS);
-        if (emissive && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS) || overdrawTested) {
-            // The bloom target has no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
+        if ((emissive || distortion) && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)
+                || overdrawTested) {
+            // The bloom and distortion targets have no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
             // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
             sb.append("  if (cg_LinearEyeDepth(gl_FragCoord.z) > CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION)"
                     + " * CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;\n");
