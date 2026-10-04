@@ -1374,6 +1374,6 @@ CgKernelForm form = kernel.form();          // COMPUTE, LOWERED or CPU, and whic
 
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --seconds=5" -Dcrystalgraphics.compute.tier=G40
-./gradlew :gl-debug-harness:runHarness --args="--mode=gpu-ops --seconds=5" -Pharness.downlevel=mac41
+./gradlew :gl-debug-harness:runHarness --args="--mode=gpu-ops --seconds=120" -Pharness.downlevel=mac41   # ~1 min on Mesa
 ./gradlew prodSmoke -PcgTargets=<labels> -PcgSmokeProps=crystalgraphics.compute.selfTest=true
 ```
