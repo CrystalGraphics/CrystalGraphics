@@ -937,7 +937,7 @@ CgGL.cgBufferBarrier(stateBuffer, CgAccess.COMPUTE_WRITE, CgAccess.VERTEX_READ);
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw | every tier; G33 reads the count back first, a stall counted as `buffer.readbacks` |
 | an image | the graph texture, sampled by a material | every tier |
 | a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` | every tier; below GL 4.3 as a buffer texture |
-| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material | every tier; below GL 4.3 as a buffer texture |
+| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material; or `.instances(records, count)` on a world draw, culled on the GPU (below) | every tier; below GL 4.3 as a buffer texture |
 
 ```java
 // A count: a quad per live spark, or a mesh instanced once per element
@@ -1130,7 +1130,15 @@ CgGpuOps.downsample(pass, depth, Filter.MAX);                // a depth pyramid:
 ```
 
 **Culling a set of instances** (`CgCull`): records in `CgInstanceKind.OBJECT`'s layout, in the set's own space, culled
-against the view and drawn level by level from what the GPU kept, with no count on the CPU.
+against the view and drawn level by level from what the GPU kept, with no count on the CPU. In the world, a set is one
+draw: `CgWorldRenderer` builds the pyramid from the stage's depth ahead of its own passes (in Minecraft, the terrain),
+culls the set in every stage that draws it, and draws each level kept.
+
+```java
+world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
+```
+
+By hand, into a recording:
 
 ```java
 CgCull cull = new CgCull().mesh(rockLods);                           // once
@@ -1150,7 +1158,8 @@ for (int l = 0; l < cull.levels(); l++) {
   depth hides what is behind the host's world as drawn so far.
 - Where draws join and the GPU writes the commands (compute, and G40 with indirect draws), the levels are one
   multi-draw call (`render/graph/CLAUDE.md` § *Multi-draw*).
-- Its gate is `--mode=gpu-cull`: the same picture as the world renderer's CPU cull, byte for byte, on every tier.
+- Its gate is `--mode=gpu-cull`: the same picture as the world renderer's CPU cull, byte for byte, on every tier, by
+  hand and as a world draw.
 
 **`lib/rng.glsl`** is a counter-based generator (PCG4D): `cg_rng4(seed, element, step, stream)`, any element drawing
 its own numbers in any order, integer-exact on every tier, with `CgRng` giving the same bits in Java. Key an element
