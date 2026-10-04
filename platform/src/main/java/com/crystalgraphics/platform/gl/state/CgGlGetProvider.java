@@ -207,6 +207,23 @@ public class CgGlGetProvider implements CgGlStateProvider {
         t.activeTextureUnit = active;
     }
 
+    @Override
+    public int readTextureUnits(CgGlStateShadow t, int units) {
+        int active = integer(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
+        if (active < 0 || active >= CgGlStateShadow.MAX_TEXTURE_UNITS) active = 0;
+        int selected = active;
+        if ((units & (1 << active)) != 0) t.boundTexture2D[active] = integer(CgGL.GL_TEXTURE_BINDING_2D);
+        for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+            if (unit == active || (units & (1 << unit)) == 0) continue;
+            activeTexture(CgGL.GL_TEXTURE0 + unit);
+            selected = unit;
+            t.boundTexture2D[unit] = integer(CgGL.GL_TEXTURE_BINDING_2D);
+        }
+        if (selected != active) activeTexture(CgGL.GL_TEXTURE0 + active);
+        t.activeTextureUnit = active;
+        return units;
+    }
+
     protected void readVertexInput(CgGlStateShadow t) {
         t.vertexArray        = integer(CgGL.GL_VERTEX_ARRAY_BINDING);
         t.arrayBuffer        = integer(CgGL.GL_ARRAY_BUFFER_BINDING);
