@@ -199,6 +199,12 @@ What is easy to get wrong:
   as a driver with `KHR_parallel_shader_compile` does: `GL_COMPLETION_STATUS_KHR` says when it is done, and anything
   else asked of the program waits for it (`shader.spirvWait`) and makes its modules here. Hosts turn it on; tests
   leave links finished at the call. A relink of the program in use stays synchronous, since draws read it directly.
+- **A draw, a dispatch or a barrier allocates nothing.** Uniform uploads come from `CgFrameArena` (`frameAllocate`
+  answers a page and `frameOffset()` the place in it; a page is taken again once its frame retired), and the Vulkan
+  device fills what it records per call in `VulkanScratch`, through a `ByteBuffer`, for LWJGL's raw `n` functions:
+  on Java 25 LWJGL 3.4's struct setters write through FFM, and each write C2 does not inline builds a
+  `MemorySegment`. The desktop on `vulkan` took 27% less CPU a frame for it. A struct recorded per call does the same;
+  one made once may use LWJGL's classes.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
   builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
   runs on a device, in both clip conventions.

@@ -108,8 +108,10 @@ public final class CgGlState {
         return save(CgGlSlot.FBO, CgGlSlot.PROGRAM, CgGlSlot.TEXTURES, CgGlSlot.VERTEX_INPUT);
     }
 
+    private static final CgGlSlot[] ALL = CgGlSlot.values();
+
     /** Saves all sixteen. Prefer naming what you disturb — {@code TEXTURES} is by far the costly adopt. */
     public static CgGlScope saveAll() {
-        return save(CgGlSlot.values());
+        return save(ALL);
     }
 }
