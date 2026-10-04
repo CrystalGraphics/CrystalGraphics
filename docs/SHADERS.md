@@ -494,15 +494,15 @@ if (material.hasShadowCasterPass()) {
 For G-buffer or deferred passes, declare a named output struct instead of `out vec4 fragColor`. Annotate each field with `: RT0`, `: RT1`, etc. to map to color attachment slots. The compiler expands each to `layout(location=N) out vec4`:
 
 ```glsl
-// Declare above the Pass block or at material scope
-struct GBuffer {
-    vec4 albedo  : RT0;   // → layout(location=0) out vec4 → GL_COLOR_ATTACHMENT0
-    vec4 normal  : RT1;   // → layout(location=1) out vec4 → GL_COLOR_ATTACHMENT1
-    vec4 pbr     : RT2;   // → layout(location=2) out vec4 → GL_COLOR_ATTACHMENT2
-};
-
 Pass {
     Tags { "LightMode" = "Forward" "Name" = "GBufferFill" }
+    struct v2f { vec2 uv; vec3 normalWs; };
+    // Inside the Pass, after struct v2f: the parser finds it nowhere else
+    struct GBuffer {
+        vec4 albedo  : RT0;   // → layout(location=0) out vec4 → GL_COLOR_ATTACHMENT0
+        vec4 normal  : RT1;   // → layout(location=1) out vec4 → GL_COLOR_ATTACHMENT1
+        vec4 pbr     : RT2;   // → layout(location=2) out vec4 → GL_COLOR_ATTACHMENT2
+    };
     void vertex(out v2f o) { /* ... */ }
     void fragment(in v2f i, out GBuffer o) {
         o.albedo = texture(_MainTex, i.uv) * _Color;

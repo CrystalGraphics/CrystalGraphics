@@ -42,8 +42,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Nullable
     private CgFrameBuffer framebuffer;
 
-    /** Its {@link #level} views, made at first ask. */
+    /** Its {@link #level} and {@link #attachment} views, made at first ask. */
     private Level[] levelViews = new Level[0];
+    private Attachment[] attachmentViews = new Attachment[0];
 
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgFrameBuffer framebuffer) {
         super(name);
@@ -111,10 +112,35 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return view;
     }
 
-    /** The graph texture binding {@code texture} samples: itself, or a level view's; null for any other. */
+    /**
+     * Its colour attachment {@code slot}, as a texture a draw samples: what a pass that drew into every attachment of
+     * a multi-target format ({@code CgFrameBufferFormat.color(1, ...)}) hands a later reader. Slot 0 is the texture
+     * itself.
+     *
+     * <pre>{@code
+     * CgRasterPass both = rec.raster(gbuffer, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED);   // writes RT0 and RT1
+     * int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, gbuffer.attachment(1));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read as the whole texture for ordering: a pass sampling it runs after every pass writing the texture.</li>
+     *   <li>Its size is the attachment's; a slot the format lacks binds nothing.</li>
+     * </ul>
+     */
+    public Attachment attachment(int slot) {
+        if (slot < 0) throw new IllegalArgumentException(this + " has no colour attachment " + slot);
+        if (attachmentViews.length <= slot) attachmentViews = Arrays.copyOf(attachmentViews, slot + 1);
+        Attachment view = attachmentViews[slot];
+        if (view == null) attachmentViews[slot] = view = new Attachment(this, slot);
+        return view;
+    }
+
+    /** The graph texture binding {@code texture} samples: itself, or a level or attachment view's; null for any other. */
     @Nullable
     static CgGraphTexture sampled(@Nullable CgTexture texture) {
-        return texture instanceof CgGraphTexture graph ? graph : texture instanceof Level view ? view.texture : null;
+        if (texture instanceof CgGraphTexture graph) return graph;
+        if (texture instanceof Level view) return view.texture;
+        return texture instanceof Attachment view ? view.texture : null;
     }
 
     /** Render thread: samples every level again, if a {@link #level} view pinned one. */
@@ -266,6 +292,84 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public String toString() {
             return texture + " level " + level;
+        }
+    }
+
+    /** One colour attachment of a graph texture, sampled: {@link CgGraphTexture#attachment}. */
+    public static final class Attachment implements CgTexture {
+
+        private final CgGraphTexture texture;
+        private final int slot;
+
+        private Attachment(CgGraphTexture texture, int slot) {
+            this.texture = texture;
+            this.slot = slot;
+        }
+
+        public CgGraphTexture texture() {
+            return texture;
+        }
+
+        public int slot() {
+            return slot;
+        }
+
+        @Nullable
+        private CgTexture color() {
+            CgFrameBuffer framebuffer = texture.framebuffer;
+            return framebuffer == null ? null : framebuffer.getColorTexture(slot);
+        }
+
+        @Override
+        public void bind() {
+            CgTexture color = color();
+            if (color != null) color.bind();
+        }
+
+        @Override
+        public void bind(int unit) {
+            CgTexture color = color();
+            if (color != null) color.bind(unit);
+        }
+
+        @Override
+        public int getId() {
+            CgTexture color = color();
+            return color == null ? 0 : color.getId();
+        }
+
+        @Override
+        public int getWidth() {
+            CgTexture color = color();
+            return color == null ? texture.getWidth() : color.getWidth();
+        }
+
+        @Override
+        public int getHeight() {
+            CgTexture color = color();
+            return color == null ? texture.getHeight() : color.getHeight();
+        }
+
+        @Override
+        public int getTarget() {
+            CgTexture color = color();
+            return color == null ? 0 : color.getTarget();
+        }
+
+        @Override
+        public boolean isDeleted() {
+            return false;
+        }
+
+        /** Refused, as for its texture. */
+        @Override
+        public void delete() {
+            texture.delete();
+        }
+
+        @Override
+        public String toString() {
+            return texture + " attachment " + slot;
         }
     }
 }

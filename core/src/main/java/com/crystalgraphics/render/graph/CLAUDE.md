@@ -60,6 +60,20 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
   texture whole unpins it too.
 - For ordering a level view reads the whole texture: the pass runs after every pass writing it before.
 
+**More than one colour attachment.** A graph texture whose format has `color(1, ...)` and up is drawn into whole by a
+raster pass: every slot is a draw buffer (`CgFrameBuffer` sets them at creation), so a fragment's `: RT1` output lands
+in slot 1. `texture.attachment(k)` samples slot k, ordered like the texture itself. `--mode=mrt-emission` is the gate:
+colour and emission in one pass against each alone, on `gl` and `vulkan` with synchronization validation.
+
+```java
+CgFrameBufferFormat both = CgFrameBufferFormat.builder("scene+glow")
+        .color(0, CgTextureType.RGBA8).color(1, CgTextureType.R11F_G11F_B10F).depth(CgTextureType.DEPTH24_STENCIL8).build();
+int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, target.attachment(1));
+```
+
+- Every material drawn into such a target must write every slot: an output it leaves unwritten is undefined there.
+- `sceneColor` copies slot 0; hazards and the pool key on the texture as a whole.
+
 **A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
 with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).
 
