@@ -47,7 +47,6 @@ import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
 
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
@@ -218,6 +217,7 @@ public final class CgExecutor {
         for (CgExecutor executor : BY_DEPTH) {
             executor.ring.delete();
             executor.commands.delete(FORGET_BUFFER);
+            if (executor.staging != null) executor.staging.delete();
         }
         BY_DEPTH.clear();
         POOL.delete();
@@ -670,7 +670,16 @@ public final class CgExecutor {
         for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
         for (int b = 0; b < d.buffers.length; b++) {
             if (d.buffers[b] != null) bindStorage(b, d.buffers[b], d.offsets[b], d.sizes[b], d.bufferAccess[b]);
-            if (d.counters[b] != null) bindStorage(program.counterPoint(b), d.counters[b], d.counterOffsets[b], 4, d.counterAccess[b]);
+            if (d.counters[b] != null) {
+                long base = CgKernelProgram.counterBase(d.counterOffsets[b]);
+                bindStorage(program.counterPoint(b), d.counters[b], base, d.counterOffsets[b] - base + 4, d.counterAccess[b]);
+                program.counterWord(b, d.counterOffsets[b]);
+            }
+        }
+        for (CgTexture sampler : d.samplers) {
+            CgGraphTexture graph = sampler == null ? null : CgGraphTexture.sampled(sampler);
+            CgTexture color = graph == null ? null : storage(graph).getColorTexture(0);
+            if (color != null) barrier(false, color.getId(), CgAccess.SAMPLED_READ);   // after a kernel wrote it as an image
         }
         for (int i = 0; i < d.images.length; i++) {
             CgGraphTexture texture = d.images[i];
@@ -737,20 +746,22 @@ public final class CgExecutor {
 
     // ── Buffers ──────────────────────────────────────────────────────────────
 
-    private ByteBuffer updateScratch;
+    /** Where an update's bytes wait for the GPU's copy: graph storage takes no glBufferSubData. */
+    @Nullable
+    private CgStreamBuffer staging;
     /** A count read back below indirect draws. */
     private final int[] countWord = new int[1];
 
     private void update(CgPass.Update update) {
         int id = bufferStorage(update.buffer, true);
-        if (updateScratch == null || updateScratch.capacity() < update.bytes.length) {
-            updateScratch = ByteBuffer.allocateDirect(Math.max(update.bytes.length, 4096));
-        }
-        updateScratch.clear();
-        updateScratch.put(update.bytes);
-        ((Buffer) updateScratch).flip();
+        int bytes = update.bytes.length;
+        if (staging == null) staging = CgStreamBuffer.create(CgGL.GL_COPY_READ_BUFFER, Math.max(bytes, 1 << 16));
+        staging.map(bytes).put(update.bytes);
+        int at = staging.commit(bytes);
+        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, staging.getGlBufferId());
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, id);
-        CgGL.glBufferSubData(CgGL.GL_COPY_WRITE_BUFFER, update.offset, updateScratch);
+        CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, at, update.offset, bytes);
+        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         CgLoweredResources.written(id);
         written(update.buffer);

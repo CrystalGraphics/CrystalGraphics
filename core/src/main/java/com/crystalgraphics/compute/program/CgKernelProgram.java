@@ -63,6 +63,8 @@ public final class CgKernelProgram {
     private final CgShaderProgram program;
     private final int dispatchLocation;
     private final int[] counterPoints;
+    /** Per append buffer, its count's word uniform; -1 for any other buffer. */
+    private final int[] counterWords;
     private final int[] groupLimits = new int[3];
     private final IntBuffer dispatch = CgBufferUtils.createIntBuffer(6);
     private final CgMaterialProperties properties;
@@ -85,6 +87,7 @@ public final class CgKernelProgram {
                         CgBindingPoints.MATERIAL_PROPERTIES_UBO, CgBufferLifetime.FRAME)
                 : null;
         this.counterPoints = new int[source.buffers().size()];
+        this.counterWords = new int[source.buffers().size()];
         int next = source.buffers().size();
         for (CgBufferDecl b : source.buffers()) counterPoints[b.index()] = b.access() == CgBufferAccess.APPEND ? next++ : -1;
         CgCapabilities caps = CgCapabilities.detect();
@@ -92,6 +95,10 @@ public final class CgKernelProgram {
         try (CgGlScope scope = CgGlState.save(CgGlSlot.PROGRAM)) {
             CgGL.glUseProgram(program.getId());
             this.dispatchLocation = CgGL.glGetUniformLocation(program.getId(), CgKernelEmitter.DISPATCH_UNIFORM);
+            for (CgBufferDecl b : source.buffers()) {
+                counterWords[b.index()] = counterPoints[b.index()] < 0 ? -1
+                        : CgGL.glGetUniformLocation(program.getId(), CgKernelEmitter.counterWord(b));
+            }
             wire();
         }
     }
@@ -181,12 +188,28 @@ public final class CgKernelProgram {
         return this;
     }
 
-    /** Append buffer {@code name}'s count: the {@code uint} at {@code offset} in {@code glBuffer}. */
+    /** Append buffer {@code name}'s count: the {@code uint} at {@code offset} in {@code glBuffer}, any multiple of 4. */
     public CgKernelProgram counter(String name, int glBuffer, long offset) {
         CgBufferDecl b = buffer(name);
         if (b.access() != CgBufferAccess.APPEND) throw new IllegalArgumentException(name + " is no append buffer");
-        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, counterPoints[b.index()], glBuffer, offset, 4);
+        long base = counterBase(offset);
+        CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, counterPoints[b.index()], glBuffer, base, offset - base + 4);
+        counterWord(b.index(), offset);
         return this;
+    }
+
+    /** Where a count at byte {@code offset} binds from: the storage-aligned offset at or below it. */
+    public static long counterBase(long offset) {
+        long align = Math.max(4, CgCapabilities.detect().storageOffsetAlignment());
+        return offset / align * align;
+    }
+
+    /**
+     * Tells the program where in its bound range the count of the append buffer declared {@code index}-th sits, for a
+     * count at byte {@code offset} bound from {@link #counterBase}. {@link #use} first.
+     */
+    public void counterWord(int index, long offset) {
+        if (counterWords[index] >= 0) CgGL.glUniform1i(counterWords[index], (int) ((offset - counterBase(offset)) >>> 2));
     }
 
     /** Mip {@code level} of {@code texture} as image {@code name}: every layer of an array, cube or 3D texture. */

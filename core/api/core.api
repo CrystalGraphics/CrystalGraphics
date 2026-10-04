@@ -1740,6 +1740,7 @@ com/crystalgraphics/compute/emit/CgKernelEmitter
   method public,static bufferBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static code (Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgKernelDecl;I)Ljava/lang/String;
   method public,static counterBlock (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
+  method public,static counterWord (Lcom/crystalgraphics/compute/source/CgBufferDecl;)Ljava/lang/String;
   method public,static emit (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Ljava/lang/String;
   method public,static properties (Ljava/lang/StringBuilder;Lcom/crystalgraphics/compute/source/CgComputeSource;)V
 com/crystalgraphics/compute/emit/CgKernelTarget
@@ -2042,6 +2043,7 @@ com/crystalgraphics/compute/program/CgKernelProgram
   method public counter (Ljava/lang/String;IJ)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public counterPoint (I)I
   method public counterPoint (Ljava/lang/String;)I
+  method public counterWord (IJ)V
   method public delete ()V
   method public dispatch (I)V
   method public dispatch (III)V
@@ -2063,6 +2065,7 @@ com/crystalgraphics/compute/program/CgKernelProgram
   method public use ()Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;)Lcom/crystalgraphics/compute/program/CgKernelProgram;
   method public,static build (Lcom/crystalgraphics/compute/source/CgComputeSource;Lcom/crystalgraphics/compute/source/CgKernelDecl;Ljava/util/Set;Lcom/crystalgraphics/compute/emit/CgKernelTarget;)Lcom/crystalgraphics/compute/program/CgKernelProgram;
+  method public,static counterBase (J)J
   method public,static scope ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
 com/crystalgraphics/compute/source/CgBufferAccess
   access public,final,enum
