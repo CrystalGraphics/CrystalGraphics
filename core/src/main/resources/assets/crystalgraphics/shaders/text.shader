@@ -115,11 +115,11 @@ Pass {
         Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
         Cull OFF
 
-        // What every text draw uses, 2D and world alike: the Java-side NONE/TEST_ONLY override this once
-        // claimed never reached a draw (measured, render-graph G2). A pass owning its depth decides it
-        // from G3 on; a Pass's RenderState cannot vary per draw.
+        // Tested against the scene, never written, 2D and world alike (TextMeshPro's ZWrite Off): a draw's
+        // shadows, lines and glyphs are coplanar quads of different extents, and each one written would
+        // depth-fight the next. They composite in submission order instead.
         DepthTest LEQUAL
-        DepthWrite ON
+        DepthWrite OFF
     }
 
     // Per-glyph model-view is baked CPU-side into origin/right/up (see CgQuadRenderer.Quad#pose,
