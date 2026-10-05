@@ -151,6 +151,8 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     public int barriers;
     /** Copies recorded on the transfer queue, and of those the buffer copies (a {@code cgBeginTransfer} bracket's). */
     public int transferCopies, transferBufferCopies;
+    /** Copies into textures recorded on the frame's queue, and the calls they were batched into. */
+    public int frameCopies, frameCopyCalls;
 
     /** A device that keeps no pipeline cache across launches. */
     public CgVulkanDevice(CgVulkanHost host, int width, int height) {
@@ -675,7 +677,11 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     @Override public void whenRetired(long frame, Runnable action) { host.whenFrameRetired(frame, action); }
     @Override public boolean ownsSubmission() { return host.ownsSubmission(); }
     @Override public void fromHost() { host.fromHost(); }
-    @Override public void toHost() { host.toHost(); }
+    @Override
+    public void toHost() {
+        encoder.endCopies();
+        host.toHost();
+    }
 
     @Override
     public void endFrame() {
