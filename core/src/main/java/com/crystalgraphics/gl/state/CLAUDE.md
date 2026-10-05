@@ -58,7 +58,7 @@ now exactly as safe as the typed records.
 | Package | Holds |
 |---|---|
 | `platform.gl` | `CgGlStateManager` — the engine, beside `CgGL`, which consults it on every state setter |
-| `platform.gl.state` | `CgGlState` (facade), `CgGlScope`, `CgGlSlot`, `CgGlStateShadow`, `CgGlStateProvider`, `CgGlGetProvider` |
+| `platform.gl.state` | `CgGlState` (facade), `CgGlScope`, `CgGlSlot`, `CgGlStateShadow`, `CgGlStateProvider`, `CgGlGetProvider`; `CgCheckedProvider` and `CgHostStateCache`, a host's own cache checked against `glGet` |
 
 The split follows the call direction: `CgGL` depends on the manager, and the manager depends on the value
 and SPI types — so only the manager needs to sit next to `CgGL`.
@@ -173,6 +173,20 @@ reports every write outside an open scope as a leak, and a handed-over write is 
 Open the scope at the entry point, and where the entry runs every frame, only once there is work (the
 glyph drain opens it on the first commit).
 
+## Asking the shadow instead of the driver
+
+A `glGet` on a frame path waits for the driver to drain every queued call: one in the target copy cost bloom
+2 ms a frame at the beam peak. Ask the shadow, which answers from what a scope read or what we wrote:
+
+```java
+int target = CgGlState.drawFramebuffer();   // the bound draw framebuffer
+CgGlState.viewport(ints);                   // x, y, width, height at 0..3
+```
+
+- Free inside a host section once the domain is known (an open scope declaring it read it). Outside one, or
+  untrusted, it reads the domain once, as a scope would.
+- Inside a `CgGlRecording` it answers what the recording set.
+
 ### Trust is per field
 
 A **field** is what one setter writes — `glDepthMask`'s mask, `glBlendFuncSeparate`'s four factors, one
@@ -205,6 +219,15 @@ dispatch and parameter buffers) have many binding points and are rarely written,
   maximum): issued and never restored, since no host binds there.
 - The round trip checks only points our code has bound.
 
+`TEXTURES` is half of this: a scope reads the active unit and the units our code has ever bound a texture on when
+it opens, and any other unit at its first bind inside it. It restores only the units it saved, so the 32 units a
+whole read cost become the handful the engine uses (`glState.adopt.units` counts them). A free provider still reads
+every unit, since its reads cost nothing.
+
+A provider's `hostUnits()` is the units its host samples through; a unit outside it is never read, saved or restored,
+since nothing of the host's lives there. Every unit by default; a `CgCheckedProvider` answers its cache's table
+(`HostStateModern` every unit again while an Iris/Oculus pack is active, since a pack samples above the table).
+
 ## Diagnostics — reach for these before reasoning
 
 Reasoning from symptoms produced a wrong answer three times in this subsystem's history; each of these gave
@@ -220,8 +243,21 @@ the right one in a single run.
 | Platform | Source | `glGet` per adopt |
 |---|---|---|
 | 1.7.10 + Angelica | `AngelicaStateProvider` (1.7.10), reads Angelica's mirror by reflection | near zero |
-| 1.7.10 vanilla · harness | `CgGlGetProvider` | full sweep |
-| Forge 1.8–1.12.2, 1.13+ (every modern node) | `CgGlGetProvider` — none of their own. What keeps *Minecraft's* shadow true there is the backend routing through it (`Blaze3dGLBackend`, `GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it | full sweep |
+| 1.7.10 vanilla | `CgGlGetProvider` | full sweep |
+| harness on `gl` | `PlatformServiceHarness.KeptShadow`: `CgGlGetProvider` with `hostKeepsShadow()`, since every draw there is `CgGL`'s; stage entries forget nothing (`-Dcrystalgraphics.harness.keepShadow=false` turns it off) | what the shadow never learned: about one a frame |
+| Modern 1.13–26.2 on OpenGL | `HostStateModern`, over `GlStateManager` (below). Adds the program (0 below 1.21.5; from 1.21.5 its encoder's), the framebuffer (the main target below 1.21.5; from 1.21.5 `GlStateManager`'s, `glGet` where Fabric renames it) and the vertex input (none below 1.17, `BufferUploader`'s to 1.19.1, Minecraft's own before each draw from 1.19.2). From 1.21.5 the viewport, which only render passes set, reads `glGet` — never at a stage entry, where `bindMainTarget` has just set it through `CgGL` | none, past the checks |
+| Forge 1.8.9–1.12.2 | `HostStateLegacy`, over `GlStateManager` (below). Adds program 0, no vertex array, and the main framebuffer with the viewport covering it, as at every hook; a shader pack (OptiFine) switched on after the checks binds its own unseen | none, past the checks |
+| 26.3 | `CgGlGetProvider` | full sweep |
+
+**Over `GlStateManager`** (`CgCheckedProvider` + `CgHostStateCache`, `platform.gl.state`): its fields by shape, as
+SRG, intermediary and MCP rename them (`-Dcrystalgraphics.host.stateCache.byShape=true` skips Mojang's names in a dev
+run), and what Minecraft holds at every hook for what it does not cache: blend equation, front face, polygon mode,
+stencil, and the scissor test off where it keeps none (to 1.16.3); the alpha test is cached to 1.16.5. The first 600
+reads of each domain are checked against `glGet`; a domain that disagrees reads `glGet` from then on, with a warning.
+A guessed field (the scissor box; vertex input from 1.19.2) is restored as guessed, and the provider's `excuse` keeps
+it out of both the checks and `state.roundTrip`. `-Dcrystalgraphics.host.stateCache=false`
+turns it off. What keeps *Minecraft's* cache true is the backend routing through it (`Blaze3dGLBackend`,
+`GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it.
 
 > **Trap, found by reading Angelica's source rather than assuming:** its `DepthState.enabled` is the depth
 > **write mask**, not the depth test — `glDepthMask` stores into it, and the test is a separate `depthTest`

@@ -6,6 +6,7 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -183,8 +184,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         CgUploadLease lease = CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type);
         // From an unpack buffer on the render thread too: NVIDIA's GL converts the whole array at the first
         // client-memory upload after a grow's GPU copy into it, about 1.4 ms per 4 MB layer, and from a buffer it does not.
-        if (gpu.immediate()) lease.run();
-        else gpu.run(lease);
+        gpu.run(lease);
     }
 
     /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
@@ -195,7 +195,9 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             mirrorFloatUpload(layer, x, y, w, h, format, data);
         }
         if (gpu.immediate()) {
-            uploadFloats(layer, x, y, w, h, format, type, data);
+            try (CgGlScope restore = gpu.restoring()) {
+                uploadFloats(layer, x, y, w, h, format, type, data);
+            }
             return;
         }
         gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));

@@ -12,9 +12,6 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -40,13 +37,15 @@ final class CgTargetCopy {
 
     /** Copy formats by the source's: its colour slot 0 and depth, as textures. Render thread. */
     private static final Map<CgFrameBufferFormat, CgFrameBufferFormat> FORMATS = new HashMap<>();
-    private static final IntBuffer VIEWPORT =
-            ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
 
-    /** The current target last probed: its framebuffer, the copy format and the depth blit mask that match it. */
-    private static int probedSource = -1;
-    private static CgFrameBufferFormat currentFormat = copyFormat(CgTextureType.RGBA8, null);
-    private static int currentDepthMask;
+    /**
+     * Current targets probed, most recent first: each framebuffer, the copy format and the depth blit mask that match
+     * it. Several, since a host's stages may alternate targets and each probe is a {@code glGet}.
+     */
+    private static final int PROBED = 4;
+    private static final int[] probedSource = {-1, -1, -1, -1};
+    private static final CgFrameBufferFormat[] probedFormat = new CgFrameBufferFormat[PROBED];
+    private static final int[] probedDepthMask = new int[PROBED];
 
     final CgTexture color = new View(true), depth = new View(false);
     @Nullable
@@ -55,8 +54,8 @@ final class CgTargetCopy {
     private CgTextureDesc desc;
 
     /**
-     * Copies what {@code bits} name from framebuffer {@code source}: the current target when {@code sourceFormat} is
-     * null, else a {@code width} x {@code height} target of that format. Colour is copied in the rect at {@code at}
+     * Copies what {@code bits} name from {@code width} x {@code height} framebuffer {@code source}: the current target
+     * when {@code sourceFormat} is null, else a target of that format. Colour is copied in the rect at {@code at}
      * of {@code rects}, GL pixels x0, y0, x1, y1, or whole where its x1 is below 0. Leaves the framebuffer binding and
      * scissor as found. Answers the colour pixels copied.
      */
@@ -65,19 +64,9 @@ final class CgTargetCopy {
         CgFrameBufferFormat format;
         int depthMask;
         if (sourceFormat == null) {
-            if (source != probedSource) {
-                CgTextureType type = CgFrameBuffer.depthTypeOf(source);
-                currentFormat = copyFormat(CgTextureType.RGBA8, type);
-                currentDepthMask = type == null ? 0 : CgFrameBuffer.optimalDepthBlitMask(source);
-                probedSource = source;
-            }
-            if (width <= 0 || height <= 0) {
-                CgGL.glGetInteger(CgGL.GL_VIEWPORT, VIEWPORT);
-                width = VIEWPORT.get(2);
-                height = VIEWPORT.get(3);
-            }
-            format = currentFormat;
-            depthMask = currentDepthMask;
+            int probed = probe(source);
+            format = probedFormat[probed];
+            depthMask = probedDepthMask[probed];
         } else {
             format = FORMATS.computeIfAbsent(sourceFormat, f -> copyFormat(f.getColorSlot(0), f.getDepthType()));
             depthMask = sourceFormat.hasDepth() ? CgGL.GL_DEPTH_BUFFER_BIT : 0;
@@ -117,13 +106,25 @@ final class CgTargetCopy {
      */
     void copyDepth(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, CgPass pass,
                    CgTexturePool pool) {
-        boolean depth = sourceFormat != null ? sourceFormat.hasDepth()
-                : source == probedSource ? currentDepthMask != 0 : CgFrameBuffer.depthTypeOf(source) != null;
+        boolean depth = sourceFormat != null ? sourceFormat.hasDepth() : probedDepthMask[probe(source)] != 0;
         if (!depth) throw new IllegalStateException(pass + " reads the depth of framebuffer " + source + ", which has none");
         copy(source, sourceFormat, width, height, DEPTH, WHOLE, 0, pool);
     }
 
     private static final int[] WHOLE = {0, 0, -1, -1};
+
+    /** Where current target {@code source}'s probe is, probing it into slot 0 if none is held. */
+    private static int probe(int source) {
+        for (int i = 0; i < PROBED; i++) if (probedSource[i] == source) return i;
+        System.arraycopy(probedSource, 0, probedSource, 1, PROBED - 1);
+        System.arraycopy(probedFormat, 0, probedFormat, 1, PROBED - 1);
+        System.arraycopy(probedDepthMask, 0, probedDepthMask, 1, PROBED - 1);
+        CgTextureType type = CgFrameBuffer.depthTypeOf(source);
+        probedSource[0] = source;
+        probedFormat[0] = copyFormat(CgTextureType.RGBA8, type);
+        probedDepthMask[0] = type == null ? 0 : CgFrameBuffer.optimalDepthBlitMask(source);
+        return 0;
+    }
 
     /** Blits {@code mask} from {@code source} into the same rect of the copy. */
     private void blit(int source, int mask, int x0, int y0, int x1, int y1) {

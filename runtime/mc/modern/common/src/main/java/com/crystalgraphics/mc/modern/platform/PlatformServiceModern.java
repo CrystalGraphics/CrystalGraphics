@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.mc.modern.platform.gl.Blaze3dGLBackend;
+import com.crystalgraphics.mc.modern.platform.gl.HostStateModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
 //? if >=26.3 {
 /*import com.crystalgraphics.sdl.SdlCursorService;
@@ -113,10 +113,9 @@ public final class PlatformServiceModern implements CgPlatformService {
             if (GraphicsApi.vulkan()) {
                 glBackend = vulkanBackend();
             } else {
-                // Declared before any GL work: CgBindingPoints allocates by counting down from the limit.
-                CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
                 HostStateVerifier.announceIfEnabled();
                 glBackend = new Blaze3dGLBackend();
+                HostStateModern.install();
             }
 
             // The world and entity queries: client only for the same reason as the cursor below (they read the client level).

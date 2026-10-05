@@ -36,6 +36,11 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 # Minecraft's own GL state cache (modern nodes)
 -Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's
                                                      # GlStateManager and name the domain that disagrees
+-Dcrystalgraphics.host.stateCache=false              # scopes read the host's state with glGet, not from
+                                                     # GlStateManager (HostStateModern 1.13-26.2 on GL, HostStateLegacy)
+-Dcrystalgraphics.host.stateCache.byShape=true       # find GlStateManager's fields by shape, as production
+                                                     # Forge (SRG) and Fabric (intermediary) do: a dev run
+                                                     # checks that path; the install line names what missed
 
 # GL errors (LWJGL3 hosts, needs a debug context -- every dev client has one)
 -Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a

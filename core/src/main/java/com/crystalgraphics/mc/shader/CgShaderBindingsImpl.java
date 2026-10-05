@@ -11,7 +11,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.*;
-import com.crystalgraphics.platform.gl.CgGL;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -518,17 +517,10 @@ final class CgShaderBindingsImpl implements CgShaderBindings {
         public void execute(CgShader shader, CgShaderProgram program, CgShaderBindingsImpl patch) {
             int loc = patch.resolveLocation(shader, this.name);
             if (loc < 0) return;
-            
-            int previousUnit = CgTexture.getActiveUnit();
-            int targetUnit = CgGL.GL_TEXTURE0 + this.unit;
 
-            try {
-                CgTexture.active(unit);
-                CgTexture.bind(target, textureId);
-                program.setUniform1i(loc, this.unit);
-            } finally {
-                if (previousUnit != targetUnit) CgTexture.active(previousUnit);
-            }
+            CgTexture.active(unit);   // left active: the state shadow tracks it, and reading it back is a glGet
+            CgTexture.bind(target, textureId);
+            program.setUniform1i(loc, this.unit);
         }
     }
 

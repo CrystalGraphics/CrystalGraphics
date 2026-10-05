@@ -1,6 +1,9 @@
 package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -17,11 +20,13 @@ import java.util.Set;
  * thread.
  *
  * <pre>{@code
- * private final CgDeferral gpu = new CgDeferral();
+ * private final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES);
  *
  * public void upload(ByteBuffer pixels) {
  *     if (gpu.immediate()) {
- *         texSubImage(pixels);                      // here and now, from the caller's buffer
+ *         try (CgGlScope ignored = gpu.restoring()) {
+ *             texSubImage(pixels);                  // here and now, from the caller's buffer
+ *         }
  *         return;
  *     }
  *     gpu.run(CgUploads.copyOf(pixels, false).into(landing, 0, x, y, 0, w, h, 1, format, type));
@@ -42,6 +47,9 @@ import java.util.Set;
  *       given back when it lands or is cleared.</li>
  *   <li>A queued task that throws is logged and dropped; the rest of the queue still runs.</li>
  *   <li>One owner at a time: an object's work is asked for from one thread at once.</li>
+ *   <li>Work that binds something to do its job names what to restore, or it leaks into whoever draws next:
+ *       {@code new CgDeferral(CgGlSlot.TEXTURES)} runs each piece of work inside a scope saving the texture
+ *       bindings.</li>
  * </ul>
  */
 public final class CgDeferral {
@@ -56,6 +64,19 @@ public final class CgDeferral {
 
     /** Guarded by this. */
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
+
+    /** What each piece of work is scoped to restore; empty for none. */
+    private final CgGlSlot[] restores;
+
+    /** Work that leaves GL state as it found it, or restores it itself. */
+    public CgDeferral() {
+        this(new CgGlSlot[0]);
+    }
+
+    /** Work restoring {@code restores} when each piece is done. */
+    public CgDeferral(CgGlSlot... restores) {
+        this.restores = restores;
+    }
 
     /** Whether {@link #run} would do its work now: this thread may drive the device and nothing is waiting. */
     public synchronized boolean immediate() {
@@ -76,7 +97,26 @@ public final class CgDeferral {
                 return;
             }
         }
-        work.run();
+        try (CgGlScope ignored = restoring()) {
+            work.run();
+        }
+    }
+
+    /**
+     * A scope over what this deferral's work restores, for work a caller does directly once {@link #immediate()}
+     * held; nothing to open when it restores nothing.
+     *
+     * <pre>{@code
+     * if (gpu.immediate()) {
+     *     try (CgGlScope ignored = gpu.restoring()) {
+     *         texSubImage(pixels);
+     *     }
+     *     return;
+     * }
+     * }</pre>
+     */
+    public CgGlScope restoring() {
+        return restores.length == 0 ? CgGlScope.NOOP_SCOPE : CgGlState.save(restores);
     }
 
     /** Does what is queued, oldest first, where the device may be driven; nothing elsewhere. Cheap when empty. */
@@ -84,7 +124,7 @@ public final class CgDeferral {
         if (!mayDrive()) return;
         Runnable next;
         while ((next = poll()) != null) {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, TASK)) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, TASK); CgGlScope restore = restoring()) {
                 next.run();
             } catch (RuntimeException failed) {
                 LOGGER.error("deferred GPU work failed", failed);

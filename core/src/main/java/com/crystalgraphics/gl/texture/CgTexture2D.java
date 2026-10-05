@@ -11,6 +11,7 @@ import lombok.Getter;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 
 import java.nio.ByteBuffer;
 import java.util.function.Consumer;
@@ -221,11 +222,13 @@ public final class CgTexture2D extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
-        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, pixelFormat, pixelType, pixels);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        try (CgGlScope restore = gpu.restoring()) {
+            CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, pixelFormat, pixelType, pixels);
+            } finally {
+                CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+            }
         }
     }
 

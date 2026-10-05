@@ -9,6 +9,7 @@ import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
 import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 
 import java.nio.ByteBuffer;
 import java.util.function.Consumer;
@@ -152,11 +153,13 @@ public final class CgTextureCubemap extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
-        CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage2D(FACE_TARGETS[face], level, x, y, width, height, pixelFormat, pixelType, pixels);
-        } finally {
-            CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, 0);
+        try (CgGlScope restore = gpu.restoring()) {
+            CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, textureId);
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexSubImage2D(FACE_TARGETS[face], level, x, y, width, height, pixelFormat, pixelType, pixels);
+            } finally {
+                CgGL.glBindTexture(CgGL.GL_TEXTURE_CUBE_MAP, 0);
+            }
         }
     }
 

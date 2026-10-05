@@ -3,6 +3,8 @@ package com.crystalgraphics.platform.gl.state;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlStateManager;
 
+import java.nio.IntBuffer;
+
 /**
  * Public entry point for scoped GL state save/restore.
  *
@@ -49,14 +51,27 @@ public final class CgGlState {
      *
      * <p>For the boundaries that are not scopes: frame start, render-pass entry, context creation, resource
      * reload, and any code that resets GL state wholesale with raw GL that {@link CgGL} cannot see.</p>
+     *
+     * <p>Forgets nothing where the provider says the host keeps the shadow
+     * ({@link CgGlStateProvider#hostKeepsShadow}); raw GL there goes inside {@link #hostForeign}.</p>
      */
     public static void invalidateAllIfPresent() {
-        manager.invalidateAll();
+        manager.invalidateAtBoundary();
     }
 
     /** Discards the shadow. Call on GL context destruction — a shadow describes exactly one context. */
     public static void reset() {
         manager = new CgGlStateManager(CgGlStateProvider.glGet());
+    }
+
+    /** The bound draw framebuffer without a {@code glGet} once the shadow knows it. @see CgGlStateManager#drawFramebuffer */
+    public static int drawFramebuffer() {
+        return manager.drawFramebuffer();
+    }
+
+    /** The viewport into {@code into} at 0..3, as {@link #drawFramebuffer} reads. */
+    public static void viewport(IntBuffer into) {
+        manager.viewport(into);
     }
 
     /** Marks a restore point for the given domains. */

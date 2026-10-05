@@ -89,12 +89,6 @@ public interface CgTexture {
 
     // ── Static helpers ────────────────────────────────────────────────────
 
-    /** @return the normalized ID of the active texture unit, between 0-31.
-     *  Highly discouraged against, as state querying the GPU via glGet* stalls the CPU-GPU pipeline. */
-    static int getActiveUnit() {
-        return CgGL.glGetInteger(CgGL.GL_ACTIVE_TEXTURE) - CgGL.GL_TEXTURE0;
-    }
-
     /** Sets the GL texture state
      * @param target to set (GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_3D, GL_TEXTURE_CUBEMAP)
      * @param textureId

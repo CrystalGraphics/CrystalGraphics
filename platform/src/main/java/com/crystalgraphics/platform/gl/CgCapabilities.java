@@ -4,6 +4,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
+import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
 
 import java.util.Arrays;
@@ -127,24 +128,12 @@ public final class CgCapabilities {
     @Getter(AccessLevel.NONE) int maxTextureUnits;
 
     /**
-     * A ceiling the host imposes on usable texture units, independent of what GL reports.
-     *
-     * <p>A host with its own GL state tracker models a fixed number of units; binding above that
-     * corrupts sampling for whoever draws next. Declared by the loader — unset, nothing is clamped.</p>
-     */
-    @Getter(AccessLevel.NONE) private static volatile int hostTextureUnitCeiling = Integer.MAX_VALUE;
-
-    /** @see #hostTextureUnitCeiling */
-    public static void setHostTextureUnitCeiling(int units) {
-        hostTextureUnitCeiling = Math.max(1, units);
-    }
-
-    /**
-     * What GL reports, clamped by whatever the host declared via
-     * {@link #setHostTextureUnitCeiling(int)}. Clamped on read, so registration order does not matter.
+     * The fragment stage's texture units, at most the {@link CgGlStateShadow#MAX_TEXTURE_UNITS} the state shadow
+     * tracks. A host's own state cache does not lower it: its backend sends units above the cache's table to the
+     * driver.
      */
     public int getMaxTextureUnits() {
-        return Math.min(maxTextureUnits, hostTextureUnitCeiling);
+        return Math.min(maxTextureUnits, CgGlStateShadow.MAX_TEXTURE_UNITS);
     }
     /** Maximum 2D texture dimension (width/height). */
     int maxTextureSize;

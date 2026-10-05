@@ -17,7 +17,6 @@ import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.service.CgCursorService;
@@ -90,9 +89,8 @@ public final class PlatformServiceLegacy implements CgPlatformService {
 
     @Override public CgGLBackend gl() {
         if (glBackend == null) {
-            // Before any GL work: CgBindingPoints allocates units counting down from this ceiling.
-            CgCapabilities.setHostTextureUnitCeiling(GlStateManagerGLBackend.TRACKED_TEXTURE_UNITS);
             glBackend = new GlStateManagerGLBackend();
+            HostStateLegacy.install();
         }
         return glBackend;
     }

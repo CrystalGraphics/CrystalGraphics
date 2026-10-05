@@ -3,9 +3,14 @@ package com.crystalgraphics.mc.legacy.platform;
 import com.crystalgraphics.lwjgl2.Lwjgl2GLBackend;
 
 import net.minecraft.client.renderer.GlStateManager;
+import org.apache.logging.log4j.LogManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL13;
+
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 
 /**
  * {@link Lwjgl2GLBackend} plus telling Minecraft what we changed: Forge 1.8–1.12.2's
@@ -17,32 +22,75 @@ import org.lwjgl.opengl.GL13;
  * 1.12.2 — 1.9 only added to the class. {@code Blaze3dGLBackend} is the modern counterpart.</p>
  *
  * <ul>
- *   <li>The texture table has {@link #TRACKED_TEXTURE_UNITS} entries; a unit above it goes to the driver,
+ *   <li>The texture table has {@link #trackedTextureUnits()} entries; a unit above it goes to the driver,
  *       and leaving one re-issues the switch raw, since the cache still holds the unit before it.</li>
  *   <li>Only {@code GL_TEXTURE_2D} bindings are cached.</li>
  * </ul>
  */
 public final class GlStateManagerGLBackend extends Lwjgl2GLBackend {
 
-    /** The units {@code GlStateManager.textureState} holds: 8 on every legacy plateau. */
-    public static final int TRACKED_TEXTURE_UNITS = 8;
+    /** What vanilla's {@code GlStateManager.textureState} holds on every legacy plateau. */
+    private static final int VANILLA_TEXTURE_UNITS = 8;
 
     private static final int GL_LIGHT_COUNT = 8;
 
+    private static int trackedUnits = -1;
+
+    private final int trackedTextureUnits = trackedTextureUnits();
     private int activeTextureUnit = 0;
+
+    /**
+     * The units {@code GlStateManager}'s texture table holds, read from it: 8 in vanilla, more where OptiFine widens
+     * the table, whose units must then route through it too.
+     */
+    public static int trackedTextureUnits() {
+        if (trackedUnits < 0) trackedUnits = readTextureTable();
+        return trackedUnits;
+    }
+
+    /** By name in a dev run, else by shape (SRG): the static array whose element holds an int and no boolean. */
+    private static int readTextureTable() {
+        try {
+            Field table = null;
+            for (Field field : GlStateManager.class.getDeclaredFields()) {
+                if (!Modifier.isStatic(field.getModifiers()) || !field.getType().isArray()) continue;
+                if (field.getName().equals("textureState")) {
+                    table = field;
+                    break;
+                }
+                boolean binding = false, flag = false;
+                for (Field member : field.getType().getComponentType().getDeclaredFields()) {
+                    if (Modifier.isStatic(member.getModifiers())) continue;
+                    binding |= member.getType() == int.class;
+                    flag |= member.getType() == boolean.class;
+                }
+                if (binding && !flag && table == null) table = field;
+            }
+            if (table != null) {
+                table.setAccessible(true);
+                int length = Array.getLength(table.get(null));
+                LogManager.getLogger("CrystalGraphics").info("[cg] GlStateManager models {} texture units", length);
+                return length;
+            }
+        } catch (ReflectiveOperationException | RuntimeException refused) {
+            LogManager.getLogger("CrystalGraphics").info("[cg] could not read GlStateManager's texture table ({}); "
+                    + "assuming {} units", refused, VANILLA_TEXTURE_UNITS);
+        }
+        return VANILLA_TEXTURE_UNITS;
+    }
 
     @Override
     public void glActiveTexture(int texture) {
         int unit = texture - GL13.GL_TEXTURE0;
-        boolean leavingUntracked = activeTextureUnit >= TRACKED_TEXTURE_UNITS;
+        boolean leavingUntracked = activeTextureUnit >= trackedTextureUnits;
         activeTextureUnit = unit;
-        if (unit >= TRACKED_TEXTURE_UNITS || leavingUntracked) super.glActiveTexture(texture);
-        if (unit < TRACKED_TEXTURE_UNITS) GlStateManager.setActiveTexture(texture);
+        if (unit >= trackedTextureUnits || leavingUntracked) super.glActiveTexture(texture);
+        if (unit < trackedTextureUnits) GlStateManager.setActiveTexture(texture);
     }
 
     @Override
     public void glBindTexture(int target, int texture) {
-        if (target == GL11.GL_TEXTURE_2D && activeTextureUnit < TRACKED_TEXTURE_UNITS) {
+        if (target == GL11.GL_TEXTURE_2D && activeTextureUnit < trackedTextureUnits) {
             GlStateManager.bindTexture(texture);
             return;
         }
@@ -79,7 +127,7 @@ public final class GlStateManagerGLBackend extends Lwjgl2GLBackend {
             case GL12.GL_RESCALE_NORMAL:      if (on) GlStateManager.enableRescaleNormal();  else GlStateManager.disableRescaleNormal();  return true;
             case GL11.GL_COLOR_MATERIAL:      if (on) GlStateManager.enableColorMaterial();  else GlStateManager.disableColorMaterial();  return true;
             case GL11.GL_TEXTURE_2D:
-                if (activeTextureUnit >= TRACKED_TEXTURE_UNITS) return false;
+                if (activeTextureUnit >= trackedTextureUnits) return false;
                 if (on) GlStateManager.enableTexture2D(); else GlStateManager.disableTexture2D();
                 return true;
             default:

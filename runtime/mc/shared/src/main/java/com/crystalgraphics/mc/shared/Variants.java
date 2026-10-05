@@ -49,13 +49,24 @@ public final class Variants {
      * plainly contained it. Pass the bootstrapper's own class, which is in the mod.</p>
      */
     public static Variants load(String modId, ClassLoader owner) {
-        String path = "META-INF/" + modId + "/variants.json";
-        InputStream in = owner.getResourceAsStream(path);
+        InputStream in = owner.getResourceAsStream(path(modId));
         if (in == null) {
-            in = owner.getResourceAsStream("/" + path);
+            in = owner.getResourceAsStream("/" + path(modId));
         }
+        return load(modId, in);
+    }
+
+    /**
+     * The same, over the table already opened — by a caller with a better way to find it than a class loader.
+     *
+     * <pre>
+     * InputStream in = MixinService.getService().getResourceAsStream(Variants.path("crystalgraphics"));
+     * Variants table = Variants.load("crystalgraphics", in);   // closes it; throws if it is null
+     * </pre>
+     */
+    public static Variants load(String modId, InputStream in) {
         if (in == null) {
-            throw new UnsupportedVariant(modId + " has no " + path
+            throw new UnsupportedVariant(modId + " has no " + path(modId)
                     + " in its jar — the merge did not write one, so no variant can be chosen");
         }
         try {
@@ -63,6 +74,11 @@ public final class Variants {
         } finally {
             close(in);
         }
+    }
+
+    /** Where a mod's table lives, as a resource name: {@code META-INF/<modId>/variants.json}. */
+    public static String path(String modId) {
+        return "META-INF/" + modId + "/variants.json";
     }
 
     /** The same, over text already in hand — what the tests use. */

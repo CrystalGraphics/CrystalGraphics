@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGlStateManager;
 
 /**
@@ -50,12 +51,65 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * The active texture unit and the {@code GL_TEXTURE_2D} binding of each unit whose bit {@code units} sets; answers
+     * the units it filled. Every unit by default.
+     *
+     * <pre>{@code
+     * int filled = provider.readTextureUnits(shadow, 1 << 3 | 1 << 0);   // the active unit, units 0 and 3
+     * }</pre>
+     */
+    default int readTextureUnits(CgGlStateShadow t, int units) {
+        read(CgGlSlot.TEXTURES, t);
+        return -1;
+    }
+
+    /**
+     * The texture units the host samples through while it has the context, as a mask; every unit by default. A scope
+     * neither reads nor restores a unit outside it: only our code binds there, and always explicitly.
+     *
+     * <pre>{@code
+     * @Override public int hostUnits() { return shaderPackActive() ? -1 : (1 << 12) - 1; }   // Blaze3D's twelve
+     * }</pre>
+     */
+    default int hostUnits() {
+        return -1;
+    }
+
+    /**
+     * Copies into {@code answer} the fields of {@code slot} this provider guesses rather than reads, from
+     * {@code truth}: fields the host sets before each use, so a scope restoring the guess is harmless. A comparison
+     * against the driver (the cache's own checks, {@code state.roundTrip}) then skips them. Nothing by default.
+     *
+     * <pre>{@code
+     * @Override public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
+     *     if (slot == CgGlSlot.SCISSOR) answer.scissorW = truth.scissorW;   // ...and the rest of the box
+     * }
+     * }</pre>
+     */
+    default void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {}
+
+    /**
      * Whether the host binds {@code slot}'s points itself while it has the context. Asked only of the domains
      * captured at first write: one the host never binds keeps the shadow across host sections, so a scope saves
      * it with no read. No by default: vanilla Minecraft binds no storage buffer, image unit or indirect buffer on
      * any version. A host running a shader pack's loader answers yes.
      */
     default boolean hostBinds(CgGlSlot slot) {
+        return false;
+    }
+
+    /**
+     * Whether the host writes GL only through {@link CgGL}, so the shadow stays true
+     * between host sections: a host boundary then forgets nothing, and an outermost scope reads only what it does
+     * not know. Foreign drawing inside {@code hostForeign} is still forgotten. No by default; Minecraft never.
+     *
+     * <pre>{@code
+     * CgGlState.setProvider(new CgGlGetProvider() {
+     *     @Override public boolean hostKeepsShadow() { return true; }   // the harness: every draw is CgGL's
+     * });
+     * }</pre>
+     */
+    default boolean hostKeepsShadow() {
         return false;
     }
 
