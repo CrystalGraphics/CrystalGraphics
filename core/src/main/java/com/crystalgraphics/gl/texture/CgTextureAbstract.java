@@ -123,6 +123,11 @@ public abstract class CgTextureAbstract implements CgTexture {
         if (!owned) throw new IllegalStateException("A wrapped " + getClass().getSimpleName() + " belongs to its host");
     }
 
+    /** Whether the driver converts {@code (pixelFormat, pixelType)} into the spec's storage as it copies. */
+    protected boolean converts(int pixelFormat, int pixelType) {
+        return pixelFormat != spec.getGlBaseFormat() || pixelType != spec.getGlType();
+    }
+
     protected static int pixelFormatForChannels(int channels) {
         switch (channels) {
             case 1: return GL_RED;

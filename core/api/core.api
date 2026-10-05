@@ -3450,6 +3450,7 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public unpinLevels ()V
   method public upload (IILjava/nio/ByteBuffer;II)V
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
+  method public uploadRegion (IIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadRegion (IIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
@@ -3483,6 +3484,7 @@ com/crystalgraphics/gl/texture/CgTexture3D
   method public getTarget ()I
   method public reload ()V
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
+  method public uploadRegion (IIIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
@@ -3505,6 +3507,7 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   method protected <init> (IIILcom/crystalgraphics/api/texture/CgTextureSpec;Z)V
   method protected checkNotDeleted ()V
   method protected checkOwned ()V
+  method protected converts (II)Z
   method protected,static pixelFormatForChannels (I)I
   method public bind ()V
   method public bind (I)V
@@ -3564,9 +3567,48 @@ com/crystalgraphics/gpu/CgDeferral
   method public immediate ()Z
   method public pending ()Z
   method public run (Ljava/lang/Runnable;)V
-  method public run (Ljava/nio/ByteBuffer;Ljava/util/function/Consumer;)V
-  method public run (Ljava/nio/FloatBuffer;Ljava/util/function/Consumer;)V
   method public,static applyAll ()V
+com/crystalgraphics/gpu/CgUploadLease
+  access public,final
+  extends java/lang/Object
+  implements java/lang/Runnable
+  method public bytes ()Ljava/nio/ByteBuffer;
+  method public depth ()I
+  method public direct ()Z
+  method public format ()I
+  method public height ()I
+  method public into (Ljava/util/function/Consumer;IIIIIIIII)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public level ()I
+  method public put (Ljava/nio/ByteBuffer;)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public put (Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public put ([BII)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public release ()V
+  method public run ()V
+  method public size ()I
+  method public texSubImage2D (I)V
+  method public texSubImage3D (I)V
+  method public type ()I
+  method public width ()I
+  method public x ()I
+  method public y ()I
+  method public z ()I
+com/crystalgraphics/gpu/CgUploads
+  access public,final
+  extends java/lang/Object
+  method public,static copyOf (Ljava/nio/ByteBuffer;Z)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public,static copyOf (Ljava/nio/FloatBuffer;Z)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public,static lease (I)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public,static lease (IZ)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public,static releaseAll ()V
+  method public,static tick ()V
+  method public,static tier ()Lcom/crystalgraphics/gpu/CgUploads$Tier;
+com/crystalgraphics/gpu/CgUploads$Tier
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final DIRECT Lcom/crystalgraphics/gpu/CgUploads$Tier;
+  field public,static,final UNPACK Lcom/crystalgraphics/gpu/CgUploads$Tier;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gpu/CgUploads$Tier;
+  method public,static values ()[Lcom/crystalgraphics/gpu/CgUploads$Tier;
 com/crystalgraphics/net/CgAudience
   access public,abstract,interface
   extends java/lang/Object

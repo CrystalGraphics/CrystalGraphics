@@ -2,6 +2,8 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.gpu.CgUploadLease;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 
@@ -11,6 +13,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -42,7 +45,8 @@ import java.util.logging.Logger;
  * <h3>Any thread</h3>
  * <p>Every factory and upload works anywhere. Where no GL may run — a recording, a worker — the GL work waits for the
  * render thread, before the next frame executes; the size is known at once, and {@link #getId()} is 0 until then
- * off the render thread. A recorded draw binds it when the frame executes.</p>
+ * off the render thread. A recorded draw binds it when the frame executes. The pixels are copied into a
+ * {@link CgUploadLease} by the thread that passed them, and land on the render thread with no further copy there.</p>
  *
  * <pre>{@code
  * CgTexture2D sprite = CgTexture2D.createDirect("mymod:textures/gui/atlas.png", CgTextureSpec.RGBA8_NEAREST);
@@ -65,6 +69,9 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     /** Whether {@link #bindLevel} narrowed what it samples. Render thread. */
     private boolean pinned;
+
+    /** Where a lease lands: a region of one level, and the whole image with its storage. */
+    private final Consumer<CgUploadLease> landing = this::land, wholeLanding = this::landWhole;
 
     private CgTexture2D(int textureId, int width, int height, CgTextureSpec spec, String sourcePath) {
         super(textureId, width, height, spec);
@@ -190,7 +197,12 @@ public final class CgTexture2D extends CgTextureAbstract {
         checkOwned();
         this.width = width;
         this.height = height;
-        gpu.run(pixels, data -> texImage(width, height, data, pixelFormat, pixelType));
+        if (pixels == null || gpu.immediate()) {
+            gpu.run(() -> texImage(width, height, pixels, null, pixelFormat, pixelType));
+            return;
+        }
+        gpu.run(CgUploads.copyOf(pixels, converts(pixelFormat, pixelType))
+                .into(wholeLanding, 0, 0, 0, 0, width, height, 1, pixelFormat, pixelType));
     }
 
     /**
@@ -204,23 +216,69 @@ public final class CgTexture2D extends CgTextureAbstract {
     public void uploadRegion(int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
                              int pixelType) {
         checkNotDeleted();
-        gpu.run(pixels, data -> {
-            CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
-            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                CgGL.glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, pixelFormat, pixelType, data);
-            } finally {
-                CgGL.glBindTexture(GL_TEXTURE_2D, 0);
-            }
-        });
+        if (!gpu.immediate()) {
+            uploadRegion(level, x, y, width, height, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),
+                    pixelFormat, pixelType);
+            return;
+        }
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            CgGL.glTexSubImage2D(GL_TEXTURE_2D, level, x, y, width, height, pixelFormat, pixelType, pixels);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        }
     }
 
-    private void texImage(int width, int height, @Nullable ByteBuffer pixels, int pixelFormat, int pixelType) {
+    /**
+     * {@link #uploadRegion(int, int, int, int, int, ByteBuffer, int, int)} from a lease its producer wrote: no copy on
+     * this thread or the render thread. Takes the lease; any thread.
+     *
+     * <pre>{@code
+     * CgUploadLease lease = CgUploads.lease(4 * w * h);
+     * bake(lease.bytes());
+     * sprite.uploadRegion(0, x, y, w, h, lease, GL_RGBA, GL_UNSIGNED_BYTE);
+     * }</pre>
+     */
+    public void uploadRegion(int level, int x, int y, int width, int height, CgUploadLease lease, int pixelFormat,
+                             int pixelType) {
+        checkNotDeleted();
+        gpu.run(lease.into(landing, level, x, y, 0, width, height, 1, pixelFormat, pixelType));
+    }
+
+    private void land(CgUploadLease lease) {
+        CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            lease.texSubImage2D(GL_TEXTURE_2D);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    }
+
+    /** The whole image from a lease, with its storage; the texture made first if it has no id yet. */
+    private void landWhole(CgUploadLease lease) {
+        boolean made = textureId == 0;
+        if (made) textureId = CgGL.glGenTextures();
+        try {
+            texImage(lease.width(), lease.height(), null, lease, lease.format(), lease.type());
+        } catch (RuntimeException e) {
+            if (made) {
+                CgGL.glDeleteTextures(textureId);
+                textureId = 0;
+            }
+            throw e;
+        }
+    }
+
+    /** Level 0 from {@code pixels}, or from {@code lease} into storage made empty; then the levels and the spec. */
+    private void texImage(int width, int height, @Nullable ByteBuffer pixels, @Nullable CgUploadLease lease,
+                          int pixelFormat, int pixelType) {
         CgGL.glBindTexture(GL_TEXTURE_2D, textureId);
         try {
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
                 CgGL.glTexImage2D(GL_TEXTURE_2D, 0,
                         spec.getGlInternalFormat(), width, height, 0,
                         pixelFormat, pixelType, pixels);
+                if (lease != null) lease.texSubImage2D(GL_TEXTURE_2D);
             }
             for (int l = 1; l < levels; l++) {
                 CgGL.glTexImage2D(GL_TEXTURE_2D, l, spec.getGlInternalFormat(), Math.max(1, width >> l),
@@ -321,11 +379,16 @@ public final class CgTexture2D extends CgTextureAbstract {
                                         CgTextureSpec spec, @Nullable String sourcePath, int levels) {
         CgTexture2D tex = new CgTexture2D(0, width, height, spec, sourcePath);
         tex.levels = levels;
-        tex.gpu.run(pixels, data -> {
+        if (pixels != null && !tex.gpu.immediate()) {
+            tex.gpu.run(CgUploads.copyOf(pixels, tex.converts(pixelFormat, pixelType))
+                    .into(tex.wholeLanding, 0, 0, 0, 0, width, height, 1, pixelFormat, pixelType));
+            return tex;
+        }
+        tex.gpu.run(() -> {
             int id = CgGL.glGenTextures();
             tex.textureId = id;
             try {
-                tex.texImage(width, height, data, pixelFormat, pixelType);
+                tex.texImage(width, height, pixels, null, pixelFormat, pixelType);
             } catch (RuntimeException e) {
                 CgGL.glDeleteTextures(id);
                 tex.textureId = 0;

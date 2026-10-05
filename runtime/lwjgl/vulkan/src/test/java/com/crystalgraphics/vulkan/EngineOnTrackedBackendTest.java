@@ -14,7 +14,11 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.render.CgVectorRenderer;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
+import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gpu.CgDeferral;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -26,12 +30,15 @@ import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
+import com.sun.management.ThreadMXBean;
 import org.joml.Matrix4f;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.lang.management.ManagementFactory;
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -187,6 +194,60 @@ public class EngineOnTrackedBackendTest {
         assertTrue(device.passes().size() > passes);
         quads.delete();
         strokes.delete();
+    }
+
+    /**
+     * A texture made and filled on a worker lands from the worker's lease, with no copy on this thread: a device copy
+     * from the unpack buffer where nothing converts, staged by the device where the driver would convert.
+     */
+    @Test
+    public void texturesFilledOnAWorkerLandFromItsLeases() throws InterruptedException {
+        CgUploads.tick();   // the render thread picks the tier and makes the first block
+        assertEquals(CgUploads.Tier.UNPACK, CgUploads.tier());
+        ByteBuffer rgba = ByteBuffer.allocateDirect(32 * 32 * 4), rgb = ByteBuffer.allocateDirect(8 * 8 * 3);
+        CgTexture2D[] made = new CgTexture2D[2];
+        Thread worker = new Thread(() -> {
+            made[0] = CgTexture2D.createFromPixels(32, 32, rgba, CgTextureSpec.RGBA8_LINEAR);
+            made[1] = CgTexture2D.createEmpty(8, 8, CgTextureSpec.RGBA8_LINEAR);
+            made[1].uploadRegion(0, 0, 0, 8, 8, rgb, CgGL.GL_RGB, CgGL.GL_UNSIGNED_BYTE);
+        });
+        worker.start();
+        worker.join();
+
+        int mark = device.mark();
+        CgDeferral.applyAll();
+        List<String> landed = device.logSince(mark);
+        assertEquals(landed.toString(), 1, landed.stream().filter(c -> c.startsWith("copyBufferToTexture")).count());
+        assertEquals("the RGB region converts, so its lease was direct memory: " + landed, 1,
+                landed.stream().filter(c -> c.startsWith("writeTexture")).count());
+        assertNotEquals(0, made[0].getId());
+        made[0].delete();
+        made[1].delete();
+    }
+
+    /** A deferred upload costs its thread a copy into a pooled lease and no allocation, once the pool is warm. */
+    @Test
+    public void aDeferredUploadAllocatesNothingOnItsThread() throws InterruptedException {
+        CgUploads.tick();
+        CgTexture2D target = CgTexture2D.createEmpty(64, 64, CgTextureSpec.RGBA8_LINEAR);
+        ByteBuffer tile = ByteBuffer.allocateDirect(16 * 16 * 4);
+        ThreadMXBean threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+        long[] allocated = new long[2];
+        for (int round = 0; round < 2; round++) {
+            int r = round;
+            Thread worker = new Thread(() -> {
+                long before = threads.getCurrentThreadAllocatedBytes();
+                for (int i = 0; i < 50; i++) target.uploadRegion(0, (i % 4) * 16, (i / 4 % 4) * 16, 16, 16, tile, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+                allocated[r] = threads.getCurrentThreadAllocatedBytes() - before;
+            });
+            worker.start();
+            worker.join();
+            CgDeferral.applyAll();
+        }
+        assertTrue("50 warm uploads allocated " + allocated[1] + " bytes (the first 50: " + allocated[0] + ")",
+                allocated[1] < 2048);
+        target.delete();
+        CgDeferral.applyAll();
     }
 
     /** The smallest quad material: what every CrystalGUI quad shader is built on. */
