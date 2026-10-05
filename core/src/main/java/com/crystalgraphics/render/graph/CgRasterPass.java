@@ -58,6 +58,8 @@ public final class CgRasterPass extends CgPass {
     final CgRecording recording;
     /** The mip level of the target it draws into. */
     final int level;
+    /** The layer of an array target it draws into; 0 for any other. */
+    final int layer;
     final CgLoad load;
     final float[] constants;
     @Nullable
@@ -100,11 +102,12 @@ public final class CgRasterPass extends CgPass {
     private int[] textureUnits = new int[0];
     private CgTexture[] textures = new CgTexture[0];
 
-    CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, CgLoad load, float[] constants,
-                 @Nullable CgRenderState state, CgOrder order) {
+    CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, int layer, CgLoad load,
+                 float[] constants, @Nullable CgRenderState state, CgOrder order) {
         super(name, target, null);
         this.recording = recording;
         this.level = level;
+        this.layer = layer;
         this.load = load;
         this.constants = constants;
         this.state = state;
@@ -128,7 +131,10 @@ public final class CgRasterPass extends CgPass {
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));
-                if (graph != null) recording.read(this, graph, CgAccess.SAMPLED_READ);
+                if (graph != null) {
+                    requireNotOwnArray(graph);
+                    recording.read(this, graph, CgAccess.SAMPLED_READ);
+                }
             }
             for (int s = 0; s < table.storages(id); s++) {
                 if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
@@ -279,8 +285,18 @@ public final class CgRasterPass extends CgPass {
         textureUnits[n] = unit;
         textures[n] = texture;
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
-        if (graph != null) recording.read(this, graph, CgAccess.SAMPLED_READ);
+        if (graph != null) {
+            requireNotOwnArray(graph);
+            recording.read(this, graph, CgAccess.SAMPLED_READ);
+        }
         return this;
+    }
+
+    /** An array is sampled whole, so a pass reading the one it draws into reads the layer it is writing too. */
+    private void requireNotOwnArray(CgGraphTexture graph) {
+        if (graph == target && graph.isArray()) {
+            throw new IllegalArgumentException(this + " samples the array it draws into: draw each layer from another texture");
+        }
     }
 
     /**
@@ -310,9 +326,10 @@ public final class CgRasterPass extends CgPass {
         return this;
     }
 
-    /** A target copy is of level 0: a pass drawing another would read the wrong picture. */
+    /** A target copy is of level 0 and layer 0: a pass drawing another would read the wrong picture. */
     private void requireLevelZero() {
         if (level != 0) throw new IllegalStateException(this + " draws level " + level + ", and reads no copy of its target");
+        if (layer != 0) throw new IllegalStateException(this + " draws layer " + layer + ", and reads no copy of its target");
     }
 
     /**
@@ -403,6 +420,11 @@ public final class CgRasterPass extends CgPass {
     /** The mip level of its target it draws into: 0 unless made with one. */
     public int level() {
         return level;
+    }
+
+    /** The layer of an array target it draws into: 0 unless made with one. */
+    public int layer() {
+        return layer;
     }
 
     public List<CgDrawChunk> chunks() {
