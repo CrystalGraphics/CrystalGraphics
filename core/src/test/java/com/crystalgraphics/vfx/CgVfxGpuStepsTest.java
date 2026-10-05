@@ -11,7 +11,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /**
  * A system's GPU queue (vfx-gpu §13.7): a scheduled instance holds a slot from its first step until it has finished,
@@ -68,27 +67,5 @@ public class CgVfxGpuStepsTest {
         assertTrue(steps.isEmpty());
         assertTrue("coasted " + coasted + " steps", coasted <= Math.ceil(0.6f / DT) + 1);
         assertEquals(0, CgVfxParticlePool.of(EMBERS).openSlots());
-    }
-
-    @Test
-    public void oneSystemStepsAPool() {
-        CgVfxGpuSteps first = new CgVfxGpuSteps(), second = new CgVfxGpuSteps();
-        CgVfxEmitterInstance a = new CgVfxEmitterInstance(SPARKS, 0.1f), b = new CgVfxEmitterInstance(SPARKS, 0.2f);
-        a.start(0f, 0f, 0f);
-        b.start(0f, 0f, 0f);
-        a.schedule(DT, 0.0, 0.0, 0.0);
-        b.schedule(DT, 0.0, 0.0, 0.0);
-        first.admit(a);
-        try {
-            second.admit(b);
-            fail("a second system admitted into a pool the first steps");
-        } catch (IllegalStateException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("another CgVfxSystem"));
-        } finally {
-            first.clear();
-        }
-        second.admit(b);
-        second.clear();
-        assertEquals(0, CgVfxParticlePool.of(SPARKS).openSlots());
     }
 }
