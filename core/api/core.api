@@ -7419,7 +7419,9 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
   method public openSlots ()I
   method public queuedSteps ()I
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public records ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public seed (Lcom/crystalgraphics/render/graph/CgRecording;Ljava/nio/ByteBuffer;I)V
   method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I
   method public spawn (III)V
