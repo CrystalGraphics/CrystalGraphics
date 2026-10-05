@@ -1,6 +1,9 @@
 package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.util.CgBufferUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,6 +42,9 @@ import java.util.function.Consumer;
  *       know which objects have work.</li>
  *   <li>A queued task that throws is logged and dropped; the rest of the queue still runs.</li>
  *   <li>One owner at a time: an object's work is asked for from one thread at once.</li>
+ *   <li>Work that binds something to do its job names what to restore, or it leaks into whoever draws next:
+ *       {@code new CgDeferral(CgGlSlot.TEXTURES)} runs each piece of work inside a scope saving the texture
+ *       bindings.</li>
  * </ul>
  */
 public final class CgDeferral {
@@ -50,6 +56,19 @@ public final class CgDeferral {
 
     /** Guarded by this. */
     private final ArrayDeque<Runnable> queue = new ArrayDeque<>();
+
+    /** What each piece of work is scoped to restore; empty for none. */
+    private final CgGlSlot[] restores;
+
+    /** Work that leaves GL state as it found it, or restores it itself. */
+    public CgDeferral() {
+        this(new CgGlSlot[0]);
+    }
+
+    /** Work restoring {@code restores} when each piece is done. */
+    public CgDeferral(CgGlSlot... restores) {
+        this.restores = restores;
+    }
 
     /** Whether {@link #run} would do its work now: this thread may drive the device and nothing is waiting. */
     public synchronized boolean immediate() {
@@ -72,7 +91,9 @@ public final class CgDeferral {
             return;
         }
         if (immediate()) {
-            work.accept(data);
+            try (CgGlScope ignored = scope()) {
+                work.accept(data);
+            }
             return;
         }
         byte[] copy = new byte[data.remaining()];
@@ -83,7 +104,9 @@ public final class CgDeferral {
     /** {@link #run(ByteBuffer, Consumer)} for floats. */
     public void run(FloatBuffer data, Consumer<FloatBuffer> work) {
         if (immediate()) {
-            work.accept(data);
+            try (CgGlScope ignored = scope()) {
+                work.accept(data);
+            }
             return;
         }
         float[] copy = new float[data.remaining()];
@@ -100,7 +123,14 @@ public final class CgDeferral {
                 return;
             }
         }
-        work.run();
+        try (CgGlScope ignored = scope()) {
+            work.run();
+        }
+    }
+
+    /** A scope over {@link #restores}, for work about to run; nothing to open when there are none. */
+    private CgGlScope scope() {
+        return restores.length == 0 ? CgGlScope.NOOP_SCOPE : CgGlState.save(restores);
     }
 
     /** Does what is queued, oldest first, where the device may be driven; nothing elsewhere. Cheap when empty. */
@@ -108,7 +138,7 @@ public final class CgDeferral {
         if (!mayDrive()) return;
         Runnable next;
         while ((next = poll()) != null) {
-            try {
+            try (CgGlScope ignored = scope()) {
                 next.run();
             } catch (RuntimeException failed) {
                 LOGGER.error("deferred GPU work failed", failed);
