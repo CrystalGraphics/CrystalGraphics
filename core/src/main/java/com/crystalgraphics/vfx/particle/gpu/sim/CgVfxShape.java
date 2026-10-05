@@ -1,6 +1,10 @@
-package com.crystalgraphics.vfx.particle.gpu;
+package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
 import java.util.List;
 import java.util.regex.Pattern;

@@ -1,6 +1,12 @@
-package com.crystalgraphics.vfx.particle.gpu;
+package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import org.junit.After;
 import org.junit.Test;
 

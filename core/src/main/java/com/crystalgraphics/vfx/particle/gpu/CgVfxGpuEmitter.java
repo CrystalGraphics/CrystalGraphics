@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 
 import java.util.List;
 

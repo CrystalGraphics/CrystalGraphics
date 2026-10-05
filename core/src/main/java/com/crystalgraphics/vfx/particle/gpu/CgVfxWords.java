@@ -28,7 +28,8 @@ public final class CgVfxWords {
     private int start, at, end;
     private String writer;
 
-    CgVfxWords() {
+    /** A writer pointed nowhere, re-pointed row by row with {@link #target}: a pool's, which allocates nothing a step. */
+    public CgVfxWords() {
     }
 
     /**
@@ -49,7 +50,7 @@ public final class CgVfxWords {
     }
 
     /** Points it at {@code vectors} vec4s of {@code into} from word {@code from}; {@code writer} names who writes. */
-    void target(int[] into, int from, int vectors, String writer) {
+    public void target(int[] into, int from, int vectors, String writer) {
         this.words = into;
         this.start = from;
         this.at = from;
