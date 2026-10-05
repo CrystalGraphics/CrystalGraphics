@@ -40,7 +40,7 @@ public final class HostStateLegacy extends CgCheckedProvider {
     /** Makes this the shadow's provider, or leaves {@code glGet} where the cache cannot be found. */
     public static void install() {
         install("GlStateManager", () -> new HostStateLegacy(new CgHostStateCache(GlStateManager.class,
-                GlStateManagerGLBackend.TRACKED_TEXTURE_UNITS, GlStateManager::setActiveTexture,
+                GlStateManagerGLBackend.trackedTextureUnits(), GlStateManager::setActiveTexture,
                 () -> GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE))));   // before CgGL has its backend
     }
 
