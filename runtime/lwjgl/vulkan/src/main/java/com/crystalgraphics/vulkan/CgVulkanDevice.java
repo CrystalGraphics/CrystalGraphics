@@ -78,6 +78,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -145,7 +146,11 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     private final VulkanEncoder encoder;
     private VulkanTexture surfaceColor, surfaceDepth;
     private VulkanBuffer scratch;
+    /** Every queue family a buffer or image is used on, when more than the frame's: they are made CONCURRENT. */
+    private final int[] sharedFamilies;
     public int barriers;
+    /** Copies recorded on the transfer queue. */
+    public int transferCopies;
 
     /** A device that keeps no pipeline cache across launches. */
     public CgVulkanDevice(CgVulkanHost host, int width, int height) {
@@ -157,6 +162,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         this.host = host;
         this.device = host.device();
         this.formats = new VulkanFormats(host.physicalDevice());
+        this.sharedFamilies = sharedFamilies(host);
         try (MemoryStack stack = stackPush()) {
             PointerBuffer pp = stack.mallocPointer(1);
             VmaAllocatorCreateInfo ci = VmaAllocatorCreateInfo.calloc(stack)
@@ -193,6 +199,19 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
         staging = new VulkanStaging(this);
         encoder = new VulkanEncoder(this);
         resize(width, height);
+    }
+
+    /** The frame's family, then async compute's and the transfer queue's where they are others. */
+    private static int[] sharedFamilies(CgVulkanHost host) {
+        int frame = host.queueFamily(), async = host.asyncFamily(), transfer = host.transferFamily();
+        int[] all = {frame, async, transfer};
+        int n = 1;
+        for (int i = 1; i < all.length; i++) {
+            boolean seen = all[i] < 0;
+            for (int j = 0; j < n && !seen; j++) seen = all[j] == all[i];
+            if (!seen) all[n++] = all[i];
+        }
+        return Arrays.copyOf(all, n);
     }
 
     private static CgDeviceInfo info(VkPhysicalDeviceProperties props, VkPhysicalDeviceSubgroupProperties subgroups,
@@ -301,9 +320,9 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             long size = Math.max(4, desc.size());
             VkBufferCreateInfo bci = VkBufferCreateInfo.calloc(stack).sType$Default().size(size).usage(usage)
                     .sharingMode(VK_SHARING_MODE_EXCLUSIVE);
-            if (host.asyncFamily() >= 0) {
-                bci.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(2)
-                        .pQueueFamilyIndices(stack.ints(host.queueFamily(), host.asyncFamily()));
+            if (sharedFamilies.length > 1) {
+                bci.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
+                        .pQueueFamilyIndices(stack.ints(sharedFamilies));
             }
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO);
             if (desc.hostVisible()) {
@@ -346,9 +365,9 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                     .initialLayout(VK_IMAGE_LAYOUT_UNDEFINED)
                     .flags(desc.kind() == CgGpuTexture.Kind.CUBE ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0);
             ici.extent().set(desc.width(), desc.height(), volume ? desc.depthOrLayers() : 1);
-            if (host.asyncFamily() >= 0) {
-                ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(2)
-                        .pQueueFamilyIndices(stack.ints(host.queueFamily(), host.asyncFamily()));
+            if (sharedFamilies.length > 1) {
+                ici.sharingMode(VK_SHARING_MODE_CONCURRENT).queueFamilyIndexCount(sharedFamilies.length)
+                        .pQueueFamilyIndices(stack.ints(sharedFamilies));
             }
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE);
             LongBuffer lp = stack.mallocLong(1);
@@ -356,11 +375,30 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             check(vmaCreateImage(vma, ici, aci, lp, pp, null), "vmaCreateImage " + desc.label());
             VulkanTexture t = new VulkanTexture(desc, lp.get(0), pp.get(0), format, aspect);
             live.add(t);
-            // Its first layout goes ahead of the frame, since a pass may be open in it now.
-            barriers += t.transitionAll(host.setupCommandBuffer(), t.resting, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                    VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+            if (host.asyncTransfer()) {
+                // Left UNDEFINED, so its first upload can take it on the transfer queue; lay() settles the rest.
+                t.unlaid = true;
+                t.transferOnly = true;
+            } else {
+                // Its first layout goes ahead of the frame, since a pass may be open in it now.
+                barriers += t.transitionAll(host.setupCommandBuffer(), t.resting, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                        VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+            }
             return t;
         }
+    }
+
+    /**
+     * Before a shader reads {@code t} through a descriptor, which takes it as resting: any subresource nothing has
+     * touched yet gets its first layout ahead of the frame, and the transfer queue may no longer write it.
+     */
+    public void lay(VulkanTexture t) {
+        if (t.unlaid) {
+            barriers += t.layUndefined(host.setupCommandBuffer(), t.resting, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                    VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+            t.unlaid = false;
+        }
+        t.transferOnly = false;
     }
 
     /**
@@ -637,6 +675,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
     @Override
     public void endFrame() {
         if (encoder.openPass() != null) throw new IllegalStateException("endFrame with a pass open");
+        encoder.syncTransfers();
         long frame = host.frameIndex();
         if (host.ownsSubmission()) {
             barriers += surfaceColor.transitionAll(host.commandBuffer(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,

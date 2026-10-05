@@ -12,9 +12,10 @@ import static org.lwjgl.vulkan.VK10.*;
  * Pipeline barriers, spelled once. Coarse on purpose (plan/device-vulkan.md §5): correct first. Filled in
  * {@link VulkanScratch}, since one is recorded per kernel access.
  *
- * <p>Into a {@link VulkanComputeCommandBuffer} a barrier keeps to the stages and accesses a compute queue has. What it
- * drops is drawing, which only the frame's queue does: the work before is covered by the semaphore the async work
- * waits on, and the work after by the frame's queue waiting for it.</p>
+ * <p>Into a {@link VulkanComputeCommandBuffer} a barrier keeps to the stages and accesses a compute queue has, and into
+ * a {@link VulkanTransferCommandBuffer} to a copy queue's. What it drops is work only the frame's queue does: the work
+ * before is covered by the semaphore the other queue waits on, and the work after by the frame's queue waiting for
+ * it.</p>
  */
 public final class VulkanBarriers {
 
@@ -22,6 +23,9 @@ public final class VulkanBarriers {
     private static final int COMPUTE_QUEUE_STAGES = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT
             | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
             | VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    /** What a queue that only copies may wait on. */
+    private static final int TRANSFER_QUEUE_STAGES = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT
+            | VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT | VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
     private VulkanBarriers() {}
 
@@ -80,19 +84,23 @@ public final class VulkanBarriers {
 
     /** {@code stages} as {@code cmd}'s queue has them; {@code none} where it has none of them. */
     private static int stage(VkCommandBuffer cmd, int stages, int none) {
-        if (!(cmd instanceof VulkanComputeCommandBuffer)) return stages;
-        int kept = stages & COMPUTE_QUEUE_STAGES;
+        int queue = cmd instanceof VulkanComputeCommandBuffer ? COMPUTE_QUEUE_STAGES
+                : cmd instanceof VulkanTransferCommandBuffer ? TRANSFER_QUEUE_STAGES : 0;
+        if (queue == 0) return stages;
+        int kept = stages & queue;
         return kept != 0 ? kept : none;
     }
 
     /** The accesses {@code stages}, already kept to {@code cmd}'s queue, can make: every access needs its stage. */
     private static int access(VkCommandBuffer cmd, int accesses, int stages) {
-        if (!(cmd instanceof VulkanComputeCommandBuffer)) return accesses;
+        boolean compute = cmd instanceof VulkanComputeCommandBuffer;
+        if (!compute && !(cmd instanceof VulkanTransferCommandBuffer)) return accesses;
         boolean all = (stages & VK_PIPELINE_STAGE_ALL_COMMANDS_BIT) != 0;
         int kept = accesses & (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
-        if (all || (stages & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0)
+        if (compute && (all || (stages & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0))
             kept |= accesses & (VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
-        if (all || (stages & VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) != 0) kept |= accesses & VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+        if (compute && (all || (stages & VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT) != 0))
+            kept |= accesses & VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
         if (all || (stages & VK_PIPELINE_STAGE_TRANSFER_BIT) != 0)
             kept |= accesses & (VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
         if (all || (stages & VK_PIPELINE_STAGE_HOST_BIT) != 0) kept |= accesses & (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT);

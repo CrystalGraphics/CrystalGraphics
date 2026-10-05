@@ -11,6 +11,7 @@ import com.crystalgraphics.vulkan.CgVulkanHost;
 import com.crystalgraphics.vulkan.CgVulkanImage;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
 import com.crystalgraphics.vulkan.command.VulkanEncoder;
+import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.apache.logging.log4j.LogManager;
@@ -21,13 +22,16 @@ import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkCommandBufferAllocateInfo;
 import org.lwjgl.vulkan.VkCommandBufferBeginInfo;
 import org.lwjgl.vulkan.VkCommandPoolCreateInfo;
+import org.lwjgl.vulkan.VkExtent3D;
 import org.lwjgl.vulkan.VkQueue;
+import org.lwjgl.vulkan.VkQueueFamilyProperties;
 import org.lwjgl.vulkan.VkSemaphoreCreateInfo;
 import org.lwjgl.vulkan.VkSemaphoreSignalInfo;
 import org.lwjgl.vulkan.VkSemaphoreTypeCreateInfo;
 import org.lwjgl.vulkan.VkSubmitInfo;
 import org.lwjgl.vulkan.VkTimelineSemaphoreSubmitInfo;
 
+import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -72,6 +76,9 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  *     @Override protected int computeQueueFamily()              { return game.idleComputeFamily(); }
  *     @Override protected void waitInSubmit(long s, long v)     { game.nextSubmitWaits(s, v); }
  *     @Override protected void signalInSubmit(long s, long v)   { game.nextSubmitSignals(s, v); }
+ *     // Copies into new images: a transfer queue the game made and never submits to, or null to copy in order
+ *     @Override protected VkQueue transferQueue()               { return game.idleTransferQueue(); }
+ *     @Override protected int transferQueueFamily()             { return game.idleTransferFamily(); }
  *     // ... and CgVulkanHost's device facts: instance(), device(), queue(), apiVersion(), framesInFlight(), ...
  * }
  *
@@ -98,6 +105,8 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  *       order. Its work is submitted at {@code endAsync}, waiting on a timeline value the host's own submit signals
  *       later ({@link #signalInSubmit}); what waits for it waits inside that submit ({@link #waitInSubmit}). An
  *       async pass may not touch the host's images, which only the host's family may use.</li>
+ *   <li>Copies into images only the transfer queue has used run on {@link #transferQueue()} where it copies a texel at
+ *       a time, else in order. Each batch is submitted when the device asks, and the host's submit waits for it.</li>
  * </ul>
  *
  * @param <T> the host's texture type, held by identity
@@ -137,19 +146,29 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     private long mainTimeline, asyncTimeline;
     private long mainValue, asyncValue, asyncWaited, asyncWaitMain;
     private VkCommandBuffer asyncCommands;
-    private boolean recordingAsync, asyncClosed;
-    private AsyncPool framePool;
-    private final ArrayDeque<AsyncPool> freePools = new ArrayDeque<>();
-    private final List<AsyncPool> pools = new ArrayList<>();
+    private boolean recordingAsync, queuesClosed;
+    private FramePool framePool;
+    private final ArrayDeque<FramePool> freePools = new ArrayDeque<>();
 
-    /** A command pool on the compute family, used by one frame and reset once that frame retires. */
-    private final class AsyncPool {
+    // Copies on the host's transfer queue: null where it has none to spare, or it is turned off.
+    private VkQueue transferQueue;
+    private int transferQueueFamily = -1;
+    private long transferTimeline, transferValue, transferWaited;
+    private VkCommandBuffer transferCommands;
+    private FramePool transferFramePool;
+    private final ArrayDeque<FramePool> freeTransferPools = new ArrayDeque<>();
+    private final List<FramePool> pools = new ArrayList<>();
+
+    /** A command pool on async compute's or the transfer queue's family, used by one frame and reset once it retires. */
+    private final class FramePool {
         final long pool;
+        final boolean transfer;
         final List<VkCommandBuffer> buffers = new ArrayList<>();
         int used;
 
-        AsyncPool(long pool) {
+        FramePool(long pool, boolean transfer) {
             this.pool = pool;
+            this.transfer = transfer;
         }
 
         VkCommandBuffer next() {
@@ -159,18 +178,24 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
                     check(vkAllocateCommandBuffers(device(), VkCommandBufferAllocateInfo.calloc(stack).sType$Default()
                             .commandPool(pool).level(VK_COMMAND_BUFFER_LEVEL_PRIMARY).commandBufferCount(1), pp),
                             "vkAllocateCommandBuffers");
-                    buffers.add(asyncQueueFamily != queueFamily() ? new VulkanComputeCommandBuffer(pp.get(0), device())
+                    buffers.add(transfer ? new VulkanTransferCommandBuffer(pp.get(0), device())
+                            : asyncQueueFamily != queueFamily() ? new VulkanComputeCommandBuffer(pp.get(0), device())
                             : new VkCommandBuffer(pp.get(0), device()));
                 }
             }
-            return buffers.get(used++);
+            VkCommandBuffer cmd = buffers.get(used++);
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                check(vkBeginCommandBuffer(cmd, VkCommandBufferBeginInfo.calloc(stack).sType$Default()
+                        .flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)), "vkBeginCommandBuffer");
+            }
+            return cmd;
         }
 
         void reset() {
-            if (asyncClosed) return;
+            if (queuesClosed) return;
             check(vkResetCommandPool(device(), pool, 0), "vkResetCommandPool");
             used = 0;
-            freePools.add(this);
+            (transfer ? freeTransferPools : freePools).add(this);
         }
     }
 
@@ -221,6 +246,15 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     /** Adds to the submit being recorded a signal of {@code value}, after everything handed over so far. */
     protected abstract void signalInSubmit(long semaphore, long value);
 
+    /**
+     * A queue the host created that copies and that nothing of the host's ever submits to, or null: copies into new
+     * images run there. Answer null for any host not checked to leave it alone, as for {@link #computeQueue()}.
+     */
+    protected abstract VkQueue transferQueue();
+
+    /** {@link #transferQueue()}'s family. */
+    protected abstract int transferQueueFamily();
+
     // ── Use ──────────────────────────────────────────────────────────────────────────────────────
 
     /** Builds the device over this host and GL's semantics over that, and makes it CgGL's state provider. Once. */
@@ -235,11 +269,39 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             asyncTimeline = timeline();
             LOG.info("[cg] async compute runs on {}'s compute queue, family {}", hostName, asyncQueueFamily);
         }
+        if (!"false".equals(System.getProperty("crystalgraphics.vulkan.transfer"))) {
+            VkQueue q = transferQueue();
+            if (q != null && texelGranular(transferQueueFamily())) {
+                transferQueue = q;
+                transferQueueFamily = transferQueueFamily();
+            }
+        }
+        if (transferQueue != null) {
+            transferTimeline = timeline();
+            LOG.info("[cg] copies into new images run on {}'s transfer queue, family {}", hostName, transferQueueFamily);
+        }
         device = new CgVulkanDevice(this, width, height, CgCacheDirectory.of("vulkan"));
         gl = new CgTrackedGLBackend(device, new ShadercGlslCompiler(CgCacheDirectory.of("spirv")), verify)
                 .compileInBackground();
         CgGlState.setProvider(new CgTrackedStateProvider(gl));
         return gl;
+    }
+
+    /** Whether {@code family} copies any region of an image: a granularity of one texel. */
+    private boolean texelGranular(int family) {
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            IntBuffer n = stack.mallocInt(1);
+            vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice(), n, null);
+            VkQueueFamilyProperties.Buffer families = VkQueueFamilyProperties.malloc(n.get(0), stack);
+            vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice(), n, families);
+            VkExtent3D g = families.get(family).minImageTransferGranularity();
+            boolean texel = g.width() == 1 && g.height() == 1 && g.depth() == 1;
+            if (!texel) {
+                LOG.info("[cg] {}'s transfer family {} copies at {}x{}x{}: copies stay on its graphics queue", hostName,
+                        family, g.width(), g.height(), g.depth());
+            }
+            return texel;
+        }
     }
 
     /** The device {@link #openBackend} built, or null before it. */
@@ -266,7 +328,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         if (device == null || closing) return;
         closing = true;
         afterSubmit(() -> {
-            closeAsync();
+            closeQueues();
             device.close();
         });
     }
@@ -358,7 +420,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     }
 
     // Once per host frame, before its submit. The host presents its own picture, so output is null. The submit
-    // waits for the frame's async work, so its retirement retires that work too.
+    // waits for the frame's async work and copies, so its retirement retires them too.
     @Override
     public final void endFrame(CgVulkanImage output) {
         if (recordingAsync) throw new IllegalStateException("The frame ends inside async work");
@@ -367,9 +429,19 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             waitInSubmit(asyncTimeline, asyncValue);
             asyncWaited = asyncValue;
         }
+        submitTransfers();
+        if (transferValue > transferWaited) {
+            waitInSubmit(transferTimeline, transferValue);
+            transferWaited = transferValue;
+        }
         if (framePool != null) {
-            AsyncPool used = framePool;
+            FramePool used = framePool;
             framePool = null;
+            afterSubmit(used::reset);
+        }
+        if (transferFramePool != null) {
+            FramePool used = transferFramePool;
+            transferFramePool = null;
             afterSubmit(used::reset);
         }
         long ended = frame++;
@@ -401,12 +473,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         handOver();
         signalInSubmit(mainTimeline, ++mainValue);
         asyncWaitMain = mainValue;
-        if (framePool == null) framePool = freePools.isEmpty() ? newPool() : freePools.poll();
+        if (framePool == null) framePool = freePools.isEmpty() ? newPool(asyncQueueFamily, false) : freePools.poll();
         asyncCommands = framePool.next();
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            check(vkBeginCommandBuffer(asyncCommands, VkCommandBufferBeginInfo.calloc(stack).sType$Default()
-                    .flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT)), "vkBeginCommandBuffer");
-        }
         recordingAsync = true;
     }
 
@@ -449,13 +517,54 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         asyncWaited = point;
     }
 
-    private AsyncPool newPool() {
+    @Override public final boolean asyncTransfer() { return transferQueue != null; }
+
+    @Override public final int transferFamily() { return transferQueueFamily == queueFamily() ? -1 : transferQueueFamily; }
+
+    @Override
+    public final VkCommandBuffer transferCommandBuffer() {
+        if (transferQueue == null) throw new IllegalStateException(hostName + "'s device has no transfer queue of ours");
+        if (transferCommands == null) {
+            if (transferFramePool == null) {
+                transferFramePool = freeTransferPools.isEmpty() ? newPool(transferQueueFamily, true) : freeTransferPools.poll();
+            }
+            transferCommands = transferFramePool.next();
+        }
+        return transferCommands;
+    }
+
+    // Submitted at once: nothing on the transfer queue waits for the host, and the host's submit waits for it.
+    @Override
+    public final long submitTransfers() {
+        if (transferCommands == null) return transferValue;
+        check(vkEndCommandBuffer(transferCommands), "vkEndCommandBuffer");
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default()
+                    .pCommandBuffers(stack.pointers(transferCommands)).pSignalSemaphores(stack.longs(transferTimeline))
+                    .pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
+                            .signalSemaphoreValueCount(1).pSignalSemaphoreValues(stack.longs(++transferValue)).address());
+            check(vkQueueSubmit(transferQueue, submit, VK_NULL_HANDLE), "vkQueueSubmit");
+        }
+        transferCommands = null;
+        return transferValue;
+    }
+
+    @Override
+    public final void waitTransfers(long point) {
+        if (transferQueue == null || point <= transferWaited) return;
+        if (recordingAsync) throw new IllegalStateException("waitTransfers inside async work");
+        handOver();
+        waitInSubmit(transferTimeline, point);
+        transferWaited = point;
+    }
+
+    private FramePool newPool(int family, boolean transfer) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             LongBuffer lp = stack.mallocLong(1);
             check(vkCreateCommandPool(device(), VkCommandPoolCreateInfo.calloc(stack).sType$Default()
-                    .flags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT).queueFamilyIndex(asyncQueueFamily), null, lp),
+                    .flags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT).queueFamilyIndex(family), null, lp),
                     "vkCreateCommandPool");
-            AsyncPool p = new AsyncPool(lp.get(0));
+            FramePool p = new FramePool(lp.get(0), transfer);
             pools.add(p);
             return p;
         }
@@ -474,21 +583,27 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     // The last submit has completed. Async work waiting on a signal no submit will now carry is released first,
     // so the queue can drain.
-    private void closeAsync() {
-        if (asyncQueue == null || asyncClosed) return;
-        asyncClosed = true;
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            LongBuffer at = stack.mallocLong(1);
-            check(vkGetSemaphoreCounterValue(device(), mainTimeline, at), "vkGetSemaphoreCounterValue");
-            if (at.get(0) < mainValue) {
-                check(vkSignalSemaphore(device(), VkSemaphoreSignalInfo.calloc(stack).sType$Default()
-                        .semaphore(mainTimeline).value(mainValue)), "vkSignalSemaphore");
+    private void closeQueues() {
+        if (queuesClosed) return;
+        queuesClosed = true;
+        if (asyncQueue != null) {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                LongBuffer at = stack.mallocLong(1);
+                check(vkGetSemaphoreCounterValue(device(), mainTimeline, at), "vkGetSemaphoreCounterValue");
+                if (at.get(0) < mainValue) {
+                    check(vkSignalSemaphore(device(), VkSemaphoreSignalInfo.calloc(stack).sType$Default()
+                            .semaphore(mainTimeline).value(mainValue)), "vkSignalSemaphore");
+                }
             }
+            check(vkQueueWaitIdle(asyncQueue), "vkQueueWaitIdle");
+            vkDestroySemaphore(device(), mainTimeline, null);
+            vkDestroySemaphore(device(), asyncTimeline, null);
         }
-        check(vkQueueWaitIdle(asyncQueue), "vkQueueWaitIdle");
-        for (AsyncPool p : pools) vkDestroyCommandPool(device(), p.pool, null);
-        vkDestroySemaphore(device(), mainTimeline, null);
-        vkDestroySemaphore(device(), asyncTimeline, null);
+        if (transferQueue != null) {
+            check(vkQueueWaitIdle(transferQueue), "vkQueueWaitIdle");
+            vkDestroySemaphore(device(), transferTimeline, null);
+        }
+        for (FramePool p : pools) vkDestroyCommandPool(device(), p.pool, null);
     }
 
     @Override
