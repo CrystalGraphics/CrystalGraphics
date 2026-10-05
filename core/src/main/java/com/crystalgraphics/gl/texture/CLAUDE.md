@@ -21,6 +21,31 @@ via the singleton `CgTextureManager`.
 | `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)`, `create(spec, paths...)`, `createDirect(spec, paths...)`; `createEmpty(w, h, d, spec[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
 | `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createDirect(spec, posX...negZ)`, `createEmpty(size, spec)`. |
 
+## Where an upload runs
+
+An upload has a CPU half (bytes into memory the GPU can copy from) and a GPU half (the copy). Off the render thread
+the first is the producer's and the second lands at the render thread's next deferral apply, before the frame's
+first pass (plan `render-async-uploads`):
+
+```java
+// A worker that makes the bytes writes them straight into a lease: no copy anywhere else
+CgUploadLease lease = CgUploads.lease(4 * w * h);
+bake(lease.bytes());
+texture.uploadRegion(0, 0, 0, w, h, lease, GL_RGBA, GL_UNSIGNED_BYTE);   // any thread; lands on the render thread
+
+// A worker holding its own buffer: the texture copies it into a lease on this thread
+texture.uploadRegion(0, 0, 0, w, h, pixels, GL_RGBA, GL_UNSIGNED_BYTE);
+```
+
+| Backend | The GPU half |
+|---|---|
+| GL, persistent mapping (every desktop driver) | DMA from the lease's unpack buffer: 72 MB lands with no GPU hitch on NVIDIA, 1.5-3 ms of render thread |
+| GL without it (macOS 4.1, a 3.3 context), or a converting upload | from direct memory at the call: the landing frame pays the copy on the GPU, 17-22 ms per 72 MB |
+| Vulkan device | a device copy from the lease's buffer; into a texture nothing else has touched yet, on the transfer queue, which the frame's queue waits for at its next pass (`platform/CLAUDE.md`). `-Dcrystalgraphics.vulkan.transfer=false` keeps it on the frame's queue |
+
+A second GL context for uploads was measured and declined (`render-async-uploads` §4f); the harness keeps it as
+`upload-stress -Dcrystalgraphics.harness.upload.shared=true`.
+
 ## Uniform Factory Pattern
 
 All four types follow the same internal structure:
