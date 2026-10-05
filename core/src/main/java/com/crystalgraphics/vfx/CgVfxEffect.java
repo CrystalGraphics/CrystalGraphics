@@ -56,6 +56,9 @@ public abstract class CgVfxEffect {
     private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
     private int dueCount;
     private float dueDt;
+    /** The emitters {@link #tickEmitters} scheduled for the first time, for the system's GPU queue. */
+    private CgVfxEmitterInstance[] admitted = new CgVfxEmitterInstance[0];
+    private int admittedCount;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -231,14 +234,37 @@ public abstract class CgVfxEffect {
         return dueCount > 0;
     }
 
-    /** Runs the emitters queued this tick, in order. Any thread, one at a time per effect. */
+    /**
+     * Runs the emitters queued this tick, in order: each ticked, or scheduled for its system's GPU queue once it is
+     * stepped there (an instance keeps the path it first stepped on). Any thread, one at a time per effect.
+     */
     final void tickEmitters() {
         CgVfxAir air = air();
+        boolean gpu = system != null && system.stepsOnGpu();
         for (int i = 0; i < dueCount; i++) {
-            due[i].tick(dueDt, air, originX, originY, originZ);
+            CgVfxEmitterInstance emitter = due[i];
+            if (emitter.scheduled() || gpu && emitter.time() == 0f) {
+                boolean fresh = !emitter.scheduled();
+                emitter.schedule(dueDt, originX, originY, originZ);
+                if (fresh) {
+                    if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
+                    admitted[admittedCount++] = emitter;
+                }
+            } else {
+                emitter.tick(dueDt, air, originX, originY, originZ);
+            }
             due[i] = null;
         }
         dueCount = 0;
+    }
+
+    /** Hands the instances {@link #tickEmitters} scheduled for the first time to {@code steps}. Render thread. */
+    final void admitScheduled(CgVfxGpuSteps steps) {
+        for (int i = 0; i < admittedCount; i++) {
+            steps.admit(admitted[i]);
+            admitted[i] = null;
+        }
+        admittedCount = 0;
     }
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
