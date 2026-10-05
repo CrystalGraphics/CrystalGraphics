@@ -2,7 +2,9 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgTextureIO;
+import com.crystalgraphics.util.trace.CgChannels;
 
 
 import java.util.HashMap;
@@ -86,7 +88,7 @@ public final class CgTextureManager {
         if (cached != null) return cached;
 
         CgTexture texture;
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
             texture = loader.get();
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "[CgTextureManager] Failed to create texture: " + key, e);

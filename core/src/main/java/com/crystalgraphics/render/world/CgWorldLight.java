@@ -3,6 +3,8 @@ package com.crystalgraphics.render.world;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
 
@@ -33,6 +35,8 @@ public final class CgWorldLight {
     private static final int[] VALUES = new int[CAPACITY];
     private static int size;
     private static long frame = -1;
+    /** Reads the host answered, and those of them past the cache's half: a frame touching more blocks than it holds. */
+    private static final int QUERIES = CgTrace.name("world.light.queries"), UNCACHED = CgTrace.name("world.light.uncached");
 
     static {
         Arrays.fill(KEYS, EMPTY);
@@ -59,10 +63,13 @@ public final class CgWorldLight {
             slot = slot + 1 & MASK;
         }
         int light = world.light(bx, by, bz);
+        CgTrace.add(CgChannels.WORLD, QUERIES, 1);
         if (size < CAPACITY / 2) {
             KEYS[slot] = key;
             VALUES[slot] = light;
             size++;
+        } else {
+            CgTrace.add(CgChannels.WORLD, UNCACHED, 1);
         }
         return light;
     }
