@@ -11,6 +11,7 @@ import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -180,6 +181,12 @@ public final class CgGlStateManager {
     private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
     private static final int ADOPT = CgTrace.name("glState.adopt");
     private static final int ADOPT_COUNT = CgTrace.name("glState.adopt.count");
+    private static final int ADOPT_UNITS = CgTrace.name("glState.adopt.units");
+    private static final int OPEN = CgTrace.name("glState.open"), RESTORE = CgTrace.name("glState.restore");
+    /** A scope declaring every slot ({@link CgGlState#saveAll}), timed apart from the rest. */
+    private static final int OPEN_ALL = CgTrace.name("glState.open.all"), RESTORE_ALL = CgTrace.name("glState.restore.all");
+    private static final int SCOPES = CgTrace.name("glState.scopes"), SCOPES_ALL = CgTrace.name("glState.scopes.all");
+    private static final int ALL_SLOTS_MASK = (1 << SLOTS.length) - 1;
 
     /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
     private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
@@ -406,6 +413,14 @@ public final class CgGlStateManager {
     /** The highest texture unit our own code has selected: a unit above it is one we cannot have disturbed. */
     private int highestUnit;
 
+    /**
+     * Units our code has bound a texture on: what a scope reads when it opens. Any other unit is read at its first bind
+     * inside one, so a scope never reads the units the engine leaves alone.
+     */
+    private int touchedUnits;
+
+    private static final int TEXTURES_BIT = 1 << CgGlSlot.TEXTURES.ordinal();
+
     /** Tells the round trip what reached the driver, when it is on and the write is the code under test. */
     private void wrote(long fields) {
         if (roundTrip != null && !restoring && !verifying && !adopting && recording == null) roundTrip.wrote(fields);
@@ -425,6 +440,16 @@ public final class CgGlStateManager {
             if (s == CgGlSlot.TEXTURES) unknownUnits = ALL_UNITS;
             if ((CAPTURED_SLOTS & (1 << s.ordinal())) != 0) known[captured(s)] = 0;
         }
+    }
+
+    /** Whether the shadow survives the host: inside a host section, or always where the host keeps it. */
+    private boolean hostTrusted() {
+        return CgGL.inHostSection() || provider.hostKeepsShadow();
+    }
+
+    /** {@link #invalidateAll} at a host boundary: nothing where the host keeps the shadow. */
+    public void invalidateAtBoundary() {
+        if (!provider.hostKeepsShadow()) invalidateAll();
     }
 
     public void invalidateAll() {
@@ -790,6 +815,7 @@ public final class CgGlStateManager {
         assertOwner();
         // Only GL_TEXTURE_2D is modelled; other targets are always issued rather than assumed redundant.
         if (target != CgGL.GL_TEXTURE_2D) return true;
+        if ((unknownFields & F_ACTIVE_TEXTURE) != 0 && recording == null && savesTextures()) readUnits(0);
         if ((unknownFields & F_ACTIVE_TEXTURE) != 0) {
             // Which unit this lands on is unknown, so whatever any unit's binding was believed to be may
             // now be wrong.
@@ -800,12 +826,63 @@ public final class CgGlStateManager {
         }
         int unit = current.activeTextureUnit;
         if (unit < 0 || unit >= CgGlStateShadow.MAX_TEXTURE_UNITS) return true;
+        if (!adopting && !verifying) {
+            touchedUnits |= 1 << unit;
+            if (recording == null) captureUnit(unit);
+        }
         if (!staleUnit(unit) && current.boundTexture2D[unit] == texture) return skip();
         current.boundTexture2D[unit] = texture;
         unknownUnits &= ~(1 << unit);
         callsIssued++;
         wrote(F_ACTIVE_TEXTURE);   // the TEXTURES domain; a unit's binding has no field bit of its own
         return true;
+    }
+
+    /** Saves {@code unit}'s binding into every open scope declaring {@code TEXTURES} that has not saved it: the active unit. */
+    private void captureUnit(int unit) {
+        int bit = 1 << unit;
+        if ((provider.hostUnits() & bit) == 0) return;
+        for (int f = depth - 1; f >= 0; f--) {
+            Frame frame = frames[f];
+            if ((frame.mask & TEXTURES_BIT) == 0 || frame.handOver || (frame.savedUnits & bit) != 0) continue;
+            if ((unknownUnits & bit) != 0) readUnits(bit);
+            frame.saved.boundTexture2D[unit] = current.boundTexture2D[unit];
+            frame.savedUnits |= bit;
+        }
+    }
+
+    private boolean savesTextures() {
+        for (int f = 0; f < depth; f++) if ((frames[f].mask & TEXTURES_BIT) != 0 && !frames[f].handOver) return true;
+        return false;
+    }
+
+    /** Reads the active unit and the units {@code units} names. */
+    private void readUnits(int units) {
+        adopting = true;
+        long t = CgTrace.stamp(GL);
+        int filled;
+        try {
+            filled = provider.readTextureUnits(current, units);
+        } finally {
+            adopting = false;
+            CgTrace.zoneDone(GL, ADOPT, t);
+            CgTrace.add(GL, ADOPT_COUNT, 1);
+            CgTrace.add(GL, ADOPT_UNITS, Integer.bitCount(units));
+        }
+        unknownFields &= ~F_ACTIVE_TEXTURE;
+        unknownUnits &= ~filled;
+        adopted++;
+    }
+
+    /**
+     * {@code TEXTURES} for a scope opening: the units our code has touched, all of them when {@code reread}, else those
+     * the shadow does not know. Nothing when it knows them and the active unit.
+     */
+    private void adoptUnits(boolean reread) {
+        if (reread) unknownUnits |= ~touchedUnits;   // the host may have rebound any; the rest are read at first bind
+        int want = (reread ? touchedUnits : touchedUnits & unknownUnits) & provider.hostUnits();
+        if (!reread && want == 0 && (unknownFields & F_ACTIVE_TEXTURE) == 0) return;
+        readUnits(want);
     }
 
     /**
@@ -1183,6 +1260,7 @@ public final class CgGlStateManager {
                     "GL state scope nesting exceeded " + MAX_DEPTH + "; unbalanced save() somewhere");
         }
 
+        long t = CgTrace.stamp(GL);
         Frame f = frames[depth++];
         f.mask = 0;
         f.closed = false;
@@ -1195,20 +1273,29 @@ public final class CgGlStateManager {
         // shadow, and hostForeign forgets it again, so an untrusted slot is all that needs reading. A free
         // provider is read at every depth: trust saves nothing there, and a host rebinding through its own
         // manager defeats it.
-        boolean reread = provider.isFree() || (depth == 1 && (REREAD_EACH_SCOPE || !CgGL.inHostSection()));
+        boolean reread = provider.isFree() || (depth == 1 && (REREAD_EACH_SCOPE || !hostTrusted()));
         for (CgGlSlot slot : slots) {
             int bit = 1 << slot.ordinal();
             if ((f.mask & bit) != 0) continue;
             if ((CAPTURED_SLOTS & bit) != 0) {
                 if (reread && provider.hostBinds(slot)) known[captured(slot)] = 0;   // read at first write instead
-            } else if (!handOver && (reread || !isTrusted(slot))) {
-                adopt(slot);   // a hand-over restores nothing
+            } else if (handOver) {
+                // a hand-over restores nothing
+            } else if (slot == CgGlSlot.TEXTURES && !provider.isFree()) {
+                adoptUnits(reread);
+            } else if (reread || !isTrusted(slot)) {
+                adopt(slot);
             }
             f.mask |= bit;
         }
         Arrays.fill(f.captured, 0);
         f.saved.copyFrom(current);
+        f.savedUnits = (f.mask & TEXTURES_BIT) != 0 && !handOver ? ~unknownUnits & provider.hostUnits() : 0;
         if (roundTrip != null) roundTrip.opened(f);
+        boolean all = f.mask == ALL_SLOTS_MASK;
+        CgTrace.zoneDone(GL, all ? OPEN_ALL : OPEN, t);
+        CgTrace.add(GL, SCOPES, 1);
+        if (all) CgTrace.add(GL, SCOPES_ALL, 1);
         return f;
     }
 
@@ -1221,6 +1308,7 @@ public final class CgGlStateManager {
             adopting = false;
             CgTrace.zoneDone(GL, ADOPT, t);
             CgTrace.add(GL, ADOPT_COUNT, 1);
+            if (slot == CgGlSlot.TEXTURES) CgTrace.add(GL, ADOPT_UNITS, CgGlStateShadow.MAX_TEXTURE_UNITS);
         }
         unknownFields &= ~SLOT_FIELDS[slot.ordinal()];
         if (slot == CgGlSlot.TEXTURES) unknownUnits = 0;
@@ -1234,6 +1322,36 @@ public final class CgGlStateManager {
             if ((frames[d].mask & bit) != 0) return frames[d].saved;
         }
         return null;
+    }
+
+    /**
+     * The bound draw framebuffer, from the shadow where it vouches for it, else read once as a scope would. A
+     * {@code glGet} waits for the driver to drain every call queued before it, so a frame path asks here instead.
+     *
+     * <pre>{@code
+     * int target = CgGlState.drawFramebuffer();   // free inside a host section once known
+     * }</pre>
+     */
+    public int drawFramebuffer() {
+        if (recording != null) return CgGL.glGetInteger(CgGL.GL_DRAW_FRAMEBUFFER_BINDING);
+        know(CgGlSlot.FBO);
+        return current.drawFbo;
+    }
+
+    /** The viewport into {@code into} at 0..3 (x, y, width, height), as {@link #drawFramebuffer} reads. */
+    public void viewport(IntBuffer into) {
+        if (recording != null) {
+            CgGL.glGetInteger(CgGL.GL_VIEWPORT, into);
+            return;
+        }
+        know(CgGlSlot.VIEWPORT);
+        into.put(0, current.viewportX).put(1, current.viewportY).put(2, current.viewportW).put(3, current.viewportH);
+    }
+
+    /** Adopts {@code slot} where a scope opened now would: outside a host section, from a free provider, or unknown. */
+    private void know(CgGlSlot slot) {
+        assertOwner();
+        if (provider.isFree() || !hostTrusted() || !isTrusted(slot)) adopt(slot);
     }
 
     public int depth() { return depth; }
@@ -1258,6 +1376,8 @@ public final class CgGlStateManager {
         private Throwable openedAt;
         /** Texture units the open read covered: a unit first selected inside this scope has no "before". */
         private int unitsAtOpen;
+        /** Texture units whose binding this scope saved, at open or at their first bind: the ones it restores. */
+        private int savedUnits;
         /** Per captured domain: the points this scope saved, and those our code had touched when it opened. */
         private final int[] captured = new int[CAPTURED.length], touchedAtOpen = new int[CAPTURED.length];
 
@@ -1271,6 +1391,7 @@ public final class CgGlStateManager {
                         "GL state scopes closed out of order; use try-with-resources");
             }
             closed = true;
+            long t = CgTrace.stamp(GL);
             // Foreign code wrote GL behind CgGL's back, so the shadow is describing a world that no longer
             // exists. Dropping trust FIRST is what makes the reissue below actually reach the driver —
             // without it every restore would be deduplicated away against exactly the stale values that are
@@ -1287,9 +1408,11 @@ public final class CgGlStateManager {
                     }
                     // A domain not wholly trusted is re-established in full — see `forcing`. A trusted one takes
                     // the normal deduplicated path and usually emits nothing.
-                    forcing = mustIssue(slot) || !isTrusted(slot);
+                    forcing = mustIssue(slot) || (slot == CgGlSlot.TEXTURES
+                            ? (unknownFields & F_ACTIVE_TEXTURE) != 0 || (savedUnits & unknownUnits) != 0
+                            : !isTrusted(slot));
                     try {
-                        reissue(slot, saved);
+                        reissue(slot, saved, savedUnits);
                     } finally {
                         forcing = false;
                     }
@@ -1299,6 +1422,7 @@ public final class CgGlStateManager {
             }
             if (roundTrip != null) roundTrip.closed(this);
             depth--;
+            CgTrace.zoneDone(GL, mask == ALL_SLOTS_MASK ? RESTORE_ALL : RESTORE, t);
         }
 
         @Override
@@ -1311,7 +1435,7 @@ public final class CgGlStateManager {
      * <p>The only per-domain code in this class. It replaces twelve value-object {@code emit()}
      * implementations, and because it goes through {@code CgGL} it inherits deduplication for free.</p>
      */
-    private void reissue(CgGlSlot slot, CgGlStateShadow s) {
+    private void reissue(CgGlSlot slot, CgGlStateShadow s, int units) {
         switch (slot) {
             case BLEND:
                 setCap(CgGL.GL_BLEND, s.blendEnabled);
@@ -1388,6 +1512,7 @@ public final class CgGlStateManager {
                 break;
             case TEXTURES:
                 for (int unit = 0; unit < CgGlStateShadow.MAX_TEXTURE_UNITS; unit++) {
+                    if ((units & (1 << unit)) == 0) continue;   // never bound inside the scope
                     // A unit is skipped only when its binding is known to match; an unknown one is rebound.
                     if ((unknownUnits & (1 << unit)) == 0 && current.boundTexture2D[unit] == s.boundTexture2D[unit]) continue;
                     CgGL.glActiveTexture(CgGL.GL_TEXTURE0 + unit);
@@ -1534,7 +1659,9 @@ public final class CgGlStateManager {
             }
             String where = " (depth " + depth + ")";
             untouchedUnits(f.before, after, f.unitsAtOpen);
+            unhostedUnits(f.before, after);
             untouchedPoints(f.before, after, f.touchedAtOpen);
+            excused(f.mask, f.before, after);
             String diff = f.before.differences(after, f.mask);
             if (diff != null) {
                 hostFailed++;
@@ -1544,8 +1671,10 @@ public final class CgGlStateManager {
                 read(driverReader, f.mask, afterDriver);
                 untouchedUnits(f.beforeDriver, afterDriver, f.unitsAtOpen);
                 untouchedUnits(after, afterDriver, f.unitsAtOpen);
+                unhostedUnits(f.beforeDriver, afterDriver);
                 untouchedPoints(f.beforeDriver, afterDriver, f.touchedAtOpen);
                 untouchedPoints(after, afterDriver, f.touchedAtOpen);
+                excused(f.mask, f.beforeDriver, afterDriver);
                 int real = f.mask & ~virtualised;
                 String driverDiff = f.beforeDriver.differences(afterDriver, real);
                 if (driverDiff != null) {
@@ -1607,6 +1736,19 @@ public final class CgGlStateManager {
             for (int u = limit; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
                 to.boundTexture2D[u] = from.boundTexture2D[u];
             }
+        }
+
+        /** Units the host never samples are not restored, by design ({@code hostUnits}); {@code to} takes {@code from}'s. */
+        private void unhostedUnits(CgGlStateShadow from, CgGlStateShadow to) {
+            int host = provider.hostUnits();
+            for (int u = 0; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
+                if ((host & (1 << u)) == 0) to.boundTexture2D[u] = from.boundTexture2D[u];
+            }
+        }
+
+        /** Fields the provider guesses are restored as guessed, by design ({@code excuse}); {@code to} takes {@code from}'s. */
+        private void excused(int mask, CgGlStateShadow from, CgGlStateShadow to) {
+            for (CgGlSlot s : SLOTS) if ((mask & (1 << s.ordinal())) != 0) provider.excuse(s, to, from);
         }
 
         /** Points our code first bound inside the scope have no "before"; {@code to} takes {@code from}'s. */

@@ -1083,7 +1083,7 @@ public class CgFontRegistry {
      *
      * <h4>Uploads are deliberately NOT batched — built twice, measured, deleted twice</h4>
      * <p>The idea: bind the atlas texture and set {@code GL_UNPACK_ALIGNMENT} once for the whole
-     * drain instead of per glyph, since every {@code glTexSubImage3D} otherwise carries a bind, a
+     * drain instead of per glyph, since every {@code glTexSubImage3D} then carried a bind, a
      * {@code glGetInteger(GL_UNPACK_ALIGNMENT)}, a {@code glPixelStorei}, a restore and an unbind,
      * none of which change between glyphs going into the same texture. Both attempts are gone:</p>
      * <ol>

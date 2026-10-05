@@ -15,15 +15,13 @@ import org.apache.logging.log4j.LogManager;
 /**
  * How many texture units Minecraft's own GL state tracker models, read from Blaze3D.
  *
- * <p>Declare it as the engine's ceiling before anything reserves a binding point:</p>
  * <pre>{@code
- * CgCapabilities.setHostTextureUnitCeiling(Blaze3dTextureUnits.count());
- * CgGraphicsLifecycle.initContext(width, height);
+ * int table = Blaze3dTextureUnits.count();   // a unit below it binds through GlStateManager, one above through the driver
  * }</pre>
  *
- * <p>Binding above the table Blaze3D models corrupts sampling of unit 0, which in an embedded renderer
- * is nearly every draw. Read rather than hardcoded, so a later Minecraft is correct without an edit;
- * a refusal falls back and logs which value was used.</p>
+ * <p>{@code Blaze3dGLBackend} routes by it, and {@code HostStateModern} answers the units below it from the cache.
+ * Read rather than hardcoded, so a later Minecraft is correct without an edit; a refusal falls back and logs which
+ * value was used.</p>
  *
  * <p><b>Client only</b> — naming {@link GlStateManager} loads a client class.</p>
  */

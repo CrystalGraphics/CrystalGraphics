@@ -125,11 +125,67 @@ public class CgGlStateManagerTest {
 
     @Test
     public void aTextureBindOnAnUnknownUnitForgetsEveryUnit() {
-        mgr.save(CgGlSlot.TEXTURES);                  // every unit known
+        mgr.save(CgGlSlot.TEXTURES).close();
         mgr.invalidate(CgGlSlot.TEXTURES);
         assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
         assertTrue("the active unit was unknown, so no unit's binding may be trusted",
                 mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+    }
+
+    @Test
+    public void aScopeSavingTexturesReadsAnUnknownActiveUnitBeforeABind() {
+        try (CgGlScope ignored = mgr.save(CgGlSlot.TEXTURES)) {
+            mgr.invalidate(CgGlSlot.TEXTURES);
+            assertTrue(mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+            assertFalse("the active unit was read, so the repeat is redundant", mgr.textureChanged(CgGL.GL_TEXTURE_2D, 7));
+        }
+    }
+
+    /** Units our code never bound are not read when a scope opens; the first bind of one reads it then. */
+    @Test
+    public void aScopeReadsOnlyTheUnitsOurCodeBound() {
+        CountingUnits units = new CountingUnits();
+        CgGlState.setProvider(units);
+        try (CgGlScope ignored = mgr.save(CgGlSlot.TEXTURES)) {
+            assertEquals("nothing bound yet: the active unit alone", 0, units.last);
+            mgr.activeTextureChanged(CgGL.GL_TEXTURE0 + 3);
+            mgr.textureChanged(CgGL.GL_TEXTURE_2D, 9);
+            assertEquals("unit 3 read at its first bind", 1 << 3, units.last);
+        }
+        mgr.invalidate(CgGlSlot.TEXTURES);
+        try (CgGlScope ignored = mgr.save(CgGlSlot.TEXTURES)) {
+            assertEquals("the next scope reads unit 3 when it opens", 1 << 3, units.last);
+        }
+    }
+
+    /** A unit the host never samples is neither read at its first bind nor bound back when the scope closes. */
+    @Test
+    public void aUnitOutsideTheHostsIsNeitherReadNorRestored() {
+        CountingUnits units = new CountingUnits();
+        units.host = 0xFF;
+        CgGlState.setProvider(units);
+        try (CgGlScope ignored = mgr.save(CgGlSlot.TEXTURES)) {
+            units.last = -2;
+            mgr.activeTextureChanged(CgGL.GL_TEXTURE0 + 20);
+            mgr.textureChanged(CgGL.GL_TEXTURE_2D, 9);
+            assertEquals("unit 20 is not read", -2, units.last);
+            gl.clear();
+        }
+        assertTrue("nor restored", gl.boundTextures.isEmpty());
+    }
+
+    private static final class CountingUnits implements CgGlStateProvider {
+        int last = -2;
+        int host = -1;
+
+        @Override public int hostUnits() { return host; }
+
+        @Override public void read(CgGlSlot slot, CgGlStateShadow t) {}
+
+        @Override public int readTextureUnits(CgGlStateShadow t, int units) {
+            last = units;
+            return units;
+        }
     }
 
     // ── Verification ──────────────────────────────────────────────────────────

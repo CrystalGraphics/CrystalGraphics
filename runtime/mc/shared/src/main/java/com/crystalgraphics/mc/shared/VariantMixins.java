@@ -4,7 +4,9 @@ import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
+import org.spongepowered.asm.service.MixinService;
 
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -59,7 +61,7 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
         String reason;
         try {
             String minecraft = minecraftVersion(loader);
-            Variant running = Variants.load(modId, getClass().getClassLoader()).select(loader, minecraft);
+            Variant running = table().select(loader, minecraft);
             String entry = running.commonEntry() != null ? running.commonEntry() : running.clientEntry();
             owned = entry != null && mixinPackage.startsWith(packageOf(entry) + ".");
             reason = "variant " + running + " for Minecraft " + minecraft;
@@ -83,6 +85,16 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
             Collections.addAll(mixins, clientMixins);
         }
         return mixins;
+    }
+
+    // A dev run keeps this plugin in a library on a layer that cannot see the mod's resources; Mixin's service
+    // reads through the game's loader, which can. In a shipped jar the plugin is the mod's and its loader finds it.
+    private Variants table() {
+        InputStream in = getClass().getClassLoader().getResourceAsStream(Variants.path(modId));
+        if (in == null) {
+            in = MixinService.getService().getResourceAsStream(Variants.path(modId));
+        }
+        return Variants.load(modId, in);
     }
 
     /** The running Minecraft version, asked of whichever loader this is. */

@@ -6,6 +6,7 @@ import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
@@ -182,11 +183,13 @@ public final class CgTexture3D extends CgTextureAbstract {
                     pixelFormat, pixelType);
             return;
         }
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-            CgGL.glTexSubImage3D(GL_TEXTURE_3D, level, x, y, z, width, height, depth, pixelFormat, pixelType, pixels);
-        } finally {
-            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
+        try (CgGlScope restore = gpu.restoring()) {
+            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
+            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+                CgGL.glTexSubImage3D(GL_TEXTURE_3D, level, x, y, z, width, height, depth, pixelFormat, pixelType, pixels);
+            } finally {
+                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
+            }
         }
     }
 

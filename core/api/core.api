@@ -1356,7 +1356,6 @@ com/crystalgraphics/api/texture/CgTexture
   method public,static active (I)V
   method public,static bind (II)V
   method public,static fullChain (II)I
-  method public,static getActiveUnit ()I
 com/crystalgraphics/api/texture/CgTextureSpec
   access public,final
   extends java/lang/Object
@@ -3574,10 +3573,12 @@ com/crystalgraphics/gpu/CgDeferral
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public <init> ([Lcom/crystalgraphics/platform/gl/state/CgGlSlot;)V
   method public clear ()V
   method public flush ()V
   method public immediate ()Z
   method public pending ()Z
+  method public restoring ()Lcom/crystalgraphics/platform/gl/state/CgGlScope;
   method public run (Ljava/lang/Runnable;)V
   method public,static applyAll ()V
 com/crystalgraphics/gpu/CgUploadLease
