@@ -158,8 +158,27 @@ public class CgGlStateManagerTest {
         }
     }
 
+    /** A unit the host never samples is neither read at its first bind nor bound back when the scope closes. */
+    @Test
+    public void aUnitOutsideTheHostsIsNeitherReadNorRestored() {
+        CountingUnits units = new CountingUnits();
+        units.host = 0xFF;
+        CgGlState.setProvider(units);
+        try (CgGlScope ignored = mgr.save(CgGlSlot.TEXTURES)) {
+            units.last = -2;
+            mgr.activeTextureChanged(CgGL.GL_TEXTURE0 + 20);
+            mgr.textureChanged(CgGL.GL_TEXTURE_2D, 9);
+            assertEquals("unit 20 is not read", -2, units.last);
+            gl.clear();
+        }
+        assertTrue("nor restored", gl.boundTextures.isEmpty());
+    }
+
     private static final class CountingUnits implements CgGlStateProvider {
         int last = -2;
+        int host = -1;
+
+        @Override public int hostUnits() { return host; }
 
         @Override public void read(CgGlSlot slot, CgGlStateShadow t) {}
 

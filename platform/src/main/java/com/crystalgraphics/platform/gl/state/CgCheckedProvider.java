@@ -94,6 +94,12 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
     /** The units the host's cache models, as a mask; a read of any other goes to {@code glGet}. */
     protected abstract int unitsMask();
 
+    /** The units the host's cache models: the host binds no other. */
+    @Override
+    public int hostUnits() {
+        return unitsMask();
+    }
+
     /** Copies into {@code answer} the fields of {@code slot} the host sets before each use, so a check skips them. */
     protected void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {}
 

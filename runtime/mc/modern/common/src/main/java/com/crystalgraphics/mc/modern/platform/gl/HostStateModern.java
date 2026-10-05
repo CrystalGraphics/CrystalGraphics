@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.gl;
 
 //? if <26.3 {
+import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 import com.crystalgraphics.platform.gl.state.CgCheckedProvider;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
@@ -147,6 +148,12 @@ public final class HostStateModern extends CgCheckedProvider {
     @Override
     protected int unitsMask() {
         return cache.unitsMask();
+    }
+
+    /** Every unit while an Iris or Oculus pack runs: it binds units above Blaze3D's table itself. */
+    @Override
+    public int hostUnits() {
+        return CgIrisCompat.isShaderPackActive() ? -1 : super.hostUnits();
     }
 
     @Override
