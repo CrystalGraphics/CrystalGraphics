@@ -593,6 +593,57 @@ public final class CgTraceSnapshot {
         return spans;
     }
 
+    /**
+     * Frames {@code fromFrame} up to but not including {@code toFrame}, with the zones, counters, markers and spans
+     * inside them: one phase of a run, for a report of its own.
+     *
+     * <pre>{@code
+     * long blast = snap.markerFrames("vfx.blast")[0];
+     * String beams = CgTraceReport.of(snap.between(blast - 300, blast)).breakdown();
+     * String blasts = CgTraceReport.of(snap.between(blast, Long.MAX_VALUE)).breakdown();
+     * }</pre>
+     *
+     * <p>A range holding no frame answers this snapshot whole.</p>
+     */
+    public CgTraceSnapshot between(long fromFrame, long toFrame) {
+        List<CgFrameRecord> held = new ArrayList<>();
+        for (CgFrameRecord frame : frames) {
+            if (frame.index() >= fromFrame && frame.index() < toFrame) held.add(frame);
+        }
+        if (held.isEmpty()) return this;
+        long from = held.get(0).beginNanos();
+        long to = toFrame == Long.MAX_VALUE ? Long.MAX_VALUE : held.get(held.size() - 1).endNanos();
+        List<ZoneView> inZones = new ArrayList<>();
+        for (ZoneView zone : zones) if (zone.startNanos() >= from && zone.startNanos() < to) inZones.add(zone);
+        List<CounterView> inCounters = new ArrayList<>();
+        for (CounterView c : counters) if (c.frameIndex() >= fromFrame && c.frameIndex() < toFrame) inCounters.add(c);
+        List<MarkerView> inMarkers = new ArrayList<>();
+        for (MarkerView marker : markers) if (marker.nanos() >= from && marker.nanos() < to) inMarkers.add(marker);
+        List<SpanView> inSpans = new ArrayList<>();
+        for (SpanView span : spans) if (span.startNanos() >= from && span.startNanos() < to) inSpans.add(span);
+        return of(held, inZones, inCounters, inMarkers, inSpans);
+    }
+
+    /** The frames holding a marker named {@code name}, oldest first, each once; empty for none. */
+    public long[] markerFrames(String name) {
+        long[] out = new long[0];
+        int n = 0;
+        for (MarkerView marker : markers) {
+            if (!marker.name().equals(name)) continue;
+            for (CgFrameRecord frame : frames) {
+                if (marker.nanos() < frame.beginNanos() || marker.nanos() >= frame.endNanos()) continue;
+                if (n == 0 || out[n - 1] != frame.index()) {
+                    if (n == out.length) out = Arrays.copyOf(out, Math.max(8, n * 2));
+                    out[n++] = frame.index();
+                }
+                break;
+            }
+        }
+        long[] frames = Arrays.copyOf(out, n);
+        Arrays.sort(frames);
+        return frames;
+    }
+
     /** Zones lost to a full arena. A non-zero here must be shown, not swallowed. */
     public long droppedZones() {
         return droppedZones;

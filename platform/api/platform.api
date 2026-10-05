@@ -3538,11 +3538,13 @@ com/crystalgraphics/trace/CgTraceReport$Tier
 com/crystalgraphics/trace/CgTraceSnapshot
   access public,final
   extends java/lang/Object
+  method public between (JJ)Lcom/crystalgraphics/trace/CgTraceSnapshot;
   method public counters ()Ljava/util/List;
   method public countersIn (Lcom/crystalgraphics/trace/CgFrameRecord;)Ljava/util/List;
   method public droppedZones ()J
   method public frame (J)Lcom/crystalgraphics/trace/CgFrameRecord;
   method public frames ()Ljava/util/List;
+  method public markerFrames (Ljava/lang/String;)[J
   method public markers ()Ljava/util/List;
   method public spans ()Ljava/util/List;
   method public worstFrame ()Lcom/crystalgraphics/trace/CgFrameRecord;

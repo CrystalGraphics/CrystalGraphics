@@ -1,7 +1,9 @@
 package com.crystalgraphics.api.mesh;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -78,7 +80,7 @@ public final class CgMeshLoader {
     private static Model read(String path, CgVertexFormat format) {
         int dot = path.lastIndexOf('.');
         if (dot < 0) throw new IllegalArgumentException("no extension to read a mesh by: " + path);
-        try (InputStream in = CgIO.openStream(path)) {
+        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "mesh.load"); InputStream in = CgIO.openStream(path)) {
             if (in == null) throw new IOException("not found: " + path);
             return switch (path.substring(dot + 1).toLowerCase(Locale.ROOT)) {
                 case "obj" -> CgObjLoader.read(in, format, true);
