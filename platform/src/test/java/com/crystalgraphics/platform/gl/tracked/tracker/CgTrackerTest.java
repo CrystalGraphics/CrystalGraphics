@@ -59,6 +59,26 @@ public class CgTrackerTest {
         assertTrue("after a draw, a clear is inside the pass", device.log().get(device.log().size() - 1).startsWith("clearColor"));
     }
 
+    /** A state set back draws with the pipeline it had, and a changed one with another: the cache keyed by identity. */
+    @Test
+    public void aStateSetBackDrawsWithItsPipeline() {
+        tracker.bindTarget(CgTarget.surface(device));
+        tracker.state.program = program();
+        int mark = device.mark();
+        tracker.state.blend = CgPipelineDesc.Blend.ALPHA;
+        drawTriangle();
+        tracker.state.blend = null;
+        drawTriangle();
+        tracker.state.blend = CgPipelineDesc.Blend.ALPHA;
+        drawTriangle();
+
+        List<String> binds = device.logSince(mark).stream().filter(l -> l.startsWith("setPipeline")).toList();
+        assertEquals(3, binds.size());
+        assertNotEquals(binds.get(0), binds.get(1));
+        assertEquals(binds.get(0), binds.get(2));
+        assertEquals(2, tracker.stats().pipelineMisses);
+    }
+
     /** A pass may sample another level of the texture it renders into: a mip chain drawn level by level. */
     @Test
     public void aTargetAttachesItsLevelAlone() {

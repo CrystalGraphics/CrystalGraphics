@@ -98,7 +98,7 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         this.programs = new TrackedPrograms(tracker, compiler, errors);
         this.textures = new TrackedTextures(tracker, errors, buffers);
         this.framebuffers = new TrackedFramebuffers(tracker, errors, textures, buffers);
-        tracker.bindTarget(surface);
+        framebuffers.applyDraw();
     }
 
     public CgTracker tracker() { return tracker; }

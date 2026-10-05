@@ -106,6 +106,9 @@ public final class TrackedPrograms {
     private final Map<List<CgPipelineDesc.VertexBuffer>, Map<List<CgPipelineDesc.VertexAttrib>, List<CgPipelineDesc.VertexBuffer>>>
             withConstants = new HashMap<>();
     private CgAllocation constantValues;
+    /** The last {@link #feedDisabledInputs}: the program table and layouts it was given, and the layouts it answered. */
+    private CgGlslCompiler.Reflection fedTable;
+    private List<CgPipelineDesc.VertexBuffer> fedBase, fedLayouts;
     /** Where links run shaderc, from {@link #compileInBackground}; null: at the link. */
     private ExecutorService worker;
 
@@ -641,8 +644,25 @@ public final class TrackedPrograms {
      * no such thing, so those inputs read one constant at stride 0 from a binding of their own.
      */
     public void feedDisabledInputs(CgDrawState state) {
+        // The last draw's answer while its program and layouts hold: a draw allocates nothing.
+        if (current.table != fedTable || state.vertexLayouts != fedBase) {
+            fedTable = current.table;
+            fedBase = state.vertexLayouts;
+            fedLayouts = layoutsFeeding(fedBase);
+        }
+        if (fedLayouts == null) return;
+        state.vertexLayouts = fedLayouts;
+        if (constantValues == null) {
+            constantValues = tracker.allocate(32, true, false, "disabled vertex inputs");
+            constantValues.memory().putFloat(0).putFloat(0).putFloat(0).putFloat(1).putInt(0).putInt(0).putInt(0).putInt(1);
+        }
+        state.vertexBuffer(CONSTANT_BINDING, constantValues, 0);
+    }
+
+    /** {@code base} with a binding feeding every input it leaves unfed, or null when it feeds them all. */
+    private List<CgPipelineDesc.VertexBuffer> layoutsFeeding(List<CgPipelineDesc.VertexBuffer> base) {
         boolean[] provided = new boolean[TrackedVertexArrays.ATTRIBS];
-        for (CgPipelineDesc.VertexBuffer vb : state.vertexLayouts) {
+        for (CgPipelineDesc.VertexBuffer vb : base) {
             for (CgPipelineDesc.VertexAttrib a : vb.attribs()) provided[a.location()] = true;
         }
         List<CgPipelineDesc.VertexAttrib> constants = null;
@@ -652,20 +672,14 @@ public final class TrackedPrograms {
             CgAttribFormat f = constantFormat(a.glType());
             constants.add(new CgPipelineDesc.VertexAttrib(a.location(), f, f == CgAttribFormat.FLOAT32X4 ? 0 : 16));
         }
-        if (constants == null) return;
-        List<CgPipelineDesc.VertexBuffer> base = state.vertexLayouts;
+        if (constants == null) return null;
         List<CgPipelineDesc.VertexAttrib> fed = constants;
         // Cached by value, so a draw's layout list is the same object every frame and keeps its pipeline.
-        state.vertexLayouts = withConstants.computeIfAbsent(base, k -> new HashMap<>()).computeIfAbsent(fed, k -> {
+        return withConstants.computeIfAbsent(base, k -> new HashMap<>()).computeIfAbsent(fed, k -> {
             List<CgPipelineDesc.VertexBuffer> layouts = new ArrayList<>(base);
             layouts.add(new CgPipelineDesc.VertexBuffer(CONSTANT_BINDING, 0, false, fed));
             return List.copyOf(layouts);
         });
-        if (constantValues == null) {
-            constantValues = tracker.allocate(32, true, false, "disabled vertex inputs");
-            constantValues.memory().putFloat(0).putFloat(0).putFloat(0).putFloat(1).putInt(0).putInt(0).putInt(0).putInt(1);
-        }
-        state.vertexBuffer(CONSTANT_BINDING, constantValues, 0);
     }
 
     private static CgAttribFormat constantFormat(int glType) {

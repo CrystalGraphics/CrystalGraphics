@@ -81,8 +81,9 @@ public final class TrackedFramebuffers {
     private final GlNames<Renderbuffer> rbos = new GlNames<>("Renderbuffer");
     private int draw, read, renderbuffer;
     private int surfaceReadBuffer = 0;
-    private CgTarget surface;
-    private CgGpuTexture surfaceImage;
+    /** One per swapchain image, at most; a target keeps its identity, which the tracker's pipeline cache keys on. */
+    private final CgTarget[] surfaces = new CgTarget[8];
+    private int nextSurface;
 
     public TrackedFramebuffers(CgTracker tracker, TrackedGlErrors errors, TrackedTextures textures, TrackedBuffers buffers) {
         this.tracker = tracker;
@@ -242,13 +243,7 @@ public final class TrackedFramebuffers {
 
     /** The framebuffer's target, or {@code null} while nothing is attached. */
     CgTarget target(int name) {
-        if (name == 0) {
-            if (surface == null || surfaceImage != device.surfaceColor()) {
-                surface = CgTarget.surface(device);
-                surfaceImage = device.surfaceColor();
-            }
-            return surface;
-        }
+        if (name == 0) return surface();
         Framebuffer f = fbos.get(name);
         if (f.target != null && sameImages(f)) return f.target;
         List<CgTextureView> colors = new ArrayList<>();
@@ -271,9 +266,24 @@ public final class TrackedFramebuffers {
     }
 
     private boolean sameImages(Framebuffer f) {
-        CgGpuTexture[] now = images(f);
-        for (int i = 0; i < now.length; i++) if (now[i] != f.targetImages[i]) return false;
-        return true;
+        CgGpuTexture[] then = f.targetImages;
+        for (int i = 0; i < COLORS; i++) if (image(f.colors[i]) != then[i]) return false;
+        return image(f.depth) == then[COLORS] && image(f.stencil) == then[COLORS + 1];
+    }
+
+    /** The surface's target for the swapchain image drawn now, the same object each time that image comes round. */
+    private CgTarget surface() {
+        CgGpuTexture color = device.surfaceColor(), depth = device.surfaceDepth();
+        for (CgTarget t : surfaces) {
+            if (t != null && t.colors().get(0).texture() == color
+                    && (t.depth() == null ? depth == null : t.depth().texture() == depth)) {
+                return t;
+            }
+        }
+        CgTarget t = CgTarget.surface(device);
+        surfaces[nextSurface] = t;
+        nextSurface = (nextSurface + 1) % surfaces.length;
+        return t;
     }
 
     private CgGpuTexture[] images(Framebuffer f) {
