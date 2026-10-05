@@ -10,8 +10,11 @@ import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.render.context.CgTextScaleResolver;
 import com.crystalgraphics.text.shadow.CgMaskBlurFilter;
 import com.crystalgraphics.text.shadow.CgShadowCell;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,10 @@ import java.util.Map;
  * glyph's own edge at any size, and the hole is a Gaussian falloff of its true distance, exact along a
  * straight edge. The blur has to fit the field's reach: when it does not, world text and a capped UI raster
  * clamp it to fit, as a stroke is clamped, and other UI text keeps the exact cell.</p>
+ *
+ * <p><b>A plan is kept for a cached layout.</b> A placement-cache hit hands every draw of a layout the same placements
+ * array, so a plan with no cell still building is kept for that array and reused while the shadows, size, stroke and
+ * atlas evictions match, as {@link CgGlyphPlacementCache} reuses placements: a kept plan stamps no atlas page.</p>
  */
 final class CgTextShadowPlan {
 
@@ -58,17 +65,39 @@ final class CgTextShadowPlan {
     /** The glyph's distance field, the canvas shadowing into it (text.shader kind -2). */
     static final byte FIELD_INSET = 4;
 
+    private static final int KEPT_HIT = CgTrace.name("shadowPlan.kept"), PLANNED = CgTrace.name("shadowPlan.planned");
+    private static final int MAX_KEPT = 1024;
+    /** (shadow, glyph) slots every kept plan holds together, about 9 bytes each. */
+    private static final int MAX_KEPT_SLOTS = 1 << 18;
+
     private final CgFontRegistry registry;
 
+    // What the accessors read: the scratch plan below, or a kept one's arrays.
     /** One byte per (shadow, glyph): which kind that glyph paints in that shadow. */
-    private byte[] kinds = new byte[0];
+    private byte[] kinds;
     /** The placement each (shadow, glyph) paints. */
-    private CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
+    private CgGlyphPlacement[] placements;
     /** Texels of spread per shadow, for the field kinds. */
-    private float[] spreadTexels = new float[0];
+    private float[] spreadTexels;
     /** Per (shadow, glyph): the blur of a {@link #FIELD_INSET}, in atlas texels; 0 for a sharp one. */
-    private float[] insetSigmaTexels = new float[0];
+    private float[] insetSigmaTexels;
     private int glyphCount;
+
+    private byte[] scratchKinds = new byte[0];
+    private CgGlyphPlacement[] scratchPlacements = new CgGlyphPlacement[0];
+    private float[] scratchSpread = new float[0];
+    private float[] scratchInset = new float[0];
+
+    /** Kept plans by the cached placements array they were made from, compared by identity. */
+    private final Map<CgGlyphPlacement[], Kept> kept = new LinkedHashMap<CgGlyphPlacement[], Kept>(64, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<CgGlyphPlacement[], Kept> eldest) {
+            if (size() <= MAX_KEPT) return false;
+            keptSlots -= eldest.getValue().kinds.length;
+            return true;
+        }
+    };
+    private int keptSlots;
 
     /**
      * One glyph's shadow across frames, whatever blur, growth or size it is at: everything a slider can
@@ -90,6 +119,7 @@ final class CgTextShadowPlan {
 
     CgTextShadowPlan(CgFontRegistry registry) {
         this.registry = registry;
+        show(scratchKinds, scratchPlacements, scratchSpread, scratchInset, 0);
     }
 
     /** Whether a local sigma blurs at all once the pose maps it to device pixels. */
@@ -100,24 +130,77 @@ final class CgTextShadowPlan {
     /**
      * Plans every shadow of {@code shadows} over the draw's resolved glyphs.
      *
+     * @param stable            {@code glyphs} is a placement-cache entry's own array, which a plan may be kept for
      * @param strokeWidthTexels the stroke the draw paints, 0 for none; a shadow's shape includes it
      * @param strokeAlign       the stroke's align code, as the renderer passes it to text.shader
      * @param worldText         a perspective draw, whose cells are stretched by however close the camera is
      * @return whether a cell was asked for and not built yet, so the draw is provisional
      */
-    boolean plan(CgTextShadowList shadows, CgGlyphPlacement[] glyphs, CgBakedGlyphs baked, int glyphCount,
-                 CgFontKey fontKey, int effectiveTargetPx, float strokeWidthTexels, float strokeAlign,
+    boolean plan(CgTextShadowList shadows, CgGlyphPlacement[] glyphs, boolean stable, CgBakedGlyphs baked,
+                 int glyphCount, CgFontKey fontKey, int effectiveTargetPx, float strokeWidthTexels, float strokeAlign,
                  boolean worldText, long frame) {
+        Kept k = null;
+        long evictions = 0L;
+        if (stable) {
+            evictions = registry.getAtlasEvictionGeneration();
+            k = kept.get(glyphs);
+            if (k != null && k.matches(shadows, baked, glyphCount, fontKey, effectiveTargetPx, strokeWidthTexels,
+                    strokeAlign, worldText, evictions)) {
+                show(k.kinds, k.placements, k.spreadTexels, k.insetSigmaTexels, glyphCount);
+                CgTrace.add(CgChannels.TEXT, KEPT_HIT, 1);
+                return false;
+            }
+        }
+        CgTrace.add(CgChannels.TEXT, PLANNED, 1);
+        boolean deferred = build(shadows, glyphs, baked, glyphCount, fontKey, effectiveTargetPx, strokeWidthTexels,
+                strokeAlign, worldText, frame);
+        if (stable && !deferred) {
+            if (k == null) {
+                k = new Kept();
+                kept.put(glyphs, k);
+            }
+            keptSlots += k.store(shadows, baked, glyphCount, fontKey, effectiveTargetPx, strokeWidthTexels, strokeAlign,
+                    worldText, evictions, scratchKinds, scratchPlacements, scratchSpread, scratchInset);
+            trimKept();
+        }
+        return deferred;
+    }
+
+    private void show(byte[] kinds, CgGlyphPlacement[] placements, float[] spreadTexels, float[] insetSigmaTexels,
+                      int glyphCount) {
+        this.kinds = kinds;
+        this.placements = placements;
+        this.spreadTexels = spreadTexels;
+        this.insetSigmaTexels = insetSigmaTexels;
+        this.glyphCount = glyphCount;
+    }
+
+    /** Drops the least recently drawn plans past {@link #MAX_KEPT_SLOTS}, never the one just kept. */
+    private void trimKept() {
+        Iterator<Kept> it = kept.values().iterator();
+        while (keptSlots > MAX_KEPT_SLOTS && kept.size() > 1 && it.hasNext()) {
+            keptSlots -= it.next().kinds.length;
+            it.remove();
+        }
+    }
+
+    private boolean build(CgTextShadowList shadows, CgGlyphPlacement[] glyphs, CgBakedGlyphs baked, int glyphCount,
+                          CgFontKey fontKey, int effectiveTargetPx, float strokeWidthTexels, float strokeAlign,
+                          boolean worldText, long frame) {
         int n = shadows.count();
         int slots = n * glyphCount;
-        if (kinds.length < slots) {
-            int capacity = Math.max(slots, kinds.length * 2);
-            kinds = new byte[capacity];
-            placements = new CgGlyphPlacement[capacity];
-            insetSigmaTexels = new float[capacity];
+        if (scratchKinds.length < slots) {
+            int capacity = Math.max(slots, scratchKinds.length * 2);
+            scratchKinds = new byte[capacity];
+            scratchPlacements = new CgGlyphPlacement[capacity];
+            scratchInset = new float[capacity];
         }
-        if (spreadTexels.length < n) spreadTexels = new float[Math.max(n, spreadTexels.length * 2)];
-        this.glyphCount = glyphCount;
+        if (scratchSpread.length < n) scratchSpread = new float[Math.max(n, scratchSpread.length * 2)];
+        byte[] kinds = scratchKinds;
+        CgGlyphPlacement[] placements = scratchPlacements;
+        float[] spreadTexels = scratchSpread;
+        float[] insetSigmaTexels = scratchInset;
+        show(kinds, placements, spreadTexels, insetSigmaTexels, glyphCount);
 
         int baseTargetPx = fontKey.getTargetPx();
         // Whether a cell can be magnified on screen: world text's raster never follows its size there, and a
@@ -233,6 +316,102 @@ final class CgTextShadowPlan {
             }
         }
         return anyDeferred;
+    }
+
+    /**
+     * One draw's plan, kept for the cached placements array it was made from, with what it was made for. Its arrays
+     * are reused when the same array plans again with other shadows.
+     */
+    private static final class Kept {
+        CgBakedGlyphs baked;
+        CgFontKey fontKey;
+        int glyphCount, effectiveTargetPx, shadowCount;
+        float strokeWidthTexels, strokeAlign;
+        boolean worldText, scoped;
+        long evictionGeneration;
+        float[] x = new float[0], y = new float[0], sigma = new float[0], spread = new float[0];
+        boolean[] inset = new boolean[0], casts = new boolean[0];
+        int[] scope = new int[0];
+        /** Each glyph's scope when a shadow is scoped, as {@link CgTextShadowList#glyphScope} answers it. */
+        int[] glyphScopes = new int[0];
+        byte[] kinds = new byte[0];
+        CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
+        float[] spreadTexels = new float[0], insetSigmaTexels = new float[0];
+
+        boolean matches(CgTextShadowList s, CgBakedGlyphs baked, int glyphCount, CgFontKey fontKey,
+                        int effectiveTargetPx, float strokeWidthTexels, float strokeAlign, boolean worldText,
+                        long evictionGeneration) {
+            if (baked != this.baked || glyphCount != this.glyphCount || effectiveTargetPx != this.effectiveTargetPx
+                    || worldText != this.worldText || evictionGeneration != this.evictionGeneration
+                    || strokeWidthTexels != this.strokeWidthTexels || strokeAlign != this.strokeAlign
+                    || s.count() != shadowCount || fontKey != this.fontKey && !fontKey.equals(this.fontKey)) {
+                return false;
+            }
+            for (int i = 0; i < shadowCount; i++) {
+                if (s.x(i) != x[i] || s.y(i) != y[i] || s.sigma(i) != sigma[i] || s.spread(i) != spread[i]
+                        || s.inset(i) != inset[i] || s.casts(i) != casts[i] || s.scopeOf(i) != scope[i]) {
+                    return false;
+                }
+            }
+            if (!scoped) return true;
+            for (int g = 0; g < glyphCount; g++) {
+                if (s.glyphScope(g) != glyphScopes[g]) return false;
+            }
+            return true;
+        }
+
+        /** Takes the plan just built and what it was built for; returns the slots its arrays grew by. */
+        int store(CgTextShadowList s, CgBakedGlyphs baked, int glyphCount, CgFontKey fontKey, int effectiveTargetPx,
+                  float strokeWidthTexels, float strokeAlign, boolean worldText, long evictionGeneration,
+                  byte[] kinds, CgGlyphPlacement[] placements, float[] spreadTexels, float[] insetSigmaTexels) {
+            this.baked = baked;
+            this.fontKey = fontKey;
+            this.glyphCount = glyphCount;
+            this.effectiveTargetPx = effectiveTargetPx;
+            this.strokeWidthTexels = strokeWidthTexels;
+            this.strokeAlign = strokeAlign;
+            this.worldText = worldText;
+            this.evictionGeneration = evictionGeneration;
+            int n = s.count();
+            shadowCount = n;
+            if (x.length < n) {
+                x = new float[n];
+                y = new float[n];
+                sigma = new float[n];
+                spread = new float[n];
+                inset = new boolean[n];
+                casts = new boolean[n];
+                scope = new int[n];
+                this.spreadTexels = new float[n];
+            }
+            scoped = false;
+            for (int i = 0; i < n; i++) {
+                x[i] = s.x(i);
+                y[i] = s.y(i);
+                sigma[i] = s.sigma(i);
+                spread[i] = s.spread(i);
+                inset[i] = s.inset(i);
+                casts[i] = s.casts(i);
+                scope[i] = s.scopeOf(i);
+                scoped |= scope[i] >= 0;
+            }
+            if (scoped) {
+                if (glyphScopes.length < glyphCount) glyphScopes = new int[glyphCount];
+                for (int g = 0; g < glyphCount; g++) glyphScopes[g] = s.glyphScope(g);
+            }
+            System.arraycopy(spreadTexels, 0, this.spreadTexels, 0, n);
+            int slots = n * glyphCount, grown = 0;
+            if (this.kinds.length < slots) {
+                grown = slots - this.kinds.length;
+                this.kinds = new byte[slots];
+                this.placements = new CgGlyphPlacement[slots];
+                this.insetSigmaTexels = new float[slots];
+            }
+            System.arraycopy(kinds, 0, this.kinds, 0, slots);
+            System.arraycopy(placements, 0, this.placements, 0, slots);
+            System.arraycopy(insetSigmaTexels, 0, this.insetSigmaTexels, 0, slots);
+            return grown;
+        }
     }
 
     byte kind(int shadow, int glyph) {
