@@ -182,6 +182,11 @@ public final class CgGlStateManager {
     private static final int ADOPT = CgTrace.name("glState.adopt");
     private static final int ADOPT_COUNT = CgTrace.name("glState.adopt.count");
     private static final int ADOPT_UNITS = CgTrace.name("glState.adopt.units");
+    private static final int OPEN = CgTrace.name("glState.open"), RESTORE = CgTrace.name("glState.restore");
+    /** A scope declaring every slot ({@link CgGlState#saveAll}), timed apart from the rest. */
+    private static final int OPEN_ALL = CgTrace.name("glState.open.all"), RESTORE_ALL = CgTrace.name("glState.restore.all");
+    private static final int SCOPES = CgTrace.name("glState.scopes"), SCOPES_ALL = CgTrace.name("glState.scopes.all");
+    private static final int ALL_SLOTS_MASK = (1 << SLOTS.length) - 1;
 
     /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
     private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
@@ -1254,6 +1259,7 @@ public final class CgGlStateManager {
                     "GL state scope nesting exceeded " + MAX_DEPTH + "; unbalanced save() somewhere");
         }
 
+        long t = CgTrace.stamp(GL);
         Frame f = frames[depth++];
         f.mask = 0;
         f.closed = false;
@@ -1285,6 +1291,10 @@ public final class CgGlStateManager {
         f.saved.copyFrom(current);
         f.savedUnits = (f.mask & TEXTURES_BIT) != 0 && !handOver ? ~unknownUnits : 0;
         if (roundTrip != null) roundTrip.opened(f);
+        boolean all = f.mask == ALL_SLOTS_MASK;
+        CgTrace.zoneDone(GL, all ? OPEN_ALL : OPEN, t);
+        CgTrace.add(GL, SCOPES, 1);
+        if (all) CgTrace.add(GL, SCOPES_ALL, 1);
         return f;
     }
 
@@ -1380,6 +1390,7 @@ public final class CgGlStateManager {
                         "GL state scopes closed out of order; use try-with-resources");
             }
             closed = true;
+            long t = CgTrace.stamp(GL);
             // Foreign code wrote GL behind CgGL's back, so the shadow is describing a world that no longer
             // exists. Dropping trust FIRST is what makes the reissue below actually reach the driver —
             // without it every restore would be deduplicated away against exactly the stale values that are
@@ -1410,6 +1421,7 @@ public final class CgGlStateManager {
             }
             if (roundTrip != null) roundTrip.closed(this);
             depth--;
+            CgTrace.zoneDone(GL, mask == ALL_SLOTS_MASK ? RESTORE_ALL : RESTORE, t);
         }
 
         @Override
