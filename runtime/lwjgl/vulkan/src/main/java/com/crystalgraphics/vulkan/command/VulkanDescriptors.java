@@ -51,8 +51,9 @@ final class VulkanDescriptors {
                 VulkanTexture t = (VulkanTexture) b.view(i).texture();
                 m.putLong(info + VkDescriptorImageInfo.SAMPLER, sampled ? ((VulkanSampler) b.sampler(i)).sampler : 0L)
                         .putLong(info + VkDescriptorImageInfo.IMAGEVIEW, t.view(device.vk(), b.view(i), false))
-                        .putInt(info + VkDescriptorImageInfo.IMAGELAYOUT,
-                                sampled ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL)
+                        // A host's image is sampled where the host keeps it.
+                        .putInt(info + VkDescriptorImageInfo.IMAGELAYOUT, !sampled ? VK_IMAGE_LAYOUT_GENERAL
+                                : t.borrowed() ? t.resting : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
                         .putLong(w + VkWriteDescriptorSet.PIMAGEINFO, infoAddress);
             } else if (type == CgBindingLayout.Type.TEXEL_BUFFER) {
                 m.putLong(info, device.texelView((VulkanBuffer) b.buffer(i), b.offset(i), b.size(i), b.texelFormat(i)))
