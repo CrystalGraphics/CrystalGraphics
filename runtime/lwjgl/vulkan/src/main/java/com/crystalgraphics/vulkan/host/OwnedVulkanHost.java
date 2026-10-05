@@ -23,6 +23,7 @@ import org.lwjgl.vulkan.VkDevice;
 import org.lwjgl.vulkan.VkDeviceCreateInfo;
 import org.lwjgl.vulkan.VkDeviceQueueCreateInfo;
 import org.lwjgl.vulkan.VkExtensionProperties;
+import org.lwjgl.vulkan.VkExtent3D;
 import org.lwjgl.vulkan.VkFenceCreateInfo;
 import org.lwjgl.vulkan.VkImageBlit;
 import org.lwjgl.vulkan.VkInstance;
@@ -801,6 +802,29 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         return families.get(family).queueCount() >= 2 ? family : -1;
     }
 
+    /** Each family's queues, what they do, their timestamp bits and image copy granularity: the census of uploads' U0. */
+    private String families(MemoryStack stack) {
+        IntBuffer n = stack.mallocInt(1);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, null);
+        VkQueueFamilyProperties.Buffer families = VkQueueFamilyProperties.malloc(n.get(0), stack);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, families);
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < families.limit(); i++) {
+            VkQueueFamilyProperties f = families.get(i);
+            int flags = f.queueFlags();
+            VkExtent3D g = f.minImageTransferGranularity();
+            if (i > 0) out.append("; ");
+            out.append(i).append(':')
+                    .append((flags & VK_QUEUE_GRAPHICS_BIT) != 0 ? " graphics" : "")
+                    .append((flags & VK_QUEUE_COMPUTE_BIT) != 0 ? " compute" : "")
+                    .append((flags & VK_QUEUE_TRANSFER_BIT) != 0 ? " transfer" : "")
+                    .append(" x").append(f.queueCount())
+                    .append(", timestamps ").append(f.timestampValidBits()).append(" bits")
+                    .append(", granularity ").append(g.width()).append('x').append(g.height()).append('x').append(g.depth());
+        }
+        return out.toString();
+    }
+
     private int drawAndPresentFamily(MemoryStack stack, VkPhysicalDevice pd) {
         IntBuffer n = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(pd, n, null);
@@ -846,6 +870,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         asyncFamily = has12.timelineSemaphore() ? chooseAsyncFamily(stack) : -1;
+        System.out.println("[crystalgraphics] vulkan queue families: " + families(stack));
         // A multi-draw's bases and gl_DrawID in a shader.
         VkPhysicalDeviceVulkan11Features v11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default()
                 .shaderDrawParameters(drawParameters).pNext(dynamic.address());

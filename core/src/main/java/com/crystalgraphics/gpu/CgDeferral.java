@@ -1,7 +1,9 @@
 package com.crystalgraphics.gpu;
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -44,6 +46,14 @@ import java.util.function.Consumer;
 public final class CgDeferral {
 
     private static final Logger LOGGER = LogManager.getLogger("CgDeferral");
+    /** Data queued from a thread that may not drive the device: each a copy into a new array, made by that thread. */
+    private static final int COPIES = CgTrace.name("deferral.copies");
+    private static final int COPY_BYTES = CgTrace.name("deferral.copy-bytes");
+    private static final int APPLY = CgTrace.name("deferral.apply");
+    /** One queued task: its own time is the GL work around the uploads and staging copies zoned inside it. */
+    private static final int TASK = CgTrace.name("deferral.task");
+    /** The render thread's copy of queued data into its staging buffer, before the work it was queued for. */
+    private static final int STAGE = CgTrace.name("deferral.stage");
 
     /** Objects with queued work, oldest first. Guarded by itself. */
     private static final Set<CgDeferral> SCHEDULED = new LinkedHashSet<>();
@@ -77,6 +87,7 @@ public final class CgDeferral {
         }
         byte[] copy = new byte[data.remaining()];
         data.duplicate().get(copy);
+        copied(copy.length);
         run(() -> work.accept(stagedBytes(copy)));
     }
 
@@ -88,6 +99,7 @@ public final class CgDeferral {
         }
         float[] copy = new float[data.remaining()];
         data.duplicate().get(copy);
+        copied(4L * copy.length);
         run(() -> work.accept(stagedFloats(copy)));
     }
 
@@ -108,7 +120,7 @@ public final class CgDeferral {
         if (!mayDrive()) return;
         Runnable next;
         while ((next = poll()) != null) {
-            try {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, TASK)) {
                 next.run();
             } catch (RuntimeException failed) {
                 LOGGER.error("deferred GPU work failed", failed);
@@ -126,21 +138,30 @@ public final class CgDeferral {
     private static FloatBuffer stagingFloats;
 
     private static ByteBuffer stagedBytes(byte[] data) {
-        if (stagingBytes == null || stagingBytes.capacity() < data.length) {
-            stagingBytes = CgBufferUtils.createByteBuffer(Math.max(data.length, 4096));
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STAGE)) {
+            if (stagingBytes == null || stagingBytes.capacity() < data.length) {
+                stagingBytes = CgBufferUtils.createByteBuffer(Math.max(data.length, 4096));
+            }
+            stagingBytes.clear();
+            stagingBytes.put(data).flip();
+            return stagingBytes;
         }
-        stagingBytes.clear();
-        stagingBytes.put(data).flip();
-        return stagingBytes;
     }
 
     private static FloatBuffer stagedFloats(float[] data) {
-        if (stagingFloats == null || stagingFloats.capacity() < data.length) {
-            stagingFloats = CgBufferUtils.createFloatBuffer(Math.max(data.length, 1024));
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STAGE)) {
+            if (stagingFloats == null || stagingFloats.capacity() < data.length) {
+                stagingFloats = CgBufferUtils.createFloatBuffer(Math.max(data.length, 1024));
+            }
+            stagingFloats.clear();
+            stagingFloats.put(data).flip();
+            return stagingFloats;
         }
-        stagingFloats.clear();
-        stagingFloats.put(data).flip();
-        return stagingFloats;
+    }
+
+    private static void copied(long bytes) {
+        CgTrace.add(CgChannels.GL, COPIES, 1);
+        CgTrace.add(CgChannels.GL, COPY_BYTES, bytes);
     }
 
     /** The thread owns the device and is not recording: the one question every deferral asks. */
@@ -166,6 +187,8 @@ public final class CgDeferral {
             work = SCHEDULED.toArray(new CgDeferral[0]);
             SCHEDULED.clear();
         }
-        for (CgDeferral deferral : work) deferral.flush();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, APPLY)) {
+            for (CgDeferral deferral : work) deferral.flush();
+        }
     }
 }
