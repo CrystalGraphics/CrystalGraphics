@@ -4,6 +4,7 @@ import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.apache.logging.log4j.LogManager;
@@ -64,6 +65,8 @@ public final class CgReadback {
     private static final int BYTES = CgTrace.name("readback.bytes");
     private static final int DELIVERED = CgTrace.name("readback.delivered");
     private static final int FRAMES = CgTrace.name("readback.frames");
+    /** The frame's queue's time copying into staging, on {@code gl.detail}: what a copy queue could take. */
+    private static final int GPU_COPY = CgGpuTrace.name("readback.copy");
 
     /** Staging kept between readbacks; one past this is deleted when its readback lands. */
     private static final int KEPT = 16;
@@ -90,12 +93,19 @@ public final class CgReadback {
     public static void buffer(int name, long offset, long size, Sink sink) {
         if (size <= 0) throw new IllegalArgumentException("a readback of " + size + " bytes");
         CgReadback r = take(size);
+        boolean gpu = gpuZone();
+        if (gpu) CgGpuTrace.begin(GPU_COPY);
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, name);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, r.buffer);
         CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, offset, 0, size);
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
+        if (gpu) CgGpuTrace.end();
         r.start(size, sink);
+    }
+
+    private static boolean gpuZone() {
+        return CgTrace.isEnabled(CgChannels.GL_DETAIL) && CgGpuTrace.isMeasuring();
     }
 
     /**
@@ -108,6 +118,8 @@ public final class CgReadback {
         int row = width * pixelBytes(type);
         long size = (long) row * height;
         CgReadback r = take(size);
+        boolean gpu = gpuZone();
+        if (gpu) CgGpuTrace.begin(GPU_COPY);
         try (CgGlScope ignored = CgGlState.save(FBO)) {
             CgGL.glBindFramebuffer(CgGL.GL_READ_FRAMEBUFFER, framebuffer);
             CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, r.buffer);
@@ -118,6 +130,8 @@ public final class CgReadback {
             // UNBOUND AT ONCE: a bound pack buffer takes every later glReadPixels in the process, a host's screenshot
             // included.
             CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
+        } finally {
+            if (gpu) CgGpuTrace.end();
         }
         r.start(size, sink);
     }
@@ -140,6 +154,8 @@ public final class CgReadback {
         int row = width * pixelBytes(type);
         long slice = (long) row * height, size = slice * depth;
         CgReadback r = take(size);
+        boolean gpu = gpuZone();
+        if (gpu) CgGpuTrace.begin(GPU_COPY);
         try (CgGlScope ignored = CgGlState.save(FBO)) {
             // Read through a framebuffer bound for reading alone: a slice of a 3D image is no draw target on a device.
             if (sliceReader == 0) sliceReader = CgGL.glGenFramebuffers();
@@ -154,6 +170,8 @@ public final class CgReadback {
             if (unaligned) CgGL.glPixelStorei(CgGL.GL_PACK_ALIGNMENT, 4);
             CgGL.glFramebufferTextureLayer(CgGL.GL_READ_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, 0, 0, 0);
             CgGL.glBindBuffer(CgGL.GL_PIXEL_PACK_BUFFER, 0);
+        } finally {
+            if (gpu) CgGpuTrace.end();
         }
         r.start(size, sink);
     }
