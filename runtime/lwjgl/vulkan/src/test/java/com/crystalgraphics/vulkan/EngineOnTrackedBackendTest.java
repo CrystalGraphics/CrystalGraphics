@@ -17,6 +17,7 @@ import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gl.texture.CgTextureCubemap;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
@@ -223,6 +224,28 @@ public class EngineOnTrackedBackendTest {
         assertNotEquals(0, made[0].getId());
         made[0].delete();
         made[1].delete();
+    }
+
+    /** A cubemap made and filled on a worker lands each face from the worker's lease, as a 2D texture does. */
+    @Test
+    public void aCubemapFilledOnAWorkerLandsFromItsLeases() throws InterruptedException {
+        CgUploads.tick();
+        ByteBuffer face = ByteBuffer.allocateDirect(16 * 16 * 4);
+        CgTextureCubemap[] made = new CgTextureCubemap[1];
+        Thread worker = new Thread(() -> {
+            made[0] = CgTextureCubemap.createEmpty(16, CgTextureSpec.RGBA8_LINEAR);
+            for (int f = 0; f < 6; f++) made[0].uploadFace(f, 0, 0, 0, 16, 16, face, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+        });
+        worker.start();
+        worker.join();
+
+        int mark = device.mark();
+        CgDeferral.applyAll();
+        List<String> landed = device.logSince(mark);
+        assertEquals(landed.toString(), 6, landed.stream().filter(c -> c.startsWith("copyBufferToTexture")).count());
+        assertNotEquals(0, made[0].getId());
+        made[0].delete();
+        CgDeferral.applyAll();
     }
 
     /** A deferred upload costs its thread a copy into a pooled lease and no allocation, once the pool is warm. */
