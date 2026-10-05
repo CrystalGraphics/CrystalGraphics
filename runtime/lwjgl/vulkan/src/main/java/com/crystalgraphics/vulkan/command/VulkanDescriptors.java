@@ -30,6 +30,13 @@ final class VulkanDescriptors {
     static void push(CgVulkanDevice device, VkCommandBuffer cmd, int bindPoint, long pipelineLayout, CgBindings b) {
         int n = b.count();
         if (n == 0) return;
+        // Before the scratch is taken: laying an image records a barrier, which fills the scratch too.
+        for (int i = 0; i < n; i++) {
+            CgBindingLayout.Type type = b.type(i);
+            if (type != CgBindingLayout.Type.SAMPLED_TEXTURE && type != CgBindingLayout.Type.STORAGE_IMAGE) continue;
+            VulkanTexture t = (VulkanTexture) b.view(i).texture();
+            if (t.unlaid || t.transferOnly) device.lay(t);
+        }
         VulkanScratch s = VulkanScratch.get(n * (WRITE + INFO));
         ByteBuffer m = s.bytes;
         for (int i = 0; i < n; i++) {

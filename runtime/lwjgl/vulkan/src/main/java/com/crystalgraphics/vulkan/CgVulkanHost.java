@@ -136,4 +136,25 @@ public interface CgVulkanHost {
 
     /** What is recorded from here runs after the async work up to {@code point}. */
     void waitAsync(long point);
+
+    /**
+     * Whether copies into an image no frame has used yet may run on a transfer queue of their own
+     * ({@link #transferCommandBuffer}), beside the frame's queue.
+     */
+    boolean asyncTransfer();
+
+    /** That queue's family, else -1: buffers and images are then shared with it too. */
+    int transferFamily();
+
+    /** Where copies for the transfer queue are recorded, begun when first asked for since the last {@link #submitTransfers}. */
+    VkCommandBuffer transferCommandBuffer();
+
+    /**
+     * Submits what was recorded into {@link #transferCommandBuffer} since the last call, at once: the point
+     * {@link #waitTransfers} waits for, the last one again when nothing was recorded.
+     */
+    long submitTransfers();
+
+    /** What is recorded from here runs after the transfers up to {@code point}. Outside a pass. */
+    void waitTransfers(long point);
 }

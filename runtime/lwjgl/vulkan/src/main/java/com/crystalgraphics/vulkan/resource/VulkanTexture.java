@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
+import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.vulkan.VkCommandBuffer;
@@ -21,7 +22,9 @@ import static org.lwjgl.vulkan.VK10.*;
 
 /**
  * A {@code VkImage} with its layout per mip and layer, and its views cached by range. Outside a pass and a transfer,
- * every subresource of a sampled texture rests in {@code SHADER_READ_ONLY_OPTIMAL}, so a pass samples it as found.
+ * every subresource of a sampled texture rests in {@code SHADER_READ_ONLY_OPTIMAL}, so a pass samples it as found;
+ * on a device with a transfer queue, a subresource nothing has touched yet stays {@code UNDEFINED} until the image is
+ * first sampled ({@link #unlaid}).
  */
 public final class VulkanTexture implements CgGpuTexture {
 
@@ -33,6 +36,14 @@ public final class VulkanTexture implements CgGpuTexture {
     public final int layers;
     /** Where a subresource returns after a transfer or a pass. */
     public final int resting;
+    /** Whether a subresource may still be in {@code UNDEFINED}: its first layout is recorded at its first sampling. */
+    public boolean unlaid;
+    /** Whether only the transfer queue has used the image, so a copy into it may run there too. */
+    public boolean transferOnly;
+    /** The transfer batch its last copy there was recorded in: work on the frame's queue touching it waits for it. */
+    public long transferBatch;
+    /** Whether its mipmaps are owed once that batch lands. */
+    public boolean mipmapsOwed;
     private final int[] layouts;
     private final Map<Long, Long> views = new HashMap<>();
 
@@ -93,23 +104,63 @@ public final class VulkanTexture implements CgGpuTexture {
      */
     public int transition(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout,
                    int dstStage, int dstAccess) {
+        return transition(cmd, baseMip, mips, baseLayer, count, layout, 0, 0, dstStage, dstAccess);
+    }
+
+    /**
+     * {@link #transition(VkCommandBuffer, int, int, int, int, int, int, int)}, waiting on {@code srcStage} and
+     * {@code srcAccess} too: what a queue whose barriers drop the stages a layout's last use implies must name.
+     */
+    public int transition(VkCommandBuffer cmd, int baseMip, int mips, int baseLayer, int count, int layout,
+                          int srcStage, int srcAccess, int dstStage, int dstAccess) {
         requireUsableOn(cmd);
-        return move(cmd, baseMip, mips, baseLayer, count, layout, 0, 0, dstStage, dstAccess, false);
+        return move(cmd, baseMip, mips, baseLayer, count, layout, srcStage, srcAccess, dstStage, dstAccess, false);
     }
 
     /**
      * Refuses a host's image in a command buffer for another queue family: the host made it for its own family
-     * alone, and another family reads undefined contents from it.
+     * alone, and another family reads undefined contents from it. Any use but the transfer queue's ends
+     * {@link #transferOnly}.
      */
     public void requireUsableOn(VkCommandBuffer cmd) {
-        if (borrowed() && cmd instanceof VulkanComputeCommandBuffer) {
-            throw new IllegalStateException(desc.label() + " is the host's image: an async pass on another queue "
-                    + "family cannot use it");
+        boolean transfer = cmd instanceof VulkanTransferCommandBuffer;
+        if (borrowed() && (transfer || cmd instanceof VulkanComputeCommandBuffer)) {
+            throw new IllegalStateException(desc.label() + " is the host's image: a queue of another family cannot "
+                    + "use it");
         }
+        if (!transfer) transferOnly = false;
     }
 
     public int transitionAll(VkCommandBuffer cmd, int layout, int dstStage, int dstAccess) {
         return transition(cmd, 0, desc.mips(), 0, layers, layout, dstStage, dstAccess);
+    }
+
+    /**
+     * Moves every subresource nothing has used yet, still {@code UNDEFINED}, to {@code layout}, and leaves the rest
+     * where they are: one in a pass open now is that pass's to return.
+     *
+     * @return barriers recorded
+     */
+    public int layUndefined(VkCommandBuffer cmd, int layout, int dstStage, int dstAccess) {
+        requireUsableOn(cmd);
+        int barriers = 0;
+        for (int mip = 0; mip < desc.mips(); mip++) {
+            int layer = 0;
+            while (layer < layers) {
+                if (layout(mip, layer) != VK_IMAGE_LAYOUT_UNDEFINED) {
+                    layer++;
+                    continue;
+                }
+                int end = layer + 1;
+                while (end < layers && layout(mip, end) == VK_IMAGE_LAYOUT_UNDEFINED) end++;
+                VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, VK_IMAGE_LAYOUT_UNDEFINED, layout,
+                        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0, dstStage, dstAccess);
+                barriers++;
+                for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
+                layer = end;
+            }
+        }
+        return barriers;
     }
 
     /**

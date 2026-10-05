@@ -148,6 +148,15 @@ public final class Blaze3dVulkanHost
 
     @Override protected int computeQueueFamily() { return minecraft.computeQueue().queueFamilyIndex(); }
 
+    // Minecraft's transfer queue where it is a queue of its own rather than its graphics queue again.
+    @Override
+    protected VkQueue transferQueue() {
+        return TRANSFER_QUEUE_UNUSED && minecraft.transferQueue() != minecraft.graphicsQueue()
+                ? minecraft.transferQueue().vkQueue() : null;
+    }
+
+    @Override protected int transferQueueFamily() { return minecraft.transferQueue().queueFamilyIndex(); }
+
     @Override
     protected void waitInSubmit(long semaphore, long value) {
         encoder.waitSemaphore(semaphore, value, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
@@ -182,11 +191,13 @@ public final class Blaze3dVulkanHost
     @Override public boolean bresenhamLines() { return false; }
     *///?}
 
-    // Minecraft creates a compute queue it never submits to: in 26.2 and 26.3 no class but VulkanDevice and
-    // VulkanPhysicalDevice names it. A version not yet checked records async compute in order.
+    // Minecraft creates a compute queue and a transfer queue it never submits to: in 26.2 and 26.3 no class but
+    // VulkanDevice and VulkanPhysicalDevice names them. A version not yet checked records both kinds of work in order.
     //? if >=26.2 <=26.3 {
     /*private static final boolean COMPUTE_QUEUE_UNUSED = true;
+    private static final boolean TRANSFER_QUEUE_UNUSED = true;
     *///?} else {
     private static final boolean COMPUTE_QUEUE_UNUSED = false;
+    private static final boolean TRANSFER_QUEUE_UNUSED = false;
     //?}
 }

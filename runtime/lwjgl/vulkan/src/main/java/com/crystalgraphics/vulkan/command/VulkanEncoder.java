@@ -33,6 +33,8 @@ import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.vulkan.KHRDynamicRendering.VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR;
@@ -44,6 +46,11 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
 /**
  * The frame's commands outside a pass. Every transfer is fenced by a global barrier on each side and leaves each
  * texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5).
+ *
+ * <p>Where the host has a transfer queue, a copy into an image only that queue has used is recorded there instead
+ * (plan/crystalgraphics/render-async-uploads.md §4c). The batch is submitted, and the frame's queue made to wait for
+ * it, at the first work on the frame's queue that touches such an image, at the next pass, or at the frame's end;
+ * mipmaps asked of one meanwhile are generated then.</p>
  */
 public final class VulkanEncoder implements CgCommandEncoder {
 
@@ -52,6 +59,11 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private final CgVulkanDevice device;
     private VulkanPass open;
     private VulkanComputePass openCompute;
+    private boolean inAsync;
+    /** The transfer batch being recorded, and whether anything has been. */
+    private long batch = 1;
+    private boolean transfersRecorded;
+    private final List<VulkanTexture> mipmapsOwed = new ArrayList<>();
 
     public VulkanEncoder(CgVulkanDevice device) {
         this.device = device;
@@ -74,12 +86,43 @@ public final class VulkanEncoder implements CgCommandEncoder {
         if (open != null) throw new IllegalStateException(what + " inside a pass");
     }
 
+    // ── the transfer queue ─────────────────────────────────────────────────────
+
+    /** Before work on the frame's queue touches {@code t}: its copies still being recorded on the transfer queue land first. */
+    private void use(VulkanTexture t) {
+        if (transfersRecorded && t.transferBatch == batch) syncTransfers();
+    }
+
+    /**
+     * Submits the copies recorded on the transfer queue, makes what the frame's queue records from here wait for
+     * them, then generates the mipmaps owed meanwhile. Outside a pass; nothing when none were recorded.
+     */
+    public void syncTransfers() {
+        if (!transfersRecorded) return;
+        transfersRecorded = false;
+        batch++;
+        device.host().waitTransfers(device.host().submitTransfers());
+        for (int i = 0; i < mipmapsOwed.size(); i++) {
+            VulkanTexture t = mipmapsOwed.get(i);
+            t.mipmapsOwed = false;
+            mipmaps(t);
+        }
+        mipmapsOwed.clear();
+    }
+
+    /** Whether a copy into {@code t} goes on the transfer queue: one only it has used, a colour image, outside async work. */
+    private boolean viaTransfer(VulkanTexture t, long srcOffset) {
+        return t.transferOnly && !inAsync && openCompute == null && (srcOffset & 3) == 0
+                && copyAspect(t) == VK_IMAGE_ASPECT_COLOR_BIT && device.host().asyncTransfer();
+    }
+
     // ── passes ─────────────────────────────────────────────────────────────────
 
     @Override
     public CgComputePass beginCompute(String label) {
         outsidePass("beginCompute");
         if (openCompute != null) throw new IllegalStateException("beginCompute inside a compute pass");
+        syncTransfers();
         openCompute = new VulkanComputePass(device, this);
         return openCompute;
     }
@@ -95,6 +138,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public void imageBarrier(CgGpuTexture texture, int from, int to) {
         outsidePass("imageBarrier");
+        use((VulkanTexture) texture);
         device.barriers += ((VulkanTexture) texture).barrier(cmd(), VulkanAccess.layout(to), VulkanAccess.stage(from),
                 VulkanAccess.access(from), VulkanAccess.stage(to), VulkanAccess.access(to));
     }
@@ -111,6 +155,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public CgRenderPass beginPass(CgPassDesc desc) {
         outsidePass("beginPass");
         if (openCompute != null) throw new IllegalStateException("beginPass inside a compute pass");
+        syncTransfers();
         VkCommandBuffer cmd = cmd();
         for (CgPassDesc.Color c : desc.colors()) {
             toAttachment(cmd, c.view(), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
@@ -287,34 +332,50 @@ public final class VulkanEncoder implements CgCommandEncoder {
         VulkanTexture t = (VulkanTexture) dst;
         VulkanStaging.Region r = device.staging().take(data.remaining(), Math.max(16, t.desc().format().bytes()));
         r.bytes().put(data.duplicate());
-        int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
-        VkCommandBuffer cmd = cmd();
-        before(cmd);
-        to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-        try (MemoryStack stack = stackPush()) {
-            VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack).bufferOffset(r.offset());
-            region(c.get(0), t, region, layer, layers);
-            vkCmdCopyBufferToImage(cmd, r.buffer().buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
-        }
-        rest(cmd, t, region.mip(), 1, layer, layers);
-        after(cmd);
+        copyIn(r.buffer(), r.offset(), t, region);
     }
 
     @Override
     public void copyBufferToTexture(CgGpuBuffer src, long srcOffset, CgGpuTexture dst, CgTextureRegion region) {
         outsidePass("copyBufferToTexture");
-        VulkanTexture t = (VulkanTexture) dst;
+        copyIn((VulkanBuffer) src, srcOffset, (VulkanTexture) dst, region);
+    }
+
+    /**
+     * A buffer's bytes into a region of {@code t}. On the transfer queue the barriers name the transfer stage
+     * themselves: a layout's usual last use is a stage that queue does not have, and two copies into one image
+     * there must still be ordered.
+     */
+    private void copyIn(VulkanBuffer src, long srcOffset, VulkanTexture t, CgTextureRegion region) {
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
-        VkCommandBuffer cmd = cmd();
-        before(cmd);
-        to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        boolean transfer = viaTransfer(t, srcOffset);
+        VkCommandBuffer cmd;
+        if (transfer) {
+            cmd = device.host().transferCommandBuffer();
+            device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_ACCESS_TRANSFER_WRITE_BIT);
+        } else {
+            use(t);
+            cmd = cmd();
+            before(cmd);
+            to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        }
         try (MemoryStack stack = stackPush()) {
             VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack).bufferOffset(srcOffset);
             region(c.get(0), t, region, layer, layers);
-            vkCmdCopyBufferToImage(cmd, ((VulkanBuffer) src).buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
+            vkCmdCopyBufferToImage(cmd, src.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
         }
-        rest(cmd, t, region.mip(), 1, layer, layers);
-        after(cmd);
+        if (transfer) {
+            device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, t.resting,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0);
+            t.transferBatch = batch;
+            transfersRecorded = true;
+            device.transferCopies++;
+        } else {
+            rest(cmd, t, region.mip(), 1, layer, layers);
+            after(cmd);
+        }
     }
 
     private static void region(VkBufferImageCopy c, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
@@ -327,6 +388,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void copyTexture(CgGpuTexture src, CgTextureRegion sr, CgGpuTexture dst, CgTextureRegion dr) {
         outsidePass("copyTexture");
         VulkanTexture s = (VulkanTexture) src, d = (VulkanTexture) dst;
+        use(s);
+        use(d);
         int sl = volume(s) ? 0 : sr.z(), dl = volume(d) ? 0 : dr.z(), layers = volume(s) ? 1 : sr.depth();
         VkCommandBuffer cmd = cmd();
         before(cmd);
@@ -352,6 +415,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
                      CgTextureView dst, int dx0, int dy0, int dx1, int dy1, CgGpuSampler.Filter filter) {
         outsidePass("blit");
         VulkanTexture s = (VulkanTexture) src.texture(), d = (VulkanTexture) dst.texture();
+        use(s);
+        use(d);
         boolean copy = s.format == d.format && sx1 - sx0 == dx1 - dx0 && sy1 - sy0 == dy1 - dy0
                 && sx1 > sx0 && sy1 > sy0;
         if ((s.aspect & VK_IMAGE_ASPECT_COLOR_BIT) == 0 && s.format != d.format) {
@@ -439,6 +504,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void resolve(CgTextureView src, CgTextureView dst) {
         outsidePass("resolve");
         VulkanTexture s = (VulkanTexture) src.texture(), d = (VulkanTexture) dst.texture();
+        use(s);
+        use(d);
         VkCommandBuffer cmd = cmd();
         before(cmd);
         to(cmd, s, src.baseMip(), 1, src.baseLayer(), 1, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -455,10 +522,26 @@ public final class VulkanEncoder implements CgCommandEncoder {
         after(cmd);
     }
 
+    /**
+     * For an image whose copies are still being recorded on the transfer queue, once they land: so a burst of uploads
+     * waits once rather than once per image. It is the frame's queue's from now, so later copies follow in order.
+     */
     @Override
     public void generateMipmaps(CgGpuTexture texture) {
         outsidePass("generateMipmaps");
         VulkanTexture t = (VulkanTexture) texture;
+        if (transfersRecorded && t.transferBatch == batch) {
+            t.transferOnly = false;
+            if (!t.mipmapsOwed) {
+                t.mipmapsOwed = true;
+                mipmapsOwed.add(t);
+            }
+            return;
+        }
+        mipmaps(t);
+    }
+
+    private void mipmaps(VulkanTexture t) {
         VkCommandBuffer cmd = cmd();
         before(cmd);
         int w = t.desc().width(), h = t.desc().height(), z = volume(t) ? t.desc().depthOrLayers() : 1;
@@ -509,6 +592,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public void finish() {
         outsidePass("finish");
+        syncTransfers();
         device.host().submitAndWait();
     }
 
@@ -516,12 +600,15 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void beginAsync() {
         outsidePass("beginAsync");
         if (openCompute != null) throw new IllegalStateException("beginAsync inside a compute pass");
+        syncTransfers();
         device.host().beginAsync();
+        inAsync = true;
     }
 
     @Override
     public long endAsync() {
         if (openCompute != null) throw new IllegalStateException("endAsync inside a compute pass");
+        inAsync = false;
         return device.host().endAsync();
     }
 
@@ -533,6 +620,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     }
 
     private void copyOut(VulkanTexture t, CgTextureRegion region, VulkanBuffer dst, long dstOffset) {
+        use(t);
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
         VkCommandBuffer cmd = cmd();
         before(cmd);

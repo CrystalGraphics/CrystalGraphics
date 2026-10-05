@@ -5,6 +5,7 @@ import com.crystalgraphics.vulkan.CgVulkanHost;
 import com.crystalgraphics.vulkan.CgVulkanImage;
 import com.crystalgraphics.vulkan.command.VulkanBarriers;
 import com.crystalgraphics.vulkan.command.VulkanComputeCommandBuffer;
+import com.crystalgraphics.vulkan.command.VulkanTransferCommandBuffer;
 import com.crystalgraphics.vulkan.format.VulkanCheck;
 import org.lwjgl.PointerBuffer;
 import org.lwjgl.glfw.GLFW;
@@ -101,6 +102,10 @@ import static org.lwjgl.vulkan.VK12.VK_SEMAPHORE_TYPE_TIMELINE;
  *       ({@code -Dcrystalgraphics.vulkan.asyncCompute=false|graphics}). A frame is recorded as segments, split where
  *       async work begins, ends or is waited for, each on its queue and ordered by two timeline semaphores; all are
  *       submitted in order when the frame ends, its fence after every async segment.</li>
+ *   <li>Copies into images only the transfer queue has used run on a family that only copies, where the device has
+ *       one with a texel's granularity ({@code -Dcrystalgraphics.vulkan.transfer=false} turns it off). Each batch is
+ *       submitted when the device asks, signalling a third timeline; the segment after it waits for it, and the
+ *       frame's fence comes after every batch.</li>
  *   <li>Close the device before the host, and the host before the window.</li>
  * </ul>
  */
@@ -127,17 +132,23 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     /** What each queue signals and the other waits on, counting up over the device's life. */
     private long mainTimeline, asyncTimeline;
     private long mainValue, asyncValue, asyncWaited;
+    /** The transfer queue and its family, null and -1 where there is none; its timeline and the batch being recorded. */
+    private final VkQueue transferQueue;
+    private int transferFamily = -1;
+    private long transferTimeline, transferValue, transferWaited;
+    private VkCommandBuffer transferCurrent;
 
-    private final long[] pools = new long[FRAMES], asyncPools = new long[FRAMES];
+    private final long[] pools = new long[FRAMES], asyncPools = new long[FRAMES], transferPools = new long[FRAMES];
     /** Per slot and queue, every command buffer a frame has recorded into; reused once the slot's pools reset. */
     @SuppressWarnings("unchecked")
-    private final List<VkCommandBuffer>[] buffers = new List[FRAMES], asyncBuffers = new List[FRAMES];
-    private final int[] used = new int[FRAMES], asyncUsed = new int[FRAMES];
+    private final List<VkCommandBuffer>[] buffers = new List[FRAMES], asyncBuffers = new List[FRAMES],
+            transferBuffers = new List[FRAMES];
+    private final int[] used = new int[FRAMES], asyncUsed = new int[FRAMES], transferUsed = new int[FRAMES];
     private final VkCommandBuffer[] setups = new VkCommandBuffer[FRAMES];
     /** Where commands go now, and the frame's segments before it. */
     private VkCommandBuffer current;
     private boolean recordingAsync;
-    private long currentWaitMain, currentWaitAsync;
+    private long currentWaitMain, currentWaitAsync, currentWaitTransfer;
     private final List<Segment> segments = new ArrayList<>();
     private int segmentCount;
     private boolean setupOpen;
@@ -184,6 +195,14 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                 asyncTimeline = timeline(stack);
             } else {
                 asyncQueue = null;
+            }
+            if (transferFamily >= 0) {
+                vkGetDeviceQueue(device, transferFamily, 0, pp);
+                transferQueue = new VkQueue(pp.get(0), device);
+                transferTimeline = timeline(stack);
+                System.out.println("[crystalgraphics] vulkan copies into new images run on transfer family " + transferFamily);
+            } else {
+                transferQueue = null;
             }
             createFrames(stack);
         }
@@ -253,6 +272,56 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         asyncWaited = point;
     }
 
+    @Override public boolean asyncTransfer() { return transferQueue != null; }
+
+    @Override public int transferFamily() { return transferFamily; }
+
+    @Override
+    public VkCommandBuffer transferCommandBuffer() {
+        if (transferQueue == null) throw new IllegalStateException("This device has no transfer queue");
+        if (transferCurrent == null) {
+            int s = slot();
+            List<VkCommandBuffer> list = transferBuffers[s];
+            if (transferUsed[s] == list.size()) {
+                try (MemoryStack stack = stackPush()) {
+                    PointerBuffer pp = stack.mallocPointer(1);
+                    check(vkAllocateCommandBuffers(device, VkCommandBufferAllocateInfo.calloc(stack).sType$Default()
+                            .commandPool(transferPools[s]).level(VK_COMMAND_BUFFER_LEVEL_PRIMARY)
+                            .commandBufferCount(1), pp), "vkAllocateCommandBuffers");
+                    list.add(new VulkanTransferCommandBuffer(pp.get(0), device));
+                }
+            }
+            transferCurrent = list.get(transferUsed[s]++);
+            begin(transferCurrent);
+        }
+        return transferCurrent;
+    }
+
+    @Override
+    public long submitTransfers() {
+        if (transferCurrent == null) return transferValue;
+        check(vkEndCommandBuffer(transferCurrent), "vkEndCommandBuffer");
+        try (MemoryStack stack = stackPush()) {
+            VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default()
+                    .pCommandBuffers(stack.pointers(transferCurrent)).pSignalSemaphores(stack.longs(transferTimeline))
+                    .pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
+                            .signalSemaphoreValueCount(1).pSignalSemaphoreValues(stack.longs(++transferValue)).address());
+            check(vkQueueSubmit(transferQueue, submit, VK_NULL_HANDLE), "vkQueueSubmit");
+        }
+        transferCurrent = null;
+        return transferValue;
+    }
+
+    @Override
+    public void waitTransfers(long point) {
+        if (transferQueue == null || point <= transferWaited) return;
+        if (recordingAsync) throw new IllegalStateException("waitTransfers inside async work");
+        endSegment(0, 0);
+        beginSegment(false, 0, 0);
+        currentWaitTransfer = point;
+        transferWaited = point;
+    }
+
     @Override
     public void whenFrameRetired(long f, Runnable action) {
         if (f <= retired) action.run();
@@ -314,11 +383,13 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             vkDestroySemaphore(device, acquired[i], null);
             vkDestroyCommandPool(device, pools[i], null);
             if (asyncQueue != null) vkDestroyCommandPool(device, asyncPools[i], null);
+            if (transferQueue != null) vkDestroyCommandPool(device, transferPools[i], null);
         }
         if (asyncQueue != null) {
             vkDestroySemaphore(device, mainTimeline, null);
             vkDestroySemaphore(device, asyncTimeline, null);
         }
+        if (transferQueue != null) vkDestroySemaphore(device, transferTimeline, null);
         vkDestroyDevice(device, null);
         vkDestroySurfaceKHR(instance, surface, null);
         if (messenger != VK_NULL_HANDLE) vkDestroyDebugUtilsMessengerEXT(instance, messenger, null);
@@ -350,13 +421,17 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             check(vkResetCommandPool(device, asyncPools[s], 0), "vkResetCommandPool");
             asyncUsed[s] = 0;
         }
+        if (transferQueue != null) {
+            check(vkResetCommandPool(device, transferPools[s], 0), "vkResetCommandPool");
+            transferUsed[s] = 0;
+        }
     }
 
     /** A stretch of the frame on one queue, with the timeline values it waits for and signals; 0 for none. */
     private static final class Segment {
         VkCommandBuffer cmd;
         boolean async;
-        long waitMain, waitAsync, signalMain, signalAsync;
+        long waitMain, waitAsync, waitTransfer, signalMain, signalAsync;
     }
 
     private void beginSegment(boolean async, long waitMain, long waitAsync) {
@@ -365,6 +440,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         recordingAsync = async;
         currentWaitMain = waitMain;
         currentWaitAsync = waitAsync;
+        currentWaitTransfer = 0;
     }
 
     private void endSegment(long signalMain, long signalAsync) {
@@ -375,6 +451,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         g.async = recordingAsync;
         g.waitMain = currentWaitMain;
         g.waitAsync = currentWaitAsync;
+        g.waitTransfer = currentWaitTransfer;
         g.signalMain = signalMain;
         g.signalAsync = signalAsync;
     }
@@ -400,22 +477,27 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     /**
      * Ends the current segment and submits the frame's, each to its queue in the order recorded: the setup buffer
      * with the first, the swapchain's semaphores on the last when {@code image} is one. The fence goes after every
-     * async segment, so retiring the frame retires their resources too.
+     * async segment and transfer batch, so retiring the frame retires their resources too.
      */
     private void submitSegments(int image) {
         endSegment(0, 0);
+        submitTransfers();
         int s = slot();
-        boolean joinAsync = asyncValue > asyncWaited;
+        boolean joinAsync = asyncValue > asyncWaited, joinTransfer = transferValue > transferWaited;
+        boolean timelines = asyncQueue != null || transferQueue != null;
         try (MemoryStack stack = stackPush()) {
             for (int i = 0; i < segmentCount; i++) {
                 Segment g = segments.get(i);
                 boolean last = i == segmentCount - 1;
                 boolean present = last && image >= 0;
-                LongBuffer waitOn = stack.mallocLong(3), waitValues = stack.mallocLong(3);
-                IntBuffer stages = stack.mallocInt(3);
+                LongBuffer waitOn = stack.mallocLong(4), waitValues = stack.mallocLong(4);
+                IntBuffer stages = stack.mallocInt(4);
                 LongBuffer signal = stack.mallocLong(3), signalValues = stack.mallocLong(3);
                 if (g.waitMain > 0) wait(waitOn, waitValues, stages, mainTimeline, g.waitMain, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
                 if (g.waitAsync > 0) wait(waitOn, waitValues, stages, asyncTimeline, g.waitAsync, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                if (g.waitTransfer > 0) {
+                    wait(waitOn, waitValues, stages, transferTimeline, g.waitTransfer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                }
                 if (present) wait(waitOn, waitValues, stages, acquired[s], 0L, VK_PIPELINE_STAGE_TRANSFER_BIT);
                 if (g.signalMain > 0) signal(signal, signalValues, mainTimeline, g.signalMain);
                 if (g.signalAsync > 0) signal(signal, signalValues, asyncTimeline, g.signalAsync);
@@ -430,23 +512,32 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                         .pCommandBuffers(i == 0 ? commands(stack, s, g.cmd) : stack.pointers(g.cmd))
                         .waitSemaphoreCount(waitOn.remaining()).pWaitSemaphores(waitOn).pWaitDstStageMask(stages)
                         .pSignalSemaphores(signal);
-                if (asyncQueue != null) {
+                if (timelines) {
                     submit.pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
                             .waitSemaphoreValueCount(waitValues.remaining()).pWaitSemaphoreValues(waitValues)
                             .signalSemaphoreValueCount(signalValues.remaining()).pSignalSemaphoreValues(signalValues)
                             .address());
                 }
-                long fence = last && !joinAsync ? fences[s] : VK_NULL_HANDLE;
+                long fence = last && !joinAsync && !joinTransfer ? fences[s] : VK_NULL_HANDLE;
                 check(vkQueueSubmit(g.async ? asyncQueue : queue, submit, fence), "vkQueueSubmit");
             }
-            if (joinAsync) {
-                VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default().waitSemaphoreCount(1)
-                        .pWaitSemaphores(stack.longs(asyncTimeline))
-                        .pWaitDstStageMask(stack.ints(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT))
+            if (joinAsync || joinTransfer) {
+                LongBuffer waitOn = stack.mallocLong(2), waitValues = stack.mallocLong(2);
+                IntBuffer stages = stack.mallocInt(2);
+                if (joinAsync) wait(waitOn, waitValues, stages, asyncTimeline, asyncValue, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                if (joinTransfer) {
+                    wait(waitOn, waitValues, stages, transferTimeline, transferValue, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+                }
+                waitOn.flip();
+                waitValues.flip();
+                stages.flip();
+                VkSubmitInfo submit = VkSubmitInfo.calloc(stack).sType$Default().waitSemaphoreCount(waitOn.remaining())
+                        .pWaitSemaphores(waitOn).pWaitDstStageMask(stages)
                         .pNext(VkTimelineSemaphoreSubmitInfo.calloc(stack).sType$Default()
-                                .waitSemaphoreValueCount(1).pWaitSemaphoreValues(stack.longs(asyncValue)).address());
+                                .waitSemaphoreValueCount(waitValues.remaining()).pWaitSemaphoreValues(waitValues).address());
                 check(vkQueueSubmit(queue, submit, fences[s]), "vkQueueSubmit");
                 asyncWaited = asyncValue;
+                transferWaited = transferValue;
             }
         }
         segmentCount = 0;
@@ -504,6 +595,13 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
                         "vkCreateCommandPool");
                 asyncPools[i] = lp.get(0);
                 asyncBuffers[i] = new ArrayList<>();
+            }
+            if (transferQueue != null) {
+                check(vkCreateCommandPool(device, VkCommandPoolCreateInfo.calloc(stack).sType$Default()
+                        .flags(VK_COMMAND_POOL_CREATE_TRANSIENT_BIT).queueFamilyIndex(transferFamily), null, lp),
+                        "vkCreateCommandPool");
+                transferPools[i] = lp.get(0);
+                transferBuffers[i] = new ArrayList<>();
             }
             check(vkCreateFence(device, VkFenceCreateInfo.calloc(stack).sType$Default(), null, lp), "vkCreateFence");
             fences[i] = lp.get(0);
@@ -802,6 +900,29 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         return families.get(family).queueCount() >= 2 ? family : -1;
     }
 
+    /**
+     * Where copies into new images run: a family that copies and neither draws nor computes (the GPU's copy engine),
+     * at a texel's granularity so any region may be copied there, else nowhere (-1).
+     * {@code -Dcrystalgraphics.vulkan.transfer=false} turns it off.
+     */
+    private int chooseTransferFamily(MemoryStack stack) {
+        if ("false".equals(System.getProperty("crystalgraphics.vulkan.transfer"))) return -1;
+        IntBuffer n = stack.mallocInt(1);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, null);
+        VkQueueFamilyProperties.Buffer families = VkQueueFamilyProperties.malloc(n.get(0), stack);
+        vkGetPhysicalDeviceQueueFamilyProperties(physical, n, families);
+        for (int i = 0; i < families.limit(); i++) {
+            VkQueueFamilyProperties f = families.get(i);
+            int flags = f.queueFlags();
+            VkExtent3D g = f.minImageTransferGranularity();
+            if ((flags & VK_QUEUE_TRANSFER_BIT) != 0 && (flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0
+                    && g.width() == 1 && g.height() == 1 && g.depth() == 1) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     /** Each family's queues, what they do, their timestamp bits and image copy granularity: the census of uploads' U0. */
     private String families(MemoryStack stack) {
         IntBuffer n = stack.mallocInt(1);
@@ -870,12 +991,14 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic = VkPhysicalDeviceDynamicRenderingFeaturesKHR.calloc(stack)
                 .sType$Default().dynamicRendering(true).pNext(bresenhamLines ? lineModes.address() : 0L);
         asyncFamily = has12.timelineSemaphore() ? chooseAsyncFamily(stack) : -1;
+        transferFamily = has12.timelineSemaphore() ? chooseTransferFamily(stack) : -1;
         System.out.println("[crystalgraphics] vulkan queue families: " + families(stack));
         // A multi-draw's bases and gl_DrawID in a shader.
         VkPhysicalDeviceVulkan11Features v11 = VkPhysicalDeviceVulkan11Features.calloc(stack).sType$Default()
                 .shaderDrawParameters(drawParameters).pNext(dynamic.address());
         VkPhysicalDeviceVulkan12Features v12 = VkPhysicalDeviceVulkan12Features.calloc(stack).sType$Default()
-                .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount).timelineSemaphore(asyncFamily >= 0)
+                .hostQueryReset(has12.hostQueryReset()).drawIndirectCount(indirectCount)
+                .timelineSemaphore(asyncFamily >= 0 || transferFamily >= 0)
                 .pNext(v11.address());
 
         List<String> names = new ArrayList<>(List.of(VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -888,10 +1011,14 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         ext.flip();
 
         boolean second = asyncFamily >= 0 && asyncFamily != family;
-        VkDeviceQueueCreateInfo.Buffer queues = VkDeviceQueueCreateInfo.calloc(second ? 2 : 1, stack);
+        int count = 1 + (second ? 1 : 0) + (transferFamily >= 0 ? 1 : 0);
+        VkDeviceQueueCreateInfo.Buffer queues = VkDeviceQueueCreateInfo.calloc(count, stack);
         queues.get(0).sType$Default().queueFamilyIndex(family)
                 .pQueuePriorities(asyncFamily == family ? stack.floats(1f, 1f) : stack.floats(1f));
         if (second) queues.get(1).sType$Default().queueFamilyIndex(asyncFamily).pQueuePriorities(stack.floats(1f));
+        if (transferFamily >= 0) {
+            queues.get(count - 1).sType$Default().queueFamilyIndex(transferFamily).pQueuePriorities(stack.floats(1f));
+        }
         VkDeviceCreateInfo ci = VkDeviceCreateInfo.calloc(stack).sType$Default().pNext(v12.address())
                 .pQueueCreateInfos(queues).ppEnabledExtensionNames(ext).pEnabledFeatures(enable);
         PointerBuffer pp = stack.mallocPointer(1);
