@@ -217,6 +217,9 @@ tex.bind(0);   // bind to texture unit 0
 tex.delete();
 ```
 
+Every texture type is made, filled and deleted from any thread, and takes its bytes from an upload lease a worker
+wrote (§ *Async*).
+
 `CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 
 **Package guides**: `api/texture/CLAUDE.md` · `gl/texture/CLAUDE.md`
@@ -303,11 +306,157 @@ until the next upload however many frames later — orphaning storage at offset 
 that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
 quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
 (copied in at a frame's first material bind) and the text block. A TBO takes `RETAINED`'s storage whatever is
-asked. `gl/buffer/CLAUDE.md` has the tiers.
+asked. `gl/buffer/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
 
 Do NOT attach the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) — declared in `cg_env.glsl`, wired automatically. Duplicate declarations cause compile failure.
 
 **Package guides**: `api/buffer/CLAUDE.md` · `gl/buffer/shader/CLAUDE.md`
+
+## Async: off the render thread, and beside the frame
+
+Two kinds, independent of each other:
+
+- **Off the render thread**: the CPU's work (recording, building, decoding, writing bytes) on any thread, leaving the
+  render thread only the device calls.
+- **Beside the frame's queue**: GPU work on another Vulkan queue (compute, transfer) while the frame draws. GL has one
+  queue and runs the same work in order, with the same result.
+
+### What runs where
+
+| Work | Any thread | The render thread | On Vulkan, beside the frame |
+|---|---|---|---|
+| A frame: `CgRecording` recorded, `CgFrameBuilder` built | yes: one thread per recording at a time, one builder per thread | `CgExecutor.execute` | — |
+| Meshes (`CgMesh`): build, edit, release | yes | the store places them and copies their bytes into slabs before the first pass | the copies, on the transfer queue |
+| Textures (2D, arrays, 3D, cubemaps): make, fill, grow, delete | yes, through each texture's `CgDeferral` | what was queued lands before the next frame executes | a copy into a texture nothing else has used yet, on the transfer queue |
+| Shader buffers, `RETAINED`: make, write, delete | yes, through each buffer's `CgDeferral` | the upload lands (`glBufferSubData`) before the next frame executes | — (its memory is host-visible: landing is a CPU copy) |
+| Shader buffers, `FRAME` | no | written and uploaded by the frame that reads them | — |
+| Glyphs | MSDF fields, shadow cells, and the bitmap glyph MSDF text draws until its field lands: on the font registry's workers | text drawn at the bitmap tier is rasterised here at its first draw; pages land here | a new page's copy, on the transfer queue |
+| Compute passes | recorded with the frame | executed with it | an `async()` pass, on the compute queue |
+| Readbacks | `CgRecording.readback`, recorded with the frame | `CgReadback` asked for here; every sink runs here, frames later | — |
+| `.shader` and `.compute` files | parsed on any thread | — | — |
+| Shader compiles | Vulkan: shaderc on a worker where the host turned on `compileInBackground()` | GL: the driver, at the first draw, or started by `prepare()`; Vulkan: modules and pipelines | — |
+| Framebuffers, materials' programs, kernels' programs | no | yes | — |
+
+### Objects from any thread: `CgDeferral`
+
+A texture or a `RETAINED` shader buffer takes the same calls on any thread. Where the device may not be driven (a
+worker, or inside a recording), its work queues, in order, and the executor lands every object's queue before the next
+frame executes (`CgDeferral.applyAll`).
+
+```java
+// On a worker: made, filled and handed over; drawn by the next frame that executes
+CgTexture2D noise = CgTexture2D.createEmpty(256, 256, CgTextureSpec.RGBA8_LINEAR);
+noise.uploadRegion(0, 0, 0, 256, 256, pixels, GL_RGBA, GL_UNSIGNED_BYTE);   // pixels copied into a lease here
+
+CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED
+table.beginWrite(cells);
+// ... records ...
+table.endWrite();
+```
+
+- **An id is 0 until the work lands.** `getId()`, `bind()` and `getGlBufferId()` land what is queued first, so call them
+  on the render thread outside a recording; a shader buffer's `bind()` before its storage exists throws.
+- **One owner at a time**: an object's work is asked for from one thread at once.
+- **A task that throws is logged and dropped**; the rest of the object's queue still runs.
+- `CgTexture2DArray` takes no lease: its CPU mirror needs a source it can read.
+
+### Upload leases: the bytes written once
+
+`CgUploads.lease(bytes)` is memory the GPU copies from, written by whoever makes the bytes; a texture lands it with no
+further CPU copy. Passing a `ByteBuffer` instead copies it into a lease on the calling thread.
+
+```java
+CgUploadLease lease = CgUploads.lease(4 * w * h);                       // any thread
+decoder.decodeInto(lease.bytes());                                       // write exactly size() bytes
+texture.uploadRegion(0, x, y, w, h, lease, GL_RGBA, GL_UNSIGNED_BYTE);  // handed to one upload
+
+cube.uploadFace(CgTextureCubemap.POSITIVE_Y, 0, 0, 0, size, size, CgUploads.lease(face.remaining()).put(face),
+        GL_RGBA, GL_UNSIGNED_BYTE);
+```
+
+| Tier | Where | What landing costs |
+|---|---|---|
+| `UNPACK` | a persistently mapped unpack buffer, where the context has persistent mapping (every desktop driver) | GL copies it by DMA: 72 MB with no GPU hitch on NVIDIA, 1.5-3 ms of render thread. Vulkan records a device copy from it |
+| `DIRECT` | pooled direct memory: macOS's 4.1, a 3.3 context, an upload that converts its format, or a shader buffer's | the driver copies it at the call: the landing frame pays 17-22 ms of GPU per 72 MB on GL |
+
+- Hand a lease to exactly one upload, or `release()` it: one never handed over keeps its block from being reused.
+- Its bytes are write-only (unpack memory is slow to read, and the GPU may be reading it already).
+- Land it while the context it was leased in is current.
+
+### Vulkan's transfer queue
+
+Where the device has a queue family that only copies, these copies run on it while the frame draws:
+
+- **a copy into a texture only the transfer queue has used**: every new texture's first uploads, glyph pages' growth
+  included;
+- **the mesh store's copies into its slabs**, between `CgGL.cgBeginTransfer` and `cgEndTransfer`.
+
+The owned device takes a transfer-only family (family 1 on NVIDIA); Minecraft 26.2 and 26.3's device lends us the
+transfer queue Minecraft creates and never uses. The frame's queue waits for a batch at its next pass, compute pass or
+async section, at the first work touching an image or buffer the batch wrote, or at the frame's end; mipmaps asked of
+such a texture meanwhile are generated after that wait. `-Dcrystalgraphics.vulkan.transfer=false` keeps every copy on
+the frame's queue.
+
+A copy of your own goes there through the bracket:
+
+```java
+CgGL.cgBeginTransfer();
+try {
+    CgGL.glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, from, to, size);   // and more
+} finally {
+    CgGL.cgEndTransfer();
+}
+```
+
+- It may not read what the frame's queue writes, nor write what a frame in flight reads.
+- One bracket's copies are not ordered among themselves; the next bracket's come after them.
+- Copies only: a draw, a dispatch, async work, a host section's end or the frame's end inside it throws.
+
+### Async compute
+
+`CgComputePass.async()` runs a pass on the device's compute queue (`CgCapabilities.asyncCompute()`: the owned Vulkan
+device, and Minecraft 26.2 and 26.3's, whose own compute queue Minecraft leaves unused), beside the drawing between it and its first reader, which waits for it. Everywhere else
+it runs in order. `docs/SHADERS.md` § *Beside the drawing* says which passes to mark.
+
+```java
+CgComputePass step = recording.compute("sparks.step").async();
+step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
+step.end();
+```
+
+- On Minecraft's device an async pass may not touch Minecraft's own textures (its main target, the lightmap): it throws.
+- `-Dcrystalgraphics.vulkan.asyncCompute=false|graphics` runs it in order, or on a second queue of the frame's family;
+  `-Dcrystalgraphics.graph.asyncAll=true` sends every pass that can go async.
+
+### Readbacks
+
+Nothing reads the GPU back with a stall: a readback copies into memory the CPU maps, behind a fence, and its sink runs on
+the render thread once the GPU is done, two or three frames later.
+
+```java
+CgReadback.buffer(counts, 0, 4, data -> alive = data.getInt(0));                     // render thread
+recording.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));            // in a frame graph, ordered
+CgPixelReadback thumbnails = new CgPixelReadback(3);                                 // a framebuffer, shrunk first
+```
+
+- The data is valid only inside the sink, in native order: copy out what you keep.
+- On Vulkan, buffers read back are in memory the CPU caches (a `READ` usage hint, or `GL_MAP_READ_BIT` storage).
+
+### What stays synchronous, and why
+
+| Stays | Why (`render-async-uploads` §4) |
+|---|---|
+| GL's copies run on the render thread's one context | a second context saved the render thread 1-2.5 ms per 72 MB; decided against (2026-10-05) |
+| Copies into a texture the frame's queue already uses (a glyph page filling) | at most 0.01 ms a frame, and a transfer copy would need two cross-queue waits |
+| Readback copies, on the frame's queue | at most 0.3 ms a frame, for a debug view |
+| `FRAME` shader buffers | written by the frame that reads them, by definition |
+| Text drawn at the bitmap tier, rasterised on the render thread at its first draw | not yet moved: on a worker a glyph misses the frame that asked for it, as an MSDF glyph's bitmap stand-in already does. The desktop's worst frame rasterises 128 such glyphs, 7 ms |
+| A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.prepare()` and `CgKernel.prepare()` start one early |
+| Framebuffers and programs: made on the render thread | — |
+
+Measured by: `deferral.apply`, the workers' `upload.lease-copy`, and the GPU zones `upload.deferred` and `upload.meshes`
+(`crystalgraphics.gl.detail`); `--mode=upload-stress` bursts textures from workers and from the render thread, and
+`--mode=async-compute` times compute beside drawing.
 
 ## Infrastructure
 
