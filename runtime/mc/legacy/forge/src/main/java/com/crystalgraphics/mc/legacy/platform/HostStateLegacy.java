@@ -32,7 +32,8 @@ public final class HostStateLegacy extends CgCheckedProvider {
     private final CgHostStateCache cache;
 
     private HostStateLegacy(CgHostStateCache cache) {
-        super("GlStateManager", cache.missing() & ~bit(CgGlSlot.VIEWPORT));
+        // Blend reads glGet: blendFunc sets the driver's alpha factors too, and records only the colour pair.
+        super("GlStateManager", cache.missing() & ~bit(CgGlSlot.VIEWPORT) | bit(CgGlSlot.BLEND));
         this.cache = cache;
     }
 
