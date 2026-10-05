@@ -327,7 +327,7 @@ Two kinds, independent of each other:
 |---|---|---|---|
 | A frame: `CgRecording` recorded, `CgFrameBuilder` built | yes: one thread per recording at a time, one builder per thread | `CgExecutor.execute` | — |
 | Meshes (`CgMesh`): build, edit, release | yes | the store places them and copies their bytes into slabs before the first pass | the copies, on the transfer queue |
-| Textures (2D, arrays, 3D, cubemaps): make, fill, grow, delete | yes, through each texture's `CgDeferral` | what was queued lands before the next frame executes | a copy into a texture nothing else has used yet, on the transfer queue |
+| Textures (2D, arrays, 3D, cubemaps): make, fill, grow, delete | yes, through each texture's `CgDeferral` | what was queued lands before the next frame executes | a copy into a texture nothing else has used yet, and a whole upload of 256 KB or more into one the frame has used, on the transfer queue |
 | Shader buffers, `RETAINED`: make, write, delete | yes, through each buffer's `CgDeferral` | the upload lands (`glBufferSubData`) before the next frame executes | — (its memory is host-visible: landing is a CPU copy) |
 | Shader buffers, `FRAME` | no | written and uploaded by the frame that reads them | — |
 | Glyphs | every glyph (bitmap, MSDF field, shadow cell) on the font registry's workers: a new glyph draws a frame or more late | finished glyphs land in the atlas here, a budget of them a frame | a new page's copy, on the transfer queue |
@@ -389,7 +389,15 @@ Where the device has a queue family that only copies, these copies run on it whi
 
 - **a copy into a texture only the transfer queue has used**: every new texture's first uploads, glyph pages' growth
   included;
+- **an upload of 256 KB or more replacing a whole texture the frame has used**: it is written into a new texture,
+  which takes the transfer queue, and the old one is freed once the frames reading it finish. Only where it covers
+  all of level 0 and no other level is specified, since those would be lost: an upload into a texture whose mipmaps
+  were generated stays on the frame's queue;
 - **the mesh store's copies into its slabs**, between `CgGL.cgBeginTransfer` and `cgEndTransfer`.
+
+Any other copy into a texture runs on the frame's queue. Copies there one after another share one barrier on each side,
+and one call where they share a source and a texture: a burst of glyph cells is a few calls behind one pair of
+barriers, not a pair each.
 
 The owned device takes a transfer-only family (family 1 on NVIDIA); Minecraft 26.2 and 26.3's device lends us the
 transfer queue Minecraft creates and never uses. The frame's queue waits for a batch at its next pass, compute pass or
