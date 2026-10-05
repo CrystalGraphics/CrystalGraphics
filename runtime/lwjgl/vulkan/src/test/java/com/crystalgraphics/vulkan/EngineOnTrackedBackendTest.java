@@ -1,6 +1,8 @@
 package com.crystalgraphics.vulkan;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.gl.buffer.shader.CgShaderBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgShader;
@@ -40,6 +42,7 @@ import org.junit.Test;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -246,6 +249,40 @@ public class EngineOnTrackedBackendTest {
         assertNotEquals(0, made[0].getId());
         made[0].delete();
         CgDeferral.applyAll();
+    }
+
+    /** A retained shader buffer made and written on a worker holds what it wrote once the render thread lands it. */
+    @Test
+    public void aRetainedShaderBufferWrittenOnAWorkerLands() throws InterruptedException {
+        CgBufferFormat format = CgBufferFormat.builder("Height", CgBufferFormat.MemoryLayout.STD430).vec4("h").build();
+        CgShaderBuffer[] made = new CgShaderBuffer[1];
+        Thread worker = new Thread(() -> {
+            made[0] = CgShaderBuffer.create("Heights", format, 0);
+            made[0].beginWrite(4);
+            for (int i = 0; i < 4; i++) {
+                made[0].writer().beginRecord().vec4("h", i, 0f, 0f, 0f);
+                made[0].endRecord();
+            }
+            made[0].endWrite();
+        });
+        worker.start();
+        worker.join();
+
+        CgDeferral.applyAll();
+        int id = made[0].getGlBufferId();
+        assertNotEquals(0, id);
+        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, id);
+        ByteBuffer held = CgGL.glMapBufferRange(CgGL.GL_COPY_READ_BUFFER, 0, 64, CgGL.GL_MAP_READ_BIT, null)
+                .order(ByteOrder.nativeOrder());
+        for (int i = 0; i < 4; i++) assertEquals("record " + i, i, held.getFloat(16 * i), 0f);
+        CgGL.glUnmapBuffer(CgGL.GL_COPY_READ_BUFFER);
+        CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
+
+        Thread deleter = new Thread(made[0]::delete);
+        deleter.start();
+        deleter.join();
+        CgDeferral.applyAll();
+        assertEquals("deleted on the render thread", 0, made[0].getGlBufferId());
     }
 
     /** A deferred upload costs its thread a copy into a pooled lease and no allocation, once the pool is warm. */

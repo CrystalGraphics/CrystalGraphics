@@ -24,11 +24,12 @@ public class SubDataStreamBuffer extends CgStreamBuffer {
     public ByteBuffer map(int sizeBytes) {
         if (sizeBytes > capacityBytes) {
             capacityBytes = sizeBytes;
-            staging = CgBufferUtils.createByteBuffer(capacityBytes);
             bind();
             CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
             unbind();
         }
+        // uploadFrom may have grown the storage past it.
+        if (staging.capacity() < sizeBytes) staging = CgBufferUtils.createByteBuffer(capacityBytes);
         staging.clear();
         staging.limit(sizeBytes);
         return staging;

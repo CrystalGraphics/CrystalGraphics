@@ -39,11 +39,11 @@ public final class CgTextureBuffer extends CgShaderBuffer {
 
     private static final Logger LOGGER = LogManager.getLogger("CgTextureBuffer");
     /**
-     * The {@code GL_TEXTURE_BUFFER} texture object.
-     * Attached to the parent's stream buffer once at construction and never re-attached.
+     * The {@code GL_TEXTURE_BUFFER} texture object: 0 until made, through the parent's deferral.
+     * Attached to the parent's stream buffer once and never re-attached.
      * Deleted by {@link #deleteGlResources()}.
      */
-    private final int tboTexId;
+    private int tboTexId;
 
     /**
      * @param name            sampler name used by {@link #wireShader(CgShader)} to locate
@@ -54,19 +54,21 @@ public final class CgTextureBuffer extends CgShaderBuffer {
     CgTextureBuffer(String name, CgBufferFormat format, int bindingLocation) {
         super(name, format, CgGL.GL_ARRAY_BUFFER, bindingLocation);
         this.path = CgCapabilities.ShaderBufferPath.TBO;
-        this.tboTexId = CgGL.glGenTextures();
-        attachTextureToBuffer();
+        gpu.run(() -> {
+            tboTexId = CgGL.glGenTextures();
+            attachTextureToBuffer();
+        });
     }
 
     /**
      * Attaches the parent's GL buffer object to {@link #tboTexId} via {@code glTexBuffer}.
      * Uses {@code GL_RGBA32F} so each texel is 4 floats.
-     * Called once from the constructor; never needs to be called again even after GPU buffer growth.
+     * Called once, after the storage is made; never needs to be called again even after GPU buffer growth.
      */
     private void attachTextureToBuffer() {
         CgTexture.active(bindingLocation);
         CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, tboTexId);
-        CgGL.glTexBuffer(CgGL.GL_TEXTURE_BUFFER, CgGL.GL_RGBA32F, getGlBufferId());
+        CgGL.glTexBuffer(CgGL.GL_TEXTURE_BUFFER, CgGL.GL_RGBA32F, dataBuffer.getGlBuffer());   // not getGlBufferId: it flushes
         CgTexture.bind(CgGL.GL_TEXTURE_BUFFER, 0);
         CgTexture.active(0);
     }
@@ -120,6 +122,7 @@ public final class CgTextureBuffer extends CgShaderBuffer {
      */
     @Override
     protected void deleteGlResources() {
-        CgGL.glDeleteTextures(tboTexId);
+        if (tboTexId != 0) CgGL.glDeleteTextures(tboTexId);
+        tboTexId = 0;
     }
 }
