@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 
 import java.util.List;
 import java.util.Locale;
@@ -29,11 +30,11 @@ import java.util.Locale;
  *       any: the effect's shape, only fewer. A playing effect's share is its system's, set every tick.</li>
  * </ul>
  */
-public final class CgVfxEmitterInstance {
+public final class CgVfxEmitterInstance implements CgVfxInstanceView {
 
     private static final int SPAWN_NS = CgTrace.name("vfx.sim.spawn-ns"), SOLVE_NS = CgTrace.name("vfx.sim.solve-ns"),
             AGE_NS = CgTrace.name("vfx.sim.age-ns"), SPAWNED = CgTrace.name("vfx.particles.spawned"),
-            TICKED = CgTrace.name("vfx.particles.ticked");
+            TICKED = CgTrace.name("vfx.particles.ticked"), DROPPED = CgTrace.name("vfx.particles.dropped");
     /** Each module kind's time counter: {@code vfx.module.<kind>-ns}. */
     private static final ClassValue<Integer> MODULE_NS = new ClassValue<>() {
         @Override
@@ -216,8 +217,13 @@ public final class CgVfxEmitterInstance {
         int k = spawned++;
         if (share < 1f && rand(k, 10) >= share) return;
         int i = particles.add();
-        if (i < 0) return;
+        if (i < 0) {
+            // The GPU simulation sizes for its schedule and never drops: a shipped emitter keeps this at 0 (vfx-gpu §13.7).
+            CgVfxTrace.count(DROPPED, 1);
+            return;
+        }
         CgVfxParticleSet p = particles;
+        p.id[i] = k;
         float up = e.upMin + (e.upMax - e.upMin) * (float) Math.pow(rand(k, 0), e.upBias);
         float heading = rand(k, 1) * 6.2831853f, across = (float) Math.sqrt(Math.max(1f - up * up, 0f));
         float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);

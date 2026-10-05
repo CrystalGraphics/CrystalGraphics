@@ -1,9 +1,16 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+
 /**
  * One step of an emitter's update, run over all its particles every tick, in the order the emitter lists them: the
  * pieces a particle's physics is built from, as Niagara's update modules are. Each is data, a kind and its numbers, so
- * the same stack can drive a GPU simulation later. Force modules add to the accelerations and drags the solver
+ * the same stack drives the CPU path ({@link #apply}) and the GPU simulation ({@link CgVfxGpuModule}: each kind's
+ * {@code fx_<kind>.glsl} in {@code shaders/lib/vfx/sim/}). Force modules add to the accelerations and drags the solver
  * integrates; {@link Ground} runs after the solver, on the moved particles. Units are blocks and seconds.
  *
  * <pre>{@code
@@ -25,14 +32,17 @@ package com.crystalgraphics.vfx.particle;
  *   <li>Order matters only among forces that read velocity ({@link Wind}); the solver sums all forces before it moves.</li>
  *   <li>{@link Ground} does nothing unless the instance has a ground height
  *       ({@link CgVfxEmitterInstance#ground(float)}).</li>
+ *   <li>A new kind is a record here, its {@code apply}, and its GPU side: {@code fx_<kind>.glsl} and the
+ *       {@link CgVfxGpuModule} methods. Both paths must give the same step (harness {@code vfx-sim-equivalence}).</li>
  * </ul>
  */
-public sealed interface CgVfxModule {
+public sealed interface CgVfxModule extends CgVfxGpuModule {
 
     /** Runs over every particle of {@code emitter} for a tick of {@code dt} seconds. */
     void apply(CgVfxEmitterInstance emitter, float dt);
 
     /** True for a module that runs after the solver has moved the particles. */
+    @Override
     default boolean afterSolve() {
         return false;
     }
@@ -43,6 +53,16 @@ public sealed interface CgVfxModule {
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             for (int i = 0; i < p.count(); i++) p.ay[i] -= strength;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "gravity";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(strength, 0f, 0f, 0f);
         }
     }
 
@@ -58,6 +78,16 @@ public sealed interface CgVfxModule {
                 p.drag[i] += linear;
                 p.dragQuad[i] += quadratic;
             }
+        }
+
+        @Override
+        public String gpuKind() {
+            return "drag";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(linear, quadratic, 0f, 0f);
         }
     }
 
@@ -83,6 +113,16 @@ public sealed interface CgVfxModule {
                 p.az[i] += dz * push;
             }
         }
+
+        @Override
+        public String gpuKind() {
+            return "wind";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(resistance, 0f, 0f, 0f);
+        }
     }
 
     /**
@@ -91,6 +131,11 @@ public sealed interface CgVfxModule {
      * for every emitter at a point, so neighbouring particles swirl together.
      */
     record Turbulence(float strength, float frequency, float evolve) implements CgVfxModule {
+        /** Each octave's lattice cell and fraction of where the instance's origin samples (fx_curl.glsl). */
+        private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4, CgVfxLane.IVEC4, CgVfxLane.VEC4};
+        /** CgVfxCurlNoise's second octave: x * 2.03 + offset. */
+        private static final double OCTAVE = 2.03, OFFSET_X = 5.2, OFFSET_Y = 1.3, OFFSET_Z = 7.9;
+
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
@@ -105,6 +150,36 @@ public sealed interface CgVfxModule {
                 p.ay[i] += v[1] * strength * 0.5f;
                 p.az[i] += v[2] * strength * 0.5f;
             }
+        }
+
+        @Override
+        public String gpuKind() {
+            return "turbulence";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(strength, frequency, evolve, 0f);
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return LANES;
+        }
+
+        /** Where the origin samples, split per octave in doubles: the particle's offset adds to the fractions. */
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            float drift = instance.time() * evolve;
+            double x = instance.originX() * frequency + drift, y = instance.originY() * frequency,
+                    z = instance.originZ() * frequency - drift * 0.7f;
+            split(out, x, y, z);
+            split(out, x * OCTAVE + OFFSET_X, y * OCTAVE + OFFSET_Y, z * OCTAVE + OFFSET_Z);
+        }
+
+        private static void split(CgVfxWords out, double x, double y, double z) {
+            double cx = Math.floor(x), cy = Math.floor(y), cz = Math.floor(z);
+            out.ivec4((int) cx, (int) cy, (int) cz, 0).vec4((float) (x - cx), (float) (y - cy), (float) (z - cz), 0f);
         }
     }
 
@@ -122,6 +197,16 @@ public sealed interface CgVfxModule {
                 p.heat[i] *= keep;
             }
         }
+
+        @Override
+        public String gpuKind() {
+            return "buoyancy";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(lift, cooling, 0f, 0f);
+        }
     }
 
     /**
@@ -130,6 +215,9 @@ public sealed interface CgVfxModule {
      * seconds. What carries light particles up over a fire.
      */
     record Updraft(float strength, float radius, float height, float duration) implements CgVfxModule {
+        /** Its fade at the step's start, then the source. */
+        private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
+
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             float fading = 1f - smooth(0f, duration, emitter.time());
@@ -148,6 +236,26 @@ public sealed interface CgVfxModule {
             float t = Math.max(0f, Math.min(1f, (x - edge0) / (edge1 - edge0)));
             return t * t * (3f - 2f * t);
         }
+
+        @Override
+        public String gpuKind() {
+            return "updraft";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(strength, radius, height, duration);
+        }
+
+        @Override
+        public CgVfxLane[] instanceLanes() {
+            return LANES;
+        }
+
+        @Override
+        public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+            out.vec4(1f - smooth(0f, duration, instance.time()), instance.sourceX(), instance.sourceY(), instance.sourceZ());
+        }
     }
 
     /**
@@ -157,6 +265,8 @@ public sealed interface CgVfxModule {
      * the solver.
      */
     record Ground(float restitution, float friction, float rest) implements CgVfxModule {
+        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             if (!emitter.hasGround()) return;
@@ -182,6 +292,21 @@ public sealed interface CgVfxModule {
         public boolean afterSolve() {
             return true;
         }
+
+        @Override
+        public String gpuKind() {
+            return "ground";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(restitution, friction, rest, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return WORLD;
+        }
     }
 
     /** Spinning slows down: the spin rate decays by {@code drag} a second. */
@@ -191,6 +316,16 @@ public sealed interface CgVfxModule {
             CgVfxParticleSet p = emitter.particles();
             float keep = (float) Math.exp(-drag * dt);
             for (int i = 0; i < p.count(); i++) p.spinRate[i] *= keep;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "spin";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(drag, 0f, 0f, 0f);
         }
     }
 }
