@@ -49,10 +49,10 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
     protected void bindInternal() {
         int bytes = dataBuffer.getCommittedBytes();
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId(),
+            CgGL.glBindBufferRange(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer(),
                     dataBuffer.getWriteOffset(), bytes);
         } else {
-            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, getGlBufferId());
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, bindingLocation, dataBuffer.getGlBuffer());
         }
     }
 

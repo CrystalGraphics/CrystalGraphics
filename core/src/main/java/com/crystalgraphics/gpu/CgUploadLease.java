@@ -96,6 +96,16 @@ public final class CgUploadLease implements Runnable {
         return this;
     }
 
+    /** Copies {@code count} floats of {@code from}, from {@code start}, in from the start. Allocates nothing once warm. */
+    public CgUploadLease put(float[] from, int start, int count) {
+        if (4L * count > size) throw new IllegalArgumentException(count + " floats into a " + size + "-byte lease");
+        at();
+        floats.limit((offset + size) >> 2);
+        floats.position(offset >> 2);
+        floats.put(from, start, count);
+        return this;
+    }
+
     /** Gives it back unused: what to do with one that will not be handed to an upload. */
     public void release() {
         CgUploads.dropped(this);
@@ -158,6 +168,16 @@ public final class CgUploadLease implements Runnable {
         } finally {
             CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);
         }
+    }
+
+    /**
+     * Engine, render thread: these bytes into the buffer bound at {@code target}, from byte {@code to}, as
+     * {@code glBufferSubData}. Direct memory only: lease it with {@code CgUploads.lease(bytes, true)}.
+     */
+    public void bufferSubData(int target, long to) {
+        // A tracked device copies between host-visible buffers on the CPU, and unpack memory is slow to read.
+        if (block.buffer != 0) throw new IllegalStateException("a buffer lands from direct memory, not an unpack buffer");
+        CgGL.glBufferSubData(target, to, at());
     }
 
     /** Lands it through its sink, then gives it back: what the deferral runs. */

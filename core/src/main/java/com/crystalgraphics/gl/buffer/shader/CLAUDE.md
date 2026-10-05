@@ -191,6 +191,26 @@ CgShaderBuffer.wireBlock(shader, CgInstanceKind.OBJECT_BLOCK_NAME, CgBindingPoin
 shader.unbind();
 ```
 
+## Threads
+
+A `RETAINED` buffer is made, written and deleted from any thread, as a texture is: its GL work goes through its
+`CgDeferral` (`gpu/`), and off the render thread an upload's floats are copied into a direct-memory lease
+(`CgUploads.lease(bytes, true)`) by the thread that wrote them, landed with `glBufferSubData` before the next frame
+executes. A `FRAME` buffer is the render thread's, made and uploaded there.
+
+```java
+CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // on a worker: RETAINED
+table.beginWrite(cells);
+// ... records ...
+table.endWrite();                 // a lease now, the buffer's before the next frame
+```
+
+- `bind()` and `getGlBufferId()` land what is queued first, so they must run on the render thread outside a recording;
+  `bind()` on a buffer whose storage is not made yet throws.
+- Inside a deferred task or a hot path, read `dataBuffer.getGlBuffer()`, never `getGlBufferId()`, which flushes.
+- A lease never comes from an unpack buffer: the tracked backend copies between host-visible buffers on the CPU, and
+  unpack memory is slow to read (`CgUploadLease.bufferSubData` throws on one).
+
 ## Key Design Rules
 
 - **`name` is first constructor param** for all subclasses. Never null.

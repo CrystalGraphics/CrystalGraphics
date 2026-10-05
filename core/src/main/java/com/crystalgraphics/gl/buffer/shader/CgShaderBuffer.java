@@ -13,11 +13,15 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgStreamBuffer;
 import com.crystalgraphics.gl.buffer.staging.CgBufferWriter;
 import com.crystalgraphics.gl.buffer.staging.CgStagingBuffer;
+import com.crystalgraphics.gpu.CgDeferral;
+import com.crystalgraphics.gpu.CgUploadLease;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import lombok.Getter;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Abstract base class for all GPU shader buffer types (SSBO, TBO, UBO).
@@ -44,6 +48,23 @@ import java.util.Objects;
  *   <li>{@link CgTextureBuffer} — TBO (GL 3.1 fallback)</li>
  *   <li>{@link CgUniformBuffer} — UBO (flat-mode child; overrides {@link #bind()}/{@link #unbind()})</li>
  * </ul>
+ *
+ * <h3>Threads</h3>
+ * <p>A {@link CgBufferLifetime#RETAINED} buffer is made, written, uploaded and deleted from any thread, as a texture is:
+ * off the render thread its GL work waits for the render thread, before the next frame executes, and an upload's floats
+ * are copied into a lease by the thread that wrote them. A {@link CgBufferLifetime#FRAME} buffer is the render
+ * thread's: it is uploaded in the frame that reads it.</p>
+ *
+ * <pre>{@code
+ * // a lookup table built on a worker
+ * CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED
+ * table.beginWrite(cells);
+ * for (int i = 0; i < cells; i++) {
+ *     table.writer().beginRecord().vec4("height", h[i], 0f, 0f, 0f);
+ *     table.endRecord();
+ * }
+ * table.endWrite();   // lands before the next frame; draws bind it as they would any buffer
+ * }</pre>
  *
  * <h3>Factory</h3>
  * <p>{@link #create(String, CgBufferFormat, int)} selects the best available SSBO/TBO
@@ -99,7 +120,11 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     private final String name;
 
     protected final CgBufferWriter writer;
-    protected final CgStreamBuffer dataBuffer;
+    /** The GL storage: made at once for a {@link CgBufferLifetime#FRAME} buffer, through {@link #gpu} otherwise. */
+    protected CgStreamBuffer dataBuffer;
+    /** This buffer's GL work, in order: what lets a {@link CgBufferLifetime#RETAINED} one be used from any thread. */
+    protected final CgDeferral gpu = new CgDeferral();
+    private final Consumer<CgUploadLease> landing = this::land;
 
     /** Format descriptor. Required — all shader buffers must have a typed format. */
     @Getter
@@ -175,10 +200,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         int floatPerRecord    = format.getFloatCount();
         int capacityBytes     = floatPerRecord * Float.BYTES;
         this.writer           = new CgBufferWriter(new CgStagingBuffer(floatPerRecord), format);
-        this.dataBuffer       = lifetime == CgBufferLifetime.FRAME
-                ? CgStreamBuffer.createFrameLocal(glTarget, capacityBytes)
-                : CgStreamBuffer.createForShaderBuffer(glTarget, capacityBytes);
         this.lastWrittenCount = 0;
+        if (lifetime == CgBufferLifetime.FRAME) {
+            this.dataBuffer = CgStreamBuffer.createFrameLocal(glTarget, capacityBytes);
+        } else {
+            gpu.run(() -> dataBuffer = CgStreamBuffer.createForShaderBuffer(glTarget, capacityBytes));
+        }
     }
 
     // ── Factory ───────────────────────────────────────────────────────────────
@@ -399,6 +426,8 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     @Override public void bind() {
         if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
+        gpu.flush();
+        if (dataBuffer == null) throw new IllegalStateException(name + " is not made yet: bind it on the render thread, outside a recording");
         bindInternal();
     }
 
@@ -447,7 +476,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * }</pre>
      */
     public boolean isOnFrameRing() {
-        return dataBuffer.offsetMovesPerUpload();
+        return dataBuffer != null && dataBuffer.offsetMovesPerUpload();
     }
 
     /**
@@ -455,7 +484,8 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     @Override
     public int getGlBufferId() {
-        return dataBuffer.getGlBuffer();
+        gpu.flush();
+        return dataBuffer == null ? 0 : dataBuffer.getGlBuffer();
     }
 
     /**
@@ -464,11 +494,14 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      */
     @Override
     public void delete() {
-        if (!deleted) {
-            dataBuffer.delete();
+        if (deleted) return;
+        deleted = true;
+        gpu.clear();
+        gpu.run(() -> {
+            if (dataBuffer != null) dataBuffer.delete();
+            dataBuffer = null;
             deleteGlResources();
-            deleted = true;
-        }
+        });
     }
 
     /**
@@ -496,6 +529,13 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * </ul>
      */
     protected final void uploadData(float[] data, int floatCount) {
+        if (lifetime != CgBufferLifetime.FRAME && !gpu.immediate()) {
+            gpu.flush();
+            if (!gpu.immediate()) {
+                uploadLater(data, floatCount);
+                return;
+            }
+        }
         boolean ring = dataBuffer.offsetMovesPerUpload();
         long frame = CgFrameRing.frame();
         boolean small = floatCount <= COMPARE_LIMIT_FLOATS;
@@ -515,6 +555,21 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
             uploadedCount = -1;   // a later small upload compares against nothing stale
         }
         if (ring) bindInternal();
+    }
+
+    /** Off the render thread: the floats copied into a lease here, landed before the next frame executes. */
+    private void uploadLater(float[] data, int floatCount) {
+        if (floatCount == 0) return;
+        // Direct memory: a buffer lands by glBufferSubData, which reads it.
+        CgUploadLease lease = CgUploads.lease(floatCount * Float.BYTES, true).put(data, 0, floatCount);
+        gpu.run(lease.into(landing, 0, 0, 0, 0, floatCount, 1, 1, 0, 0));
+    }
+
+    private void land(CgUploadLease lease) {
+        dataBuffer.uploadFrom(lease);
+        uploadedCount = -1;
+        uploadedFrame = CgFrameRing.frame();
+        CgTrace.add(CgChannels.GL, UPLOAD_SENT, 1);
     }
 
     /**

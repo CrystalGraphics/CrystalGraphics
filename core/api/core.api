@@ -2624,6 +2624,7 @@ com/crystalgraphics/gl/buffer/CgStreamBuffer
   method public offsetMovesPerUpload ()Z
   method public unbind ()V
   method public uploadFloats ([FI)I
+  method public uploadFrom (Lcom/crystalgraphics/gpu/CgUploadLease;)V
   method public,abstract commit (I)I
   method public,abstract map (I)Ljava/nio/ByteBuffer;
   method public,static create (II)Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
@@ -2680,10 +2681,11 @@ com/crystalgraphics/gl/buffer/shader/CgParticleBuffer
 com/crystalgraphics/gl/buffer/shader/CgShaderBuffer
   access public,abstract
   extends java/lang/Object
+  field protected dataBuffer Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
   field protected deleted Z
   field protected path Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;
   field protected,final bindingLocation I
-  field protected,final dataBuffer Lcom/crystalgraphics/gl/buffer/CgStreamBuffer;
+  field protected,final gpu Lcom/crystalgraphics/gpu/CgDeferral;
   field protected,final writer Lcom/crystalgraphics/gl/buffer/staging/CgBufferWriter;
   field public,static,final COMPARE_LIMIT_FLOATS I
   implements com/crystalgraphics/api/buffer/CgObjectBuffer
@@ -3525,10 +3527,18 @@ com/crystalgraphics/gl/texture/CgTextureCopy
 com/crystalgraphics/gl/texture/CgTextureCubemap
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
+  field public,static,final NEGATIVE_X I
+  field public,static,final NEGATIVE_Y I
+  field public,static,final NEGATIVE_Z I
+  field public,static,final POSITIVE_X I
+  field public,static,final POSITIVE_Y I
+  field public,static,final POSITIVE_Z I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
   method public reload ()V
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
+  method public uploadFace (IIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
+  method public uploadFace (IIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
   method public,static createEmpty (ILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
@@ -3572,6 +3582,7 @@ com/crystalgraphics/gpu/CgUploadLease
   access public,final
   extends java/lang/Object
   implements java/lang/Runnable
+  method public bufferSubData (IJ)V
   method public bytes ()Ljava/nio/ByteBuffer;
   method public depth ()I
   method public direct ()Z
@@ -3582,6 +3593,7 @@ com/crystalgraphics/gpu/CgUploadLease
   method public put (Ljava/nio/ByteBuffer;)Lcom/crystalgraphics/gpu/CgUploadLease;
   method public put (Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/gpu/CgUploadLease;
   method public put ([BII)Lcom/crystalgraphics/gpu/CgUploadLease;
+  method public put ([FII)Lcom/crystalgraphics/gpu/CgUploadLease;
   method public release ()V
   method public run ()V
   method public size ()I

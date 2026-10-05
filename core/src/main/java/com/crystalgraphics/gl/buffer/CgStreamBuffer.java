@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.buffer;
 
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
+import com.crystalgraphics.gpu.CgUploadLease;
 import lombok.Getter;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgCapabilities.StreamBufferTier;
@@ -202,6 +203,26 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
             committedBytes = byteCount;
             return commit(byteCount);
         }
+    }
+
+    /**
+     * Shader-buffer storage: a lease's bytes as its contents from offset 0, the storage orphaned (and grown if need be)
+     * first, as an upload is. Render thread. The frame ring refuses: what it holds belongs to the frame that wrote it.
+     */
+    public void uploadFrom(CgUploadLease lease) {
+        if (offsetMovesPerUpload()) throw new UnsupportedOperationException("a frame-local stream is written by the frame that reads it");
+        int size = lease.size();
+        capacityBytes = Math.max(capacityBytes, size);
+        bind();
+        try {
+            CgGL.glBufferData(target, capacityBytes, CgGL.GL_STREAM_DRAW);
+            lease.bufferSubData(target, 0L);
+        } finally {
+            unbind();
+        }
+        writeOffset = 0;
+        committedBytes = size;
+        CgTrace.add(CgChannels.GL, profileBytesName, size);
     }
 
     /**
