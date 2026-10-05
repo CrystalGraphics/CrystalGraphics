@@ -318,6 +318,34 @@ public class CgFrameBuilderTest {
         assertEquals(3, secondPass.instances[0]);
     }
 
+    /** What {@code CgImmediate} relies on: the frame owns the records, so the builder may overwrite them after. */
+    @Test
+    public void aChunkEndedInPlaceBuildsAsACopy() {
+        CgRecording rec = new CgRecording();
+        CgRasterPass pass = raster(rec, CgGraphTexture.requested("surface", DESC));
+        CgChunkBuilder c = rec.chunks().begin();
+        c.draw(quads, material.captureBindings(rec.bindings()));
+        for (int i = 0; i < 3; i++) {
+            int at = c.instance();
+            c.data()[at] = 7;
+            c.bounds(i * 10, 0, i * 10 + 10, 10);
+        }
+        pass.add(c.endInPlace());
+        pass.end();
+        CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
+
+        c.begin().draw(quads, 0);
+        int at = c.instance();
+        c.data()[at] = 9;
+        c.end();
+
+        assertEquals(1, frame.draws());
+        assertEquals(3, frame.instances(CgInstanceKind.QUAD));
+        float[] packed = frame.instances[CgInstanceKind.QUAD.ordinal()];
+        int floats = CgInstanceKind.QUAD.floats();
+        assertArrayEquals(new float[]{7, 7, 7}, new float[]{packed[0], packed[floats], packed[2 * floats]}, 0f);
+    }
+
     @Test
     public void builtOnAnotherThread() throws Exception {
         CgRecording rec = new CgRecording();

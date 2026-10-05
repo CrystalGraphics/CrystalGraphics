@@ -4119,6 +4119,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;ILcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public end ()Lcom/crystalgraphics/render/draw/CgDrawChunk;
+  method public endInPlace ()Lcom/crystalgraphics/render/draw/CgDrawChunk;
   method public gpuGroup (Ljava/lang/String;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public instance ()I

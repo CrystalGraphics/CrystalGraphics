@@ -133,7 +133,7 @@ public final class CgImmediate implements AutoCloseable {
     @Override
     public void close() {
         try {
-            pass.add(recording.chunks().end());
+            pass.add(recording.chunks().endInPlace());
             execute(true);
         } finally {
             depth--;

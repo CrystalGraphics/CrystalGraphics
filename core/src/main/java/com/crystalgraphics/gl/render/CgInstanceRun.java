@@ -191,6 +191,6 @@ final class CgInstanceRun {
         if (!chunkOpen) return;
         chunkOpen = false;
         if (sink != null) sink.add(chunk.end());
-        else CgImmediate.flush(chunk.end(), CgOrder.SORTED);
+        else CgImmediate.flush(chunk.endInPlace(), CgOrder.SORTED);
     }
 }
