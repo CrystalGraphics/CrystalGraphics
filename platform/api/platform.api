@@ -155,6 +155,7 @@ com/crystalgraphics/platform/device/command/CgCommandEncoder
   method public,abstract blit (Lcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgGpuSampler$Filter;)V
   method public,abstract bufferBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;II)V
   method public,abstract copyBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)V
+  method public,abstract copyBufferToTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;)V
   method public,abstract copyTexture (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;)V
   method public,abstract copyTextureToBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
   method public,abstract endAsync ()J
@@ -1602,8 +1603,10 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glTexImage3D (IIIIIIIIILjava/nio/ByteBuffer;)V
   method public,static glTexImage3D (IIIIIIIIILjava/nio/FloatBuffer;)V
   method public,static glTexParameteri (III)V
+  method public,static glTexSubImage2D (IIIIIIIIJ)V
   method public,static glTexSubImage2D (IIIIIIIILjava/nio/ByteBuffer;)V
   method public,static glTexSubImage2D (IIIIIIIILjava/nio/FloatBuffer;)V
+  method public,static glTexSubImage3D (IIIIIIIIIIJ)V
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public,static glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
@@ -1784,8 +1787,10 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method public,abstract glTexImage3D (IIIIIIIIILjava/nio/ByteBuffer;)V
   method public,abstract glTexImage3D (IIIIIIIIILjava/nio/FloatBuffer;)V
   method public,abstract glTexParameteri (III)V
+  method public,abstract glTexSubImage2D (IIIIIIIIJ)V
   method public,abstract glTexSubImage2D (IIIIIIIILjava/nio/ByteBuffer;)V
   method public,abstract glTexSubImage2D (IIIIIIIILjava/nio/FloatBuffer;)V
+  method public,abstract glTexSubImage3D (IIIIIIIIIIJ)V
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public,abstract glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
@@ -2252,8 +2257,10 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public glTexImage3D (IIIIIIIIILjava/nio/ByteBuffer;)V
   method public glTexImage3D (IIIIIIIIILjava/nio/FloatBuffer;)V
   method public glTexParameteri (III)V
+  method public glTexSubImage2D (IIIIIIIIJ)V
   method public glTexSubImage2D (IIIIIIIILjava/nio/ByteBuffer;)V
   method public glTexSubImage2D (IIIIIIIILjava/nio/FloatBuffer;)V
+  method public glTexSubImage3D (IIIIIIIIIIJ)V
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/ByteBuffer;)V
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/FloatBuffer;)V
   method public glTexSubImage3D (IIIIIIIIIILjava/nio/ShortBuffer;)V
@@ -2550,6 +2557,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedTextures
   method public query (I[D)I
   method public read (IIIILjava/nio/ByteBuffer;)V
   method public subImage (IIIIIIIIIILjava/nio/ByteBuffer;)V
+  method public subImageFromBuffer (IIIIIIIIIIJ)V
   method public textureBuffer (III)V
 com/crystalgraphics/platform/gl/tracked/gl/TrackedTextures$GlTexture
   access public,final
@@ -2721,6 +2729,9 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats
   field public pipelineBinds J
   field public pipelineMisses J
   field public renames J
+  field public textureWriteBytes J
+  field public textureWrites J
+  field public uploadBreaks J
   method public <init> ()V
   method public toString ()Ljava/lang/String;
 com/crystalgraphics/platform/input/CgGlfwKeyCodes

@@ -137,6 +137,15 @@ public final class GlPixels {
 
     // ── layouts ────────────────────────────────────────────────────────────────
 
+    /** Whether {@code store} reads {@code width x height} pixels of {@code (format, type)} as one run from the start. */
+    static boolean tight(Store store, int format, int type, int width, int height) {
+        if (store.skipPixels != 0 || store.skipRows != 0 || store.skipImages != 0) return false;
+        if (store.rowLength != 0 && store.rowLength != width) return false;
+        if (store.imageHeight != 0 && store.imageHeight != height) return false;
+        int bpp = pixelBytes(format, type);
+        return rowBytes(width, bpp, componentBytes(type), store.alignment) == width * bpp;
+    }
+
     /** Whether GL's {@code (format, type)} is {@code dst}'s tightly packed texels as they are. */
     static boolean sameLayout(int format, int type, CgFormat dst) {
         switch (dst) {

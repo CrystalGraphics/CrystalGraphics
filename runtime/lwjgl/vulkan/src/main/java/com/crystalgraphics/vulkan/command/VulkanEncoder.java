@@ -300,6 +300,23 @@ public final class VulkanEncoder implements CgCommandEncoder {
         after(cmd);
     }
 
+    @Override
+    public void copyBufferToTexture(CgGpuBuffer src, long srcOffset, CgGpuTexture dst, CgTextureRegion region) {
+        outsidePass("copyBufferToTexture");
+        VulkanTexture t = (VulkanTexture) dst;
+        int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
+        VkCommandBuffer cmd = cmd();
+        before(cmd);
+        to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        try (MemoryStack stack = stackPush()) {
+            VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack).bufferOffset(srcOffset);
+            region(c.get(0), t, region, layer, layers);
+            vkCmdCopyBufferToImage(cmd, ((VulkanBuffer) src).buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
+        }
+        rest(cmd, t, region.mip(), 1, layer, layers);
+        after(cmd);
+    }
+
     private static void region(VkBufferImageCopy c, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
         c.imageSubresource().aspectMask(copyAspect(t)).mipLevel(region.mip()).baseArrayLayer(layer).layerCount(layers);
         c.imageOffset().set(region.x(), region.y(), volume(t) ? region.z() : 0);

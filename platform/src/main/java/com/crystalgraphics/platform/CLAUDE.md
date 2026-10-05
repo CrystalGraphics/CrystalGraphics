@@ -187,6 +187,10 @@ What is easy to get wrong:
   source: a kernel writing it has not run yet, so that is a device copy too. Mapping a host-visible buffer
   to read waits for the frame that last used it: nothing once it retired (`CgReadback` polls its fence first),
   `finish()` if it is the current one, which a hosted device refuses.
+- **A texture upload from an unpack buffer** (`glTexSubImage*` with an offset: how `CgUploads`' leases land) is a
+  device copy from the buffer itself (`copyBufferToTexture`) where the bytes are the texture's texels as they are,
+  tightly packed; one that converts is unpacked on the CPU from the buffer's memory. A client-memory upload that
+  needs no conversion is staged as it is, with no unpacking copy.
 - **A fence is its frame**: a poll answers once that frame retires; a blocking wait on the current frame
   submits it, and a hosted device refuses the wait, since its host submits.
 - **`cgBeginAsync`/`cgEndAsync`/`cgWaitAsync` bracket async compute**: dispatches, barriers and copies between the

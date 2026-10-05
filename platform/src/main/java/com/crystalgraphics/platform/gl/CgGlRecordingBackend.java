@@ -43,7 +43,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
             MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
             CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118, BEGIN_TRANSFORM_FEEDBACK = 119,
-            END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121;
+            END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121, TEX_SUB_IMAGE_2D_O = 122, TEX_SUB_IMAGE_3D_O = 123;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -219,6 +219,9 @@ final class CgGlRecordingBackend extends CgGLBackend {
                     CgGL.glTexSubImage3D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rfloats()); break;
                 case TEX_SUB_IMAGE_3D_S:
                     CgGL.glTexSubImage3D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rshorts()); break;
+                case TEX_SUB_IMAGE_2D_O: CgGL.glTexSubImage2D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rl()); break;
+                case TEX_SUB_IMAGE_3D_O:
+                    CgGL.glTexSubImage3D(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), rl()); break;
                 case GENERATE_MIPMAP: CgGL.glGenerateMipmap(ri()); break;
                 case ACTIVE_TEXTURE: CgGL.glActiveTexture(ri()); break;
                 case TEX_PARAMETERI: CgGL.glTexParameteri(ri(), ri(), ri()); break;
@@ -660,6 +663,20 @@ final class CgGlRecordingBackend extends CgGLBackend {
                                 int format, int type, ShortBuffer pixels) {
         op(TEX_SUB_IMAGE_3D_S); i(target); i(level); i(xOffset); i(yOffset); i(zOffset); i(width); i(height); i(depth);
         i(format); i(type); shorts(pixels);
+    }
+
+    @Override
+    public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height, int format, int type,
+                                long unpackOffset) {
+        op(TEX_SUB_IMAGE_2D_O); i(target); i(level); i(xOffset); i(yOffset); i(width); i(height); i(format); i(type);
+        l(unpackOffset);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height, int depth,
+                                int format, int type, long unpackOffset) {
+        op(TEX_SUB_IMAGE_3D_O); i(target); i(level); i(xOffset); i(yOffset); i(zOffset); i(width); i(height); i(depth);
+        i(format); i(type); l(unpackOffset);
     }
 
     @Override public void glGenerateMipmap(int target) { op(GENERATE_MIPMAP); i(target); }

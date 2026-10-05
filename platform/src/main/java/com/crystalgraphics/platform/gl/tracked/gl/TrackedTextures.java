@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.device.resource.CgTextureRegion;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.tracked.memory.CgAllocation;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackerStats;
@@ -68,6 +69,8 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private static final int WRITES = CgTrace.name("tracked.texture-writes");
     private static final int WRITE_BYTES = CgTrace.name("tracked.texture-write-bytes");
     private static final int UPLOAD_BREAKS = CgTrace.name("tracked.upload-breaks");
+    /** Uploads from an unpack buffer copied on the device, from the buffer itself: no staging copy. */
+    private static final int BUFFER_COPIES = CgTrace.name("tracked.texture-buffer-copies");
     private final TrackedGlErrors errors;
     private final TrackedBuffers buffers;
     private final GlNames<GlTexture> names = new GlNames<>("Texture");
@@ -192,6 +195,42 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         if (t == null) return;
         if (t.image == null) { errors.invalidOperation("glTexSubImage on texture " + t.name + " with no image"); return; }
         upload(t, level, x, y, t.kind == KIND_CUBE ? face(target) : z, width, height, depth, format, type, pixels);
+    }
+
+    /**
+     * {@code glTexSubImage} from the bound unpack buffer: a device copy from the buffer where its bytes are the image's
+     * texels as they are, else unpacked on the CPU from its memory, as client memory is.
+     */
+    public void subImageFromBuffer(int target, int level, int x, int y, int z, int width, int height, int depth,
+                                   int format, int type, long offset) {
+        GlTexture t = boundFor(target, "glTexSubImage");
+        if (t == null) return;
+        if (t.image == null) { errors.invalidOperation("glTexSubImage on texture " + t.name + " with no image"); return; }
+        TrackedBuffers.GlBuffer b = buffers.get(buffers.pixelUnpack);
+        CgAllocation a = b == null ? null : b.storage.allocation();
+        if (a == null) { errors.invalidOperation("glTexSubImage from an unpack buffer with none bound"); return; }
+        if (width == 0 || height == 0 || depth == 0) return;
+        int layer = t.kind == KIND_CUBE ? face(target) : z;
+        long at = a.offset() + offset;
+        if (GlPixels.sameLayout(format, type, t.format) && GlPixels.tight(unpack, format, type, width, height)
+                && at % 4 == 0 && at % t.format.bytes() == 0) {
+            CgTrackerStats stats = tracker.stats();
+            long breaks = stats.passBreaks;
+            tracker.transfer().copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, x, y, layer, width,
+                    height, depth));
+            tracker.markUsed(a);
+            stats.textureWrites++;
+            stats.textureWriteBytes += (long) width * height * depth * t.format.bytes();
+            stats.uploadBreaks += stats.passBreaks - breaks;
+            CgTrace.add(TRACE, BUFFER_COPIES, 1);
+            CgTrace.add(TRACE, UPLOAD_BREAKS, stats.passBreaks - breaks);
+            return;
+        }
+        if (!a.hostVisible()) throw new UnsupportedOperationException("Texture " + t.name
+                + ": converting texels from a device-local unpack buffer");
+        ByteBuffer pixels = a.memory();
+        pixels.position((int) offset);
+        upload(t, level, x, y, layer, width, height, depth, format, type, pixels);
     }
 
     public void multisample(int target, int samples, int internalFormat, int width, int height) {
@@ -378,7 +417,13 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
 
     private void upload(GlTexture t, int level, int x, int y, int z, int w, int h, int d, int format, int type, ByteBuffer pixels) {
         if (pixels == null || w == 0 || h == 0 || d == 0) return;
-        ByteBuffer texels = GlPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
+        ByteBuffer texels;
+        if (GlPixels.sameLayout(format, type, t.format) && GlPixels.tight(unpack, format, type, w, h)) {
+            texels = pixels.duplicate();   // writeTexture stages it: unpacking would only copy it once more
+            texels.limit(texels.position() + w * h * d * t.format.bytes());
+        } else {
+            texels = GlPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
+        }
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
         int bytes = texels.remaining();

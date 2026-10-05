@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**158 methods** (170 declarations with overloads): **145 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **11 by nothing** -- `isAvailable`, `getPriority`, `glQueryTimestamp`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
+**158 methods** (172 declarations with overloads): **146 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
 **What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -19,14 +19,14 @@ What `CgCapabilities.detect()` and the state providers read before anything draw
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
 | `initContext` | direct | 1 |  |  |  |  |
-| `glGetInteger` ×2 | `glGetInteger` | 13 | 11 |  | 26 | 12 |
-| `glGetBoolean` ×2 | `glGetBoolean` |  | 2 |  | 2 | 7 |
+| `glGetInteger` ×2 | `glGetInteger` | 12 | 11 |  | 26 | 12 |
+| `glGetBoolean` ×2 | `glGetBoolean` |  | 2 |  | 2 | 5 |
 | `glGetFloat` ×2 | `glGetFloat` |  |  |  | 1 |  |
 | `glGetString` | `glGetString` |  |  |  | 4 |  |
 | `glGetStringi` | `glGetStringi` |  |  |  | 1 |  |
 | `glGetIntegeri` | `glGetIntegeri` |  |  |  | 6 |  |
 | `glGetError` | `glGetError` | 2 | 6 |  |  | 3 |
-| `ownedByCurrentThread` | `mayIssueGl`, `ownedByCurrentThread` | 1 |  |  |  |  |
+| `ownedByCurrentThread` | `mayIssueGl`, `ownedByCurrentThread` | 2 |  |  |  |  |
 | `isContextCurrent` | `isContextCurrent` |  |  |  |  |  |
 
 ## State
@@ -35,8 +35,8 @@ The pipeline key, and what the scope suite (D3.5) restores.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `glEnable` | `glEnable` | 10 |  |  | 2 | 7 |
-| `glDisable` | `glDisable` | 31 | 3 |  | 2 | 7 |
+| `glEnable` | `glEnable` | 10 |  |  | 2 | 6 |
+| `glDisable` | `glDisable` | 31 | 3 |  | 2 | 6 |
 | `glBlendFunc` | `glBlendFunc` | 1 |  |  |  | 1 |
 | `glBlendFuncSeparate` | `glBlendFuncSeparate` | 1 |  |  | 1 |  |
 | `glDepthMask` | `glDepthMask` | 3 |  |  | 1 | 3 |
@@ -62,12 +62,12 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `glGenBuffers` | `glGenBuffers` | 15 |  |  |  | 8 |
-| `glBindBuffer` | `glBindBuffer` | 73 |  |  | 3 | 17 |
+| `glGenBuffers` | `glGenBuffers` | 16 |  |  |  | 8 |
+| `glBindBuffer` | `glBindBuffer` | 79 |  |  | 3 | 17 |
 | `glBufferData` ×3 | `glBufferData` | 18 |  |  |  | 8 |
 | `glBufferSubData` | `glBufferSubData` | 4 |  |  |  | 1 |
 | `glCopyBufferSubData` | `glCopyBufferSubData` | 6 |  |  |  |  |
-| `glDeleteBuffers` | `glDeleteBuffers` | 25 |  |  |  | 6 |
+| `glDeleteBuffers` | `glDeleteBuffers` | 27 |  |  |  | 6 |
 | `glBindBufferBase` | `glBindBufferBase` | 10 |  |  | 2 |  |
 | `glBindBufferRange` | `glBindBufferRange` | 9 |  |  | 2 |  |
 | `glTexBuffer` | `glTexBuffer` | 2 |  |  |  |  |
@@ -79,9 +79,9 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 | `glVertexAttribIPointer` | `glVertexAttribIPointer` | 1 |  |  |  |  |
 | `cgFillBuffer` | `cgFillBuffer` | 3 |  |  |  |  |
 | `glMapBufferRange` | `glMapBufferRange` | 7 |  |  |  |  |
-| `glUnmapBuffer` | `glUnmapBuffer` | 6 |  |  |  |  |
+| `glUnmapBuffer` | `glUnmapBuffer` | 5 |  |  |  |  |
 | `glFlushMappedBufferRange` | `glFlushMappedBufferRange` | 1 |  |  |  |  |
-| `glBufferStorage` | `glBufferStorage` | 3 |  |  |  |  |
+| `glBufferStorage` | `glBufferStorage` | 4 |  |  |  |  |
 | `glVertexAttribDivisor` | `glVertexAttribDivisor` |  |  |  |  |  |
 
 ## Programs
@@ -130,17 +130,17 @@ Uploads are encoder work outside a pass.
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
 | `copyImageSubData` | `glCopyImageSubData` | 1 |  |  |  |  |
-| `glGenTextures` | `glGenTextures` | 9 |  |  |  | 5 |
-| `glBindTexture` | `glBindTexture` | 33 |  |  | 1 | 11 |
-| `glDeleteTextures` | `glDeleteTextures` | 7 |  |  |  | 3 |
+| `glGenTextures` | `glGenTextures` | 11 |  |  |  | 5 |
+| `glBindTexture` | `glBindTexture` | 46 |  |  | 1 | 11 |
+| `glDeleteTextures` | `glDeleteTextures` | 9 |  |  |  | 3 |
 | `glTexImage2D` ×2 | `glTexImage2D` | 5 |  |  |  | 3 |
-| `glTexSubImage2D` ×2 | `glTexSubImage2D` | 2 |  |  |  |  |
-| `glTexImage3D` ×2 | `glTexImage3D` | 3 |  |  |  | 2 |
-| `glTexSubImage3D` ×3 | `glTexSubImage3D` | 6 |  |  |  |  |
-| `glGenerateMipmap` | `glGenerateMipmap` | 1 |  |  |  |  |
+| `glTexSubImage2D` ×3 | `glTexSubImage2D` | 5 |  |  |  |  |
+| `glTexImage3D` ×2 | `glTexImage3D` | 4 |  |  |  | 2 |
+| `glTexSubImage3D` ×4 | `glTexSubImage3D` | 9 |  |  |  |  |
+| `glGenerateMipmap` | `glGenerateMipmap` | 2 |  |  |  |  |
 | `glActiveTexture` | `glActiveTexture` | 9 | 2 |  | 3 | 1 |
-| `glTexParameteri` | `glTexParameteri` | 19 |  |  |  | 14 |
-| `glPixelStorei` | `glPixelStorei` | 4 |  |  |  | 4 |
+| `glTexParameteri` | `glTexParameteri` | 21 |  |  |  | 14 |
+| `glPixelStorei` | `glPixelStorei` | 8 |  |  |  | 4 |
 | `glBindSampler` | `glBindSampler` | 3 |  |  |  |  |
 | `importHostTexture` | `importHostTexture` | 2 |  |  |  |  |
 | `glTexImage2DMultisample` | `glTexImage2DMultisample` |  |  |  |  |  |
@@ -151,11 +151,11 @@ Attachment sets; a bind picks the next pass's target.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `bindFramebuffer` | `glBindFramebuffer` | 33 | 2 | 2 | 3 | 16 |
+| `bindFramebuffer` | `glBindFramebuffer` | 35 | 2 | 2 | 3 | 16 |
 | `blitFramebuffer` | `glBlitFramebuffer` | 4 |  |  |  |  |
-| `framebufferTextureLayer` | `glFramebufferTextureLayer` | 5 |  |  |  | 1 |
-| `genFramebuffers` | `glGenFramebuffers` | 6 |  | 1 |  | 4 |
-| `deleteFramebuffers` | `glDeleteFramebuffers` | 7 |  | 1 |  | 5 |
+| `framebufferTextureLayer` | `glFramebufferTextureLayer` | 7 |  |  |  | 1 |
+| `genFramebuffers` | `glGenFramebuffers` | 7 |  | 1 |  | 4 |
+| `deleteFramebuffers` | `glDeleteFramebuffers` | 8 |  | 1 |  | 5 |
 | `framebufferTexture2D` | `glFramebufferTexture2D` | 7 |  | 2 |  | 3 |
 | `checkFramebufferStatus` | `glCheckFramebufferStatus` | 2 | 2 |  |  | 4 |
 | `drawBuffers` | `glDrawBuffers` | 3 |  |  |  |  |
@@ -212,18 +212,18 @@ Fences on the frame that recorded them; a readback stalls.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
-| `glGenQuery` | `glGenQuery` |  |  |  | 1 |  |
+| `glGenQuery` | `glGenQuery` |  |  |  | 2 |  |
 | `glBeginTimeElapsedQuery` | `glBeginTimeElapsedQuery` |  |  |  | 1 |  |
 | `glEndTimeElapsedQuery` | `glEndTimeElapsedQuery` |  |  |  | 1 |  |
+| `glQueryTimestamp` | `glQueryTimestamp` |  |  |  | 1 |  |
 | `glIsQueryResultAvailable` | `glIsQueryResultAvailable` |  |  |  | 1 |  |
 | `glGetQueryResultNanos` | `glGetQueryResultNanos` |  |  |  | 1 |  |
-| `glDeleteQuery` | `glDeleteQuery` |  |  |  | 2 |  |
-| `glGetTexImage` | `glGetTexImage` | 3 |  |  |  | 2 |
-| `glReadPixels` ×2 | `glReadPixels` | 6 | 1 |  |  | 3 |
+| `glDeleteQuery` | `glDeleteQuery` |  |  |  | 3 |  |
+| `glGetTexImage` | `glGetTexImage` | 2 |  |  |  | 2 |
+| `glReadPixels` ×2 | `glReadPixels` | 7 | 1 |  |  | 3 |
 | `glFenceSync` | `glFenceSync` | 2 |  |  |  |  |
 | `glClientWaitSync` | `glClientWaitSync` | 2 |  |  |  |  |
 | `glDeleteSync` | `glDeleteSync` | 5 |  |  |  |  |
-| `glQueryTimestamp` | `glQueryTimestamp` |  |  |  |  |  |
 
 ## Fixed function
 

@@ -35,6 +35,8 @@ public final class CgGL {
     private static final int UPLOAD_BYTES = CgTrace.name("upload.texture-bytes");
     /** A texture's storage made with no data. */
     private static final int STORAGE = CgTrace.name("upload.texture-storage");
+    /** An upload from an unpack buffer: the copy scheduled, its bytes counted by whoever wrote the buffer. */
+    private static final int UNPACK = CgTrace.name("upload.texture-unpack");
     private static final int MIPMAPS = CgTrace.name("upload.mipmaps");
 
     /**
@@ -1086,6 +1088,39 @@ public final class CgGL {
         long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
         uploaded(t, pixels == null ? -1 : 2L * pixels.remaining());
+    }
+
+    /**
+     * From the bound {@code GL_PIXEL_UNPACK_BUFFER}, {@code unpackOffset} bytes in: the driver copies from the buffer, and
+     * the call returns once the copy is scheduled. What {@code CgUploads}' leases land through.
+     *
+     * <pre>{@code
+     * CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, staging);
+     * CgGL.glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, offset);
+     * CgGL.glBindBuffer(CgGL.GL_PIXEL_UNPACK_BUFFER, 0);   // a client-memory upload after it would read the buffer
+     * }</pre>
+     */
+    public static void glTexSubImage2D(int target, int level,
+                                        int xOffset, int yOffset, int width, int height,
+                                        int format, int type, long unpackOffset) {
+        long t = CgTrace.stamp(TRACE);
+        gl().glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, unpackOffset);
+        unpacked(t);
+    }
+
+    /** {@link #glTexSubImage2D(int, int, int, int, int, int, int, int, long)} for a box of a 3D or array texture. */
+    public static void glTexSubImage3D(int target, int level,
+                                        int xOffset, int yOffset, int zOffset,
+                                        int width, int height, int depth,
+                                        int format, int type, long unpackOffset) {
+        long t = CgTrace.stamp(TRACE);
+        gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, unpackOffset);
+        unpacked(t);
+    }
+
+    private static void unpacked(long start) {
+        CgTrace.zoneDone(TRACE, UNPACK, start);
+        CgTrace.add(TRACE, UPLOADS, 1);
     }
 
     // =========================================================================

@@ -435,6 +435,19 @@ public final class CgRecordingDevice implements CgDevice {
         }
 
         @Override
+        public void copyBufferToTexture(CgGpuBuffer src, long srcOffset, CgGpuTexture dst, CgTextureRegion r) {
+            outsidePass("copyBufferToTexture");
+            use(src, dst);
+            long need = r.texels() * dst.desc().format().bytes();
+            if (srcOffset % 4 != 0 || srcOffset % dst.desc().format().bytes() != 0)
+                throw new IllegalArgumentException("copyBufferToTexture from offset " + srcOffset);
+            if (srcOffset + need > src.size())
+                throw new IllegalArgumentException("copyBufferToTexture needs " + need + " bytes at " + srcOffset
+                        + " of a " + src.size() + "-byte buffer");
+            record("copyBufferToTexture " + ref(src) + "+" + srcOffset + " " + ref(dst) + " " + region(r));
+        }
+
+        @Override
         public void copyTexture(CgGpuTexture src, CgTextureRegion sr, CgGpuTexture dst, CgTextureRegion dr) {
             outsidePass("copyTexture");
             use(src, dst);
