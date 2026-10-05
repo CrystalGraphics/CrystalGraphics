@@ -254,7 +254,8 @@ SRG, intermediary and MCP rename them (`-Dcrystalgraphics.host.stateCache.byShap
 run), and what Minecraft holds at every hook for what it does not cache: blend equation, front face, polygon mode,
 stencil, and the scissor test off where it keeps none (to 1.16.3); the alpha test is cached to 1.16.5. The first 600
 reads of each domain are checked against `glGet`; a domain that disagrees reads `glGet` from then on, with a warning.
-`state.roundTrip` counts the guessed fields as "not restored in the host view". `-Dcrystalgraphics.host.stateCache=false`
+A guessed field (the scissor box; vertex input from 1.19.2) is restored as guessed, and the provider's `excuse` keeps
+it out of both the checks and `state.roundTrip`. `-Dcrystalgraphics.host.stateCache=false`
 turns it off. What keeps *Minecraft's* cache true is the backend routing through it (`Blaze3dGLBackend`,
 `GlStateManagerGLBackend`); on modern nodes `-Dcrystalgraphics.host.verify=true` checks it.
 
