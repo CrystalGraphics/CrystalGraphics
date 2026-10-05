@@ -13,6 +13,7 @@ import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.pipeline.CgComputePipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipeline;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
+import com.crystalgraphics.platform.device.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
@@ -62,7 +63,7 @@ public final class CgTracker {
 
     private final CgDevice device;
     private final boolean debug;
-    private final CgSlabAllocator host, local, readable;
+    private final CgSlabAllocator host, local, readable, stream;
     private final CgFrameArena frameUploads;
     /** Where the last {@link #frameAllocate} put its bytes in the allocation it answered. */
     private long frameOffset;
@@ -125,10 +126,11 @@ public final class CgTracker {
         this.debug = debug;
         long align = Math.max(16, Math.max(device.info().limits().uniformOffsetAlignment(),
                 Math.max(device.info().limits().storageOffsetAlignment(), device.info().limits().texelOffsetAlignment())));
-        this.host = new CgSlabAllocator(device, true, false, SLAB, align);
-        this.local = new CgSlabAllocator(device, false, false, SLAB, align);
-        this.readable = new CgSlabAllocator(device, true, true, SLAB, align);
-        this.frameUploads = new CgFrameArena(host, align);
+        this.host = new CgSlabAllocator(device, true, false, false, SLAB, align);
+        this.local = new CgSlabAllocator(device, false, false, false, SLAB, align);
+        this.readable = new CgSlabAllocator(device, true, true, false, SLAB, align);
+        this.stream = new CgSlabAllocator(device, true, false, true, SLAB, align);
+        this.frameUploads = new CgFrameArena(stream, align);
     }
 
     public CgDevice device() { return device; }
@@ -654,6 +656,14 @@ public final class CgTracker {
     }
 
     /**
+     * Host-visible memory the CPU writes for the GPU to read about once, as GL's persistently mapped storage is: the
+     * frame ring, upload leases. System memory on a discrete GPU ({@link CgGpuBuffer.Desc#streamed}).
+     */
+    public CgAllocation allocateStreamed(long size, String label) {
+        return stream.allocate(size, label);
+    }
+
+    /**
      * Host-visible memory for this frame only, a per-draw upload: {@code size} bytes at {@link #frameOffset()} in the
      * allocation answered, until the next call. Up to a page comes from {@link CgFrameArena}, allocating nothing.
      */
@@ -662,9 +672,9 @@ public final class CgTracker {
             frameOffset = frameUploads.allocate(size, device.frameIndex(), device.retiredFrame());
             return frameUploads.page();
         }
-        CgAllocation a = host.allocate(size, "frame");
+        CgAllocation a = stream.allocate(size, "frame");
         a.lastUse = device.frameIndex();
-        device.whenRetired(a.lastUse, () -> host.free(a));
+        device.whenRetired(a.lastUse, () -> stream.free(a));
         frameOffset = 0;
         return a;
     }

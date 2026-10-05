@@ -15,16 +15,26 @@ import java.util.TreeMap;
 public final class CgSlabAllocator {
 
     private final CgDevice device;
-    private final boolean hostVisible, hostReads;
+    private final boolean hostVisible, hostReads, streamed;
     private final long slabSize;
     private final long alignment;
     private final List<Slab> slabs = new ArrayList<>();
 
     /** @param hostReads the CPU reads what it hands out: {@link CgGpuBuffer.Desc#hostReads} */
     public CgSlabAllocator(CgDevice device, boolean hostVisible, boolean hostReads, long slabSize, long alignment) {
+        this(device, hostVisible, hostReads, false, slabSize, alignment);
+    }
+
+    /**
+     * @param hostReads the CPU reads what it hands out: {@link CgGpuBuffer.Desc#hostReads}
+     * @param streamed  written for the GPU to read about once: {@link CgGpuBuffer.Desc#streamed}
+     */
+    public CgSlabAllocator(CgDevice device, boolean hostVisible, boolean hostReads, boolean streamed, long slabSize,
+                           long alignment) {
         this.device = device;
         this.hostVisible = hostVisible;
         this.hostReads = hostReads;
+        this.streamed = streamed;
         this.slabSize = slabSize;
         this.alignment = alignment;
     }
@@ -33,15 +43,16 @@ public final class CgSlabAllocator {
         long need = align(Math.max(size, 1));
         if (need > slabSize / 2) {
             CgGpuBuffer b = device.createBuffer(new CgGpuBuffer.Desc(label, need, CgGpuBuffer.Usage.ALL, hostVisible,
-                    hostReads));
+                    hostReads, streamed));
             return new CgAllocation(this, b, 0, size, true);
         }
         for (Slab s : slabs) {
             long at = s.take(need);
             if (at >= 0) return new CgAllocation(this, s.buffer, at, size, false);
         }
-        Slab s = new Slab(device.createBuffer(new CgGpuBuffer.Desc((hostReads ? "readback" : hostVisible ? "host" : "device")
-                + " slab " + slabs.size(), slabSize, CgGpuBuffer.Usage.ALL, hostVisible, hostReads)));
+        String kind = hostReads ? "readback" : streamed ? "stream" : hostVisible ? "host" : "device";
+        Slab s = new Slab(device.createBuffer(new CgGpuBuffer.Desc(kind + " slab " + slabs.size(), slabSize,
+                CgGpuBuffer.Usage.ALL, hostVisible, hostReads, streamed)));
         slabs.add(s);
         return new CgAllocation(this, s.buffer, s.take(need), size, false);
     }

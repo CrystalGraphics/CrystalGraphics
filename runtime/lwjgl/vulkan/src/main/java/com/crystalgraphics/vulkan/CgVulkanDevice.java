@@ -332,6 +332,7 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
             } else if (desc.hostVisible()) {
                 aci.flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
                         .requiredFlags(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                if (desc.streamed()) aci.usage(VMA_MEMORY_USAGE_AUTO_PREFER_HOST);
             }
             LongBuffer lp = stack.mallocLong(1);
             PointerBuffer pp = stack.mallocPointer(1);

@@ -17,6 +17,9 @@ import java.util.Set;
  *
  * // read back by the CPU: memory the CPU caches
  * CgGpuBuffer staging = device.createBuffer(new CgGpuBuffer.Desc("readback", size, CgGpuBuffer.Usage.ALL, true, true));
+ *
+ * // rewritten every frame and read once: system memory
+ * CgGpuBuffer ring = device.createBuffer(new CgGpuBuffer.Desc("ring", size, CgGpuBuffer.Usage.ALL, true, false, true));
  * }</pre>
  *
  * <p>A host-visible buffer without {@code hostReads} may sit in write-combined memory, where the CPU writes at full
@@ -31,11 +34,22 @@ public interface CgGpuBuffer extends CgDeviceObject {
         public static final Set<Usage> ALL = EnumSet.allOf(Usage.class);
     }
 
-    /** @param hostReads the CPU reads it: host-visible memory the CPU caches */
-    record Desc(String label, long size, Set<Usage> usage, boolean hostVisible, boolean hostReads) {
+    /**
+     * @param hostReads the CPU reads it: host-visible memory the CPU caches
+     * @param streamed  the CPU writes it for the GPU to read about once, as GL's persistently mapped storage is: system
+     *                  memory where a discrete GPU would otherwise take device-local memory the CPU writes through the
+     *                  BAR, three times slower (frame ring writes on NVIDIA, 34 us to 9 us)
+     */
+    record Desc(String label, long size, Set<Usage> usage, boolean hostVisible, boolean hostReads, boolean streamed) {
 
         public Desc {
             if (hostReads && !hostVisible) throw new IllegalArgumentException(label + ": read by the CPU, not host-visible");
+            if (streamed && (!hostVisible || hostReads))
+                throw new IllegalArgumentException(label + ": streamed is host-visible and written, not read back");
+        }
+
+        public Desc(String label, long size, Set<Usage> usage, boolean hostVisible, boolean hostReads) {
+            this(label, size, usage, hostVisible, hostReads, false);
         }
 
         public Desc(String label, long size, Set<Usage> usage, boolean hostVisible) {
