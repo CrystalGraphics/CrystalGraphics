@@ -66,13 +66,10 @@ one quad record. No caller-provided layer is in the draw path -- the renderer is
 `context.isWorldText()`/`context.getScaleResolver()`, not off which method was called.
 World-space text is the exact same fluent chain as 2D text — the only difference is
 that the renderer's context was set to one built via `CgTextRenderContext.world(...)`
-instead of `.orthographic(...)` (see `context(CgTextRenderContext)` below). Depth-tested
-render states for world text (`BITMAP_RENDER_STATE_WORLD`/`MSDF_RENDER_STATE_WORLD`/
-`MTSDF_RENDER_STATE_WORLD`) are selected in `submitBatchedQuads` via
-`context.isWorldText()` — this actually implements world text's long-documented
-"depth test enabled" contract, which the pre-merge code declared in javadoc but never
-actually applied (all three original render-state constants hardcoded
-`CgDepthState.NONE` regardless of world-vs-2D).
+instead of `.orthographic(...)` (see `context(CgTextRenderContext)` below). Depth is
+`text.shader`'s for both: tested against the scene, never written. A draw's shadows, lines
+and glyphs are coplanar quads of different extents, so writing depth makes each layer
+fight the next.
 
 **Fluent `Draw` request replaced the fixed-arity `draw(...)` overload matrix.**
 The old design had ~13 overloads (`draw(CgTextLayout/String, CgFont/CgFontFamily,
