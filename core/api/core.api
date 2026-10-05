@@ -7157,6 +7157,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   implements com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
   method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;F)V
   method public air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
+  method public coast (F)V
   method public emitter ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   method public finished ()Z
   method public ground (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
@@ -7167,6 +7168,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originZ ()D
   method public particles ()Lcom/crystalgraphics/vfx/particle/CgVfxParticleSet;
   method public schedule (FDDD)V
+  method public scheduled ()Z
   method public seedBits ()I
   method public share ()F
   method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
@@ -7176,6 +7178,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public start (FFF)V
   method public stepCandidates ()I
   method public stepFirstSpawn ()I
+  method public stepTime ()F
   method public tick (FLcom/crystalgraphics/vfx/particle/CgVfxAir;DDD)V
   method public time ()F
   method public,static rand (III)F
