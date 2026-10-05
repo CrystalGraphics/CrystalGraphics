@@ -1,0 +1,73 @@
+package com.crystalgraphics.vfx.particle.gpu;
+
+/**
+ * A module kind's GPU side: the GLSL function the emitter compiler calls in its Step kernel, in stack order, and the
+ * numbers that call gets. A kind is one function, {@code fx_<kind>} in
+ * {@code crystalgraphics:shaders/lib/vfx/sim/fx_<kind>.glsl}, which includes {@code fx_types.glsl} for its structs.
+ * Since the kind declares what it takes, a new kind is that file and these methods, never a compiler change.
+ *
+ * <pre>{@code
+ * record Gravity(float strength) implements CgVfxModule {          // CgVfxModule extends CgVfxGpuModule
+ *     public String gpuKind() { return "gravity"; }
+ *     public void writeParams(CgVfxWords out) { out.vec4(strength, 0f, 0f, 0f); }
+ * }
+ * // fx_gravity.glsl
+ * void fx_gravity(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) { f.accel.y -= m.x; }
+ * }</pre>
+ *
+ * <p>Values the CPU works out per instance each step, in doubles where the world's coordinates need them:</p>
+ * <pre>{@code
+ * private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4};
+ * public CgVfxLane[] instanceLanes() { return LANES; }
+ * public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) { out.ivec4(...).vec4(...); }
+ * // void fx_turbulence(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, ivec4 cell, vec4 frac)
+ * }</pre>
+ *
+ * <p>After the solver: no forces, and the world values it declares after its lanes:</p>
+ * <pre>{@code
+ * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+ * public boolean afterSolve() { return true; }
+ * public CgVfxWorldInput[] worldInputs() { return WORLD; }
+ * // void fx_ground(inout FxParticle p, FxStep s, vec4 m, float floorY)
+ * }</pre>
+ *
+ * <ul>
+ *   <li>{@link #gpuKind()} names the file and the function: lower case letters, digits and underscores.</li>
+ *   <li>Write exactly what is declared: {@link #paramVectors()} vec4s in {@link #writeParams}, one per lane in
+ *       {@link #writeInstance}; the pool throws otherwise, naming the kind.</li>
+ *   <li>Answer the arrays as constants: they are asked for every step.</li>
+ *   <li>{@link #writeParams} holds the definition's numbers, shared by every instance of it; anything that differs per
+ *       instance is a lane. Numbers never recompile anything: the shape holds the kind and its counts only.</li>
+ *   <li>World inputs are for a kind after the solver; one before it declaring any is refused.</li>
+ * </ul>
+ */
+public interface CgVfxGpuModule {
+
+    /** {@code fx_<kind>}'s {@code <kind>}: its function and its file. */
+    String gpuKind();
+
+    /** True for a kind that runs after the solver has moved the particles. */
+    boolean afterSolve();
+
+    /** How many vec4s of numbers it takes, as {@code m} or {@code m0, m1, ...}. */
+    default int paramVectors() {
+        return 1;
+    }
+
+    /** Its per-instance values, in the order its function takes them after its numbers. */
+    default CgVfxLane[] instanceLanes() {
+        return CgVfxLane.NONE;
+    }
+
+    /** The world values it takes after its lanes; only after the solver. */
+    default CgVfxWorldInput[] worldInputs() {
+        return CgVfxWorldInput.NONE;
+    }
+
+    /** Writes its {@link #paramVectors()} vec4s of numbers: once, when its definition first plays in a pool. */
+    void writeParams(CgVfxWords out);
+
+    /** Writes one vec4 per lane for {@code instance}, at a step's start; nothing for a kind with no lanes. */
+    default void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
+    }
+}
