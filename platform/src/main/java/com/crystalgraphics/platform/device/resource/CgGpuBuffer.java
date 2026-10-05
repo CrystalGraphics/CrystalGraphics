@@ -14,7 +14,13 @@ import java.util.Set;
  * <pre>{@code
  * CgGpuBuffer slab = device.createBuffer(new CgGpuBuffer.Desc("slab", 1 << 20, CgGpuBuffer.Usage.ALL, true));
  * slab.mapped().putFloat(offset, 1f);   // absolute access only: the buffer is shared
+ *
+ * // read back by the CPU: memory the CPU caches
+ * CgGpuBuffer staging = device.createBuffer(new CgGpuBuffer.Desc("readback", size, CgGpuBuffer.Usage.ALL, true, true));
  * }</pre>
+ *
+ * <p>A host-visible buffer without {@code hostReads} may sit in write-combined memory, where the CPU writes at full
+ * speed and reads perhaps a hundred times slower: a 4 MB readback read pixel by pixel took a second on NVIDIA.</p>
  */
 public interface CgGpuBuffer extends CgDeviceObject {
 
@@ -25,7 +31,17 @@ public interface CgGpuBuffer extends CgDeviceObject {
         public static final Set<Usage> ALL = EnumSet.allOf(Usage.class);
     }
 
-    record Desc(String label, long size, Set<Usage> usage, boolean hostVisible) {}
+    /** @param hostReads the CPU reads it: host-visible memory the CPU caches */
+    record Desc(String label, long size, Set<Usage> usage, boolean hostVisible, boolean hostReads) {
+
+        public Desc {
+            if (hostReads && !hostVisible) throw new IllegalArgumentException(label + ": read by the CPU, not host-visible");
+        }
+
+        public Desc(String label, long size, Set<Usage> usage, boolean hostVisible) {
+            this(label, size, usage, hostVisible, false);
+        }
+    }
 
     long size();
 

@@ -15,14 +15,16 @@ import java.util.TreeMap;
 public final class CgSlabAllocator {
 
     private final CgDevice device;
-    private final boolean hostVisible;
+    private final boolean hostVisible, hostReads;
     private final long slabSize;
     private final long alignment;
     private final List<Slab> slabs = new ArrayList<>();
 
-    public CgSlabAllocator(CgDevice device, boolean hostVisible, long slabSize, long alignment) {
+    /** @param hostReads the CPU reads what it hands out: {@link CgGpuBuffer.Desc#hostReads} */
+    public CgSlabAllocator(CgDevice device, boolean hostVisible, boolean hostReads, long slabSize, long alignment) {
         this.device = device;
         this.hostVisible = hostVisible;
+        this.hostReads = hostReads;
         this.slabSize = slabSize;
         this.alignment = alignment;
     }
@@ -30,15 +32,16 @@ public final class CgSlabAllocator {
     public CgAllocation allocate(long size, String label) {
         long need = align(Math.max(size, 1));
         if (need > slabSize / 2) {
-            CgGpuBuffer b = device.createBuffer(new CgGpuBuffer.Desc(label, need, CgGpuBuffer.Usage.ALL, hostVisible));
+            CgGpuBuffer b = device.createBuffer(new CgGpuBuffer.Desc(label, need, CgGpuBuffer.Usage.ALL, hostVisible,
+                    hostReads));
             return new CgAllocation(this, b, 0, size, true);
         }
         for (Slab s : slabs) {
             long at = s.take(need);
             if (at >= 0) return new CgAllocation(this, s.buffer, at, size, false);
         }
-        Slab s = new Slab(device.createBuffer(new CgGpuBuffer.Desc((hostVisible ? "host" : "device") + " slab "
-                + slabs.size(), slabSize, CgGpuBuffer.Usage.ALL, hostVisible)));
+        Slab s = new Slab(device.createBuffer(new CgGpuBuffer.Desc((hostReads ? "readback" : hostVisible ? "host" : "device")
+                + " slab " + slabs.size(), slabSize, CgGpuBuffer.Usage.ALL, hostVisible, hostReads)));
         slabs.add(s);
         return new CgAllocation(this, s.buffer, s.take(need), size, false);
     }

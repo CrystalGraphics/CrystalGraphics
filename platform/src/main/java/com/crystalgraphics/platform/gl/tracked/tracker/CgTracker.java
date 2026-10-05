@@ -62,7 +62,7 @@ public final class CgTracker {
 
     private final CgDevice device;
     private final boolean debug;
-    private final CgSlabAllocator host, local;
+    private final CgSlabAllocator host, local, readable;
     private final CgFrameArena frameUploads;
     /** Where the last {@link #frameAllocate} put its bytes in the allocation it answered. */
     private long frameOffset;
@@ -114,8 +114,9 @@ public final class CgTracker {
         this.debug = debug;
         long align = Math.max(16, Math.max(device.info().limits().uniformOffsetAlignment(),
                 Math.max(device.info().limits().storageOffsetAlignment(), device.info().limits().texelOffsetAlignment())));
-        this.host = new CgSlabAllocator(device, true, SLAB, align);
-        this.local = new CgSlabAllocator(device, false, SLAB, align);
+        this.host = new CgSlabAllocator(device, true, false, SLAB, align);
+        this.local = new CgSlabAllocator(device, false, false, SLAB, align);
+        this.readable = new CgSlabAllocator(device, true, true, SLAB, align);
         this.frameUploads = new CgFrameArena(host, align);
     }
 
@@ -603,8 +604,9 @@ public final class CgTracker {
 
     // ── memory ─────────────────────────────────────────────────────────────────
 
-    public CgAllocation allocate(long size, boolean hostVisible, String label) {
-        return (hostVisible ? host : local).allocate(size, label);
+    /** @param hostReads the CPU reads it back: cached memory, implying {@code hostVisible} */
+    public CgAllocation allocate(long size, boolean hostVisible, boolean hostReads, String label) {
+        return (hostReads ? readable : hostVisible ? host : local).allocate(size, label);
     }
 
     /**

@@ -325,7 +325,11 @@ public final class CgVulkanDevice implements CgDevice, AutoCloseable {
                         .pQueueFamilyIndices(stack.ints(sharedFamilies));
             }
             VmaAllocationCreateInfo aci = VmaAllocationCreateInfo.calloc(stack).usage(VMA_MEMORY_USAGE_AUTO);
-            if (desc.hostVisible()) {
+            if (desc.hostReads()) {
+                aci.flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
+                        .requiredFlags(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+                        .preferredFlags(VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+            } else if (desc.hostVisible()) {
                 aci.flags(VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT)
                         .requiredFlags(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             }
