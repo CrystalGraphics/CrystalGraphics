@@ -21,11 +21,14 @@ public final class CgTrackerStats {
     public long pipelineMisses;
     /** CPU writes that went to fresh memory because a frame in flight still read the old. */
     public long renames;
+    /** Texel uploads recorded into the frame's commands, their staged bytes, and the passes they ended. */
+    public long textureWrites, textureWriteBytes, uploadBreaks;
 
     @Override
     public String toString() {
         return "draws=" + draws + " dispatches=" + dispatches + " computePasses=" + computePasses + " async=" + asyncSections + " passes=" + passes + " breaks=" + passBreaks + " loadClears=" + clearsAsLoadOps
                 + " passClears=" + clearsInPass + " pipelineBinds=" + pipelineBinds + " misses=" + pipelineMisses
-                + " renames=" + renames;
+                + " renames=" + renames + " textureWrites=" + textureWrites + " textureWriteBytes=" + textureWriteBytes
+                + " uploadBreaks=" + uploadBreaks;
     }
 }

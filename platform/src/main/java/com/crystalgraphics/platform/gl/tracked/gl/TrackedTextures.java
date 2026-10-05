@@ -10,6 +10,9 @@ import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgTracker;
+import com.crystalgraphics.platform.gl.tracked.tracker.CgTrackerStats;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -60,6 +63,11 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     }
 
     private final CgTracker tracker;
+    private static final CgTraceChannel TRACE = CgTrace.channel("crystalgraphics.gl");
+    /** Texel uploads recorded into the frame's commands: their staged bytes, and the passes they ended. */
+    private static final int WRITES = CgTrace.name("tracked.texture-writes");
+    private static final int WRITE_BYTES = CgTrace.name("tracked.texture-write-bytes");
+    private static final int UPLOAD_BREAKS = CgTrace.name("tracked.upload-breaks");
     private final TrackedGlErrors errors;
     private final TrackedBuffers buffers;
     private final GlNames<GlTexture> names = new GlNames<>("Texture");
@@ -371,7 +379,16 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private void upload(GlTexture t, int level, int x, int y, int z, int w, int h, int d, int format, int type, ByteBuffer pixels) {
         if (pixels == null || w == 0 || h == 0 || d == 0) return;
         ByteBuffer texels = GlPixels.unpack(pixels, format, type, w, h, d, unpack, t.format);
+        CgTrackerStats stats = tracker.stats();
+        long breaks = stats.passBreaks;
+        int bytes = texels.remaining();
         tracker.transfer().writeTexture(t.image, new CgTextureRegion(level, x, y, z, w, h, d), texels);
+        stats.textureWrites++;
+        stats.textureWriteBytes += bytes;
+        stats.uploadBreaks += stats.passBreaks - breaks;
+        CgTrace.add(TRACE, WRITES, 1);
+        CgTrace.add(TRACE, WRITE_BYTES, bytes);
+        CgTrace.add(TRACE, UPLOAD_BREAKS, stats.passBreaks - breaks);
     }
 
     private GlTexture boundFor(int target, String call) {

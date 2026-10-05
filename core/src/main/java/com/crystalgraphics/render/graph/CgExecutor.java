@@ -122,6 +122,8 @@ public final class CgExecutor {
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
     static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
+    /** The GPU's copies before a frame's first pass: what other threads asked of GPU objects, and the meshes' bytes. */
+    private static final int GPU_DEFERRED = CgGpuTrace.name("upload.deferred"), GPU_MESHES = CgGpuTrace.name("upload.meshes");
     private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
@@ -184,7 +186,13 @@ public final class CgExecutor {
     public static void execute(CgFrame frame, boolean restoreState) {
         // GPU-object work asked for with the frame, or before it, where no GL could run.
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.deferrals")) {
-            CgDeferral.applyAll();
+            boolean gpu = uploadGpuZones();
+            if (gpu) CgGpuTrace.begin(GPU_DEFERRED);
+            try {
+                CgDeferral.applyAll();
+            } finally {
+                if (gpu) CgGpuTrace.end();
+            }
             long ringFrame = CgFrameRing.frame();
             if (depth == 0 && ringFrame != trimmedFrame) {
                 POOL.endFrame();
@@ -278,7 +286,13 @@ public final class CgExecutor {
         for (int k = 0; k < KINDS; k++) {
             if (frame.instanceFloats[k] > 0) instanceBuffers[k].uploadRaw(frame.instances[k], frame.instanceFloats[k]);
         }
-        placeMeshes(frame);
+        boolean gpu = uploadGpuZones();
+        if (gpu) CgGpuTrace.begin(GPU_MESHES);
+        try {
+            placeMeshes(frame);
+        } finally {
+            if (gpu) CgGpuTrace.end();
+        }
         int resolved = 0;
         try {
             for (int s = 0; s < frame.stepCount; s++) {
@@ -583,6 +597,11 @@ public final class CgExecutor {
     }
 
     // ── Async compute ────────────────────────────────────────────────────────
+
+    /** On the detail channel: an enclosing GPU zone is timed around these, not through them. */
+    private static boolean uploadGpuZones() {
+        return CgTrace.isEnabled(CgChannels.GL_DETAIL) && CgGpuTrace.isMeasuring();
+    }
 
     /** Whether {@code pass} goes beside the frame's queue: asked for, on a device with a compute queue, all compute. */
     private boolean runsAsync(CgComputePass pass) {

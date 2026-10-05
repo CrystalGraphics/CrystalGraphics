@@ -3,6 +3,8 @@ package com.crystalgraphics.platform.gl;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.state.CgGlState;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
@@ -25,6 +27,15 @@ import java.util.List;
 public final class CgGL {
     
     private static CgGLBackend backend;
+
+    private static final CgTraceChannel TRACE = CgTrace.channel("crystalgraphics.gl");
+    /** Texel uploads from the CPU, on whichever thread may drive the device. */
+    private static final int UPLOAD = CgTrace.name("upload.texture");
+    private static final int UPLOADS = CgTrace.name("upload.textures");
+    private static final int UPLOAD_BYTES = CgTrace.name("upload.texture-bytes");
+    /** A texture's storage made with no data. */
+    private static final int STORAGE = CgTrace.name("upload.texture-storage");
+    private static final int MIPMAPS = CgTrace.name("upload.mipmaps");
 
     /**
      * Installs {@code dispatch}, or uninstalls with null. A host never calls this: the first {@link #fromHost()}
@@ -975,41 +986,66 @@ public final class CgGL {
     public static void glTexImage2D(int target, int level, int internalFormat,
                                      int width, int height, int border,
                                      int format, int type, ByteBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : pixels.remaining());
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat,
                                      int width, int height, int border,
                                      int format, int type, FloatBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexImage2D(target, level, internalFormat, width, height, border, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : 4L * pixels.remaining());
     }
 
     public static void glTexImage3D(int target, int level, int internalFormat,
                                      int width, int height, int depth, int border,
                                      int format, int type, ByteBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : pixels.remaining());
     }
 
     public static void glTexImage3D(int target, int level, int internalFormat,
                                      int width, int height, int depth, int border,
                                      int format, int type, FloatBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexImage3D(target, level, internalFormat, width, height, depth, border, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : 4L * pixels.remaining());
     }
 
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, ByteBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : pixels.remaining());
     }
 
     public static void glTexSubImage2D(int target, int level,
                                         int xOffset, int yOffset, int width, int height,
                                         int format, int type, FloatBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : 4L * pixels.remaining());
+    }
+
+    /** A texel upload's zone and counts; {@code bytes} -1 for storage made with no data, which is not one. */
+    private static void uploaded(long start, long bytes) {
+        if (bytes < 0) {
+            CgTrace.zoneDone(TRACE, STORAGE, start);
+            return;
+        }
+        CgTrace.zoneDone(TRACE, UPLOAD, start);
+        CgTrace.add(TRACE, UPLOADS, 1);
+        CgTrace.add(TRACE, UPLOAD_BYTES, bytes);
     }
 
     public static void glGenerateMipmap(int target) {
+        long t = CgTrace.stamp(TRACE);
         gl().glGenerateMipmap(target);
+        CgTrace.zoneDone(TRACE, MIPMAPS, t);
     }
 
     public static void glActiveTexture(int texture) {
@@ -1028,14 +1064,18 @@ public final class CgGL {
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, ByteBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : pixels.remaining());
     }
 
     public static void glTexSubImage3D(int target, int level,
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, FloatBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : 4L * pixels.remaining());
     }
 
     /** {@code short}-data variant — the natural fit for {@code GL_HALF_FLOAT} uploads. */
@@ -1043,7 +1083,9 @@ public final class CgGL {
                                         int xOffset, int yOffset, int zOffset,
                                         int width, int height, int depth,
                                         int format, int type, ShortBuffer pixels) {
+        long t = CgTrace.stamp(TRACE);
         gl().glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, pixels);
+        uploaded(t, pixels == null ? -1 : 2L * pixels.remaining());
     }
 
     // =========================================================================
