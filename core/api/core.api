@@ -3967,6 +3967,7 @@ com/crystalgraphics/noise/CgNoiseBake
   extends java/lang/Object
   method public,static curl ([FII)[F
   method public,static gradient (II)[F
+  method public,static halve ([FI)[F
   method public,static toHalf ([F)Ljava/nio/ByteBuffer;
   method public,static value (II)[F
   method public,static voronoi (II)[F

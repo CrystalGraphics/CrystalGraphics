@@ -42,6 +42,19 @@ public class CgNoiseBakeTest {
     }
 
     @Test
+    public void aMipTexelAveragesTheEightItCovers() {
+        int size = 4;
+        float[] cube = new float[size * size * size * 4];
+        for (int i = 0; i < cube.length; i++) cube[i] = i;
+        float[] half = CgNoiseBake.halve(cube, size);
+        assertEquals(2 * 2 * 2 * 4, half.length);
+        // Texel (1, 0, 1) covers x 2-3, y 0-1, z 2-3; channel 2.
+        float sum = 0f;
+        for (int z = 2; z < 4; z++) for (int y = 0; y < 2; y++) for (int x = 2; x < 4; x++) sum += cube[((z * size + y) * size + x) * 4 + 2];
+        assertEquals(sum / 8f, half[((1 * 2 + 0) * 2 + 1) * 4 + 2], 0f);
+    }
+
+    @Test
     public void halvesMatchJava() {
         for (float v : new float[]{0f, -0f, 1f, -1.6f, 0.333333f, 65504f, 70000f, 6.1e-5f, 3e-6f, 1e-9f, Float.NaN}) {
             int mask = Float.isNaN(v) ? 0x7E00 : 0xFFFF;

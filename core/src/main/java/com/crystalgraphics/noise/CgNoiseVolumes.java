@@ -28,8 +28,8 @@ import java.util.logging.Logger;
  * <ul>
  *   <li>{@link #PERIOD} lattice cells across every volume: sample at {@code p / PERIOD}, repeating.
  *       {@code lib/noise_volume.glsl} does it.</li>
- *   <li>Baked on a worker at the first {@link #install()}, about half a second at 64; until it lands every name
- *       reads zero.</li>
+ *   <li>Baked on a worker at the first {@link #install()}, mip chain included, about half a second at 64; until it
+ *       lands every name reads zero.</li>
  *   <li>{@code -Dcrystalgraphics.noise.size=64|128}: texels a side, 64 by default (2 MB a volume).</li>
  * </ul>
  */
@@ -54,8 +54,8 @@ public final class CgNoiseVolumes {
     private static final CgTexture3D[] VOLUMES = new CgTexture3D[NAMES.length];
     /** One zero texel, answering every name until the bake lands, so no sampler3D is left unbound. */
     private static CgTexture3D pending;
-    /** Kept for the next context: baked once a process. */
-    private static ByteBuffer[] baked;
+    /** Kept for the next context: baked once a process. Per volume, its levels from 0. */
+    private static ByteBuffer[][] baked;
     private static boolean baking;
     /** Bumped by {@link #release()}, so a bake landing after it uploads nothing. */
     private static int generation;
@@ -86,7 +86,7 @@ public final class CgNoiseVolumes {
         baking = true;
         int expected = generation;
         Thread worker = new Thread(() -> {
-            ByteBuffer[] done;
+            ByteBuffer[][] done;
             try {
                 long start = System.nanoTime();
                 done = bake();
@@ -120,20 +120,35 @@ public final class CgNoiseVolumes {
         pending = null;
     }
 
-    private static ByteBuffer[] bake() {
+    private static ByteBuffer[][] bake() {
         float[] gradient = CgNoiseBake.gradient(SIZE, PERIOD);
-        return new ByteBuffer[]{CgNoiseBake.toHalf(gradient), CgNoiseBake.toHalf(CgNoiseBake.value(SIZE, PERIOD)),
-                CgNoiseBake.toHalf(CgNoiseBake.voronoi(SIZE, PERIOD)),
-                CgNoiseBake.toHalf(CgNoiseBake.curl(gradient, SIZE, PERIOD)),
-                CgNoiseBake.toHalf(CgNoiseBake.voronoiNearest(SIZE, PERIOD))};
+        return new ByteBuffer[][]{chain(gradient), chain(CgNoiseBake.value(SIZE, PERIOD)),
+                chain(CgNoiseBake.voronoi(SIZE, PERIOD)), chain(CgNoiseBake.curl(gradient, SIZE, PERIOD)),
+                chain(CgNoiseBake.voronoiNearest(SIZE, PERIOD))};
+    }
+
+    /**
+     * Every level of a volume as RGBA16F, averaged on the bake's thread. Left to the driver, NVIDIA's GL stalled the
+     * render thread 6-24 ms a volume generating a 3D float chain.
+     */
+    private static ByteBuffer[] chain(float[] level0) {
+        ByteBuffer[] levels = new ByteBuffer[CgTexture3D.fullChain(SIZE, SIZE, SIZE)];
+        float[] level = level0;
+        for (int l = 0, size = SIZE; l < levels.length; l++, size /= 2) {
+            levels[l] = CgNoiseBake.toHalf(level);
+            if (l + 1 < levels.length) level = CgNoiseBake.halve(level, size);
+        }
+        return levels;
     }
 
     /** Any thread: the texture's work waits for the render thread. A name resolves once its upload is queued. */
-    private static void upload(ByteBuffer[] texels) {
+    private static void upload(ByteBuffer[][] levels) {
         for (int i = 0; i < NAMES.length; i++) {
-            CgTexture3D volume = CgTexture3D.createEmpty(SIZE, SIZE, SIZE, SPEC, CgTexture3D.fullChain(SIZE, SIZE, SIZE));
-            volume.uploadRegion(0, 0, 0, 0, SIZE, SIZE, SIZE, texels[i].duplicate(), CgGL.GL_RGBA, CgGL.GL_HALF_FLOAT);
-            volume.generateMipmaps();
+            CgTexture3D volume = CgTexture3D.createEmpty(SIZE, SIZE, SIZE, SPEC, levels[i].length);
+            for (int l = 0, size = SIZE; l < levels[i].length; l++, size /= 2) {
+                volume.uploadRegion(l, 0, 0, 0, size, size, size, levels[i][l].duplicate(), CgGL.GL_RGBA,
+                        CgGL.GL_HALF_FLOAT);
+            }
             VOLUMES[i] = volume;
         }
     }
