@@ -265,8 +265,19 @@ public final class CgVfxEmitterInstance {
         }
     }
 
-    /** A number in 0..1 for the {@code k}-th draw of the {@code n}-th particle spawned, fixed by the seed. */
     private float rand(int n, int k) {
+        return rand(seed, n, k);
+    }
+
+    /**
+     * A number in 0..1 for the {@code k}-th draw of the {@code n}-th particle an instance seeded with {@code seed} (the
+     * bits of its float seed) spawned. {@code fx_rand.glsl} gives the same bits on the GPU.
+     *
+     * <pre>{@code
+     * float life = lifeMin + (lifeMax - lifeMin) * CgVfxEmitterInstance.rand(Float.floatToIntBits(seed), k, 4);
+     * }</pre>
+     */
+    public static float rand(int seed, int n, int k) {
         int h = seed * 0x9E3779B1 ^ n * 0x85EBCA77 ^ k * 0xC2B2AE3D;
         h ^= h >>> 15;
         h *= 0x2C1B3C6D;
