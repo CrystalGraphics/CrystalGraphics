@@ -70,6 +70,12 @@ public final class CgDispatch {
     final float[] values;
     /** The recording's snapshot of its blocks and samplers, made when the pass ends. */
     int bindings = -1;
+    /** The kernel's, per declared buffer and image: a bit per accessor it uses. Shared; never written. */
+    private final int[] bufferUse, imageUse;
+
+    private static final CgBufferAccessor[] BUFFER_ACCESSORS = CgBufferAccessor.values();
+    private static final CgImageAccessor[] IMAGE_ACCESSORS = CgImageAccessor.values();
+    private static final int COUNT = 1 << CgBufferAccessor.COUNT.ordinal(), APPEND = 1 << CgBufferAccessor.APPEND.ordinal();
 
     CgDispatch(CgComputePass pass, CgKernel kernel, Form form, int x, int y, int z, @Nullable CgGraphBuffer args,
                long argsOffset) {
@@ -87,6 +93,8 @@ public final class CgDispatch {
         // too, not in the frame that executes it.
         kernel.check();
         if (CgCapabilities.detected() != null) kernel.form();
+        bufferUse = kernel.bufferAccessors();
+        imageUse = kernel.imageAccessors();
         int n = source.buffers().size(), m = source.images().size();
         buffers = new CgGraphBuffer[n];
         offsets = new long[n];
@@ -138,8 +146,9 @@ public final class CgDispatch {
         pass.requireOpen();
         CgBufferDecl b = bufferDecl(name);
         if (b.access() != CgBufferAccess.APPEND) throw new IllegalArgumentException(name + " is no append buffer");
-        int access = (uses(b.name() + CgBufferAccessor.APPEND.suffix) ? CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE : 0)
-                | (uses(b.name() + CgBufferAccessor.COUNT.suffix) ? CgAccess.COMPUTE_READ : 0);
+        int use = bufferUse[b.index()];
+        int access = ((use & APPEND) != 0 ? CgAccess.COMPUTE_READ | CgAccess.COMPUTE_WRITE : 0)
+                | ((use & COUNT) != 0 ? CgAccess.COMPUTE_READ : 0);
         checkHistory(counter, access, name + "'s count");
         counters[b.index()] = counter;
         counterOffsets[b.index()] = offset;
@@ -172,9 +181,9 @@ public final class CgDispatch {
             throw new IllegalArgumentException(name + " is a " + image.dimension().token + " image, and " + texture
                     + (texture.isVolume() ? " is a volume: declare the image 3d" : " is 2D: bind a CgTextureDesc.volume"));
         }
-        int access = 0;
-        for (CgImageAccessor a : CgImageAccessor.values()) {
-            if (!uses(name + a.suffix)) continue;
+        int access = 0, use = imageUse[image.index()];
+        for (CgImageAccessor a : IMAGE_ACCESSORS) {
+            if ((use & 1 << a.ordinal()) == 0) continue;
             access |= switch (a) {
                 case LOAD -> CgAccess.COMPUTE_READ;
                 case SIZE -> 0;
@@ -242,19 +251,14 @@ public final class CgDispatch {
 
     /** Every buffer, count and image the kernel uses is bound. At the pass's end. */
     void requireBound() {
-        for (CgBufferDecl b : source.buffers()) {
-            boolean used = false;
-            for (CgBufferAccessor a : CgBufferAccessor.values()) {
-                if (a != CgBufferAccessor.COUNT && uses(b.name() + a.suffix)) used = true;
+        for (int i = 0; i < bufferUse.length; i++) {
+            if ((bufferUse[i] & ~COUNT) != 0 && buffers[i] == null) throw unbound(source.buffers().get(i).name());
+            if ((bufferUse[i] & (APPEND | COUNT)) != 0 && counters[i] == null) {
+                throw unbound(source.buffers().get(i).name() + "'s count (counter)");
             }
-            if (used && buffers[b.index()] == null) throw unbound(b.name());
-            boolean counts = uses(b.name() + CgBufferAccessor.APPEND.suffix) || uses(b.name() + CgBufferAccessor.COUNT.suffix);
-            if (counts && counters[b.index()] == null) throw unbound(b.name() + "'s count (counter)");
         }
-        for (CgImageDecl image : source.images()) {
-            for (CgImageAccessor a : CgImageAccessor.values()) {
-                if (uses(image.name() + a.suffix) && images[image.index()] == null) throw unbound(image.name());
-            }
+        for (int i = 0; i < imageUse.length; i++) {
+            if (imageUse[i] != 0 && images[i] == null) throw unbound(source.images().get(i).name());
         }
     }
 
@@ -270,9 +274,9 @@ public final class CgDispatch {
 
     /** What the kernel does to buffer {@code b}'s elements, from the accessors it uses. */
     private int bufferAccess(CgBufferDecl b) {
-        int access = 0;
-        for (CgBufferAccessor a : CgBufferAccessor.values()) {
-            if (!uses(b.name() + a.suffix)) continue;
+        int access = 0, use = bufferUse[b.index()];
+        for (CgBufferAccessor a : BUFFER_ACCESSORS) {
+            if ((use & 1 << a.ordinal()) == 0) continue;
             access |= switch (a) {
                 case READ -> CgAccess.COMPUTE_READ;
                 case LENGTH, COUNT -> 0;
@@ -281,10 +285,6 @@ public final class CgDispatch {
             };
         }
         return access;
-    }
-
-    private boolean uses(String accessor) {
-        return decl.accessors().contains(accessor);
     }
 
     private void checkHistory(CgGraphBuffer buffer, int access, String binding) {

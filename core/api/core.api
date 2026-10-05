@@ -1617,6 +1617,7 @@ com/crystalgraphics/compute/CgDispatchBindings
 com/crystalgraphics/compute/CgKernel
   access public,final
   extends java/lang/Object
+  method public bufferAccessors ()[I
   method public check ()V
   method public compute ()Lcom/crystalgraphics/compute/CgCompute;
   method public cpu (Lcom/crystalgraphics/compute/cpu/CgCpuBody;)Lcom/crystalgraphics/compute/CgKernel;
@@ -1625,6 +1626,7 @@ com/crystalgraphics/compute/CgKernel
   method public form ()Lcom/crystalgraphics/compute/CgKernelForm;
   method public glsl ()Ljava/lang/String;
   method public hashCode ()I
+  method public imageAccessors ()[I
   method public keywords ()Ljava/util/Set;
   method public lowered ()Lcom/crystalgraphics/compute/lower/CgLoweredKernel;
   method public name ()Ljava/lang/String;
