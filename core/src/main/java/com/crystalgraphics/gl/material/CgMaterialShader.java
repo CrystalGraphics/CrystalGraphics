@@ -28,6 +28,8 @@ import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.util.io.CgIO;
 
 import javax.annotation.Nullable;
@@ -1143,10 +1145,13 @@ public final class CgMaterialShader {
     public static final boolean SHADOWS_SUPPORTED = false;
 
     private void wireShader(CgShader shader) {
-        shader.bind();
-        wireShaderBuffers(shader);
-        wireShaderSamplers(shader);
-        shader.unbind();
+        // Links finish while a stage records, outside any scope: the host's program goes back, since Minecraft from
+        // 1.21.5 rebinds its own only when its pipeline changes.
+        try (CgGlScope ignored = CgGlState.saveProgram()) {
+            shader.bind();
+            wireShaderBuffers(shader);
+            wireShaderSamplers(shader);
+        }
     }
 
     private void wireShaderBuffers(CgShader shader) {
