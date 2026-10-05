@@ -126,8 +126,10 @@ The authoritative path is:
 2. registry transforms the public glyph key into the relevant internal cache key
 3. registry looks in the paged atlas family
 4. on hit, return placement
-5. on miss, rasterize/generate synchronously or queue async work
-6. commit results into atlas storage
+5. on miss, ask a worker and return null: the glyph draws nothing until it lands, a frame or more later (an MSDF
+   glyph draws its bitmap stand-in once that lands). Generated on the calling thread only where the worker route
+   cannot deliver (a failed job, a full queue), or through `ensureGlyph`, for tooling
+6. commit results into atlas storage, a per-frame budget of them (`tickFrame`)
 7. renderer consumes resulting `CgGlyphPlacement`
 
 ## Key invariants

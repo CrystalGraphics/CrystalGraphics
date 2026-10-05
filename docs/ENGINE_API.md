@@ -330,7 +330,7 @@ Two kinds, independent of each other:
 | Textures (2D, arrays, 3D, cubemaps): make, fill, grow, delete | yes, through each texture's `CgDeferral` | what was queued lands before the next frame executes | a copy into a texture nothing else has used yet, on the transfer queue |
 | Shader buffers, `RETAINED`: make, write, delete | yes, through each buffer's `CgDeferral` | the upload lands (`glBufferSubData`) before the next frame executes | — (its memory is host-visible: landing is a CPU copy) |
 | Shader buffers, `FRAME` | no | written and uploaded by the frame that reads them | — |
-| Glyphs | MSDF fields, shadow cells, and the bitmap glyph MSDF text draws until its field lands: on the font registry's workers | text drawn at the bitmap tier is rasterised here at its first draw; pages land here | a new page's copy, on the transfer queue |
+| Glyphs | every glyph (bitmap, MSDF field, shadow cell) on the font registry's workers: a new glyph draws a frame or more late | finished glyphs land in the atlas here, a budget of them a frame | a new page's copy, on the transfer queue |
 | Compute passes | recorded with the frame | executed with it | an `async()` pass, on the compute queue |
 | Readbacks | `CgRecording.readback`, recorded with the frame | `CgReadback` asked for here; every sink runs here, frames later | — |
 | `.shader` and `.compute` files | parsed on any thread | — | — |
@@ -450,7 +450,6 @@ CgPixelReadback thumbnails = new CgPixelReadback(3);                            
 | Copies into a texture the frame's queue already uses (a glyph page filling) | at most 0.01 ms a frame, and a transfer copy would need two cross-queue waits |
 | Readback copies, on the frame's queue | at most 0.3 ms a frame, for a debug view |
 | `FRAME` shader buffers | written by the frame that reads them, by definition |
-| Text drawn at the bitmap tier, rasterised on the render thread at its first draw | not yet moved: on a worker a glyph misses the frame that asked for it, as an MSDF glyph's bitmap stand-in already does. The desktop's worst frame rasterises 128 such glyphs, 7 ms |
 | A shader variant's compile, at its first draw: 7-110 ms on GL | `render-shader-compile`, proposed. Meanwhile `CgMaterial.prepare()` and `CgKernel.prepare()` start one early |
 | Framebuffers and programs: made on the render thread | — |
 
