@@ -141,6 +141,15 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
            .vec4(spinMin, spinMax, 0f, 0f);
     }
 
+    @Override
+    public void writeCurves(float[] out, int at, int texels) {
+        for (int i = 0; i < texels; i++) {
+            float progress = texels > 1 ? (float) i / (texels - 1) : 0f;
+            out[at + 2 * i] = sizeAt(progress);
+            out[at + 2 * i + 1] = opacityAt(progress);
+        }
+    }
+
     /** How much of its starting size a particle is at {@code progress} 0..1 through its life. */
     public float sizeAt(float progress) {
         return sizeOverLife.at(progress);
@@ -149,6 +158,29 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** How opaque a particle is at {@code progress} 0..1 through its life. */
     public float opacityAt(float progress) {
         return opacityOverLife.at(progress);
+    }
+
+    /**
+     * The most particles one instance can have alive at once, at full share: what a GPU pool sizes its slot by, since a
+     * pool never drops a spawn. Every burst within any span of its longest life, plus its rate over that span.
+     *
+     * <pre>{@code
+     * int slot = pool.open(EMBERS, EMBERS.peakAlive());
+     * }</pre>
+     */
+    public int peakAlive() {
+        // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
+        float span = lifeMax + 0.1f;
+        int bursts = 0;
+        for (float from : burstTimes) {
+            int alive = 0;
+            for (int j = 0; j < burstTimes.length; j++) {
+                if (burstTimes[j] >= from && burstTimes[j] < from + span) alive += burstCounts[j];
+            }
+            bursts = Math.max(bursts, alive);
+        }
+        int fromRate = rate > 0f ? (int) Math.ceil(rate * Math.min(span, rateUntil - rateFrom)) + 2 : 0;
+        return bursts + fromRate;
     }
 
     /** Seconds from the instance's start after which this emitter spawns nothing more. */

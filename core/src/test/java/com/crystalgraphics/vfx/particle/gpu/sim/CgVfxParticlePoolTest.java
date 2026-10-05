@@ -127,6 +127,10 @@ public class CgVfxParticlePoolTest {
         public void writeSpawn(CgVfxWords out) {
             out.vec4(1f, 2f, 3f, 4f).vec4(5f, 6f, 7f, 8f).vec4(9f, 10f, 11f, 12f).vec4(13f, 14f, 0f, 0f);
         }
+
+        public void writeCurves(float[] out, int at, int texels) {
+            Arrays.fill(out, at, at + 2 * texels, 1f);
+        }
     }
 
     private static final class At implements CgVfxInstanceView {
