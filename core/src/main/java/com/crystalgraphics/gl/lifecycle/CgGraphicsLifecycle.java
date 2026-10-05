@@ -418,7 +418,17 @@ public final class CgGraphicsLifecycle {
         } finally {
             CgGL.toHost();
         }
+        // A host frame nothing else framed for the trace (no UI document open) is framed here, so a world with no
+        // screen still records; one a document or the harness framed is left to them.
+        if (CgTrace.currentFrameIndex() == traceFramed) {
+            CgTrace.frameEnd();
+            CgTrace.frameBegin();
+        }
+        traceFramed = CgTrace.currentFrameIndex();
     }
+
+    /** The trace frame index as {@link #tickFrame()} last left it. */
+    private static long traceFramed = -1L;
 
     /**
      * Returns the current authoritative frame number, as last advanced by
