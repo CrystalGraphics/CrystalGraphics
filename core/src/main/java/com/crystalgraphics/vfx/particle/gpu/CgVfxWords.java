@@ -31,6 +31,23 @@ public final class CgVfxWords {
     CgVfxWords() {
     }
 
+    /**
+     * Words over {@code vectors} vec4s of {@code into} from word {@code from}, outside a pool: a test running one module
+     * kind's GLSL against its Java side. {@code writer} names who writes, for the messages.
+     *
+     * <pre>{@code
+     * int[] words = new int[8];
+     * CgVfxWords out = CgVfxWords.into(words, 0, turbulence.paramVectors(), "turbulence");
+     * turbulence.writeParams(out);
+     * out.finish("its numbers");
+     * }</pre>
+     */
+    public static CgVfxWords into(int[] into, int from, int vectors, String writer) {
+        CgVfxWords words = new CgVfxWords();
+        words.target(into, from, vectors, writer);
+        return words;
+    }
+
     /** Points it at {@code vectors} vec4s of {@code into} from word {@code from}; {@code writer} names who writes. */
     void target(int[] into, int from, int vectors, String writer) {
         this.words = into;
@@ -41,7 +58,7 @@ public final class CgVfxWords {
     }
 
     /** Throws unless every word it was pointed at was written; {@code what} names the row. */
-    void finish(String what) {
+    public void finish(String what) {
         if (at != end) {
             throw new IllegalStateException(writer + " wrote " + (at - start) / 4 + " of the " + (end - start) / 4
                     + " vec4s it declared for " + what);
