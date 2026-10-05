@@ -93,6 +93,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
             // Before any GL work: CgBindingPoints allocates units counting down from this ceiling.
             CgCapabilities.setHostTextureUnitCeiling(GlStateManagerGLBackend.TRACKED_TEXTURE_UNITS);
             glBackend = new GlStateManagerGLBackend();
+            HostStateLegacy.install();
         }
         return glBackend;
     }

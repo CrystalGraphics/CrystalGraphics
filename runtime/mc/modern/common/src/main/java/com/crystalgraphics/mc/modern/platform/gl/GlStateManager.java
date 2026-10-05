@@ -6,6 +6,9 @@ final class GlStateManager {
 
     private GlStateManager() {}
 
+    /^* The class this stands in for, for HostStateModern's reflection. ^/
+    static final Class<?> HOST = com.mojang.blaze3d.platform.GlStateManager.class;
+
     static void _activeTexture(int a0) {
         com.mojang.blaze3d.platform.GlStateManager.activeTexture(a0);
     }

@@ -18,6 +18,9 @@ import org.lwjgl.opengl.GL13;
 //? if >=1.21.11 {
 /*import org.lwjgl.opengl.GL33C;
 *///?}
+//? if >=1.19.2 <1.21.5 {
+import com.mojang.blaze3d.vertex.BufferUploader;
+//?}
 
 /**
  * {@link Lwjgl3GLBackend} plus the one thing tier 1 cannot do: <b>telling Minecraft what we changed.</b>
@@ -64,6 +67,16 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     private final int trackedTextureUnits = Blaze3dTextureUnits.count();
 
     private int activeTextureUnit = 0;
+
+    // HostStateModern answers the vertex input as Minecraft's no longer: it binds its own before each draw, but
+    // remembers its immediate buffer's array, so that record goes when the frame goes back.
+    //? if >=1.19.2 <1.21.5 {
+    @Override
+    public void toHost() {
+        super.toHost();
+        BufferUploader.reset();
+    }
+    //?}
 
     // 1.14 keeps its framebuffer calls in GLX, which caches nothing: tier 1 below 1.15.
     //? if >=1.15 {
