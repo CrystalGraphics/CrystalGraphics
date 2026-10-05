@@ -670,10 +670,12 @@ com/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc
   extends java/lang/Record
   method public <init> (Ljava/lang/String;JLjava/util/Set;Z)V
   method public <init> (Ljava/lang/String;JLjava/util/Set;ZZ)V
+  method public <init> (Ljava/lang/String;JLjava/util/Set;ZZZ)V
   method public hostReads ()Z
   method public hostVisible ()Z
   method public label ()Ljava/lang/String;
   method public size ()J
+  method public streamed ()Z
   method public usage ()Ljava/util/Set;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -2617,6 +2619,7 @@ com/crystalgraphics/platform/gl/tracked/memory/CgSlabAllocator
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;ZZJJ)V
+  method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;ZZZJJ)V
   method public allocate (JLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public free (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
 com/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer
@@ -2694,6 +2697,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   field public,final stats Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats;
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;Z)V
   method public allocate (JZZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
+  method public allocateStreamed (JLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public beginAsync ()V
   method public beginTransfer ()V
   method public bindTarget (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;)V

@@ -189,6 +189,9 @@ What is easy to get wrong:
   `finish()` if it is the current one, which a hosted device refuses. A buffer with a `READ` usage hint (or
   `glBufferStorage` with `GL_MAP_READ_BIT`) is in memory the CPU caches (`CgGpuBuffer.Desc.hostReads`), from a pool of
   its own; any other host-visible buffer may be write-combined, where reading 4 MB pixel by pixel took a second.
+  Persistently mapped storage the CPU only writes (the frame ring, upload leases) and the uniform arena are
+  `streamed` (`CgGpuBuffer.Desc.streamed`): system memory, as GL drivers place it, since through a discrete GPU's
+  BAR the CPU writes three times slower. Retained buffers stay where VMA puts them.
 - **A texture upload from an unpack buffer** (`glTexSubImage*` with an offset: how `CgUploads`' leases land) is a
   device copy from the buffer itself (`copyBufferToTexture`) where the bytes are the texture's texels as they are,
   tightly packed; one that converts is unpacked on the CPU from the buffer's memory. A client-memory upload that

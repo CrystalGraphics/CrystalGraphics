@@ -50,12 +50,14 @@ public final class CgTrackedBuffer {
 
     /**
      * {@code glBufferStorage}: immutable storage, host-visible where the CPU maps it. A persistent one is mapped for
-     * good and never renamed.
+     * good and never renamed; written only, it is GL's streaming storage (the frame ring, upload leases), in the
+     * memory a driver gives it: system memory, which the CPU writes three times faster than a discrete GPU's.
      */
     public void storage(long size, ByteBuffer initial, boolean hostVisible, boolean hostReads,
                         boolean persistentMapping) {
         if (persistent) throw new IllegalStateException(label + " has immutable storage");
-        replace(tracker.allocate(size, hostVisible, hostReads, label));
+        replace(persistentMapping && hostVisible && !hostReads ? tracker.allocateStreamed(size, label)
+                : tracker.allocate(size, hostVisible, hostReads, label));
         if (initial != null) subData(0, initial);
         persistent = persistentMapping;
     }
