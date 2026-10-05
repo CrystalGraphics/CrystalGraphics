@@ -187,13 +187,34 @@ public final class CgRecording {
      */
     public CgRasterPass raster(CgGraphTexture target, int level, CgLoad load, CgPassConstants constants,
                                @Nullable CgRenderState state, CgOrder order) {
+        return raster(target, level, 0, load, constants, state, order);
+    }
+
+    /**
+     * A raster pass into layer {@code layer} of an array {@code target} ({@code CgTextureDesc.array}). Each layer is a
+     * target of its own: its load clears or keeps that layer alone. Sampled, the array is read whole, so no pass draws
+     * into an array it samples.
+     *
+     * <pre>{@code
+     * for (int k = 0; k < used; k++) {
+     *     CgRasterPass slot = rec.raster(field, 0, k, CgLoad.clear(0, 0, 0, 0), constants, additive, CgOrder.SORTED);
+     *     // ... slot k's draws ...
+     *     slot.end();
+     * }
+     * }</pre>
+     */
+    public CgRasterPass raster(CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
+                               @Nullable CgRenderState state, CgOrder order) {
         requireOpen();
         if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
         if (target.isVolume()) {
             throw new IllegalArgumentException(target + " is a volume: kernels write it as a 3d image, and no pass draws into one");
         }
-        String name = level == 0 ? "raster " + target.name() : "raster " + target.name() + " level " + level;
-        CgRasterPass pass = new CgRasterPass(this, name, target, level, load, block(constants), state, order);
+        if (layer < 0 || layer >= target.getLayers()) {
+            throw new IllegalArgumentException(target + " has " + target.getLayers() + " layers, not layer " + layer);
+        }
+        String name = "raster " + target.name() + (level == 0 ? "" : " level " + level) + (layer == 0 ? "" : " layer " + layer);
+        CgRasterPass pass = new CgRasterPass(this, name, target, level, layer, load, block(constants), state, order);
         add(pass);
         return pass;
     }
@@ -222,7 +243,9 @@ public final class CgRecording {
         if (from.kind() == CgGraphTexture.Kind.CURRENT || to.kind() == CgGraphTexture.Kind.CURRENT) {
             throw new IllegalArgumentException("a copy names its framebuffers; the current target has none");
         }
-        if (from.isVolume() || to.isVolume()) throw new IllegalArgumentException("a copy is between 2D textures, not volumes");
+        if (from.isVolume() || to.isVolume() || from.isArray() || to.isArray()) {
+            throw new IllegalArgumentException("a copy is between 2D textures, not volumes or arrays");
+        }
         CgPass.Copy copy = new CgPass.Copy(from, x, y, w, h, to, tx, ty, tw, th, linear);
         add(copy);
         read(copy, from, CgAccess.COPY_READ);
@@ -348,6 +371,7 @@ public final class CgRecording {
      */
     public CgRequest update(CgGraphTexture texture, int level, int x, int y, int z, int w, int h, int d, ByteBuffer data) {
         requireOpen();
+        if (texture.isArray()) throw new IllegalArgumentException(texture + " is an array: draw its layers");
         CgFrameBufferFormat format = region(texture, level, x, y, z, w, h, d, "an update");
         if (format == null || format.isMultisampled()) {
             throw new IllegalArgumentException(texture + " has no single-sampled colour texture of a known type to update");
@@ -396,7 +420,7 @@ public final class CgRecording {
             throw new IllegalArgumentException(texture + " has no colour texture at attachment 0");
         }
         int lw = Math.max(1, texture.getWidth() >> level), lh = Math.max(1, texture.getHeight() >> level);
-        int ld = texture.getDepth();
+        int ld = texture.isArray() ? texture.getLayers() : texture.getDepth();
         if (x < 0 || y < 0 || z < 0 || w <= 0 || h <= 0 || d <= 0 || x + w > lw || y + h > lh || z + d > ld) {
             throw new IllegalArgumentException(what + " of " + w + "x" + h + "x" + d + " at " + x + "," + y + "," + z
                     + " in level " + level + " of " + texture + ", " + lw + "x" + lh + "x" + ld);

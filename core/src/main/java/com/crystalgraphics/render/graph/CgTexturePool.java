@@ -26,8 +26,9 @@ final class CgTexturePool {
         return create("cg_graph_" + desc.width() + "x" + desc.height() + "_" + created++, desc);
     }
 
-    /** Storage for {@code desc}: a framebuffer, or a volume's 3D texture. */
+    /** Storage for {@code desc}: a framebuffer, an array's, or a volume's 3D texture. */
     static CgFrameBuffer create(String name, CgTextureDesc desc) {
+        if (desc.isArray()) return CgFrameBuffer.createArray(name, desc.width(), desc.height(), desc.layers(), desc.format());
         return desc.isVolume() ? CgFrameBuffer.createVolume(name, desc.width(), desc.height(), desc.depth(), desc.format())
                 : CgFrameBuffer.createOwned(name, desc.width(), desc.height(), desc.format(), desc.levels());
     }

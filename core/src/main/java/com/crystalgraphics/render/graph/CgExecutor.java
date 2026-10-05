@@ -507,7 +507,7 @@ public final class CgExecutor {
             } else if (pass instanceof CgPass.Callback callback) {
                 boolean bound = otherBound;   // the scope restores the binding it found
                 try (CgGlScope ignored = CgGlState.saveAll()) {
-                    bindTarget(callback.target, 0);
+                    bindTarget(callback.target, 0, 0);
                     callback.body.run();
                 }
                 otherBound = bound;
@@ -998,7 +998,7 @@ public final class CgExecutor {
         }
         if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
         if (packed.indirects > 0 && gpuCounts) writeCommands(pass, packed);   // a dispatch never sits inside a render pass
-        bindTarget(pass.target, pass.level);
+        bindTarget(pass.target, pass.level, pass.layer);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
             if (damage == null) {
@@ -1370,10 +1370,11 @@ public final class CgExecutor {
     }
 
     /**
-     * Binds level {@code level} of a pass's target and its viewport. The current target is left as it is, unless a pass
-     * of this execution bound another: then what was bound when it began is bound again.
+     * Binds level {@code level} (or an array's layer {@code layer}) of a pass's target and its viewport. The current
+     * target is left as it is, unless a pass of this execution bound another: then what was bound when it began is
+     * bound again.
      */
-    private void bindTarget(CgGraphTexture target, int level) {
+    private void bindTarget(CgGraphTexture target, int level, int layer) {
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
             if (otherBound) {
                 CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
@@ -1383,7 +1384,8 @@ public final class CgExecutor {
             return;
         }
         CgFrameBuffer storage = storage(target);
-        storage.bindLevel(level);
+        if (layer != 0) storage.bindLayer(layer);
+        else storage.bindLevel(level);
         CgGL.glViewport(0, 0, storage.levelWidth(level), storage.levelHeight(level));
         otherBound = startNoted;
     }
@@ -1395,7 +1397,7 @@ public final class CgExecutor {
             return;
         }
         CgFrameBuffer storage = storage(r.texture);
-        if (storage.isVolume()) {
+        if (storage.isVolume() || storage.isArray()) {
             CgReadback.slices(storage.getColorTexture(0).getId(), r.level, r.x, r.y, r.z, r.w, r.h, r.d,
                     storage.getFormat().getColorSlot(0), r);
         } else {
