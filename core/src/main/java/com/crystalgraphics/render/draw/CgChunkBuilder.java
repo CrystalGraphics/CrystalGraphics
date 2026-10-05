@@ -69,6 +69,8 @@ public final class CgChunkBuilder {
     @Nullable
     private int[] groups;
     private boolean boundsSet;
+    /** The last chunk was ended in place and still reads these arrays: its references are dropped at the next begin. */
+    private boolean lent;
 
     /** Per kind ordinal: records written so far, and their floats. */
     private final float[][] instances = new float[CgInstanceKind.values().length][];
@@ -103,6 +105,7 @@ public final class CgChunkBuilder {
     /** Starts a chunk whose draws are positioned in {@code spatial}, clipped by {@code clip}, grouped in {@code effect}. */
     public CgChunkBuilder begin(int spatial, int clip, int effect) {
         if (open) throw new IllegalStateException("begin() inside a chunk: end() the last one first");
+        if (lent) dropReferences();
         open = true;
         this.spatial = spatial;
         this.clip = clip;
@@ -342,9 +345,33 @@ public final class CgChunkBuilder {
         open = false;
         count = 0;
         Arrays.fill(records, 0);
-        if (meshes != null) Arrays.fill(meshes, null);
-        if (counts != null) Arrays.fill(counts, null);
-        if (objects != null) Arrays.fill(objects, null);
+        dropReferences();
+        return chunk;
+    }
+
+    /**
+     * Ends the chunk without copying it: the chunk reads this builder's own arrays, so it holds only until the
+     * builder's next {@link #begin}. For a chunk built into a frame before then, as {@code CgImmediate} does.
+     *
+     * <pre>{@code
+     * CgImmediate.flush(chunks.endInPlace(), CgOrder.SORTED);   // built and executed before it returns
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Never hand it to a recording that executes later, nor keep it: the next chunk overwrites it.</li>
+     *   <li>Its {@link CgDrawChunk#data} arrays run past the records it wrote, and a kind it wrote none of is null.</li>
+     * </ul>
+     */
+    public CgDrawChunk endInPlace() {
+        if (!open) throw new IllegalStateException("endInPlace() outside a chunk");
+        closeDraw();
+        CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
+                firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, bounds, sortKeys,
+                groups, instances);
+        open = false;
+        count = 0;
+        Arrays.fill(records, 0);
+        lent = true;
         return chunk;
     }
 
@@ -354,6 +381,11 @@ public final class CgChunkBuilder {
         drawing = -1;
         count = 0;
         Arrays.fill(records, 0);
+        dropReferences();
+    }
+
+    private void dropReferences() {
+        lent = false;
         if (meshes != null) Arrays.fill(meshes, null);
         if (counts != null) Arrays.fill(counts, null);
         if (objects != null) Arrays.fill(objects, null);
