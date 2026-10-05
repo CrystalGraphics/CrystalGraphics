@@ -180,11 +180,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         synchronized (this) {
             mirrorByteUpload(layer, x, y, w, h, format, type, data);
         }
-        if (gpu.immediate()) {
-            rawUpload(layer, x, y, w, h, format, type, data);
-            return;
-        }
-        gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));
+        CgUploadLease lease = CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type);
+        // From an unpack buffer on the render thread too: NVIDIA's GL converts the whole array at the first
+        // client-memory upload after a grow's GPU copy into it, about 1.4 ms per 4 MB layer, and from a buffer it does not.
+        if (gpu.immediate()) lease.run();
+        else gpu.run(lease);
     }
 
     /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */

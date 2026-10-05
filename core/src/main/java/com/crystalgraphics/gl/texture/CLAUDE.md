@@ -43,6 +43,10 @@ texture.uploadRegion(0, 0, 0, w, h, pixels, GL_RGBA, GL_UNSIGNED_BYTE);
 | GL without it (macOS 4.1, a 3.3 context), or a converting upload | from direct memory at the call: the landing frame pays the copy on the GPU, 17-22 ms per 72 MB |
 | Vulkan device | a device copy from the lease's buffer; into a texture nothing else has touched yet, on the transfer queue, which the frame's queue waits for at its next pass (`platform/CLAUDE.md`). `-Dcrystalgraphics.vulkan.transfer=false` keeps it on the frame's queue |
 
+`CgTexture2DArray.uploadLayerRegion` lands through a lease on the render thread too: NVIDIA's GL converts the whole
+array at the first client-memory upload after a grow's GPU copy into it (about 1.4 ms per 4 MB layer, paid at the next
+fence), and an upload from an unpack buffer does not convert it.
+
 A second GL context for uploads was measured and declined (`render-async-uploads` §4f); the harness keeps it as
 `upload-stress -Dcrystalgraphics.harness.upload.shared=true`.
 
