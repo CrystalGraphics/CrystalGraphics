@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -38,7 +40,7 @@ import java.util.List;
  *       Low quality tier.</li>
  * </ul>
  */
-public final class CgVfxEmitter {
+public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /** How a renderer draws the particles of this emitter. */
     public enum Renderer {
@@ -126,8 +128,17 @@ public final class CgVfxEmitter {
         return optional;
     }
 
+    @Override
     public List<CgVfxModule> modules() {
         return modules;
+    }
+
+    @Override
+    public void writeSpawn(CgVfxWords out) {
+        out.vec4(shapeRadius, upMin, upMax, upBias)
+           .vec4(speedMin, speedMax, lifeMin, lifeMax)
+           .vec4(sizeMin, sizeMax, sizeSkew, heat)
+           .vec4(spinMin, spinMax, 0f, 0f);
     }
 
     /** How much of its starting size a particle is at {@code progress} 0..1 through its life. */

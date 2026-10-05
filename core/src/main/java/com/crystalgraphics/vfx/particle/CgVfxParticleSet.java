@@ -29,6 +29,8 @@ public final class CgVfxParticleSet {
     public final float[] age, life, size, seed, spin, spinRate, heat;
     /** 1 once it has come to rest on the ground. */
     public final float[] resting;
+    /** Its spawn index in its instance: the key the GPU simulation's records carry, so the two paths match by it. */
+    public final int[] id;
     private int count;
 
     public CgVfxParticleSet(int capacity) {
@@ -54,6 +56,7 @@ public final class CgVfxParticleSet {
         spinRate = new float[capacity];
         heat = new float[capacity];
         resting = new float[capacity];
+        id = new int[capacity];
     }
 
     public int count() {
@@ -82,8 +85,11 @@ public final class CgVfxParticleSet {
         return pz[i] + (z[i] - pz[i]) * alpha;
     }
 
-    /** A new particle at the origin, at rest, living one second; its index, or -1 when the set is full. */
-    int add() {
+    /**
+     * A new particle at the origin, at rest, living one second; its index, or -1 when the set is full. Its emitter
+     * spawns through it; a check seeds chosen states with it.
+     */
+    public int add() {
         if (count == x.length) return -1;
         int i = count++;
         x[i] = y[i] = z[i] = px[i] = py[i] = pz[i] = 0f;
@@ -120,6 +126,7 @@ public final class CgVfxParticleSet {
         spinRate[i] = spinRate[last];
         heat[i] = heat[last];
         resting[i] = resting[last];
+        id[i] = id[last];
     }
 
     void clear() {
