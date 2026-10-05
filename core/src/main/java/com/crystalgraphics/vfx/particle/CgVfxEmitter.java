@@ -141,6 +141,15 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
            .vec4(spinMin, spinMax, 0f, 0f);
     }
 
+    @Override
+    public void writeCurves(float[] out, int at, int texels) {
+        for (int i = 0; i < texels; i++) {
+            float progress = texels > 1 ? (float) i / (texels - 1) : 0f;
+            out[at + 2 * i] = sizeAt(progress);
+            out[at + 2 * i + 1] = opacityAt(progress);
+        }
+    }
+
     /** How much of its starting size a particle is at {@code progress} 0..1 through its life. */
     public float sizeAt(float progress) {
         return sizeOverLife.at(progress);

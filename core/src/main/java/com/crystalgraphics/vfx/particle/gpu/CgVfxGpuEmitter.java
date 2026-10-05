@@ -42,4 +42,19 @@ public interface CgVfxGpuEmitter {
      * (speed min, speed max, life min, life max), (size min, size max, size skew, heat), (spin min, spin max, 0, 0).
      */
     void writeSpawn(CgVfxWords out);
+
+    /** Samples a curve row holds: the atlas's width. */
+    int CURVE_TEXELS = 256;
+
+    /**
+     * Writes its curve row, {@code texels} pairs from {@code out[at]}: sample i, at progress {@code i / (texels - 1)}, is
+     * its size multiplier then its opacity, what the CPU path applies at that point of a particle's life. The pool calls
+     * it when its parameter row opens; the row is one RG32F row of the curve atlas.
+     *
+     * <pre>{@code
+     * float[] row = new float[2 * CgVfxGpuEmitter.CURVE_TEXELS];
+     * EMBERS.writeCurves(row, 0, CgVfxGpuEmitter.CURVE_TEXELS);   // row[0] size at birth, row[1] opacity at birth
+     * }</pre>
+     */
+    void writeCurves(float[] out, int at, int texels);
 }
