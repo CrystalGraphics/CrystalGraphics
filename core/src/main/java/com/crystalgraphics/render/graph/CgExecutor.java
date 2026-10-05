@@ -3,6 +3,7 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.state.CgAlphaState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.CgKernelForm;
@@ -191,6 +192,9 @@ public final class CgExecutor {
         depth++;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.execute");
              CgGlScope ignored2 = restoreState ? CgGlState.saveAll() : null) {
+            // A compatibility host's fixed-function alpha test discards our fragments too, and only a material
+            // declaring AlphaTest means one: 1.7.10 leaves GREATER 0.1 on, which drops every faint additive draw.
+            if (restoreState) CgAlphaState.DISABLED.apply();
             executor.run(frame);
         } finally {
             depth--;
