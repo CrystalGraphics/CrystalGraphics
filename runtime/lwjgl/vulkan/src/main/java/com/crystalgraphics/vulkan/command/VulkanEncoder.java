@@ -25,9 +25,12 @@ import org.lwjgl.vulkan.VkClearDepthStencilValue;
 import org.lwjgl.vulkan.VkClearValue;
 import org.lwjgl.vulkan.VkCommandBuffer;
 import org.lwjgl.vulkan.VkExtent2D;
+import org.lwjgl.vulkan.VkExtent3D;
 import org.lwjgl.vulkan.VkImageBlit;
 import org.lwjgl.vulkan.VkImageCopy;
 import org.lwjgl.vulkan.VkImageResolve;
+import org.lwjgl.vulkan.VkImageSubresourceLayers;
+import org.lwjgl.vulkan.VkOffset3D;
 import org.lwjgl.vulkan.VkRect2D;
 import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
@@ -441,11 +444,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
             before(cmd);
             to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
         }
-        try (MemoryStack stack = stackPush()) {
-            VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack).bufferOffset(srcOffset);
-            region(c.get(0), t, region, layer, layers);
-            vkCmdCopyBufferToImage(cmd, src.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c);
-        }
+        nvkCmdCopyBufferToImage(cmd, src.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                region(srcOffset, t, region, layer, layers));
         if (transfer) {
             device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, t.resting,
                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0);
@@ -458,10 +458,25 @@ public final class VulkanEncoder implements CgCommandEncoder {
         }
     }
 
-    private static void region(VkBufferImageCopy c, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
-        c.imageSubresource().aspectMask(copyAspect(t)).mipLevel(region.mip()).baseArrayLayer(layer).layerCount(layers);
-        c.imageOffset().set(region.x(), region.y(), volume(t) ? region.z() : 0);
-        c.imageExtent().set(region.width(), region.height(), volume(t) ? region.depth() : 1);
+    /** One {@code VkBufferImageCopy} in this thread's scratch, for the call made next: a glyph upload is one. */
+    private static long region(long bufferOffset, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
+        VulkanScratch s = VulkanScratch.get(VkBufferImageCopy.SIZEOF);
+        int sub = VkBufferImageCopy.IMAGESUBRESOURCE, at = VkBufferImageCopy.IMAGEOFFSET, size = VkBufferImageCopy.IMAGEEXTENT;
+        boolean volume = volume(t);
+        s.bytes.putLong(VkBufferImageCopy.BUFFEROFFSET, bufferOffset)
+                .putInt(VkBufferImageCopy.BUFFERROWLENGTH, 0)
+                .putInt(VkBufferImageCopy.BUFFERIMAGEHEIGHT, 0)
+                .putInt(sub + VkImageSubresourceLayers.ASPECTMASK, copyAspect(t))
+                .putInt(sub + VkImageSubresourceLayers.MIPLEVEL, region.mip())
+                .putInt(sub + VkImageSubresourceLayers.BASEARRAYLAYER, layer)
+                .putInt(sub + VkImageSubresourceLayers.LAYERCOUNT, layers)
+                .putInt(at + VkOffset3D.X, region.x())
+                .putInt(at + VkOffset3D.Y, region.y())
+                .putInt(at + VkOffset3D.Z, volume ? region.z() : 0)
+                .putInt(size + VkExtent3D.WIDTH, region.width())
+                .putInt(size + VkExtent3D.HEIGHT, region.height())
+                .putInt(size + VkExtent3D.DEPTH, volume ? region.depth() : 1);
+        return s.address;
     }
 
     @Override
@@ -707,11 +722,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
         VkCommandBuffer cmd = cmd();
         before(cmd);
         to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        try (MemoryStack stack = stackPush()) {
-            VkBufferImageCopy.Buffer c = VkBufferImageCopy.calloc(1, stack).bufferOffset(dstOffset);
-            region(c.get(0), t, region, layer, layers);
-            vkCmdCopyImageToBuffer(cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.buffer, c);
-        }
+        nvkCmdCopyImageToBuffer(cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.buffer, 1,
+                region(dstOffset, t, region, layer, layers));
         rest(cmd, t, region.mip(), 1, layer, layers);
         after(cmd);
     }
