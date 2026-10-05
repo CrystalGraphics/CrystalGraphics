@@ -5854,7 +5854,7 @@ com/crystalgraphics/text/atlas/CgGlyphAtlas
   field public,static,final MAX_RECTS_FACTORY Lcom/crystalgraphics/text/atlas/CgGlyphAtlas$PackerFactory;
   field public,static,final UNBOUNDED_PAGES I
   method public allocateBitmap (Lcom/crystalgraphics/api/font/CgGlyphKey;[BIIFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
-  method public allocateMsdf (Lcom/crystalgraphics/api/font/CgGlyphKey;[FIIFFFFFFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
+  method public allocateMsdf (Lcom/crystalgraphics/api/font/CgGlyphKey;[BIIFFFFFFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
   method public delete ()V
   method public get (Lcom/crystalgraphics/api/font/CgGlyphKey;J)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
   method public getContentGeneration ()J
@@ -5910,7 +5910,7 @@ com/crystalgraphics/text/atlas/CgGlyphAtlasPage
   access public
   extends java/lang/Object
   method public allocateBitmap (Lcom/crystalgraphics/api/font/CgGlyphKey;[BIIFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
-  method public allocateMsdf (Lcom/crystalgraphics/api/font/CgGlyphKey;[FIIFFFFFFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
+  method public allocateMsdf (Lcom/crystalgraphics/api/font/CgGlyphKey;[BIIFFFFFFFFFJ)Lcom/crystalgraphics/api/font/CgGlyphPlacement;
   method public countFreeRegionsFitting (II)I
   method public delete ()V
   method public describeFreeRegions ()[[I
@@ -6017,6 +6017,7 @@ com/crystalgraphics/text/cache/CgGlyphGenerationResult
   method public getMetricsWidth ()F
   method public getMsdfAtlasKey ()Lcom/crystalgraphics/text/cache/CgMsdfAtlasKey;
   method public getMsdfData ()[F
+  method public getMsdfTexels ()[B
   method public getPlaneBottom ()F
   method public getPlaneLeft ()F
   method public getPlaneRight ()F
@@ -6030,7 +6031,7 @@ com/crystalgraphics/text/cache/CgGlyphGenerationResult
   method public,static bitmap (Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/text/cache/CgRasterFontKey;[BIIFFFF)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
   method public,static emptyBitmap (Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/text/cache/CgRasterFontKey;)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
   method public,static emptyMsdf (Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/text/cache/CgMsdfAtlasKey;F)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
-  method public,static msdf (Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/text/cache/CgMsdfAtlasKey;[FIIFFFFFFFFF)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
+  method public,static msdf (Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/text/cache/CgMsdfAtlasKey;[F[BIIFFFFFFFFF)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
 com/crystalgraphics/text/cache/CgMsdfAtlasKey
   access public,final
   extends java/lang/Object
@@ -6261,6 +6262,7 @@ com/crystalgraphics/text/msdf/CgMsdfGenerator
   method public,static flipRows ([FIII)V
   method public,static prepareGlyph (Lcom/crystalgraphics/api/font/CgGlyphKey;Lcom/crystalgraphics/api/font/CgFontKey;Lcom/crystalgraphics/msdfgen/FreeTypeMSDFIntegration$Font;Lcom/crystalgraphics/text/cache/CgMsdfAtlasKey;Lcom/crystalgraphics/text/msdf/CgMsdfAtlasConfig;)Lcom/crystalgraphics/text/cache/CgGlyphGenerationResult;
   method public,static shouldUseMsdf (Lcom/crystalgraphics/msdfgen/MSDFShape;I)Z
+  method public,static toTexels ([FI)[B
   method public,static trueDistance (Lcom/crystalgraphics/msdfgen/FreeTypeMSDFIntegration$Font;IIFZZ)Lcom/crystalgraphics/text/msdf/CgMsdfGenerator$TrueDistance;
 com/crystalgraphics/text/msdf/CgMsdfGenerator$TrueDistance
   access public,final,record

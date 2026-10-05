@@ -115,7 +115,7 @@ public class CgGlyphAtlas {
     public enum Type {
         /** Single-channel bitmap atlas ({@code GL_R8}, {@code GL_UNSIGNED_BYTE}). */
         BITMAP,
-        /** Three-channel MSDF atlas ({@code GL_RGB8F}, uploaded as {@code GL_FLOAT}). */
+        /** Three-channel MSDF atlas ({@code GL_RGBA8}, alpha unused, uploaded as {@code GL_UNSIGNED_BYTE}). */
         MSDF,
         /** Four-channel MTSDF atlas ({@code GL_RGBA8}, uploaded as {@code GL_UNSIGNED_BYTE}). */
         MTSDF
@@ -511,9 +511,10 @@ public class CgGlyphAtlas {
     /**
      * Allocates and uploads an MSDF glyph, creating a new page if needed.
      *
+     * @param texels the field as RGBA8, four bytes a pixel ({@code CgMsdfGenerator.toTexels})
      * @return the placement, or {@code null} if the glyph is larger than a page
      */
-    public CgGlyphPlacement allocateMsdf(CgGlyphKey key, float[] msdfData,
+    public CgGlyphPlacement allocateMsdf(CgGlyphKey key, byte[] texels,
                                           int width, int height,
                                           float bearingX, float bearingY,
                                           float planeLeft, float planeBottom,
@@ -532,7 +533,7 @@ public class CgGlyphAtlas {
         for (int i = 0; i < pages.size(); i++) {
             CgGlyphAtlasPage page = pages.get(i);
             CgGlyphPlacement placement = page.allocateMsdf(
-                    key, msdfData, width, height,
+                    key, texels, width, height,
                     bearingX, bearingY,
                     planeLeft, planeBottom, planeRight, planeTop,
                     metricsWidth, metricsHeight, pxRange, currentFrame);
@@ -546,7 +547,7 @@ public class CgGlyphAtlas {
 
         CgGlyphAtlasPage newPage = createPage();
         CgGlyphPlacement placement = newPage.allocateMsdf(
-                key, msdfData, width, height,
+                key, texels, width, height,
                 bearingX, bearingY,
                 planeLeft, planeBottom, planeRight, planeTop,
                 metricsWidth, metricsHeight, pxRange, currentFrame);

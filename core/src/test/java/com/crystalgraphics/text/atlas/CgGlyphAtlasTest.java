@@ -31,8 +31,8 @@ public class CgGlyphAtlasTest {
         return new byte[w * h];
     }
 
-    private static float[] dummyMsdf(int w, int h) {
-        return new float[w * h * 3];
+    private static byte[] dummyMsdf(int w, int h) {
+        return new byte[w * h * 4];
     }
 
     @Test

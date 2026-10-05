@@ -344,7 +344,12 @@ public class CgMsdfGenerator {
                 // ramp: every glyph edge crisper than the antialiasing intends.
                 float storedPxRange = (float) (2.0 * rangeInShapeUnits * scale);
 
-                return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, boxWidth, boxHeight,
+                byte[] texels;
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT, "msdfgen.texels")) {
+                    texels = toTexels(pixelData, channels);
+                }
+
+                return CgGlyphGenerationResult.msdf(sourceFontKey, key, atlasKey, pixelData, texels, boxWidth, boxHeight,
                         bearingX, bearingY,
                         planeLeft, planeBottom, planeRight, planeTop,
                         metricsWidth, metricsHeight, storedPxRange);
@@ -592,6 +597,29 @@ public class CgMsdfGenerator {
             System.arraycopy(pixels, botOff, pixels, topOff, rowStride);
             System.arraycopy(tmp, 0, pixels, botOff, rowStride);
         }
+    }
+
+    /**
+     * A field as the atlas's RGBA8 texels, four bytes a pixel: each channel clamped to [0, 1] and rounded to 256 levels,
+     * as GL quantises a float upload, and alpha 255 where the field has three channels. Done where the field is made, a
+     * glyph worker, so the render thread uploads texels as the page stores them.
+     *
+     * <pre>{@code
+     * byte[] texels = CgMsdfGenerator.toTexels(field, config.mtsdf() ? 4 : 3);
+     * atlas.allocateMsdf(key, texels, width, height, ...);
+     * }</pre>
+     */
+    public static byte[] toTexels(float[] field, int channels) {
+        int pixels = field.length / channels;
+        byte[] texels = new byte[pixels * 4];
+        for (int p = 0, from = 0, to = 0; p < pixels; p++, from += channels, to += 4) {
+            for (int c = 0; c < channels; c++) {
+                float v = field[from + c];
+                texels[to + c] = (byte) Math.round((v < 0f ? 0f : (v > 1f ? 1f : v)) * 255f);
+            }
+            if (channels == 3) texels[to + 3] = (byte) 0xFF;
+        }
+        return texels;
     }
 
     /**

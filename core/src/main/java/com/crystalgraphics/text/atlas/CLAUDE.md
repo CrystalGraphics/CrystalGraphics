@@ -71,9 +71,10 @@ rebind per font in mixed-font text; see `CgFontRegistry`'s atlas fields for why 
 merged and what it means for eviction and font disposal.
 
 The distance-field atlas is `RGBA8`, not `RGBA16F` — 8 bits per channel is enough for a
-distance field, verified rather than assumed by `CgMsdfFieldStorageTest`. Uploads hand the
-driver `GL_FLOAT` and let it quantise; converting CPU-side first was measured and is
-substantially slower.
+distance field, verified rather than assumed by `CgMsdfFieldStorageTest`. The glyph worker
+quantises the field to RGBA8 texels (`CgMsdfGenerator.toTexels`), so a page's upload is its
+own texels: GL copies them and the tracked backend stages them as they are. Handing it
+`GL_FLOAT` left the conversion to the backend, which on Vulkan is Java on the render thread.
 
 ## Internal flow summary
 
