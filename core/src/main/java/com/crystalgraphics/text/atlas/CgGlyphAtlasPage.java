@@ -11,7 +11,6 @@ import com.crystalgraphics.util.CgBufferUtils;
 import lombok.Getter;
 
 import java.nio.ByteBuffer;
-import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -48,13 +47,11 @@ public class CgGlyphAtlasPage {
 
     // ── GL constants (upload-format only — no texture-object constants needed anymore) ──
     private static final int GL_RED           = CgGL.GL_RED;
-    private static final int GL_RGB           = CgGL.GL_RGB;
     private static final int GL_RGBA          = CgGL.GL_RGBA;
     private static final int GL_UNSIGNED_BYTE = CgGL.GL_UNSIGNED_BYTE;
-    private static final int GL_FLOAT         = CgGL.GL_FLOAT;
-
 
     private static final int INITIAL_UPLOAD_BUFFER_SIZE = 64 * 64;
+    private static final byte[] WHITE_RGBA8 = {(byte) 0xFF, (byte) 0xFF, (byte) 0xFF, (byte) 0xFF};
 
     // ── Instance fields ────────────────────────────────────────────────
 
@@ -90,7 +87,6 @@ public class CgGlyphAtlasPage {
     private final Map<CgGlyphKey, SlotEntry> slotMap;
 
     private ByteBuffer uploadBuffer;
-    private FloatBuffer msdfUploadBuffer;
 
     /**
      * UV rect of the reserved opaque-white texel (see {@link #reserveWhiteTexel()}), or
@@ -117,11 +113,8 @@ public class CgGlyphAtlasPage {
         this.slotMap = new HashMap<>();
 
         if (arrayTexture != null) {
-            if (type == CgGlyphAtlas.Type.BITMAP) {
-                this.uploadBuffer = CgBufferUtils.createByteBuffer(INITIAL_UPLOAD_BUFFER_SIZE);
-            } else {
-                this.msdfUploadBuffer = CgBufferUtils.createFloatBuffer(64 * 64 * 4);
-            }
+            this.uploadBuffer = CgBufferUtils.createByteBuffer(
+                    type == CgGlyphAtlas.Type.BITMAP ? INITIAL_UPLOAD_BUFFER_SIZE : INITIAL_UPLOAD_BUFFER_SIZE * 4);
         }
     }
 
@@ -218,9 +211,10 @@ public class CgGlyphAtlasPage {
     /**
      * Attempts to allocate and upload an MSDF glyph into this page.
      *
+     * @param texels the field as RGBA8, four bytes a pixel ({@code CgMsdfGenerator.toTexels})
      * @return the placement, or {@code null} if the glyph does not fit
      */
-    public CgGlyphPlacement allocateMsdf(CgGlyphKey key, float[] msdfData,
+    public CgGlyphPlacement allocateMsdf(CgGlyphKey key, byte[] texels,
                                           int width, int height,
                                           float bearingX, float bearingY,
                                           float planeLeft, float planeBottom,
@@ -239,7 +233,7 @@ public class CgGlyphAtlasPage {
             return null;
         }
 
-        uploadMsdf(packed.x(), packed.y(), width, height, msdfData);
+        uploadMsdf(packed.x(), packed.y(), width, height, texels);
 
         CgGlyphPlacement placement = buildPlacement(
                 packed, key, bearingX, bearingY,
@@ -287,10 +281,7 @@ public class CgGlyphAtlasPage {
         if (type == CgGlyphAtlas.Type.BITMAP) {
             uploadBitmap(packed.x(), packed.y(), 1, 1, new byte[]{(byte) 0xFF});
         } else {
-            int channels = (type == CgGlyphAtlas.Type.MTSDF) ? 4 : 3;
-            float[] white = new float[channels];
-            java.util.Arrays.fill(white, 1.0f);
-            uploadMsdf(packed.x(), packed.y(), 1, 1, white);
+            uploadMsdf(packed.x(), packed.y(), 1, 1, WHITE_RGBA8);
         }
         // Sample dead-center of the texel — no distance-field inset needed since this
         // is a flat 1x1 fill, not a rasterized glyph shape.
@@ -432,43 +423,29 @@ public class CgGlyphAtlasPage {
         if (arrayTexture == null) {
             return;
         }
-        int required = w * h;
-        if (uploadBuffer == null || uploadBuffer.capacity() < required) {
-            uploadBuffer = CgBufferUtils.createByteBuffer(required);
-        }
-        uploadBuffer.clear();
-        uploadBuffer.put(data, 0, required);
-        uploadBuffer.flip();
-
-        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, uploadBuffer);
+        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, stage(data, w * h));
     }
 
-    private void uploadMsdf(int x, int y, int w, int h, float[] data) {
+    /**
+     * Texels as the RGBA8 array stores them, quantised where the field was generated: GL copies them, and the tracked
+     * backend stages them as they are, where handing it floats meant converting every component in Java on the render
+     * thread. 8 bits hold a distance field: CgMsdfFieldStorageTest.
+     */
+    private void uploadMsdf(int x, int y, int w, int h, byte[] texels) {
         if (arrayTexture == null) {
             return;
         }
-        // Client-side upload format matches what CgMsdfGenerator actually produces
-        // (3 floats/pixel for MSDF, 4 for MTSDF) — independent of the array's
-        // unified RGBA8 internal storage format (see CgGlyphAtlas javadoc).
-        // For plain MSDF this leaves the destination alpha channel untouched
-        // (undefined initial content from the empty allocation); harmless, since
-        // text.shader's MSDF path only ever reads .rgb.
-        int channels = (type == CgGlyphAtlas.Type.MTSDF) ? 4 : 3;
-        int glFormat = (type == CgGlyphAtlas.Type.MTSDF) ? GL_RGBA : GL_RGB;
-        int required = w * h * channels;
-        if (msdfUploadBuffer == null || msdfUploadBuffer.capacity() < required) {
-            msdfUploadBuffer = CgBufferUtils.createFloatBuffer(required);
-        }
-        msdfUploadBuffer.clear();
-        msdfUploadBuffer.put(data, 0, required);
-        msdfUploadBuffer.flip();
+        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, stage(texels, w * h * 4));
+    }
 
-        // GL_FLOAT into an RGBA8 array: the driver clamps and quantises to 8-bit unorm itself.
-        // Quantising CPU-side first was measured and is slower -- see uploadLayerRegion's javadoc.
-        // 8 bits is enough for a distance field regardless of who does the conversion: measured on
-        // M+ 1p, quantising introduced zero structural defects across six atlas scales (no counter
-        // closed, no stroke merged). See CgMsdfFieldStorageTest.
-        arrayTexture.uploadLayerRegion(pageIndex, x, y, w, h, glFormat, GL_FLOAT, msdfUploadBuffer);
+    private ByteBuffer stage(byte[] data, int bytes) {
+        if (uploadBuffer == null || uploadBuffer.capacity() < bytes) {
+            uploadBuffer = CgBufferUtils.createByteBuffer(bytes);
+        }
+        uploadBuffer.clear();
+        uploadBuffer.put(data, 0, bytes);
+        uploadBuffer.flip();
+        return uploadBuffer;
     }
 
     private void checkNotDeleted() {

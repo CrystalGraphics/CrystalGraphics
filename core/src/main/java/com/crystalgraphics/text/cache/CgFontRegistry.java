@@ -1147,23 +1147,14 @@ public class CgFontRegistry {
     /**
      * Estimates the GPU upload size of a glyph result's pixel data, in bytes.
      * Bitmap uploads are {@code GL_R8} (1 byte/pixel); MSDF/MTSDF uploads are
-     * {@code GL_FLOAT} (4 bytes/channel, 3 or 4 channels) — roughly 3-4x the
-     * bytes of a bitmap upload at the same pixel dimensions. Used to keep the
+     * RGBA8 texels (4 bytes/pixel). Used to keep the
      * per-frame commit budget ({@link #MAX_COMMIT_BYTES_PER_FRAME}) meaningful
      * across a mixed bitmap/MSDF/MTSDF workload instead of a flat glyph count
      * that treats every result as the same upload cost.
      */
     private static long estimateUploadBytes(CgGlyphGenerationResult result) {
         long pixels = (long) result.getWidth() * result.getHeight();
-        switch (result.getAtlasType()) {
-            case MTSDF:
-                return pixels * 4L /* channels */ * 4L /* bytes per float */;
-            case MSDF:
-                return pixels * 3L * 4L;
-            case BITMAP:
-            default:
-                return pixels;
-        }
+        return result.isDistanceField() ? pixels * 4L : pixels;
     }
 
     /**
@@ -1186,7 +1177,7 @@ public class CgFontRegistry {
             }
             atlas.allocateMsdf(
                     result.getAtlasKey(),
-                    result.getMsdfData(),
+                    result.getMsdfTexels(),
                     result.getWidth(),
                     result.getHeight(),
                     result.getBearingX(),

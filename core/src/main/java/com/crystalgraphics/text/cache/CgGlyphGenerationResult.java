@@ -19,6 +19,7 @@ public final class CgGlyphGenerationResult {
     private final CgMsdfAtlasKey msdfAtlasKey;
     private final byte[] bitmapData;
     private final float[] msdfData;
+    private final byte[] msdfTexels;
     private final int width;
     private final int height;
     private final float bearingX;
@@ -38,6 +39,7 @@ public final class CgGlyphGenerationResult {
                                     CgMsdfAtlasKey msdfAtlasKey,
                                     byte[] bitmapData,
                                     float[] msdfData,
+                                    byte[] msdfTexels,
                                     int width,
                                     int height,
                                     float bearingX,
@@ -62,6 +64,7 @@ public final class CgGlyphGenerationResult {
         this.msdfAtlasKey = msdfAtlasKey;
         this.bitmapData = bitmapData;
         this.msdfData = msdfData;
+        this.msdfTexels = msdfTexels;
         this.width = width;
         this.height = height;
         this.bearingX = bearingX;
@@ -93,6 +96,7 @@ public final class CgGlyphGenerationResult {
                 null,
                 bitmapData,
                 null,
+                null,
                 width,
                 height,
                 bearingX,
@@ -111,6 +115,7 @@ public final class CgGlyphGenerationResult {
                                         CgGlyphKey atlasKey,
                                         CgMsdfAtlasKey msdfAtlasKey,
                                         float[] msdfData,
+                                        byte[] msdfTexels,
                                         int width,
                                         int height,
                                         float bearingX,
@@ -129,6 +134,7 @@ public final class CgGlyphGenerationResult {
                 msdfAtlasKey,
                 null,
                 msdfData,
+                msdfTexels,
                 width,
                 height,
                 bearingX,
@@ -150,6 +156,7 @@ public final class CgGlyphGenerationResult {
                 sourceFontKey,
                 atlasKey,
                 bitmapRasterKey,
+                null,
                 null,
                 null,
                 null,
@@ -176,6 +183,7 @@ public final class CgGlyphGenerationResult {
                 atlasKey,
                 null,
                 msdfAtlasKey,
+                null,
                 null,
                 null,
                 0,
@@ -214,6 +222,11 @@ public final class CgGlyphGenerationResult {
 
     public  float[] getMsdfData() {
         return msdfData;
+    }
+
+    /** The field as the atlas's RGBA8 texels, four bytes a pixel: what it uploads ({@code CgMsdfGenerator.toTexels}). */
+    public byte[] getMsdfTexels() {
+        return msdfTexels;
     }
 
     public int getWidth() {
