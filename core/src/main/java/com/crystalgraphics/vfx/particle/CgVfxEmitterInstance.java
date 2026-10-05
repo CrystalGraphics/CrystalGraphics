@@ -53,6 +53,11 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private double originX, originY, originZ;
     private int spawned, burstsDone;
     private float rateOwed, share = 1f;
+    /** Stepped by {@link #schedule}: its particles live in a GPU pool, not in {@link #particles}. */
+    private boolean scheduled;
+    private int stepFirst, stepCandidates;
+    /** When its latest-dying particle dies, and the last step's length. */
+    private float lastDeath = -1f, stepDt;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
         this.emitter = emitter;
@@ -69,6 +74,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         spawned = 0;
         burstsDone = 0;
         rateOwed = 0f;
+        lastDeath = -1f;
         particles.clear();
     }
 
@@ -141,9 +147,88 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         time += dt;
     }
 
-    /** True once it has spawned everything it will and every particle has died. */
+    /**
+     * One step of the GPU path (plan vfx-gpu §13.7): schedules what spawns this step exactly as {@link #tick} would
+     * spawn it, and moves no particle; the pool's Step kernel does. Read the spawns after it, for the pool's queue.
+     *
+     * <pre>{@code
+     * instance.schedule(dt, originX, originY, originZ);
+     * pool.instance(slot, instance.seedBits(), instance.share(), instance.groundY(), instance);
+     * pool.spawn(slot, instance.stepFirstSpawn(), instance.stepCandidates());
+     * if (instance.finished()) pool.close(slot);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An instance is stepped one way from its {@link #start}: by {@code tick} or by this, never both.</li>
+     *   <li>Its {@link #particles} stay empty; {@link #finished} comes from each spawn's life, drawn by the same hash
+     *       the kernel draws it by, so it needs nothing back from the GPU while particles die only of age.</li>
+     * </ul>
+     */
+    public void schedule(float dt, double originX, double originY, double originZ) {
+        if (time < 0f) return;
+        scheduled = true;
+        this.originX = originX;
+        this.originY = originY;
+        this.originZ = originZ;
+        stepDt = dt;
+        stepFirst = spawned;
+        CgVfxEmitter e = emitter;
+        while (burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
+            for (int n = 0; n < e.burstCounts[burstsDone]; n++) scheduleOne(dt);
+            burstsDone++;
+        }
+        if (e.rate > 0f && time >= e.rateFrom && time < e.rateUntil) {
+            rateOwed += e.rate * dt;
+            while (rateOwed >= 1f) {
+                scheduleOne(dt);
+                rateOwed -= 1f;
+            }
+        }
+        stepCandidates = spawned - stepFirst;
+        time += dt;
+    }
+
+    /** A spawn candidate: thinned by the share as {@code spawnOne} is, its death kept if it spawns. */
+    private void scheduleOne(float dt) {
+        int k = spawned++;
+        if (share < 1f && rand(k, 10) >= share) return;
+        float life = emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * rand(k, 4);
+        // It ages a step at a time from this one, and goes at the end of the step its age reaches its life.
+        lastDeath = Math.max(lastDeath, time + dt * (float) Math.ceil(life / dt));
+    }
+
+    /** The first spawn index {@link #schedule}'s last step queued. */
+    public int stepFirstSpawn() {
+        return stepFirst;
+    }
+
+    /** How many spawn candidates {@link #schedule}'s last step queued, before the share thins them. */
+    public int stepCandidates() {
+        return stepCandidates;
+    }
+
+    /** Its seed's bits: what {@code fx_rand} and {@link #rand(int, int, int)} take. */
+    public int seedBits() {
+        return seed;
+    }
+
+    public float share() {
+        return share;
+    }
+
+    /**
+     * True once it has spawned everything it will and every particle has died. Stepped by {@link #schedule}, a step
+     * after its latest-dying particle's death, which its spawns' lives give.
+     */
     public boolean finished() {
-        return time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length && particles.count() == 0;
+        boolean spawnedAll = time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length;
+        if (scheduled) return spawnedAll && time >= lastDeath + stepDt;
+        return spawnedAll && particles.count() == 0;
+    }
+
+    /** Spawn indices handed out so far, kept or thinned. */
+    int spawnedSoFar() {
+        return spawned;
     }
 
     public CgVfxEmitter emitter() {
