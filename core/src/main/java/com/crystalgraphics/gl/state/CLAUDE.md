@@ -224,6 +224,10 @@ it opens, and any other unit at its first bind inside it. It restores only the u
 whole read cost become the handful the engine uses (`glState.adopt.units` counts them). A free provider still reads
 every unit, since its reads cost nothing.
 
+A provider's `hostUnits()` is the units its host samples through; a unit outside it is never read, saved or restored,
+since nothing of the host's lives there. Every unit by default; a `CgCheckedProvider` answers its cache's table
+(`HostStateModern` every unit again while an Iris/Oculus pack is active, since a pack samples above the table).
+
 ## Diagnostics — reach for these before reasoning
 
 Reasoning from symptoms produced a wrong answer three times in this subsystem's history; each of these gave

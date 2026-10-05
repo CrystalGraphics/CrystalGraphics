@@ -64,6 +64,18 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * The texture units the host samples through while it has the context, as a mask; every unit by default. A scope
+     * neither reads nor restores a unit outside it: only our code binds there, and always explicitly.
+     *
+     * <pre>{@code
+     * @Override public int hostUnits() { return shaderPackActive() ? -1 : (1 << 12) - 1; }   // Blaze3D's twelve
+     * }</pre>
+     */
+    default int hostUnits() {
+        return -1;
+    }
+
+    /**
      * Whether the host binds {@code slot}'s points itself while it has the context. Asked only of the domains
      * captured at first write: one the host never binds keeps the shadow across host sections, so a scope saves
      * it with no read. No by default: vanilla Minecraft binds no storage buffer, image unit or indirect buffer on

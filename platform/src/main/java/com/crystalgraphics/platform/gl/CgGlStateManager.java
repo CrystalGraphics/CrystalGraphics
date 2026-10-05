@@ -841,6 +841,7 @@ public final class CgGlStateManager {
     /** Saves {@code unit}'s binding into every open scope declaring {@code TEXTURES} that has not saved it: the active unit. */
     private void captureUnit(int unit) {
         int bit = 1 << unit;
+        if ((provider.hostUnits() & bit) == 0) return;
         for (int f = depth - 1; f >= 0; f--) {
             Frame frame = frames[f];
             if ((frame.mask & TEXTURES_BIT) == 0 || frame.handOver || (frame.savedUnits & bit) != 0) continue;
@@ -879,7 +880,7 @@ public final class CgGlStateManager {
      */
     private void adoptUnits(boolean reread) {
         if (reread) unknownUnits |= ~touchedUnits;   // the host may have rebound any; the rest are read at first bind
-        int want = reread ? touchedUnits : touchedUnits & unknownUnits;
+        int want = (reread ? touchedUnits : touchedUnits & unknownUnits) & provider.hostUnits();
         if (!reread && want == 0 && (unknownFields & F_ACTIVE_TEXTURE) == 0) return;
         readUnits(want);
     }
@@ -1289,7 +1290,7 @@ public final class CgGlStateManager {
         }
         Arrays.fill(f.captured, 0);
         f.saved.copyFrom(current);
-        f.savedUnits = (f.mask & TEXTURES_BIT) != 0 && !handOver ? ~unknownUnits : 0;
+        f.savedUnits = (f.mask & TEXTURES_BIT) != 0 && !handOver ? ~unknownUnits & provider.hostUnits() : 0;
         if (roundTrip != null) roundTrip.opened(f);
         boolean all = f.mask == ALL_SLOTS_MASK;
         CgTrace.zoneDone(GL, all ? OPEN_ALL : OPEN, t);
@@ -1658,6 +1659,7 @@ public final class CgGlStateManager {
             }
             String where = " (depth " + depth + ")";
             untouchedUnits(f.before, after, f.unitsAtOpen);
+            unhostedUnits(f.before, after);
             untouchedPoints(f.before, after, f.touchedAtOpen);
             String diff = f.before.differences(after, f.mask);
             if (diff != null) {
@@ -1668,6 +1670,7 @@ public final class CgGlStateManager {
                 read(driverReader, f.mask, afterDriver);
                 untouchedUnits(f.beforeDriver, afterDriver, f.unitsAtOpen);
                 untouchedUnits(after, afterDriver, f.unitsAtOpen);
+                unhostedUnits(f.beforeDriver, afterDriver);
                 untouchedPoints(f.beforeDriver, afterDriver, f.touchedAtOpen);
                 untouchedPoints(after, afterDriver, f.touchedAtOpen);
                 int real = f.mask & ~virtualised;
@@ -1730,6 +1733,14 @@ public final class CgGlStateManager {
         private void untouchedUnits(CgGlStateShadow from, CgGlStateShadow to, int limit) {
             for (int u = limit; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
                 to.boundTexture2D[u] = from.boundTexture2D[u];
+            }
+        }
+
+        /** Units the host never samples are not restored, by design ({@code hostUnits}); {@code to} takes {@code from}'s. */
+        private void unhostedUnits(CgGlStateShadow from, CgGlStateShadow to) {
+            int host = provider.hostUnits();
+            for (int u = 0; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
+                if ((host & (1 << u)) == 0) to.boundTexture2D[u] = from.boundTexture2D[u];
             }
         }
 
