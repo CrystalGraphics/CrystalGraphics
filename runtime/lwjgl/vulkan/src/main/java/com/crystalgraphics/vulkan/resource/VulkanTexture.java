@@ -136,6 +136,35 @@ public final class VulkanTexture implements CgGpuTexture {
     }
 
     /**
+     * Moves every subresource in {@code from} to {@code layout}, one barrier per run of them, and leaves the rest:
+     * what a batch of copies rests again without knowing which ranges it wrote.
+     *
+     * @return barriers recorded
+     */
+    public int transitionFrom(VkCommandBuffer cmd, int from, int layout, int dstStage, int dstAccess) {
+        if (from == layout) return 0;
+        requireUsableOn(cmd);
+        int barriers = 0;
+        for (int mip = 0; mip < desc.mips(); mip++) {
+            int layer = 0;
+            while (layer < layers) {
+                if (layout(mip, layer) != from) {
+                    layer++;
+                    continue;
+                }
+                int end = layer + 1;
+                while (end < layers && layout(mip, end) == from) end++;
+                VulkanBarriers.image(cmd, image, aspect, mip, 1, layer, end - layer, from, layout, srcStage(from),
+                        srcAccess(from), dstStage, dstAccess);
+                barriers++;
+                for (int l = layer; l < end; l++) layouts[mip * layers + l] = layout;
+                layer = end;
+            }
+        }
+        return barriers;
+    }
+
+    /**
      * Moves every subresource nothing has used yet, still {@code UNDEFINED}, to {@code layout}, and leaves the rest
      * where they are: one in a pass open now is that pass's to return.
      *

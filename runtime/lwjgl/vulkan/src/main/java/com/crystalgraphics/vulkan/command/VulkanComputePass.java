@@ -38,6 +38,7 @@ final class VulkanComputePass implements CgComputePass {
     }
 
     private VkCommandBuffer cmd() {
+        encoder.endCopies();
         return device.host().commandBuffer();
     }
 

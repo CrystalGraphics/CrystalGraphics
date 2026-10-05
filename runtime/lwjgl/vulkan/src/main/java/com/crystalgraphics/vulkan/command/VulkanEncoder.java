@@ -18,6 +18,7 @@ import com.crystalgraphics.vulkan.resource.VulkanStaging;
 import com.crystalgraphics.vulkan.resource.VulkanTexture;
 import com.crystalgraphics.vulkan.resource.VulkanTimerQuery;
 import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.vulkan.VkBufferCopy;
 import org.lwjgl.vulkan.VkBufferImageCopy;
 import org.lwjgl.vulkan.VkClearColorValue;
@@ -36,6 +37,7 @@ import org.lwjgl.vulkan.VkRenderingAttachmentInfo;
 import org.lwjgl.vulkan.VkRenderingInfo;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,7 +50,9 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
 
 /**
  * The frame's commands outside a pass. Every transfer is fenced by a global barrier on each side and leaves each
- * texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5).
+ * texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5). Copies into textures
+ * one after another share one fence, and one call where they share a source and a texture, until anything else is
+ * recorded ({@link #endCopies}).
  *
  * <p>Where the host has a transfer queue, a copy into an image only that queue has used is recorded there instead
  * (plan/crystalgraphics/render-async-uploads.md §4c), as is a buffer copy or write inside {@link #beginTransfer}. The
@@ -71,6 +75,25 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private boolean transfersRecorded;
     private final List<VulkanTexture> mipmapsOwed = new ArrayList<>();
 
+    /** Regions one batched copy call holds at most, and rectangles a run remembers before fencing its own writes. */
+    private static final int RUN_REGIONS = 64, RUN_WRITTEN = 256;
+    /**
+     * The run: texture copies on the frame's queue since its last other command, fenced as one copy is. Copies sharing
+     * a source and a texture wait in {@link #regions} to be one call.
+     */
+    private boolean runOpen;
+    private final List<VulkanTexture> runTextures = new ArrayList<>();
+    private final ByteBuffer regions = ByteBuffer.allocateDirect(RUN_REGIONS * VkBufferImageCopy.SIZEOF)
+            .order(ByteOrder.nativeOrder());
+    private final long regionsAddress = MemoryUtil.memAddress(regions);
+    private VulkanBuffer pendingSrc;
+    private VulkanTexture pendingDst;
+    private int pending;
+    /** What the run wrote since its last fence: per entry mip, first layer, end layer, then x, y, z and their ends. */
+    private final VulkanTexture[] writtenIn = new VulkanTexture[RUN_WRITTEN];
+    private final int[] written = new int[RUN_WRITTEN * 9];
+    private int writtenCount;
+
     public VulkanEncoder(CgVulkanDevice device) {
         this.device = device;
     }
@@ -85,6 +108,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     void computeEnded() { openCompute = null; }
 
     private VkCommandBuffer cmd() {
+        endCopies();
         return device.host().commandBuffer();
     }
 
@@ -108,6 +132,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
      * them, then generates the mipmaps owed meanwhile. Outside a pass; nothing when none were recorded.
      */
     public void syncTransfers() {
+        endCopies();
         if (!transfersRecorded) return;
         transfersRecorded = false;
         transferOrdered = false;
@@ -426,57 +451,128 @@ public final class VulkanEncoder implements CgCommandEncoder {
     /**
      * A buffer's bytes into a region of {@code t}. On the transfer queue the barriers name the transfer stage
      * themselves: a layout's usual last use is a stage that queue does not have, and two copies into one image
-     * there must still be ordered.
+     * there must still be ordered. On the frame's queue it joins the run ({@link #runCopy}).
      */
     private void copyIn(VulkanBuffer src, long srcOffset, VulkanTexture t, CgTextureRegion region) {
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
-        boolean transfer = viaTransfer(t, srcOffset);
-        VkCommandBuffer cmd;
-        if (transfer) {
-            cmd = device.host().transferCommandBuffer();
-            device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
-                    VK_ACCESS_TRANSFER_WRITE_BIT);
-        } else {
+        if (!viaTransfer(t, srcOffset)) {
             use(t);
             use(src);
-            cmd = cmd();
-            before(cmd);
-            to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            runCopy(src, srcOffset, t, region, layer, layers);
+            return;
         }
-        nvkCmdCopyBufferToImage(cmd, src.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
-                region(srcOffset, t, region, layer, layers));
-        if (transfer) {
-            device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, t.resting,
-                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0);
-            t.transferBatch = batch;
-            transfersRecorded = true;
-            device.transferCopies++;
-        } else {
-            rest(cmd, t, region.mip(), 1, layer, layers);
-            after(cmd);
-        }
+        VkCommandBuffer cmd = device.host().transferCommandBuffer();
+        device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                VK_ACCESS_TRANSFER_WRITE_BIT);
+        VulkanScratch s = VulkanScratch.get(VkBufferImageCopy.SIZEOF);
+        region(s.bytes, 0, srcOffset, t, region, layer, layers);
+        nvkCmdCopyBufferToImage(cmd, src.buffer, t.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, s.address);
+        device.barriers += t.transition(cmd, region.mip(), 1, layer, layers, t.resting,
+                VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0);
+        t.transferBatch = batch;
+        transfersRecorded = true;
+        device.transferCopies++;
     }
 
-    /** One {@code VkBufferImageCopy} in this thread's scratch, for the call made next: a glyph upload is one. */
-    private static long region(long bufferOffset, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
-        VulkanScratch s = VulkanScratch.get(VkBufferImageCopy.SIZEOF);
-        int sub = VkBufferImageCopy.IMAGESUBRESOURCE, at = VkBufferImageCopy.IMAGEOFFSET, size = VkBufferImageCopy.IMAGEEXTENT;
+    /**
+     * A copy on the frame's queue joins the run: the run's first is fenced from the work before it, and one into a
+     * rectangle the run already wrote waits for that write. The call itself waits while the next has the same source
+     * and texture.
+     */
+    private void runCopy(VulkanBuffer src, long srcOffset, VulkanTexture t, CgTextureRegion region, int layer, int layers) {
+        VkCommandBuffer cmd = device.host().commandBuffer();
+        if (!runOpen) {
+            before(cmd);
+            runOpen = true;
+        } else if (writtenCount == RUN_WRITTEN || overlapsWritten(t, region, layer, layers)) {
+            emitCopies(cmd);
+            VulkanBarriers.global(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
+            device.barriers++;
+            writtenCount = 0;
+        }
+        if (!runTextures.contains(t)) runTextures.add(t);
+        to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        if (pending > 0 && (pendingSrc != src || pendingDst != t || pending == RUN_REGIONS)) emitCopies(cmd);
+        pendingSrc = src;
+        pendingDst = t;
+        region(regions, pending++ * VkBufferImageCopy.SIZEOF, srcOffset, t, region, layer, layers);
+        device.frameCopies++;
+        int[] w = written;
+        int at = writtenCount * 9;
+        writtenIn[writtenCount++] = t;
+        w[at] = region.mip(); w[at + 1] = layer; w[at + 2] = layer + layers;
+        w[at + 3] = region.x(); w[at + 4] = region.y(); w[at + 5] = volume(t) ? region.z() : 0;
+        w[at + 6] = region.x() + region.width(); w[at + 7] = region.y() + region.height();
+        w[at + 8] = volume(t) ? region.z() + region.depth() : 1;
+    }
+
+    private boolean overlapsWritten(VulkanTexture t, CgTextureRegion region, int layer, int layers) {
+        int x0 = region.x(), y0 = region.y(), z0 = volume(t) ? region.z() : 0;
+        int x1 = x0 + region.width(), y1 = y0 + region.height(), z1 = volume(t) ? z0 + region.depth() : 1;
+        int[] w = written;
+        for (int i = 0, at = 0; i < writtenCount; i++, at += 9) {
+            if (writtenIn[i] == t && w[at] == region.mip() && layer < w[at + 2] && w[at + 1] < layer + layers
+                    && x0 < w[at + 6] && w[at + 3] < x1 && y0 < w[at + 7] && w[at + 4] < y1
+                    && z0 < w[at + 8] && w[at + 5] < z1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Records the copies waiting for the next to share their source and texture: one call. */
+    private void emitCopies(VkCommandBuffer cmd) {
+        if (pending == 0) return;
+        nvkCmdCopyBufferToImage(cmd, pendingSrc.buffer, pendingDst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, pending,
+                regionsAddress);
+        device.frameCopyCalls++;
+        pending = 0;
+        pendingSrc = null;
+        pendingDst = null;
+    }
+
+    /**
+     * Ends the run of texture copies on the frame's queue, if one is open: records what waits, rests its textures and
+     * fences it from what follows. Before anything else is recorded into, or done with, the frame's command buffer.
+     */
+    public void endCopies() {
+        if (!runOpen) return;
+        runOpen = false;
+        VkCommandBuffer cmd = device.host().commandBuffer();
+        emitCopies(cmd);
+        int stages = SHADER_STAGES | VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        int access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        for (int i = 0; i < runTextures.size(); i++) {
+            VulkanTexture t = runTextures.get(i);
+            device.barriers += t.transitionFrom(cmd, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, t.resting, stages, access);
+        }
+        runTextures.clear();
+        writtenCount = 0;
+        after(cmd);
+    }
+
+    /** One {@code VkBufferImageCopy} at {@code at} in {@code b}. */
+    private static void region(ByteBuffer b, int at, long bufferOffset, VulkanTexture t, CgTextureRegion region, int layer,
+                               int layers) {
+        int sub = at + VkBufferImageCopy.IMAGESUBRESOURCE, offset = at + VkBufferImageCopy.IMAGEOFFSET;
+        int size = at + VkBufferImageCopy.IMAGEEXTENT;
         boolean volume = volume(t);
-        s.bytes.putLong(VkBufferImageCopy.BUFFEROFFSET, bufferOffset)
-                .putInt(VkBufferImageCopy.BUFFERROWLENGTH, 0)
-                .putInt(VkBufferImageCopy.BUFFERIMAGEHEIGHT, 0)
+        b.putLong(at + VkBufferImageCopy.BUFFEROFFSET, bufferOffset)
+                .putInt(at + VkBufferImageCopy.BUFFERROWLENGTH, 0)
+                .putInt(at + VkBufferImageCopy.BUFFERIMAGEHEIGHT, 0)
                 .putInt(sub + VkImageSubresourceLayers.ASPECTMASK, copyAspect(t))
                 .putInt(sub + VkImageSubresourceLayers.MIPLEVEL, region.mip())
                 .putInt(sub + VkImageSubresourceLayers.BASEARRAYLAYER, layer)
                 .putInt(sub + VkImageSubresourceLayers.LAYERCOUNT, layers)
-                .putInt(at + VkOffset3D.X, region.x())
-                .putInt(at + VkOffset3D.Y, region.y())
-                .putInt(at + VkOffset3D.Z, volume ? region.z() : 0)
+                .putInt(offset + VkOffset3D.X, region.x())
+                .putInt(offset + VkOffset3D.Y, region.y())
+                .putInt(offset + VkOffset3D.Z, volume ? region.z() : 0)
                 .putInt(size + VkExtent3D.WIDTH, region.width())
                 .putInt(size + VkExtent3D.HEIGHT, region.height())
                 .putInt(size + VkExtent3D.DEPTH, volume ? region.depth() : 1);
-        return s.address;
     }
 
     @Override
@@ -704,6 +800,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public long endAsync() {
         if (openCompute != null) throw new IllegalStateException("endAsync inside a compute pass");
+        endCopies();
         inAsync = false;
         return device.host().endAsync();
     }
@@ -712,6 +809,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void waitAsync(long point) {
         outsidePass("waitAsync");
         if (openCompute != null) throw new IllegalStateException("waitAsync inside a compute pass");
+        endCopies();
         device.host().waitAsync(point);
     }
 
@@ -722,8 +820,9 @@ public final class VulkanEncoder implements CgCommandEncoder {
         VkCommandBuffer cmd = cmd();
         before(cmd);
         to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-        nvkCmdCopyImageToBuffer(cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.buffer, 1,
-                region(dstOffset, t, region, layer, layers));
+        VulkanScratch s = VulkanScratch.get(VkBufferImageCopy.SIZEOF);
+        region(s.bytes, 0, dstOffset, t, region, layer, layers);
+        nvkCmdCopyImageToBuffer(cmd, t.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.buffer, 1, s.address);
         rest(cmd, t, region.mip(), 1, layer, layers);
         after(cmd);
     }
