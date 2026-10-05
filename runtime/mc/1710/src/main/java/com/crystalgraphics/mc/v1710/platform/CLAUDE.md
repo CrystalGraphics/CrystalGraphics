@@ -10,7 +10,7 @@ by `GLBackend1710`, for Angelica.
 | Class | Implements | What it does |
 |---|---|---|
 | `PlatformService1710` | `CgPlatformService` | The bundle: tier 1's backend, context and input, plus the services below, each built lazily. `onPreInit()` registers it and fills the cursor slot on a client; `onInit()` checks GL requirements and attaches the reload listener, client only |
-| `gl/GLBackend1710` | `CgGLBackend` | Tier 1's `Lwjgl2GLBackend`, with the six calls Angelica rewrites into methods its `GLStateManager` lacks routed through ones it has. Here and not in tier 1, because Angelica exists only on 1.7.10. Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
+| `gl/GLBackend1710` | `CgGLBackend` | Tier 1's `Lwjgl2GLBackend`, with the eight calls Angelica rewrites into methods its `GLStateManager` lacks routed through ones it has. Here and not in tier 1, because Angelica exists only on 1.7.10. Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
 | `service/ResourceService1710` | `CgResourceService` | `openStream(domain, path)` over `IResourceManager`; `null` on not-found, never throws |
 | `service/RenderingService1710` | `CgRenderingService` | The legacy single-call path; the frame is driven by `CgRenderHook` instead |
 | `service/LifecycleService1710` | `CgLifecycleService` | Straight to `CgGraphicsLifecycle`; called by `MixinMinecraft` (resize, fullscreen, shutdown) |

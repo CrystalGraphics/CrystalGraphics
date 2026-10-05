@@ -685,6 +685,19 @@ public final class CgTrackedGLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
+                                int format, int type, long unpackOffset) {
+        textures.subImageFromBuffer(target, level, xOffset, yOffset, 0, width, height, 1, format, type, unpackOffset);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset, int width, int height,
+                                int depth, int format, int type, long unpackOffset) {
+        textures.subImageFromBuffer(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type,
+                unpackOffset);
+    }
+
+    @Override
     public void glTexImage2DMultisample(int target, int samples, int internalFormat, int width, int height,
                                         boolean fixedSampleLocations) {
         textures.multisample(target, samples, internalFormat, width, height);

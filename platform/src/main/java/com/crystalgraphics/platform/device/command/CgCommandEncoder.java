@@ -46,6 +46,12 @@ public interface CgCommandEncoder {
     /** Writes tightly packed texels in {@code dst}'s format; {@code data}'s remaining bytes must fill the region. */
     void writeTexture(CgGpuTexture dst, CgTextureRegion region, ByteBuffer data);
 
+    /**
+     * Copies tightly packed texels in {@code dst}'s format from {@code src} at {@code srcOffset}, a multiple of 4 and of
+     * the texel size: an upload whose bytes are already in a buffer the GPU reads, with no staging copy.
+     */
+    void copyBufferToTexture(CgGpuBuffer src, long srcOffset, CgGpuTexture dst, CgTextureRegion region);
+
     /** Two regions of the same size and compatible formats. */
     void copyTexture(CgGpuTexture src, CgTextureRegion srcRegion, CgGpuTexture dst, CgTextureRegion dstRegion);
 

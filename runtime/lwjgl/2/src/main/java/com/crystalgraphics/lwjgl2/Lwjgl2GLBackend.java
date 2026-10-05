@@ -831,6 +831,18 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
+                                 int format, int type, long unpackOffset) {
+        GL11.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, unpackOffset);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset,
+                                 int width, int height, int depth, int format, int type, long unpackOffset) {
+        GL12.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, unpackOffset);
+    }
+
+    @Override
     public void glGetTexImage(int target, int level, int format, int type, ByteBuffer pixels) {
         GL11.glGetTexImage(target, level, format, type, pixels);
     }

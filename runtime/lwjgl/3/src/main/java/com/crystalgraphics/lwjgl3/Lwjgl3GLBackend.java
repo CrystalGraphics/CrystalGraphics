@@ -449,6 +449,18 @@ public class Lwjgl3GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
+                                 int format, int type, long unpackOffset) {
+        GL11C.glTexSubImage2D(target, level, xOffset, yOffset, width, height, format, type, unpackOffset);
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset,
+                                 int width, int height, int depth, int format, int type, long unpackOffset) {
+        GL12C.glTexSubImage3D(target, level, xOffset, yOffset, zOffset, width, height, depth, format, type, unpackOffset);
+    }
+
+    @Override
     public void glGenerateMipmap(int target) {
         GL30C.glGenerateMipmap(target);
     }

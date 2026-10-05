@@ -216,6 +216,15 @@ public abstract class CgGLBackend {
                                           int xOffset, int yOffset, int zOffset,
                                           int width, int height, int depth,
                                           int format, int type, ShortBuffer pixels);
+    /** From the bound {@code GL_PIXEL_UNPACK_BUFFER}, {@code unpackOffset} bytes in. */
+    public abstract void glTexSubImage2D(int target, int level,
+                                          int xOffset, int yOffset, int width, int height,
+                                          int format, int type, long unpackOffset);
+    /** From the bound {@code GL_PIXEL_UNPACK_BUFFER}, {@code unpackOffset} bytes in. */
+    public abstract void glTexSubImage3D(int target, int level,
+                                          int xOffset, int yOffset, int zOffset,
+                                          int width, int height, int depth,
+                                          int format, int type, long unpackOffset);
     public abstract void glGenerateMipmap(int target);
     public abstract void glActiveTexture(int texture);
     public abstract void glTexParameteri(int target, int pname, int param);

@@ -21,7 +21,7 @@ import java.nio.ShortBuffer;
 import java.nio.charset.StandardCharsets;
 
 /**
- * The 1.7.10 GL backend: {@link Lwjgl2GLBackend}, with the six calls Angelica cannot take routed
+ * The 1.7.10 GL backend: {@link Lwjgl2GLBackend}, with the eight calls Angelica cannot take routed
  * through ones it can.
  *
  * <p>Angelica rewrites every GL call site in every class to its own {@code GLStateManager}, by name
@@ -32,9 +32,9 @@ import java.nio.charset.StandardCharsets;
  *   <li>the FloatBuffer and ShortBuffer texture uploads, which take the ByteBuffer overload instead —
  *       {@code type} already names the element, so the bytes mean the same thing;</li>
  *   <li>{@code glGetActiveUniform}'s four-argument form, which takes the six-argument one;</li>
- *   <li>{@code glReadPixels} into a pack buffer, which Angelica has no form of, so it is reached
- *       through a method handle its rewrite cannot see. A read changes no GL state, so Angelica's
- *       tracking misses nothing.</li>
+ *   <li>{@code glReadPixels} into a pack buffer and {@code glTexSubImage} from an unpack buffer, which
+ *       Angelica has no form of, so they are reached through method handles its rewrite cannot see.
+ *       Neither changes state Angelica tracks.</li>
  * </ul>
  *
  * <p>And one thing its cache models differently: one binding per texture unit, whatever the target. A
@@ -49,6 +49,8 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
     private static ByteBuffer scratch = BufferUtils.createByteBuffer(4096);
 
     private static final MethodHandle READ_PIXELS_TO_PACK_BUFFER = readPixelsToPackBuffer();
+    private static final MethodHandle TEX_SUB_IMAGE_2D_FROM_UNPACK = staticHandle(GL11.class, "glTexSubImage2D", 8);
+    private static final MethodHandle TEX_SUB_IMAGE_3D_FROM_UNPACK = staticHandle(GL12.class, "glTexSubImage3D", 10);
 
     private final boolean oneBindingPerUnit = AngelicaStateProvider.isAvailable();
 
@@ -115,6 +117,31 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
         }
     }
 
+    @Override
+    public void glTexSubImage2D(int target, int level, int xOffset, int yOffset, int width, int height,
+                                 int format, int type, long unpackOffset) {
+        try {
+            TEX_SUB_IMAGE_2D_FROM_UNPACK.invokeExact(target, level, xOffset, yOffset, width, height, format, type, unpackOffset);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
+    @Override
+    public void glTexSubImage3D(int target, int level, int xOffset, int yOffset, int zOffset,
+                                 int width, int height, int depth, int format, int type, long unpackOffset) {
+        try {
+            TEX_SUB_IMAGE_3D_FROM_UNPACK.invokeExact(target, level, xOffset, yOffset, zOffset, width, height, depth,
+                    format, type, unpackOffset);
+        } catch (RuntimeException | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+    }
+
     private static ByteBuffer asBytes(FloatBuffer pixels) {
         if (pixels == null) return null;
         ByteBuffer bytes = scratch(pixels.remaining() * 4);
@@ -135,6 +162,18 @@ public final class GLBackend1710 extends Lwjgl2GLBackend {
         view.clear();
         view.limit(size);
         return scratch;
+    }
+
+    /** {@code owner.name(int x ints, long)}: a buffer-offset form. */
+    private static MethodHandle staticHandle(Class<?> owner, String name, int ints) {
+        Class<?>[] params = new Class<?>[ints + 1];
+        for (int i = 0; i < ints; i++) params[i] = int.class;
+        params[ints] = long.class;
+        try {
+            return MethodHandles.publicLookup().findStatic(owner, name, MethodType.methodType(void.class, params));
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private static MethodHandle readPixelsToPackBuffer() {
