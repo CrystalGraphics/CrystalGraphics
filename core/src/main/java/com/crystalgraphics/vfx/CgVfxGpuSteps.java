@@ -24,14 +24,9 @@ import java.util.List;
  * <ul>
  *   <li>A tenant its effect did not step this tick (killed, or gone) coasts: no spawns, its particles still moving and
  *       ageing until they die, since a slot closed early would hand them to its next owner.</li>
- *   <li>One system steps a pool: every step carries one wind and one length for all its slots. A second system playing
- *       the same shape throws.</li>
  * </ul>
  */
 final class CgVfxGpuSteps {
-
-    /** Which system steps each pool that has tenants. */
-    private static final IdentityHashMap<CgVfxParticlePool, CgVfxGpuSteps> OWNERS = new IdentityHashMap<>();
 
     /** One scheduled instance and its slot. */
     static final class Tenant {
@@ -72,14 +67,7 @@ final class CgVfxGpuSteps {
         if (byInstance.containsKey(instance)) return;
         CgVfxEmitter definition = instance.emitter();
         CgVfxParticlePool pool = CgVfxParticlePool.of(definition);
-        CgVfxGpuSteps owner = OWNERS.get(pool);
-        if (owner == null) {
-            OWNERS.put(pool, this);
-            pools.add(pool);
-        } else if (owner != this) {
-            throw new IllegalStateException(definition.name() + "'s pool " + pool.shape().key()
-                    + " is stepped by another CgVfxSystem; one system steps a pool");
-        }
+        if (!pools.contains(pool)) pools.add(pool);
         Tenant tenant = new Tenant(instance, pool, pool.open(definition, definition.peakAlive()));
         tenant.timeAfter = instance.stepTime();
         tenants.add(tenant);
@@ -133,6 +121,5 @@ final class CgVfxGpuSteps {
             if (tenants.get(k).pool == tenant.pool) return;
         }
         pools.remove(tenant.pool);
-        OWNERS.remove(tenant.pool);
     }
 }
