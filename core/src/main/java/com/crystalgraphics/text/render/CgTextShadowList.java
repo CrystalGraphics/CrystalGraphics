@@ -103,6 +103,16 @@ final class CgTextShadowList {
         return scope[index] >= 0;
     }
 
+    /** The glyph scope shadow {@code index} applies to, or -1 for every glyph. */
+    int scopeOf(int index) {
+        return scope[index];
+    }
+
+    /** Glyph {@code glyph}'s scope, or {@link Integer#MIN_VALUE} where it has none. */
+    int glyphScope(int glyph) {
+        return glyphScopes != null && glyph < glyphScopes.length ? glyphScopes[glyph] : Integer.MIN_VALUE;
+    }
+
     /** Whether {@code glyph} is one shadow {@code shadow} applies to. */
     boolean appliesTo(int shadow, int glyph) {
         int wanted = scope[shadow];

@@ -75,6 +75,11 @@ final class CgResolvedGlyphs {
     int[] argbColor = new int[0];
     /** Resolved atlas placement for glyph {@code i} of the most recent {@link #resolve} call. */
     CgGlyphPlacement[] placements = new CgGlyphPlacement[0];
+    /**
+     * Whether {@link #placements} is a cache entry's own array: the same object, holding the same placements, for every
+     * draw while the entry lives. False for the scratch array a fresh resolve fills.
+     */
+    boolean cached;
 
     CgResolvedGlyphs(CgFontRegistry registry) {
         this.registry = registry;
@@ -120,6 +125,7 @@ final class CgResolvedGlyphs {
                 CgTextRenderContext context, int effectiveTargetPx, boolean wantMsdf,
                 CgFontKey fontKey, int rgba, float posedOriginX) {
         hasDeferredGlyphs = false;
+        cached = false;
         originX = x;
         originY = y;
         long contentGeneration = registry.getAtlasContentGeneration();
@@ -160,6 +166,7 @@ final class CgResolvedGlyphs {
             this.glyphY = hit.glyphY();
             this.argbColor = hit.argbColor();
             this.placements = hit.placements();
+            this.cached = true;
             return hit.glyphCount();
         }
         // A miss here means CgGlyphPlacementCache.Entry.matches() rejected the existing entry

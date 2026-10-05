@@ -290,7 +290,10 @@ Per draw, decides what each glyph paints in each shadow -- the glyph itself, a t
 a worker-built `CgShadowCell` from the bitmap atlas -- and resolves the cells. **A cell still building
 draws the cell that glyph's shadow last had** (kept per font, glyph and shadow index, whatever blur,
 growth or size), so a dragged slider never blinks the shadow off; the cell is scaled by its own raster
-size, which is why `placeGlyph` reads a shadow cell's size from its key. `submitBatchedQuads` keys
+size, which is why `placeGlyph` reads a shadow cell's size from its key. **A plan is kept** for a cached layout's
+placements array (`CgResolvedGlyphs.cached`) and reused while the shadows' shape, size, stroke and atlas evictions
+match, so a layout drawn again plans nothing: `text-3d`'s 8,066 cells went from 1.8 ms a frame to 0.03. It follows the
+placement cache's refreshes, since a refreshed entry is a new array. `submitBatchedQuads` keys
 every shadow instance at its own stage (`CgTextSortKey`) and `submitSorted` packs it for `text.shader`'s
 negative `custom0.w` kinds.
 

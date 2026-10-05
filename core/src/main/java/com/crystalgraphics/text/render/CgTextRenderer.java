@@ -1375,8 +1375,9 @@ public class CgTextRenderer {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.planShadows")) {
                 boolean degraded;
                 synchronized (registry) {
-                    degraded = shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedLayout.baked(), glyphCount,
-                            fontKey, effectiveTargetPx, strokeWidthTexels, draw.strokeAlign, context.isWorldText(), frame);
+                    degraded = shadowPlan.plan(draw.shadows, resolvedGlyphs.placements, resolvedGlyphs.cached,
+                            resolvedLayout.baked(), glyphCount, fontKey, effectiveTargetPx, strokeWidthTexels,
+                            draw.strokeAlign, context.isWorldText(), frame);
                 }
                 if (degraded) degradedDrawCount++;
             }
