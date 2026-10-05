@@ -1,8 +1,11 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.device.CgDevice;
+import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.pipeline.CgBindingLayout;
 import com.crystalgraphics.platform.device.recording.CgRecordingDevice;
+import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTextureView;
 import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -11,6 +14,9 @@ import com.crystalgraphics.platform.gl.tracked.FakeGlslCompiler;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
 import org.junit.Test;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.util.List;
 
@@ -27,6 +33,10 @@ public class CgTrackedTexturesTest {
     private final CgTrackedGLBackend gl = new CgTrackedGLBackend(device, COMPILER, true);
 
     private void program() {
+        program(gl);
+    }
+
+    private static void program(CgTrackedGLBackend gl) {
         int vs = gl.glCreateShader(CgGL.GL_VERTEX_SHADER), fs = gl.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
         int p = gl.glCreateProgram();
         gl.glAttachShader(p, vs);
@@ -36,8 +46,61 @@ public class CgTrackedTexturesTest {
     }
 
     private CgTextureView sampled() {
+        return sampled(gl);
+    }
+
+    private static CgTextureView sampled(CgTrackedGLBackend gl) {
         CgDrawState s = gl.tracker().state;
         return s.bindings.view(s.bindings.indexOf(0));
+    }
+
+    /** {@code device}, its encoder answering {@code writeWaitsForFrame} with {@code waits[0]}: a transfer queue's answer. */
+    private static CgDevice writesWait(CgDevice device, boolean[] waits) {
+        CgCommandEncoder encoder = (CgCommandEncoder) Proxy.newProxyInstance(CgCommandEncoder.class.getClassLoader(),
+                new Class<?>[] {CgCommandEncoder.class},
+                (p, m, args) -> m.getName().equals("writeWaitsForFrame") ? waits[0] : call(m, device.encoder(), args));
+        return (CgDevice) Proxy.newProxyInstance(CgDevice.class.getClassLoader(), new Class<?>[] {CgDevice.class},
+                (p, m, args) -> m.getName().equals("encoder") ? encoder : call(m, device, args));
+    }
+
+    private static Object call(Method m, Object target, Object[] args) throws Throwable {
+        try {
+            return m.invoke(target, args);
+        } catch (InvocationTargetException e) {
+            throw e.getCause();
+        }
+    }
+
+    @Test
+    public void aWholeUploadIntoATextureTheFrameUsedIsWrittenToANewImage() {
+        boolean[] waits = {false};
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(writesWait(device, waits), COMPILER, true);
+        program(gl);
+        int tex = gl.glGenTextures();
+        gl.glBindTexture(CgGL.GL_TEXTURE_2D, tex);
+        gl.glTexParameteri(CgGL.GL_TEXTURE_2D, CgGL.GL_TEXTURE_MIN_FILTER, CgGL.GL_LINEAR);
+        ByteBuffer whole = ByteBuffer.allocateDirect(512 * 512 * 4);
+        gl.glTexImage2D(CgGL.GL_TEXTURE_2D, 0, CgGL.GL_RGBA8, 512, 512, 0, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, whole);
+        gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        CgGpuTexture first = sampled(gl).texture();
+        waits[0] = true;
+
+        gl.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, 512, 512, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, whole);
+        gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        CgGpuTexture renamed = sampled(gl).texture();
+        assertNotSame("every texel replaced: a new image", first, renamed);
+        assertEquals(first.desc(), renamed.desc());
+        assertTrue("the old one released", device.log().contains("release #" + CgRecordingDevice.idOf(first)));
+
+        gl.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, 256, 512, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, whole);
+        gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        assertSame("half replaced: the same image", renamed, sampled(gl).texture());
+
+        gl.glGenerateMipmap(CgGL.GL_TEXTURE_2D);
+        gl.glTexSubImage2D(CgGL.GL_TEXTURE_2D, 0, 0, 0, 512, 512, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, whole);
+        gl.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        assertSame("its other levels would be lost: the same image", renamed, sampled(gl).texture());
+        assertEquals(1, gl.tracker().stats().textureRenames);
     }
 
     @Test

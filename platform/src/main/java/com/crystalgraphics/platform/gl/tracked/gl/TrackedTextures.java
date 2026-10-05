@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.device.command.CgCommandEncoder;
 import com.crystalgraphics.platform.device.format.CgCompare;
 import com.crystalgraphics.platform.device.format.CgFormat;
 import com.crystalgraphics.platform.device.resource.CgGpuSampler;
@@ -71,6 +72,10 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
     private static final int UPLOAD_BREAKS = CgTrace.name("tracked.upload-breaks");
     /** Uploads from an unpack buffer copied on the device, from the buffer itself: no staging copy. */
     private static final int BUFFER_COPIES = CgTrace.name("tracked.texture-buffer-copies");
+    /** Uploads replacing a whole texture the frame had used, into a new image ({@link #renameIfReplaced}). */
+    private static final int RENAMES = CgTrace.name("tracked.texture-renames");
+    /** Below this a copy on the frame's queue costs less than a new image. */
+    private static final long RENAME_BYTES = 256 << 10;
     private final TrackedGlErrors errors;
     private final TrackedBuffers buffers;
     private final GlNames<GlTexture> names = new GlNames<>("Texture");
@@ -216,7 +221,9 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
                 && at % 4 == 0 && at % t.format.bytes() == 0) {
             CgTrackerStats stats = tracker.stats();
             long breaks = stats.passBreaks;
-            tracker.transfer().copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, x, y, layer, width,
+            CgCommandEncoder encoder = tracker.transfer();
+            renameIfReplaced(encoder, t, level, x, y, layer, width, height, depth);
+            encoder.copyBufferToTexture(a.buffer(), at, t.image, new CgTextureRegion(level, x, y, layer, width,
                     height, depth));
             tracker.markUsed(a);
             stats.textureWrites++;
@@ -427,13 +434,35 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         CgTrackerStats stats = tracker.stats();
         long breaks = stats.passBreaks;
         int bytes = texels.remaining();
-        tracker.transfer().writeTexture(t.image, new CgTextureRegion(level, x, y, z, w, h, d), texels);
+        CgCommandEncoder encoder = tracker.transfer();
+        renameIfReplaced(encoder, t, level, x, y, z, w, h, d);
+        encoder.writeTexture(t.image, new CgTextureRegion(level, x, y, z, w, h, d), texels);
         stats.textureWrites++;
         stats.textureWriteBytes += bytes;
         stats.uploadBreaks += stats.passBreaks - breaks;
         CgTrace.add(TRACE, WRITES, 1);
         CgTrace.add(TRACE, WRITE_BYTES, bytes);
         CgTrace.add(TRACE, UPLOAD_BREAKS, stats.passBreaks - breaks);
+    }
+
+    /**
+     * A write replacing every texel of a texture the frame has used goes into a new image, so it need not wait behind
+     * that use (a GL driver's texture rename). The old image retires with the frames reading it. Only where nothing
+     * else the texture holds would be lost: level 0 whole, no other level specified.
+     */
+    private void renameIfReplaced(CgCommandEncoder encoder, GlTexture t, int level, int x, int y, int z, int w, int h,
+                                  int d) {
+        if (level != 0 || x != 0 || y != 0 || z != 0 || w != t.width || h != t.height || d != t.depth
+                || t.imported || t.samples > 1 || t.specifiedLevels > 1
+                || (long) w * h * d * t.format.bytes() < RENAME_BYTES || !encoder.writeWaitsForFrame(t.image)) {
+            return;
+        }
+        CgGpuTexture old = t.image;
+        tracker.release(old);
+        t.image = tracker.device().createTexture(old.desc());
+        t.view = null;
+        tracker.stats().textureRenames++;
+        CgTrace.add(TRACE, RENAMES, 1);
     }
 
     private GlTexture boundFor(int target, String call) {
