@@ -1,4 +1,8 @@
-package com.crystalgraphics.vfx.particle.gpu;
+package com.crystalgraphics.vfx.particle.gpu.sim;
+
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
 import java.util.Arrays;
 import java.util.HashMap;

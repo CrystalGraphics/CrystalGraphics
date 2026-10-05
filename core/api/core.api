@@ -7107,6 +7107,7 @@ com/crystalgraphics/vfx/particle/CgVfxCurlNoise
 com/crystalgraphics/vfx/particle/CgVfxEmitter
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   method public capacity ()I
   method public layer ()Ljava/lang/String;
   method public modules ()Ljava/util/List;
@@ -7116,6 +7117,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public sizeAt (F)F
   method public toBuilder ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public writeSpawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
 com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   access public,final
@@ -7150,6 +7152,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer
 com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
   method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;F)V
   method public air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
   method public emitter ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
@@ -7180,6 +7183,7 @@ com/crystalgraphics/vfx/particle/CgVfxGround
 com/crystalgraphics/vfx/particle/CgVfxModule
   access public,abstract,interface
   extends java/lang/Object
+  implements com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   method public afterSolve ()Z
   method public,abstract apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
 com/crystalgraphics/vfx/particle/CgVfxModule$Buoyancy
@@ -7189,7 +7193,9 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Buoyancy
   method public <init> (FF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public cooling ()F
+  method public gpuKind ()Ljava/lang/String;
   method public lift ()F
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7199,8 +7205,10 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Drag
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public gpuKind ()Ljava/lang/String;
   method public linear ()F
   method public quadratic ()F
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7210,7 +7218,9 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Gravity
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public gpuKind ()Ljava/lang/String;
   method public strength ()F
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7222,8 +7232,11 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Ground
   method public afterSolve ()Z
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public friction ()F
+  method public gpuKind ()Ljava/lang/String;
   method public rest ()F
   method public restitution ()F
+  method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7234,6 +7247,8 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Spin
   method public <init> (F)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public drag ()F
+  method public gpuKind ()Ljava/lang/String;
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7245,7 +7260,11 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Turbulence
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public evolve ()F
   method public frequency ()F
+  method public gpuKind ()Ljava/lang/String;
+  method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public strength ()F
+  method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7256,9 +7275,13 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Updraft
   method public <init> (FFFF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public duration ()F
+  method public gpuKind ()Ljava/lang/String;
   method public height ()F
+  method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public radius ()F
   method public strength ()F
+  method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7268,7 +7291,9 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Wind
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public gpuKind ()Ljava/lang/String;
   method public resistance ()F
+  method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -7282,6 +7307,7 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
   field public,final drag [F
   field public,final dragQuad [F
   field public,final heat [F
+  field public,final id [I
   field public,final life [F
   field public,final px [F
   field public,final py [F
@@ -7298,6 +7324,7 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
   field public,final y [F
   field public,final z [F
   method public <init> (I)V
+  method public add ()I
   method public capacity ()I
   method public count ()I
   method public progress (I)F
@@ -7342,7 +7369,26 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxLane
   method public glsl ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
-com/crystalgraphics/vfx/particle/gpu/CgVfxParticlePool
+com/crystalgraphics/vfx/particle/gpu/CgVfxWords
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public finish (Ljava/lang/String;)V
+  method public ivec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public target ([IIILjava/lang/String;)V
+  method public uvec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public vec4 (FFFF)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public,static into ([IIILjava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public argument ()Ljava/lang/String;
+  method public glsl ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   access public,final
   extends java/lang/Object
   field public,static,final INSTANCE_HEADER I
@@ -7356,11 +7402,11 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxParticlePool
   method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
   method public openSlots ()I
   method public queuedSteps ()I
-  method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxShape;
+  method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I
   method public spawn (III)V
-  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxParticlePool;
-com/crystalgraphics/vfx/particle/gpu/CgVfxShape
+  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   access public,final
   extends java/lang/Object
   method public afterSolve (I)Z
@@ -7378,24 +7424,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxShape
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public toString ()Ljava/lang/String;
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
-  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxShape;
-com/crystalgraphics/vfx/particle/gpu/CgVfxWords
-  access public,final
-  extends java/lang/Object
-  method public finish (Ljava/lang/String;)V
-  method public ivec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
-  method public uvec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
-  method public vec4 (FFFF)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
-  method public,static into ([IIILjava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
-com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
-  field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
-  method public argument ()Ljava/lang/String;
-  method public glsl ()Ljava/lang/String;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
-  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
 com/crystalgraphics/vfx/path/CgVfxPath
   access public,final
   extends java/lang/Object
