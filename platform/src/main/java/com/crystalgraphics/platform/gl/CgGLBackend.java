@@ -329,6 +329,14 @@ public abstract class CgGLBackend {
     /** What follows on the frame's queue runs after the async work up to {@code point}. */
     public void cgWaitAsync(long point) {}
 
+    /**
+     * The buffer copies that follow may run on a transfer queue beside the frame's, until {@link #cgEndTransfer}. GL has
+     * one queue: in order, as here.
+     */
+    public void cgBeginTransfer() {}
+
+    public void cgEndTransfer() {}
+
     /** {@link #cgBufferBarrier} for a texture. */
     public void cgImageBarrier(int texture, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);

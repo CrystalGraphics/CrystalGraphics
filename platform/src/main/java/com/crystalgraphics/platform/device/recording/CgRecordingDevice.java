@@ -75,7 +75,7 @@ public final class CgRecordingDevice implements CgDevice {
     private int live;
     private int draws;
     private boolean logging = true;
-    private boolean async;
+    private boolean async, transfer;
     private long asyncPoint;
     private Pass open;
     private ComputePass openCompute;
@@ -345,6 +345,7 @@ public final class CgRecordingDevice implements CgDevice {
             outsidePass("beginPass");
             noCompute("beginPass");
             if (async) throw new IllegalStateException("A render pass inside async work: a compute queue draws nothing");
+            if (transfer) throw new IllegalStateException("A render pass inside a transfer: a transfer queue draws nothing");
             StringBuilder s = new StringBuilder("beginPass ").append(desc.label()).append(" colors=[");
             for (int i = 0; i < desc.colors().size(); i++) {
                 CgPassDesc.Color c = desc.colors().get(i);
@@ -366,6 +367,7 @@ public final class CgRecordingDevice implements CgDevice {
         public CgComputePass beginCompute(String label) {
             outsidePass("beginCompute");
             noCompute("beginCompute");
+            if (transfer) throw new IllegalStateException("A compute pass inside a transfer");
             openCompute = new ComputePass(label);
             record("beginCompute " + label);
             return openCompute;
@@ -510,6 +512,7 @@ public final class CgRecordingDevice implements CgDevice {
         public void beginAsync() {
             outsidePass("beginAsync");
             if (async) throw new IllegalStateException("beginAsync inside async work");
+            if (transfer) throw new IllegalStateException("beginAsync inside a transfer");
             async = true;
             record("beginAsync");
         }
@@ -528,6 +531,23 @@ public final class CgRecordingDevice implements CgDevice {
             outsidePass("waitAsync");
             if (async) throw new IllegalStateException("waitAsync inside async work");
             record("waitAsync " + point);
+        }
+
+        /** Recorded in order, as a device with no transfer queue runs it. */
+        @Override
+        public void beginTransfer() {
+            outsidePass("beginTransfer");
+            noCompute("beginTransfer");
+            if (transfer) throw new IllegalStateException("beginTransfer inside a transfer");
+            transfer = true;
+            record("beginTransfer");
+        }
+
+        @Override
+        public void endTransfer() {
+            if (!transfer) throw new IllegalStateException("endTransfer with no transfer open");
+            transfer = false;
+            record("endTransfer");
         }
 
         @Override

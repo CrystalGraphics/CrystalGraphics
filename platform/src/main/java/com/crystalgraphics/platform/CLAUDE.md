@@ -208,9 +208,12 @@ What is easy to get wrong:
 - **A copy into an image only the transfer queue has used runs there**, on Vulkan devices with a family that only
   copies (owned: family 1 on NVIDIA; hosted: Minecraft 26.2 and 26.3's own transfer queue). A new image stays
   `UNDEFINED` until its first copy or its first sampling, which lays what is left on the setup buffer; any use on
-  another queue keeps it off the transfer queue for good. The batch is submitted, and the frame's queue waits for it,
-  at the first work there touching such an image, at a pass, or at the frame's end; mipmaps asked of it meanwhile
-  are generated after that wait. `-Dcrystalgraphics.vulkan.transfer=false` keeps every copy on the frame's queue.
+  another queue keeps it off the transfer queue for good. So does a buffer copy or write between `cgBeginTransfer` and
+  `cgEndTransfer`, the mesh store's uploads, whose caller promises it reads nothing the frame's queue writes and writes
+  nothing a frame in flight reads; one bracket's copies are unordered, the next bracket's come after them. The batch is
+  submitted, and the frame's queue waits for it, at the first work there touching such an image or buffer, at a pass,
+  or at the frame's end; mipmaps asked of it meanwhile are generated after that wait.
+  `-Dcrystalgraphics.vulkan.transfer=false` keeps every copy on the frame's queue.
 - **`compileInBackground()` makes a link return at once**, shaderc running on a worker (`crystalgraphics-shaderc`),
   as a driver with `KHR_parallel_shader_compile` does: `GL_COMPLETION_STATUS_KHR` says when it is done, and anything
   else asked of the program waits for it (`shader.spirvWait`) and makes its modules here. Hosts turn it on; tests

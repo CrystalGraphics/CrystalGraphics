@@ -48,9 +48,10 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
  * texture it touched back in its resting layout: coarse, and correct (plan/device-vulkan.md §5).
  *
  * <p>Where the host has a transfer queue, a copy into an image only that queue has used is recorded there instead
- * (plan/crystalgraphics/render-async-uploads.md §4c). The batch is submitted, and the frame's queue made to wait for
- * it, at the first work on the frame's queue that touches such an image, at the next pass, or at the frame's end;
- * mipmaps asked of one meanwhile are generated then.</p>
+ * (plan/crystalgraphics/render-async-uploads.md §4c), as is a buffer copy or write inside {@link #beginTransfer}. The
+ * batch is submitted, and the frame's queue made to wait for it, at the first work on the frame's queue that touches
+ * an image or buffer it wrote, at the next pass, or at the frame's end; mipmaps asked of one meanwhile are generated
+ * then.</p>
  */
 public final class VulkanEncoder implements CgCommandEncoder {
 
@@ -60,6 +61,8 @@ public final class VulkanEncoder implements CgCommandEncoder {
     private VulkanPass open;
     private VulkanComputePass openCompute;
     private boolean inAsync;
+    /** Inside {@link #beginTransfer}; and whether the bracket's copies there are ordered after earlier ones yet. */
+    private boolean inTransfer, transferOrdered;
     /** The transfer batch being recorded, and whether anything has been. */
     private long batch = 1;
     private boolean transfersRecorded;
@@ -93,6 +96,10 @@ public final class VulkanEncoder implements CgCommandEncoder {
         if (transfersRecorded && t.transferBatch == batch) syncTransfers();
     }
 
+    private void use(VulkanBuffer b) {
+        if (transfersRecorded && b.transferBatch == batch) syncTransfers();
+    }
+
     /**
      * Submits the copies recorded on the transfer queue, makes what the frame's queue records from here wait for
      * them, then generates the mipmaps owed meanwhile. Outside a pass; nothing when none were recorded.
@@ -100,6 +107,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void syncTransfers() {
         if (!transfersRecorded) return;
         transfersRecorded = false;
+        transferOrdered = false;
         batch++;
         device.host().waitTransfers(device.host().submitTransfers());
         for (int i = 0; i < mipmapsOwed.size(); i++) {
@@ -116,12 +124,60 @@ public final class VulkanEncoder implements CgCommandEncoder {
                 && copyAspect(t) == VK_IMAGE_ASPECT_COLOR_BIT && device.host().asyncTransfer();
     }
 
+    /** Whether a buffer copy goes on the transfer queue: inside {@link #beginTransfer}, where the host has one. */
+    private boolean buffersViaTransfer() {
+        return inTransfer && device.host().asyncTransfer();
+    }
+
+    /**
+     * The transfer queue's command buffer for a buffer copy. The bracket's first is ordered after every copy recorded
+     * there before it: kept content, then what lands over it, are two brackets.
+     */
+    private VkCommandBuffer transferBuffers() {
+        VkCommandBuffer cmd = device.host().transferCommandBuffer();
+        if (!transferOrdered) {
+            VulkanBarriers.global(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
+            device.barriers++;
+            transferOrdered = true;
+        }
+        return cmd;
+    }
+
+    private void wroteOnTransfer(VulkanBuffer dst) {
+        dst.transferBatch = batch;
+        transfersRecorded = true;
+        device.transferCopies++;
+        device.transferBufferCopies++;
+    }
+
+    @Override
+    public void beginTransfer() {
+        outsidePass("beginTransfer");
+        if (openCompute != null) throw new IllegalStateException("beginTransfer inside a compute pass");
+        if (inAsync) throw new IllegalStateException("beginTransfer inside async work");
+        outsideTransfer("beginTransfer");
+        inTransfer = true;
+        transferOrdered = false;
+    }
+
+    @Override
+    public void endTransfer() {
+        if (!inTransfer) throw new IllegalStateException("endTransfer with no transfer open");
+        inTransfer = false;
+    }
+
+    private void outsideTransfer(String what) {
+        if (inTransfer) throw new IllegalStateException(what + " inside a transfer");
+    }
+
     // ── passes ─────────────────────────────────────────────────────────────────
 
     @Override
     public CgComputePass beginCompute(String label) {
         outsidePass("beginCompute");
         if (openCompute != null) throw new IllegalStateException("beginCompute inside a compute pass");
+        outsideTransfer("beginCompute");
         syncTransfers();
         openCompute = new VulkanComputePass(device, this);
         return openCompute;
@@ -130,6 +186,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public void bufferBarrier(CgGpuBuffer buffer, int from, int to) {
         outsidePass("bufferBarrier");
+        use((VulkanBuffer) buffer);
         VulkanBarriers.buffer(cmd(), ((VulkanBuffer) buffer).buffer, VulkanAccess.stage(from), VulkanAccess.access(from),
                 VulkanAccess.stage(to), VulkanAccess.access(to));
         device.barriers++;
@@ -155,6 +212,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public CgRenderPass beginPass(CgPassDesc desc) {
         outsidePass("beginPass");
         if (openCompute != null) throw new IllegalStateException("beginPass inside a compute pass");
+        outsideTransfer("beginPass");
         syncTransfers();
         VkCommandBuffer cmd = cmd();
         for (CgPassDesc.Color c : desc.colors()) {
@@ -296,18 +354,29 @@ public final class VulkanEncoder implements CgCommandEncoder {
         int n = data.remaining();
         VulkanStaging.Region r = device.staging().take(n, 16);
         r.bytes().put(data.duplicate());
-        VkCommandBuffer cmd = cmd();
-        before(cmd);
+        VulkanBuffer d = (VulkanBuffer) dst;
+        boolean transfer = buffersViaTransfer();
+        VkCommandBuffer cmd;
+        if (transfer) {
+            cmd = transferBuffers();
+        } else {
+            use(d);
+            cmd = cmd();
+            before(cmd);
+        }
         try (MemoryStack stack = stackPush()) {
-            vkCmdCopyBuffer(cmd, r.buffer().buffer, ((VulkanBuffer) dst).buffer,
+            vkCmdCopyBuffer(cmd, r.buffer().buffer, d.buffer,
                     VkBufferCopy.calloc(1, stack).srcOffset(r.offset()).dstOffset(dstOffset).size(n));
         }
-        after(cmd);
+        if (transfer) wroteOnTransfer(d);
+        else after(cmd);
     }
 
     @Override
     public void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value) {
         outsidePass("fillBuffer");
+        outsideTransfer("fillBuffer");
+        use((VulkanBuffer) dst);
         VkCommandBuffer cmd = cmd();
         before(cmd);
         vkCmdFillBuffer(cmd, ((VulkanBuffer) dst).buffer, dstOffset, size, value);
@@ -317,13 +386,23 @@ public final class VulkanEncoder implements CgCommandEncoder {
     @Override
     public void copyBuffer(CgGpuBuffer src, long srcOffset, CgGpuBuffer dst, long dstOffset, long size) {
         outsidePass("copyBuffer");
-        VkCommandBuffer cmd = cmd();
-        before(cmd);
+        VulkanBuffer s = (VulkanBuffer) src, d = (VulkanBuffer) dst;
+        boolean transfer = buffersViaTransfer();
+        VkCommandBuffer cmd;
+        if (transfer) {
+            cmd = transferBuffers();
+        } else {
+            use(s);
+            use(d);
+            cmd = cmd();
+            before(cmd);
+        }
         try (MemoryStack stack = stackPush()) {
-            vkCmdCopyBuffer(cmd, ((VulkanBuffer) src).buffer, ((VulkanBuffer) dst).buffer,
+            vkCmdCopyBuffer(cmd, s.buffer, d.buffer,
                     VkBufferCopy.calloc(1, stack).srcOffset(srcOffset).dstOffset(dstOffset).size(size));
         }
-        after(cmd);
+        if (transfer) wroteOnTransfer(d);
+        else after(cmd);
     }
 
     @Override
@@ -357,6 +436,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
                     VK_ACCESS_TRANSFER_WRITE_BIT);
         } else {
             use(t);
+            use(src);
             cmd = cmd();
             before(cmd);
             to(cmd, t, region.mip(), 1, layer, layers, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -600,6 +680,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
     public void beginAsync() {
         outsidePass("beginAsync");
         if (openCompute != null) throw new IllegalStateException("beginAsync inside a compute pass");
+        outsideTransfer("beginAsync");
         syncTransfers();
         device.host().beginAsync();
         inAsync = true;
@@ -621,6 +702,7 @@ public final class VulkanEncoder implements CgCommandEncoder {
 
     private void copyOut(VulkanTexture t, CgTextureRegion region, VulkanBuffer dst, long dstOffset) {
         use(t);
+        use(dst);
         int layer = volume(t) ? 0 : region.z(), layers = volume(t) ? 1 : region.depth();
         VkCommandBuffer cmd = cmd();
         before(cmd);

@@ -56,6 +56,25 @@ public class CgTrackedComputeTest {
     }
 
     @Test
+    public void aCopyInATransferIsBracketedOnTheDevice_andAFrameCannotEndInsideOne() {
+        CgRecordingDevice device = new CgRecordingDevice(8, 8);
+        CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);
+        int from = gl.glGenBuffers(), to = gl.glGenBuffers();
+        gl.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
+        gl.glBufferData(CgGL.GL_COPY_READ_BUFFER, 256, CgGL.GL_STATIC_DRAW);
+        gl.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
+        gl.glBufferData(CgGL.GL_COPY_WRITE_BUFFER, 256, CgGL.GL_STATIC_DRAW);
+        gl.cgBeginTransfer();
+        gl.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, 0, 64, 128);
+        assertThrows(IllegalStateException.class, gl::endFrame);
+        gl.cgEndTransfer();
+        gl.endFrame();
+        String log = String.join(" | ", device.log());
+        int begin = log.indexOf("beginTransfer"), copy = log.indexOf("copyBuffer"), end = log.indexOf("endTransfer");
+        assertTrue(log, begin >= 0 && begin < copy && copy < end);
+    }
+
+    @Test
     public void aFillOfPartWordsIsRefused() {
         CgRecordingDevice device = new CgRecordingDevice(8, 8);
         CgTrackedGLBackend gl = new CgTrackedGLBackend(device, FakeGlslCompiler.EMPTY, true);

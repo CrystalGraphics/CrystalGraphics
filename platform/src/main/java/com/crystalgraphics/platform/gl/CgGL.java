@@ -1320,6 +1320,36 @@ public final class CgGL {
         gl().cgWaitAsync(point);
     }
 
+    /**
+     * The buffer copies that follow, until {@link #cgEndTransfer}, may run on a transfer queue beside the frame's, where
+     * the device has one: after every bracket before, and before anything later on the frame's queue that touches what
+     * they wrote. Elsewhere, GL included, they run in order. The mesh store brackets its uploads with these.
+     *
+     * <pre>{@code
+     * CgGL.cgBeginTransfer();
+     * try {
+     *     CgGL.glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, from, to, size);   // and more
+     * } finally {
+     *     CgGL.cgEndTransfer();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A copy in it may not read what the frame's queue writes, nor write what a frame in flight reads: ranges
+     *       nothing has used since their last frame retired, or that only such copies wrote.</li>
+     *   <li>Copies in one bracket are not ordered among themselves: two writing one range go in two brackets.</li>
+     *   <li>Nothing but copies inside it: no draw, dispatch or async work.</li>
+     * </ul>
+     */
+    public static void cgBeginTransfer() {
+        gl().cgBeginTransfer();
+    }
+
+    /** Ends {@link #cgBeginTransfer}'s bracket. */
+    public static void cgEndTransfer() {
+        gl().cgEndTransfer();
+    }
+
     // =========================================================================
     // GL state
     // =========================================================================
