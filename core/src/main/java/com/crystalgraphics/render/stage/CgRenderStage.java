@@ -213,8 +213,9 @@ public final class CgRenderStage {
         // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         // Stage entry: the host and every mod hooking the same point drew just before this, through APIs the state
-        // manager cannot see.
-        CgGlState.invalidateAllIfPresent();
+        // manager cannot see. Inside a section already open, only our own code ran since it did: what it set (the
+        // main target and its viewport) stands.
+        if (!CgGL.inHostSection()) CgGlState.invalidateAllIfPresent();
         // What the host handed us, off unless -Dcrystalgraphics.host.census.
         CgGlCensus.at(path);
         CgGL.fromHost();
