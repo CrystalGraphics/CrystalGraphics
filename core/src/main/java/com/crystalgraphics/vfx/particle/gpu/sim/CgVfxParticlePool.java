@@ -360,10 +360,49 @@ public final class CgVfxParticlePool {
     }
 
     /**
-     * Records the queued steps into {@code recording}, one dispatch each in one compute pass, and takes them. Render
-     * thread, between steps.
+     * Replaces the pool's particles with the first {@code count} records of {@code data}, in {@link CgVfxRecord}'s
+     * layout and native order, ahead of the steps recorded after it: a check stepping the CPU's particles on the GPU.
+     * Render thread, between steps.
+     *
+     * <pre>{@code
+     * for (int i = 0; i < n; i++) CgVfxRecord.pack(packed, i, cpu.particles(), i, slot, paramRow);
+     * pool.seed(recording, packed, n);
+     * pool.beginStep(dt, windX, windY, windZ);    // the step the CPU took, its instance rows and spawns
+     * ...
+     * pool.endStep();
+     * pool.record(recording);
+     * recording.readback(pool.records(), 0, (long) pool.storage() * CgVfxRecord.BYTES, data -> compare(data));
+     * recording.readback(pool.live(), 0, 4, data -> alive = data.getInt(0));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The step appends survivors in any order: match records by {@link CgVfxRecord#ID} and slot.</li>
+     *   <li>Ask {@link #records()} and {@link #live()} after {@link #record}: each step moves {@link #live()} to the
+     *       other count, and growth makes {@link #records()} a new handle.</li>
+     * </ul>
      */
-    void record(CgRecording recording) {
+    public void seed(CgRecording recording, ByteBuffer data, int count) {
+        betweenSteps("seed");
+        if (count < 0 || data.capacity() < (long) count * CgVfxRecord.BYTES) {
+            throw new IllegalArgumentException(count + " records in " + data.capacity() + " bytes");
+        }
+        reserve(recording, count);
+        if (count > 0) {
+            ByteBuffer bytes = data.duplicate();
+            bytes.position(0);
+            bytes.limit(count * CgVfxRecord.BYTES);
+            recording.update(records, 0, bytes);
+        }
+        put(recording, counts[current], new int[]{count}, 1);
+    }
+
+    /**
+     * Records the queued steps into {@code recording}, one dispatch each in one compute pass, and takes them. The pools
+     * record themselves once a host frame on {@link CgRenderStage#WORLD_OPAQUE}; call it only where that stage does
+     * not fire, as a check scene. Render thread, between steps.
+     */
+    public void record(CgRecording recording) {
+        betweenSteps("record");
         if (steps == 0) return;
         if (openSlots == 0) {
             // A slot closes only once its particles have died, so there is nothing to step.
@@ -371,7 +410,7 @@ public final class CgVfxParticlePool {
             return;
         }
         if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
-        reserve(recording);
+        reserve(recording, capacity);
         upload(recording);
         CgComputePass pass = recording.compute(passName).timed(GPU_STEP).async();
         for (int s = 0; s < steps; s++) {
@@ -389,18 +428,18 @@ public final class CgVfxParticlePool {
         takeSteps();
     }
 
-    /** Makes the records and counts the first time, and grows the records past what the open slots can hold. */
-    private void reserve(CgRecording recording) {
+    /** Makes the records and counts the first time, and grows the records to hold {@code need}. */
+    private void reserve(CgRecording recording, int need) {
         if (records == null) {
-            storage = sizeClass(capacity);
+            storage = sizeClass(need);
             records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
             for (int c = 0; c < 2; c++) {
                 counts[c] = CgGraphBuffer.persistent(countNames[c],
                         CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY, CgBufferUsage.INDIRECT));
                 recording.fill(counts[c], 0);
             }
-        } else if (capacity > storage) {
-            storage = sizeClass(capacity);
+        } else if (need > storage) {
+            storage = sizeClass(need);
             records = recording.resize(records, recordsDesc(storage));
         }
     }
