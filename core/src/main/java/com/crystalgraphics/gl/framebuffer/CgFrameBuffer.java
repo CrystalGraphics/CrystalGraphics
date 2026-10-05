@@ -9,6 +9,7 @@ import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
@@ -139,6 +140,12 @@ public class CgFrameBuffer {
     /** Whether it is a volume's storage ({@link #createVolume}): a 3D colour texture and no framebuffer object. */
     @Getter
     private boolean volume;
+
+    /** An array's layers ({@link #createArray}); 0 for any other framebuffer. */
+    private int arrayLayers;
+
+    /** Framebuffers drawing into layer {@code l} of an array, at {@code l - 1}; made with it. */
+    private int[] layerFbos = new int[0];
     
      // ── Lazily cached GPU limit ────────────────────────────────────────────────
 
@@ -321,6 +328,48 @@ public class CgFrameBuffer {
         return fbo;
     }
 
+    /**
+     * Storage for a 2D array: {@code format}'s slot 0 as a {@link CgTexture2DArray} of {@code layers} layers. Its
+     * framebuffer draws into layer 0, and {@link #bindLayer} into any other. What the frame graph keeps an array in
+     * ({@code CgTextureDesc.array}); any caller owns it outright.
+     *
+     * <pre>{@code
+     * CgFrameBuffer field = CgFrameBuffer.createArray("field", w, h, 5, rgba16f);
+     * field.bindLayer(3);                                             // draws into layer 3
+     * CgGraphTexture fields = CgGraphTexture.imported("field", field); // a material's sampler2DArray
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A blit, a clear or a reattachment addresses layer 0; a resize keeps the layer count.</li>
+     *   <li>One level, one colour attachment, no depth.</li>
+     * </ul>
+     */
+    public static CgFrameBuffer createArray(String name, int width, int height, int layers, CgFrameBufferFormat format) {
+        if (width <= 0 || height <= 0 || layers <= 0) {
+            throw new IllegalArgumentException("CgFrameBuffer '" + name + "': an array of " + width + "x" + height + ", " + layers + " layers");
+        }
+        CgTextureType type = format.getColorSlot(0);
+        if (format.colorSlotCount() != 1 || type == null || format.isColorRenderbuffer(0) || format.hasDepth()
+                || format.isMultisampled()) {
+            throw new IllegalArgumentException("CgFrameBuffer '" + name + "': an array is one single-sampled colour "
+                    + "texture at slot 0, not " + format);
+        }
+        CgFrameBuffer fbo = new CgFrameBuffer(name, format, width, height);
+        fbo.arrayLayers = layers;
+        fbo.initGl(width, height, format);
+        return fbo;
+    }
+
+    /** Whether it is an array's storage ({@link #createArray}). */
+    public boolean isArray() {
+        return arrayLayers > 0;
+    }
+
+    /** An array's layers; 1 for any other framebuffer. */
+    public int getLayers() {
+        return Math.max(arrayLayers, 1);
+    }
+
     /** A volume's slices; 1 for any other framebuffer. */
     public int getDepth() {
         return volume && getColorTexture(0) instanceof CgTexture3D texture ? texture.getDepth() : 1;
@@ -386,6 +435,25 @@ public class CgFrameBuffer {
         doBindFbo(CgGL.GL_FRAMEBUFFER, fboId);
 
         try {
+            if (arrayLayers > 0) {
+                CgTextureType type = fmt.getColorSlot(0);
+                Attachment a = new Attachment(0, type, false, this);
+                CgTexture2DArray tex = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.toTextureSpec());
+                a.setTexture(tex);
+                colorAttachments.put(0, a);
+                // Every layer's framebuffer now, not at first use: a fixed few, and none made in the middle of a frame.
+                layerFbos = new int[arrayLayers - 1];
+                for (int layer = 0; layer < arrayLayers; layer++) {
+                    if (layer > 0) doBindFbo(CgGL.GL_FRAMEBUFFER, layerFbos[layer - 1] = doGenFramebuffer());
+                    doFramebufferTextureLayer(type.glAttachmentPoint(0), tex.getId(), layer);
+                    int status = doCheckFramebufferStatus();
+                    if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+                        throw new IllegalStateException("FBO '" + name + "' layer " + layer + " incomplete: 0x" + Integer.toHexString(status));
+                    }
+                }
+                return;
+            }
+
             // ── Color attachments ──────────────────────────────────────────────
             for (int slot : fmt.getActiveColorSlotIds()) {
                 CgTextureType type     = fmt.getColorSlot(slot);
@@ -494,6 +562,29 @@ public class CgFrameBuffer {
     public void bindLevel(int level) {
         if (level == 0) bind();
         else CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, levelId(level));
+    }
+
+    /**
+     * Binds an array drawing into layer {@code layer}; layer 0 is {@link #bind()}.
+     *
+     * <pre>{@code
+     * field.bindLayer(2);
+     * CgGL.glViewport(0, 0, field.getWidth(), field.getHeight());
+     * }</pre>
+     */
+    public void bindLayer(int layer) {
+        if (layer == 0) bind();
+        else CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, layerId(layer));
+    }
+
+    /** The framebuffer {@link #bindLayer} binds for {@code layer}: {@link #getId()} for layer 0. */
+    public int layerId(int layer) {
+        requireFramebuffer("bind");
+        if (layer == 0) return fboId;
+        if (layer < 0 || layer >= arrayLayers) {
+            throw new IllegalArgumentException("FBO '" + name + "' has " + getLayers() + " layers, not layer " + layer);
+        }
+        return layerFbos[layer - 1];
     }
 
     /**
@@ -909,6 +1000,10 @@ public class CgFrameBuffer {
             if (levelFbos[l] != 0) deleteFramebuffer(levelFbos[l]);
             levelFbos[l] = 0;
         }
+        for (int l = 0; l < layerFbos.length; l++) {
+            if (layerFbos[l] != 0) deleteFramebuffer(layerFbos[l]);
+            layerFbos[l] = 0;
+        }
     }
 
     // ── GL dispatch (a wrapped framebuffer overrides it with no-ops) ───────────
@@ -959,6 +1054,11 @@ public class CgFrameBuffer {
      */
     protected void doFramebufferTexture2D(int target, int attachmentPoint, int glTextureTarget, int texId, int level) {
         CgGL.glFramebufferTexture2D(target, attachmentPoint, glTextureTarget, texId, level);
+    }
+
+    /** Attaches layer {@code layer} of a 2D-array texture's level 0 to the bound framebuffer. */
+    protected void doFramebufferTextureLayer(int attachmentPoint, int texId, int layer) {
+        CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, attachmentPoint, texId, 0, layer);
     }
 
     /**
@@ -1135,6 +1235,7 @@ public class CgFrameBuffer {
         @Override protected void deleteRenderbuffer(int id)                            { /* no-op */ }
         @Override protected void doBindFbo(int target, int fboId)                     { /* no-op */ }
         @Override protected void doFramebufferTexture2D(int t, int ap, int gt, int id, int level){ /* no-op */ }
+        @Override protected void doFramebufferTextureLayer(int ap, int id, int layer)  { /* no-op */ }
         @Override protected void doFramebufferRenderbuffer(int t, int ap, int rbo)    { /* no-op */ }
         @Override protected int  doGenRenderbuffer()                                   { return 0; }
         @Override protected void doRenderbufferStorage(int fmt, int w, int h)         { /* no-op */ }

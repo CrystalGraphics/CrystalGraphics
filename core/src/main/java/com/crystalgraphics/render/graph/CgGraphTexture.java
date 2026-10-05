@@ -219,6 +219,16 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return desc != null ? desc.depth() : framebuffer != null ? framebuffer.getDepth() : 1;
     }
 
+    /** Whether it is a 2D array: its description says so, or an imported framebuffer is an array's storage. */
+    public boolean isArray() {
+        return desc != null ? desc.isArray() : framebuffer != null && framebuffer.isArray();
+    }
+
+    /** An array's layers; 1 for any other texture. */
+    public int getLayers() {
+        return desc != null ? desc.layers() : framebuffer != null ? framebuffer.getLayers() : 1;
+    }
+
     /** Its colour's mip levels: the description's, or an imported framebuffer's. */
     @Override
     public int getLevels() {
