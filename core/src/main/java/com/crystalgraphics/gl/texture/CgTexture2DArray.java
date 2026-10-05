@@ -3,6 +3,8 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.gpu.CgUploadLease;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 import com.crystalgraphics.trace.CgTrace;
@@ -13,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -65,6 +68,8 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     /** Layers the GL storage has, which {@link #depth} runs ahead of while growth waits for the render thread. */
     private int storageDepth;
+
+    private final Consumer<CgUploadLease> landing = this::land;
 
     private CgTexture2DArray(int width, int height, int depth, CgTextureSpec spec, String[] sourcePaths) {
         super(0, width, height, spec);
@@ -175,7 +180,11 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         synchronized (this) {
             mirrorByteUpload(layer, x, y, w, h, format, type, data);
         }
-        gpu.run(data, held -> rawUpload(layer, x, y, w, h, format, type, held));
+        if (gpu.immediate()) {
+            rawUpload(layer, x, y, w, h, format, type, data);
+            return;
+        }
+        gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));
     }
 
     /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
@@ -185,7 +194,21 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         synchronized (this) {
             mirrorFloatUpload(layer, x, y, w, h, format, data);
         }
-        gpu.run(data, held -> uploadFloats(layer, x, y, w, h, format, type, held));
+        if (gpu.immediate()) {
+            uploadFloats(layer, x, y, w, h, format, type, data);
+            return;
+        }
+        gpu.run(CgUploads.copyOf(data, converts(format, type)).into(landing, 0, x, y, layer, w, h, 1, format, type));
+    }
+
+    /** A queued layer region, from its lease. Not taken from callers: the CPU mirror needs a source it can read. */
+    private void land(CgUploadLease lease) {
+        CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            lease.texSubImage3D(GL_TEXTURE_2D_ARRAY);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        }
     }
 
     private void uploadFloats(int layer, int x, int y, int w, int h, int format, int type, FloatBuffer data) {

@@ -7,6 +7,7 @@ import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.demo.CgRenderDemo;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -400,6 +401,7 @@ public final class CgGraphicsLifecycle {
             CgSettings.tickFrame();
             if (initialized) CgComputeCheck.endFrame();   // the frame's checked dispatches, read back
             if (initialized) CgReadback.poll();   // before the listeners, which may read what landed
+            if (initialized) CgUploads.tick();
             if (initialized) CgGpuBudget.tick();
             listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
             if (initialized) {
@@ -537,6 +539,9 @@ public final class CgGraphicsLifecycle {
         // Scratch framebuffers used by the GPU-side texture copy path (lazily created —
         // no-op if no texture ever grew). Safe to reuse after this; they are recreated on demand.
         CgTextureCopy.dispose();
+
+        // Upload staging, once every texture above has given back its queued leases.
+        CgUploads.releaseAll();
 
         // Its fences name the dying context.
         CgFrameRing.reset();

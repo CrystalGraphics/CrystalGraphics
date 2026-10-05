@@ -3,10 +3,13 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.gpu.CgUploadLease;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import com.crystalgraphics.util.io.CgTextureIO;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -35,6 +38,11 @@ import lombok.Getter;
  * CgTexture3D noise = CgTexture3D.createEmpty(128, 128, 128, repeat, CgTexture3D.fullChain(128, 128, 128));
  * noise.uploadRegion(0, 0, 0, 0, 128, 128, 128, texels, GL_RGBA, GL_UNSIGNED_BYTE);
  * noise.generateMipmaps();
+ *
+ * // a bake that writes its texels straight into staging: no copy on the worker or the render thread
+ * CgUploadLease lease = CgUploads.lease(4 * 128 * 128 * 128);
+ * bake(lease.bytes());
+ * noise.uploadRegion(0, 0, 0, 0, 128, 128, 128, lease, GL_RGBA, GL_UNSIGNED_BYTE);
  * }</pre>
  */
 public final class CgTexture3D extends CgTextureAbstract {
@@ -49,6 +57,8 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     /** Levels allocated by {@link #createEmpty}; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
+
+    private final Consumer<CgUploadLease> landing = this::land;
 
     /** Source paths for reload; {@code null} for createDirect (no reload support). */
     @Getter private final String[] sourcePaths;
@@ -158,7 +168,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     /**
      * Writes a {@code width} x {@code height} x {@code depth} box at {@code (x, y, z)} of level {@code level}: slices
      * from {@code z} up, each its rows bottom first, tightly packed, in {@code pixelFormat} and {@code pixelType}. The
-     * rest keeps what it held. Any thread; {@code pixels} is copied where the work waits.
+     * rest keeps what it held. Any thread; {@code pixels} is copied into a lease where the work waits.
      *
      * <pre>{@code
      * window.uploadRegion(0, 0, 0, 32, 128, 96, 16, slab, GL_RED_INTEGER, GL_UNSIGNED_BYTE);   // slices 32 to 47
@@ -167,14 +177,33 @@ public final class CgTexture3D extends CgTextureAbstract {
     public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, ByteBuffer pixels,
                              int pixelFormat, int pixelType) {
         checkNotDeleted();
-        gpu.run(pixels, data -> {
-            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-            try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                CgGL.glTexSubImage3D(GL_TEXTURE_3D, level, x, y, z, width, height, depth, pixelFormat, pixelType, data);
-            } finally {
-                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
-            }
-        });
+        if (!gpu.immediate()) {
+            uploadRegion(level, x, y, z, width, height, depth, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),
+                    pixelFormat, pixelType);
+            return;
+        }
+        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            CgGL.glTexSubImage3D(GL_TEXTURE_3D, level, x, y, z, width, height, depth, pixelFormat, pixelType, pixels);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
+        }
+    }
+
+    /** {@link #uploadRegion(int, int, int, int, int, int, int, ByteBuffer, int, int)} from a lease. Takes it; any thread. */
+    public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, CgUploadLease lease,
+                             int pixelFormat, int pixelType) {
+        checkNotDeleted();
+        gpu.run(lease.into(landing, level, x, y, z, width, height, depth, pixelFormat, pixelType));
+    }
+
+    private void land(CgUploadLease lease) {
+        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
+        try (CgTightUnpack ignored = CgTightUnpack.begin()) {
+            lease.texSubImage3D(GL_TEXTURE_3D);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
+        }
     }
 
     /** Fills every level below 0 from level 0, box-filtered by the driver. Any thread, after level 0 is written. */
