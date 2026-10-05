@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.easing.CgEasings;
+import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -30,6 +33,21 @@ public class CgVfxEmitterScheduleTest {
     public void groundedParticlesStillDieOfAge() {
         check(CgVfxEmitter.builder("debris").capacity(4000).burst(0f, 400).life(2f, 3.5f).speed(4f, 12f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).build(), 1f);
+    }
+
+    @Test
+    public void curveRowSamplesSizeThenOpacity() {
+        CgVfxEmitter definition = CgVfxEmitter.builder("curves")
+                .size(CgKeyframes.start(0f, 0.5f).to(1f, 2f, CgEasings.LINEAR).build()).build();
+        float[] row = new float[2 + 2 * CgVfxGpuEmitter.CURVE_TEXELS];
+        definition.writeCurves(row, 2, CgVfxGpuEmitter.CURVE_TEXELS);
+        for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {
+            float progress = i / (CgVfxGpuEmitter.CURVE_TEXELS - 1f);
+            assertEquals(definition.sizeAt(progress), row[2 + 2 * i], 0f);
+            assertEquals(definition.opacityAt(progress), row[3 + 2 * i], 0f);
+        }
+        assertEquals(0.5f, row[2], 0f);
+        assertEquals(2f, row[row.length - 2], 1e-6f);
     }
 
     private static void check(CgVfxEmitter definition, float share) {
