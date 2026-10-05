@@ -23,12 +23,13 @@ import com.crystalgraphics.render.stage.CgFrameKeys;
  * Draws what bloom works from over the whole frame, last: the emission target, or one level of the chain. Set by
  * {@code -Dcrystalgraphics.post.debug=emission} or {@code =level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
- * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion target's offsets (|offset| x 50
- * in red and green, the split in blue). The post stack adds it when the flag is set.
+ * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion field's offsets summed (|offset| x
+ * 50 in red and green, the split in blue). The post stack adds it when the flag is set.
  */
 public final class CgPostDebug implements CgPostEffect {
 
     private static final String SHADER = "crystalgraphics:shaders/post/debug.shader";
+    private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private static final int EMISSION = -1, OVERDRAW = -2, DISTORTION = -3;
@@ -37,6 +38,7 @@ public final class CgPostDebug implements CgPostEffect {
     private final int level;
     private CgMaterial material;
     private CgTexture bound;
+    private int boundCount;
 
     private CgPostDebug(int level) {
         this.level = level;
@@ -77,10 +79,11 @@ public final class CgPostDebug implements CgPostEffect {
     @Override
     public void record(CgPostContext post) {
         CgTexture source;
+        int count = 0;
         if (level == DISTORTION) {
-            // The field's last target: the final apply's offsets, else the last slot's.
             CgDistortionField field = post.resources().get(CgFrameKeys.DISTORTION);
-            source = field.offsets(field.count() - 1);
+            source = field.offsets();
+            count = field.count();
         } else if (level < 0) {
             source = post.resources().get(key());
         } else {
@@ -88,13 +91,15 @@ public final class CgPostDebug implements CgPostEffect {
             source = chain.level(Math.min(level, chain.getLevels() - 1));
         }
         if (material == null) {
-            material = CgMaterial.newInstance(SHADER);
+            material = CgMaterial.newInstance(level == DISTORTION ? DISTORTION_SHADER : SHADER);
             if (level == OVERDRAW) material.enableKeyword("HEAT");
-            if (level == DISTORTION) material.enableKeyword("OFFSETS");
         }
-        if (source != bound) {
-            material.applyProperties(b -> b.sampler("_Source", 0, source));
+        if (source != bound || count != boundCount) {
+            int layers = count;
+            material.applyProperties(level == DISTORTION ? b -> b.sampler("_Fields", 0, source).set1i("_FieldCount", layers)
+                    : b -> b.sampler("_Source", 0, source));
             bound = source;
+            boundCount = count;
         }
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;

@@ -30,8 +30,8 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.util.Arrays;
 
 /**
- * The world renderer's distortion: where each haze's Distortion pass is applied, the targets they add into, and the
- * applies that bend the stage's target by them. A haze bends what sorts before it in the transparent pass, as each haze
+ * The world renderer's distortion: where each haze's Distortion pass is applied, the array layers they add into, and
+ * the applies that bend the stage's target by them. A haze bends what sorts before it in the transparent pass, as each haze
  * reading its own copy of the target would, while drawing its offsets once at {@link #scale} of the target's size.
  *
  * <p>Per transparent firing, in this order: {@link #plan}, {@link #recordBends} ahead of the transparent pass,
@@ -65,7 +65,10 @@ final class CgWorldDistortion {
         void drawDistortion(CgChunkBuilder chunks, CgRecording recording, int i);
     }
 
-    /** Slots 0 to SLOTS - 1 hold applies placed in the transparent pass, a slot's never overlapping; the last the final. */
+    /**
+     * Slots 0 to SLOTS - 1 hold applies placed in the transparent pass, a slot's never overlapping; the last the final.
+     * Each used slot draws into the next layer of one array, so the layers in use are always the first.
+     */
     private static final int SLOTS = CgDistortionField.MAX - 1, FINAL = SLOTS;
     /** How far an apply samples from its rect, a share of the target's height: the apply shader's SceneColorMargin. */
     private static final float MARGIN = 0.1f;
@@ -85,9 +88,13 @@ final class CgWorldDistortion {
 
     private float scale = 0.5f;
     private float width, height;
-    private final CgGraphTexture[] targets = new CgGraphTexture[SLOTS + 1];
+    /** Every slot's offsets: an array of {@link CgDistortionField#MAX} layers, whatever this firing uses. */
+    private CgGraphTexture offsets;
+    /** Each slot's layer this firing, -1 when it draws nothing. */
+    private final int[] layerOf = new int[SLOTS + 1];
     private final CgMaterial[] applyMaterials = new CgMaterial[SLOTS + 1];
     private final CgTexture[] applyBound = new CgTexture[SLOTS + 1];
+    private final int[] applyLayer = new int[SLOTS + 1];
     private final CgPassConstants constants = new CgPassConstants();
     private final float[] block = new float[CgPassConstants.FLOATS];
     private final CgDistortionField field = new CgDistortionField();
@@ -188,10 +195,12 @@ final class CgWorldDistortion {
 
     /** The planned slots' Distortion passes, each into its target: ahead of the transparent pass, whose applies read them. */
     void recordBends(CgStageFrame stage, CgRecording recording, Draws draws) {
-        field.clear();
+        Arrays.fill(layerOf, -1);
+        int layers = 0;
         for (int slot = 0; slot < SLOTS; slot++) {
-            if (slotRectCount[slot] > 0) field.add(recordBend(stage, recording, draws, slot));
+            if (slotRectCount[slot] > 0) recordBend(stage, recording, draws, slot, layers++);
         }
+        field.set(offsets(), layers);
     }
 
     /** Each apply placed in the transparent pass, sorted just before the draw it must not bend. */
@@ -212,7 +221,8 @@ final class CgWorldDistortion {
      */
     void recordFinal(CgStageFrame stage, CgRecording recording, Draws draws) {
         if (finalUsed) {
-            field.add(recordBend(stage, recording, draws, FINAL));
+            recordBend(stage, recording, draws, FINAL, field.count());
+            field.set(offsets, field.count() + 1);
             CgMaterial material = apply(FINAL);
             CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null) {
@@ -236,11 +246,13 @@ final class CgWorldDistortion {
         Arrays.fill(applyBound, null);
     }
 
-    private CgGraphTexture recordBend(CgStageFrame stage, CgRecording recording, Draws draws, int slot) {
-        CgGraphTexture target = target(slot);
+    private void recordBend(CgStageFrame stage, CgRecording recording, Draws draws, int slot, int layer) {
+        CgGraphTexture target = offsets();
+        layerOf[slot] = layer;
         stage.constants().write(block, 0);
         constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
-        CgRasterPass bend = recording.raster(target, CgLoad.clear(0f, 0f, 0f, 0f), constants, BEND_STATE, CgOrder.SORTED)
+        CgRasterPass bend = recording.raster(target, 0, layer, CgLoad.clear(0f, 0f, 0f, 0f), constants, BEND_STATE,
+                        CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_BEND);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -249,7 +261,6 @@ final class CgWorldDistortion {
         }
         bend.add(chunks.end());
         bend.end();
-        return target;
     }
 
     /** The first slot none of whose applies {@code rect} overlaps, its offsets' bilinear spread included; -1 if none. */
@@ -309,24 +320,26 @@ final class CgWorldDistortion {
         if (a != sorted) System.arraycopy(a, 0, sorted, 0, n);
     }
 
-    /** Slot {@code slot}'s target, {@link #scale} of the stage's size. */
-    private CgGraphTexture target(int slot) {
+    /** The offsets array, {@link #scale} of the stage's size. */
+    private CgGraphTexture offsets() {
         int w = Math.max(1, (int) (width * scale)), h = Math.max(1, (int) (height * scale));
-        CgGraphTexture target = targets[slot];
-        if (target == null || target.getWidth() != w || target.getHeight() != h) {
-            targets[slot] = target = CgGraphTexture.transientTexture("cg_world_distortion" + slot, new CgTextureDesc(w, h, FORMAT));
+        if (offsets == null || offsets.getWidth() != w || offsets.getHeight() != h) {
+            offsets = CgGraphTexture.transientTexture("cg_world_distortion",
+                    CgTextureDesc.array(w, h, CgDistortionField.MAX, FORMAT));
         }
-        return target;
+        return offsets;
     }
 
-    /** Slot {@code slot}'s apply, reading its target. */
+    /** Slot {@code slot}'s apply, reading its layer. */
     private CgMaterial apply(int slot) {
         CgMaterial material = applyMaterials[slot];
         if (material == null) applyMaterials[slot] = material = CgMaterial.newInstance(APPLY_SHADER);
-        CgTexture offsets = targets[slot];
-        if (offsets != applyBound[slot]) {
-            material.applyProperties(b -> b.sampler("_Distortion", 0, offsets));
-            applyBound[slot] = offsets;
+        CgTexture fields = offsets;
+        int layer = layerOf[slot];
+        if (fields != applyBound[slot] || layer != applyLayer[slot]) {
+            material.applyProperties(b -> b.sampler("_Distortion", 0, fields).set1i("_Layer", layer));
+            applyBound[slot] = fields;
+            applyLayer[slot] = layer;
         }
         return material;
     }
