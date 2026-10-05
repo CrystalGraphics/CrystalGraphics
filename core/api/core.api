@@ -7168,6 +7168,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public start (FFF)V
   method public tick (FLcom/crystalgraphics/vfx/particle/CgVfxAir;DDD)V
   method public time ()F
+  method public,static rand (III)F
 com/crystalgraphics/vfx/particle/CgVfxGround
   access public,final
   extends java/lang/Object
@@ -7381,9 +7382,11 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxShape
 com/crystalgraphics/vfx/particle/gpu/CgVfxWords
   access public,final
   extends java/lang/Object
+  method public finish (Ljava/lang/String;)V
   method public ivec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
   method public uvec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
   method public vec4 (FFFF)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public,static into ([IIILjava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
 com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   access public,final,enum
   extends java/lang/Enum
