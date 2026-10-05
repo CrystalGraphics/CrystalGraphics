@@ -148,6 +148,7 @@ com/crystalgraphics/platform/device/command/CgAccess
 com/crystalgraphics/platform/device/command/CgCommandEncoder
   access public,abstract,interface
   extends java/lang/Object
+  method public writeWaitsForFrame (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)Z
   method public,abstract beginAsync ()V
   method public,abstract beginCompute (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/command/CgComputePass;
   method public,abstract beginPass (Lcom/crystalgraphics/platform/device/command/CgPassDesc;)Lcom/crystalgraphics/platform/device/command/CgRenderPass;
@@ -2745,6 +2746,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats
   field public pipelineBinds J
   field public pipelineMisses J
   field public renames J
+  field public textureRenames J
   field public textureWriteBytes J
   field public textureWrites J
   field public uploadBreaks J

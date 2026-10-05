@@ -152,6 +152,14 @@ public final class VulkanEncoder implements CgCommandEncoder {
                 && copyAspect(t) == VK_IMAGE_ASPECT_COLOR_BIT && device.host().asyncTransfer();
     }
 
+    /** A new texture of the same desc would go through {@link #viaTransfer}; this one no longer does. */
+    @Override
+    public boolean writeWaitsForFrame(CgGpuTexture texture) {
+        VulkanTexture t = (VulkanTexture) texture;
+        return !t.transferOnly && !t.borrowed() && !inAsync && openCompute == null
+                && copyAspect(t) == VK_IMAGE_ASPECT_COLOR_BIT && device.host().asyncTransfer();
+    }
+
     /** Whether a buffer copy goes on the transfer queue: inside {@link #beginTransfer}, where the host has one. */
     private boolean buffersViaTransfer() {
         return inTransfer && device.host().asyncTransfer();

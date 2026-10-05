@@ -47,6 +47,25 @@ public interface CgCommandEncoder {
     void writeTexture(CgGpuTexture dst, CgTextureRegion region, ByteBuffer data);
 
     /**
+     * Whether a write into {@code texture} now waits behind the frame's work where one into a texture nothing has
+     * used would not: on a device with a transfer queue, once the frame has used it. A caller about to replace every
+     * texel can write a new texture instead, and release this one.
+     *
+     * <pre>{@code
+     * if (enc.writeWaitsForFrame(image)) {
+     *     device.release(image);                     // retires with the frames still reading it
+     *     image = device.createTexture(image.desc());
+     * }
+     * enc.writeTexture(image, CgTextureRegion.of2D(0, 0, 0, w, h), texels);
+     * }</pre>
+     *
+     * <p>False on a device that records every write in the frame's order.</p>
+     */
+    default boolean writeWaitsForFrame(CgGpuTexture texture) {
+        return false;
+    }
+
+    /**
      * Copies tightly packed texels in {@code dst}'s format from {@code src} at {@code srcOffset}, a multiple of 4 and of
      * the texel size: an upload whose bytes are already in a buffer the GPU reads, with no staging copy.
      */

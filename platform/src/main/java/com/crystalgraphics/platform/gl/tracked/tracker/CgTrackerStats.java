@@ -23,12 +23,14 @@ public final class CgTrackerStats {
     public long renames;
     /** Texel uploads recorded into the frame's commands, their staged bytes, and the passes they ended. */
     public long textureWrites, textureWriteBytes, uploadBreaks;
+    /** Uploads replacing a whole texture the frame had used, written into a new one instead. */
+    public long textureRenames;
 
     @Override
     public String toString() {
         return "draws=" + draws + " dispatches=" + dispatches + " computePasses=" + computePasses + " async=" + asyncSections + " passes=" + passes + " breaks=" + passBreaks + " loadClears=" + clearsAsLoadOps
                 + " passClears=" + clearsInPass + " pipelineBinds=" + pipelineBinds + " misses=" + pipelineMisses
                 + " renames=" + renames + " textureWrites=" + textureWrites + " textureWriteBytes=" + textureWriteBytes
-                + " uploadBreaks=" + uploadBreaks;
+                + " uploadBreaks=" + uploadBreaks + " textureRenames=" + textureRenames;
     }
 }

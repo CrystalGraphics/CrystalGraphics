@@ -217,6 +217,12 @@ What is easy to get wrong:
   submitted, and the frame's queue waits for it, at the first work there touching such an image or buffer, at a pass,
   or at the frame's end; mipmaps asked of it meanwhile are generated after that wait.
   `-Dcrystalgraphics.vulkan.transfer=false` keeps every copy on the frame's queue.
+- **An upload replacing a whole texture the frame has used, 256 KB or more, goes to a new image** (`TrackedTextures`'
+  rename, asked of `CgCommandEncoder.writeWaitsForFrame`), so it takes the transfer queue rather than waiting behind
+  the frame: level 0 whole, with no other level specified, since those would be lost. The old image retires with the
+  frames reading it. A smaller or partial upload stays on the frame's queue, where copies one after another share one
+  barrier pair, and one call where they share a source and a texture, until anything else is recorded
+  (`VulkanEncoder.endCopies`).
 - **`compileInBackground()` makes a link return at once**, shaderc running on a worker (`crystalgraphics-shaderc`),
   as a driver with `KHR_parallel_shader_compile` does: `GL_COMPLETION_STATUS_KHR` says when it is done, and anything
   else asked of the program waits for it (`shader.spirvWait`) and makes its modules here. Hosts turn it on; tests
