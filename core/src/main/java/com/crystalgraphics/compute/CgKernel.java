@@ -6,6 +6,11 @@ import com.crystalgraphics.compute.cpu.CgCpuBody;
 import com.crystalgraphics.compute.cpu.CgCpuDispatch;
 import com.crystalgraphics.compute.lower.CgLoweredKernel;
 import com.crystalgraphics.compute.program.CgKernelProgram;
+import com.crystalgraphics.compute.source.CgBufferAccessor;
+import com.crystalgraphics.compute.source.CgBufferDecl;
+import com.crystalgraphics.compute.source.CgComputeSource;
+import com.crystalgraphics.compute.source.CgImageAccessor;
+import com.crystalgraphics.compute.source.CgImageDecl;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
@@ -55,6 +60,10 @@ public final class CgKernel {
     private volatile Choice choice;
     /** The file generation the every-tier check last passed under. */
     private volatile long checkedKey = Long.MIN_VALUE;
+    /** Which accessors it uses, per buffer and image, and the declaration they were read from. */
+    private volatile Accessors accessors;
+
+    private record Accessors(CgKernelDecl decl, int[] buffers, int[] images) {}
 
     CgKernel(CgCompute compute, String name, Set<String> keywords) {
         this.compute = compute;
@@ -83,6 +92,40 @@ public final class CgKernel {
     /** What the file declares about it: size, shape, what it reaches. */
     public CgKernelDecl decl() {
         return compute.source().kernel(name);
+    }
+
+    /**
+     * Per buffer of its file, by {@code CgBufferDecl.index()}: the {@link CgBufferAccessor}s this kernel uses, bit
+     * {@code ordinal()} of each. Read once per declaration, since a dispatch asks it of every binding. Do not write it.
+     */
+    public int[] bufferAccessors() {
+        return accessors().buffers();
+    }
+
+    /** {@link #bufferAccessors()} for images: per {@code CgImageDecl.index()}, a bit per {@link CgImageAccessor}. */
+    public int[] imageAccessors() {
+        return accessors().images();
+    }
+
+    private Accessors accessors() {
+        CgKernelDecl decl = decl();
+        Accessors held = accessors;
+        if (held != null && held.decl() == decl) return held;
+        CgComputeSource source = compute.source();
+        int[] buffers = new int[source.buffers().size()], images = new int[source.images().size()];
+        for (CgBufferDecl b : source.buffers()) {
+            for (CgBufferAccessor a : CgBufferAccessor.values()) {
+                if (decl.accessors().contains(b.name() + a.suffix)) buffers[b.index()] |= 1 << a.ordinal();
+            }
+        }
+        for (CgImageDecl image : source.images()) {
+            for (CgImageAccessor a : CgImageAccessor.values()) {
+                if (decl.accessors().contains(image.name() + a.suffix)) images[image.index()] |= 1 << a.ordinal();
+            }
+        }
+        held = new Accessors(decl, buffers, images);
+        accessors = held;
+        return held;
     }
 
     /** Its program for the current context, compiled the first time. Render thread. */
