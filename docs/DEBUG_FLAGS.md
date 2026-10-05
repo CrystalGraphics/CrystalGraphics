@@ -116,6 +116,17 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 -Dcrystalgraphics.vulkan.asyncCompute=false          # false|graphics: async() compute passes run in order on the
                                                      # frame's queue; graphics puts them on a second queue of its
                                                      # family rather than a compute-only one
+-Dcrystalgraphics.vulkan.transfer=false              # no transfer queue: new textures' copies and the mesh store's
+                                                     # run on the frame's queue (ENGINE_API.md, Async)
+
+# Uploads (gpu/CgUploads)
+-Dcrystalgraphics.uploads.tier=direct                # leases from direct memory, the driver copying at the call, as
+                                                     # a context without persistent mapping does (macOS 4.1, 3.3)
+-Dcrystalgraphics.uploads.block=<bytes>              # a block's size, 8 MB by default; a lease over half a block
+                                                     # gets one of its own
+-Dcrystalgraphics.uploads.cap=<bytes>                # 128 MB by default: the unpack pool grows no further, a lease
+                                                     # finding no room takes direct memory, and direct blocks past
+                                                     # it are not pooled
 
 # Caches kept across launches (CgCacheDirectory)
 -Dcrystalgraphics.cache=false                        # keep nothing: SPIR-V and the Vulkan pipeline cache rebuilt

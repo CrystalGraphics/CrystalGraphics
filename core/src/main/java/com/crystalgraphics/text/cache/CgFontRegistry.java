@@ -564,30 +564,13 @@ public class CgFontRegistry {
     }
 
     /**
-     * Pre-queues a glyph for async generation if it is not already in the
-     *  atlas.
+     * Pre-queues a glyph for async generation if it is not already in the atlas.
      *
-     * <p>The renderer calls this during the pre-queue pass
-     * <p><strong>Currently unused — no caller exists.</strong> The pre-queue pass this was written
-     * for, {@code CgResolvedGlyphs.flattenAndPrequeue}, no longer exists (it became {@code flatten},
-     * without the queueing). Consequently {@code submitBitmapGlyphJob} is unreachable in practice
-     * and {@code CgWorkerFontContext.generateBitmap} never runs: every bitmap glyph is rasterised
-     * synchronously on the render thread via {@code ensureBitmapGlyph}. Measured on text-3d: 4810
-     * synchronous rasterisations, 0 worker rasterisations.
-     *
-     * <p>Kept rather than deleted because restoring a pre-queue pass is the single largest remaining
-     * opportunity to take work off the render thread — but it is a behaviour change, not a
-     * refactor: a glyph generated asynchronously is not available to draw on the frame that asked
-     * for it. See plan/crystalgraphics/archive/PERFORMANCE_TODO.md.
-     *
-     * <p>Historical note: it was called during the pre-queue pass to submit generation jobs to the
-     * background executor <em>before</em> the synchronous {@code ensureGlyph}
-     * calls.  This reduces frame spikes by spreading generation work across
-     * multiple frames.</p>
-     *
-     * <p>If the glyph is already cached in the  atlas, this is a no-op.
-     * Otherwise a background job is submitted via
-     * {@link CgGlyphGenerationExecutor}.</p>
+     * <p><strong>Unused: no caller exists.</strong> Its pre-queue pass ({@code CgResolvedGlyphs.flattenAndPrequeue})
+     * is gone. An MSDF glyph's bitmap stand-in is generated on a worker regardless ({@link #ensureMsdfGlyph}'s
+     * fallback); a glyph drawn at the bitmap tier is rasterised on the render thread at its first draw
+     * ({@link #resolveGlyph}). Kept for moving that last path to workers, which is a behaviour change: a glyph made
+     * there misses the frame that asked for it.</p>
      */
     public synchronized void queueGlyph(CgFont font,
                         CgGlyphKey key,

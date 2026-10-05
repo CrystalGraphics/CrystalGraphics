@@ -158,6 +158,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
 | Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
 | Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gl/buffer/shader` |
+| Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gl/texture`, `render/graph` |
 | Save and restore GL state across a pass | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *GL State Save/Restore* | `gl/state/CLAUDE.md` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
 | Draw 2D quads, curves or text through the renderers | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Instanced renderers* | `gl/render/CLAUDE.md` |
