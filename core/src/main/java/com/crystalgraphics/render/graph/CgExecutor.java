@@ -124,6 +124,7 @@ public final class CgExecutor {
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
     /** The GPU's copies before a frame's first pass: what other threads asked of GPU objects, and the meshes' bytes. */
     private static final int GPU_DEFERRED = CgGpuTrace.name("upload.deferred"), GPU_MESHES = CgGpuTrace.name("upload.meshes");
+    private static final int TRIM_POOLS = CgTrace.name("graph.trimPools");
     private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
@@ -195,8 +196,10 @@ public final class CgExecutor {
             }
             long ringFrame = CgFrameRing.frame();
             if (depth == 0 && ringFrame != trimmedFrame) {
-                POOL.endFrame();
-                BUFFERS.endFrame(FORGET_BUFFER);
+                try (CgTrace.Zone trim = CgTrace.zone(CgChannels.GL, TRIM_POOLS)) {
+                    POOL.endFrame();
+                    BUFFERS.endFrame(FORGET_BUFFER);
+                }
                 trimmedFrame = ringFrame;
             }
         }

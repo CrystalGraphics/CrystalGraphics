@@ -98,6 +98,10 @@ public final class CgGraphicsLifecycle {
 
     // ── Canonical per-frame tick ────────────────────────────────────────────
     private static long frameCounter = 0;
+    private static final int SETTINGS = CgTrace.name("lifecycle.settings"), CHECK = CgTrace.name("lifecycle.computeCheck"),
+            READBACK = CgTrace.name("lifecycle.readback"), UPLOADS = CgTrace.name("lifecycle.uploads"),
+            BUDGET = CgTrace.name("lifecycle.budget"), LISTENERS = CgTrace.name("lifecycle.listeners"),
+            SELF_TESTS = CgTrace.name("lifecycle.selfTests"), RING = CgTrace.name("lifecycle.frameRing");
 
     // ── External lifecycle listeners ────────────────────────────────────────
     /**
@@ -398,15 +402,31 @@ public final class CgGraphicsLifecycle {
             CgGlState.invalidateAllIfPresent();
 
             CgFontRegistry.get().tickFrame(frameCounter);
-            CgSettings.tickFrame();
-            if (initialized) CgComputeCheck.endFrame();   // the frame's checked dispatches, read back
-            if (initialized) CgReadback.poll();   // before the listeners, which may read what landed
-            if (initialized) CgUploads.tick();
-            if (initialized) CgGpuBudget.tick();
-            listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SETTINGS)) {
+                CgSettings.tickFrame();
+            }
             if (initialized) {
-                CgComputeSelfTest.runIfAsked();
-                CgGpuOpsCheck.runIfAsked();
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, CHECK)) {
+                    CgComputeCheck.endFrame();   // the frame's checked dispatches, read back
+                }
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, READBACK)) {
+                    CgReadback.poll();   // before the listeners, which may read what landed
+                }
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, UPLOADS)) {
+                    CgUploads.tick();
+                }
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
+                    CgGpuBudget.tick();
+                }
+            }
+            try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
+                listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));
+            }
+            if (initialized) {
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, SELF_TESTS)) {
+                    CgComputeSelfTest.runIfAsked();
+                    CgGpuOpsCheck.runIfAsked();
+                }
             }
 
             // And again AFTER dispatch. Listeners are third-party code that may render, and anything they
@@ -415,7 +435,11 @@ public final class CgGraphicsLifecycle {
             CgGlState.invalidateAllIfPresent();
 
             // Last: listeners may have streamed geometry, and it belongs to this frame's fence.
-            if (initialized) CgFrameRing.endFrame();
+            if (initialized) {
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, RING)) {
+                    CgFrameRing.endFrame();
+                }
+            }
             CgFrameClock.advanceToNow();
         } finally {
             CgGL.toHost();

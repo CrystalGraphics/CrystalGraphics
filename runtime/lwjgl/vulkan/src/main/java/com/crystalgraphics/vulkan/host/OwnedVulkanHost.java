@@ -1,5 +1,7 @@
 package com.crystalgraphics.vulkan.host;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
 import com.crystalgraphics.vulkan.CgVulkanHost;
 import com.crystalgraphics.vulkan.CgVulkanImage;
@@ -112,6 +114,10 @@ import static org.lwjgl.vulkan.VK12.VK_SEMAPHORE_TYPE_TIMELINE;
 public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
 
     public static final int FRAMES = 3;
+    private static final CgTraceChannel TRACE = CgTrace.channel("crystalgraphics.gl");
+    private static final int ACQUIRE = CgTrace.waitName("vulkan.acquire"), SUBMIT = CgTrace.name("vulkan.submit"),
+            PRESENT = CgTrace.waitName("vulkan.present"), FENCE = CgTrace.waitName("vulkan.frameFence"),
+            RETIRE = CgTrace.name("vulkan.retire"), RESET = CgTrace.name("vulkan.resetPools");
     private static final String VALIDATION = "VK_LAYER_KHRONOS_validation";
     private static final boolean SYNC_VALIDATION = Boolean.getBoolean("crystalgraphics.vulkan.syncValidation");
 
@@ -332,11 +338,16 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     public void endFrame(CgVulkanImage output) {
         if (recordingAsync) throw new IllegalStateException("The frame ends inside async work");
         int s = slot();
-        int image = acquire();
-        if (image >= 0) present(current, output, images[image]);
-        submitSegments(image);
+        int image;
+        try (CgTrace.Zone z = CgTrace.zone(TRACE, ACQUIRE)) {
+            image = acquire();
+        }
+        try (CgTrace.Zone z = CgTrace.zone(TRACE, SUBMIT)) {
+            if (image >= 0) present(current, output, images[image]);
+            submitSegments(image);
+        }
         submitted[s] = true;
-        try (MemoryStack stack = stackPush()) {
+        try (MemoryStack stack = stackPush(); CgTrace.Zone z = CgTrace.zone(TRACE, PRESENT)) {
             if (image >= 0) {
                 VkPresentInfoKHR info = VkPresentInfoKHR.calloc(stack).sType$Default()
                         .pWaitSemaphores(stack.longs(presentReady[image])).swapchainCount(1)
@@ -406,11 +417,17 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
     private void beginFrame() {
         int s = slot();
         if (submitted[s]) {
-            check(vkWaitForFences(device, fences[s], true, -1L), "vkWaitForFences");
+            try (CgTrace.Zone z = CgTrace.zone(TRACE, FENCE)) {
+                check(vkWaitForFences(device, fences[s], true, -1L), "vkWaitForFences");
+            }
             check(vkResetFences(device, fences[s]), "vkResetFences");
-            retireThrough(frame - FRAMES);
+            try (CgTrace.Zone z = CgTrace.zone(TRACE, RETIRE)) {
+                retireThrough(frame - FRAMES);
+            }
         }
-        resetPools(s);
+        try (CgTrace.Zone z = CgTrace.zone(TRACE, RESET)) {
+            resetPools(s);
+        }
         beginSegment(false, 0, 0);
     }
 
