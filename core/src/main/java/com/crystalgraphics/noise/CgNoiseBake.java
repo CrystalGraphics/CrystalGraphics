@@ -119,6 +119,37 @@ public final class CgNoiseBake {
         return out;
     }
 
+    /**
+     * The next mip level of a cube of RGBA texels {@code size} on an edge, x fastest: each texel the average of the
+     * eight it covers, the box filter GL's {@code glGenerateMipmap} uses. {@code size} is even.
+     *
+     * <pre>{@code
+     * float[] level1 = CgNoiseBake.halve(gradient, 64);   // 32^3
+     * }</pre>
+     */
+    public static float[] halve(float[] texels, int size) {
+        int half = size / 2;
+        float[] out = new float[half * half * half * 4];
+        int i = 0;
+        for (int z = 0; z < half; z++) {
+            for (int y = 0; y < half; y++) {
+                for (int x = 0; x < half; x++, i += 4) {
+                    for (int c = 0; c < 4; c++) {
+                        float sum = 0f;
+                        for (int dz = 0; dz < 2; dz++) {
+                            for (int dy = 0; dy < 2; dy++) {
+                                int row = ((2 * z + dz) * size + 2 * y + dy) * size + 2 * x;
+                                sum += texels[row * 4 + c] + texels[(row + 1) * 4 + c];
+                            }
+                        }
+                        out[i + c] = sum * 0.125f;
+                    }
+                }
+            }
+        }
+        return out;
+    }
+
     /** {@code texels} as RGBA16F, native order, ready for a {@code GL_HALF_FLOAT} upload. */
     public static ByteBuffer toHalf(float[] texels) {
         ByteBuffer out = ByteBuffer.allocateDirect(texels.length * 2).order(ByteOrder.nativeOrder());
