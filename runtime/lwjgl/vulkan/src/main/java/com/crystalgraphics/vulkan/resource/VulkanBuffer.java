@@ -11,6 +11,8 @@ public final class VulkanBuffer implements CgGpuBuffer {
     public final long buffer;
     public final long allocation;
     private final ByteBuffer mapped;
+    /** The transfer batch its last write there was recorded in: work on the frame's queue touching it waits for it. */
+    public long transferBatch;
 
     public VulkanBuffer(Desc desc, long buffer, long allocation, ByteBuffer mapped) {
         this.desc = desc;

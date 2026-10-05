@@ -52,7 +52,9 @@ import java.util.Map;
  *   <li>An edit takes a new range: one a frame in flight reads is never written. The old range is freed once the
  *       last frame that drew it has retired, as is a released mesh's.</li>
  *   <li>The bytes are copied out of the mesh when it is placed, so an edit afterwards waits for the next frame.</li>
- *   <li>An upload is a copy from the frame ring into the slab: on Vulkan a transfer before the pass, never inside it.</li>
+ *   <li>An upload is a copy from the frame ring into the slab, before the pass: on Vulkan on the transfer queue where
+ *       the device has one ({@code CgGL.cgBeginTransfer}). Every slab write is such a copy, so the transfer queue only
+ *       ever reads what it wrote itself.</li>
  *   <li>A {@link CgMesh.Usage#FRAME} mesh takes no slab: each frame it is placed, its bytes are written straight into
  *       a page of the frame ring ({@link CgMeshRing}), and it draws from there with base-vertex calls. It holds
  *       nothing between frames, so it needs no release, and is forgotten after a frame it is not drawn in.
@@ -420,18 +422,28 @@ public final class CgMeshStore {
             stagingOffset = staging.commit(staged);
             stagingBuffer = staging.getGlBufferId();
         }
-        // Kept content first: a staged change lands over it.
+        // Kept content first, a bracket of its own: a staged change lands over it. Every range written is one no frame
+        // in flight reads, and every range read only these copies wrote, so they may run on a transfer queue.
         for (int pass = 0; pass < 2; pass++) {
-            for (int c = 0; c < copyCount; c++) {
-                int at = c * 5;
-                boolean fromStaging = copies[at] == 0;
-                if (fromStaging != (pass == 1)) continue;
-                int from = fromStaging ? stagingBuffer : (int) copies[at];
-                long fromOffset = fromStaging ? stagingOffset + copies[at + 2] : copies[at + 2];
-                CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, (int) copies[at + 1]);
-                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, fromOffset,
-                        copies[at + 3], copies[at + 4]);
+            boolean open = false;
+            try {
+                for (int c = 0; c < copyCount; c++) {
+                    int at = c * 5;
+                    boolean fromStaging = copies[at] == 0;
+                    if (fromStaging != (pass == 1)) continue;
+                    if (!open) {
+                        CgGL.cgBeginTransfer();
+                        open = true;
+                    }
+                    int from = fromStaging ? stagingBuffer : (int) copies[at];
+                    long fromOffset = fromStaging ? stagingOffset + copies[at + 2] : copies[at + 2];
+                    CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
+                    CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, (int) copies[at + 1]);
+                    CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, fromOffset,
+                            copies[at + 3], copies[at + 4]);
+                }
+            } finally {
+                if (open) CgGL.cgEndTransfer();
             }
         }
         CgTrace.add(CgChannels.GL, UPLOADS, copyCount);

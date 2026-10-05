@@ -760,6 +760,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override public void cgBeginAsync() {}
     @Override public long cgEndAsync() { return 0L; }
     @Override public void cgWaitAsync(long point) {}
+    @Override public void cgBeginTransfer() {}
+    @Override public void cgEndTransfer() {}
     @Override public void cgFillBuffer(int buffer, long offset, long size, int value) {
         op(CG_FILL_BUFFER); i(buffer); l(offset); l(size); i(value);
     }

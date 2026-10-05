@@ -62,9 +62,10 @@ DOMAINS = [
         'glDrawElementsInstancedBaseVertex', 'glDrawArraysIndirect', 'glDrawElementsIndirect',
         'glMultiDrawArraysIndirect', 'glMultiDrawElementsIndirect', 'glMultiDrawArraysIndirectCount',
         'glMultiDrawElementsIndirectCount', 'glBeginTransformFeedback', 'glEndTransformFeedback', 'glClear']),
-    ('Compute', 'dispatches, storage images and the barriers the frame graph derives; async work on a compute queue', [
+    ('Compute', 'dispatches, storage images and the barriers the frame graph derives; async work on a compute queue, '
+                'copies on a transfer queue', [
         'glDispatchCompute', 'glDispatchComputeIndirect', 'glBindImageTexture', 'glMemoryBarrier', 'cgBufferBarrier',
-        'cgImageBarrier', 'cgBeginAsync', 'cgEndAsync', 'cgWaitAsync']),
+        'cgImageBarrier', 'cgBeginAsync', 'cgEndAsync', 'cgWaitAsync', 'cgBeginTransfer', 'cgEndTransfer']),
     ('Sync, timers and readback', 'fences on the frame that recorded them; a readback stalls', [
         'glFenceSync', 'glClientWaitSync', 'glDeleteSync', 'glGenQuery', 'glBeginTimeElapsedQuery',
         'glEndTimeElapsedQuery', 'glQueryTimestamp', 'glIsQueryResultAvailable', 'glGetQueryResultNanos', 'glDeleteQuery',

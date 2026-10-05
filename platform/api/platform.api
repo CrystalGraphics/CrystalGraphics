@@ -152,6 +152,7 @@ com/crystalgraphics/platform/device/command/CgCommandEncoder
   method public,abstract beginCompute (Ljava/lang/String;)Lcom/crystalgraphics/platform/device/command/CgComputePass;
   method public,abstract beginPass (Lcom/crystalgraphics/platform/device/command/CgPassDesc;)Lcom/crystalgraphics/platform/device/command/CgRenderPass;
   method public,abstract beginTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
+  method public,abstract beginTransfer ()V
   method public,abstract blit (Lcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgTextureView;IIIILcom/crystalgraphics/platform/device/resource/CgGpuSampler$Filter;)V
   method public,abstract bufferBarrier (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;II)V
   method public,abstract copyBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JLcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJ)V
@@ -160,6 +161,7 @@ com/crystalgraphics/platform/device/command/CgCommandEncoder
   method public,abstract copyTextureToBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;Lcom/crystalgraphics/platform/device/resource/CgTextureRegion;Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;J)V
   method public,abstract endAsync ()J
   method public,abstract endTimer (Lcom/crystalgraphics/platform/device/resource/CgTimerQuery;)V
+  method public,abstract endTransfer ()V
   method public,abstract fillBuffer (Lcom/crystalgraphics/platform/device/resource/CgGpuBuffer;JJI)V
   method public,abstract finish ()V
   method public,abstract generateMipmaps (Lcom/crystalgraphics/platform/device/resource/CgGpuTexture;)V
@@ -1463,8 +1465,10 @@ com/crystalgraphics/platform/gl/CgGL
   field public,static,final GL_ZERO I
   method public,static assertNoGlError (Ljava/lang/String;)V
   method public,static cgBeginAsync ()V
+  method public,static cgBeginTransfer ()V
   method public,static cgBufferBarrier (III)V
   method public,static cgEndAsync ()J
+  method public,static cgEndTransfer ()V
   method public,static cgFillBuffer (IJJI)V
   method public,static cgImageBarrier (III)V
   method public,static cgWaitAsync (J)V
@@ -1649,8 +1653,10 @@ com/crystalgraphics/platform/gl/CgGLBackend
   method protected,final fillBySubData (IJJI)V
   method public <init> ()V
   method public cgBeginAsync ()V
+  method public cgBeginTransfer ()V
   method public cgBufferBarrier (III)V
   method public cgEndAsync ()J
+  method public cgEndTransfer ()V
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
   method public copyImageSubData (IIIIIIIIIIIIIII)V
@@ -2118,8 +2124,10 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public bufferObjects ()Lcom/crystalgraphics/platform/gl/tracked/gl/TrackedBuffers;
   method public buildPipeline (I)V
   method public cgBeginAsync ()V
+  method public cgBeginTransfer ()V
   method public cgBufferBarrier (III)V
   method public cgEndAsync ()J
+  method public cgEndTransfer ()V
   method public cgFillBuffer (IJJI)V
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
@@ -2687,6 +2695,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;Z)V
   method public allocate (JZZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public beginAsync ()V
+  method public beginTransfer ()V
   method public bindTarget (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;)V
   method public bufferBarrier (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;II)V
   method public buildPipeline (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;)V
@@ -2699,6 +2708,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   method public drawIndirect (Lcom/crystalgraphics/platform/device/pipeline/CgPipelineDesc$Topology;ZLcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;JIILcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;J)V
   method public endAsync ()J
   method public endFrame ()V
+  method public endTransfer ()V
   method public forgetPipelines (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackedProgram;)V
   method public frameAllocate (J)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public frameOffset ()J

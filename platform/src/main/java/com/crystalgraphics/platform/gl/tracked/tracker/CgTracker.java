@@ -83,6 +83,8 @@ public final class CgTracker {
     private CgComputePass compute;
     /** Between {@link #beginAsync} and {@link #endAsync}: what is recorded goes to the compute queue. */
     private boolean async;
+    /** Between {@link #beginTransfer} and {@link #endTransfer}: buffer copies may go to the transfer queue. */
+    private boolean transfer;
     private CgComputePipeline computePipeline;
     private boolean drawnSinceCompute = true;
 
@@ -488,6 +490,7 @@ public final class CgTracker {
     /** {@code cgBeginAsync}: what follows goes to the device's compute queue, after everything recorded before it. */
     public void beginAsync() {
         if (async) throw new IllegalStateException("cgBeginAsync inside async work");
+        if (transfer) throw new IllegalStateException("cgBeginAsync inside a transfer");
         outsideRenderPass();
         endCompute();
         device.encoder().beginAsync();
@@ -511,6 +514,23 @@ public final class CgTracker {
         device.encoder().waitAsync(point);
     }
 
+    /** {@code cgBeginTransfer}: the buffer copies that follow may go to the device's transfer queue. */
+    public void beginTransfer() {
+        if (async) throw new IllegalStateException("cgBeginTransfer inside async work");
+        if (transfer) throw new IllegalStateException("cgBeginTransfer inside a transfer");
+        outsideRenderPass();
+        endCompute();
+        device.encoder().beginTransfer();
+        transfer = true;
+    }
+
+    /** {@code cgEndTransfer}. */
+    public void endTransfer() {
+        if (!transfer) throw new IllegalStateException("cgEndTransfer with no transfer open");
+        transfer = false;
+        device.encoder().endTransfer();
+    }
+
     // ── passes ─────────────────────────────────────────────────────────────────
 
     /**
@@ -529,6 +549,7 @@ public final class CgTracker {
      */
     public void toHost() {
         if (async) throw new IllegalStateException("A host section ends inside async work");
+        if (transfer) throw new IllegalStateException("A host section ends inside a transfer");
         flushPendingClears();
         if (pass != null) endPass();
         endCompute();
@@ -542,6 +563,7 @@ public final class CgTracker {
 
     public void endFrame() {
         if (async) throw new IllegalStateException("The frame ends inside async work");
+        if (transfer) throw new IllegalStateException("The frame ends inside a transfer");
         flushPendingClears();
         if (pass != null) endPass();
         endCompute();
@@ -570,6 +592,7 @@ public final class CgTracker {
 
     private void beginPass() {
         if (async) throw new IllegalStateException("A draw or clear inside async work: a compute queue draws nothing");
+        if (transfer) throw new IllegalStateException("A draw or clear inside a transfer");
         endCompute();
         drawnSinceCompute = true;
         List<CgPassDesc.Color> colors = new ArrayList<>(target.colors().size());

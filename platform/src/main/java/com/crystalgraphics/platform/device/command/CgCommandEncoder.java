@@ -100,6 +100,24 @@ public interface CgCommandEncoder {
     void waitAsync(long point);
 
     /**
+     * The buffer copies and writes that follow may go to a transfer queue beside the frame's, until
+     * {@link #endTransfer}: ordered after every such bracket before, and before anything later on the frame's queue
+     * touching a buffer they wrote. A device with no such queue records them in order. Outside any pass.
+     *
+     * <pre>{@code
+     * enc.beginTransfer();
+     * enc.copyBuffer(staging, at, slab, range, size);   // into a range no frame in flight reads
+     * enc.endTransfer();
+     * }</pre>
+     *
+     * <p>What they read the frame's queue must not write, and what they write no frame in flight may read; copies in
+     * one bracket are not ordered among themselves.</p>
+     */
+    void beginTransfer();
+
+    void endTransfer();
+
+    /**
      * Runs everything recorded this frame and waits for it, the frame staying open: what reading host-visible memory
      * the GPU wrote this frame needs. Outside a render pass.
      *

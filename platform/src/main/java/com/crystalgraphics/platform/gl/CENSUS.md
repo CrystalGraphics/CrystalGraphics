@@ -6,7 +6,7 @@ it -- statically, with every Stonecutter branch counted as live. `platform` is t
 restores, the providers and the trace; `harness` is the GL debug harness, listed apart since it is a
 test application.
 
-**158 methods** (172 declarations with overloads): **146 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
+**160 methods** (174 declarations with overloads): **148 reached** by core, CrystalGUI, the hosts or `platform`; **2 by the harness only**; **10 by nothing** -- `isAvailable`, `getPriority`, `glVertexAttribDivisor`, `glDrawElementsInstanced`, `glMultiDrawArraysIndirect`, `glMultiDrawArraysIndirectCount`, `glMultiDrawElementsIndirectCount`, `glMemoryBarrier`, `isContextCurrent`, `glTexImage2DMultisample`.
 
 **What it orders** (D3.4): the tracked backend is built domain by domain in the order below, reached
 methods first within each. An unreached method is still built -- `CgGL` is public API outside mods
@@ -64,8 +64,8 @@ Every draw reads them; the frame ring and orphan-as-rename live here.
 |---|---|---:|---:|---:|---:|---:|
 | `glGenBuffers` | `glGenBuffers` | 16 |  |  |  | 8 |
 | `glBindBuffer` | `glBindBuffer` | 79 |  |  | 3 | 17 |
-| `glBufferData` ×3 | `glBufferData` | 18 |  |  |  | 8 |
-| `glBufferSubData` | `glBufferSubData` | 4 |  |  |  | 1 |
+| `glBufferData` ×3 | `glBufferData` | 19 |  |  |  | 8 |
+| `glBufferSubData` | `glBufferSubData` | 5 |  |  |  | 1 |
 | `glCopyBufferSubData` | `glCopyBufferSubData` | 6 |  |  |  |  |
 | `glDeleteBuffers` | `glDeleteBuffers` | 27 |  |  |  | 6 |
 | `glBindBufferBase` | `glBindBufferBase` | 10 |  |  | 2 |  |
@@ -130,11 +130,11 @@ Uploads are encoder work outside a pass.
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
 | `copyImageSubData` | `glCopyImageSubData` | 1 |  |  |  |  |
-| `glGenTextures` | `glGenTextures` | 11 |  |  |  | 5 |
-| `glBindTexture` | `glBindTexture` | 46 |  |  | 1 | 11 |
+| `glGenTextures` | `glGenTextures` | 10 |  |  |  | 5 |
+| `glBindTexture` | `glBindTexture` | 50 |  |  | 1 | 11 |
 | `glDeleteTextures` | `glDeleteTextures` | 9 |  |  |  | 3 |
-| `glTexImage2D` ×2 | `glTexImage2D` | 5 |  |  |  | 3 |
-| `glTexSubImage2D` ×3 | `glTexSubImage2D` | 5 |  |  |  |  |
+| `glTexImage2D` ×2 | `glTexImage2D` | 4 |  |  |  | 3 |
+| `glTexSubImage2D` ×3 | `glTexSubImage2D` | 6 |  |  |  |  |
 | `glTexImage3D` ×2 | `glTexImage3D` | 4 |  |  |  | 2 |
 | `glTexSubImage3D` ×4 | `glTexSubImage3D` | 9 |  |  |  |  |
 | `glGenerateMipmap` | `glGenerateMipmap` | 2 |  |  |  |  |
@@ -192,7 +192,7 @@ The tracker's draw, and a clear as a load op.
 
 ## Compute
 
-Dispatches, storage images and the barriers the frame graph derives; async work on a compute queue.
+Dispatches, storage images and the barriers the frame graph derives; async work on a compute queue, copies on a transfer queue.
 
 | Method | via `CgGL` | core | CrystalGUI | hosts | platform | harness |
 |---|---|---:|---:|---:|---:|---:|
@@ -203,6 +203,8 @@ Dispatches, storage images and the barriers the frame graph derives; async work 
 | `cgBeginAsync` | `cgBeginAsync` | 1 |  |  |  |  |
 | `cgEndAsync` | `cgEndAsync` | 1 |  |  |  |  |
 | `cgWaitAsync` | `cgWaitAsync` | 1 |  |  |  |  |
+| `cgBeginTransfer` | `cgBeginTransfer` | 1 |  |  |  |  |
+| `cgEndTransfer` | `cgEndTransfer` | 1 |  |  |  |  |
 | `cgImageBarrier` | `cgImageBarrier` | 1 |  |  |  |  |
 | `glMemoryBarrier` | `glMemoryBarrier` |  |  |  |  |  |
 
