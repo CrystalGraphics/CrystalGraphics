@@ -7114,9 +7114,11 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public name ()Ljava/lang/String;
   method public opacityAt (F)F
   method public optional ()Z
+  method public peakAlive ()I
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public sizeAt (F)F
   method public toBuilder ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public writeCurves ([FII)V
   method public writeSpawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
 com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
@@ -7164,11 +7166,16 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originY ()D
   method public originZ ()D
   method public particles ()Lcom/crystalgraphics/vfx/particle/CgVfxParticleSet;
+  method public schedule (FDDD)V
+  method public seedBits ()I
+  method public share ()F
   method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
   method public start (FFF)V
+  method public stepCandidates ()I
+  method public stepFirstSpawn ()I
   method public tick (FLcom/crystalgraphics/vfx/particle/CgVfxAir;DDD)V
   method public time ()F
   method public,static rand (III)F
@@ -7334,10 +7341,12 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
 com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   access public,abstract,interface
   extends java/lang/Object
+  field public,static,final CURVE_TEXELS I
   field public,static,final SPAWN_VECTORS I
   method public,abstract modules ()Ljava/util/List;
   method public,abstract name ()Ljava/lang/String;
   method public,abstract renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
+  method public,abstract writeCurves ([FII)V
   method public,abstract writeSpawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
 com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   access public,abstract,interface
