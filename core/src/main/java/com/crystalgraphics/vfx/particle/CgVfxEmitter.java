@@ -151,6 +151,29 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return opacityOverLife.at(progress);
     }
 
+    /**
+     * The most particles one instance can have alive at once, at full share: what a GPU pool sizes its slot by, since a
+     * pool never drops a spawn. Every burst within any span of its longest life, plus its rate over that span.
+     *
+     * <pre>{@code
+     * int slot = pool.open(EMBERS, EMBERS.peakAlive());
+     * }</pre>
+     */
+    public int peakAlive() {
+        // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
+        float span = lifeMax + 0.1f;
+        int bursts = 0;
+        for (float from : burstTimes) {
+            int alive = 0;
+            for (int j = 0; j < burstTimes.length; j++) {
+                if (burstTimes[j] >= from && burstTimes[j] < from + span) alive += burstCounts[j];
+            }
+            bursts = Math.max(bursts, alive);
+        }
+        int fromRate = rate > 0f ? (int) Math.ceil(rate * Math.min(span, rateUntil - rateFrom)) + 2 : 0;
+        return bursts + fromRate;
+    }
+
     /** Seconds from the instance's start after which this emitter spawns nothing more. */
     float lastSpawn() {
         float last = rate > 0f ? rateUntil : 0f;
