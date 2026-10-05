@@ -7303,6 +7303,96 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
   method public x (IF)F
   method public y (IF)F
   method public z (IF)F
+com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final SPAWN_VECTORS I
+  method public,abstract modules ()Ljava/util/List;
+  method public,abstract name ()Ljava/lang/String;
+  method public,abstract renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
+  method public,abstract writeSpawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
+  access public,abstract,interface
+  extends java/lang/Object
+  method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public paramVectors ()I
+  method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public,abstract afterSolve ()Z
+  method public,abstract gpuKind ()Ljava/lang/String;
+  method public,abstract writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract originX ()D
+  method public,abstract originY ()D
+  method public,abstract originZ ()D
+  method public,abstract sourceX ()F
+  method public,abstract sourceY ()F
+  method public,abstract sourceZ ()F
+  method public,abstract time ()F
+com/crystalgraphics/vfx/particle/gpu/CgVfxLane
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final IVEC4 Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  field public,static,final UVEC4 Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  field public,static,final VEC4 Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public glsl ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+com/crystalgraphics/vfx/particle/gpu/CgVfxParticlePool
+  access public,final
+  extends java/lang/Object
+  field public,static,final INSTANCE_HEADER I
+  method public beginStep (FFFF)V
+  method public capacity ()I
+  method public capacity (I)I
+  method public close (I)V
+  method public endStep ()V
+  method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
+  method public listBase (I)I
+  method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
+  method public openSlots ()I
+  method public queuedSteps ()I
+  method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxShape;
+  method public slotCount ()I
+  method public spawn (III)V
+  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxParticlePool;
+com/crystalgraphics/vfx/particle/gpu/CgVfxShape
+  access public,final
+  extends java/lang/Object
+  method public afterSolve (I)Z
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public instanceRowVectors ()I
+  method public key ()Ljava/lang/String;
+  method public kind (I)Ljava/lang/String;
+  method public lanes (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public lanesAt (I)I
+  method public modules ()I
+  method public paramAt (I)I
+  method public paramRowVectors ()I
+  method public paramVectors (I)I
+  method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
+  method public toString ()Ljava/lang/String;
+  method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxShape;
+com/crystalgraphics/vfx/particle/gpu/CgVfxWords
+  access public,final
+  extends java/lang/Object
+  method public ivec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public uvec4 (IIII)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+  method public vec4 (FFFF)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;
+com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public argument ()Ljava/lang/String;
+  method public glsl ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
 com/crystalgraphics/vfx/path/CgVfxPath
   access public,final
   extends java/lang/Object
