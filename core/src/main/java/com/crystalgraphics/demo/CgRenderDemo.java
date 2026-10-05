@@ -62,7 +62,7 @@ public final class CgRenderDemo {
     private int levelEpoch;
     private int worldFrames;
 
-    private final CgVfxShowcase showcase = new CgVfxShowcase();
+    private final CgVfxShowcase showcase = CgVfxShowcase.stress(30);
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
