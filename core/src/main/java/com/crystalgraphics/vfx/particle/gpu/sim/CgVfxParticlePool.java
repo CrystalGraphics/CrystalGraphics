@@ -1,12 +1,27 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.compute.ops.CgGpuCount;
+import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,7 +29,8 @@ import java.util.Map;
  * GPU, stepped by one dispatch per step however many effects play it (vfx-gpu §4.4, §13). An instance owns a slot
  * while it plays; its definition's numbers are a row of the pool's parameter table, shared by every instance of it.
  * The CPU decides every step what spawns and where each instance is, and queues it here; the pool records the queued
- * steps once a frame.
+ * steps once a host frame on {@link CgRenderStage#WORLD_OPAQUE} at {@link #ORDER}, a dispatch of its shape's Step
+ * kernel ({@link CgVfxEmitterCompiler}) each, and a draw reads what they left: {@link #records()} and {@link #live()}.
  *
  * <pre>{@code
  * CgVfxParticlePool pool = CgVfxParticlePool.of(EMBERS);
@@ -47,12 +63,23 @@ public final class CgVfxParticlePool {
      */
     public static final int INSTANCE_HEADER = 3;
 
-    /** Every pool, by shape key. Render thread. */
+    /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
+    public static final int ORDER = CgWorldRenderer.ORDER - 100;
+
+    /** Every pool, by shape key, and in the order made. Render thread. */
     private static final Map<String, CgVfxParticlePool> POOLS = new HashMap<>();
+    private static final List<CgVfxParticlePool> ALL = new ArrayList<>();
+    private static CgRenderStage.Registration recording;
+
+    private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
+    private static final CgGpuCount ONE = CgGpuCount.of(1);
+    private static final int MIN_STORAGE = 1024;
 
     private final CgVfxShape shape;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
+    private final String passName, recordsName, paramsName, instancesName, spawnsName;
+    private final String[] countNames;
 
     /** Each definition playing here: its row, and how many open slots use it. */
     private final IdentityHashMap<CgVfxGpuEmitter, int[]> rows = new IdentityHashMap<>();
@@ -82,23 +109,57 @@ public final class CgVfxParticlePool {
     private int[] spawns = new int[0];
     private int spawnEnd;
 
+    // The GPU half: made at the first recording, grown as slots open.
+    private CgKernel step;
+    private CgGraphBuffer records, paramBuffer, instanceBuffer, spawnBuffer;
+    /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
+    private final CgGraphBuffer[] counts = new CgGraphBuffer[2];
+    private int current, storage;
+    private ByteBuffer staging = ByteBuffer.allocate(0);
+
     private CgVfxParticlePool(CgVfxShape shape) {
         this.shape = shape;
         this.paramWords = shape.paramRowVectors() * 4;
         this.instanceWords = shape.instanceRowVectors() * 4;
+        String name = "vfx.pool[" + shape.key() + "]";
+        passName = name + ".step";
+        recordsName = name + ".records";
+        paramsName = name + ".params";
+        instancesName = name + ".instances";
+        spawnsName = name + ".spawns";
+        countNames = new String[]{name + ".live0", name + ".live1"};
     }
 
-    /** The pool every definition of {@code emitter}'s shape shares, made the first time. Render thread. */
+    /**
+     * The pool every definition of {@code emitter}'s shape shares, made the first time. The first pool made registers
+     * the pools' recording on {@link CgRenderStage#WORLD_OPAQUE}. Render thread.
+     */
     public static CgVfxParticlePool of(CgVfxGpuEmitter emitter) {
         CgVfxShape shape = CgVfxShape.of(emitter);
         CgVfxParticlePool pool = POOLS.get(shape.key());
-        if (pool == null) POOLS.put(shape.key(), pool = new CgVfxParticlePool(shape));
+        if (pool == null) {
+            POOLS.put(shape.key(), pool = new CgVfxParticlePool(shape));
+            ALL.add(pool);
+            if (recording == null) {
+                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, frame -> recordAll(frame.recording()));
+            }
+        }
         return pool;
     }
 
-    /** Forgets every pool. Tests, and context teardown once pools hold GPU storage. */
+    /** Forgets every pool and stops recording. Tests, and context teardown. */
     static void forgetAll() {
         POOLS.clear();
+        ALL.clear();
+        if (recording != null) {
+            recording.close();
+            recording = null;
+        }
+    }
+
+    /** Records every pool's queued steps into {@code recording}, once a host frame. Render thread. */
+    static void recordAll(CgRecording recording) {
+        for (int i = 0; i < ALL.size(); i++) ALL.get(i).record(recording);
     }
 
     public CgVfxShape shape() {
@@ -278,6 +339,109 @@ public final class CgVfxParticlePool {
     /** Steps queued and not yet taken. */
     public int queuedSteps() {
         return steps;
+    }
+
+    /**
+     * Every particle, a {@link CgVfxRecord} each: a history buffer whose newest version holds {@link #live()}'s count
+     * of them. Null before the first step is recorded; a new handle after growth, so ask each frame.
+     */
+    public CgGraphBuffer records() {
+        return records;
+    }
+
+    /** How many records the newest version of {@link #records()} holds: a {@code uint} at word 0. */
+    public CgGraphBuffer live() {
+        return counts[current];
+    }
+
+    /** The records {@link #records()} has room for. */
+    public int storage() {
+        return storage;
+    }
+
+    /**
+     * Records the queued steps into {@code recording}, one dispatch each in one compute pass, and takes them. Render
+     * thread, between steps.
+     */
+    void record(CgRecording recording) {
+        if (steps == 0) return;
+        if (openSlots == 0) {
+            // A slot closes only once its particles have died, so there is nothing to step.
+            takeSteps();
+            return;
+        }
+        if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
+        reserve(recording);
+        upload(recording);
+        CgComputePass pass = recording.compute(passName).timed(GPU_STEP).async();
+        for (int s = 0; s < steps; s++) {
+            CgGraphBuffer next = counts[1 - current];
+            CgGpuOps.fill(pass, next, 0, ONE);
+            pass.dispatch(step, storage + stepSpawned[s])
+                    .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
+                    .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
+                    .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
+                    .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
+                    .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]);
+            current = 1 - current;
+        }
+        pass.end();
+        takeSteps();
+    }
+
+    /** Makes the records and counts the first time, and grows the records past what the open slots can hold. */
+    private void reserve(CgRecording recording) {
+        if (records == null) {
+            storage = sizeClass(capacity);
+            records = CgGraphBuffer.history(recordsName, recordsDesc(storage));
+            for (int c = 0; c < 2; c++) {
+                counts[c] = CgGraphBuffer.persistent(countNames[c],
+                        CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY, CgBufferUsage.INDIRECT));
+                recording.fill(counts[c], 0);
+            }
+        } else if (capacity > storage) {
+            storage = sizeClass(capacity);
+            records = recording.resize(records, recordsDesc(storage));
+        }
+    }
+
+    /** This frame's instance and spawn rows, and the parameter table when a row was written since the last. */
+    private void upload(CgRecording recording) {
+        int paramEnd = rowCount * paramWords;
+        CgGraphBuffer params = fit(recording, paramBuffer, paramsName, paramEnd);
+        if (paramsChanged || params != paramBuffer) put(recording, params, this.params, paramEnd);
+        paramBuffer = params;
+        paramsChanged = false;
+        instanceBuffer = fit(recording, instanceBuffer, instancesName, instanceEnd);
+        put(recording, instanceBuffer, instances, instanceEnd);
+        spawnBuffer = fit(recording, spawnBuffer, spawnsName, spawnEnd);
+        put(recording, spawnBuffer, spawns, spawnEnd);
+    }
+
+    /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code words}. */
+    private static CgGraphBuffer fit(CgRecording recording, CgGraphBuffer buffer, String name, int words) {
+        long bytes = Math.max(256L, words * 4L);
+        if (buffer != null && buffer.size() >= bytes) return buffer;
+        if (buffer != null) recording.release(buffer);
+        return CgGraphBuffer.persistent(name, CgBufferDesc.of(Long.highestOneBit(bytes - 1) << 1,
+                CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+    }
+
+    private void put(CgRecording recording, CgGraphBuffer buffer, int[] words, int n) {
+        if (n == 0) return;
+        if (staging.capacity() < n * 4) staging = ByteBuffer.allocate(Math.max(n * 4, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        staging.clear();
+        for (int i = 0; i < n; i++) staging.putInt(i * 4, words[i]);
+        staging.limit(n * 4);
+        recording.update(buffer, 0, staging);
+    }
+
+    private static int sizeClass(int records) {
+        return Math.max(MIN_STORAGE, Integer.highestOneBit(Math.max(records, 1) - 1) << 1);
+    }
+
+    private static CgBufferDesc recordsDesc(int storage) {
+        return CgBufferDesc.elements(storage, CgVfxRecord.BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY);
     }
 
     // What the recording reads, step by step; then takeSteps() clears it.

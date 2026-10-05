@@ -7388,10 +7388,17 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   method public glsl ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
+  access public,final
+  extends java/lang/Object
+  method public,static compile (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;)Lcom/crystalgraphics/compute/CgCompute;
+  method public,static key (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;)Ljava/lang/String;
+  method public,static source (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;)Ljava/lang/String;
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   access public,final
   extends java/lang/Object
   field public,static,final INSTANCE_HEADER I
+  field public,static,final ORDER I
   method public beginStep (FFFF)V
   method public capacity ()I
   method public capacity (I)I
@@ -7399,13 +7406,40 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public endStep ()V
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
   method public listBase (I)I
+  method public live ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
   method public openSlots ()I
   method public queuedSteps ()I
+  method public records ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I
   method public spawn (III)V
+  method public storage ()I
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
+  access public,final
+  extends java/lang/Object
+  field public,static,final AGE I
+  field public,static,final BYTES I
+  field public,static,final FLAGS I
+  field public,static,final GLSL Ljava/lang/String;
+  field public,static,final HEAT I
+  field public,static,final ID I
+  field public,static,final LIFE I
+  field public,static,final PARAM_ROW I
+  field public,static,final POSITION I
+  field public,static,final PREVIOUS I
+  field public,static,final RESTING I
+  field public,static,final SEED I
+  field public,static,final SIZE I
+  field public,static,final SLOT I
+  field public,static,final SPIN I
+  field public,static,final SPIN_RATE I
+  field public,static,final VELOCITY I
+  field public,static,final WORDS I
+  method public,static f (Ljava/nio/ByteBuffer;II)F
+  method public,static i (Ljava/nio/ByteBuffer;II)I
+  method public,static pack (Ljava/nio/ByteBuffer;ILcom/crystalgraphics/vfx/particle/CgVfxParticleSet;III)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   access public,final
   extends java/lang/Object
