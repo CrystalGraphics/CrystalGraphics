@@ -7,6 +7,7 @@ import com.crystalgraphics.gpu.CgDeferral;
 import lombok.Getter;
 
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlSlot;
 
 /**
  * Shared base for all owned GL texture implementations.
@@ -40,8 +41,8 @@ public abstract class CgTextureAbstract implements CgTexture {
     // ── Instance state ──────────────────────────────────────────────
     /** GL texture object id: 0 until made, and again once deleted. Written only by {@link #gpu}'s work. */
     protected int textureId;
-    /** This texture's GL work, in order. */
-    protected final CgDeferral gpu = new CgDeferral();
+    /** This texture's GL work, in order, each piece handing back the binding it moved. */
+    protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES);
     /** Width of the texture at mip level 0, in pixels. */
     @Getter
     protected int width;
