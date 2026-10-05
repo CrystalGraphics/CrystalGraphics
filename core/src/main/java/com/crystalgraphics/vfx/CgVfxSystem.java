@@ -147,7 +147,9 @@ public final class CgVfxSystem {
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"),
-            EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written");
+            EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written"),
+            FILL_ZONE = CgTrace.name("vfx.particles.fill"), LIGHT_ZONE = CgTrace.name("vfx.particles.light"),
+            UPLOAD_ZONE = CgTrace.name("vfx.particles.upload");
 
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
@@ -388,23 +390,29 @@ public final class CgVfxSystem {
             writeAlpha = alpha;
             // The host's light is read on the render thread alone; with no level every record is fully lit.
             writeLit = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch() != 0;
-            if (total >= PARALLEL_RECORDS) {
-                workers.run(emitters, writeEach);
-            } else {
-                for (int k = 0; k < emitters; k++) writeRecords(k);
+            try (CgTrace.Zone fill = CgTrace.zone(CgVfxTrace.CHANNEL, FILL_ZONE)) {
+                if (total >= PARALLEL_RECORDS) {
+                    workers.run(emitters, writeEach);
+                } else {
+                    for (int k = 0; k < emitters; k++) writeRecords(k);
+                }
             }
             if (writeLit) {
-                for (int k = 0; k < emitters; k++) {
-                    CgVfxEmitterInstance emitter = particleEmitters.get(k);
-                    CgVfxParticleSet p = emitter.particles();
-                    for (int i = 0; i < p.count(); i++) {
-                        int light = CgWorldLight.at(emitter.originX() + p.x(i, alpha), emitter.originY() + p.y(i, alpha),
-                                emitter.originZ() + p.z(i, alpha));
-                        CgParticleBuffer.light(records, bases[k] + i, light);
+                try (CgTrace.Zone lit = CgTrace.zone(CgVfxTrace.CHANNEL, LIGHT_ZONE)) {
+                    for (int k = 0; k < emitters; k++) {
+                        CgVfxEmitterInstance emitter = particleEmitters.get(k);
+                        CgVfxParticleSet p = emitter.particles();
+                        for (int i = 0; i < p.count(); i++) {
+                            int light = CgWorldLight.at(emitter.originX() + p.x(i, alpha), emitter.originY() + p.y(i, alpha),
+                                    emitter.originZ() + p.z(i, alpha));
+                            CgParticleBuffer.light(records, bases[k] + i, light);
+                        }
                     }
                 }
             }
-            CgParticleBuffer.upload(records, total);
+            try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, UPLOAD_ZONE)) {
+                CgParticleBuffer.upload(records, total);
+            }
         }
         particleEmitters.clear();
         particleRecords = 0;

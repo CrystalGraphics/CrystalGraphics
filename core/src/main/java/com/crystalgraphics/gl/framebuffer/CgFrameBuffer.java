@@ -12,7 +12,9 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.gl.texture.CgTexture2DArray;
 import com.crystalgraphics.gl.texture.CgTexture3D;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.CgBufferUtils;
+import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.TreeMap;
@@ -425,7 +427,8 @@ public class CgFrameBuffer {
      * surface missing for the one frame a target was first created on.</p>
      */
     private void initGl(int w, int h, CgFrameBufferFormat fmt) {
-        try (CgGlScope ignored = CgGlState.save(FBO)) {
+        try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, "framebuffer.create");
+             CgGlScope ignored = CgGlState.save(FBO)) {
             initGlAttachments(w, h, fmt);
         }
     }
