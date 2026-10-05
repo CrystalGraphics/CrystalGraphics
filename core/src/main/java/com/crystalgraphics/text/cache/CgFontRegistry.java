@@ -42,8 +42,8 @@ import java.util.logging.Logger;
  * <ol>
  *   <li><strong>Construction &amp; lifecycle</strong> &mdash; registry creation, config, disposal</li>
  *   <li><strong>Frame tick &amp; async drain</strong> &mdash; per-frame budget reset and completed-glyph upload</li>
- *   <li><strong>Authoritative  glyph path</strong> &mdash; {@link #ensureGlyph} and its pre-queue helper,
- *       the main entry point for the multi-page atlas system</li>
+ *   <li><strong>Authoritative glyph path</strong> &mdash; {@link #resolveGlyph}, the renderer's: a miss is asked
+ *       of a worker and draws a frame or more late; {@link #ensureGlyph} generates on the calling thread</li>
  *   <li><strong>Key transformation helpers</strong> &mdash; methods that convert a caller-visible
  *       {@link CgGlyphKey} into the internal atlas/cache key used for lookup</li>
  *   <li><strong> bitmap rasterization</strong> &mdash; FreeType bitmap path for  atlases</li>
@@ -376,15 +376,9 @@ public class CgFontRegistry {
     // ────────────────────────────────────────────────────────────────────
     //  § 3. Authoritative  glyph path
     //
-    //  This is the PRIMARY entry point for the multi-page atlas system.
-    //  The renderer calls ensureGlyph() to obtain a CgGlyphPlacement
-    //  for each visible glyph; queueGlyph() pre-queues glyphs that
-    //  are likely to be needed (reducing frame spikes).
-    //
-    //  Pipeline:
-    //    CgGlyphKey → key transformation →  atlas lookup →
-    //    [cache hit: return placement] →
-    //    [cache miss: rasterize/generate → allocate into atlas → return placement]
+    //  The renderer calls resolveGlyph() for each visible glyph: a hit returns its placement, a
+    //  miss asks a worker and returns null until the result is committed (§ 8). ensureGlyph()
+    //  generates on the calling thread, for tooling that must have the glyph now.
     // ────────────────────────────────────────────────────────────────────
 
     /**
@@ -451,10 +445,10 @@ public class CgFontRegistry {
      *
      * <p>Transforms the key exactly once, checks the atlas exactly once. On a cache hit (the
      * common, steady-state case) returns immediately — no job submission, no generation
-     * attempt, just the one transform and the one {@code O(1)} lookup. On a miss, preserves
-     * the exact prior combined behavior: submits an async job (what {@link #queueGlyph}
-     * used to do) and attempts synchronous generation within the small per-frame budget (what
-     * {@link #ensureGlyph} used to do), including the MSDF→bitmap fallback.</p>
+     * attempt, just the one transform and the one {@code O(1)} lookup. On a miss it asks a worker
+     * and returns null: a bitmap glyph draws nothing until it lands, an MSDF one its bitmap
+     * stand-in (itself from a worker) or nothing. Nothing is generated here unless the worker
+     * route cannot deliver ({@link #bitmapOnWorker}).</p>
      *
      * <h4>Never generates MSDF synchronously — that is {@link #ensureGlyph}'s job</h4>
      * <p>On an MSDF miss this submits the async job and then takes the bitmap fallback for
@@ -505,14 +499,7 @@ public class CgFontRegistry {
         CgGlyphKey atlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(rasterFontKey, key.getGlyphId(), false, subPixelBucket,
                         key.isSyntheticBold(), key.isSyntheticItalic()));
-        CgGlyphAtlas atlas = getBitmapAtlas();
-
-        CgGlyphPlacement cached = atlas.get(atlasKey, currentFrame);
-        if (cached != null) {
-            return cached;
-        }
-        submitBitmapGlyphJob(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
-        return ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
+        return bitmapOnWorker(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
     }
 
     /**
@@ -567,10 +554,7 @@ public class CgFontRegistry {
      * Pre-queues a glyph for async generation if it is not already in the atlas.
      *
      * <p><strong>Unused: no caller exists.</strong> Its pre-queue pass ({@code CgResolvedGlyphs.flattenAndPrequeue})
-     * is gone. An MSDF glyph's bitmap stand-in is generated on a worker regardless ({@link #ensureMsdfGlyph}'s
-     * fallback); a glyph drawn at the bitmap tier is rasterised on the render thread at its first draw
-     * ({@link #resolveGlyph}). Kept for moving that last path to workers, which is a behaviour change: a glyph made
-     * there misses the frame that asked for it.</p>
+     * is gone, and {@link #resolveGlyph} asks a worker for every glyph it misses.</p>
      */
     public synchronized void queueGlyph(CgFont font,
                         CgGlyphKey key,
@@ -995,40 +979,33 @@ public class CgFontRegistry {
         CgGlyphKey bitmapAtlasKey = toBitmapAtlasGlyphKey(
                 new CgRasterGlyphKey(bitmapRasterKey, atlasKey.getGlyphId(), false, subPixelBucket,
                         atlasKey.isSyntheticBold(), atlasKey.isSyntheticItalic()));
+        return bitmapOnWorker(font, bitmapAtlasKey, bitmapRasterKey, effectiveTargetPx, subPixelBucket, currentFrame);
+    }
 
-        // Already rasterised by a worker on an earlier frame -> just use it.
-        CgGlyphAtlas bitmapAtlas = getBitmapAtlas();
-        CgGlyphPlacement bitmapCached = bitmapAtlas.get(bitmapAtlasKey, currentFrame);
-        if (bitmapCached != null) {
+    /**
+     * A bitmap glyph from the atlas, else asked of a worker: null, and nothing drawn for it this frame. Rasterising
+     * here put every bitmap glyph on the render thread, 4810 calls and 387 ms in text-3d's first frame; a glyph a few
+     * frames late is imperceptible. Rasterised here only when the worker route cannot deliver: a job that failed is
+     * refused for good, and a rejected submission means nothing is coming.
+     *
+     * <p>Null is safe to return: {@code submitBatchedQuads} skips it, and {@code CgResolvedGlyphs} refuses to cache a
+     * placement array holding one, so the glyph is asked for again next frame.</p>
+     */
+    private CgGlyphPlacement bitmapOnWorker(CgFont font, CgGlyphKey atlasKey, CgRasterFontKey rasterFontKey,
+                                            int effectiveTargetPx, int subPixelBucket, long currentFrame) {
+        CgGlyphPlacement cached = getBitmapAtlas().get(atlasKey, currentFrame);
+        if (cached != null) {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.atlasHit", 1);
-            return bitmapCached;
+            return cached;
         }
-
-        // Generate on a worker and draw nothing for this glyph this frame, rather than rasterising
-        // here. Rasterising synchronously put every bitmap glyph on the render thread: 4810 calls
-        // totalling 387 ms, essentially all inside frame 1 — the largest single block of
-        // render-thread work in the engine. A glyph arriving a frame or two late is imperceptible;
-        // a half-second frame is not.
-        //
-        // Returning null is safe: submitBatchedQuads skips null placements when building sort keys.
-        // What is NOT safe is letting that null be cached — see resolvePlacements, which refuses to
-        // cache a placement array containing one, so the glyph is re-requested next frame instead of
-        // being permanently invisible.
         CgGlyphGenerationJob job = CgGlyphGenerationJob.bitmap(
-                font.getKey(), font.getData(), bitmapAtlasKey, bitmapRasterKey,
-                effectiveTargetPx, subPixelBucket);
-
-        // Fall back to synchronous generation whenever the async route cannot be relied on:
-        // a previously failed job is refused forever, and a rejected submission (queue full) means
-        // nothing is coming. Both would otherwise leave this glyph invisible indefinitely.
+                font.getKey(), font.getData(), atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket);
         if (!glyphGenerationExecutor.hasFailed(job) && glyphGenerationExecutor.submit(job)) {
             CgTrace.add(CgChannels.TEXT, "glyph.bitmap.deferredToWorker", 1);
             return null;
         }
-
         CgTrace.add(CgChannels.TEXT, "glyph.bitmap.syncFallbackAfterAsyncRefused", 1);
-        return ensureBitmapGlyph(font, bitmapAtlasKey, bitmapRasterKey,
-                effectiveTargetPx, subPixelBucket, currentFrame);
+        return ensureBitmapGlyph(font, atlasKey, rasterFontKey, effectiveTargetPx, subPixelBucket, currentFrame);
     }
 
     // ────────────────────────────────────────────────────────────────────
