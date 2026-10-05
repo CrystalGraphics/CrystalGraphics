@@ -110,6 +110,15 @@ public final class CgTracker {
     private CgTarget keyTarget;
     private CgPipeline keyPipeline;
 
+    /**
+     * Pipelines by the identity of what picks them, kept across frames: the hit for draws alternating between states,
+     * which the last key misses, with no description built or hashed. Holds because records keep their identity while
+     * their values do (TrackedRenderState), and so does a target (TrackedFramebuffers).
+     */
+    private final Map<PipelineKey, CgPipeline> byIdentity = new HashMap<>();
+    private final PipelineKey probe = new PipelineKey();
+    private static final int MAX_BY_IDENTITY = 1024;
+
     /** @param debug refuse feedback loops; a check per sampled texture per draw */
     public CgTracker(CgDevice device, boolean debug) {
         this.device = device;
@@ -135,8 +144,9 @@ public final class CgTracker {
 
     /** {@code glBindFramebuffer} for drawing. The open pass continues until something needs another target. */
     public void bindTarget(CgTarget t) {
-        if (t.equals(target)) return;
-        flushPendingClears();
+        if (t == target) return;
+        // An equal target is taken too, so the next draw finds it by identity rather than comparing again.
+        if (!t.equals(target)) flushPendingClears();
         target = t;
     }
 
@@ -177,7 +187,7 @@ public final class CgTracker {
 
         boolean whole = !state.scissorTest || (state.scissorX <= 0 && state.scissorY <= 0
                 && state.scissorX + state.scissorWidth >= target.width() && state.scissorY + state.scissorHeight >= target.height());
-        boolean inPass = pass != null && passTarget.equals(target);
+        boolean inPass = pass != null && (passTarget == target || passTarget.equals(target));
         if (!inPass && whole && masked == 0) {
             pendingColors |= colors;
             if (colors != 0) { clearR = r; clearG = g; clearB = b; clearA = a; }
@@ -349,7 +359,13 @@ public final class CgTracker {
                 && s.vertexLayouts == keyLayouts && topology == keyTopology && passTarget == keyTarget) {
             return keyPipeline;
         }
-        CgPipeline p = cachedPipeline(topology, passTarget, vertex);
+        CgPipeline p = byIdentity.get(probe.set(s.program, vertex, s.raster, s.depthStencil, s.blend, s.colorMasks,
+                s.vertexLayouts, topology, passTarget));
+        if (p == null) {
+            p = cachedPipeline(topology, passTarget, vertex);
+            if (byIdentity.size() == MAX_BY_IDENTITY) byIdentity.clear();
+            byIdentity.put(probe.copy(), p);
+        }
         keyProgram = s.program;
         keyVertex = vertex;
         keyRaster = s.raster;
@@ -398,6 +414,7 @@ public final class CgTracker {
             if (mine) device.release(e.getValue());
             return mine;
         });
+        byIdentity.keySet().removeIf(k -> k.program == program);
         if (keyProgram == program) keyPipeline = null;
         passPipeline = null;
     }
@@ -577,7 +594,11 @@ public final class CgTracker {
     }
 
     private void ensurePass() {
-        if (pass != null && passTarget.equals(target)) return;
+        if (pass != null && passTarget == target) return;
+        if (pass != null && passTarget.equals(target)) {
+            passTarget = target;
+            return;
+        }
         if (target == null) throw new IllegalStateException("Draw with no framebuffer bound");
         if (pass != null) endPass();
         beginPass();
@@ -673,5 +694,60 @@ public final class CgTracker {
         warnedMaskedClear = true;
         System.err.println("[crystalgraphics] tracked backend: a clear under a partial " + what
                 + " clears every channel (warned once)");
+    }
+
+    /** What picks a draw's pipeline, compared by identity. */
+    private static final class PipelineKey {
+        CgTrackedProgram program;
+        CgShaderModule vertex;
+        CgPipelineDesc.Raster raster;
+        CgPipelineDesc.DepthStencil depthStencil;
+        CgPipelineDesc.Blend blend;
+        int masks;
+        List<CgPipelineDesc.VertexBuffer> layouts;
+        CgPipelineDesc.Topology topology;
+        CgTarget target;
+        int hash;
+
+        PipelineKey set(CgTrackedProgram program, CgShaderModule vertex, CgPipelineDesc.Raster raster,
+                        CgPipelineDesc.DepthStencil depthStencil, CgPipelineDesc.Blend blend, int masks,
+                        List<CgPipelineDesc.VertexBuffer> layouts, CgPipelineDesc.Topology topology, CgTarget target) {
+            this.program = program;
+            this.vertex = vertex;
+            this.raster = raster;
+            this.depthStencil = depthStencil;
+            this.blend = blend;
+            this.masks = masks;
+            this.layouts = layouts;
+            this.topology = topology;
+            this.target = target;
+            int h = System.identityHashCode(program);
+            h = 31 * h + System.identityHashCode(vertex);
+            h = 31 * h + System.identityHashCode(raster);
+            h = 31 * h + System.identityHashCode(depthStencil);
+            h = 31 * h + System.identityHashCode(blend);
+            h = 31 * h + masks;
+            h = 31 * h + System.identityHashCode(layouts);
+            h = 31 * h + topology.ordinal();
+            hash = 31 * h + System.identityHashCode(target);
+            return this;
+        }
+
+        PipelineKey copy() {
+            return new PipelineKey().set(program, vertex, raster, depthStencil, blend, masks, layouts, topology, target);
+        }
+
+        @Override
+        public int hashCode() {
+            return hash;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof PipelineKey k)) return false;
+            return program == k.program && vertex == k.vertex && raster == k.raster && depthStencil == k.depthStencil
+                    && blend == k.blend && masks == k.masks && layouts == k.layouts && topology == k.topology
+                    && target == k.target;
+        }
     }
 }

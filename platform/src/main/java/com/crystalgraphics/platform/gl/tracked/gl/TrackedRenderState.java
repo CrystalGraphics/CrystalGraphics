@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.tracked.gl;
 
+import com.crystalgraphics.platform.device.format.CgCompare;
 import com.crystalgraphics.platform.device.pipeline.CgPipelineDesc;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.tracked.tracker.CgDrawState;
@@ -38,6 +39,9 @@ public final class TrackedRenderState {
     public int clearStencil;
 
     private boolean blendDirty = true, depthStencilDirty = true, rasterDirty = true;
+    private final Records<CgPipelineDesc.Blend> blends = new Records<>();
+    private final Records<CgPipelineDesc.DepthStencil> depthStencils = new Records<>();
+    private final Records<CgPipelineDesc.Raster> rasters = new Records<>();
     private boolean warnedFixedFunction, warnedLineWidth;
 
     public TrackedRenderState(CgTracker tracker, TrackedGlErrors errors, int width, int height) {
@@ -144,24 +148,15 @@ public final class TrackedRenderState {
     public void sync() {
         CgDrawState s = tracker.state;
         if (blendDirty) {
-            s.blend = !blend ? null : new CgPipelineDesc.Blend(GlEnums.blendFactor(srcRgb), GlEnums.blendFactor(dstRgb),
-                    GlEnums.blendOp(equationRgb), GlEnums.blendFactor(srcAlpha), GlEnums.blendFactor(dstAlpha),
-                    GlEnums.blendOp(equationAlpha));
+            s.blend = blend ? blendRecord() : null;
             blendDirty = false;
         }
         if (depthStencilDirty) {
-            CgPipelineDesc.StencilFace face = new CgPipelineDesc.StencilFace(GlEnums.compare(stencilFunc),
-                    GlEnums.stencilOp(stencilFail), GlEnums.stencilOp(stencilDepthFail), GlEnums.stencilOp(stencilPass));
-            s.depthStencil = new CgPipelineDesc.DepthStencil(depthTest, depthMask, GlEnums.compare(depthFunc),
-                    stencilTest, face, face, stencilValueMask & 0xFF, stencilWriteMask & 0xFF);
+            s.depthStencil = depthStencilRecord();
             depthStencilDirty = false;
         }
         if (rasterDirty) {
-            CgPipelineDesc.PolygonMode mode = GlEnums.polygonMode(polygonMode);
-            boolean bias = mode == CgPipelineDesc.PolygonMode.FILL ? polygonOffsetFill
-                    : mode == CgPipelineDesc.PolygonMode.LINE ? polygonOffsetLine : polygonOffsetPoint;
-            s.raster = new CgPipelineDesc.Raster(GlEnums.cull(cullFace, cullMode),
-                    frontFace == CgGL.GL_CW ? CgPipelineDesc.FrontFace.CW : CgPipelineDesc.FrontFace.CCW, mode, bias);
+            s.raster = rasterRecord();
             rasterDirty = false;
         }
         s.colorMasks = colorMasks;
@@ -171,6 +166,65 @@ public final class TrackedRenderState {
         s.depthBiasConstant = offsetUnits;
         s.depthBiasSlope = offsetFactor;
         s.stencilReference = stencilRef;
+    }
+
+    private CgPipelineDesc.Blend blendRecord() {
+        CgPipelineDesc.BlendFactor sc = GlEnums.blendFactor(srcRgb), dc = GlEnums.blendFactor(dstRgb);
+        CgPipelineDesc.BlendFactor sa = GlEnums.blendFactor(srcAlpha), da = GlEnums.blendFactor(dstAlpha);
+        CgPipelineDesc.BlendOp oc = GlEnums.blendOp(equationRgb), oa = GlEnums.blendOp(equationAlpha);
+        long key = sc.ordinal() | dc.ordinal() << 4 | sa.ordinal() << 8 | da.ordinal() << 12 | oc.ordinal() << 16
+                | oa.ordinal() << 20;
+        CgPipelineDesc.Blend b = blends.get(key);
+        return b != null ? b : blends.put(key, new CgPipelineDesc.Blend(sc, dc, oc, sa, da, oa));
+    }
+
+    private CgPipelineDesc.DepthStencil depthStencilRecord() {
+        CgCompare depth = GlEnums.compare(depthFunc), stencil = GlEnums.compare(stencilFunc);
+        CgPipelineDesc.StencilOp fail = GlEnums.stencilOp(stencilFail), depthFail = GlEnums.stencilOp(stencilDepthFail),
+                pass = GlEnums.stencilOp(stencilPass);
+        long key = (depthTest ? 1 : 0) | (depthMask ? 2 : 0) | (stencilTest ? 4 : 0) | depth.ordinal() << 3
+                | stencil.ordinal() << 6 | fail.ordinal() << 9 | depthFail.ordinal() << 12 | pass.ordinal() << 15
+                | (stencilValueMask & 0xFF) << 18 | (long) (stencilWriteMask & 0xFF) << 26;
+        CgPipelineDesc.DepthStencil d = depthStencils.get(key);
+        if (d != null) return d;
+        CgPipelineDesc.StencilFace face = new CgPipelineDesc.StencilFace(stencil, fail, depthFail, pass);
+        return depthStencils.put(key, new CgPipelineDesc.DepthStencil(depthTest, depthMask, depth, stencilTest, face,
+                face, stencilValueMask & 0xFF, stencilWriteMask & 0xFF));
+    }
+
+    private CgPipelineDesc.Raster rasterRecord() {
+        CgPipelineDesc.PolygonMode mode = GlEnums.polygonMode(polygonMode);
+        boolean bias = mode == CgPipelineDesc.PolygonMode.FILL ? polygonOffsetFill
+                : mode == CgPipelineDesc.PolygonMode.LINE ? polygonOffsetLine : polygonOffsetPoint;
+        CgPipelineDesc.CullMode cull = GlEnums.cull(cullFace, cullMode);
+        CgPipelineDesc.FrontFace front = frontFace == CgGL.GL_CW ? CgPipelineDesc.FrontFace.CW : CgPipelineDesc.FrontFace.CCW;
+        long key = cull.ordinal() | front.ordinal() << 2 | mode.ordinal() << 3 | (bias ? 1 << 5 : 0);
+        CgPipelineDesc.Raster r = rasters.get(key);
+        return r != null ? r : rasters.put(key, new CgPipelineDesc.Raster(cull, front, mode, bias));
+    }
+
+    /**
+     * The records built before, by every field packed into a key: a state set back to an earlier value draws with
+     * the record it had, which is what the tracker's pipeline cache compares.
+     */
+    private static final class Records<T> {
+        private static final int MAX = 64;
+        private final long[] keys = new long[MAX];
+        private final Object[] values = new Object[MAX];
+        private int count;
+
+        @SuppressWarnings("unchecked")
+        T get(long key) {
+            for (int i = 0; i < count; i++) if (keys[i] == key) return (T) values[i];
+            return null;
+        }
+
+        T put(long key, T value) {
+            if (count == MAX) count = 0;
+            keys[count] = key;
+            values[count++] = value;
+            return value;
+        }
     }
 
     public void clear(int mask) {
