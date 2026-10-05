@@ -157,7 +157,7 @@ public final class HostStateModern extends CgCheckedProvider {
     }
 
     @Override
-    protected void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
+    public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
         cache.excuse(slot, answer, truth);
         //? if >=1.19.2 {
         if (slot == CgGlSlot.VERTEX_INPUT) {

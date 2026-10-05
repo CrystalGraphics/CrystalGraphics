@@ -81,7 +81,7 @@ public final class HostStateLegacy extends CgCheckedProvider {
     }
 
     @Override
-    protected void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
+    public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
         cache.excuse(slot, answer, truth);
     }
 }

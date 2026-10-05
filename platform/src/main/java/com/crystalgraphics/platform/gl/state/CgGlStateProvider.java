@@ -76,6 +76,19 @@ public interface CgGlStateProvider {
     }
 
     /**
+     * Copies into {@code answer} the fields of {@code slot} this provider guesses rather than reads, from
+     * {@code truth}: fields the host sets before each use, so a scope restoring the guess is harmless. A comparison
+     * against the driver (the cache's own checks, {@code state.roundTrip}) then skips them. Nothing by default.
+     *
+     * <pre>{@code
+     * @Override public void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {
+     *     if (slot == CgGlSlot.SCISSOR) answer.scissorW = truth.scissorW;   // ...and the rest of the box
+     * }
+     * }</pre>
+     */
+    default void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {}
+
+    /**
      * Whether the host binds {@code slot}'s points itself while it has the context. Asked only of the domains
      * captured at first write: one the host never binds keeps the shadow across host sections, so a scope saves
      * it with no read. No by default: vanilla Minecraft binds no storage buffer, image unit or indirect buffer on

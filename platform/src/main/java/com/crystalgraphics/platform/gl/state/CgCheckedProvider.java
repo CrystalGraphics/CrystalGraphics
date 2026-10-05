@@ -100,8 +100,6 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
         return unitsMask();
     }
 
-    /** Copies into {@code answer} the fields of {@code slot} the host sets before each use, so a check skips them. */
-    protected void excuse(CgGlSlot slot, CgGlStateShadow answer, CgGlStateShadow truth) {}
 
     @Override
     public void read(CgGlSlot slot, CgGlStateShadow t) {

@@ -1661,6 +1661,7 @@ public final class CgGlStateManager {
             untouchedUnits(f.before, after, f.unitsAtOpen);
             unhostedUnits(f.before, after);
             untouchedPoints(f.before, after, f.touchedAtOpen);
+            excused(f.mask, f.before, after);
             String diff = f.before.differences(after, f.mask);
             if (diff != null) {
                 hostFailed++;
@@ -1673,6 +1674,7 @@ public final class CgGlStateManager {
                 unhostedUnits(f.beforeDriver, afterDriver);
                 untouchedPoints(f.beforeDriver, afterDriver, f.touchedAtOpen);
                 untouchedPoints(after, afterDriver, f.touchedAtOpen);
+                excused(f.mask, f.beforeDriver, afterDriver);
                 int real = f.mask & ~virtualised;
                 String driverDiff = f.beforeDriver.differences(afterDriver, real);
                 if (driverDiff != null) {
@@ -1742,6 +1744,11 @@ public final class CgGlStateManager {
             for (int u = 0; u < CgGlStateShadow.MAX_TEXTURE_UNITS; u++) {
                 if ((host & (1 << u)) == 0) to.boundTexture2D[u] = from.boundTexture2D[u];
             }
+        }
+
+        /** Fields the provider guesses are restored as guessed, by design ({@code excuse}); {@code to} takes {@code from}'s. */
+        private void excused(int mask, CgGlStateShadow from, CgGlStateShadow to) {
+            for (CgGlSlot s : SLOTS) if ((mask & (1 << s.ordinal())) != 0) provider.excuse(s, to, from);
         }
 
         /** Points our code first bound inside the scope have no "before"; {@code to} takes {@code from}'s. */
