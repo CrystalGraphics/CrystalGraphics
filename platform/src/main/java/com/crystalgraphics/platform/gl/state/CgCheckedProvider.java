@@ -1,5 +1,8 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceChannel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -45,6 +48,13 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
 
     private static final int CAPTURED = bit(CgGlSlot.STORAGE_BUFFERS) | bit(CgGlSlot.IMAGES)
             | bit(CgGlSlot.INDIRECT_BUFFERS) | bit(CgGlSlot.TRANSFORM_FEEDBACK);
+
+    private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
+    /** Per domain, reads that reached the driver: a fallback domain's, or a check's. */
+    private static final int[] DRIVER_READS = new int[CgGlSlot.values().length];
+    static {
+        for (CgGlSlot s : CgGlSlot.values()) DRIVER_READS[s.ordinal()] = CgTrace.name("glState.glGet." + s);
+    }
 
     private final String host;
     private final int[] checked = new int[CgGlSlot.values().length];
@@ -94,6 +104,8 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
             return;
         }
         if ((fallback & bit(slot)) != 0) {
+            // A core profile has no alpha test, and its read answers without the driver.
+            if (slot != CgGlSlot.ALPHA_TEST || !CgCapabilities.detect().isCoreProfile()) driverRead(slot);
             super.read(slot, t);
             return;
         }
@@ -103,7 +115,10 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
 
     @Override
     public int readTextureUnits(CgGlStateShadow t, int units) {
-        if ((fallback & bit(CgGlSlot.TEXTURES)) != 0 || (units & ~unitsMask()) != 0) return super.readTextureUnits(t, units);
+        if ((fallback & bit(CgGlSlot.TEXTURES)) != 0 || (units & ~unitsMask()) != 0) {
+            driverRead(CgGlSlot.TEXTURES);
+            return super.readTextureUnits(t, units);
+        }
         answerTextures(t, units);
         if (checked[CgGlSlot.TEXTURES.ordinal()] < CHECKS) check(CgGlSlot.TEXTURES, t, units);
         return units;
@@ -112,6 +127,7 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
     /** Compares {@code t}'s answer for {@code slot} with the driver's; on a difference the driver's stands, for good. */
     private void check(CgGlSlot slot, CgGlStateShadow t, int units) {
         checked[slot.ordinal()]++;
+        driverRead(slot);
         truth.copyFrom(t);
         if (units >= 0) super.readTextureUnits(truth, units);
         else super.read(slot, truth);
@@ -137,6 +153,10 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
             counts.append(counts.length() == 0 ? "" : ", ").append(s).append(' ').append(checked[s.ordinal()]);
         }
         LOG.info("[cg] state shadow: {}'s cache agrees with the driver ({})", host, counts);
+    }
+
+    private static void driverRead(CgGlSlot slot) {
+        CgTrace.add(GL, DRIVER_READS[slot.ordinal()], 1);
     }
 
     private static String names(int slots) {
