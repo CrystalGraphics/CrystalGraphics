@@ -62,6 +62,26 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
   texture whole unpins it too.
 - For ordering a level view reads the whole texture: the pass runs after every pass writing it before.
 
+**Layers.** A 2D array the graph allocates (`CgTextureDesc.array(w, h, layers, format)`) is drawn into a layer at a time
+(`rec.raster(texture, 0, layer, ...)`) and sampled whole, as a material's `sampler2DArray`. Each layer is a target of its
+own, so its load clears or keeps that layer alone, and on Vulkan passes into different layers never merge. Its storage
+is `CgFrameBuffer.createArray`: a `CgTexture2DArray` and a framebuffer per layer, made with it.
+
+```java
+CgFrameBufferFormat rgba16f = CgFrameBufferFormat.builder("field").color(0, CgTextureType.RGBA16F).build();
+CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, rgba16f));
+CgRasterPass slot = rec.raster(field, 0, k, CgLoad.clear(0, 0, 0, 0), constants, additive, CgOrder.SORTED);
+material.applyProperties(b -> b.sampler("_Fields", 0, field).set1i("_Count", used));   // texture(_Fields, vec3(uv, k))
+rec.readback(field, 0, 0, 0, k, w, h, 1, data -> check(data));                         // layer k
+```
+
+- One level, one colour attachment, no depth. Keep the layer count fixed from frame to frame so the pool hands back
+  the same storage, and read only the layers drawn this frame: the rest hold whatever the storage last held.
+- A pass sampling the array it draws into throws, whichever layer it draws: sampled, the array is read whole.
+- For ordering the array is one resource, as a level view is: each layer's pass runs after the one before it.
+- Above layer 0 a pass reads no copy of its target: `sceneColor` and `sceneDepth(unit)` throw. Kernels take no arrays,
+  a copy or an update of one throws, and a readback takes a layer as its z.
+
 **Volumes** (gpu-compute C11, E3). A 3D graph texture (`CgTextureDesc.volume(w, h, d, format)`): kernels write it as a
 `3d` image, kernels and materials sample it as a `sampler3D`, and boxes of it are updated and read back. Its storage is
 `CgFrameBuffer.createVolume`, a `CgTexture3D` and no framebuffer object, since nothing draws into it.
@@ -321,5 +341,7 @@ against a direct draw of what its count means, in a graph, executed again and th
 forced to every tier (`-Dcrystalgraphics.compute.tier=G40|G33|CPU`), as does `--mode=compute-tiers`
 (`compute/CLAUDE.md` § *Tests*). `--mode=raster-levels` is a chain drawn level by level through raster passes, each
 level reading the one above through a level view, every texel checked; on `gl`, `vulkan` with synchronization
-validation, and both downlevel contexts. `--mode=multi-draw` is the joined draws': the same picture joined and
+validation, and both downlevel contexts. `--mode=raster-layers` is arrays': 2 to 5 layers of one array drawn each
+frame and summed through a `sampler2DArray`, every layer and the sum checked, on one storage throughout; on the same
+four. `--mode=multi-draw` is the joined draws': the same picture joined and
 separate, and the calls each took.

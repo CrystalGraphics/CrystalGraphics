@@ -1,5 +1,5 @@
 // The world renderer's distortion apply: each pixel takes the scene's colour from where the Distortion passes' summed
-// offset points (_Distortion: xy in UV units, z the summed chromatic split, w the nearest haze's closeness, 1 / its eye
+// offset points (layer _Layer of _Distortion: xy in UV units, z the summed chromatic split, w the nearest haze's closeness, 1 / its eye
 // depth; CG_DISTORTION writes it), once, after the transparent pass. UVs mirror at the screen's borders (Quantum Break's
 // answer to clamping's smear). Only what is behind the haze is bent in, as Unreal's apply refuses scene nearer than the
 // distorting surface: a bend whose farthest tap would land nearer than the nearest haze here is shortened until it stops
@@ -12,7 +12,8 @@ Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "SceneCol
 Queue = "Overlay"
 
 Properties {
-    _Distortion ("Offsets", sampler2D) = "black"
+    _Distortion ("Offsets", sampler2DArray) = "black"
+    _Layer      ("Its layer", int) = 0
 }
 
 struct v2f { vec2 uv; };
@@ -58,12 +59,12 @@ Pass {
     // the closeness the largest of the four, so a haze's edge keeps its depth. Takes the pixel, since helpers reach the
     // vertex stage too, which has no gl_FragCoord.
     vec4 cg_offsets(vec2 pixel) {
-        ivec2 size = textureSize(_Distortion, 0);
+        ivec2 size = textureSize(_Distortion, 0).xy;
         vec2 at = pixel * (vec2(size) / CG_RESOLUTION) - 0.5;
         vec2 f = fract(at);
         ivec2 a = clamp(ivec2(floor(at)), ivec2(0), size - 1), b = min(a + 1, size - 1);
-        vec4 aa = texelFetch(_Distortion, a, 0), ba = texelFetch(_Distortion, ivec2(b.x, a.y), 0);
-        vec4 ab = texelFetch(_Distortion, ivec2(a.x, b.y), 0), bb = texelFetch(_Distortion, b, 0);
+        vec4 aa = texelFetch(_Distortion, ivec3(a, _Layer), 0), ba = texelFetch(_Distortion, ivec3(b.x, a.y, _Layer), 0);
+        vec4 ab = texelFetch(_Distortion, ivec3(a.x, b.y, _Layer), 0), bb = texelFetch(_Distortion, ivec3(b, _Layer), 0);
         vec4 d = mix(mix(aa, ba, f.x), mix(ab, bb, f.x), f.y);
         d.w = max(max(aa.w, ba.w), max(ab.w, bb.w));
         return d;

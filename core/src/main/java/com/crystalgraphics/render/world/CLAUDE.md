@@ -43,15 +43,16 @@
   drawn at is to its own (a joint bilateral upsample), the nearest in depth where none agrees. Only for light that
   adds: the upsample adds. GPU zones `world.half` and `world.halfAdd`.
 - **Distortion** (`CgWorldDistortion`, reading the draws through its `Draws` view): every transparent draw of the stage whose chain has a
-  Distortion pass draws it into a transient RGBA16F target of `distortionScale` (0.5) of the stage's size, its
+  Distortion pass draws it into a layer of a transient RGBA16F array of `distortionScale` (0.5) of the stage's size, its
   constants' resolution that size, reading the target's depth through `sceneDepth(unit, from)`, and
   `world_distortion_apply.shader` bends the target by it over its hazes' rect, the offsets read bilinearly, reading
   a `sceneColor` copy cut to that rect. `plan` keeps the per-haze order: walking the transparent draws in key order, a draw
   in `CgRenderQueue.AFTER_DISTORTION` and up (`Draw.afterDistortion()`) that the hazes pending before it overlap gets
   their apply as a draw in the transparent pass, sorted just before it and cut to their rect, drawn from one of four
-  slot targets whose applies never overlap (recorded ahead of the pass, so it keeps one depth copy); it then draws in
+  slots whose applies never overlap (recorded ahead of the pass, so it keeps one depth copy); it then draws in
   place. Where no slot is free it draws in the after-distortion pass, after the final apply, which takes every haze
-  left. Published as `CgFrameKeys.DISTORTION`, a `CgDistortionField` of every target; the emission is published
+  left. Each slot used, the final last, draws into the next layer of one five-layer array, so the layers in use are
+  the first. Published as `CgFrameKeys.DISTORTION`, a `CgDistortionField`: the array and its count; the emission is published
   unbent, and bloom bends it by the field (`CgPostContext.distorted`). Its gate is `--mode=distortion`, every
   pixel against where it should have sampled at `distortionScale(1)`, on gl, gl33 and vulkan with synchronization
   validation.

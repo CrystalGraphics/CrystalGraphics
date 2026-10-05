@@ -1,6 +1,6 @@
 // A side input of the scene (bloom's emission, an effect's mask) bent by the firing's distortion, as the scene was:
-// each texel takes _Source from where _Offsets at it points. _Offsets is the field's one target, or its targets summed
-// by distortion_sum.shader. CgPostDistortion draws it.
+// each texel takes _Source from where the offsets at it point, summed over the _FieldCount layers of _Fields in use.
+// CgPostDistortion draws it.
 #type none
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
@@ -8,7 +8,8 @@ Queue = "Overlay"
 
 Properties {
     _Source  ("What to bend", sampler2D) = "black"
-    _Offsets ("Offsets", sampler2D) = "black"
+    _Fields  ("Offsets, a layer a slot", sampler2DArray) = "black"
+    _FieldCount ("Layers in use", int) = 1
 }
 
 struct v2f { vec2 uv; };
@@ -33,6 +34,8 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        fragColor = texture(_Source, cg_mirror(i.uv + texture(_Offsets, i.uv).xy));
+        vec2 offset = vec2(0.0);
+        for (int k = 0; k < _FieldCount; k++) offset += texture(_Fields, vec3(i.uv, float(k))).xy;
+        fragColor = texture(_Source, cg_mirror(i.uv + offset));
     }
 }
