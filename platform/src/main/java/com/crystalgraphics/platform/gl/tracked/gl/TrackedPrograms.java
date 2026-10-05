@@ -662,7 +662,7 @@ public final class TrackedPrograms {
             return List.copyOf(layouts);
         });
         if (constantValues == null) {
-            constantValues = tracker.allocate(32, true, "disabled vertex inputs");
+            constantValues = tracker.allocate(32, true, false, "disabled vertex inputs");
             constantValues.memory().putFloat(0).putFloat(0).putFloat(0).putFloat(1).putInt(0).putInt(0).putInt(0).putInt(1);
         }
         state.vertexBuffer(CONSTANT_BINDING, constantValues, 0);

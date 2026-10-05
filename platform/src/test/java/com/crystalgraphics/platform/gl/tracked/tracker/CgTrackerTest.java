@@ -93,7 +93,7 @@ public class CgTrackerTest {
     @Test
     public void dataWrittenIntoADrawnFromBufferGoesToFreshMemory() {
         CgTrackedBuffer vbo = new CgTrackedBuffer(tracker, "vbo");
-        vbo.data(16, bytes(1, 2, 3, 4), true);
+        vbo.data(16, bytes(1, 2, 3, 4), true, false);
         CgAllocation before = vbo.allocation();
         vbo.subData(0, bytes(9));
         assertSame("nothing has read it: written in place", before, vbo.allocation());
@@ -118,7 +118,7 @@ public class CgTrackerTest {
         CgGpuTexture used = device.createTexture(new CgGpuTexture.Desc("used", CgGpuTexture.Kind.D2,
                 CgFormat.RGBA8_UNORM, 4, 4, 1, 1, 1, CgGpuTexture.Usage.SAMPLED_UPLOADED));
         CgTrackedBuffer ubo = new CgTrackedBuffer(tracker, "ubo");
-        ubo.data(64, null, true);
+        ubo.data(64, null, true, false);
         tracker.bindTarget(CgTarget.surface(device));
         tracker.state.program = program(new CgBindingLayout.Slot(0, CgBindingLayout.Type.UNIFORM_BUFFER),
                 new CgBindingLayout.Slot(1, CgBindingLayout.Type.SAMPLED_TEXTURE));
@@ -130,7 +130,7 @@ public class CgTrackerTest {
         tracker.release(used);
         ubo.release();
         CgTrackedBuffer next = new CgTrackedBuffer(tracker, "next");
-        next.data(64, null, true);
+        next.data(64, null, true, false);
         assertFalse("the range is still read by this frame", freed.buffer() == next.allocation().buffer()
                 && freed.offset() == next.allocation().offset());
 
@@ -139,7 +139,7 @@ public class CgTrackerTest {
         device.retireAll();
         assertTrue(device.isDestroyed(used));
         CgTrackedBuffer again = new CgTrackedBuffer(tracker, "again");
-        again.data(64, null, true);
+        again.data(64, null, true, false);
         assertEquals("retired: the range is reused", freed.offset(), again.allocation().offset());
     }
 

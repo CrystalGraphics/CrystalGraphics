@@ -667,6 +667,8 @@ com/crystalgraphics/platform/device/resource/CgGpuBuffer$Desc
   access public,final,record
   extends java/lang/Record
   method public <init> (Ljava/lang/String;JLjava/util/Set;Z)V
+  method public <init> (Ljava/lang/String;JLjava/util/Set;ZZ)V
+  method public hostReads ()Z
   method public hostVisible ()Z
   method public label ()Ljava/lang/String;
   method public size ()J
@@ -2606,7 +2608,7 @@ com/crystalgraphics/platform/gl/tracked/memory/CgFrameArena
 com/crystalgraphics/platform/gl/tracked/memory/CgSlabAllocator
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;ZJJ)V
+  method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;ZZJJ)V
   method public allocate (JLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public free (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;)V
 com/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer
@@ -2615,12 +2617,12 @@ com/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer
   method public <init> (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTracker;Ljava/lang/String;)V
   method public allocation ()Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public copyFrom (Lcom/crystalgraphics/platform/gl/tracked/memory/CgTrackedBuffer;JJJ)V
-  method public data (JLjava/nio/ByteBuffer;Z)V
+  method public data (JLjava/nio/ByteBuffer;ZZ)V
   method public fill (JJI)V
   method public map (JJZZZ)Ljava/nio/ByteBuffer;
   method public release ()V
   method public size ()J
-  method public storage (JLjava/nio/ByteBuffer;ZZ)V
+  method public storage (JLjava/nio/ByteBuffer;ZZZ)V
   method public subData (JLjava/nio/ByteBuffer;)V
   method public unmap ()V
 com/crystalgraphics/platform/gl/tracked/tracker/CgDrawState
@@ -2683,7 +2685,7 @@ com/crystalgraphics/platform/gl/tracked/tracker/CgTracker
   field public,final state Lcom/crystalgraphics/platform/gl/tracked/tracker/CgDrawState;
   field public,final stats Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTrackerStats;
   method public <init> (Lcom/crystalgraphics/platform/device/CgDevice;Z)V
-  method public allocate (JZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
+  method public allocate (JZZLjava/lang/String;)Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;
   method public beginAsync ()V
   method public bindTarget (Lcom/crystalgraphics/platform/gl/tracked/tracker/CgTarget;)V
   method public bufferBarrier (Lcom/crystalgraphics/platform/gl/tracked/memory/CgAllocation;II)V

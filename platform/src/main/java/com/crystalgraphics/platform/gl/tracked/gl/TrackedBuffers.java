@@ -122,15 +122,16 @@ public final class TrackedBuffers {
     }
 
     /**
-     * Host-visible for a buffer the CPU writes often or reads back; device-local for one uploaded once, or written
-     * and read by the GPU alone (the {@code COPY} hints: a kernel's output).
+     * Host-visible for a buffer the CPU writes often, and cached for one it reads back (the {@code READ} hints);
+     * device-local for one uploaded once, or written and read by the GPU alone (the {@code COPY} hints: a kernel's
+     * output).
      */
     public void data(int target, long size, ByteBuffer data, int usage) {
         GlBuffer b = bound(target, "glBufferData");
         if (b == null) return;
-        boolean hostVisible = usage == CgGL.GL_STREAM_DRAW || usage == CgGL.GL_DYNAMIC_DRAW
-                || usage == CgGL.GL_STREAM_READ || usage == CgGL.GL_DYNAMIC_READ;
-        b.storage.data(size, data, hostVisible);
+        boolean reads = usage == CgGL.GL_STREAM_READ || usage == CgGL.GL_DYNAMIC_READ || usage == CgGL.GL_STATIC_READ;
+        boolean hostVisible = reads || usage == CgGL.GL_STREAM_DRAW || usage == CgGL.GL_DYNAMIC_DRAW;
+        b.storage.data(size, data, hostVisible, reads);
     }
 
     public void subData(int target, long offset, ByteBuffer data) {
@@ -157,7 +158,8 @@ public final class TrackedBuffers {
         GlBuffer b = bound(target, "glBufferStorage");
         if (b == null) return;
         boolean hostVisible = (flags & (CgGL.GL_MAP_READ_BIT | CgGL.GL_MAP_WRITE_BIT | GL_CLIENT_STORAGE_BIT)) != 0;
-        b.storage.storage(size, null, hostVisible, (flags & GL_MAP_PERSISTENT_BIT) != 0);
+        b.storage.storage(size, null, hostVisible, (flags & CgGL.GL_MAP_READ_BIT) != 0,
+                (flags & GL_MAP_PERSISTENT_BIT) != 0);
     }
 
     public ByteBuffer map(int target, long offset, long length, int access) {

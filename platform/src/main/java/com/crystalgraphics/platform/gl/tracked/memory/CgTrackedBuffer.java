@@ -13,7 +13,7 @@ import java.nio.ByteOrder;
  *
  * <pre>{@code
  * CgTrackedBuffer vbo = new CgTrackedBuffer(tracker, "quad");
- * vbo.data(96, vertices, true);          // glBufferData: new storage
+ * vbo.data(96, vertices, true, false);   // glBufferData: new storage, host-visible
  * ... a draw reads it ...
  * vbo.subData(0, moreVertices);          // that draw keeps the old bytes; this lands in a renamed copy
  * }</pre>
@@ -37,10 +37,14 @@ public final class CgTrackedBuffer {
 
     public long size() { return current == null ? 0 : current.size; }
 
-    /** {@code glBufferData}: new storage, the old freed once no frame reads it. */
-    public void data(long size, ByteBuffer initial, boolean hostVisible) {
+    /**
+     * {@code glBufferData}: new storage, the old freed once no frame reads it.
+     *
+     * @param hostReads the CPU reads it back: cached memory, implying {@code hostVisible}
+     */
+    public void data(long size, ByteBuffer initial, boolean hostVisible, boolean hostReads) {
         if (persistent) throw new IllegalStateException(label + " has immutable storage");
-        replace(tracker.allocate(size, hostVisible, label));
+        replace(tracker.allocate(size, hostVisible, hostReads, label));
         if (initial != null) subData(0, initial);
     }
 
@@ -48,9 +52,10 @@ public final class CgTrackedBuffer {
      * {@code glBufferStorage}: immutable storage, host-visible where the CPU maps it. A persistent one is mapped for
      * good and never renamed.
      */
-    public void storage(long size, ByteBuffer initial, boolean hostVisible, boolean persistentMapping) {
+    public void storage(long size, ByteBuffer initial, boolean hostVisible, boolean hostReads,
+                        boolean persistentMapping) {
         if (persistent) throw new IllegalStateException(label + " has immutable storage");
-        replace(tracker.allocate(size, hostVisible, label));
+        replace(tracker.allocate(size, hostVisible, hostReads, label));
         if (initial != null) subData(0, initial);
         persistent = persistentMapping;
     }
@@ -160,7 +165,7 @@ public final class CgTrackedBuffer {
 
     private CgAllocation rename(boolean preserve) {
         CgAllocation old = current;
-        CgAllocation fresh = tracker.allocate(old.size, true, label);
+        CgAllocation fresh = old.owner.allocate(old.size, label);
         if (preserve) fresh.memory().put(old.memory());
         tracker.stats.renames++;
         replace(fresh);
