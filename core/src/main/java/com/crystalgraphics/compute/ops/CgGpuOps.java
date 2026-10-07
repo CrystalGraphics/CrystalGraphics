@@ -467,28 +467,47 @@ public final class CgGpuOps {
      */
     public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
                             CgGraphBuffer out, CgGraphBuffer counts, int word) {
+        cull(pass, cull, instances, first, count, out, 0, counts, word);
+    }
+
+    /**
+     * {@link #cull(CgComputePass, CgCull, CgGraphBuffer, int, CgGpuCount, CgGraphBuffer, CgGraphBuffer, int)} into
+     * {@code out} from record {@code outFirst}: several culls sharing one output, so their draws read one buffer and
+     * join into a multi-draw. Level l's records start at {@code outFirst + cullFirst(l, capacity)}.
+     *
+     * <pre>{@code
+     * CgGpuOps.cull(pass, rocks, rockRecords, 0, CgGpuCount.of(n), visible, 0, counts, 0);
+     * CgGpuOps.cull(pass, trees, treeRecords, 0, CgGpuCount.of(m), visible, CgGpuOps.cullRecords(rocks, n), counts, 8);
+     * }</pre>
+     *
+     * {@code outFirst} is a multiple of 4, as every {@link #cullRecords} is: a binding offset is a whole 256 bytes.
+     */
+    public static void cull(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
+                            CgGraphBuffer out, int outFirst, CgGraphBuffer counts, int word) {
         distinct(instances, out);
+        if (outFirst < 0 || (outFirst & 3) != 0) throw new IllegalArgumentException("output from record " + outFirst);
         int capacity = count.capacity(), levels = cull.levels();
         if (first < 0 || (long) (first + capacity) * RECORD_BYTES > instances.size()) {
             throw new IllegalArgumentException("records " + first + " to " + (first + capacity) + " of " + instances
                     + ", which holds " + instances.size() / RECORD_BYTES);
         }
-        long region = (long) cullFirst(1, capacity) * RECORD_BYTES;
-        if (out.size() < levels * region) {
+        long region = (long) cullFirst(1, capacity) * RECORD_BYTES, base = (long) outFirst * RECORD_BYTES;
+        if (out.size() < base + levels * region) {
             throw new IllegalArgumentException(out + " holds " + out.size() + " bytes; a cull of " + capacity
-                    + " instances at " + levels + " levels writes " + levels * region + ": size it by cullRecords");
+                    + " instances at " + levels + " levels from record " + outFirst + " writes to byte "
+                    + (base + levels * region) + ": size it by cullRecords");
         }
         counted(pass.dispatch(Files.fill().kernel("FillAt"), levels), CgGpuCount.of(levels), counts)
                 .bind("DST", counts).set("_At", word).set("_Value", 0);
         if (capacity == 0) return;
         if (cull.ordered) {
-            cullOrdered(pass, cull, instances, first, count, out, counts, word, region);
+            cullOrdered(pass, cull, instances, first, count, out, counts, word, base, region);
             return;
         }
         CgKernel kernel = Files.cull().kernel("Cull");
         for (int l = 0; l < levels; l++) {
             CgDispatch dispatch = counted(pass.dispatch(kernel, capacity), count, instances)
-                    .bind("INSTANCES", instances).bind("OUT", out, l * region, region)
+                    .bind("INSTANCES", instances).bind("OUT", out, base + l * region, region)
                     .counter("OUT", counts, (word + l) * 4L).set("_Level", l).set("_First", first);
             cull.apply(dispatch);
         }
@@ -496,7 +515,7 @@ public final class CgGpuOps {
 
     /** Each level's instances flagged, listed in order by {@link #compact}, and their records written at their place. */
     private static void cullOrdered(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
-                                    CgGraphBuffer out, CgGraphBuffer counts, int word, long region) {
+                                    CgGraphBuffer out, CgGraphBuffer counts, int word, long base, long region) {
         int capacity = count.capacity();
         CgGraphBuffer flags = words(pass, "ops.cull.flags", capacity), kept = words(pass, "ops.cull.kept", capacity);
         CgKernel flag = Files.cull().kernel("CullFlags"), place = Files.cull().kernel("CullPlace");
@@ -506,7 +525,7 @@ public final class CgGpuOps {
             cull.apply(flagging);
             compact(pass, flags, null, count, kept, counts, word + l);
             CgDispatch placing = counted(pass.dispatch(place, capacity), CgGpuCount.at(counts, word + l, capacity), kept)
-                    .bind("INSTANCES", instances).bind("KEPT", kept).bind("PLACED", out, l * region, region)
+                    .bind("INSTANCES", instances).bind("KEPT", kept).bind("PLACED", out, base + l * region, region)
                     .set("_First", first);
             cull.apply(placing);
         }
