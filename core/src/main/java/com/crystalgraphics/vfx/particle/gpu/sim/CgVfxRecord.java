@@ -5,9 +5,9 @@ import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import java.nio.ByteBuffer;
 
 /**
- * A particle as a pool stores it: 80 bytes, five 16-byte lanes, the layout the Step kernel reads and appends and a look
- * reads through the draw list (vfx-gpu §13.3). The Java side packs and reads one, so a test can put the CPU path's
- * particles into a pool and compare what the GPU made of them.
+ * A particle as a pool stores it: 80 bytes, five 16-byte lanes, the layout the Step kernel reads and appends and Range
+ * reads (vfx-gpu §13.3). The Java side packs and reads one, so a test can put the CPU path's particles into a pool and
+ * compare what the GPU made of them.
  *
  * <pre>{@code
  * ByteBuffer records = ByteBuffer.allocateDirect(n * CgVfxRecord.BYTES).order(ByteOrder.nativeOrder());
@@ -26,7 +26,10 @@ public final class CgVfxRecord {
 
     public static final int BYTES = 80, WORDS = 20;
 
-    /** The record's GLSL, as the compiler emits it. */
+    /**
+     * The record's GLSL. A kernel declares it itself, before its {@code Buffers { }}: the compiler lays out only a
+     * struct its own file declares, so {@code range.compute} carries this line too.
+     */
     public static final String GLSL =
             "struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; };";
 

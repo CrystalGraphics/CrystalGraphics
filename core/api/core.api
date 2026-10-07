@@ -7403,6 +7403,16 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   method public glsl ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
+  access public,final
+  extends java/lang/Object
+  field public,static,final ORDER I
+  method public base (I)I
+  method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
+  method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
   access public,final
   extends java/lang/Object

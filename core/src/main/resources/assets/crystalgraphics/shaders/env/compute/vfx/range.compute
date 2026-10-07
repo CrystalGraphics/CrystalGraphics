@@ -1,0 +1,100 @@
+// Range (vfx-gpu §13.4), a particle pool's draws for one view: CgVfxRange.
+//
+// Key gives each live particle a key, its slot if it may be on screen and the slot count if not, so the culled sort
+// past the end; and its index, which the sort carries. CgGpuOps then sorts, counts each slot's visible particles and
+// scans the counts into each slot's start. Place writes the particles a slot's draws read, in CgParticleBuffer's
+// layout, from the slot's list base: what CgVfxSystem's writeRecords writes on the CPU path.
+#pragma kernel Key map
+#pragma kernel Place gather
+
+Properties {
+    _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
+    _Plane1 ("Plane 1",                                             vec4)  = (0, 0, 0, 1)
+    _Plane2 ("Plane 2",                                             vec4)  = (0, 0, 0, 1)
+    _Plane3 ("Plane 3",                                             vec4)  = (0, 0, 0, 1)
+    _Plane4 ("Plane 4",                                             vec4)  = (0, 0, 0, 1)
+    _Plane5 ("Plane 5",                                             vec4)  = (0, 0, 0, 1)
+    _Slots  ("The pool's slots: a culled particle's key",           int)   = 0
+    _Alpha  ("How far the frame is from the last step to the next", float) = 1
+    _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
+    _Texels ("Samples a curve row holds",                           int)   = 256
+}
+
+// A particle as a pool stores it: CgVfxRecord.GLSL, which a test holds this line to.
+struct FxRecord { vec4 positionAge; vec4 previousLife; vec4 velocitySize; vec4 seedSpin; uvec4 idSlot; };
+
+// A particle as a look reads it: CgParticleBuffer's record.
+struct FxDrawn {
+    vec4 place;
+    vec4 motion;
+    vec4 state;
+    vec4 light;
+};
+
+Buffers {
+    RECORDS ("Particles",                                         FxRecord, readonly)
+    LIVE    ("How many are alive",                                uint,     readonly)
+    SLOTS   ("Each slot's origin from the camera, and its reach", vec4,     readonly)
+    KEYS    ("Keys",                                              uint,     writeonly)
+    INDICES ("Indices, sorted by slot",                           uint,     readwrite)
+    VISIBLE ("Each slot's visible particles",                     uint,     readonly)
+    STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
+    BASES   ("Where each slot's records start in DRAWN",          uint,     readonly)
+    CURVES  ("Each parameter row's size and opacity curves",      vec2,     readonly)
+    DRAWN   ("The particles a look draws",                        FxDrawn,  writeonly)
+}
+
+bool range_outside(vec4 plane, vec3 c, float r) {
+    return dot(plane.xyz, c) + plane.w < -r;
+}
+
+void Key() {
+    uint key = uint(_Slots);
+    if (CG_ELEMENT < int(LIVE(0))) {
+        FxRecord r = RECORDS(CG_ELEMENT);
+        vec4 slot = SLOTS(int(r.idSlot.y));
+        vec3 c = slot.xyz + r.positionAge.xyz;
+        // Its size, and its last step's motion: a frame draws it anywhere between its last two steps.
+        float reach = r.velocitySize.w * slot.w + distance(r.positionAge.xyz, r.previousLife.xyz);
+        bool outside = range_outside(_Plane0, c, reach) || range_outside(_Plane1, c, reach)
+                || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
+                || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
+        if (!outside) key = r.idSlot.y;
+    }
+    KEYS_WRITE(key);
+    INDICES_WRITE(uint(CG_ELEMENT));
+}
+
+// Row row's size and opacity multipliers at progress t, between its two nearest samples.
+vec2 range_curve(uint row, float t) {
+    float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
+    int i0 = int(floor(x));
+    int i1 = min(i0 + 1, _Texels - 1);
+    int at = int(row) * _Texels;
+    return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
+}
+
+void Place() {
+    // The slot whose records hold this one: the last base at or below it. A closed slot's base is the next one's.
+    int lo = 0, hi = _Slots - 1;
+    while (lo < hi) {
+        int mid = (lo + hi + 1) >> 1;
+        if (int(BASES(mid)) <= CG_ELEMENT) lo = mid; else hi = mid - 1;
+    }
+    int rank = CG_ELEMENT - int(BASES(lo));
+    FxDrawn d;
+    d.place = vec4(0.0);
+    d.motion = vec4(0.0);
+    d.state = vec4(0.0);
+    d.light = vec4(15.0, 15.0, 0.0, 0.0);
+    if (rank < int(VISIBLE(lo))) {
+        FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
+        float t = min(r.positionAge.w / r.previousLife.w, 1.0);
+        vec2 curve = range_curve(r.idSlot.w, t);
+        // CgVfxParticleSet.x(i, alpha)'s order of operations, so the two round alike.
+        d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
+        d.motion = vec4(r.velocitySize.xyz, t);
+        d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
+    }
+    DRAWN_WRITE(d);
+}
