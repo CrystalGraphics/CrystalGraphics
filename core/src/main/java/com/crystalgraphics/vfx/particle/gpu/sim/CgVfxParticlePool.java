@@ -167,6 +167,20 @@ public final class CgVfxParticlePool {
         return pool;
     }
 
+    /**
+     * Starts the programs a pool of {@code emitter}'s shape steps with, ahead of its first step: below compute its Step
+     * kernel is several lowered programs, otherwise built on the frame the first burst plays. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.prepare(EMBERS);   // as a look is made, or on a loading screen
+     * CgVfxRange.prepare();                // and what draws it
+     * }</pre>
+     */
+    public static void prepare(CgVfxGpuEmitter emitter) {
+        CgVfxEmitterCompiler.compile(CgVfxShape.of(emitter)).kernel("Step").prepare();
+        CgGpuOps.prepareFill();
+    }
+
     /** Drops {@code owner}'s pools; their GPU storage is released at the next recording. Render thread. */
     public static void release(Object owner) {
         Map<String, CgVfxParticlePool> owned = POOLS.remove(owner);

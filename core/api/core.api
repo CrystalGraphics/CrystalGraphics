@@ -2019,6 +2019,10 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static fill (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)V
   method public,static histogram (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;II)V
   method public,static iota (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static prepareFill ()V
+  method public,static prepareHistogram ()V
+  method public,static prepareScan (Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;)V
+  method public,static prepareSort (Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;)V
   method public,static readRows (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/compute/ops/CgGpuOps$Rows;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public,static reduce (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static scan (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
@@ -7423,6 +7427,7 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public sorted (I)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
+  method public,static prepare ()V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
   access public,final
   extends java/lang/Object
@@ -7461,6 +7466,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public spawn (III)V
   method public storage ()I
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+  method public,static prepare (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)V
   method public,static release (Ljava/lang/Object;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   access public,final
