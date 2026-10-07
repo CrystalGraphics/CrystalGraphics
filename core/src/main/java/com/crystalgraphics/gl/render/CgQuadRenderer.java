@@ -602,6 +602,9 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
      *   <li>{@code origin}, {@code right} and {@code up} are final: no pose is applied.</li>
      *   <li>{@code color} is ARGB unpacked to 0..1 by division, as {@link Quad#color} writes it; {@code node} is
      *       {@code CgPalette.pack(spatial, effect)}, its spatial half equal to {@code spatial}.</li>
+     *   <li>They draw under the material as the last {@link #useMaterial} captured it, unlike {@link #quad()}'s,
+     *       which take it as it is at the flush: after changing the material's textures or keywords, call
+     *       {@code useMaterial} again first.</li>
      * </ul>
      */
     public CgQuadRenderer records(float[] src, int from, int count, int spatial) {
