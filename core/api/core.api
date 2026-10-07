@@ -7417,6 +7417,7 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public base (I)I
   method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
+  method public objects ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
   method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
