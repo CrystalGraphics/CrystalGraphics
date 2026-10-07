@@ -1128,7 +1128,7 @@ public class CgFontRegistry {
         while (committed < maxCommits && bytesCommitted < maxBytes) {
             // Time check before polling, so an already-dequeued result is never dropped and a
             // fully drained queue costs one nanoTime() call, not a wasted poll.
-            if (System.nanoTime() - start >= maxNanos) {
+            if (!CgGlyphGenerationExecutor.DETERMINISTIC && System.nanoTime() - start >= maxNanos) {
                 CgTrace.add(CgChannels.TEXT, "asyncCommit.timeBudgetHit", 1);
                 break;
             }
