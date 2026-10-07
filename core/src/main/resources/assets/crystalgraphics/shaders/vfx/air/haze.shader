@@ -6,7 +6,7 @@
 // Distortion pass (ORDER_DISTORTION), so the sharp layers stay unbent. A ray through the hot thing itself is left unbent, so the haze shimmers round it and never
 // warps it: CG_OBJECT_CUSTOM0.y, the layer's parameter, is the share of the unit sphere it fills,
 // 0 for nothing inside; .x is the layer's radius.
-// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity. Reads depth.
+// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
@@ -49,7 +49,7 @@ Pass {
 
 Pass {
     Tags { "LightMode" = "Distortion" }
-    // Its own depth fade, from the scene's distance.
+    // No depth test: it draws its far wall, and the apply keeps the foreground out of the bend.
     RenderState {
         DepthTest ALWAYS
         DepthWrite OFF
@@ -82,8 +82,8 @@ Pass {
         // The hot thing itself: a ray through it stays unbent.
         float core = CG_OBJECT_CUSTOM0.y / max(CG_OBJECT_CUSTOM0.x, 1.0e-4);
         if (core > 0.0) body *= smoothstep(core * 0.8, core * 1.3, passes);
-        float soft = smoothstep(0.0, 1.5, FX_SCENE_DISTANCE(ray) - enter);
-        float strength = body * soft * CG_OBJECT_CUSTOM1.z;
+        // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
+        float strength = body * CG_OBJECT_CUSTOM1.z;
         if (strength < 0.002) discard;
         vec2 wobble = fx_heat(spot * _Scale, age, _Rise * _Scale, seed);
         // Perspective: a far haze moves the scene behind it as little as it covers.

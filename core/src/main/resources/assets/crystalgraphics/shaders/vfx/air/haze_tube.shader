@@ -5,7 +5,6 @@
 // times the ring's, capped at the layer's parameter in blocks (0 for no cap). Drawn on the tube's far wall, where the
 // ray meets it found analytically, so it bends from inside it too; a Distortion pass (ORDER_DISTORTION), so the sharp
 // layers stay unbent. A ray through the beam itself, within _Core times its ring's radius of the path, is left unbent.
-// Reads depth.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
@@ -71,7 +70,7 @@ Pass {
 
 Pass {
     Tags { "LightMode" = "Distortion" }
-    // Its own depth fade, from the scene's distance.
+    // No depth test: it draws its far wall, and the apply keeps the foreground out of the bend.
     RenderState {
         DepthTest ALWAYS
         DepthWrite OFF
@@ -103,8 +102,8 @@ Pass {
         float peak = min(_Peak * ring, edge * 0.7);
         float sheath = smoothstep(ring * _Core * 0.9, peak, passes)
                 * (1.0 - smoothstep(peak, edge, passes + tear * 0.25 * (edge - peak)));
-        float soft = smoothstep(0.0, 1.5, FX_SCENE_DISTANCE(ray) - enter);
-        float strength = sheath * soft;
+        // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
+        float strength = sheath;
         if (strength < 0.002) discard;
         // Ripples racing toward the head push the scene along the beam on screen; the rest is rising shimmer.
         float ripple = sin((arc * _Rings - age * _Pulse + tear * 0.5) * 6.28318531);
