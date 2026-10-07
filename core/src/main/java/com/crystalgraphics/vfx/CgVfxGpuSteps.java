@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -30,6 +31,9 @@ import java.util.List;
  * </ul>
  */
 final class CgVfxGpuSteps {
+
+    /** Per step: pools stepped, each one Step dispatch however many slots it holds, and the slots stepped in them. */
+    private static final int POOLS = CgTrace.name("vfx.gpu.pools-stepped"), SLOTS = CgTrace.name("vfx.gpu.slots-stepped");
 
     /** One scheduled instance and its slot. */
     static final class Tenant {
@@ -131,6 +135,8 @@ final class CgVfxGpuSteps {
         }
         view.of = null;
         for (int i = 0; i < pools.size(); i++) pools.get(i).endStep();
+        CgVfxTrace.count(POOLS, pools.size());
+        CgVfxTrace.count(SLOTS, tenants.size());
         for (int i = tenants.size() - 1; i >= 0; i--) {
             Tenant tenant = tenants.get(i);
             // A parent finishes once its children have; a child alone may look finished before its parent spawns any.
