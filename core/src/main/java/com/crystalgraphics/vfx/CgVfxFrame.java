@@ -234,7 +234,8 @@ public final class CgVfxFrame {
 
     /**
      * Whether {@code material}'s Forward pass blends so that order matters: over, not added. An additive blend commutes,
-     * and so does none; a material still compiling answers no.
+     * and so does none; a material still compiling answers no. A look drawn through OIT must answer no too: it needs
+     * neither the sort nor ordered instances (plan vfx-gpu decision 10).
      */
     private static boolean blendsInOrder(CgMaterial material) {
         CgBlendState blend = material.getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
