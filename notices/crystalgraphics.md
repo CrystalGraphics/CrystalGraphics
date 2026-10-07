@@ -26,6 +26,8 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Chromium (Blink)** font fallback | `com/crystalgraphics/text/font/ScriptFallbacks` | BSD-3-Clause — © 2006–2012 Google Inc. | Ported source, modified. Licence below |
 | **Skia** mask blur | `com/crystalgraphics/text/shadow/{CgMaskBlurFilter,CgGaussFilter}` | BSD-3-Clause — © 2017 Google LLC | Ported source, modified. Licence below |
 | **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/lib/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
+| **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/{CgVfxModule,CgVfxContacts}`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
+| **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 
 ## FreeType
 
@@ -182,6 +184,62 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+```
+
+## Godot Engine
+
+The VFX particle modules port Godot's attractors and colliders from
+`servers/rendering/renderer_rd/shaders/particles.glsl`, and its orbit velocity, damping, velocity limit and rigid
+collision response from `scene/resources/particle_process_material.cpp`.
+
+```
+Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
+Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## bevy_hanabi
+
+The VFX particle modules port bevy_hanabi's tangent and radial accelerations (`modifier/accel.rs`), conform to
+sphere (`modifier/force.rs`) and kill sphere and box (`modifier/kill.rs`), taken under its MIT option.
+
+```
+Copyright (c) 2021 Jerome Humbert
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## Chromium and Skia (BSD-3-Clause)
