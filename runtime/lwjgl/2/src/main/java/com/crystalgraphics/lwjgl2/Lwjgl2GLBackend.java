@@ -86,6 +86,11 @@ public class Lwjgl2GLBackend extends CgGLBackend {
     }
 
     @Override
+    public void framebufferTexture(int target, int attachment, int texture, int level) {
+        GL32.glFramebufferTexture(target, attachment, texture, level);
+    }
+
+    @Override
     public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) {
         return GL30.glGetFramebufferAttachmentParameteri(target, attachment, pname);
     }

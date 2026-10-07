@@ -53,7 +53,7 @@ DOMAINS = [
         'glGenerateMipmap', 'glPixelStorei', 'copyImageSubData', 'importHostTexture']),
     ('Framebuffers and renderbuffers', 'attachment sets; a bind picks the next pass\'s target', [
         'genFramebuffers', 'deleteFramebuffers', 'bindFramebuffer', 'framebufferTexture2D',
-        'framebufferTextureLayer', 'checkFramebufferStatus', 'drawBuffers', 'glDrawBuffer', 'glReadBuffer',
+        'framebufferTextureLayer', 'framebufferTexture', 'checkFramebufferStatus', 'drawBuffers', 'glDrawBuffer', 'glReadBuffer',
         'getFramebufferAttachmentParameteriv', 'blitFramebuffer', 'glGenRenderbuffers', 'glDeleteRenderbuffers',
         'glBindRenderbuffer', 'glRenderbufferStorage', 'glRenderbufferStorageMultisample',
         'glFramebufferRenderbuffer']),
