@@ -72,7 +72,8 @@ public final class CgVfxSystem {
 
     /**
      * Where every system's particles are simulated and prepared for drawing: today's Java path, or the GPU's.
-     * {@code -Dcrystalgraphics.vfx.sim=cpu|gpu} picks it at launch; {@link #simulation(Simulation)} switches it live.
+     * The GPU's by default; {@code -Dcrystalgraphics.vfx.sim=cpu} picks the Java path at launch, and
+     * {@link #simulation(Simulation)} switches it live.
      *
      * <pre>{@code
      * CgVfxSystem.simulation(CgVfxSystem.Simulation.GPU);   // every system, from the next update
@@ -87,7 +88,7 @@ public final class CgVfxSystem {
     }
 
     private static Simulation simulation =
-            "gpu".equalsIgnoreCase(System.getProperty("crystalgraphics.vfx.sim")) ? Simulation.GPU : Simulation.CPU;
+            "cpu".equalsIgnoreCase(System.getProperty("crystalgraphics.vfx.sim")) ? Simulation.CPU : Simulation.GPU;
 
     /** The simulation chosen for every system: what a HUD shows, built or not. */
     public static Simulation simulation() {
