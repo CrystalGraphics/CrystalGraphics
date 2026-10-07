@@ -1984,6 +1984,17 @@ com/crystalgraphics/compute/ops/CgCull
   method public pyramid (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/compute/ops/CgCull;
   method public scale (F)Lcom/crystalgraphics/compute/ops/CgCull;
   method public view (Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/compute/ops/CgCull;
+com/crystalgraphics/compute/ops/CgCullSets
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public add (Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)I
+  method public clear ()Lcom/crystalgraphics/compute/ops/CgCullSets;
+  method public first (I)I
+  method public records ()I
+  method public size ()I
+  method public word (I)I
+  method public words ()I
 com/crystalgraphics/compute/ops/CgGpuCount
   access public,final,record
   extends java/lang/Record
@@ -2007,6 +2018,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static bounds (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;IILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static compact (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static copy (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)V
+  method public,static cull (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/compute/ops/CgCullSets;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)V
   method public,static cull (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static cull (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public,static cull (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/compute/ops/CgCull;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
@@ -5145,7 +5157,6 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public light (FF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public order (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
-  method public ordered ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public submesh (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
