@@ -4,6 +4,7 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import org.junit.Test;
 
@@ -45,6 +46,37 @@ public class CgVfxGpuStepsTest {
         assertEquals(0, pool.openSlots());
         assertEquals(queued + stepped, pool.queuedSteps());
         assertTrue("finished after " + stepped + " steps", stepped <= Math.ceil(0.9f / DT) + 2);
+    }
+
+    @Test
+    public void aSpawningEventsChildrenHoldAFedSlotUntilTheirParentFinishes() {
+        CgVfxEmitter dust = CgVfxEmitter.builder("dust").life(0.5f, 0.8f).speed(0f, 1f).build();
+        // Spawns late: a child left to finish alone would close before the first death fires.
+        CgVfxEmitter flares = CgVfxEmitter.builder("flares").capacity(400).burst(1.5f, 60).life(0.3f, 0.6f)
+                .speed(2f, 4f).event(CgVfxEvent.onDeath().spawn(dust, 2)).build();
+        CgVfxGpuSteps steps = new CgVfxGpuSteps();
+        CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(flares, 0.6f);
+        instance.start(0f, 0f, 0f);
+        CgVfxParticlePool parents = CgVfxParticlePool.of(steps, flares), children = CgVfxParticlePool.of(steps, dust);
+        int stepped = 0;
+        for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
+            instance.schedule(DT, 0.0, 0.0, 0.0);
+            if (n == 0) {
+                steps.admit(instance);
+                assertEquals(flares.peakChildren(0), children.capacity(steps.of(instance.child(0)).slot));
+            }
+            assertEquals(1, parents.openSlots());
+            assertEquals(1, children.openSlots());
+            steps.step(DT, air);
+            stepped++;
+        }
+        assertTrue(instance.finished());
+        assertNull(steps.of(instance.child(0)));
+        assertEquals(0, parents.openSlots());
+        assertEquals(0, children.openSlots());
+        // The last flare dies by 2.1 s and its dust a step after 0.8 s more.
+        assertTrue("finished after " + stepped + " steps", stepped >= Math.floor(2.1f / DT) && stepped <= Math.ceil(2.9f / DT) + 3);
     }
 
     @Test
