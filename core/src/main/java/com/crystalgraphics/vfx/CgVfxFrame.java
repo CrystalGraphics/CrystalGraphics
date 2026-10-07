@@ -52,6 +52,8 @@ public final class CgVfxFrame {
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
     private float alpha, particleAlpha;
+    /** The CPU path's particles this frame drew: GPU pools are counted by Range. */
+    private int cpuDrawn;
 
     CgVfxFrame(CgVfxSystem system) {
         this.system = system;
@@ -61,6 +63,11 @@ public final class CgVfxFrame {
         this.world = world;
         this.alpha = alpha;
         this.particleAlpha = particleAlpha;
+        cpuDrawn = 0;
+    }
+
+    int cpuDrawn() {
+        return cpuDrawn;
     }
 
     /** How far this frame is between the last tick and the next, 0..1: draw positions moved on by this much. */
@@ -161,6 +168,7 @@ public final class CgVfxFrame {
             return;
         }
         if (emitter.particles().count() == 0) return;
+        cpuDrawn += emitter.particles().count();
         String slot = emitter.emitter().layer();
         List<CgVfxLayer> layers = effect.look().layers();
         for (int k = 0; k < layers.size(); k++) {
