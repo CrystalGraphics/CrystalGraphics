@@ -192,6 +192,8 @@ public final class CgVfxSystem {
     private final List<CgVfxEffect> emitting = new ArrayList<>();
     private final CgVfxWorkers.Job tickEach = i -> emitting.get(i).tickEmitters();
     private final CgVfxWorkers.Job writeEach = this::writeRecords;
+    private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
+    private boolean stepsOnGpu;
     /** This frame's particle records, filled by {@link #writeEach}; each emitter's first record in {@link #bases}. */
     private float[] records = new float[0];
     private int[] bases = new int[0];
@@ -238,6 +240,7 @@ public final class CgVfxSystem {
     public void update(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
+        stepsOnGpu = simulation == Simulation.GPU && simulation.built();
         if (!simulation.built() && !unbuiltLogged) {
             unbuiltLogged = true;
             LOGGER.warn("[vfx] the {} simulation is not built yet; effects run on the CPU", simulation);
@@ -267,9 +270,11 @@ public final class CgVfxSystem {
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
                         workers.run(emitting.size(), tickEach);
+                        for (int i = 0; i < emitting.size(); i++) emitting.get(i).admitScheduled(gpuSteps);
                     } finally {
                         emitting.clear();
                     }
+                    if (particleTick) gpuSteps.step(particleDt, air);
                     sinceParticleTick = particleTick ? 0 : sinceParticleTick + 1;
                 }
                 simulated += TICK;
@@ -289,6 +294,14 @@ public final class CgVfxSystem {
         for (int i = effects.size() - 1; i >= 0; i--) {
             if (effects.get(i).state() == CgVfxEffect.State.DEAD) effects.remove(i);
         }
+    }
+
+    /**
+     * Whether an emitter instance starting this update is stepped on the GPU: read once an update, so the workers see
+     * one answer. An instance already stepping keeps its path.
+     */
+    boolean stepsOnGpu() {
+        return stepsOnGpu;
     }
 
     /** Whether this tick moves particles: one in {@link #particleStep()}. */
@@ -461,6 +474,7 @@ public final class CgVfxSystem {
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         effects.clear();
+        gpuSteps.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
         if (volumeMesh != null && volumeMesh != sphereMesh) volumeMesh.release();
