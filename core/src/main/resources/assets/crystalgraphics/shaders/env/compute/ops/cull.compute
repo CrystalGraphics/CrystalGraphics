@@ -5,6 +5,8 @@
 // CgGpuOpsBodies.cull is the CPU tier's twin, line for line.
 #pragma kernel Cull append
 
+#include "crystalgraphics:shaders/lib/occlusion.glsl"
+
 Properties {
     _CountAt      ("The count's word in COUNT, -1 for none",           int)  = -1
     _Capacity     ("Instances dispatched",                             int)  = 0
@@ -58,48 +60,6 @@ Buffers {
     OUT       ("Kept",        CullRecord, append)
 }
 
-// The point a clip-space depth over w stands for, as cg_LinearEyeDepth reads the pyramid's.
-float eyeDepth(float ndc) {
-    if (_Eye.y == 0.0) return (_Eye.z - ndc) / _Eye.x;
-    float p22 = -_Eye.x / _Eye.y;
-    float p32 = _Eye.z + p22 * _Eye.w;
-    return p32 / (ndc + p22);
-}
-
-// The level-0 texel a clip-space coordinate falls in, clamped to the pyramid while still a float.
-int texel(float ndc, int size) {
-    return int(clamp(floor((ndc * 0.5 + 0.5) * float(size)), 0.0, float(size - 1)));
-}
-
-// Whether the box min..max hides behind the pyramid's depth: its nearest point farther than the farthest the scene
-// holds over every texel its screen rect touches, at the level where that rect spans two texels at most.
-bool occluded(vec3 lo, vec3 hi) {
-    int levels = int(_PyramidSize.z);
-    if (levels <= 0) return false;
-    float x0 = 3.4e38, y0 = 3.4e38, x1 = -3.4e38, y1 = -3.4e38, nearest = 3.4e38;
-    for (int c = 0; c < 8; c++) {
-        vec4 p = vec4((c & 1) == 0 ? lo.x : hi.x, (c & 2) == 0 ? lo.y : hi.y, (c & 4) == 0 ? lo.z : hi.z, 1.0);
-        float w = dot(_ClipW, p);
-        if (w < 0.01) return false;   // crossing the near plane: CgWorldRenderer's NEAR_W
-        float nx = dot(_ClipX, p) / w, ny = dot(_ClipY, p) / w;
-        x0 = min(x0, nx);
-        x1 = max(x1, nx);
-        y0 = min(y0, ny);
-        y1 = max(y1, ny);
-        nearest = min(nearest, eyeDepth(dot(_ClipZ, p) / w));
-    }
-    int width = int(_PyramidSize.x), height = int(_PyramidSize.y);
-    int tx0 = texel(x0, width), tx1 = texel(x1, width), ty0 = texel(y0, height), ty1 = texel(y1, height);
-    int level = 0;
-    while (level < levels - 1 && ((tx1 >> level) - (tx0 >> level) > 1 || (ty1 >> level) - (ty0 >> level) > 1)) level++;
-    int lastX = max(1, width >> level) - 1, lastY = max(1, height >> level) - 1;
-    int ax = min(tx0 >> level, lastX), bx = min(tx1 >> level, lastX);
-    int ay = min(ty0 >> level, lastY), by = min(ty1 >> level, lastY);
-    float farthest = max(max(texelFetch(_Pyramid, ivec2(ax, ay), level).r, texelFetch(_Pyramid, ivec2(bx, ay), level).r),
-                         max(texelFetch(_Pyramid, ivec2(ax, by), level).r, texelFetch(_Pyramid, ivec2(bx, by), level).r));
-    return nearest > farthest;
-}
-
 bool outside(vec4 plane, vec3 lo, vec3 hi) {
     return plane.x * (plane.x < 0.0 ? lo.x : hi.x) + plane.y * (plane.y < 0.0 ? lo.y : hi.y)
             + plane.z * (plane.z < 0.0 ? lo.z : hi.z) < -plane.w;
@@ -137,7 +97,7 @@ void Cull() {
             }
         }
     }
-    if (level != _Level || occluded(lo, hi)) return;
+    if (level != _Level || cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return;
 
     mat3 normal = mat3(_PlaceNormal0.xyz, _PlaceNormal1.xyz, _PlaceNormal2.xyz)
             * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz) * _NormalScale;

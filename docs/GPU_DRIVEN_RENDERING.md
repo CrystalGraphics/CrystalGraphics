@@ -131,6 +131,9 @@ world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds
 - **Each stage that draws the set** builds a depth pyramid of what was drawn before the world renderer (in Minecraft,
   the terrain), culls every tree against the view and the pyramid, picks its level by screen height, and draws each
   level kept as one indirect draw; the levels are one multi-draw call where draws join (§8).
+- **The pyramid is the stage's** (`CgStageFrame.depthPyramid()`), built once a firing at the first ask: a renderer of
+  your own culling below `CgWorldRenderer.ORDER` asks for the same one, and `lib/occlusion.glsl`'s `cg_occluded` is
+  the test `cull.compute` makes against it.
 - **Records are in the draw's own space**: `.at()` places the set, a record places a tree within it. `.bounds()` is the
   whole set's box, culled once on the CPU; each tree is culled by its mesh's box, grown by `.pad()`.
 - A count only the GPU knows works the same way: `CgGpuCount.at(alive, 0, capacity)`.

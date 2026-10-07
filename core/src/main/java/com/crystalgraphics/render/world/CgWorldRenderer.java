@@ -205,11 +205,9 @@ public final class CgWorldRenderer {
     private final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
 
-    // Sets culled on the GPU: one cull, its values copied into each dispatch; the stage's depth pyramid; per draw, the
-    // records and level counts its cull wrote this stage; and the k-th set culled in a stage writes the k-th buffers.
+    // Sets culled on the GPU: one cull, its values copied into each dispatch; per draw, the records and level counts its
+    // cull wrote this stage; and the k-th set culled in a stage writes the k-th buffers.
     private final CgCull cull = new CgCull();
-    private CgGraphTexture pyramid;
-    private boolean pyramidBuilt;
     private CgGraphBuffer[] culled = new CgGraphBuffer[64], culledCounts = new CgGraphBuffer[64];
     private CgGraphBuffer[] cullOut = new CgGraphBuffer[4], cullLevels = new CgGraphBuffer[4];
     private int setsCulled;
@@ -902,7 +900,6 @@ public final class CgWorldRenderer {
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
             setsCulled = 0;
-            pyramidBuilt = false;
             boolean prepass = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
@@ -1392,23 +1389,14 @@ public final class CgWorldRenderer {
 
     /**
      * Culls on the GPU every set this stage draws that it has not culled yet: those the stage's passes draw, or with
-     * {@code emitting}, those its bloom draws. The first builds the stage's depth pyramid from its target as it stands.
+     * {@code emitting}, those its bloom draws. The first asks for the stage's depth pyramid.
      */
     private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, boolean emitting) {
         CgComputePass pass = null;
         for (int i = 0; i < count; i++) {
             if (sets[i] == null || culled[i] != null || (emitting ? !emits[i] : phase[i] == SKIP)) continue;
             if (pass == null) {
-                if (!pyramidBuilt) {
-                    int w = (int) targetWidth, h = (int) targetHeight;
-                    if (pyramid == null || pyramid.getWidth() != w || pyramid.getHeight() != h) {
-                        pyramid = CgGraphTexture.transientTexture("cg_world.pyramid",
-                                new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
-                    }
-                    CgGpuOps.depthPyramid(recording, stage.target(), stage.constants(), pyramid);
-                    pyramidBuilt = true;
-                }
-                cull.view(view.view(), view.projection()).pyramid(pyramid);
+                cull.view(view.view(), view.projection()).pyramid(stage.depthPyramid());
                 pass = recording.compute("world.cull");
             }
             cullSet(pass, i, view);

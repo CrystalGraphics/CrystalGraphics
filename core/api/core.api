@@ -5062,6 +5062,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public callback (Ljava/lang/String;Ljava/lang/Runnable;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
