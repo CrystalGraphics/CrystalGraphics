@@ -18,6 +18,22 @@ vec3 fx_particle_corner(vec3 centre, vec2 corner, vec2 size, float angle, vec3 r
     return centre + right * (c * scaled.x - s * scaled.y) + up * (s * scaled.x + c * scaled.y);
 }
 
+// Niagara's sprite camera offset: centre pulled offset blocks toward the eye, so a particle resting on a surface draws in
+// front of it rather than half through it. keep scales its size so it covers the same share of the screen.
+vec3 fx_particle_toward_eye(vec3 centre, vec3 eye, float offset, out float keep) {
+    vec3 toEye = eye - centre;
+    float d = max(length(toEye), 1.0e-4), moved = min(offset, d * 0.5);
+    keep = (d - moved) / d;
+    return centre + toEye * (moved / d);
+}
+
+// Soft particles (Unity's soft particles, Unreal's DepthFade, Godot's proximity fade): 0 where a fragment meets what is
+// behind it, rising to 1 distance blocks in front, so a sprite crossing a surface fades into it rather than being cut.
+// Eye depths both; 1 for a distance of 0.
+float fx_particle_soft(float sceneEye, float eye, float distance) {
+    return distance > 0.0 ? clamp((sceneEye - eye) / distance, 0.0, 1.0) : 1.0;
+}
+
 // The angle in the eye's plane a velocity points at: what a streak lines up with.
 float fx_particle_heading(vec3 velocity, vec3 right, vec3 up) {
     return atan(dot(velocity, up), dot(velocity, right) + 1.0e-6);

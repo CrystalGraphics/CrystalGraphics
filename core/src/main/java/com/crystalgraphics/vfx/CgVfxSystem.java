@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.CgPlatform;
@@ -383,8 +384,29 @@ public final class CgVfxSystem {
         return rate > 0f ? rate / 20f : 1f;
     }
 
+    /**
+     * The particles drawn in the latest frame, every system's: those the CPU path submitted, and those Range kept to draw
+     * from the GPU pools after culling, which arrive a frame or two late. For a readout, never a decision; the first ask
+     * starts the GPU count's small readback. Render thread.
+     *
+     * <pre>{@code
+     * hud.line("Particles: " + CgVfxSystem.particlesDrawn());
+     * }</pre>
+     */
+    public static int particlesDrawn() {
+        return cpuDrawn + CgVfxRange.visibleCount();
+    }
+
+    /** The CPU path's particles drawn in {@link #drawnFrame}, every system's; reset by its first submit. */
+    private static int cpuDrawn;
+    private static long drawnFrame = -1;
+
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
     public void submit(CgWorldRenderer world) {
+        if (CgFrameRing.frame() != drawnFrame) {
+            drawnFrame = CgFrameRing.frame();
+            cpuDrawn = 0;
+        }
         if (effects.isEmpty()) return;
         if (tubeMesh == null) {
             tubeMesh = CgVfxTube.mesh();
@@ -409,6 +431,7 @@ public final class CgVfxSystem {
                     effects.get(i).submit(frame);
                 }
             }
+            cpuDrawn += frame.cpuDrawn();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
                 bindPaths();

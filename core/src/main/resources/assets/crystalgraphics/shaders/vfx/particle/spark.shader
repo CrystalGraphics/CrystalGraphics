@@ -13,6 +13,7 @@ Queue = "Transparent"
 Properties {
     _Stretch ("How much longer a spark draws per block a second it moves", float) = 0.12
     _MaxStretch ("Longest a streak gets, in its widths", float) = 4.0
+    _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
 }
 
 struct v2f { vec3 world; vec3 spark; };
@@ -34,13 +35,16 @@ Pass {
         vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
         int i = max(n, 0);
         vec3 velocity = CG_PARTICLE_VELOCITY(i);
-        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z;
+        vec3 eye = -(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz);
+        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z, keep;
+        vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, _CameraOffset * size, keep);
+        size *= keep;
         // Drawn out along its motion in the eye's plane, the faster the longer.
         float onScreen = length(vec2(dot(velocity, right), dot(velocity, up)));
         float streak = min(1.0 + onScreen * _Stretch, _MaxStretch);
         vec2 extent = vec2(size * streak, size);
         float angle = fx_particle_heading(velocity, right, up);
-        vec3 world = fx_particle_corner(origin + CG_PARTICLE_POSITION(i), corner, extent, angle, right, up);
+        vec3 world = fx_particle_corner(centre, corner, extent, angle, right, up);
         float glow = (0.35 + 0.65 * CG_PARTICLE_HEAT(i)) * CG_PARTICLE_OPACITY(i);
         o.world = world;
         o.spark = vec3(corner, glow);
