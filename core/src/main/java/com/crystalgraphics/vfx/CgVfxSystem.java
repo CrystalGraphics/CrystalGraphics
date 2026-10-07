@@ -30,6 +30,7 @@ import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
+import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -476,7 +477,11 @@ public final class CgVfxSystem {
                     CgVfxRange.prepare();
                 }
                 List<CgVfxEmitter> emitters = effect.look().emitters();
-                for (int k = 0; k < emitters.size(); k++) CgVfxParticlePool.prepare(emitters.get(k));
+                for (int k = 0; k < emitters.size(); k++) {
+                    CgVfxParticlePool.prepare(emitters.get(k));
+                    // The window's first use starts its kernels and its filling: at play, not on the first landing.
+                    if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
+                }
             }
             if (effect.warmed) continue;
             effect.warmed = true;
@@ -490,6 +495,13 @@ public final class CgVfxSystem {
         for (int i = warming.size() - 1; i >= 0; i--) {
             if (world.prepare(warming.get(i))) warming.remove(i);
         }
+    }
+
+    private static boolean readsWorld(CgVfxEmitter emitter) {
+        for (int i = 0; i < emitter.modules().size(); i++) {
+            if (emitter.modules().get(i).worldInputs().length > 0) return true;
+        }
+        return false;
     }
 
     public List<CgVfxEffect> effects() {
