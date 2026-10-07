@@ -180,9 +180,14 @@ final class CgGpuOpsBodies {
                 heights[4 + c] = d.property("_Heights1", c);
             }
             float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
+            float scale = d.property("_Scale"), unscale = d.property("_NormalScale");
+            int customs = d.propertyInt("_Customs");
+            float[] stamps = new float[16];
+            for (int k = 0; k < 4; k++) for (int c = 0; c < 4; c++) stamps[k * 4 + c] = d.property("_Custom" + k, c);
             for (int e = d.first(); e < d.end(); e++) {
                 if (!below(e, n)) continue;
                 for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + e, w);
+                for (int w = 0; w < 12; w++) r[w] *= scale;
                 for (int c = 0; c < 4; c++) {
                     for (int row = 0; row < 4; row++) {
                         m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]
@@ -226,8 +231,8 @@ final class CgGpuOpsBodies {
                 for (int w = 0; w < 16; w++) out.setFloat(at, w, m[w]);
                 for (int c = 0; c < 3; c++) {
                     for (int row = 0; row < 3; row++) {
-                        out.setFloat(at, 16 + c * 4 + row, normal[row] * r[16 + c * 4] + normal[4 + row] * r[16 + c * 4 + 1]
-                                + normal[8 + row] * r[16 + c * 4 + 2]);
+                        out.setFloat(at, 16 + c * 4 + row, (normal[row] * r[16 + c * 4] + normal[4 + row] * r[16 + c * 4 + 1]
+                                + normal[8 + row] * r[16 + c * 4 + 2]) * unscale);
                     }
                     out.setFloat(at, 16 + c * 4 + 3, r[16 + c * 4 + 3]);
                 }
@@ -236,7 +241,10 @@ final class CgGpuOpsBodies {
                 out.setFloat(at, 29, stamp ? d.property("_Light", 1) : r[29]);
                 out.setFloat(at, 30, r[30]);
                 out.setFloat(at, 31, r[31]);
-                for (int w = 32; w < 48; w++) out.setFloat(at, w, r[w]);
+                for (int k = 0; k < 4; k++) {
+                    boolean stamped = (customs & 1 << k) != 0;
+                    for (int c = 0; c < 4; c++) out.setFloat(at, 32 + k * 4 + c, stamped ? stamps[k * 4 + c] : r[32 + k * 4 + c]);
+                }
             }
         });
         return file;

@@ -1971,14 +1971,17 @@ com/crystalgraphics/compute/ops/CgCull
   field public,static,final MAX_LEVELS I
   method public <init> ()V
   method public box (FFFFFF)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public custom (IFFFF)Lcom/crystalgraphics/compute/ops/CgCull;
   method public levels ()I
   method public light (FF)Lcom/crystalgraphics/compute/ops/CgCull;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/compute/ops/CgCull;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public ownCustoms ()Lcom/crystalgraphics/compute/ops/CgCull;
   method public ownLight ()Lcom/crystalgraphics/compute/ops/CgCull;
   method public pad (F)Lcom/crystalgraphics/compute/ops/CgCull;
   method public place (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/compute/ops/CgCull;
   method public pyramid (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public scale (F)Lcom/crystalgraphics/compute/ops/CgCull;
   method public view (Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/compute/ops/CgCull;
 com/crystalgraphics/compute/ops/CgGpuCount
   access public,final,record
@@ -5127,6 +5130,7 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public halfResolution ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indices (II)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public instanceScale (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public instances (Lcom/crystalgraphics/render/graph/CgGraphBuffer;ILcom/crystalgraphics/compute/ops/CgGpuCount;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public instances (Lcom/crystalgraphics/render/graph/CgGraphBuffer;Lcom/crystalgraphics/compute/ops/CgGpuCount;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
