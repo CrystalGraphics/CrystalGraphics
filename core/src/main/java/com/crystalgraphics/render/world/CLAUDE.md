@@ -5,6 +5,7 @@
 | Type | Role |
 |------|------|
 | `CgWorldRenderer` | Registered on `WORLD_OPAQUE` and `WORLD_TRANSPARENT` at `ORDER` (1000). Holds the frame's draws flat (absolute positions in doubles, local transforms, customs, queue, sort layer, order, group); at each stage culls them against the stage's view, picks a `CgMeshLods` draw's level by its screen height, sorts them, and records the prepass and the opaque or transparent pass onto the host's target, each declaring `sceneDepth`/`sceneColor` so its readers sample the target as it stands. `onFrame` listeners run once a frame, before the first world stage records |
+| `CgWorldText` | `world.text(...)`'s labels: pooled, each a placement and a `CgTextRenderer.queuedDraw` of one manual-sized renderer, drawn (`drawQueued`) into each transparent firing after its passes, sinking into the stage's recording, under a pose of view × position × rotation (or the view's turn undone, a billboard). Never deletes its renderer: `CgTextRendererRegistry` does at teardown |
 | `CgSortKey` | Filament's key layout with a log-quantised distance: slot, sort layer, then opaque order, material, distance, mesh, or transparent group distance, order, distance. No far plane |
 | `CgSortLayer` | Named sort layers, Unity's: a later one draws after an earlier whatever the distance. Built in `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`; a mod defines its own `before`/`after` one in a static field |
 
