@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import org.junit.Test;
 
@@ -33,6 +34,20 @@ public class CgVfxEmitterScheduleTest {
     public void groundedParticlesStillDieOfAge() {
         check(CgVfxEmitter.builder("debris").capacity(4000).burst(0f, 400).life(2f, 3.5f).speed(4f, 12f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).build(), 1f);
+    }
+
+    @Test
+    public void childrenStepAtTheirParentsOrigin() {
+        CgVfxEmitter flash = CgVfxEmitter.builder("flash").capacity(64).life(0.1f, 0.1f).build();
+        CgVfxEmitter sparks = CgVfxEmitter.builder("sparks").capacity(64).burst(0f, 10).life(1f, 1f)
+                .event(CgVfxEvent.onCollision().spawn(flash, 1)).build();
+        CgVfxEmitterInstance parent = new CgVfxEmitterInstance(sparks, 0.5f);
+        parent.start(0f, 7f, 0f);
+        parent.schedule(DT, -21.0, 0.0, 14.0);
+        CgVfxEmitterInstance child = parent.child(0);
+        assertTrue(child.scheduled());
+        assertEquals(-21.0, child.originX(), 0.0);
+        assertEquals(14.0, child.originZ(), 0.0);
     }
 
     @Test
