@@ -22,6 +22,8 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
@@ -182,7 +184,7 @@ public final class CgVfxSystem {
     private final CgVfxWorkers.Job tickEach = i -> emitting.get(i).tickEmitters();
     private final CgVfxWorkers.Job writeEach = this::writeRecords;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
-    private boolean stepsOnGpu;
+    private boolean stepsOnGpu, rangePrepared;
     /** This frame's particle records, filled by {@link #writeEach}; each emitter's first record in {@link #bases}. */
     private float[] records = new float[0];
     private int[] bases = new int[0];
@@ -445,6 +447,16 @@ public final class CgVfxSystem {
     private void warm() {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
+            if (stepsOnGpu && !effect.gpuPrepared) {
+                // Below compute each kernel is several lowered programs; built on the first burst, they stall it.
+                effect.gpuPrepared = true;
+                if (!rangePrepared) {
+                    rangePrepared = true;
+                    CgVfxRange.prepare();
+                }
+                List<CgVfxEmitter> emitters = effect.look().emitters();
+                for (int k = 0; k < emitters.size(); k++) CgVfxParticlePool.prepare(emitters.get(k));
+            }
             if (effect.warmed) continue;
             effect.warmed = true;
             List<CgVfxLayer> layers = effect.look().layers();

@@ -43,6 +43,8 @@ public abstract class CgVfxEffect {
     CgVfxSystem system;
     /** Its look's materials have been handed to the system to compile ahead of use. */
     boolean warmed;
+    /** Its emitters' GPU programs have been started, for {@code vfx.sim=gpu}. */
+    boolean gpuPrepared;
     private final CgVfxLook look;
     private final CgVfxValues values;
     private State state = State.PLAYING;

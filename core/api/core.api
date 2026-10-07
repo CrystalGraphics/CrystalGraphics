@@ -7112,6 +7112,7 @@ com/crystalgraphics/vfx/particle/CgVfxAir
   extends java/lang/Object
   method public <init> ()V
   method public gusts (FF)Lcom/crystalgraphics/vfx/particle/CgVfxAir;
+  method public maxSpeed ()F
   method public tick (F)V
   method public wind (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxAir;
   method public windX ()F
@@ -7126,12 +7127,14 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   extends java/lang/Object
   implements com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   method public capacity ()I
+  method public largestSize ()F
   method public layer ()Ljava/lang/String;
   method public modules ()Ljava/util/List;
   method public name ()Ljava/lang/String;
   method public opacityAt (F)F
   method public optional ()Z
   method public peakAlive ()I
+  method public reach (F)F
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public sizeAt (F)F
   method public toBuilder ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -7212,6 +7215,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule
   extends java/lang/Object
   implements com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   method public afterSolve ()Z
+  method public pull (F)F
   method public,abstract apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
 com/crystalgraphics/vfx/particle/CgVfxModule$Buoyancy
   access public,final,record
@@ -7222,6 +7226,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Buoyancy
   method public cooling ()F
   method public gpuKind ()Ljava/lang/String;
   method public lift ()F
+  method public pull (F)F
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -7246,6 +7251,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Gravity
   method public <init> (F)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
   method public gpuKind ()Ljava/lang/String;
+  method public pull (F)F
   method public strength ()F
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,final equals (Ljava/lang/Object;)Z
@@ -7289,6 +7295,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Turbulence
   method public frequency ()F
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public pull (F)F
   method public strength ()F
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
@@ -7305,6 +7312,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Updraft
   method public gpuKind ()Ljava/lang/String;
   method public height ()F
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
+  method public pull (F)F
   method public radius ()F
   method public strength ()F
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
