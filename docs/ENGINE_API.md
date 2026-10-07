@@ -98,8 +98,8 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 
 // A label: a CgTextRenderer.Draw at a point, facing the camera or turned as a sign; depth-tested, never writing depth
-world.text(x, y + 2, z).height(0.5f).text("Spawn").font(font).stroke(0.08f, 0xFF000000).submit();
-world.text(x, y, z).rotation(facingSouth).anchor(0f, 0f).draw().paragraph(sign).family(family).targetPx(48).submit();
+world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).submit();
 ```
 
 - **Drawing what kernels wrote** (`.indirect`, `.instances`) is its own workflow:

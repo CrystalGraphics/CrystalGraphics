@@ -9,6 +9,8 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.text.CgShapedParagraph;
+import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.ops.CgCull;
@@ -359,17 +361,16 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Starts a label at a point in the world: a {@code CgTextRenderer.Draw} with all a draw has (fonts and families,
-     * paragraphs, strokes, shadows), facing the camera unless turned, depth-tested against the scene and drawn after
-     * the transparent draws, as a name tag. Fill its text through {@link CgWorldText.Label#text(String)} or
-     * {@link CgWorldText.Label#draw()} and {@code submit()} that; it lives for the frame. Render thread.
+     * Starts a label: {@code text} at a point in the world, facing the camera unless turned, depth-tested against the
+     * scene and drawn after the transparent draws, as a name tag. Place it on the {@link CgWorldText.Label}, then
+     * {@code font(...)} or {@code family(...)} gives its {@code CgTextRenderer.Draw}, with all a draw has (strokes,
+     * shadows, constraints); {@code submit()} that. It lives for the frame. Render thread.
      *
      * <pre>{@code
-     * world.text(x, y + 6, z).height(0.5f).text("Attract + Orbit").font(font).submit();            // centred on its point
-     * world.text(x, y, z).anchor(0.5f, 0f).text("12").font(font).color(0xFFFF5040)
-     *         .stroke(0.12f, 0xFF000000).shadowCount(1).shadow(0, 2f, 2f, 1.5f, 0f, 0x80000000, false).submit();   // outlined, on it
-     * world.text(x, y, z).rotation(facingSouth).draw().paragraph(sign).family(family).targetPx(48)
-     *         .constraints(400f, 0f).submit();                                                    // a sign fixed in the world
+     * world.text("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();          // centred on its point
+     * world.text("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040)
+     *         .stroke(0.12f, 0xFF000000).shadowCount(1).shadow(0, 2f, 2f, 1.5f, 0f, 0x80000000, false).submit();
+     * world.text(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
      * }</pre>
      *
      * <ul>
@@ -380,8 +381,24 @@ public final class CgWorldRenderer {
      *   <li>A glyph not yet in the atlas draws a frame or more late, as all text does.</li>
      * </ul>
      */
-    public CgWorldText.Label text(double x, double y, double z) {
-        return text.next().at(x, y, z);
+    public CgWorldText.Label text(String text) {
+        CgWorldText.Label label = this.text.next();
+        label.draw().text(text);
+        return label;
+    }
+
+    /** As {@link #text(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
+    public CgWorldText.Label text(CgShapedParagraph paragraph) {
+        CgWorldText.Label label = this.text.next();
+        label.draw().paragraph(paragraph);
+        return label;
+    }
+
+    /** As {@link #text(String)}, of a finished layout: its fonts are its own, so {@code draw()} may submit as it is. */
+    public CgWorldText.Label text(CgTextLayout layout) {
+        CgWorldText.Label label = this.text.next();
+        label.draw().layout(layout);
+        return label;
     }
 
     /** As {@link #draw(CgMesh, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */

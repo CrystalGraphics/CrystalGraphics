@@ -5137,7 +5137,9 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public overdraw (Z)V
   method public prepare (Lcom/crystalgraphics/api/material/CgMaterial;)Z
   method public release ()V
-  method public text (DDD)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public text (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public text (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public,static get ()Lcom/crystalgraphics/render/world/CgWorldRenderer;
 com/crystalgraphics/render/world/CgWorldRenderer$Draw
   access public,final
@@ -5178,10 +5180,12 @@ com/crystalgraphics/render/world/CgWorldText$Label
   access public,final
   extends java/lang/Object
   method public anchor (FF)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public draw ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
+  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
+  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public height (F)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
-  method public text (Ljava/lang/String;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
 com/crystalgraphics/serialization/CgBinaryFormat
   access public,final
   extends java/lang/Object
