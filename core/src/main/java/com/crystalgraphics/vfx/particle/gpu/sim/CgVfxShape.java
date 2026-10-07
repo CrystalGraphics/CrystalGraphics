@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -7,6 +10,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,7 +20,8 @@ import java.util.regex.Pattern;
  * What makes two emitter definitions share a pool and its kernels: their module kinds in stack order, what each kind
  * declares it takes, the renderer, and their events' triggers with whether each spawns children and reports to the
  * CPU. Never a number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
- * it.
+ * it. A module's textures are part of it too, so each sampled texture has a pool of its own; its kernels are keyed by
+ * {@link #kernelKey()}, which names only whether each is 2D or 3D.
  *
  * <pre>{@code
  * CgVfxShape shape = CgVfxShape.of(EMBERS);
@@ -37,8 +42,12 @@ public final class CgVfxShape {
     public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 4;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
+    /** A number per texture a shape has sampled, for the pool key: by identity. */
+    private static final Map<CgTexture, Integer> TEXTURE_IDS = new IdentityHashMap<>();
 
-    private final String key;
+    private final String key, kernelKey;
+    private final CgTexture[][] textures;
+    private final boolean[][] volumes;
     private final CgVfxEmitter.Renderer renderer;
     private final String[] kinds, sources;
     private final boolean[] afterSolve;
@@ -46,7 +55,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance;
+    private final boolean readsWorld, usesDistance, usesDepth;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -64,7 +73,9 @@ public final class CgVfxShape {
         lanesAt = new int[n];
         lanes = new CgVfxLane[n][];
         world = new CgVfxWorldInput[n][];
-        StringBuilder key = new StringBuilder(renderer.name());
+        textures = new CgTexture[n][];
+        volumes = new boolean[n][];
+        StringBuilder key = new StringBuilder(renderer.name()), identity = new StringBuilder();
         int param = CgVfxGpuEmitter.SPAWN_VECTORS, lane = CgVfxParticlePool.INSTANCE_HEADER;
         for (int i = 0; i < n; i++) {
             CgVfxGpuModule m = modules.get(i);
@@ -97,6 +108,15 @@ public final class CgVfxShape {
             key.append('|').append(kind).append(afterSolve[i] ? ">" : ":").append(params[i]);
             for (int l = 0; l < lanes[i].length; l++) key.append(l == 0 ? ':' : ',').append(lanes[i][l].name());
             for (int w = 0; w < world[i].length; w++) key.append(w == 0 ? '@' : ',').append(world[i][w].name());
+            textures[i] = m.textures().clone();
+            volumes[i] = new boolean[textures[i].length];
+            for (int t = 0; t < textures[i].length; t++) {
+                CgTexture texture = textures[i][t];
+                if (texture == null) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + "'s texture " + t + " is null");
+                volumes[i][t] = texture instanceof CgGraphTexture graph ? graph.isVolume() : texture.getTarget() == CgGL.GL_TEXTURE_3D;
+                key.append(t == 0 ? '#' : ',').append(volumes[i][t] ? "3d" : "2d");
+                identity.append(t == 0 && identity.length() == 0 ? "|tex:" : ",").append(textureId(texture));
+            }
         }
         List<CgVfxEvent> events = emitter.events();
         if (events.size() > CgVfxEvent.MAX_EVENTS) {
@@ -121,14 +141,27 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
-        boolean reads = false, distance = false;
+        boolean reads = false, distance = false, depth = false;
         for (CgVfxWorldInput[] inputs : world) {
-            reads |= inputs.length > 0;
-            for (CgVfxWorldInput input : inputs) distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
+            for (CgVfxWorldInput input : inputs) {
+                reads |= input != CgVfxWorldInput.DEPTH;
+                distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
+                depth |= input == CgVfxWorldInput.DEPTH;
+            }
         }
         readsWorld = reads;
         usesDistance = distance;
-        this.key = key.toString();
+        usesDepth = depth;
+        kernelKey = key.toString();
+        this.key = kernelKey + identity;
+    }
+
+    private static int textureId(CgTexture texture) {
+        synchronized (TEXTURE_IDS) {
+            Integer id = TEXTURE_IDS.get(texture);
+            if (id == null) TEXTURE_IDS.put(texture, id = TEXTURE_IDS.size());
+            return id;
+        }
     }
 
     /** {@code emitter}'s shape. */
@@ -136,9 +169,14 @@ public final class CgVfxShape {
         return new CgVfxShape(emitter);
     }
 
-    /** One string naming the shape: equal for definitions that share kernels. */
+    /** One string naming the shape: equal for definitions that share a pool. */
     public String key() {
         return key;
+    }
+
+    /** {@link #key()} less which textures are sampled: equal for definitions that share kernels. */
+    public String kernelKey() {
+        return kernelKey;
     }
 
     public CgVfxEmitter.Renderer renderer() {
@@ -189,7 +227,32 @@ public final class CgVfxShape {
         return world[i].clone();
     }
 
-    /** Whether any module takes a world input: its Step kernel reads the voxel window. */
+    /** Module {@code i}'s textures; a copy. */
+    public CgTexture[] textures(int i) {
+        return textures[i].clone();
+    }
+
+    /** Module {@code i}'s texture count. */
+    public int textureCount(int i) {
+        return textures[i].length;
+    }
+
+    /** Module {@code i}'s texture {@code t}, as the pool binds it. */
+    public CgTexture texture(int i, int t) {
+        return textures[i][t];
+    }
+
+    /** Whether module {@code i}'s texture {@code t} is 3D: a {@code sampler3D}, else a {@code sampler2D}. */
+    public boolean volume(int i, int t) {
+        return volumes[i][t];
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#DEPTH}: its Step kernel reads the scene's depth. */
+    public boolean usesDepth() {
+        return usesDepth;
+    }
+
+    /** Whether any module takes a voxel window input: its Step kernel reads the window. */
     public boolean readsWorld() {
         return readsWorld;
     }

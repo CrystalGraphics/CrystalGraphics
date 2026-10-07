@@ -33,6 +33,24 @@ public final class CgVfxEmitterCompiler {
 
     private static final String KIND_DIR = "crystalgraphics:shaders/lib/vfx/sim/fx_";
 
+    /** The scene's depth as {@code fx_depth_at.glsl} reads it; the pool binds them ({@code CgVfxParticlePool.depth}). */
+    static final String DEPTH_PROPERTIES = """
+                _DepthPyramid ("The scene's eye depth: CgGpuOps.depthPyramid's level 0", sampler2D) = "white"
+                _DepthSize    ("Its width and height; 0 with no depth",                   vec4)      = (0, 0, 0, 0)
+                _DepthClipX   ("Projection times view, camera-relative: row 0",            vec4)      = (1, 0, 0, 0)
+                _DepthClipY   ("Row 1",                                                   vec4)      = (0, 1, 0, 0)
+                _DepthClipW   ("Row 3",                                                   vec4)      = (0, 0, 0, 1)
+                _DepthLens    ("Projection [0][0], [1][1], [2][0], [2][1]",               vec4)      = (1, 1, 0, 0)
+                _DepthViewX   ("The view's inverse: column 0",                            vec4)      = (1, 0, 0, 0)
+                _DepthViewY   ("Column 1",                                                vec4)      = (0, 1, 0, 0)
+                _DepthViewZ   ("Column 2",                                                vec4)      = (0, 0, 1, 0)
+                _DepthViewW   ("Column 3",                                                vec4)      = (0, 0, 0, 1)
+                _DepthEyeX    ("The camera's block: x",                                   int)       = 0
+                _DepthEyeY    ("y",                                                       int)       = 0
+                _DepthEyeZ    ("z",                                                       int)       = 0
+                _DepthEyeFrac ("Where in that block",                                     vec4)      = (0, 0, 0, 0)
+            """;
+
     private CgVfxEmitterCompiler() {
     }
 
@@ -43,18 +61,19 @@ public final class CgVfxEmitterCompiler {
 
     /** What {@link #compile} registers the source under. */
     public static String key(CgVfxShape shape) {
-        return "crystalgraphics:vfx/pool/" + shape.key();
+        return "crystalgraphics:vfx/pool/" + shape.kernelKey();
     }
 
     /** {@code shape}'s Step kernel as {@code .compute} text. */
     public static String source(CgVfxShape shape) {
         StringBuilder s = new StringBuilder(4096);
-        s.append("// Written by CgVfxEmitterCompiler for ").append(shape.key()).append("\n");
+        s.append("// Written by CgVfxEmitterCompiler for ").append(shape.kernelKey()).append("\n");
         s.append("#pragma kernel Step append\n\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl\"\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_rand.glsl\"\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_event.glsl\"\n");
         if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
+        if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -75,6 +94,13 @@ public final class CgVfxEmitterCompiler {
                     _Feeds      ("Feed rows",                        int)  = 0
                 """);
         if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
+        if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
+        for (int i = 0; i < shape.modules(); i++) {
+            for (int t = 0; t < shape.textureCount(i); t++) {
+                s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
+                        .append("\", ").append(shape.volume(i, t) ? "sampler3D" : "sampler2D").append(") = \"black\"\n");
+            }
+        }
         s.append("}\n\n");
         s.append(CgVfxRecord.GLSL).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
@@ -126,6 +152,19 @@ public final class CgVfxEmitterCompiler {
                         w.originFrac = step_instance(inst + 4).xyz;
                         w.live = _WorldLive != 0;
                         return w;
+                    }
+                    """);
+        }
+        if (shape.usesDepth()) {
+            s.append("""
+
+                    // The scene's depth as a kind taking DEPTH reads it: the camera from this instance's origin.
+                    FxDepth step_depth(int inst) {
+                        FxDepth d;
+                        d.eye = vec3(ivec3(_DepthEyeX, _DepthEyeY, _DepthEyeZ) - ivec3(INSTANCES(inst + 3).xyz))
+                                + _DepthEyeFrac.xyz - step_instance(inst + 4).xyz;
+                        d.live = _DepthSize.x > 0.0;
+                        return d;
                     }
                     """);
         }
@@ -358,7 +397,7 @@ public final class CgVfxEmitterCompiler {
         s.append("    }\n");
     }
 
-    /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its world inputs. */
+    /** Module {@code i}'s call: its numbers from the parameter row, its lanes from the instance row, its world inputs, its textures. */
     private static void call(StringBuilder s, CgVfxShape shape, int i) {
         s.append("    fx_").append(shape.kind(i)).append(shape.afterSolve(i) ? "(p, s" : "(p, f, s");
         for (int j = 0, at = shape.paramAt(i); j < shape.paramVectors(i); j++) s.append(", step_param(row + ").append(at + j).append(')');
@@ -374,8 +413,15 @@ public final class CgVfxEmitterCompiler {
             switch (input) {
                 case FLOOR_Y -> s.append(", step_floor(p, inst)");
                 case WORLD, WORLD_DISTANCE -> s.append(", step_world(inst)");
+                case DEPTH -> s.append(", step_depth(inst)");
             }
         }
+        for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));
         s.append(");\n");
+    }
+
+    /** Module {@code i}'s texture {@code t}'s sampler property: what the pool binds it as. */
+    static String texture(int i, int t) {
+        return "_Texture" + i + "_" + t;
     }
 }

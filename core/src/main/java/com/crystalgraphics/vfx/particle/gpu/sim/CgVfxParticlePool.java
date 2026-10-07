@@ -8,17 +8,25 @@ import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import org.joml.Matrix4f;
+
+import javax.annotation.Nullable;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -89,8 +97,11 @@ public final class CgVfxParticlePool {
             "struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };";
     public static final int EVENT_BYTES = 80;
 
-    /** A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers. */
-    public static final int CURVE_WORDS = 2 * CgVfxGpuEmitter.CURVE_TEXELS;
+    /**
+     * A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers, then its
+     * {@link CgVfxCurveDomain}'s speeds, (-1, -1) over life.
+     */
+    public static final int CURVE_WORDS = 2 * (CgVfxGpuEmitter.CURVE_TEXELS + 1);
 
     /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
     public static final int ORDER = CgWorldRenderer.ORDER - 100;
@@ -105,6 +116,10 @@ public final class CgVfxParticlePool {
     private static CgGraphBuffer spawnStream, spawnCount, reportStream, reportCounts, unfed;
     private static final ArrayDeque<Report> REPORTS = new ArrayDeque<>();
     private static int nextId;
+    /** What the next recording's steps see of the scene's depth: none without a pyramid. */
+    private static final CgHostView DEPTH_VIEW = new CgHostView();
+    private static final Matrix4f DEPTH_CLIP = new Matrix4f(), DEPTH_INVERSE = new Matrix4f();
+    private static @Nullable CgGraphTexture depthPyramid;
 
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
     private static final CgGpuCount ONE = CgGpuCount.of(1);
@@ -205,7 +220,7 @@ public final class CgVfxParticlePool {
             owned.put(shape.key(), pool = new CgVfxParticlePool(shape));
             ALL.add(pool);
             if (recording == null) {
-                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, frame -> recordAll(frame.recording()));
+                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxParticlePool::recordStage);
             }
         }
         return pool;
@@ -264,6 +279,33 @@ public final class CgVfxParticlePool {
         }
     }
 
+    /**
+     * The scene's depth the next {@link #record} steps against, for kinds taking {@link CgVfxWorldInput#DEPTH}: the
+     * camera's view and {@code pyramid}, {@link CgGpuOps#depthPyramid}'s, in that recording. The stage does this
+     * itself, with its own pyramid; a check scene recording its pools by hand calls it first. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.depth(view, pyramid);   // pyramid recorded into rec already
+     * CgVfxParticlePool.record(rec, pools);     // reads it, then forgets it
+     * }</pre>
+     */
+    public static void depth(CgHostView view, @Nullable CgGraphTexture pyramid) {
+        DEPTH_VIEW.set(view);
+        depthPyramid = pyramid;
+    }
+
+    /** The stage's recording: the depth asked for only when a stepping shape reads it. */
+    private static void recordStage(CgStageFrame frame) {
+        for (int i = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool pool = ALL.get(i);
+            if (pool.steps > 0 && pool.shape.usesDepth()) {
+                depth(frame.host().view(), frame.depthPyramid());
+                break;
+            }
+        }
+        recordAll(frame.recording());
+    }
+
     /** Records every pool's queued steps into {@code recording}, once a host frame. Render thread. */
     static void recordAll(CgRecording recording) {
         for (int i = 0; i < RELEASED.size(); i++) RELEASED.get(i).releaseStorage(recording);
@@ -287,7 +329,14 @@ public final class CgVfxParticlePool {
             spawnRows += pool.eventRows(true);
             reportRows += pool.eventRows(false);
         }
-        if (STEPPING.isEmpty()) return;
+        if (STEPPING.isEmpty()) {
+            depthPyramid = null;
+            return;
+        }
+        if (depthPyramid != null) {
+            DEPTH_CLIP.set(DEPTH_VIEW.projection()).mul(DEPTH_VIEW.view());
+            DEPTH_VIEW.view().invert(DEPTH_INVERSE);
+        }
         if (unfed == null) {
             unfed = CgGraphBuffer.persistent("vfx.pool.unfed", CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
             recording.fill(unfed, 0);
@@ -327,6 +376,7 @@ public final class CgVfxParticlePool {
         }
         for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).takeSteps();
         STEPPING.clear();
+        depthPyramid = null;
     }
 
     /** Readies this pool to step: its kernel, storage and rows. False, its steps taken, when it has nothing to step. */
@@ -415,7 +465,35 @@ public final class CgVfxParticlePool {
             if (shape.usesDistance()) window.useDistance();
             window.bind(stepping);
         }
+        if (shape.usesDepth()) bindDepth(stepping);
+        for (int i = 0; i < shape.modules(); i++) {
+            for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
+        }
         current = 1 - current;
+    }
+
+    /** The scene's depth as {@code fx_depth_at.glsl} reads it, or none. */
+    private static void bindDepth(CgDispatch d) {
+        if (depthPyramid == null) {
+            d.set("_DepthSize", 0f, 0f, 0f, 0f);
+            return;
+        }
+        Matrix4f c = DEPTH_CLIP, v = DEPTH_INVERSE;
+        double x = DEPTH_VIEW.x(), y = DEPTH_VIEW.y(), z = DEPTH_VIEW.z();
+        int bx = (int) Math.floor(x), by = (int) Math.floor(y), bz = (int) Math.floor(z);
+        d.texture("_DepthPyramid", depthPyramid)
+                .set("_DepthSize", depthPyramid.getWidth(), depthPyramid.getHeight(), 0f, 0f)
+                .set("_DepthClipX", c.m00(), c.m10(), c.m20(), c.m30())
+                .set("_DepthClipY", c.m01(), c.m11(), c.m21(), c.m31())
+                .set("_DepthClipW", c.m03(), c.m13(), c.m23(), c.m33())
+                .set("_DepthLens", DEPTH_VIEW.projection().m00(), DEPTH_VIEW.projection().m11(),
+                        DEPTH_VIEW.projection().m20(), DEPTH_VIEW.projection().m21())
+                .set("_DepthViewX", v.m00(), v.m01(), v.m02(), 0f)
+                .set("_DepthViewY", v.m10(), v.m11(), v.m12(), 0f)
+                .set("_DepthViewZ", v.m20(), v.m21(), v.m22(), 0f)
+                .set("_DepthViewW", v.m30(), v.m31(), v.m32(), 1f)
+                .set("_DepthEyeX", bx).set("_DepthEyeY", by).set("_DepthEyeZ", bz)
+                .set("_DepthEyeFrac", (float) (x - bx), (float) (y - by), (float) (z - bz), 0f);
     }
 
     private String name() {
@@ -994,10 +1072,13 @@ public final class CgVfxParticlePool {
             rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / CURVE_WORDS);
         }
         emitter.writeCurves(curveScratch, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        CgVfxCurveDomain domain = emitter.curveDomain();
+        curveScratch[CURVE_WORDS - 2] = domain.min();
+        curveScratch[CURVE_WORDS - 1] = domain.max();
         float most = 0f;
         for (int w = 0; w < CURVE_WORDS; w++) {
             curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
-            if ((w & 1) == 0) most = Math.max(most, curveScratch[w]);
+            if ((w & 1) == 0 && w < CURVE_WORDS - 2) most = Math.max(most, curveScratch[w]);
         }
         rowSizeMax[index] = most;
         if (shape.events() > 0) {
