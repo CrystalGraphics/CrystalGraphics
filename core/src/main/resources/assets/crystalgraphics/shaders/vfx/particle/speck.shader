@@ -12,6 +12,7 @@ Queue = "Transparent"
 
 Properties {
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
 }
 
 struct v2f { vec3 world; vec4 speck; float opacity; vec2 light; };
@@ -35,9 +36,12 @@ Pass {
         float seed = CG_PARTICLE_SEED(i);
         vec4 m = fx_hash41(seed * 97.0);
         // From chunks to slivers.
-        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z;
+        vec3 eye = -(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz);
+        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z, keep;
+        vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, _CameraOffset * size, keep);
+        size *= keep;
         vec2 extent = vec2(size, size * mix(0.25, 1.0, m.x * m.x));
-        vec3 world = fx_particle_corner(origin + CG_PARTICLE_POSITION(i), corner, extent, CG_PARTICLE_SPIN(i), right, up);
+        vec3 world = fx_particle_corner(centre, corner, extent, CG_PARTICLE_SPIN(i), right, up);
         o.world = world;
         // where on it, its shape seed, how spiky its edge is
         o.speck = vec4(corner, seed * 40.0, mix(1.2, 4.0, m.y));

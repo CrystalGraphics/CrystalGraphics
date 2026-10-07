@@ -21,6 +21,8 @@ Properties {
     _Axis ("The AXIS mode's normal", vec4) = (0, 1, 0, 0)
     _Stretch ("VELOCITY mode: how much longer per block a second", float) = 0.1
     _MaxStretch ("VELOCITY mode: longest, in widths", float) = 4.0
+    _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.5
+    _CameraOffset ("Drawn this many of its sizes toward the eye: a solid piece resting on a surface", float) = 0
 }
 
 struct v2f { vec4 uv; float blend; float opacity; vec2 light; };
@@ -42,9 +44,10 @@ Pass {
         vec3 eyeUp = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
         vec3 eye = -(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz);
         int i = max(n, 0);
-        vec3 centre = origin + CG_PARTICLE_POSITION(i);
         vec3 velocity = CG_PARTICLE_VELOCITY(i);
-        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z;
+        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(i) * CG_OBJECT_CUSTOM0.z, keep;
+        vec3 centre = fx_particle_toward_eye(origin + CG_PARTICLE_POSITION(i), eye, _CameraOffset * size, keep);
+        size *= keep;
         int mode = int(_Facing + 0.5);
         vec3 right, up;
         fx_particle_facing(mode, centre, velocity, _Axis.xyz, eye, eyeRight, eyeUp, right, up);
@@ -64,7 +67,9 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         cg_Light = i.light;
         vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
-        float alpha = texel.a * i.opacity * CG_OBJECT_CUSTOM2.a;
+        float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
+                cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
+        float alpha = texel.a * i.opacity * CG_OBJECT_CUSTOM2.a * soft;
         fragColor = vec4(texel.rgb * CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }
 }

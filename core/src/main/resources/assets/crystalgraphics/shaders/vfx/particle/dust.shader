@@ -12,6 +12,7 @@ Queue = "Transparent"
 
 Properties {
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.3
 }
 
 struct v2f { vec3 world; vec4 puff; float opacity; vec2 light; };
@@ -52,7 +53,9 @@ Pass {
         float edge = 0.72 + 0.24 * fx_value_noise(vec3(around * 2.5, i.puff.z));
         float body = 1.0 - smoothstep(edge * 0.3, edge, r);
         float holes = smoothstep(i.puff.w * 0.8, i.puff.w * 0.8 + 0.35, fx_value_noise(vec3(q * 1.5, i.puff.z + 7.0)));
-        float alpha = body * mix(1.0, holes, 0.6) * i.opacity * CG_OBJECT_CUSTOM2.a;
+        float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
+                cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
+        float alpha = body * mix(1.0, holes, 0.6) * i.opacity * CG_OBJECT_CUSTOM2.a * soft;
         fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }
 }
