@@ -128,6 +128,10 @@ public final class CgRasterPass extends CgPass {
                 recording.read(this, objects, CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO
                         ? CgAccess.SAMPLED_READ : CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
+            if (chunk.buffer(d) instanceof CgGraphBuffer read) {
+                recording.read(this, read, CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO
+                        ? CgAccess.SAMPLED_READ : CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+            }
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));

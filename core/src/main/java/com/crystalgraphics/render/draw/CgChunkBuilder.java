@@ -1,10 +1,12 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.Objects;
 
 /**
  * Writes {@link CgDrawChunk}s: open a chunk under a property state, open draws in it, write each draw's instance
@@ -63,6 +65,11 @@ public final class CgChunkBuilder {
     /** Per draw: the buffer its object records are in, null for records written here. Null until one is drawn. */
     @Nullable
     private CgBufferHandle[] objects;
+    /** Per draw: a buffer it reads in place of an engine buffer, and where; null for none. Null until one is drawn. */
+    @Nullable
+    private CgBufferHandle[] buffers;
+    @Nullable
+    private CgBindingPoints.Binding[] bufferAt;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
     /** Per draw: its GPU group's label, -1 for its material's. Null until one is named. */
@@ -146,6 +153,10 @@ public final class CgChunkBuilder {
         }
         if (counts != null) counts[d] = null;
         if (objects != null) objects[d] = null;
+        if (buffers != null) {
+            buffers[d] = null;
+            bufferAt[d] = null;
+        }
         if (groups != null) groups[d] = -1;
         sortKeys[d] = 0;
         boundsSet = false;
@@ -302,6 +313,34 @@ public final class CgChunkBuilder {
     }
 
     /**
+     * Has the open draw read {@code buffer} where its shader reads the engine buffer at {@code at}: records in that
+     * buffer's layout, which a kernel wrote, read through the same macros. The engine buffer is bound again for the
+     * draws after it.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, quads).buffer(CgBindingPoints.PARTICLES, range.drawn())
+     *       .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>One a draw. Object records take {@link #objects}, never {@code OBJECT_DATA} here.</li>
+     *   <li>A graph buffer is read after the pass writing it; it needs {@code STORAGE}.</li>
+     *   <li>The draw batches alone.</li>
+     * </ul>
+     */
+    public CgChunkBuilder buffer(CgBindingPoints.Binding at, CgBufferHandle buffer) {
+        if (drawing < 0) throw new IllegalStateException("buffer() with no draw open: draw() first");
+        if (at.equals(CgBindingPoints.OBJECT_DATA)) throw new IllegalArgumentException("object records take objects()");
+        if (buffers == null) {
+            buffers = new CgBufferHandle[pipelines.length];
+            bufferAt = new CgBindingPoints.Binding[pipelines.length];
+        }
+        buffers[drawing] = Objects.requireNonNull(buffer, "buffer");
+        bufferAt[drawing] = at;
+        return this;
+    }
+
+    /**
      * Charges the open draw's GPU time to {@code label} under {@code crystalgraphics.gpu.groups}, in place of its
      * material's path. Draws of different groups never batch while that channel is on, and always may while it is off.
      *
@@ -340,7 +379,9 @@ public final class CgChunkBuilder {
                 meshes == null ? null : Arrays.copyOf(meshes, count), ranges == null ? null : Arrays.copyOf(ranges, count * 3),
                 counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
                 counts == null ? null : Arrays.copyOf(countModes, count),
-                objects == null ? null : Arrays.copyOf(objects, count), Arrays.copyOf(bounds, count * 4),
+                objects == null ? null : Arrays.copyOf(objects, count),
+                buffers == null ? null : Arrays.copyOf(buffers, count),
+                buffers == null ? null : Arrays.copyOf(bufferAt, count), Arrays.copyOf(bounds, count * 4),
                 Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept);
         open = false;
         count = 0;
@@ -366,8 +407,8 @@ public final class CgChunkBuilder {
         if (!open) throw new IllegalStateException("endInPlace() outside a chunk");
         closeDraw();
         CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
-                firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, bounds, sortKeys,
-                groups, instances);
+                firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds,
+                sortKeys, groups, instances);
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -389,6 +430,10 @@ public final class CgChunkBuilder {
         if (meshes != null) Arrays.fill(meshes, null);
         if (counts != null) Arrays.fill(counts, null);
         if (objects != null) Arrays.fill(objects, null);
+        if (buffers != null) {
+            Arrays.fill(buffers, null);
+            Arrays.fill(bufferAt, null);
+        }
     }
 
     /** Keeps the open draw if it has instances; a draw without bounds covers everything. */
@@ -437,6 +482,10 @@ public final class CgChunkBuilder {
             countModes = Arrays.copyOf(countModes, n);
         }
         if (objects != null) objects = Arrays.copyOf(objects, n);
+        if (buffers != null) {
+            buffers = Arrays.copyOf(buffers, n);
+            bufferAt = Arrays.copyOf(bufferAt, n);
+        }
         if (groups != null) groups = Arrays.copyOf(groups, n);
         bounds = Arrays.copyOf(bounds, n * 4);
         sortKeys = Arrays.copyOf(sortKeys, n);

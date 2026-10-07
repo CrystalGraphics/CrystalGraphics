@@ -159,6 +159,9 @@ public final class CgWorldRenderer {
     private long[] countOffsets = new long[64];
     private CgIndirect[] countModes = new CgIndirect[64];
     private int[] countFactors = new int[64];
+    /** Per draw: a buffer it reads in place of an engine buffer, and where; else null. */
+    private CgBufferHandle[] buffers = new CgBufferHandle[64];
+    private CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[64];
     /** Per draw: the object records a set of instances draws, else null, and how many of them. */
     private CgGraphBuffer[] sets = new CgGraphBuffer[64];
     private int[] setFirsts = new int[64];
@@ -173,6 +176,8 @@ public final class CgWorldRenderer {
     private float[] emissions = new float[64];
     /** Per draw: whether it asked to be drawn at half the target's size. */
     private boolean[] halves = new boolean[64];
+    /** Per draw: whether its count holds only what a GPU cull kept, so no CPU bounds test runs. */
+    private boolean[] culledOnGpu = new boolean[64];
     /** Per draw: the GPU group it is charged to, null for its material's. */
     private String[] gpuGroups = new String[64];
     private int[] queues = new int[64];
@@ -374,11 +379,13 @@ public final class CgWorldRenderer {
         private CgGraphBuffer set;
         private int setFirst;
         private CgGpuCount setCount;
+        private CgBufferHandle buffer;
+        private CgBindingPoints.Binding bufferPoint;
         private final float[] meshBox = new float[6];
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
         private float emission;
-        private boolean half;
+        private boolean half, onGpu;
         private String gpuGroup;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
@@ -401,9 +408,12 @@ public final class CgWorldRenderer {
             set = null;
             setFirst = 0;
             setCount = null;
+            buffer = null;
+            bufferPoint = null;
             blockLight = Float.NaN;
             emission = 1f;
             half = false;
+            onGpu = false;
             gpuGroup = null;
             return this;
         }
@@ -475,6 +485,48 @@ public final class CgWorldRenderer {
             bounds[4] = maxY;
             bounds[5] = maxZ;
             boundsSet = true;
+            return this;
+        }
+
+        /**
+         * Skips the CPU's bounds test: for an {@link #indirect} draw whose count a GPU cull wrote, holding only what
+         * that cull found visible, as a particle pool's draw list does. It still sorts by its position and
+         * {@link #group}, and states no bounds.
+         *
+         * <pre>{@code
+         * world.draw(quads, spark).indirect(visible, slot * 4L, CgIndirect.INDICES, 6).at(x, y, z).gpuCulled()
+         *      .group(x, y, z).submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>A reader of the scene ({@code cg_SceneColor}) takes a copy of the whole target for it, having no
+         *       screen rect.</li>
+         * </ul>
+         */
+        public Draw gpuCulled() {
+            onGpu = true;
+            return this;
+        }
+
+        /**
+         * Has its shader read {@code records} where it reads the engine buffer at {@code at}, through the same macros:
+         * records in that buffer's layout which a kernel wrote this frame, as a GPU particle pool's draw list stands in
+         * for the frame's particle records.
+         *
+         * <pre>{@code
+         * world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
+         *      .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6)
+         *      .custom(0, range.base(slot), capacity, radius, parameter).at(x, y, z).gpuCulled().submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>A graph buffer is read after the pass writing it, so the draw waits for that kernel.</li>
+         *   <li>One a draw; object records take {@link #instances} instead.</li>
+         * </ul>
+         */
+        public Draw buffer(CgBindingPoints.Binding at, CgBufferHandle records) {
+            bufferPoint = Objects.requireNonNull(at, "at");
+            buffer = Objects.requireNonNull(records, "records");
             return this;
         }
 
@@ -698,6 +750,7 @@ public final class CgWorldRenderer {
         }
         emissions[count] = d.emission;
         halves[count] = d.half;
+        culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
         queues[count] = d.queue;
         orders[count] = d.order;
@@ -721,6 +774,8 @@ public final class CgWorldRenderer {
         sets[count] = d.set;
         setFirsts[count] = d.setFirst;
         setCounts[count] = d.setCount;
+        buffers[count] = d.buffer;
+        bufferAt[count] = d.bufferPoint;
         count++;
     }
 
@@ -732,6 +787,8 @@ public final class CgWorldRenderer {
         Arrays.fill(layers, 0, count, null);
         Arrays.fill(sets, 0, count, null);
         Arrays.fill(setCounts, 0, count, null);
+        Arrays.fill(buffers, 0, count, null);
+        Arrays.fill(bufferAt, 0, count, null);
         Arrays.fill(culled, 0, count, null);
         Arrays.fill(culledCounts, 0, count, null);
         count = 0;
@@ -748,6 +805,7 @@ public final class CgWorldRenderer {
         lights = Arrays.copyOf(lights, n * 2);
         emissions = Arrays.copyOf(emissions, n);
         halves = Arrays.copyOf(halves, n);
+        culledOnGpu = Arrays.copyOf(culledOnGpu, n);
         gpuGroups = Arrays.copyOf(gpuGroups, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
@@ -765,6 +823,8 @@ public final class CgWorldRenderer {
         sets = Arrays.copyOf(sets, n);
         setFirsts = Arrays.copyOf(setFirsts, n);
         setCounts = Arrays.copyOf(setCounts, n);
+        buffers = Arrays.copyOf(buffers, n);
+        bufferAt = Arrays.copyOf(bufferAt, n);
         culled = Arrays.copyOf(culled, n);
         culledCounts = Arrays.copyOf(culledCounts, n);
     }
@@ -1154,7 +1214,9 @@ public final class CgWorldRenderer {
         modelOf(i, view);
         float cx, cy, cz;
         float[] bounds;
-        if (boundsStated[i]) {
+        if (culledOnGpu[i]) {
+            bounds = null;
+        } else if (boundsStated[i]) {
             System.arraycopy(drawBounds, i * 6, meshBounds, 0, 6);
             bounds = meshBounds;
         } else if (sets[i] != null) {
@@ -1371,6 +1433,7 @@ public final class CgWorldRenderer {
     private void writeInstance(CgChunkBuilder chunks, int i) {
         if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
         if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
+        if (buffers[i] != null) chunks.buffer(bufferAt[i], buffers[i]);
         int at = chunks.instance();
         float[] data = chunks.data();
         model.get(data, at);

@@ -167,7 +167,16 @@ Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));   // quad n draws the nth live spark
   `INSTANCES` instead draws the mesh once per element, each instance finding its element as `CG_DRAW_INSTANCE`: a
   billow mesh per live puff.
 - **Bounds are yours**: the count is unknown when the draw is culled, so state a box every element stays inside
-  (authored, or a `CgGpuOps.bounds` read back frames late and grown by the fastest speed times the delay).
+  (authored, or a `CgGpuOps.bounds` read back frames late and grown by the fastest speed times the delay). A count a
+  GPU cull wrote holds only what that cull kept: mark the draw `.gpuCulled()` and state none.
+- **A shader that already reads an engine buffer** (`#pragma cg_use particle` and `CG_PARTICLE_*`) reads a kernel's
+  records in that buffer's layout unchanged: `.buffer(CgBindingPoints.PARTICLES, records)`, as Unity's property block
+  overrides a global. The draw batches alone, and the frame's buffer is bound again after it.
+
+```java
+world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
+     .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6).at(x, y, z).gpuCulled().submit();
+```
 
 ## 5. Recipe: many draws from one pool, ordered on the GPU
 

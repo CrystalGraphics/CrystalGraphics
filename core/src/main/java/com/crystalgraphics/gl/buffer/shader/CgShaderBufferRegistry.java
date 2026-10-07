@@ -7,6 +7,7 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 
+import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -50,6 +51,9 @@ public final class CgShaderBufferRegistry {
 
     /** UBO cache — keyed by (name, format, bindingPoint). Separate cache, same key type. */
     private final Map<ShaderBufferKey, CgUniformBuffer> uboCache = new HashMap<>();
+
+    /** Each engine-reserved binding's buffer, made by {@link #getOrCreateInternal}. */
+    private final Map<CgBindingPoints.Binding, CgShaderBuffer> owners = new HashMap<>();
 
     private CgShaderBufferRegistry() {}
 
@@ -144,7 +148,22 @@ public final class CgShaderBufferRegistry {
         if (existing != null) return sameLifetime(existing, lifetime);
         CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding, lifetime);
         shaderBufferCache.put(key, buf);
+        owners.put(binding, buf);
         return buf;
+    }
+
+    /**
+     * The engine buffer made at {@code binding} by {@link #getOrCreateInternal}, or null if none has been: what a draw
+     * reading a buffer of its own there puts back after it.
+     *
+     * <pre>{@code
+     * CgShaderBuffer frames = CgShaderBufferRegistry.get().ownerOf(CgBindingPoints.PARTICLES);
+     * if (frames != null) frames.bind();
+     * }</pre>
+     */
+    @Nullable
+    public CgShaderBuffer ownerOf(CgBindingPoints.Binding binding) {
+        return owners.get(binding);
     }
 
     /**
@@ -215,6 +234,7 @@ public final class CgShaderBufferRegistry {
             buf.delete();
         }
         shaderBufferCache.clear();
+        owners.clear();
 
         for (CgUniformBuffer ubo : uboCache.values()) {
             ubo.delete();

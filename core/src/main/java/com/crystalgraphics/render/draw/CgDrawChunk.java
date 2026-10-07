@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 
 import javax.annotation.Nullable;
@@ -51,6 +52,10 @@ public final class CgDrawChunk {
     private final int[] countModes;
     @Nullable
     private final CgBufferHandle[] objects;
+    @Nullable
+    private final CgBufferHandle[] buffers;
+    @Nullable
+    private final CgBindingPoints.Binding[] bufferAt;
     private final float[] bounds;
     private final long[] sortKeys;
     @Nullable
@@ -62,8 +67,9 @@ public final class CgDrawChunk {
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
-                @Nullable CgBufferHandle[] objects, float[] bounds, long[] sortKeys, @Nullable int[] groups,
-                float[][] instances) {
+                @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
+                @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys,
+                @Nullable int[] groups, float[][] instances) {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -80,6 +86,8 @@ public final class CgDrawChunk {
         this.countOffsets = countOffsets;
         this.countModes = countModes;
         this.objects = objects;
+        this.buffers = buffers;
+        this.bufferAt = bufferAt;
         this.bounds = bounds;
         this.sortKeys = sortKeys;
         this.groups = groups;
@@ -179,6 +187,18 @@ public final class CgDrawChunk {
         return objects == null ? null : objects[draw];
     }
 
+    /** The buffer a draw of {@code buffer()} reads in place of an engine buffer; null for none. */
+    @Nullable
+    public CgBufferHandle buffer(int draw) {
+        return buffers == null ? null : buffers[draw];
+    }
+
+    /** Where {@link #buffer} is read: the engine buffer's binding it stands in for. */
+    @Nullable
+    public CgBindingPoints.Binding bufferAt(int draw) {
+        return bufferAt == null ? null : bufferAt[draw];
+    }
+
     public float x0(int draw) {
         return bounds[draw * 4];
     }
@@ -214,7 +234,8 @@ public final class CgDrawChunk {
                             @Nullable float[][] instances) {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
-                countOffsets, countModes, objects, bounds, sortKeys, groups, instances != null ? instances : this.instances);
+                countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups,
+                instances != null ? instances : this.instances);
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */
