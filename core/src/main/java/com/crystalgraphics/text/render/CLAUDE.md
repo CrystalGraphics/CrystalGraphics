@@ -83,6 +83,10 @@ matrix again. That entire surface is gone. The only public entry points now are:
   that renderer, from *any* call site.
 - `renderer.retainedDraw()` — allocates a standalone `Draw` the caller may hold across
   frames (e.g. a cached HUD line, mutating only `.text(...)` each tick).
+- `renderer.queuedDraw(queue)` — a retained `Draw` whose `submit()` hands it to `queue` instead of
+  drawing; its owner draws it later with `drawQueued(draw)`, under a pose it only knows then.
+  `CgWorldRenderer`'s labels are these. `Draw.reset()` clears one for reuse, `basePx()` is the size
+  a pose scales.
 - `Draw` chain methods: `layout(CgTextLayout)`/`paragraph(CgShapedParagraph)`/`text(String)`
   (each wins over the next — layout is already fully resolved, paragraph is already shaped,
   text needs both), `font(CgFont)`/`family(CgFontFamily)` (family wins if both set — strictly
@@ -164,6 +168,18 @@ exists to deliver, with no signal to the caller that batching stopped working.
 Treat a forgotten `endBatch()` as a caller bug that should fail fast, matching the
 convention of every other begin/end pair in this codebase (`CgQuadRenderer`, `CgUiRenderer` -- neither
 defensively auto-flushes).
+
+**Inside a batch, quads wait in buckets.** Each quad goes to the bucket of its (paint rank, batch key): the rank is
+its paint step less the draw's shadow count, so outer shadows are negative, then decorations under the text (0), the
+glyphs (1), decorations over them (2) and inset shadows. `flush()` drains the buckets by rank, first-seen order within a
+rank, submit order within a bucket: a transition per bucket, not per draw, however the draws alternate atlases and
+shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame to 3 (`--mode=world-labels`).
+- Each draw keeps its own layering. Across draws in one batch, every shadow lies beneath every glyph: two texts that
+  overlap inside one batch layer by kind, not by submit order.
+- Anything a caller changes on the sink between draws (scissor, constants, view) must end the batch first, or quads
+  queued before it draw under it. `sink()` itself drains first. CrystalGUI's paint context ends its text path at every
+  such change.
+- A quad keeps its draw's pose, clip and nodes in a pose entry (`pushPose`); `draw.drainBuckets` times the replay.
 
 ### `CgTextRenderer.Draw`
 

@@ -55,9 +55,10 @@ import java.util.Map;
  */
 public final class CgTextLayoutCache {
 
-    private static final int CAPACITY = 512;
+    /** A backstop: {@link #MAX_BYTES} is the bound. Blink's {@code FrameShapeCache} count. */
+    private static final int CAPACITY = 32_768;
 
-    private static final Map<Key, CgTextLayout> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
+    private static final Map<Key, CgTextLayout> MAP = new LinkedHashMap<>(1024, 0.75f, true) {
         protected boolean removeEldestEntry(Map.Entry<Key, CgTextLayout> eldest) {
             boolean evict = size() > CAPACITY;
             // Keep the running byte total honest when the count budget evicts — this is
@@ -113,8 +114,8 @@ public final class CgTextLayoutCache {
      * paragraph is worth hundreds of short labels.
      *
      * <p>Skia's {@code SkStrikeCache} pairs 2 MB with 2048 entries; Blink's {@code FrameShapeCache}
-     * holds 32,768 shaped entries for a whole web page. 16 MB against 512 entries here sits between
-     * them, sized for a game UI rather than a document.
+     * holds 32,768 shaped entries for a whole web page. 16 MB against Blink's count here: short labels are
+     * bounded by bytes, so ten thousand distinct ones stay shaped rather than shaping again every frame.
      */
     private static final long MAX_BYTES = 16L * 1024L * 1024L;
 

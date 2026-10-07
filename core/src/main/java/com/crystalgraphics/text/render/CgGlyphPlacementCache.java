@@ -31,10 +31,11 @@ import java.util.Map;
  */
 public final class CgGlyphPlacementCache {
 
-    /** Entries are per-<em>layout</em>, not per-glyph, so this comfortably covers hundreds of
-     * simultaneously visible distinct texts (e.g. every label across every open UI window)
-     * even though it's a modest, fixed number — see class javadoc. */
-    private static final int CAPACITY = 1024;
+    /**
+     * Entries are per-<em>layout</em>. A backstop: {@link #MAX_BYTES} is the bound, and short texts reach it only
+     * past tens of thousands, so ten thousand world labels stay resolved rather than resolving again every frame.
+     */
+    static final int CAPACITY = 32_768;
 
     /**
      * Minimum frames between re-resolves of a <em>not-yet-converged</em> (non-distance-field)
@@ -111,7 +112,7 @@ public final class CgGlyphPlacementCache {
         }
     }
 
-    private static final Map<Key, Entry> MAP = new LinkedHashMap<>(CAPACITY * 4 / 3, 0.75f, true) {
+    private static final Map<Key, Entry> MAP = new LinkedHashMap<>(1024, 0.75f, true) {
         protected boolean removeEldestEntry(Map.Entry<Key, Entry> eldest) {
             boolean evict = size() > CAPACITY;
             // Keep the byte total honest when the count budget is what does the evicting.

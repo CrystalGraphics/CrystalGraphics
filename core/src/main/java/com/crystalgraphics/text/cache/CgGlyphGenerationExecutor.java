@@ -71,6 +71,12 @@ final class CgGlyphGenerationExecutor {
      */
     private static final int MAX_PENDING_TASKS = 16384;
 
+    /**
+     * {@code -Dcrystalgraphics.text.deterministicGlyphs=true}: every job runs on the thread that asks for it, in the
+     * order asked, so the atlas fills the same way every run. For pixel comparisons of text; never for play.
+     */
+    static final boolean DETERMINISTIC = Boolean.getBoolean("crystalgraphics.text.deterministicGlyphs");
+
     /** See {@link #bitmapExecutor} — these exist to beat a queue, not to add throughput. */
     private static final int BITMAP_WORKER_COUNT = 4;
 
@@ -191,7 +197,7 @@ final class CgGlyphGenerationExecutor {
 
         ThreadPoolExecutor target = job.isDistanceField() ? msdfExecutor : bitmapExecutor;
         try {
-            target.execute(() -> {
+            execute(target, () -> {
                 if (job.isShadowCell() && isAbandoned(job)) {
                     lastWanted.remove(job);
                     pendingJobs.remove(job);
@@ -224,6 +230,11 @@ final class CgGlyphGenerationExecutor {
             lastWanted.remove(job);
             return false;
         }
+    }
+
+    private static void execute(ThreadPoolExecutor target, Runnable task) {
+        if (DETERMINISTIC) task.run();
+        else target.execute(task);
     }
 
     private boolean isAbandoned(CgGlyphGenerationJob job) {

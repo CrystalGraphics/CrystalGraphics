@@ -52,6 +52,11 @@ final class CgInstanceRun {
     private int materialBinding = -1;
     private int binding = -1;
 
+    /** The binding and pipeline of the open draw {@link #records} may still append to; -1 once anything comes between. */
+    private int appendBinding = -1;
+    @Nullable
+    private CgPipeline appendPipeline;
+
     /** The spatial node queued records are in, and their bounds there while any are. */
     private int spatial;
     private float boundsX0, boundsY0, boundsX1, boundsY1;
@@ -78,6 +83,7 @@ final class CgInstanceRun {
         chunkOpen = false;
         materialBinding = -1;
         binding = -1;
+        appendBinding = -1;
     }
 
     /**
@@ -138,6 +144,7 @@ final class CgInstanceRun {
             close(pending);
             if (chunkOpen) {
                 chunkOpen = false;
+                appendBinding = -1;
                 sink.add(chunk.end());
             }
         }
@@ -176,8 +183,33 @@ final class CgInstanceRun {
             // An immediate chunk mixes nodes: its draws stay unbounded, covering everything.
             if (bounded && sink != null) chunk.bounds(boundsX0, boundsY0, boundsX1, boundsY1);
         }
+        appendBinding = -1;
         bounded = false;
         pending.reset();
+    }
+
+    /**
+     * Records already in the kind's layout, {@code count} of them from float {@code from} of {@code src}, bounded by
+     * the rectangle given: after anything staged, and into the open draw while nothing has come between.
+     */
+    void records(float[] src, int from, int count, float x0, float y0, float x1, float y1, CgStagingBuffer pending) {
+        close(pending);
+        if ((binding < 0 || captured != table()) && material != null) capture();
+        if (pipeline == null) return;
+        if (!chunkOpen) {
+            chunk.bindings(captured).begin(sink != null ? spatial : 0, 0, 0);
+            chunkOpen = true;
+            appendBinding = -1;
+        } else if (chunk.bindings() != captured) {
+            throw new IllegalStateException("the sink's recording changed under an open chunk: flush before");
+        }
+        if (appendBinding != binding || appendPipeline != pipeline) {
+            chunk.draw(pipeline, binding);
+            appendBinding = binding;
+            appendPipeline = pipeline;
+        }
+        chunk.instances(src, from, count);
+        if (sink != null) chunk.bounds(x0, y0, x1, y1);
     }
 
     /** Whether recorded draws await a flush. */
@@ -190,6 +222,7 @@ final class CgInstanceRun {
         close(pending);
         if (!chunkOpen) return;
         chunkOpen = false;
+        appendBinding = -1;
         if (sink != null) sink.add(chunk.end());
         else CgImmediate.flush(chunk.endInPlace(), CgOrder.SORTED);
     }

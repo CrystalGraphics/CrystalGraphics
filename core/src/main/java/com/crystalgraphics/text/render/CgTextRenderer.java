@@ -22,6 +22,8 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgChunkSink;
+import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
@@ -37,8 +39,10 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
@@ -60,6 +64,10 @@ import java.util.logging.Logger;
  * {@link #submitBatchedQuads}) so bitmap batches draw before distance-field batches. On
  * batch-state transitions the active material keywords, atlas texture, and pxRange property
  * are swapped (triggering a flush of whatever was pending under the previous state).</p>
+ *
+ * <p>Within a batch, quads wait in a bucket per paint layer and batch key, drained in layer order when the batch
+ * flushes ({@link #drainBuckets}): draws alternating atlases or shadow cells cost a transition per bucket, not per
+ * draw. Each draw keeps its own layering; across draws, every shadow lies beneath every glyph.</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -107,6 +115,13 @@ import java.util.logging.Logger;
  * The PoseStack in world mode represents
  * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
  * metrics remain in logical space regardless of camera distance or FOV.</p>
+ *
+ * <p><b>Text placed in the world needs no renderer of its own</b>: {@link CgWorldRenderer#text} queues a {@link Draw}
+ * at a point and draws it at every world firing, under that firing's camera, batched with every other label.</p>
+ *
+ * <pre>{@code
+ * world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+ * }</pre>
  *
  * <h3>Owned Batch Lifecycle</h3>
  * <p>{@code CgTextRenderer} owns a private {@link CgQuadRenderer} — no caller-provided
@@ -386,6 +401,7 @@ public class CgTextRenderer {
      * instead of drawing them; null draws at once again.
      */
     public CgTextRenderer sink(@Nullable CgChunkSink sink) {
+        flush();
         quadRenderer.sink(sink);
         projectionValid = false;
         return this;
@@ -554,6 +570,7 @@ public class CgTextRenderer {
      * owns its depth decides it from G3 on.</p>
      */
     private void flush() {
+        drainBuckets();
         if (!quadRenderer.isDirty()) return;
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
@@ -590,7 +607,7 @@ public class CgTextRenderer {
 
     /**
      * Transitions {@link #textMaterial} to the given batch state, flushing whatever was
-     * pending under the previous state first. Callers (just {@link #submitBatchedQuads}) are
+     * pending under the previous state first. Callers (just {@link #drainBuckets}) are
      * responsible for only calling this when the state actually changed — this method always
      * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
@@ -646,7 +663,7 @@ public class CgTextRenderer {
     @Getter
     private long degradedDrawCount;
 
-    private final Draw scratchDraw = new Draw();
+    private final Draw scratchDraw = new Draw(null);
 
     /**
      * Starts a fluent draw request using this renderer's single reused scratch instance —
@@ -677,7 +694,29 @@ public class CgTextRenderer {
      */
     public Draw retainedDraw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        return new Draw();
+        return new Draw(null);
+    }
+
+    /**
+     * A retained draw whose {@link Draw#submit()} hands it to {@code queue} instead of drawing: for an owner that
+     * draws later, under a pose it only knows then, with {@link #drawQueued}. {@code CgWorldRenderer}'s labels are
+     * these: the caller fills every field a draw has, and the world draws it under each firing's camera.
+     *
+     * <pre>{@code
+     * Draw label = renderer.queuedDraw(pending::add);
+     * label.text("Spawn").font(font).stroke(0.1f, 0xFF000000).submit();   // into pending
+     * // later, at record time:
+     * for (Draw d : pending) renderer.drawQueued(d.pose(pose));
+     * }</pre>
+     */
+    public Draw queuedDraw(Consumer<Draw> queue) {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        return new Draw(queue);
+    }
+
+    /** Draws a {@link #queuedDraw} now, as {@link Draw#submit()} would have; inside a batch if one is open. */
+    public CgTextRenderer drawQueued(Draw draw) {
+        return draw.drawNow();
     }
 
     /**
@@ -779,10 +818,15 @@ public class CgTextRenderer {
         private float strokeAlign = ALIGN_OUTSET;
         private float strokeOver;
         private final CgTextShadowList shadows = new CgTextShadowList();
+        @Nullable
+        private final Consumer<Draw> queue;
 
-        private Draw() {}
+        private Draw(@Nullable Consumer<Draw> queue) {
+            this.queue = queue;
+        }
 
-        private Draw reset() {
+        /** Every field back to its default: for a retained draw reused for something else. */
+        public Draw reset() {
             layout = null;
             paragraph = null;
             text = null;
@@ -1048,7 +1092,15 @@ public class CgTextRenderer {
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before submit()");
             if (layout == null && family == null && font == null) throw new IllegalStateException(
                     "CgTextRenderer.Draw requires font(...) or family(...) before submit()");
-            
+            if (queue != null) {
+                queue.accept(this);
+                return CgTextRenderer.this;
+            }
+            return drawNow();
+        }
+
+        private CgTextRenderer drawNow() {
+            if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
             try {
@@ -1079,6 +1131,18 @@ public class CgTextRenderer {
                     "CgTextRenderer.Draw requires font(...) or family(...) before measure()");
 
             return resolveDraw(this, effectivePose().last()).layout();
+        }
+
+        /**
+         * The size its text is laid out at, in the layout's units: {@code targetPx} where set, else its family's or
+         * font's, else its layout's first glyph's; 0 with none of them. What a pose scales to place the text.
+         */
+        public int basePx() {
+            if (targetPx > 0 && (family != null || font != null)) return targetPx;
+            if (family != null) return family.getPrimarySource().getKey().getTargetPx();
+            if (font != null) return font.getTargetPx();
+            if (layout != null && layout.baked().fontKeys().length > 0) return layout.baked().fontKeys()[0].getTargetPx();
+            return 0;
         }
 
         /**
@@ -1602,6 +1666,7 @@ public class CgTextRenderer {
                               boolean pixelSnap, Matrix4f modelView,
                               int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
         int shadows = shadowList.count();
+        float node = CgPalette.pack(spatialNode, effectNode);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
@@ -1743,22 +1808,32 @@ public class CgTextRenderer {
                 }
             }
 
-            if (batchBits != activeBatchBits) {
-                transitionToMaterial(batchBits, isDistanceField, atlasId);
-            }
-
-            quadRenderer.quad()
-                    .at(quadX, quadY).size(quadW, quadH)
-                    .uv(u0, v0, u1, v1)
-                    .color(rgba)
-                    .atlasLayer(atlasLayer)
-                    .custom0(c0x, c0y, c0z, c0w)
-                    .custom1(c1x, c1y, c1z, c1w)
-                    .custom2(c2)
-                    .clip(clip)
-                    .node(spatialNode, effectNode)
-                    .pose(modelView)
-                    .submit();
+            Bucket b = bucket(paint - shadows, batchBits, isDistanceField, atlasId);
+            float[] q = b.reserve(spatialNode);
+            int o = (b.count - 1) * RECORD;
+            // As Quad.submit bakes a pose, through the same JOML calls, so the floats are the same.
+            bakeOrigin.set(quadX, quadY, 0f);
+            bakeRight.set(quadW, 0f, 0f);
+            bakeUp.set(0f, quadH, 0f);
+            modelView.transformPosition(bakeOrigin);
+            modelView.transformDirection(bakeRight);
+            modelView.transformDirection(bakeUp);
+            q[o + R_ORIGIN] = bakeOrigin.x; q[o + R_ORIGIN + 1] = bakeOrigin.y; q[o + R_ORIGIN + 2] = bakeOrigin.z;
+            q[o + R_RIGHT] = bakeRight.x; q[o + R_RIGHT + 1] = bakeRight.y; q[o + R_RIGHT + 2] = bakeRight.z;
+            q[o + R_UP] = bakeUp.x; q[o + R_UP + 1] = bakeUp.y; q[o + R_UP + 2] = bakeUp.z;
+            q[o + R_UV0] = u0; q[o + R_UV0 + 1] = v0;
+            q[o + R_UV1] = u1; q[o + R_UV1 + 1] = v1;
+            // Division, not a reciprocal multiply: CgBufferWriter.colorAt's exact floats.
+            q[o + R_COLOR] = ((rgba >>> 16) & 0xFF) / 255f;
+            q[o + R_COLOR + 1] = ((rgba >>> 8) & 0xFF) / 255f;
+            q[o + R_COLOR + 2] = (rgba & 0xFF) / 255f;
+            q[o + R_COLOR + 3] = ((rgba >>> 24) & 0xFF) / 255f;
+            q[o + R_ATLAS_LAYER] = atlasLayer;
+            q[o + R_CUSTOM2] = c2;
+            q[o + R_CLIP] = clip;
+            q[o + R_NODE] = node;
+            q[o + R_CUSTOM0] = c0x; q[o + R_CUSTOM0 + 1] = c0y; q[o + R_CUSTOM0 + 2] = c0z; q[o + R_CUSTOM0 + 3] = c0w;
+            q[o + R_CUSTOM1] = c1x; q[o + R_CUSTOM1 + 1] = c1y; q[o + R_CUSTOM1 + 2] = c1z; q[o + R_CUSTOM1 + 3] = c1w;
 
             if (traceQuadLoop) {
                 long now = System.nanoTime();
@@ -1784,6 +1859,100 @@ public class CgTextRenderer {
             CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.maxIterIndex", traceMaxIndex);
             CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.slowIters", traceSlowIters);
         }
+        }
+    }
+
+    // ── Buckets ─────────────────────────────────────────────────────────────
+    // A batch's quads wait in a bucket per (paint rank, batch) and are drawn bucket by bucket when it flushes, so a
+    // run of draws alternating atlases or shadow cells costs a transition per bucket rather than per draw. The rank
+    // (a draw's paint step less its shadow count) means the same layer in every draw, which keeps each draw's own
+    // layering; across draws in one batch every shadow lies beneath every glyph. A bucket holds final instance
+    // records, so draining one is a copy per run of spatial node.
+
+    private static final int RECORD = CgQuadRenderer.Record.FLOATS;
+    private static final int R_ORIGIN = CgQuadRenderer.Record.ORIGIN, R_RIGHT = CgQuadRenderer.Record.RIGHT,
+            R_UP = CgQuadRenderer.Record.UP, R_UV0 = CgQuadRenderer.Record.UV0, R_UV1 = CgQuadRenderer.Record.UV1,
+            R_COLOR = CgQuadRenderer.Record.COLOR, R_ATLAS_LAYER = CgQuadRenderer.Record.ATLAS_LAYER,
+            R_CUSTOM0 = CgQuadRenderer.Record.CUSTOM0, R_CUSTOM1 = CgQuadRenderer.Record.CUSTOM1,
+            R_CUSTOM2 = CgQuadRenderer.Record.CUSTOM2, R_CLIP = CgQuadRenderer.Record.CLIP,
+            R_NODE = CgQuadRenderer.Record.NODE;
+
+    private static final class Bucket {
+        int rank;
+        long batchBits;
+        boolean distanceField;
+        int atlasId;
+        /** Records in {@code CgQuadRenderer.Record}'s layout; padding is never written, so stays 0. */
+        float[] records = new float[RECORD * 64];
+        /** Per record, its spatial node: a run of one node is one copy. */
+        int[] spatial = new int[64];
+        int count;
+
+        /** Room for one more record in {@code node}, counted; it is written at {@code (count - 1) * RECORD}. */
+        float[] reserve(int node) {
+            if (count == spatial.length) {
+                spatial = Arrays.copyOf(spatial, count * 2);
+                records = Arrays.copyOf(records, count * 2 * RECORD);
+            }
+            spatial[count++] = node;
+            return records;
+        }
+    }
+
+    private final List<Bucket> buckets = new ArrayList<>();
+    private int bucketCount;
+    @Nullable
+    private Bucket lastBucket;
+    private final Vector3f bakeOrigin = new Vector3f(), bakeRight = new Vector3f(), bakeUp = new Vector3f();
+
+    private Bucket bucket(int rank, long batchBits, boolean distanceField, int atlasId) {
+        Bucket last = lastBucket;
+        if (last != null && last.rank == rank && last.batchBits == batchBits) return last;
+        for (int i = 0; i < bucketCount; i++) {
+            Bucket b = buckets.get(i);
+            if (b.rank == rank && b.batchBits == batchBits) return lastBucket = b;
+        }
+        if (bucketCount == buckets.size()) buckets.add(new Bucket());
+        Bucket b = buckets.get(bucketCount++);
+        b.rank = rank;
+        b.batchBits = batchBits;
+        b.distanceField = distanceField;
+        b.atlasId = atlasId;
+        b.count = 0;
+        return lastBucket = b;
+    }
+
+    /** Hands every bucket to the quad renderer, by rank then first seen, a transition between them. */
+    private void drainBuckets() {
+        int n = bucketCount;
+        if (n == 0) return;
+        // Cleared first: a transition flushes, and that flush must not drain again.
+        bucketCount = 0;
+        lastBucket = null;
+        // Insertion sort by rank alone, stable, so equal ranks keep the order they were first seen in.
+        for (int i = 1; i < n; i++) {
+            Bucket b = buckets.get(i);
+            int j = i - 1;
+            while (j >= 0 && buckets.get(j).rank > b.rank) {
+                buckets.set(j + 1, buckets.get(j));
+                j--;
+            }
+            buckets.set(j + 1, b);
+        }
+        CgTrace.add(CgChannels.TEXT, "draw.buckets", n);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.drainBuckets")) {
+            for (int i = 0; i < n; i++) {
+                Bucket b = buckets.get(i);
+                if (b.batchBits != activeBatchBits) transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
+                int[] spatial = b.spatial;
+                for (int from = 0, to; from < b.count; from = to) {
+                    int node = spatial[from];
+                    to = from + 1;
+                    while (to < b.count && spatial[to] == node) to++;
+                    quadRenderer.records(b.records, from, to - from, node);
+                }
+                b.count = 0;
+            }
         }
     }
 

@@ -586,6 +586,71 @@ public final class CgQuadRenderer extends CgAbstractRenderer {
     }
 
     /**
+     * Queues {@code count} records already in {@link Record}'s layout, from record {@code from} of {@code src}, all in
+     * spatial node {@code spatial}: for a caller that bakes its own records, as the text renderer does, so a run of
+     * them is one copy rather than a {@link #quad()} each. They draw after anything queued before them, and join the
+     * open draw where nothing came between.
+     *
+     * <pre>{@code
+     * float[] records = new float[n * CgQuadRenderer.Record.FLOATS];
+     * int at = i * CgQuadRenderer.Record.FLOATS;
+     * records[at + CgQuadRenderer.Record.ORIGIN] = x;   // ... every field, padding left 0
+     * renderer.records(records, 0, n, 0);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code origin}, {@code right} and {@code up} are final: no pose is applied.</li>
+     *   <li>{@code color} is ARGB unpacked to 0..1 by division, as {@link Quad#color} writes it; {@code node} is
+     *       {@code CgPalette.pack(spatial, effect)}, its spatial half equal to {@code spatial}.</li>
+     * </ul>
+     */
+    public CgQuadRenderer records(float[] src, int from, int count, int spatial) {
+        if (!begun) throw new IllegalStateException("CgQuadRenderer not begun");
+        if (currentMaterial == null) throw new IllegalStateException("CgQuadRenderer.records requires useMaterial(material) first");
+        if (count <= 0) return this;
+        float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY;
+        float x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY;
+        int stride = Record.FLOATS;
+        for (int o = from * stride, end = (from + count) * stride; o < end; o += stride) {
+            float ox = src[o + Record.ORIGIN], oy = src[o + Record.ORIGIN + 1];
+            float rx = src[o + Record.RIGHT], ry = src[o + Record.RIGHT + 1];
+            float ux = src[o + Record.UP], uy = src[o + Record.UP + 1];
+            // As Quad.submit: a pixel past the corners.
+            x0 = Math.min(x0, ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f);
+            y0 = Math.min(y0, oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f);
+            x1 = Math.max(x1, ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f);
+            y1 = Math.max(y1, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
+        }
+        run.spatial(spatial, accumStaging);
+        run.records(src, from * stride, count, x0, y0, x1, y1, accumStaging);
+        return this;
+    }
+
+    /**
+     * The instance record's layout, in floats: what {@link #records} takes. Read from {@link CgInstanceKind#QUAD}'s
+     * format, so naming it touches no GPU buffer.
+     */
+    public static final class Record {
+        private static final CgBufferFormat FORMAT = CgInstanceKind.QUAD.format();
+        public static final int FLOATS = FORMAT.getFloatCount();
+        public static final int ORIGIN = FORMAT.getField("origin").getFloatOffset();
+        public static final int RIGHT = FORMAT.getField("right").getFloatOffset();
+        public static final int UP = FORMAT.getField("up").getFloatOffset();
+        public static final int UV0 = FORMAT.getField("uv0").getFloatOffset();
+        public static final int UV1 = FORMAT.getField("uv1").getFloatOffset();
+        public static final int COLOR = FORMAT.getField("color").getFloatOffset();
+        public static final int ATLAS_LAYER = FORMAT.getField("atlasLayer").getFloatOffset();
+        public static final int CUSTOM0 = FORMAT.getField("custom0").getFloatOffset();
+        public static final int CUSTOM1 = FORMAT.getField("custom1").getFloatOffset();
+        public static final int CUSTOM2 = FORMAT.getField("custom2").getFloatOffset();
+        public static final int CLIP = FORMAT.getField("clip").getFloatOffset();
+        public static final int NODE = FORMAT.getField("node").getFloatOffset();
+
+        private Record() {
+        }
+    }
+
+    /**
      * Draws everything queued since the last flush, now, into the bound framebuffer: each run under one
      * {@link #useMaterial} is one recorded draw, executed through {@code CgImmediate} under the frame block the
      * caller prepared.

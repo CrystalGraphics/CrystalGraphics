@@ -82,20 +82,20 @@ public class CgGlyphPlacementCacheBudgetTest {
 
     @Test
     public void countBudgetKeepsTheByteTotalConsistent() {
-        // Far past CAPACITY (1024) with small entries, so eviction runs entirely through
+        // Past CAPACITY with small entries (3.7 MB of them), so eviction runs entirely through
         // removeEldestEntry and never through the byte path. The total must still track.
-        for (int i = 0; i < 1500; i++) {
+        for (int i = 0; i < CgGlyphPlacementCache.CAPACITY + 500; i++) {
             CgGlyphPlacementCache.put(key(i), entry(1));
         }
         int size = CgGlyphPlacementCache.size();
-        assertTrue("count budget should have capped the map", size <= 1024);
+        assertTrue("count budget should have capped the map", size <= CgGlyphPlacementCache.CAPACITY);
         assertEquals("byte total must equal size x per-entry cost",
                 (long) size * (ENTRY_OVERHEAD + BYTES_PER_GLYPH), CgGlyphPlacementCache.estimatedBytes());
     }
 
     @Test
     public void byteBudgetEvictsBeforeTheCountBudgetWouldFor()  {
-        // Entries large enough that the 8 MB byte budget binds long before 1024 entries do:
+        // Entries large enough that the 8 MB byte budget binds long before the count does:
         // 100k glyphs = ~1.6 MB each, so ~5 fit.
         for (int i = 0; i < 40; i++) {
             CgGlyphPlacementCache.put(key(i), entry(100_000));
