@@ -22,6 +22,9 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.mc.compat.CgIrisCompat;
 import com.crystalgraphics.platform.gl.CgGL;
+import javax.annotation.Nullable;
+import com.crystalgraphics.render.mesh.CgMeshStore;
+import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -358,6 +361,42 @@ public final class CgWorldRenderer {
         Draw draw = scratch.start(lods.finest(), material);
         draw.lods = lods;
         return draw;
+    }
+
+    /**
+     * Starts compiling every program this renderer draws {@code material} with, without waiting, and says whether all
+     * are built: each link of its chain's Forward pass, its depth pass, its Emissive and Distortion passes, each in
+     * the multi-draw form a joined run binds too, with the keywords enabled now. Poll it from a warm-up list, so no
+     * frame compiles a program the frame draws. Render thread.
+     *
+     * <pre>{@code
+     * warming.add(material);              // when a look starts playing, before its first draw
+     * warming.removeIf(world::prepare);   // each frame: dropped once built
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The mesh and the draw's form ({@code instances}, {@code indirect}, a {@code buffer}) choose no program, so
+     *       the material is all it takes. A GPU-culled set's kernels are {@code CgGpuOps.prepareCull}'s.</li>
+     *   <li>A keyword enabled after it answered true is a program it never built.</li>
+     * </ul>
+     */
+    public boolean prepare(CgMaterial material) {
+        boolean joins = CgCapabilities.detect().multiDraw() && CgMeshStore.get().multiDraw();
+        boolean ready = true;
+        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
+            ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
+            if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            if (link.hasEmissivePass()) ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
+            if (link.hasDistortionPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
+        }
+        return ready;
+    }
+
+    /** {@code pipeline} and, where draws join, its multi-draw form, both started; whether both are built. */
+    private static boolean prepared(@Nullable CgPipeline pipeline, boolean joins) {
+        if (pipeline == null) return true;
+        boolean ready = pipeline.prepare();
+        return joins ? pipeline.multiDraw().prepare() & ready : ready;
     }
 
     /** One draw being built. Never hold it: the next {@link #draw} reuses it. */

@@ -221,15 +221,17 @@ public final class CgPipeline {
     }
 
     /**
-     * Starts this pipeline's compile without waiting, and says whether {@link #program()} would now return without
-     * waiting on the driver. False on the frame it starts one.
+     * Starts this pipeline's program compiling without waiting, the shader's first and then this pass, keyword set
+     * and multi-draw form of it, and says whether {@link #program()} would now return without compiling or waiting
+     * on the driver. False on a frame that starts one; poll it frame to frame.
      */
     public boolean prepare() {
         if (shader.isDirty()) {
             shader.submitRecompile(pass == CgRenderPassVariant.FORWARD);
             return false;
         }
-        return shader.pollPending();
+        if (!shader.pollPending()) return false;
+        return shader.prepareVariant(pass == CgRenderPassVariant.FORWARD ? null : pass.lightModeName(), compiled);
     }
 
     /**

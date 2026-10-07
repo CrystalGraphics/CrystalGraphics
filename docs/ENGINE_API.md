@@ -133,6 +133,10 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   `world.distortion` and `world.distortionApply`; a frame with no distortion records neither. The field is published
   as `CgFrameKeys.DISTORTION`, and a post effect bends a side input by it with `post.distorted(texture)`: bloom
   bends the emission so the glow moves with the scene beneath it.
+- **Warming**: `world.prepare(material)` starts every program the renderer will draw a material with (each pass of its
+  chain, its depth, Emissive and Distortion passes, and the multi-draw form of each) without waiting, and answers true
+  once all are built. Poll it from a warm-up list before a material's first draw: a program compiled at its first
+  draw is 7-110 ms of that frame on GL.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).
