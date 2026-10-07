@@ -127,6 +127,12 @@ public final class CgExecutor {
     private static final int GPU_DEFERRED = CgGpuTrace.name("upload.deferred"), GPU_MESHES = CgGpuTrace.name("upload.meshes");
     private static final int TRIM_POOLS = CgTrace.name("graph.trimPools");
     private static final int ASYNC_WAITS = CgTrace.name("graph.async-waits");
+    private static final int ACQUIRE = CgTrace.name("graph.acquire"), MAKE_STORAGE = CgTrace.name("graph.makeStorage"),
+            WRITE_COMMANDS = CgTrace.name("graph.writeCommands"), RASTER_BEGIN = CgTrace.name("graph.rasterBegin"),
+            BUFFER_STEP = CgTrace.name("graph.bufferStep"), DISPATCH_PROGRAM = CgTrace.name("graph.dispatch.program"),
+            DISPATCH_BIND = CgTrace.name("graph.dispatch.bind"), DISPATCH_ISSUE = CgTrace.name("graph.dispatch.issue"),
+            FILL = CgTrace.name("graph.fill"), UPDATE_STAGE = CgTrace.name("graph.update.stage"),
+            UPDATE_COPY = CgTrace.name("graph.update.copy");
     /**
      * Set by the first frame with a kernel or a buffer operation. Until then nothing can race what a draw does but a
      * kernel's later write, which the tracked backend's graphics-to-compute wait already orders; so a process that
@@ -371,11 +377,13 @@ public final class CgExecutor {
     }
 
     private static void acquire(CgGraphResource resource) {
-        if (resource instanceof CgGraphTexture texture) {
-            texture.resolve(POOL.acquire(texture.desc()));
-        } else {
-            CgGraphBuffer buffer = (CgGraphBuffer) resource;
-            buffer.resolve(BUFFERS.acquire(buffer.desc()));
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, ACQUIRE)) {
+            if (resource instanceof CgGraphTexture texture) {
+                texture.resolve(POOL.acquire(texture.desc()));
+            } else {
+                CgGraphBuffer buffer = (CgGraphBuffer) resource;
+                buffer.resolve(BUFFERS.acquire(buffer.desc()));
+            }
         }
     }
 
@@ -473,24 +481,10 @@ public final class CgExecutor {
                 }
                 if (CgBufferInspector.watching()) inspect(compute);
                 unpinLevels(frame, s);
-            } else if (pass instanceof CgPass.Fill fill) {
-                int id = bufferStorage(fill.buffer, true);
-                CgGL.cgFillBuffer(id, fill.offset, fill.size, fill.value);
-                if (fill.value == 0) CgLoweredResources.zeroed(id, fill.offset, fill.size, CgFrameRing.frame());
-                else CgLoweredResources.written(id);
-                written(fill.buffer);
-            } else if (pass instanceof CgPass.Update update) {
-                update(update);
-            } else if (pass instanceof CgPass.BufferCopy copy) {
-                int from = bufferStorage(copy.from, false), to = bufferStorage(copy.to, true);
-                CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
-                CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, copy.fromOffset,
-                        copy.toOffset, copy.size);
-                CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
-                CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
-                CgLoweredResources.written(to);
-                written(copy.to);
+            } else if (pass instanceof CgPass.Fill || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy) {
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BUFFER_STEP)) {
+                    bufferStep(pass);
+                }
             } else if (pass instanceof CgPass.Readback readback) {
                 readback(readback);
             } else if (pass instanceof CgPass.BufferRelease release) {
@@ -530,6 +524,30 @@ public final class CgExecutor {
             if (pass.request == null) throw failure;
             LOGGER.warn("{} failed", pass, failure);
             pass.request.fail(failure.getMessage() == null ? failure.toString() : failure.getMessage());
+        }
+    }
+
+    private void bufferStep(CgPass pass) {
+        if (pass instanceof CgPass.Fill fill) {
+            int id = bufferStorage(fill.buffer, true);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, FILL)) {
+                CgGL.cgFillBuffer(id, fill.offset, fill.size, fill.value);
+            }
+            if (fill.value == 0) CgLoweredResources.zeroed(id, fill.offset, fill.size, CgFrameRing.frame());
+            else CgLoweredResources.written(id);
+            written(fill.buffer);
+        } else if (pass instanceof CgPass.Update update) {
+            update(update);
+        } else if (pass instanceof CgPass.BufferCopy copy) {
+            int from = bufferStorage(copy.from, false), to = bufferStorage(copy.to, true);
+            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, from);
+            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, to);
+            CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, copy.fromOffset,
+                    copy.toOffset, copy.size);
+            CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
+            CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
+            CgLoweredResources.written(to);
+            written(copy.to);
         }
     }
 
@@ -791,8 +809,33 @@ public final class CgExecutor {
     }
 
     private void dispatch(CgFrame frame, CgDispatch d, int bindings) {
-        CgKernelProgram program = d.kernel.program();
-        program.use();
+        CgKernelProgram program;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, DISPATCH_PROGRAM)) {
+            program = d.kernel.program();
+            program.use();
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, DISPATCH_BIND)) {
+            bindDispatch(d, program, frame, bindings);
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, DISPATCH_ISSUE)) {
+            switch (d.form) {
+                case ELEMENTS -> program.dispatchBound(d.x, d.y, d.z);
+                case GROUPS -> program.dispatchBound(d.x * program.kernel().sizeX(), d.y * program.kernel().sizeY(),
+                        d.z * program.kernel().sizeZ());
+                case INDIRECT -> {
+                    int args = bufferStorage(d.args, false);
+                    barrier(true, args, CgAccess.INDIRECT);
+                    program.dispatchIndirectBound(args, d.argsOffset);
+                }
+            }
+        }
+        // A history written here: its next version is its newest from now on, once however many bindings wrote it.
+        for (int b = 0; b < d.buffers.length; b++) {
+            if (wroteHistory(d.buffers[b], d.bufferAccess[b]) && firstWriter(d, b)) d.buffers[b].advance();
+        }
+    }
+
+    private void bindDispatch(CgDispatch d, CgKernelProgram program, CgFrame frame, int bindings) {
         frame.bindings.bind(bindings);
         for (String token : d.source.engineBuffers()) CgEngineBufferRegistry.get(token).buffer().get().bind();
         for (int b = 0; b < d.buffers.length; b++) {
@@ -818,20 +861,6 @@ public final class CgExecutor {
             boolean layered = d.layers[i] < 0 && image.dimension() != CgImageDimension.D2;
             CgGL.glBindImageTexture(i, id, d.levels[i], layered, Math.max(0, d.layers[i]), glAccess(image.access()),
                     image.format().glFormat);
-        }
-        switch (d.form) {
-            case ELEMENTS -> program.dispatchBound(d.x, d.y, d.z);
-            case GROUPS -> program.dispatchBound(d.x * program.kernel().sizeX(), d.y * program.kernel().sizeY(),
-                    d.z * program.kernel().sizeZ());
-            case INDIRECT -> {
-                int args = bufferStorage(d.args, false);
-                barrier(true, args, CgAccess.INDIRECT);
-                program.dispatchIndirectBound(args, d.argsOffset);
-            }
-        }
-        // A history written here: its next version is its newest from now on, once however many bindings wrote it.
-        for (int b = 0; b < d.buffers.length; b++) {
-            if (wroteHistory(d.buffers[b], d.bufferAccess[b]) && firstWriter(d, b)) d.buffers[b].advance();
         }
     }
 
@@ -883,11 +912,16 @@ public final class CgExecutor {
         int id = bufferStorage(update.buffer, true);
         int bytes = update.bytes.length;
         if (staging == null) staging = CgStreamBuffer.create(CgGL.GL_COPY_READ_BUFFER, Math.max(bytes, 1 << 16));
-        staging.map(bytes).put(update.bytes);
-        int at = staging.commit(bytes);
+        int at;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, UPDATE_STAGE)) {
+            staging.map(bytes).put(update.bytes);
+            at = staging.commit(bytes);
+        }
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, staging.getGlBufferId());
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, id);
-        CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, at, update.offset, bytes);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, UPDATE_COPY)) {
+            CgGL.glCopyBufferSubData(CgGL.GL_COPY_READ_BUFFER, CgGL.GL_COPY_WRITE_BUFFER, at, update.offset, bytes);
+        }
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, 0);
         CgGL.glBindBuffer(CgGL.GL_COPY_WRITE_BUFFER, 0);
         CgLoweredResources.written(id);
@@ -908,15 +942,19 @@ public final class CgExecutor {
         switch (buffer.kind()) {
             case PERSISTENT -> {
                 if (buffer.bufferId() == 0) {
-                    buffer.resolve(CgBufferPool.create(buffer.size()));
+                    try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
+                        buffer.resolve(CgBufferPool.create(buffer.size()));
+                    }
                     KEPT.add(buffer);
                 }
             }
             case HISTORY -> {
                 int[] versions = buffer.versions();
                 if (versions[0] == 0) {
-                    versions[0] = CgBufferPool.create(buffer.size());
-                    versions[1] = CgBufferPool.create(buffer.size());
+                    try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
+                        versions[0] = CgBufferPool.create(buffer.size());
+                        versions[1] = CgBufferPool.create(buffer.size());
+                    }
                     KEPT.add(buffer);
                 }
                 return writes ? buffer.nextVersion() : view.bufferId();
@@ -997,7 +1035,20 @@ public final class CgExecutor {
             return;
         }
         if (damage != null) CgTrace.add(CgChannels.GL, "graph.damage-kpx", (long) damage[2] * damage[3] / 1000L);
-        if (packed.indirects > 0 && gpuCounts) writeCommands(pass, packed);   // a dispatch never sits inside a render pass
+        if (packed.indirects > 0 && gpuCounts) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, WRITE_COMMANDS)) {
+                writeCommands(pass, packed);   // a dispatch never sits inside a render pass
+            }
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
+            rasterBegin(frame, pass, packed, damage);
+        }
+        if (packed.count == 0) return;
+        rasterBatches(frame, pass, packed, damage);
+    }
+
+    /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
+    private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         bindTarget(pass.target, pass.level, pass.layer);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
@@ -1024,7 +1075,9 @@ public final class CgExecutor {
             packed.shapes.bindForDraw();
             packed.palette.bindForDraw();
         }
+    }
 
+    private void rasterBatches(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         int boundPipeline = -1, boundBinding = -1, boundScissor = CgRasterPass.INHERIT;
         if (damage != null) {
             // Every draw cut to the damage, with or without a scissor of its own.
@@ -1430,7 +1483,9 @@ public final class CgExecutor {
         if (storage == null && texture.kind() == CgGraphTexture.Kind.REQUESTED) {
             // At a requested texture's first use; made again later, the picture it held was lost.
             CgTrace.add(CgChannels.GL, "graph.requested.made", 1);
-            storage = CgTexturePool.create("cg_graph_" + texture.name(), texture.desc());
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, MAKE_STORAGE)) {
+                storage = CgTexturePool.create("cg_graph_" + texture.name(), texture.desc());
+            }
             texture.resolve(storage);
         }
         if (storage == null) throw new IllegalStateException(texture + " has no storage in this pass");
