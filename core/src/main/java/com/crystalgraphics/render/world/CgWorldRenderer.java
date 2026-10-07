@@ -226,6 +226,11 @@ public final class CgWorldRenderer {
     private float emissionScale;
     private CgGraphTexture emissionTarget;
     private final CgPassConstants emissionConstants = new CgPassConstants();
+    /** Whether the transparent passes write glows beside the target ({@link #mergeEmission(boolean)}). */
+    private boolean mergeEmission = !"false".equals(System.getProperty("crystalgraphics.world.mergeEmission"));
+    /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
+    private CgGraphTexture emissionFull;
+    private boolean[] merged = new boolean[64];
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
@@ -323,6 +328,24 @@ public final class CgWorldRenderer {
     }
 
     /**
+     * Whether a transparent draw whose Emissive pass folds into its Forward pass draws both at once, its glow written
+     * into a second attachment beside the target ({@code CgPipeline.emissionTarget}), on by default. The emission is
+     * then the target's size; what does not fold (opaque, half-size and authored Emissive passes) is drawn into it after.
+     * Off, every Emissive pass draws on its own into an emission target of {@link #emissionScale}: the comparison.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().mergeEmission(false);   // every glow its own draw again
+     * }</pre>
+     */
+    public void mergeEmission(boolean on) {
+        mergeEmission = on;
+    }
+
+    public boolean mergeEmission() {
+        return mergeEmission;
+    }
+
+    /**
      * Whether the transparent pass is counted again, each draw's overdraw variant adding 1 per fragment into an R16F
      * target published as {@link CgFrameKeys#OVERDRAW}: its own vertex stage, depth test and discard. Off by default,
      * on under {@code -Dcrystalgraphics.post.debug=overdraw}, which also shows it.
@@ -386,7 +409,11 @@ public final class CgWorldRenderer {
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
             ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
             if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
-            if (link.hasEmissivePass()) ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
+            if (link.hasEmissivePass()) {
+                ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
+                CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+                if (forward != null) ready &= prepared(forward.emissionTarget(), joins);
+            }
             if (link.hasDistortionPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
         }
         return ready;
@@ -988,18 +1015,20 @@ public final class CgWorldRenderer {
                 afterDrawn = 0;
                 for (int i = 0; i < count; i++) if (phase[i] == AFTER) afterDrawn++;
             }
+            CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
-                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view);
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
                 if (drawn > halfDrawn + afterDrawn) {
-                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false, view);
+                    recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
+                            view, emission);
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
-                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view);
+                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission);
             }
-            if (which == TRANSPARENT) recordEmission(stage, recording, view);
+            if (which == TRANSPARENT) recordEmission(stage, recording, view, emission);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
         }
     }
@@ -1155,38 +1184,45 @@ public final class CgWorldRenderer {
      * depth, published as {@link CgFrameKeys#EMISSION}. After the transparent pass, so it glows over everything. What
      * nothing reads (bloom off, or below its quality) the graph culls, with its depth copy.
      */
-    private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view, @Nullable CgGraphTexture merged) {
         if (emits.length < meshes.length) emits = new boolean[meshes.length];
         int emitting = 0;
         for (int i = 0; i < count; i++) {
             int queue = queues[i];
             // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
             boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
-                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP);
+                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
+                    && (merged == null || !allMerged(i));
             emits[i] = e;
             if (e) emitting++;
         }
         CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        if (merged != null) stage.resources().put(CgFrameKeys.EMISSION, merged);
         if (emitting == 0) return;
         cullSets(stage, recording, view, true);
 
-        float scale = emissionScale();
-        int w = Math.max(1, (int) (targetWidth * scale)), h = Math.max(1, (int) (targetHeight * scale));
-        if (emissionTarget == null || emissionTarget.getWidth() != w || emissionTarget.getHeight() != h) {
-            emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT));
+        CgGraphTexture into = merged;
+        if (into == null) {
+            float scale = emissionScale();
+            int w = Math.max(1, (int) (targetWidth * scale)), h = Math.max(1, (int) (targetHeight * scale));
+            if (emissionTarget == null || emissionTarget.getWidth() != w || emissionTarget.getHeight() != h) {
+                emissionTarget = CgGraphTexture.transientTexture("cg_emission", new CgTextureDesc(w, h, EMISSION_FORMAT));
+            }
+            into = emissionTarget;
         }
         stage.constants().write(constantsBlock, 0);
-        emissionConstants.read(constantsBlock, 0).resolution(w, h);
+        emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
-        CgRasterPass glow = recording.raster(emissionTarget, CgLoad.clear(0f, 0f, 0f, 0f), emissionConstants, EMISSIVE_STATE,
-                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
+        CgRasterPass glow = recording.raster(into, merged != null ? CgLoad.load() : CgLoad.clear(0f, 0f, 0f, 0f),
+                emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (!emits[i]) continue;
             modelOf(i, view);
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                if (!link.hasEmissivePass()) continue;
+                if (!link.hasEmissivePass() || merged != null && this.merged[i] && foldsEmission(link)) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
                 if (sets[i] != null) {
@@ -1200,7 +1236,50 @@ public final class CgWorldRenderer {
         }
         glow.add(chunks.end());
         glow.end();
-        stage.resources().put(CgFrameKeys.EMISSION, emissionTarget);
+        stage.resources().put(CgFrameKeys.EMISSION, into);
+    }
+
+    /**
+     * The target-sized emission the transparent passes write glows into beside the target, after a pass clearing it,
+     * with {@link #merged} saying which draws do; null where none does, or the target is the default framebuffer
+     * (1.7.10 without framebuffers), which takes no second attachment.
+     */
+    @Nullable
+    private CgGraphTexture mergedEmission(CgStageFrame stage, CgRecording recording) {
+        if (merged.length < meshes.length) merged = new boolean[meshes.length];
+        Arrays.fill(merged, 0, count, false);
+        if (!mergeEmission || stage.host().mainFramebuffer() <= 0) return null;
+        boolean any = false;
+        for (int i = 0; i < count; i++) {
+            if (phase[i] != FORWARD && phase[i] != AFTER || queues[i] >= CgRenderQueue.OVERLAY_THRESHOLD || emissions[i] <= 0f) continue;
+            merged[i] = true;
+            if (!any) {
+                for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) any |= foldsEmission(link);
+            }
+        }
+        if (!any) return null;
+        int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
+        if (emissionFull == null || emissionFull.getWidth() != w || emissionFull.getHeight() != h) {
+            emissionFull = CgGraphTexture.transientTexture("cg_emission_full", new CgTextureDesc(w, h, EMISSION_FORMAT));
+        }
+        recording.raster(emissionFull, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), null, CgOrder.SORTED).end();
+        return emissionFull;
+    }
+
+    /** Whether a link's Emissive pass is drawn by its Forward draw ({@code CgPipeline.emissionTarget}). */
+    private static boolean foldsEmission(CgMaterial link) {
+        if (!link.hasEmissivePass()) return false;
+        CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+        return forward != null && forward.emissionTarget() != null;
+    }
+
+    /** Whether every Emissive pass of draw {@code i}'s chain was drawn by its Forward draws. */
+    private boolean allMerged(int i) {
+        if (!merged[i]) return false;
+        for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+            if (link.hasEmissivePass() && !foldsEmission(link)) return false;
+        }
+        return true;
     }
 
     /**
@@ -1406,11 +1485,12 @@ public final class CgWorldRenderer {
 
     /** The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. */
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                            boolean depthOnlyPass, boolean after, CgHostView view) {
+                            boolean depthOnlyPass, boolean after, CgHostView view, @Nullable CgGraphTexture emission) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+        if (emission != null) pass.attachment(emission);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)
@@ -1420,6 +1500,10 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
+                if (emission != null && merged[i] && link.hasEmissivePass()) {
+                    CgPipeline glowing = pipeline.emissionTarget();
+                    if (glowing != null) pipeline = glowing;
+                }
                 if (sets[i] != null) {
                     drawSet(chunks, pipeline, bindingOf(link, recording), i);
                     continue;

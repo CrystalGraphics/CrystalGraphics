@@ -120,7 +120,10 @@ world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit
   `CgFrameKeys.EMISSION`; the post stack blooms it (§ *The post stack*). The target is R11G11B10F, at the tier's share of
   the world's size (Low 0.25, Medium and High 0.5, Ultra 1); `world.emissionScale(scale)` overrides it. A draw's
   `.emission(scale)` scales its glow (0 leaves it out), and a material's `_EmissionColor`/`_EmissionStrength` its
-  material's, both through `CG_EMISSION`.
+  material's, both through `CG_EMISSION`. Where the target is a framebuffer of the host's, a transparent draw whose
+  Emissive pass is codeless on its Forward pass's blend draws its glow in the same draw, into a target-sized emission
+  beside the target; the emission is then the target's size, whatever the scale. `world.mergeEmission(false)` draws
+  every Emissive pass on its own again.
 - **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
   `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
   depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
