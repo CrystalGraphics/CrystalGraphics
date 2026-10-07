@@ -374,6 +374,55 @@ public final class CgGpuOps {
         counted(dispatch, count, keys).bind("KEYS", keys).bind("BINS", bins).set("_Shift", shift).set("_Bins", binCount);
     }
 
+    // ── Warming ──────────────────────────────────────────────────────────────
+
+    /**
+     * Starts the programs a sort of {@code element} keys in {@code order} dispatches, ahead of its first use, so that
+     * frame does not build them: below compute a sort is a dozen lowered programs. Render thread.
+     *
+     * <pre>{@code
+     * CgGpuOps.prepareSort(Element.UINT, Order.ASCENDING);       // on a loading screen, or as the effect is made
+     * CgGpuOps.prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+     * CgGpuOps.prepareHistogram();
+     * }</pre>
+     *
+     * A sort by bits ({@link #sort(CgComputePass, int, Order, CgGraphBuffer, CgGraphBuffer, CgGpuCount)}) is
+     * {@code Element.UINT}'s.
+     */
+    public static void prepareSort(Element element, Order order) {
+        boolean grouped = sortKernel(SORT_COUNT, element, order).runs();
+        int[] kernels = grouped
+                ? new int[]{SORT_COUNT, SORT_REDUCE, SORT_SCAN, SORT_SCAN_ADD, SORT_SCATTER, SORT_SCATTER_KEYS}
+                : new int[]{RADIX_COUNT, RADIX_SCATTER, RADIX_SCATTER_KEYS};
+        for (int k : kernels) prepare(sortKernel(k, element, order));
+        if (!grouped) prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+        prepare(Files.fill().kernel("Copy"));
+    }
+
+    /** {@link #prepareSort}, for a scan. */
+    public static void prepareScan(Scan scan, Fold fold, Element element) {
+        prepare(scanKernel(REDUCE_STEP, fold, element, false, false));
+        prepare(scanKernel(SCAN_BLOCK, fold, element, false, scan == Scan.INCLUSIVE));
+    }
+
+    /** {@link #prepareSort}, for {@link #fill}, {@link #iota} and {@link #copy}. */
+    public static void prepareFill() {
+        prepare(Files.fill().kernel("Fill"));
+        prepare(Files.fill().kernel("Iota"));
+        prepare(Files.fill().kernel("Copy"));
+    }
+
+    /** {@link #prepareSort}, for a histogram. */
+    public static void prepareHistogram() {
+        prepare(Files.fill().kernel("Fill"));
+        prepare(Files.histogram().kernel("HistogramGroups"));
+        prepare(Files.histogram().kernel("Histogram"));
+    }
+
+    private static void prepare(CgKernel kernel) {
+        if (kernel.runs()) kernel.prepare();
+    }
+
     // ── Culling ──────────────────────────────────────────────────────────────
 
     /**

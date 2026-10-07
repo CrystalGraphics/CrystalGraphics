@@ -125,6 +125,21 @@ public final class CgVfxRange {
         return range;
     }
 
+    /**
+     * Starts the programs every range dispatches, ahead of the first frame that draws a GPU particle: below compute
+     * they are some twenty lowered programs, otherwise built on that frame. Render thread, beside
+     * {@link CgVfxParticlePool#prepare}.
+     */
+    public static void prepare() {
+        CgCompute kernels = CgCompute.load(KERNELS);
+        kernels.kernel("Key").prepare();
+        kernels.kernel("Place").prepare();
+        kernels.kernel("Objects").prepare();
+        CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
+        CgGpuOps.prepareHistogram();
+        CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+    }
+
     /** Forgets every range and stops recording. Tests, and context teardown. */
     static void forgetAll() {
         RANGES.clear();
