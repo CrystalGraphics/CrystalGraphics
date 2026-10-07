@@ -57,7 +57,8 @@
   Distortion pass draws it into a layer of a transient RGBA16F array of `distortionScale` (0.5) of the stage's size, its
   constants' resolution that size, reading the target's depth through `sceneDepth(unit, from)`, and
   `world_distortion_apply.shader` bends the target by it over its hazes' rect, the offsets read bilinearly, reading
-  a `sceneColor` copy cut to that rect. `plan` keeps the per-haze order: walking the transparent draws in key order, a draw
+  a `sceneColor` copy cut to that rect, and writing the depth where each pixel read, so a draw after it is hidden by
+  the bent scene, not by each thing's outline before the bend. `plan` keeps the per-haze order: walking the transparent draws in key order, a draw
   in `CgRenderQueue.AFTER_DISTORTION` and up (`Draw.afterDistortion()`) that the hazes pending before it overlap gets
   their apply as a draw in the transparent pass, sorted just before it and cut to their rect, drawn from one of four
   slots whose applies never overlap (recorded ahead of the pass, so it keeps one depth copy); it then draws in

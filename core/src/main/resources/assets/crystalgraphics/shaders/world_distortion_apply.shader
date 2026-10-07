@@ -4,7 +4,9 @@
 // answer to clamping's smear). Only what is behind the haze is bent in, as Unreal's apply refuses scene nearer than the
 // distorting surface: a bend whose farthest tap would land nearer than the nearest haze here is shortened until it stops
 // at that edge, so the foreground is never pulled in and the bend fades to nothing at its silhouette rather than
-// cutting off. CgWorldRenderer draws it; nothing else should.
+// cutting off. It writes the depth of where it read too, so what draws after it (a sharp layer, the host's particles)
+// is hidden by the bent scene rather than by the outline each thing had before. CgWorldRenderer draws it; nothing else
+// should.
 #type none
 
 // It samples at most a bend away from its rect: a haze's largest, with its split, is under 0.1 of the height.
@@ -23,7 +25,7 @@ Pass {
     RenderState {
         Blend OFF
         DepthTest ALWAYS
-        DepthWrite OFF
+        DepthWrite ON
         Cull OFF
     }
 
@@ -95,8 +97,12 @@ Pass {
             if (lo == 0.0) discard;
             offset *= lo;
         }
-        vec4 g = CG_SCENE_COLOR(cg_mirror(uv + offset));
+        vec2 from = cg_mirror(uv + offset);
+        vec4 g = CG_SCENE_COLOR(from);
         fragColor = vec4(CG_SCENE_COLOR(cg_mirror(uv + offset * (1.0 + split))).r, g.g,
                          CG_SCENE_COLOR(cg_mirror(uv + offset * (1.0 - split))).b, g.a);
+        // Unbent, a later draw's depth test cut the old outline out of it: a glow behind a bent block showed a dark copy.
+        ivec2 size = textureSize(cg_DepthBuffer, 0);
+        gl_FragDepth = texelFetch(cg_DepthBuffer, clamp(ivec2(from * vec2(size)), ivec2(0), size - 1), 0).r;
     }
 }
