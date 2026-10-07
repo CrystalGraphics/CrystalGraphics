@@ -16,6 +16,7 @@ public class CgVfxRangeTest {
         CgCompute range = CgCompute.load(RANGE);
         range.kernel("Key").check();
         range.kernel("Place").check();
+        range.kernel("Objects").check();
     }
 
     @Test
