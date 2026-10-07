@@ -56,8 +56,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     /** Stepped by {@link #schedule}: its particles live in a GPU pool, not in {@link #particles}. */
     private boolean scheduled;
     private int stepFirst, stepCandidates;
-    /** When its latest-dying particle dies, and the last step's length. */
-    private float lastDeath = -1f, stepDt;
+    /** When its latest-dying particle dies, the last step's length, and when that step began. */
+    private float lastDeath = -1f, stepDt, stepTime;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
         this.emitter = emitter;
@@ -153,13 +153,14 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
      *
      * <pre>{@code
      * instance.schedule(dt, originX, originY, originZ);
-     * pool.instance(slot, instance.seedBits(), instance.share(), instance.groundY(), instance);
+     * pool.instance(slot, instance.seedBits(), instance.share(), instance.groundY(), stepView);  // time() = stepTime()
      * pool.spawn(slot, instance.stepFirstSpawn(), instance.stepCandidates());
      * if (instance.finished()) pool.close(slot);
      * }</pre>
      *
      * <ul>
      *   <li>An instance is stepped one way from its {@link #start}: by {@code tick} or by this, never both.</li>
+     *   <li>After it, {@link #time()} is the step's end; the pool's view of the step reads {@link #stepTime()}.</li>
      *   <li>Its {@link #particles} stay empty; {@link #finished} comes from each spawn's life, drawn by the same hash
      *       the kernel draws it by, so it needs nothing back from the GPU while particles die only of age.</li>
      * </ul>
@@ -171,6 +172,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         this.originY = originY;
         this.originZ = originZ;
         stepDt = dt;
+        stepTime = time;
         stepFirst = spawned;
         CgVfxEmitter e = emitter;
         while (burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
@@ -195,6 +197,30 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         float life = emitter.lifeMin + (emitter.lifeMax - emitter.lifeMin) * rand(k, 4);
         // It ages a step at a time from this one, and goes at the end of the step its age reaches its life.
         lastDeath = Math.max(lastDeath, time + dt * (float) Math.ceil(life / dt));
+    }
+
+    /**
+     * A {@link #schedule}d step that spawns nothing, for an instance whose effect has stopped stepping it (killed, or
+     * gone): its particles in the pool still move and age until they die, and {@link #finished} says when.
+     */
+    public void coast(float dt) {
+        if (time < 0f) return;
+        scheduled = true;
+        stepDt = dt;
+        stepTime = time;
+        stepFirst = spawned;
+        stepCandidates = 0;
+        time += dt;
+    }
+
+    /** Whether it is stepped by {@link #schedule}: its particles live in a GPU pool. */
+    public boolean scheduled() {
+        return scheduled;
+    }
+
+    /** When {@link #schedule}'s last step began: the time the pool's view of that step reads. */
+    public float stepTime() {
+        return stepTime;
     }
 
     /** The first spawn index {@link #schedule}'s last step queued. */
