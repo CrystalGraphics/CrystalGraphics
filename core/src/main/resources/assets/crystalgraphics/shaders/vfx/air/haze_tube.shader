@@ -31,8 +31,8 @@ Properties {
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
-// reach: the ring's radius, the sheath's radius, blocks along the path
-struct v2f { vec3 world; vec3 axis; vec3 tangent; vec2 time; vec3 reach; };
+// reach: the ring's radius, the sheath's radius, blocks along the path; origin: the path's, which the noise is fixed to
+struct v2f { vec3 world; vec3 axis; vec3 tangent; vec2 time; vec3 reach; vec3 origin; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -56,6 +56,7 @@ Pass {
         vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
         o.world = origin + v.position;
         o.axis = origin + v.ring.position;
+        o.origin = origin;
         o.tangent = v.ring.tangent;
         o.reach = vec3(v.ring.radius, edge, v.ring.arc);
         // the effect's age and seed
@@ -94,7 +95,9 @@ Pass {
         vec3 at = eye + ray * max(q.x, 0.5 * (q.x + chord));
         vec3 rel = at - i.axis;
         float arc = i.reach.z + dot(rel, t);
-        vec3 drift = at * _Scale * 0.45 + vec3(0.0, -age * _Rise * _Scale * 0.45, 0.0) + seed * 7.0;
+        // From the path's origin, not the camera: camera-relative, the shimmer slid as the camera moved.
+        vec3 local = at - i.origin;
+        vec3 drift = local * _Scale * 0.45 + vec3(0.0, -age * _Rise * _Scale * 0.45, 0.0) + seed * 7.0;
         float tear = fx_noise(drift) * 0.7 + fx_noise(drift * 2.3 + 5.1) * 0.3;
         // Unbent through the beam, strongest past its glow, torn away toward the sheath's edge.
         float peak = min(_Peak * ring, edge * 0.7);
@@ -106,7 +109,7 @@ Pass {
         // Ripples racing toward the head push the scene along the beam on screen; the rest is rising shimmer.
         float ripple = sin((arc * _Rings - age * _Pulse + tear * 0.5) * 6.28318531);
         vec2 flow = FX_HAZE_SCREEN_DIR(t) * ripple * (0.6 + 0.4 * fx_noise(drift * 0.7 + 3.3));
-        vec2 wobble = mix(fx_heat(at * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
+        vec2 wobble = mix(fx_heat(local * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
         float hold = FX_HAZE_HOLD(_Strength, edge, distance(eye, at), _Hold);
         vec2 offset = wobble * _Strength * hold * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
         float fade = smoothstep(0.0, 0.1, strength);

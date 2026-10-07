@@ -85,7 +85,7 @@ Pass {
         float soft = smoothstep(0.0, 1.5, FX_SCENE_DISTANCE(ray) - enter);
         float strength = body * soft * CG_OBJECT_CUSTOM1.z;
         if (strength < 0.002) discard;
-        vec2 wobble = fx_heat((centre + spot) * _Scale, age, _Rise * _Scale, seed);
+        vec2 wobble = fx_heat(spot * _Scale, age, _Rise * _Scale, seed);
         // Perspective: a far haze moves the scene behind it as little as it covers.
         float far = min(1.0, _Reference / max(enter, 1.0e-3));
         vec2 offset = wobble * _Strength * far * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
