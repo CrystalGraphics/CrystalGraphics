@@ -169,6 +169,18 @@ Treat a forgotten `endBatch()` as a caller bug that should fail fast, matching t
 convention of every other begin/end pair in this codebase (`CgQuadRenderer`, `CgUiRenderer` -- neither
 defensively auto-flushes).
 
+**Inside a batch, quads wait in buckets.** Each quad goes to the bucket of its (paint rank, batch key): the rank is
+its paint step less the draw's shadow count, so outer shadows are negative, then decorations under the text (0), the
+glyphs (1), decorations over them (2) and inset shadows. `flush()` drains the buckets by rank, first-seen order within a
+rank, submit order within a bucket: a transition per bucket, not per draw, however the draws alternate atlases and
+shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame to 3 (`--mode=world-labels`).
+- Each draw keeps its own layering. Across draws in one batch, every shadow lies beneath every glyph: two texts that
+  overlap inside one batch layer by kind, not by submit order.
+- Anything a caller changes on the sink between draws (scissor, constants, view) must end the batch first, or quads
+  queued before it draw under it. `sink()` itself drains first. CrystalGUI's paint context ends its text path at every
+  such change.
+- A quad keeps its draw's pose, clip and nodes in a pose entry (`pushPose`); `draw.drainBuckets` times the replay.
+
 ### `CgTextRenderer.Draw`
 
 Non-static inner class — the fluent draw request. See "Fluent `Draw` request replaced
