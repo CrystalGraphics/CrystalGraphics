@@ -525,7 +525,7 @@ public final class CgWorldRenderer {
          *
          * <pre>{@code
          * world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
-         *      .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6)
+         *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
          *      .custom(0, range.base(slot), capacity, radius, parameter).at(x, y, z).gpuCulled().submit();
          * }</pre>
          *
@@ -615,7 +615,8 @@ public final class CgWorldRenderer {
          * drawn at several sizes, as a particle mesh is by each layer that draws it. 1 by default.
          *
          * <pre>{@code
-         * world.draw(billow, smoke).instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, n))
+         * world.draw(billow, smoke)
+         *      .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), range.visibleWord(slot), n))
          *      .instanceScale(layer.radius()).custom(0, radius, parameter, age, seed).at(x, y, z).gpuCulled().submit();
          * }</pre>
          */
