@@ -361,10 +361,11 @@ public final class CgVfxEmitterCompiler {
                 case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "0u");
                 case AGE -> event(s, shape, e, "p.age - s.dt < " + eventValue(shape, e) + " && " + eventValue(shape, e)
                         + " <= p.age", "p.velocity", "step_normal(p.velocity)", "0u");
-                case COLLISION -> event(s, shape, e, "p.hit.w > 0.0", "impact", "p.hit.xyz", "p.collisions");
+                case COLLISION -> event(s, shape, e, "p.hit.w > 0.0 && float(p.collisions) <= " + eventLimit(shape, e),
+                        "impact", "p.hit.xyz", "p.collisions");
                 case RATE -> event(s, shape, e, "floor((p.age - s.dt) / " + eventValue(shape, e) + ") < floor(p.age / "
-                        + eventValue(shape, e) + ")", "p.velocity", "step_normal(p.velocity)",
-                        "uint(floor(p.age / " + eventValue(shape, e) + "))");
+                        + eventValue(shape, e) + ") && floor(p.age / " + eventValue(shape, e) + ") <= " + eventLimit(shape, e),
+                        "p.velocity", "step_normal(p.velocity)", "uint(floor(p.age / " + eventValue(shape, e) + "))");
                 case DEATH -> { }
             }
         }
@@ -384,6 +385,11 @@ public final class CgVfxEmitterCompiler {
     /** Event {@code e}'s age or period, from the parameter row. */
     private static String eventValue(CgVfxShape shape, int e) {
         return "step_param(row + " + (shape.eventsAt() + e / 4) + ")[" + e % 4 + "]";
+    }
+
+    /** Repeating event {@code e}'s most firings, from the parameter row. */
+    private static String eventLimit(CgVfxShape shape, int e) {
+        return "step_param(row + " + (shape.eventsAt() + CgVfxEvent.MAX_EVENTS / 4 + e / 4) + ")[" + e % 4 + "]";
     }
 
     /** Event {@code e}'s row, appended to each stream it goes to when {@code when} holds. */

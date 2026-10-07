@@ -38,8 +38,11 @@ import java.util.regex.Pattern;
 public final class CgVfxShape {
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
-    /** The vec4s a parameter row gives its events, when it has any: each event's age, {@link CgVfxEvent#MAX_EVENTS} of them. */
-    public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 4;
+    /**
+     * The vec4s a parameter row gives its events, when it has any: each event's age or period, then each one's most
+     * firings, {@link CgVfxEvent#MAX_EVENTS} of each.
+     */
+    public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 2;
     /** Each custom kind's text, as first seen: a kind name means one text. */
     private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
     /** A number per texture a shape has sampled, for the pool key: by identity. */

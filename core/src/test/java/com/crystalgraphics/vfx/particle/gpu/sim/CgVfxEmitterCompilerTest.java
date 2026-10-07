@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -101,7 +102,7 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(shape.usesDistance() && shape.readsWorld());
         assertEquals(1, count(glsl, "void fx_test_bounce("));                                   // inlined, once
         assertTrue(glsl.contains("fx_test_bounce(p, s, step_param(row + " + shape.paramAt(modules.size() - 1) + "), step_world(inst));"));
-        assertTrue(glsl.contains("if (p.hit.w > 0.0)") && glsl.contains("p.collisions);"));
+        assertTrue(glsl.contains("if (p.hit.w > 0.0 && float(p.collisions) <= step_param(") && glsl.contains("p.collisions);"));
         assertTrue(glsl.contains("floor((p.age - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
@@ -109,6 +110,34 @@ public class CgVfxEmitterCompilerTest {
     @Test
     public void theStepKernelRunsOnEveryTier() {
         CgVfxEmitterCompiler.compile(CgVfxShape.of(EVERY_KIND)).kernel("Step").check();
+    }
+
+    @Test
+    public void theCatalogueCompilesOnEveryTier() {
+        CgVfxModule.Volume sphere = CgVfxModule.Volume.sphere(2f).at(0f, 1f, 0f);
+        CgVfxField field = CgVfxField.of(4, 4, 4, true, (x, y, z, out) -> out[0] = x);
+        CgVfxEmitter catalogue = CgVfxEmitter.builder("catalogue").renderer(CgVfxEmitter.Renderer.QUADS)
+                .capacity(64).burst(0f, 64).life(1f, 2f)
+                .module(new CgVfxModule.Attract(sphere, 20f).attenuation(2f).directed(0.3f, 0f, 1f, 0f))
+                .module(new CgVfxModule.Vortex(0f, 1f, 0f, 10f, -3f, 0f, 0f, 0f))
+                .module(new CgVfxModule.Force(1f, 0f, 0f))
+                .module(new CgVfxModule.VectorField(field, CgVfxModule.Volume.box(2f, 2f, 2f), 3f, 1f))
+                .module(new CgVfxModule.Damping(2f))
+                .module(new CgVfxModule.Conform(sphere, 2f, 30f, 5f))
+                .module(new CgVfxModule.LimitSpeed(8f))
+                .module(new CgVfxModule.Orbit(0.5f, 0f, 1f, 0f, 0f, 0f, 0f))
+                .module(new CgVfxModule.Collide(CgVfxModule.Volume.box(1f, 1f, 1f), 0.5f, 0.2f, 0.1f))
+                .module(new CgVfxModule.Collide(CgVfxModule.Volume.plane(0f, 1f, 0f), 0f, 0f, 0f).killing())
+                .module(new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f))
+                .module(new CgVfxModule.CollideDepth(0.4f, 0.3f, 0.3f, 0.5f))
+                .module(new CgVfxModule.Kill(CgVfxModule.Volume.box(20f, 20f, 20f), false))
+                .event(CgVfxEvent.onCollision().readback(8))
+                .build();
+        CgVfxShape shape = CgVfxShape.of(catalogue);
+        String glsl = CgVfxEmitterCompiler.source(shape);
+        assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/lib/vfx/sim/fx_collide.glsl\""));
+        assertTrue(shape.readsWorld());
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
 
     private static int count(String text, String part) {

@@ -935,7 +935,11 @@ public final class CgTrackedGLBackend extends CgGLBackend {
         b.storage.fill(offset, size, value);
     }
 
-    @Override public void cgBeginAsync() { tracker.beginAsync(); }
+    @Override
+    public void cgBeginAsync() {
+        textures.prepareStandIns();
+        tracker.beginAsync();
+    }
 
     @Override public long cgEndAsync() { return tracker.endAsync(); }
 
