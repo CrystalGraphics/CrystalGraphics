@@ -39,6 +39,7 @@ import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.logging.Logger;
 
 /**
@@ -646,7 +647,7 @@ public class CgTextRenderer {
     @Getter
     private long degradedDrawCount;
 
-    private final Draw scratchDraw = new Draw();
+    private final Draw scratchDraw = new Draw(null);
 
     /**
      * Starts a fluent draw request using this renderer's single reused scratch instance —
@@ -677,7 +678,29 @@ public class CgTextRenderer {
      */
     public Draw retainedDraw() {
         if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
-        return new Draw();
+        return new Draw(null);
+    }
+
+    /**
+     * A retained draw whose {@link Draw#submit()} hands it to {@code queue} instead of drawing: for an owner that
+     * draws later, under a pose it only knows then, with {@link #drawQueued}. {@code CgWorldRenderer}'s labels are
+     * these: the caller fills every field a draw has, and the world draws it under each firing's camera.
+     *
+     * <pre>{@code
+     * Draw label = renderer.queuedDraw(pending::add);
+     * label.text("Spawn").font(font).stroke(0.1f, 0xFF000000).submit();   // into pending
+     * // later, at record time:
+     * for (Draw d : pending) renderer.drawQueued(d.pose(pose));
+     * }</pre>
+     */
+    public Draw queuedDraw(Consumer<Draw> queue) {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        return new Draw(queue);
+    }
+
+    /** Draws a {@link #queuedDraw} now, as {@link Draw#submit()} would have; inside a batch if one is open. */
+    public CgTextRenderer drawQueued(Draw draw) {
+        return draw.drawNow();
     }
 
     /**
@@ -779,10 +802,15 @@ public class CgTextRenderer {
         private float strokeAlign = ALIGN_OUTSET;
         private float strokeOver;
         private final CgTextShadowList shadows = new CgTextShadowList();
+        @Nullable
+        private final Consumer<Draw> queue;
 
-        private Draw() {}
+        private Draw(@Nullable Consumer<Draw> queue) {
+            this.queue = queue;
+        }
 
-        private Draw reset() {
+        /** Every field back to its default: for a retained draw reused for something else. */
+        public Draw reset() {
             layout = null;
             paragraph = null;
             text = null;
@@ -1048,7 +1076,15 @@ public class CgTextRenderer {
             if (layout == null && paragraph == null && text == null) throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before submit()");
             if (layout == null && family == null && font == null) throw new IllegalStateException(
                     "CgTextRenderer.Draw requires font(...) or family(...) before submit()");
-            
+            if (queue != null) {
+                queue.accept(this);
+                return CgTextRenderer.this;
+            }
+            return drawNow();
+        }
+
+        private CgTextRenderer drawNow() {
+            if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
             boolean standalone = !batchActive;
             if (standalone) beginBatch();
             try {
@@ -1079,6 +1115,18 @@ public class CgTextRenderer {
                     "CgTextRenderer.Draw requires font(...) or family(...) before measure()");
 
             return resolveDraw(this, effectivePose().last()).layout();
+        }
+
+        /**
+         * The size its text is laid out at, in the layout's units: {@code targetPx} where set, else its family's or
+         * font's, else its layout's first glyph's; 0 with none of them. What a pose scales to place the text.
+         */
+        public int basePx() {
+            if (targetPx > 0 && (family != null || font != null)) return targetPx;
+            if (family != null) return family.getPrimarySource().getKey().getTargetPx();
+            if (font != null) return font.getTargetPx();
+            if (layout != null && layout.baked().fontKeys().length > 0) return layout.baked().fontKeys()[0].getTargetPx();
+            return 0;
         }
 
         /**

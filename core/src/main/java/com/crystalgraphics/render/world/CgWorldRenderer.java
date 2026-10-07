@@ -1,7 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -361,37 +359,29 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Starts a label: a line of {@code text} in {@code font} at a point in the world, facing the camera unless turned,
-     * depth-tested against the scene and drawn after the transparent draws, as a name tag. Shared scratch, so build and
-     * submit in one expression; it lives for the frame. Render thread.
+     * Starts a label at a point in the world: a {@code CgTextRenderer.Draw} with all a draw has (fonts and families,
+     * paragraphs, strokes, shadows), facing the camera unless turned, depth-tested against the scene and drawn after
+     * the transparent draws, as a name tag. Fill its text through {@link CgWorldText.Label#text(String)} or
+     * {@link CgWorldText.Label#draw()} and {@code submit()} that; it lives for the frame. Render thread.
      *
      * <pre>{@code
-     * world.text("Attract + Orbit", font).at(x, y + 6, z).height(0.5f).submit();          // centred on its point
-     * world.text("12", font).at(x, y, z).color(0xFFFF5040).anchor(0.5f, 0f).submit();    // standing on its point
-     * world.text("North", font).at(x, y, z).rotation(new Quaternionf().rotateY(0f)).submit();   // fixed in the world
+     * world.text(x, y + 6, z).height(0.5f).text("Attract + Orbit").font(font).submit();            // centred on its point
+     * world.text(x, y, z).anchor(0.5f, 0f).text("12").font(font).color(0xFFFF5040)
+     *         .stroke(0.12f, 0xFF000000).shadowCount(1).shadow(0, 2f, 2f, 1.5f, 0f, 0x80000000, false).submit();   // outlined, on it
+     * world.text(x, y, z).rotation(facingSouth).draw().paragraph(sign).family(family).targetPx(48)
+     *         .constraints(400f, 0f).submit();                                                    // a sign fixed in the world
      * }</pre>
      *
      * <ul>
-     *   <li>{@code height} is a line's height in blocks: the font's size maps to it. Its raster tier (bitmap or
-     *       distance field) follows how tall it stands on screen, as {@code CgTextRenderer}'s world text does.</li>
+     *   <li>{@code height} is a line's height in blocks: the draw's {@code basePx()} maps to it. Its raster tier (bitmap
+     *       or distance field) follows how tall it stands on screen, as {@code CgTextRenderer}'s world text does.</li>
+     *   <li>The draw's {@code pose} is the world's, set at each firing; its {@code at} offsets it in its own pixels.</li>
      *   <li>A label is unlit and unfogged, and writes no depth: labels behind a nearer one show through it.</li>
      *   <li>A glyph not yet in the atlas draws a frame or more late, as all text does.</li>
      * </ul>
      */
-    public CgWorldText.Label text(String text, CgFont font) {
-        CgWorldText.Label label = this.text.next();
-        label.text = text;
-        label.font = font;
-        return label;
-    }
-
-    /** As {@link #text(String, CgFont)}, in {@code family} at {@code px} pixels, falling back across its faces. */
-    public CgWorldText.Label text(String text, CgFontFamily family, int px) {
-        CgWorldText.Label label = this.text.next();
-        label.text = text;
-        label.family = family;
-        label.px = px;
-        return label;
+    public CgWorldText.Label text(double x, double y, double z) {
+        return text.next().at(x, y, z);
     }
 
     /** As {@link #draw(CgMesh, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */

@@ -5137,8 +5137,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public overdraw (Z)V
   method public prepare (Lcom/crystalgraphics/api/material/CgMaterial;)Z
   method public release ()V
-  method public text (Ljava/lang/String;Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
-  method public text (Ljava/lang/String;Lcom/crystalgraphics/api/font/CgFontFamily;I)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public text (DDD)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public,static get ()Lcom/crystalgraphics/render/world/CgWorldRenderer;
 com/crystalgraphics/render/world/CgWorldRenderer$Draw
   access public,final
@@ -5179,11 +5178,10 @@ com/crystalgraphics/render/world/CgWorldText$Label
   access public,final
   extends java/lang/Object
   method public anchor (FF)Lcom/crystalgraphics/render/world/CgWorldText$Label;
-  method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldText$Label;
-  method public color (I)Lcom/crystalgraphics/render/world/CgWorldText$Label;
+  method public draw ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public height (F)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
-  method public submit ()V
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
 com/crystalgraphics/serialization/CgBinaryFormat
   access public,final
   extends java/lang/Object
@@ -6508,6 +6506,7 @@ com/crystalgraphics/text/render/CgTextRenderer
   method public context (Lcom/crystalgraphics/text/render/context/CgTextRenderContext;)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public delete ()V
   method public draw ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
+  method public drawQueued (Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public endBatch ()V
   method public gamma ()Lcom/crystalgraphics/text/render/CgTextGamma;
   method public gamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/text/render/CgTextRenderer;
@@ -6517,6 +6516,7 @@ com/crystalgraphics/text/render/CgTextRenderer
   method public node (II)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public poseStack ()Lcom/crystalgraphics/api/PoseStack;
   method public poseStack (Lcom/crystalgraphics/api/PoseStack;)Lcom/crystalgraphics/text/render/CgTextRenderer;
+  method public queuedDraw (Ljava/util/function/Consumer;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public restoreStateWith (Ljava/lang/Runnable;)Lcom/crystalgraphics/text/render/CgTextRenderer;
   method public retainedDraw ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public sink (Lcom/crystalgraphics/render/draw/CgChunkSink;)Lcom/crystalgraphics/text/render/CgTextRenderer;
@@ -6527,6 +6527,7 @@ com/crystalgraphics/text/render/CgTextRenderer$Draw
   access public,final
   extends java/lang/Object
   method public at (FF)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
+  method public basePx ()I
   method public color (I)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public constraints (FF)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
@@ -6535,6 +6536,7 @@ com/crystalgraphics/text/render/CgTextRenderer$Draw
   method public measure ()Lcom/crystalgraphics/api/text/CgTextLayout;
   method public paragraph (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public pose (Lcom/crystalgraphics/api/PoseStack;)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
+  method public reset ()Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public shadow (IFFFFIZ)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;
   method public shadowCount ()I
   method public shadowCount (I)Lcom/crystalgraphics/text/render/CgTextRenderer$Draw;

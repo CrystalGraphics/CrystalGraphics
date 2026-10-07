@@ -1,8 +1,6 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.PoseStack;
-import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgPassRecorder;
@@ -16,12 +14,13 @@ import org.joml.Quaternionfc;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Text in the world: labels {@link CgWorldRenderer#text} queues for the frame, recorded into each transparent world
  * stage after its transparent draws, depth-tested against the scene and never writing depth, as Minecraft's name tags.
- * One {@link CgTextRenderer} of the world renderer's lays them out and resolves their glyphs, its raster tier chosen by
- * how tall each stands on screen, and hands its quads to the stage's recording.
+ * Each label is a queued {@link CgTextRenderer.Draw} of one renderer, drawn at every firing under that firing's
+ * camera, its raster tier chosen by how tall it stands on screen; the renderer hands its quads to the stage's recording.
  */
 public final class CgWorldText {
 
@@ -30,6 +29,7 @@ public final class CgWorldText {
 
     private final List<Label> labels = new ArrayList<>();
     private int count;
+    private final Consumer<CgTextRenderer.Draw> queue = this::submitted;
     private final CgPassRecorder recorder = new CgPassRecorder();
     private final PoseStack pose = new PoseStack();
     private final Matrix4f projection = new Matrix4f();
@@ -41,18 +41,21 @@ public final class CgWorldText {
 
     /** The next label to fill: one of the frame's, reused frame to frame. */
     Label next() {
-        if (count == labels.size()) labels.add(new Label());
-        Label label = labels.get(count).reset();
-        label.owner = this;
-        return label;
+        if (renderer == null) {
+            renderer = CgTextRenderer.createManualSized();
+            renderer.context(CgTextRenderContext.world(projection, 1, 1));
+        }
+        if (count == labels.size()) labels.add(new Label(renderer.queuedDraw(queue)));
+        return labels.get(count).reset();
     }
 
-    void submitted() {
-        count++;
+    /** A label's draw submitted: kept if it is the one {@link #next} handed out, else ignored. */
+    private void submitted(CgTextRenderer.Draw draw) {
+        if (count < labels.size() && labels.get(count).draw == draw) count++;
     }
 
     void clear() {
-        for (int i = 0; i < count; i++) labels.get(i).release();
+        for (int i = 0; i < count; i++) labels.get(i).draw.reset();
         count = 0;
     }
 
@@ -61,10 +64,6 @@ public final class CgWorldText {
         if (count == 0) return;
         int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         projection.set(view.projection());
-        if (renderer == null) {
-            renderer = CgTextRenderer.createManualSized();
-            renderer.context(CgTextRenderContext.world(projection, w, h));
-        }
         renderer.context().updateProjection(projection, w, h);
         recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
         renderer.sink(recorder);
@@ -79,11 +78,10 @@ public final class CgWorldText {
     }
 
     private void draw(Label label, CgHostView view) {
-        CgTextRenderer.Draw d = renderer.draw();
-        if (label.family != null) d.family(label.family).targetPx(label.px);
-        else d.font(label.font);
-        CgTextLayout layout = d.text(label.text).measure();
-        int px = label.family != null ? label.px : label.font.getTargetPx();
+        CgTextRenderer.Draw d = label.draw.pose(null);
+        int px = d.basePx();
+        if (px <= 0) return;
+        CgTextLayout layout = d.measure();
         float scale = label.height / px;
         Matrix4f m = pose.last().pose();
         m.set(view.view()).translate((float) (label.x - view.x()), (float) (label.y - view.y()), (float) (label.z - view.z()));
@@ -97,73 +95,50 @@ public final class CgWorldText {
         m.scale(scale, -scale, scale)
                 .translate(-layout.totalWidth() * label.anchorX, -layout.totalHeight() * (1f - label.anchorY), 0f);
         renderer.context().updateProjectedSize(m, projection, px);
-        d = renderer.draw();
-        if (label.family != null) d.family(label.family).targetPx(label.px);
-        else d.font(label.font);
-        d.layout(layout).at(0f, 0f).color(label.argb).pose(pose).submit();
+        renderer.drawQueued(d.pose(pose));
     }
 
     /** Drops the frame's labels and the renderer: at context teardown, after the text registry deleted it. */
     void release() {
         clear();
+        labels.clear();
         renderer = null;
     }
 
     /**
-     * One label: a line of text at a point in the world, facing the camera unless turned. Build it from
-     * {@link CgWorldRenderer#text} and submit it in the same expression.
+     * One label's place in the world: a point, a height, which point of the text stands there, and a turn. What it
+     * says, and how, is its {@link #draw()}, submitted to queue it. Build it from {@link CgWorldRenderer#text}.
      */
     public static final class Label {
-        private CgWorldText owner;
-        String text;
-        CgFont font;
-        CgFontFamily family;
-        int px;
+        private final CgTextRenderer.Draw draw;
         double x, y, z;
         float height = 0.25f, anchorX = CENTRE, anchorY = CENTRE;
-        int argb = 0xFFFFFFFF;
         Quaternionfc rotation;
 
-        Label() {
+        Label(CgTextRenderer.Draw draw) {
+            this.draw = draw;
         }
 
         private Label reset() {
-            text = null;
-            font = null;
-            family = null;
-            px = 0;
+            draw.reset();
             x = y = z = 0.0;
             height = 0.25f;
             anchorX = anchorY = CENTRE;
-            argb = 0xFFFFFFFF;
             rotation = null;
             return this;
         }
 
-        private void release() {
-            text = null;
-            font = null;
-            family = null;
-            rotation = null;
-        }
-
         /** Where its anchor stands, absolute, in doubles. */
-        public Label at(double x, double y, double z) {
+        Label at(double x, double y, double z) {
             this.x = x;
             this.y = y;
             this.z = z;
             return this;
         }
 
-        /** How tall a line of it stands, in blocks: the font's size maps to this. 0.25 unless set. */
+        /** How tall a line of it stands, in blocks: its draw's {@code basePx()} maps to this. 0.25 unless set. */
         public Label height(float blocks) {
             this.height = blocks;
-            return this;
-        }
-
-        /** Straight ARGB; opaque white unless set. */
-        public Label color(int argb) {
-            this.argb = argb;
             return this;
         }
 
@@ -183,10 +158,14 @@ public final class CgWorldText {
             return this;
         }
 
-        /** Queues it for this frame. */
-        public void submit() {
-            if (text == null || text.isEmpty()) return;
-            owner.submitted();
+        /** What it draws: every field a {@link CgTextRenderer.Draw} has. Its {@code submit()} queues the label. */
+        public CgTextRenderer.Draw draw() {
+            return draw;
+        }
+
+        /** {@code draw().text(text)}: the common case. */
+        public CgTextRenderer.Draw text(String text) {
+            return draw.text(text);
         }
     }
 }
