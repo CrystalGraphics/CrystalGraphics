@@ -757,8 +757,36 @@ public final class CgGL {
         return gl().glCreateShader(type);
     }
 
+    /**
+     * Sets a shader's source, every character above 127 replaced by a space, so a comment may hold any text.
+     *
+     * <pre>{@code
+     * int shader = CgGL.glCreateShader(CgGL.GL_FRAGMENT_SHADER);
+     * CgGL.glShaderSource(shader, source);
+     * CgGL.glCompileShader(shader);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A non-ASCII character in code, not a comment, becomes a space there: the compile log names its line.</li>
+     * </ul>
+     */
     public static void glShaderSource(int shader, CharSequence source) {
-        gl().glShaderSource(shader, source);
+        // Every source passes here, includes expanded. LWJGL 2 narrows each char to a byte, so a U+2500 in a comment
+        // reached the driver as a NUL that ended the source: a program that compiled, linked and drew nothing.
+        gl().glShaderSource(shader, ascii(source));
+    }
+
+    /** {@code source} with every character above 127 a space; the same instance when it has none. */
+    static CharSequence ascii(CharSequence source) {
+        int n = source.length(), i = 0;
+        while (i < n && source.charAt(i) < 128) i++;
+        if (i == n) return source;
+        char[] chars = new char[n];
+        for (int k = 0; k < n; k++) {
+            char c = source.charAt(k);
+            chars[k] = c < 128 ? c : ' ';
+        }
+        return new String(chars);
     }
 
     public static void glCompileShader(int shader) {

@@ -35,6 +35,8 @@ public final class RecordingGlBackend extends CgGLBackend {
     public final List<Integer> memoryBarriers = new ArrayList<>();
     /** Every glBindTexture's name, in order. */
     public final List<Integer> boundTextures = new ArrayList<>();
+    /** Every glShaderSource's source, in order. */
+    public final List<String> shaderSources = new ArrayList<>();
 
     private void record(String name) { calls.add(name); }
 
@@ -79,7 +81,7 @@ public final class RecordingGlBackend extends CgGLBackend {
     @Override public void drawBuffers(IntBuffer bufs) { record("drawBuffers"); }
     @Override public int getFramebufferAttachmentParameteriv(int target, int attachment, int pname) { record("getFramebufferAttachmentParameteriv"); return 0; }
     @Override public int glCreateShader(int type) { record("glCreateShader"); return 0; }
-    @Override public void glShaderSource(int shader, CharSequence source) { record("glShaderSource"); }
+    @Override public void glShaderSource(int shader, CharSequence source) { record("glShaderSource"); shaderSources.add(source.toString()); }
     @Override public void glCompileShader(int shader) { record("glCompileShader"); }
     @Override public int glGetShaderi(int shader, int pname) { record("glGetShaderi"); return 0; }
     @Override public String glGetShaderInfoLog(int shader, int maxLength) { record("glGetShaderInfoLog"); return null; }

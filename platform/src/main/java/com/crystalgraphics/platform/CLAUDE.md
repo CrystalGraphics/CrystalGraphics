@@ -60,6 +60,9 @@ Minecraft.
 (`bindFramebuffer`), and `CgGL` spells everything `glXxx`. Every backend is core GL 3.3 — the ARB and EXT
 fallbacks went with D1.
 
+**A backend's `glShaderSource` gets ASCII only**: `CgGL.glShaderSource` turns every character above 127 into a space,
+includes and all, since LWJGL 2 narrows a `char` to a byte and a comment's `─` ended the source as a NUL.
+
 A host backend overrides only what its host caches: `Blaze3dGLBackend` routes through Minecraft's
 `GlStateManager`, `GlStateManagerGLBackend` through legacy Forge's. Everything else reaches the driver
 from tier 1. **A missing override is a missing GL call, not an exception.**

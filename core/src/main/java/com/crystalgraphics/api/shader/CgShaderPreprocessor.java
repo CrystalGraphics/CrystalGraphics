@@ -1,8 +1,6 @@
 package com.crystalgraphics.api.shader;
 
 import com.crystalgraphics.util.io.CgIO;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayDeque;
 import java.util.Collections;
@@ -57,8 +55,6 @@ import java.util.regex.Pattern;
 public final class CgShaderPreprocessor {
 
     // ── Constants ──────────────────────────────────────────────────────────────
-
-    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     private static final boolean DEV_MODE =
             System.getProperty("crystalgraphics.shader.devmode") != null;
@@ -181,11 +177,6 @@ public final class CgShaderPreprocessor {
             throw new NullPointerException("source must not be null");
         }
 
-        // Strip non-ASCII before any processing — invisible unicode characters silently
-        // kill GLSL compilation (driver returns GL_TRUE from glLinkStatus but the program
-        // is a zombie with 0 active uniforms and nothing renders).
-        source = stripNonAscii(source, sourcePath != null ? sourcePath : "<unknown>");
-
         // Expand #include directives first (before prelude injection so
         // included files are also in scope of the prelude).
         IncludeContext ctx = new IncludeContext();
@@ -240,38 +231,6 @@ public final class CgShaderPreprocessor {
             if (mentions(included, resolved, tokens, seen)) return true;
         }
         return false;
-    }
-
-    // ── Private: non-ASCII stripping ──────────────────────────────────────────
-
-    private static String stripNonAscii(String source, String path) {
-        boolean hasNonAscii = false;
-        for (int i = 0; i < source.length(); i++) {
-            if (source.charAt(i) > 127) { hasNonAscii = true; break; }
-        }
-        if (!hasNonAscii) return source;
-
-        String displayPath = (path != null && !path.isEmpty()) ? path : "<inline>";
-        StringBuilder details = new StringBuilder();
-        for (int i = 0; i < source.length(); i++) {
-            char c = source.charAt(i);
-            if (c > 127) {
-                if (details.length() > 0) details.append(", ");
-                details.append('\'').append(c).append("' (U+")
-                       .append(String.format("%04X", (int) c))
-                       .append(") at ").append(toLineCol(source, i));
-            }
-        }
-        LOGGER.warn("[" + displayPath + "] Stripped non-ASCII character(s) — check your editor for invisible unicode: " + details);
-        return source.replaceAll("[^\\x00-\\x7F]", " ");
-    }
-
-    private static String toLineCol(String source, int pos) {
-        int line = 1, col = 1;
-        for (int i = 0; i < pos; i++) {
-            if (source.charAt(i) == '\n') { line++; col = 1; } else { col++; }
-        }
-        return line + ":" + col;
     }
 
     // ── Private: include expansion ─────────────────────────────────────────────
