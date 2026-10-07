@@ -23,12 +23,14 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
+import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -165,6 +167,7 @@ public final class CgVfxSystem {
 
     private final List<CgVfxEffect> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
+    private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
     private final CgVfxTube tube = new CgVfxTube();
     private final CgVfxFrame frame = new CgVfxFrame(this);
@@ -210,6 +213,21 @@ public final class CgVfxSystem {
     /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
     public void onMoment(CgVfxMomentListener listener) {
         momentListeners.add(listener);
+    }
+
+    /**
+     * Hears the rows of every event marked {@code readback}, from either simulation: decals, sounds, gameplay hooks
+     * ({@link CgVfxEventListener}). Render thread; the GPU path's rows arrive a few frames after their step.
+     *
+     * <pre>{@code
+     * vfx.onEvents((definition, event, rows) -> {
+     *     for (int i = 0; i < rows.count(); i++) sounds.play(HISS, rows.x(i), rows.y(i), rows.z(i));
+     * });
+     * }</pre>
+     */
+    public void onEvents(CgVfxEventListener listener) {
+        eventListeners.add(listener);
+        CgVfxParticlePool.listen(listener);
     }
 
     boolean hasMomentListeners() {
@@ -258,7 +276,10 @@ public final class CgVfxSystem {
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
                         workers.run(emitting.size(), tickEach);
-                        for (int i = 0; i < emitting.size(); i++) emitting.get(i).admitScheduled(gpuSteps);
+                        for (int i = 0; i < emitting.size(); i++) {
+                            emitting.get(i).admitScheduled(gpuSteps);
+                            emitting.get(i).deliverRows(eventListeners);
+                        }
                     } finally {
                         emitting.clear();
                     }
@@ -344,7 +365,7 @@ public final class CgVfxSystem {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
-                warm();
+                warm(world);
             }
             float alpha = Math.min(owed / TICK, 1f);
             // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
@@ -445,7 +466,7 @@ public final class CgVfxSystem {
      * effect's last layers (a blast, its cloud) appear seconds after it starts, and compiling them then stalls that
      * frame.
      */
-    private void warm() {
+    private void warm(CgWorldRenderer world) {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
             if (stepsOnGpu && !effect.gpuPrepared) {
@@ -456,7 +477,11 @@ public final class CgVfxSystem {
                     CgVfxRange.prepare();
                 }
                 List<CgVfxEmitter> emitters = effect.look().emitters();
-                for (int k = 0; k < emitters.size(); k++) CgVfxParticlePool.prepare(emitters.get(k));
+                for (int k = 0; k < emitters.size(); k++) {
+                    CgVfxParticlePool.prepare(emitters.get(k));
+                    // The window's first use starts its kernels and its filling: at play, not on the first landing.
+                    if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
+                }
             }
             if (effect.warmed) continue;
             effect.warmed = true;
@@ -466,9 +491,17 @@ public final class CgVfxSystem {
                 if (!warming.contains(material)) warming.add(material);
             }
         }
+        // Every pass the world draws a material with (depth, emissive, distortion, the joined form), not Forward alone.
         for (int i = warming.size() - 1; i >= 0; i--) {
-            if (warming.get(i).prepare()) warming.remove(i);
+            if (world.prepare(warming.get(i))) warming.remove(i);
         }
+    }
+
+    private static boolean readsWorld(CgVfxEmitter emitter) {
+        for (int i = 0; i < emitter.modules().size(); i++) {
+            if (emitter.modules().get(i).worldInputs().length > 0) return true;
+        }
+        return false;
     }
 
     public List<CgVfxEffect> effects() {
@@ -478,6 +511,8 @@ public final class CgVfxSystem {
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         effects.clear();
+        for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
+        eventListeners.clear();
         gpuSteps.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
