@@ -63,6 +63,14 @@ public final class CgComputeCheck {
         return Collections.unmodifiableList(REPORTED);
     }
 
+    /**
+     * Makes the report slots, if not yet made, before async work opens. Render thread. Their zeroing is a fill, and made
+     * inside async work it runs on the compute queue, where the frame's queue writing its own slots never waits for it.
+     */
+    public static void prepare() {
+        if (buffer == 0) create();
+    }
+
     /** Binds the next slot at {@code point} for a dispatch of {@code program}. Render thread. */
     static void bind(int point, CgKernelProgram program) {
         if (buffer == 0) create();
