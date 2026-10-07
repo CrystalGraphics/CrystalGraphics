@@ -4,7 +4,7 @@
 // size on screen, so a far orb keeps it. Drawn on CgVfxFrame.mesh's sphere's far wall, its entry found analytically,
 // so it bends from inside it too; a Distortion pass (ORDER_DISTORTION), so the sharp layers stay unbent. CG_OBJECT_CUSTOM0.x
 // is the layer's radius and .y its parameter, the orb's radius in the same units, so the orb fills y/x of the sphere and
-// is left unbent; .zw the effect's age and seed. CG_OBJECT_CUSTOM1.z an intensity, taken at most 1. Reads depth.
+// is left unbent; .zw the effect's age and seed. CG_OBJECT_CUSTOM1.z an intensity, taken at most 1.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
@@ -53,7 +53,7 @@ Pass {
 
 Pass {
     Tags { "LightMode" = "Distortion" }
-    // Its own depth fade, from the scene's distance.
+    // No depth test: it draws its far wall, and the apply keeps the foreground out of the bend.
     RenderState {
         DepthTest ALWAYS
         DepthWrite OFF
@@ -85,8 +85,8 @@ Pass {
         float sheath = smoothstep(1.1, _Peak, u)
                 * (1.0 - smoothstep(_Peak, rim, length(plume) + tear * 0.25 * (rim - _Peak)))
                 * (1.0 - smoothstep(0.85 * rim, rim, u));
-        float soft = smoothstep(0.0, 1.5, FX_SCENE_DISTANCE(ray) - enter);
-        float strength = sheath * soft * min(CG_OBJECT_CUSTOM1.z, 1.0);
+        // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
+        float strength = sheath * min(CG_OBJECT_CUSTOM1.z, 1.0);
         if (strength < 0.002) discard;
         // Rings rippling out of the orb push the scene along the screen's radial; the rest is rising shimmer.
         float ring = sin((u * _Rings - age * _Pulse + tear * 0.6) * 6.28318531);
