@@ -30,7 +30,7 @@ public class CgVfxGpuStepsTest {
         CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
         CgVfxEmitterInstance instance = new CgVfxEmitterInstance(SPARKS, 0.3f);
         instance.start(0f, 1f, 0f);
-        CgVfxParticlePool pool = CgVfxParticlePool.of(SPARKS);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(steps, SPARKS);
         int queued = pool.queuedSteps(), stepped = 0;
         for (int n = 0; n < 600 && (n == 0 || !steps.isEmpty()); n++) {
             instance.schedule(DT, 4.0, 64.0, -2.0);
@@ -66,6 +66,6 @@ public class CgVfxGpuStepsTest {
         }
         assertTrue(steps.isEmpty());
         assertTrue("coasted " + coasted + " steps", coasted <= Math.ceil(0.6f / DT) + 1);
-        assertEquals(0, CgVfxParticlePool.of(EMBERS).openSlots());
+        assertEquals(0, CgVfxParticlePool.of(steps, EMBERS).openSlots());
     }
 }
