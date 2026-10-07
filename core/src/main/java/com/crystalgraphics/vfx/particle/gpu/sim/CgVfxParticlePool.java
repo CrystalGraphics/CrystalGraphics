@@ -6,6 +6,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -14,6 +15,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -59,9 +61,10 @@ public final class CgVfxParticlePool {
 
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
-     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, 0, 0)}.
+     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, 0, 0)}, {@code ivec4(origin's whole
+     * blocks, 0)}, {@code vec4(origin within its block, 0)}: the last two place a particle in the world's blocks.
      */
-    public static final int INSTANCE_HEADER = 3;
+    public static final int INSTANCE_HEADER = 5;
 
     /** A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers. */
     public static final int CURVE_WORDS = 2 * CgVfxGpuEmitter.CURVE_TEXELS;
@@ -355,9 +358,13 @@ public final class CgVfxParticlePool {
         int at = stepInstanceAt[s] + slot * instanceWords;
         String who = emitter.name();
         words.target(instances, at, INSTANCE_HEADER, who);
+        double ox = view.originX(), oy = view.originY(), oz = view.originZ();
+        double bx = Math.floor(ox), by = Math.floor(oy), bz = Math.floor(oz);
         words.uvec4(slotRow[slot], seedBits, slot, 0)
                 .vec4(view.sourceX(), view.sourceY(), view.sourceZ(), view.time())
-                .vec4(share, groundY, 0f, 0f);
+                .vec4(share, groundY, 0f, 0f)
+                .ivec4((int) bx, (int) by, (int) bz, 0)
+                .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f);
         words.finish("its instance row's header");
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
@@ -532,16 +539,18 @@ public final class CgVfxParticlePool {
         if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
         reserve(recording, capacity);
         upload(recording);
+        CgVfxVoxelWindow window = shape.readsWorld() ? CgVfxVoxelWindow.get().use() : null;
         CgComputePass pass = recording.compute(passName).timed(GPU_STEP).async();
         for (int s = 0; s < steps; s++) {
             CgGraphBuffer next = counts[1 - current];
             CgGpuOps.fill(pass, next, 0, ONE);
-            pass.dispatch(step, storage + stepSpawned[s])
+            CgDispatch stepping = pass.dispatch(step, storage + stepSpawned[s])
                     .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
                     .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
                     .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
                     .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
                     .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]);
+            if (window != null) window.bind(stepping);
             current = 1 - current;
         }
         pass.end();
