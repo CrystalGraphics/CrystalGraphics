@@ -22,6 +22,7 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgChunkSink;
+import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
@@ -108,6 +109,13 @@ import java.util.logging.Logger;
  * The PoseStack in world mode represents
  * model-view positioning (entity rotation, billboard transforms), not UI zoom. Layout
  * metrics remain in logical space regardless of camera distance or FOV.</p>
+ *
+ * <p><b>Text placed in the world needs no renderer of its own</b>: {@link CgWorldRenderer#text} queues a {@link Draw}
+ * at a point and draws it at every world firing, under that firing's camera, batched with every other label.</p>
+ *
+ * <pre>{@code
+ * world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).stroke(0.08f, 0xFF000000).submit();
+ * }</pre>
  *
  * <h3>Owned Batch Lifecycle</h3>
  * <p>{@code CgTextRenderer} owns a private {@link CgQuadRenderer} — no caller-provided
