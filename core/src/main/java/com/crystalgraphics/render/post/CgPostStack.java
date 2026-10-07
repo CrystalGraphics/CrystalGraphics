@@ -12,6 +12,7 @@ import com.crystalgraphics.render.stage.CgHostView;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -79,7 +80,17 @@ public final class CgPostStack {
     public void install() {
         if (installed) return;
         installed = true;
+        CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
+    }
+
+    /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */
+    public static final int DEMAND_ORDER = 0;
+
+    /** Blends the volumes and, while bloom will draw, says the emission will be read ({@link CgFrameKeys#EMISSION_READ}). */
+    private void demand(CgStageFrame stage) {
+        resolve(stage);
+        if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
     }
 
     /** The built-in bloom, and its settings. */
@@ -151,8 +162,7 @@ public final class CgPostStack {
 
     private void record(CgStageFrame stage) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.record")) {
-            resolve(stage);
-            context.begin(stage, settings);
+            context.begin(stage, settings);   // the volumes were blended at DEMAND_ORDER
             composite.begin();
             CgPostEffect[] current = effects;
             int i = recordAt(CgPostPoint.AFTER_WORLD, current, 0);

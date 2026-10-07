@@ -6,6 +6,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A framebuffer of ours holding a target we do not own, the host's colour and depth, beside a second colour attachment
@@ -15,6 +17,9 @@ import java.util.Arrays;
 final class CgComposedTargets {
 
     private static final int GL_OBJECT_NAME = 0x8CD1, GL_TEXTURE_LEVEL = 0x8CD2, GL_TEXTURE = 0x1702;
+
+    /** Framebuffers that took no second attachment, read by recorders on any thread. */
+    private static final Set<Integer> REFUSED = ConcurrentHashMap.newKeySet();
 
     private int fbo;
     /** What was last checked complete: colour name, its level and renderbuffer bit, depth, stencil, ours, width, height. */
@@ -26,15 +31,24 @@ final class CgComposedTargets {
         drawBuffers.put(0, CgGL.GL_COLOR_ATTACHMENT0).put(1, CgGL.GL_COLOR_ATTACHMENT1);
     }
 
+    static boolean refused(int framebuffer) {
+        return REFUSED.contains(framebuffer);
+    }
+
+    static void refuse(int framebuffer) {
+        REFUSED.add(framebuffer);
+    }
+
     /**
-     * Binds our framebuffer with {@code host}'s colour and depth and {@code texture} as colour attachment 1.
-     * {@code host} must be bound for drawing when called.
+     * Binds our framebuffer with {@code host}'s colour and depth and {@code texture} as colour attachment 1, and
+     * answers null; or, binding nothing of ours, why {@code host} takes no second attachment. {@code host} must be
+     * bound for drawing when called.
      */
-    void bind(int host, int width, int height, int texture, CgRasterPass pass) {
-        if (host == 0) throw new IllegalStateException(pass + " draws a second attachment beside the default framebuffer, which takes none");
+    String bind(int host, int width, int height, int texture) {
+        if (host == 0) return "the default framebuffer takes no second attachment";
         int colorType = query(CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
         if (colorType != GL_TEXTURE && colorType != CgGL.GL_RENDERBUFFER) {
-            throw new IllegalStateException(pass + ": framebuffer " + host + " has no colour attachment 0 to draw beside");
+            return "framebuffer " + host + " has no colour attachment 0 to draw beside";
         }
         int colorName = query(CgGL.GL_COLOR_ATTACHMENT0, GL_OBJECT_NAME);
         int colorLevel = colorType == GL_TEXTURE ? query(CgGL.GL_COLOR_ATTACHMENT0, GL_TEXTURE_LEVEL) : 0;
@@ -64,14 +78,16 @@ final class CgComposedTargets {
         key[4] = texture;
         key[5] = width;
         key[6] = height;
-        if (!made && Arrays.equals(key, checked)) return;
+        if (!made && Arrays.equals(key, checked)) return null;
         int status = CgGL.glCheckFramebufferStatus(CgGL.GL_FRAMEBUFFER);
         if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
+            detach();
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-            throw new IllegalStateException(pass + ": framebuffer " + host + "'s colour and depth with a second attachment "
-                    + "are incomplete (0x" + Integer.toHexString(status) + "): a multisampled host target takes none");
+            return "framebuffer " + host + "'s colour and depth with a second attachment are incomplete (0x"
+                    + Integer.toHexString(status) + "): a multisampled host target takes none";
         }
         System.arraycopy(key, 0, checked, 0, key.length);
+        return null;
     }
 
     /**
@@ -102,6 +118,7 @@ final class CgComposedTargets {
     void delete() {
         if (fbo != 0) CgGL.glDeleteFramebuffers(fbo);
         fbo = 0;
+        REFUSED.clear();
         Arrays.fill(checked, 0);
     }
 }

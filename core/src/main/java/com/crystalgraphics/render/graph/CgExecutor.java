@@ -157,6 +157,8 @@ public final class CgExecutor {
     /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
     private int startFramebuffer;
     private boolean startNoted, otherBound;
+    /** Whether the pass executing drew through a framebuffer of ours with its second attachment. */
+    private boolean composed;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
     /** This execution's: whether an async pass runs beside the frame's queue, and whether runs of draws join. */
     private boolean asyncCompute, multiDraw;
@@ -1046,13 +1048,14 @@ public final class CgExecutor {
             rasterBegin(frame, pass, packed, damage);
         }
         if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
-        if (pass.attachment() != null) COMPOSED.detach();
+        if (composed) COMPOSED.detach();
+        composed = false;
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
-        if (pass.attachment() != null) bindComposed(pass);
-        else bindTarget(pass.target, pass.level, pass.layer);
+        composed = pass.attachment() != null && bindComposed(pass);
+        if (!composed) bindTarget(pass.target, pass.level, pass.layer);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
             if (damage == null) {
@@ -1446,9 +1449,9 @@ public final class CgExecutor {
         CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
     }
 
-    /** How many colour attachments a pass draws into: its target's slots, and its second attachment. */
-    private static int colorSlots(CgRasterPass pass) {
-        if (pass.attachment() != null) return 2;
+    /** How many colour attachments a pass draws into: its target's slots, and its second attachment if bound. */
+    private int colorSlots(CgRasterPass pass) {
+        if (composed) return 2;
         CgGraphTexture target = pass.target;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) return 1;
         return storage(target).getFormat().colorSlotCount();
@@ -1468,9 +1471,10 @@ public final class CgExecutor {
 
     /**
      * Binds a pass's target with its second attachment, and the target's viewport. Beside the current target that is
-     * a framebuffer of ours holding the host's colour and depth ({@link CgComposedTargets}).
+     * a framebuffer of ours holding the host's colour and depth ({@link CgComposedTargets}). False, binding nothing,
+     * where the target takes none and the attachment is optional; where it is not, throws.
      */
-    private void bindComposed(CgRasterPass pass) {
+    private boolean bindComposed(CgRasterPass pass) {
         CgFrameBuffer extra = storage(pass.attachment());
         CgGraphTexture target = pass.target;
         int host, x, y, w, h;
@@ -1488,15 +1492,25 @@ public final class CgExecutor {
             w = storage.getWidth();
             h = storage.getHeight();
         }
+        String refused = null;
         if (x != 0 || y != 0 || extra.getWidth() != w || extra.getHeight() != h) {
             // GL would draw into the intersection, quietly.
-            throw new IllegalStateException(pass + " draws into " + pass.attachment() + " (" + extra.getWidth() + "x"
-                    + extra.getHeight() + ") beside a target of " + w + "x" + h + " at " + x + "," + y);
+            refused = pass.attachment() + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
+                    + w + "x" + h + " at " + x + "," + y;
+        } else {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+            refused = COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId());
         }
-        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-        COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId(), pass);
+        if (refused != null) {
+            if (!pass.attachmentOptional()) throw new IllegalStateException(pass + ": " + refused);
+            if (!CgComposedTargets.refused(host)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+            CgComposedTargets.refuse(host);
+            otherBound = true;   // bindTarget binds the start framebuffer again
+            return false;
+        }
         CgGL.glViewport(0, 0, w, h);
         otherBound = startNoted;
+        return true;
     }
 
     /**
