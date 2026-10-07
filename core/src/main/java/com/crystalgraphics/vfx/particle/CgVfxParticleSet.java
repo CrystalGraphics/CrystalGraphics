@@ -31,6 +31,10 @@ public final class CgVfxParticleSet {
     public final float[] resting;
     /** Its spawn index in its instance: the key the GPU simulation's records carry, so the two paths match by it. */
     public final int[] id;
+    /** Its punctual impacts so far, held at 65,535: a collision event's firing. */
+    public final int[] collisions;
+    /** 1 when a module struck it this tick ({@link #hit}), and the surface's normal; cleared before the solver's after-modules. */
+    public final float[] hit, hitNx, hitNy, hitNz;
     private int count;
 
     public CgVfxParticleSet(int capacity) {
@@ -57,6 +61,23 @@ public final class CgVfxParticleSet {
         heat = new float[capacity];
         resting = new float[capacity];
         id = new int[capacity];
+        collisions = new int[capacity];
+        hit = new float[capacity];
+        hitNx = new float[capacity];
+        hitNy = new float[capacity];
+        hitNz = new float[capacity];
+    }
+
+    /**
+     * Particle {@code i} struck a surface whose normal is {@code (nx, ny, nz)} this tick: a punctual impact, never a slide.
+     * What a collision event fires on; {@code fx_hit} on the GPU.
+     */
+    public void hit(int i, float nx, float ny, float nz) {
+        hit[i] = 1f;
+        hitNx[i] = nx;
+        hitNy[i] = ny;
+        hitNz[i] = nz;
+        collisions[i] = Math.min(collisions[i] + 1, 65535);
     }
 
     public int count() {
@@ -99,6 +120,8 @@ public final class CgVfxParticleSet {
         life[i] = 1f;
         size[i] = 1f;
         seed[i] = spin[i] = spinRate[i] = heat[i] = resting[i] = 0f;
+        collisions[i] = 0;
+        hit[i] = 0f;
         return i;
     }
 
@@ -127,6 +150,11 @@ public final class CgVfxParticleSet {
         heat[i] = heat[last];
         resting[i] = resting[last];
         id[i] = id[last];
+        collisions[i] = collisions[last];
+        hit[i] = hit[last];
+        hitNx[i] = hitNx[last];
+        hitNy[i] = hitNy[last];
+        hitNz[i] = hitNz[last];
     }
 
     void clear() {

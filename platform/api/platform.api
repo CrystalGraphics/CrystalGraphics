@@ -2599,6 +2599,7 @@ com/crystalgraphics/platform/gl/tracked/gl/TrackedTextures
   method public multisample (IIIII)V
   method public parameter (III)V
   method public pixelStore (II)V
+  method public prepareStandIns ()V
   method public query (I[D)I
   method public read (IIIILjava/nio/ByteBuffer;)V
   method public subImage (IIIIIIIIIILjava/nio/ByteBuffer;)V

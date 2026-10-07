@@ -47,6 +47,7 @@ import javax.annotation.Nullable;
  *       firing it is ({@link #childKey(int, int, int, int)}), so each firing's children differ. A definition lists at most {@link #MAX_EVENTS} events, each
  *       spawning at most {@link #MAX_CHILDREN}, and a parent's id stays below 2^24.</li>
  *   <li>Readback rows past the cap of a step are counted, never delivered.</li>
+ *   <li>A repeating event fires its first {@link #firings(int)} only: a collision's first eight unless told.</li>
  * </ul>
  */
 public final class CgVfxEvent {
@@ -66,40 +67,45 @@ public final class CgVfxEvent {
     private final float age;
     @Nullable
     private final CgVfxGpuEmitter child;
-    private final int count, readback;
+    private final int count, readback, firings;
     private final float inherit;
 
-    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int count, float inherit, int readback) {
+    /** A collision's firings at most by default: Niagara and Unity cap event output, and children are sized by it. */
+    public static final int COLLISION_FIRINGS = 8;
+
+    private CgVfxEvent(Trigger trigger, float age, @Nullable CgVfxGpuEmitter child, int count, float inherit, int readback,
+                       int firings) {
         this.trigger = trigger;
         this.age = age;
         this.child = child;
         this.count = count;
         this.inherit = inherit;
         this.readback = readback;
+        this.firings = firings;
     }
 
     public static CgVfxEvent onLanding() {
-        return new CgVfxEvent(Trigger.LANDING, 0f, null, 0, 0f, 0);
+        return new CgVfxEvent(Trigger.LANDING, 0f, null, 0, 0f, 0, 1);
     }
 
     public static CgVfxEvent onDeath() {
-        return new CgVfxEvent(Trigger.DEATH, 0f, null, 0, 0f, 0);
+        return new CgVfxEvent(Trigger.DEATH, 0f, null, 0, 0f, 0, 1);
     }
 
     public static CgVfxEvent onAge(float seconds) {
         if (!(seconds > 0f)) throw new IllegalArgumentException("an age of " + seconds + ": it must be past birth");
-        return new CgVfxEvent(Trigger.AGE, seconds, null, 0, 0f, 0);
+        return new CgVfxEvent(Trigger.AGE, seconds, null, 0, 0f, 0, 1);
     }
 
     /** Each impact a kind after the solver reports ({@code fx_hit}). */
     public static CgVfxEvent onCollision() {
-        return new CgVfxEvent(Trigger.COLLISION, 0f, null, 0, 0f, 0);
+        return new CgVfxEvent(Trigger.COLLISION, 0f, null, 0, 0f, 0, COLLISION_FIRINGS);
     }
 
     /** Each time another {@code seconds} of the particle's life pass. */
     public static CgVfxEvent every(float seconds) {
         if (!(seconds > 0f)) throw new IllegalArgumentException("a period of " + seconds + ": it must be positive");
-        return new CgVfxEvent(Trigger.RATE, seconds, null, 0, 0f, 0);
+        return new CgVfxEvent(Trigger.RATE, seconds, null, 0, 0f, 0, Integer.MAX_VALUE);
     }
 
     /** {@code count} children of {@code child} at each event, launched by its own spawn numbers about the event's normal. */
@@ -111,18 +117,37 @@ public final class CgVfxEvent {
                         + "may report rows but not spawn children");
             }
         }
-        return new CgVfxEvent(trigger, age, child, count, inherit, readback);
+        return new CgVfxEvent(trigger, age, child, count, inherit, readback, firings);
     }
 
     /** The share of the parent's velocity a child takes on, added to its own launch; 0 by default. */
     public CgVfxEvent inherit(float share) {
-        return new CgVfxEvent(trigger, age, child, count, share, readback);
+        return new CgVfxEvent(trigger, age, child, count, share, readback, firings);
     }
 
     /** Rows to the CPU, at most {@code cap} a step ({@link CgVfxEventListener}). */
     public CgVfxEvent readback(int cap) {
         if (cap < 1) throw new IllegalArgumentException("a cap of " + cap);
-        return new CgVfxEvent(trigger, age, child, count, inherit, cap);
+        return new CgVfxEvent(trigger, age, child, count, inherit, cap, firings);
+    }
+
+    /**
+     * A repeating event's first {@code most} firings only, per particle: {@link #COLLISION_FIRINGS} for a collision by
+     * default, every one for a rate. What its children are sized by ({@code CgVfxEmitter.peakChildren}), on both paths.
+     *
+     * <pre>{@code
+     * CgVfxEvent.onCollision().spawn(SPARKS, 3).firings(2);   // sparks at the first two bounces only
+     * }</pre>
+     */
+    public CgVfxEvent firings(int most) {
+        if (!repeats()) throw new IllegalArgumentException(trigger + " fires once: only a collision or a rate repeats");
+        if (most < 1) throw new IllegalArgumentException("at most " + most + " firings");
+        return new CgVfxEvent(trigger, age, child, count, inherit, readback, most);
+    }
+
+    /** The firings it makes at most per particle: 1 for an event that fires once. */
+    public int firings() {
+        return firings;
     }
 
     public Trigger trigger() {
