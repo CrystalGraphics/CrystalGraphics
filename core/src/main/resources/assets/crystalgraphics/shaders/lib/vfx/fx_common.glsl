@@ -47,6 +47,7 @@ vec3 fx_hash33(vec3 p) {
 //       _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"   // fx_value_noise, fx_value_fbm, fx_value_ridged
 //       _Voronoi    ("Voronoi",     sampler3D) = "cg_voronoi"       // fx_voronoi
 //       _VoronoiNearest ("Cells",   sampler3D) = "cg_voronoi_nearest" // fx_voronoi_nearest
+//       _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient" // fx_value_fbm_grad
 //   }
 //
 // The volumes repeat every CG_NOISE_PERIOD units: noise driven by time adds cg_noise_time(t), which never loops.
@@ -85,6 +86,8 @@ float fx_flicker_volume(sampler3D volume, float time, float seed) {
 #define fx_value_noise(p) cg_noise3(_ValueNoise, p)
 #define fx_value_fbm(p, octaves) cg_fbm3(_ValueNoise, p, octaves)
 #define fx_value_ridged(p, octaves) cg_value_ridged3(_ValueNoise, p, octaves)
+// Value noise's fbm with its slope: xyz the gradient, w the value. Normals of a surface it displaces come from xyz.
+#define fx_value_fbm_grad(p, octaves) cg_value_fbm_grad3(_ValueGradient, p, octaves)
 // The nearest and second-nearest feature distances, and the nearest cell's id in [0, 1).
 #define fx_voronoi(p) cg_voronoi3(_Voronoi, p)
 // xyz the unit direction from the nearest feature point, the gradient of w, the distance to it: a normal from cells.
