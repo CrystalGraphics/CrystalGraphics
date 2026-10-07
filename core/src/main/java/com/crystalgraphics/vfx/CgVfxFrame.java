@@ -205,7 +205,6 @@ public final class CgVfxFrame {
                         .gpuCulled()
                         .at(effect.originX, effect.originY, effect.originZ)
                         .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed);
-                if (inOrder) draw.ordered();
                 color(draw, 2, layer.colorA(), values);
                 color(draw, 3, layer.colorB(), values);
                 CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
