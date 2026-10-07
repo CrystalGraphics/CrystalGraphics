@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -221,6 +223,7 @@ public final class CgVfxParticlePool {
             ALL.add(pool);
             if (recording == null) {
                 recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxParticlePool::recordStage);
+                CgGraphicsLifecycle.addListener(CONTEXT);
             }
         }
         return pool;
@@ -268,7 +271,23 @@ public final class CgVfxParticlePool {
         }
     }
 
-    /** Forgets every pool and stops recording. Tests, and context teardown. */
+    /** A dying context frees every pool's storage (CgExecutor.destroyAll): each makes it again, empty, at its next step. */
+    private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
+        @Override
+        public void onDestroy() {
+            for (int i = 0; i < ALL.size(); i++) ALL.get(i).forgetStorage();
+            RELEASED.clear();
+            unfed = spawnStream = spawnCount = reportStream = reportCounts = null;
+        }
+    };
+
+    private void forgetStorage() {
+        records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
+        current = storage = 0;
+        paramsChanged = true;
+    }
+
+    /** Forgets every pool and stops recording. Tests. */
     static void forgetAll() {
         POOLS.clear();
         ALL.clear();

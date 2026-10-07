@@ -4,6 +4,8 @@ import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -170,6 +172,16 @@ public final class CgVfxVoxelWindow {
         if (registration == null) {
             registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER,
                     stage -> record(stage.recording(), stage.host().view()));
+            CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+                // A dying context frees its volumes: every section is filled again into the next one's, and flooded.
+                @Override
+                public void onDestroy() {
+                    Arrays.fill(state, UNKNOWN);
+                    Arrays.fill(heldY, Integer.MIN_VALUE);
+                    Arrays.fill(solids, UNHASHED);
+                    knownChanged = floodWhole = true;
+                }
+            });
             CgCompute kernels = CgCompute.load(DISTANCE_KERNELS);
             kernels.kernel("Seed").prepare();
             kernels.kernel("Jump").prepare();
