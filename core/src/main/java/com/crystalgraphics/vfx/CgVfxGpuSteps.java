@@ -108,6 +108,13 @@ final class CgVfxGpuSteps {
         return tenants.size();
     }
 
+    /** The most steps any of its pools holds, queued and not yet recorded. */
+    int queuedSteps() {
+        int most = 0;
+        for (int i = 0; i < pools.size(); i++) most = Math.max(most, pools.get(i).queuedSteps());
+        return most;
+    }
+
     /** Queues one step of {@code dt} seconds in {@code air}'s wind into every pool with tenants, then closes the finished. */
     void step(float dt, CgVfxAir air) {
         if (tenants.isEmpty()) return;

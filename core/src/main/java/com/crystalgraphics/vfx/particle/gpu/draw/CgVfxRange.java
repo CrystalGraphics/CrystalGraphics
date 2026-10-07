@@ -4,6 +4,8 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -116,10 +118,22 @@ public final class CgVfxRange {
         if (range == null) {
             RANGES.put(pool, range = new CgVfxRange(pool));
             ALL.add(range);
-            if (registration == null) registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxRange::recordAll);
+            if (registration == null) {
+                registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxRange::recordAll);
+                CgGraphicsLifecycle.addListener(CONTEXT);
+            }
         }
         return range;
     }
+
+    /** A dying context frees the shared buffers (CgExecutor.destroyAll): they are made again at the next frame's asking. */
+    private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
+        @Override
+        public void onDestroy() {
+            RETIRED.clear();
+            drawn = visible = slots = bases = objects = sorts = origins = null;
+        }
+    };
 
     /**
      * Starts the programs every range dispatches, ahead of the first frame that draws a GPU particle: below compute
@@ -139,12 +153,12 @@ public final class CgVfxRange {
         CgGpuOps.prepareCull(true);   // MESHES slots, drawn through the world renderer's cull
     }
 
-    /** Forgets every range and stops recording. Tests, and context teardown. */
+    /** Forgets every range and stops recording. Tests. */
     static void forgetAll() {
         RANGES.clear();
         ALL.clear();
         RETIRED.clear();
-        drawn = visible = slots = bases = objects = sorts = null;
+        drawn = visible = slots = bases = objects = sorts = origins = null;
         anySorted = objectsAsked = false;
         if (registration != null) {
             registration.close();

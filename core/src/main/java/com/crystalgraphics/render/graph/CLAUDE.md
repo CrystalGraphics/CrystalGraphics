@@ -100,7 +100,7 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
 - A `3d` image takes a volume and a `2d` one anything else, and a `sampler3D` property a volume, or the dispatch throws;
   a raster pass into a volume and a copy of one throw.
 - One level, one colour attachment. Its format's type decides the filter: linear, nearest for an integer type, clamped.
-- Below compute an `image` kernel writes a volume as a draw per slice; one that loads the volume it writes is refused
+- Below compute an `image` kernel writes a volume in one draw, an instance a slice; one that loads the volume it writes is refused
   there, as for any image other than 2D. The CPU tier reads a volume whole and writes it whole.
 - A readback attaches each slice in turn to one framebuffer bound for reading (`CgReadback.slices`): on a device a
   slice of a 3D image is no draw target, but a copy reads it at its z.

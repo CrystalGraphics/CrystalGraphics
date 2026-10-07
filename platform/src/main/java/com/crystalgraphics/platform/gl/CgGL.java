@@ -669,6 +669,11 @@ public final class CgGL {
         gl().framebufferTextureLayer(target, attachment, texture, level, layer);
     }
 
+    /** @see CgGLBackend#framebufferTexture */
+    public static void glFramebufferTexture(int target, int attachment, int texture, int level) {
+        gl().framebufferTexture(target, attachment, texture, level);
+    }
+
     public static void glBlitFramebuffer(int srcX0, int srcY0, int srcX1, int srcY1,
                                           int dstX0, int dstY0, int dstX1, int dstY1,
                                           int mask, int filter) {

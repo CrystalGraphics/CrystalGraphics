@@ -83,6 +83,16 @@ public abstract class CgGLBackend {
     public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
         throw new UnsupportedOperationException("glFramebufferTextureLayer unsupported by this backend");
     }
+
+    /**
+     * Attaches every layer of an array/3D texture's level to the bound framebuffer, a geometry stage's
+     * {@code gl_Layer} choosing which each primitive draws into ({@code glFramebufferTexture}, core GL 3.2).
+     *
+     * @throws UnsupportedOperationException if this backend has not implemented it
+     */
+    public void framebufferTexture(int target, int attachment, int texture, int level) {
+        throw new UnsupportedOperationException("glFramebufferTexture unsupported by this backend");
+    }
     public abstract int genFramebuffers();
     public abstract void deleteFramebuffers(int fbo);
     public abstract void framebufferTexture2D(int target, int attachment, int texTarget, int texture, int level);

@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -167,9 +169,12 @@ public final class CgVfxParticlePool {
     private int steps;
     private boolean inStep;
     private float[] stepBlock = new float[0];
-    /** Per step: where its instance rows start in {@link #instances}, how many slots they cover, and its spawn rows. */
+    /**
+     * Per step: where its instance rows start in {@link #instances}, how many slots they cover, its spawn rows, and the
+     * open slots' capacity as it began, which its live particles never exceed: what it dispatches over, besides spawns.
+     */
     private int[] stepInstanceAt = new int[0], stepSlots = new int[0], stepSpawnAt = new int[0], stepSpawnRows = new int[0],
-            stepSpawned = new int[0];
+            stepSpawned = new int[0], stepCapacity = new int[0];
     private int[] instances = new int[0];
     private int instanceEnd;
     /** Which step last wrote each slot's row, as 1 + its index. */
@@ -221,6 +226,7 @@ public final class CgVfxParticlePool {
             ALL.add(pool);
             if (recording == null) {
                 recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxParticlePool::recordStage);
+                CgGraphicsLifecycle.addListener(CONTEXT);
             }
         }
         return pool;
@@ -268,7 +274,23 @@ public final class CgVfxParticlePool {
         }
     }
 
-    /** Forgets every pool and stops recording. Tests, and context teardown. */
+    /** A dying context frees every pool's storage (CgExecutor.destroyAll): each makes it again, empty, at its next step. */
+    private static final CgLifecycleListener CONTEXT = new CgLifecycleListener() {
+        @Override
+        public void onDestroy() {
+            for (int i = 0; i < ALL.size(); i++) ALL.get(i).forgetStorage();
+            RELEASED.clear();
+            unfed = spawnStream = spawnCount = reportStream = reportCounts = null;
+        }
+    };
+
+    private void forgetStorage() {
+        records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
+        current = storage = 0;
+        paramsChanged = true;
+    }
+
+    /** Forgets every pool and stops recording. Tests. */
     static void forgetAll() {
         POOLS.clear();
         ALL.clear();
@@ -443,7 +465,8 @@ public final class CgVfxParticlePool {
         CgGraphBuffer next = counts[1 - current];
         CgGpuOps.fill(pass, next, 0, ONE);
         boolean children = feeds > 0 && spawnRows > 0;
-        CgDispatch stepping = pass.dispatch(step, storage + stepSpawned[s] + (children ? spawnRows * childMax : 0))
+        int live = Math.min(storage, stepCapacity[s]);
+        CgDispatch stepping = pass.dispatch(step, live + stepSpawned[s] + (children ? spawnRows * childMax : 0))
                 .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
                 .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
                 .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
@@ -713,7 +736,9 @@ public final class CgVfxParticlePool {
             stepSpawnAt = Arrays.copyOf(stepSpawnAt, n);
             stepSpawnRows = Arrays.copyOf(stepSpawnRows, n);
             stepSpawned = Arrays.copyOf(stepSpawned, n);
+            stepCapacity = Arrays.copyOf(stepCapacity, n);
         }
+        stepCapacity[s] = capacity;
         stepBlock[s * 4] = dt;
         stepBlock[s * 4 + 1] = windX;
         stepBlock[s * 4 + 2] = windY;
