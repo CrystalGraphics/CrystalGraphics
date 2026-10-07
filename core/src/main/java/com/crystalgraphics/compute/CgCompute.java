@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -64,6 +65,11 @@ public final class CgCompute {
     private static final int COMPILES = CgTrace.name("compute.compiles");
     private static final int PREPARE = CgTrace.name("compute.prepare"), COMPILE_WAIT = CgTrace.name("compute.compileWait");
     private static final int COMPILE_WAITS = CgTrace.name("compute.compile-waits");
+    private static final int FINISH = CgTrace.name("compute.finishPrepared");
+    /** Files holding a program {@link CgKernel#prepare} started that nothing has finished yet. */
+    private static final Set<CgCompute> PREPARING = ConcurrentHashMap.newKeySet();
+    /** What {@link #finishPrepared} spends a frame. */
+    private static final long FINISH_NANOS = 1_000_000L;
 
     private final String path;
     private final boolean generated;
@@ -179,6 +185,7 @@ public final class CgCompute {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
             preparing.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));
         }
+        PREPARING.add(this);
         CgTrace.add(CgChannels.GL, COMPILES, 1);
     }
 
@@ -236,6 +243,40 @@ public final class CgCompute {
         for (CgLoweredKernel kernel : lowered.values()) kernel.delete();
         lowered.clear();
         generation++;
+    }
+
+    /**
+     * Makes each prepared program the driver has linked into the program a dispatch takes, about a millisecond's worth a
+     * frame: the link's result read, its blocks wired and its first bind, which on NVIDIA is where the driver finishes a
+     * program, up to 1.6 ms each. Without it the first dispatch of each pays that. Render thread, between frames.
+     */
+    public static void finishPrepared() {
+        if (PREPARING.isEmpty()) return;
+        long until = System.nanoTime() + FINISH_NANOS;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
+            for (Iterator<CgCompute> it = PREPARING.iterator(); it.hasNext(); ) {
+                CgCompute compute = it.next();
+                if (compute.finishPrepared(until)) it.remove();
+                if (System.nanoTime() > until) return;
+            }
+        }
+    }
+
+    /** Whether nothing it prepared is left unfinished. */
+    private synchronized boolean finishPrepared(long until) {
+        for (Iterator<Map.Entry<String, CgKernelProgram.Pending>> it = preparing.entrySet().iterator(); it.hasNext(); ) {
+            if (System.nanoTime() > until) return false;
+            Map.Entry<String, CgKernelProgram.Pending> entry = it.next();
+            if (!entry.getValue().isDone()) continue;
+            it.remove();
+            try {
+                programs.put(entry.getKey(), entry.getValue().finish());
+            } catch (IllegalStateException e) {
+                // Its first dispatch builds it again, and throws there with the log.
+                LOGGER.warn("[{}] a prepared kernel failed: {}", path, e.getMessage());
+            }
+        }
+        return preparing.isEmpty();
     }
 
     /** Every loaded file read again: what F3+T does. A file that no longer parses keeps its last good version. */

@@ -135,6 +135,7 @@ public final class CgVfxRange {
         CgGpuOps.prepareHistogram();
         CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
         CgGpuOps.prepareDepthPyramid();
+        CgGpuOps.prepareIndirect();   // every slot draws indirect
         CgGpuOps.prepareCull(true);   // MESHES slots, drawn through the world renderer's cull
     }
 

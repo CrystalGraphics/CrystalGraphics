@@ -1560,6 +1560,7 @@ com/crystalgraphics/compute/CgCompute
   method public release ()V
   method public reload ()V
   method public source ()Lcom/crystalgraphics/compute/source/CgComputeSource;
+  method public,static finishPrepared ()V
   method public,static fromSource (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/compute/CgCompute;
   method public,static releaseAll ()V
@@ -2037,6 +2038,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   method public,static prepareDepthPyramid ()V
   method public,static prepareFill ()V
   method public,static prepareHistogram ()V
+  method public,static prepareIndirect ()V
   method public,static prepareScan (Lcom/crystalgraphics/compute/ops/CgGpuOps$Scan;Lcom/crystalgraphics/compute/ops/CgGpuOps$Fold;Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;)V
   method public,static prepareSort (Lcom/crystalgraphics/compute/ops/CgGpuOps$Element;Lcom/crystalgraphics/compute/ops/CgGpuOps$Order;)V
   method public,static readRows (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JILcom/crystalgraphics/compute/ops/CgGpuCount;Lcom/crystalgraphics/compute/ops/CgGpuOps$Rows;)Lcom/crystalgraphics/render/graph/CgRequest;
@@ -6833,6 +6835,7 @@ com/crystalgraphics/vfx/CgVfxSystem
   method public air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
   method public delete ()V
   method public effects ()Ljava/util/List;
+  method public onEvents (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public onMoment (Lcom/crystalgraphics/vfx/CgVfxMomentListener;)V
   method public play (Lcom/crystalgraphics/vfx/CgVfxEffect;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public quality ()Lcom/crystalgraphics/settings/CgQuality;
@@ -7009,6 +7012,9 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   field public,final billows Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,final body Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,final debris Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,final dust Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  field public,final dustColor Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,final dustLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
   field public,final hot Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,final ink Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,final inkLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
@@ -7022,6 +7028,7 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   field public,final speckLayer Lcom/crystalgraphics/vfx/look/CgVfxLayer;
   field public,final specks Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final BILLOWS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
+  field public,static,final DUST Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final INK Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final RAYS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   field public,static,final RINGS Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
@@ -7142,6 +7149,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   extends java/lang/Object
   implements com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   method public capacity ()I
+  method public events ()Ljava/util/List;
   method public largestSize ()F
   method public layer ()Ljava/lang/String;
   method public modules ()Ljava/util/List;
@@ -7149,6 +7157,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public opacityAt (F)F
   method public optional ()Z
   method public peakAlive ()I
+  method public peakChildren (I)I
   method public reach (F)F
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public sizeAt (F)F
@@ -7163,6 +7172,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public burst (FI)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public capacity (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public clearModules ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public event (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public heat (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public launch (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public layer (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -7192,7 +7202,9 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   implements com/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView
   method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;F)V
   method public air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
+  method public child (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method public coast (F)V
+  method public deliverRows (Ljava/util/List;)V
   method public emitter ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;
   method public finished ()Z
   method public ground (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
@@ -7202,6 +7214,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public originY ()D
   method public originZ ()D
   method public particles ()Lcom/crystalgraphics/vfx/particle/CgVfxParticleSet;
+  method public rowsDue ()Z
   method public schedule (FDDD)V
   method public scheduled ()Z
   method public seedBits ()I

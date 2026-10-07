@@ -130,6 +130,7 @@ public final class CgGpuOps {
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
     private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
     private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
+    private static final String INDIRECT_ARGS = "crystalgraphics:shaders/env/compute/args.compute";
     private static final String EXPAND_PATH = "crystalgraphics:shaders/env/compute/ops/expand.compute";
     private static final String PYRAMID_SHADER = "crystalgraphics:shaders/depth_pyramid.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
@@ -421,8 +422,17 @@ public final class CgGpuOps {
         prepare(Files.histogram().kernel("Histogram"));
     }
 
+    /**
+     * {@link #prepareSort}, for the kernel writing every indirect draw's command: what a draw's {@code .indirect} or
+     * {@code .instances} costs at its first frame otherwise.
+     */
+    public static void prepareIndirect() {
+        prepare(CgCompute.load(INDIRECT_ARGS).kernel("DrawArgs"));
+    }
+
     /** {@link #prepareSort}, for {@link #cull}; with {@code ordered}, its {@link CgCull#ordered} form too. */
     public static void prepareCull(boolean ordered) {
+        prepareIndirect();
         prepare(Files.fill().kernel("FillAt"));
         prepare(Files.cull().kernel("Cull"));
         prepare(Files.cull().kernel("CullKey"));
