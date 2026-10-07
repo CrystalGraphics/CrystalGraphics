@@ -98,6 +98,10 @@ public final class CgRasterPass extends CgPass {
     @Nullable
     private CgTargetCopy depthFromCopy;
 
+    /** Its second colour attachment, or null. */
+    @Nullable
+    private CgGraphTexture attachment;
+
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = new int[0];
     private CgTexture[] textures = new CgTexture[0];
@@ -407,6 +411,41 @@ public final class CgRasterPass extends CgPass {
         return textures[i];
     }
 
+    /**
+     * Draws into {@code texture} as colour attachment 1 beside the target, keeping what it holds: the world's emission
+     * written by the same draws as its colour. A pipeline writes it only where its program has a location-1 output
+     * ({@code CgPipeline.slotWrites}); for every other draw the slot is masked off.
+     *
+     * <pre>{@code
+     * recording.raster(emission, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
+     * CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
+     *         .attachment(emission);
+     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).emissionTarget(), bindings, mesh);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code texture} has the target's size, one colour slot and no depth; the target is level 0 and layer 0.</li>
+     *   <li>Beside the current target the executor makes a framebuffer of the host's colour and depth and
+     *       {@code texture}, so the host's own framebuffer is never changed. Framebuffer 0 takes none: it throws.</li>
+     *   <li>One blend serves both slots below GL 4.0: what a pipeline writes at location 1 must suit the pass's.</li>
+     * </ul>
+     */
+    public CgRasterPass attachment(CgGraphTexture texture) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        if (level != 0 || layer != 0) throw new IllegalStateException(this + " draws level " + level + " layer " + layer
+                + ", and takes a second attachment only at level 0, layer 0");
+        if (texture == target) throw new IllegalArgumentException(this + " already draws into " + texture);
+        attachment = texture;
+        recording.read(this, texture, CgAccess.COLOR_WRITE);
+        return this;
+    }
+
+    /** Its second colour attachment ({@link #attachment}), or null. */
+    @Nullable
+    public CgGraphTexture attachment() {
+        return attachment;
+    }
+
     /** Draws the chunks added from now on unscissored. */
     public CgRasterPass noScissor() {
         scissor = NO_SCISSOR;
@@ -419,6 +458,7 @@ public final class CgRasterPass extends CgPass {
         recording.requireOpen();
         ended = true;
         recording.write(this, target, CgAccess.COLOR_WRITE);
+        if (attachment != null) recording.write(this, attachment, CgAccess.COLOR_WRITE);
     }
 
     /** The mip level of its target it draws into: 0 unless made with one. */
