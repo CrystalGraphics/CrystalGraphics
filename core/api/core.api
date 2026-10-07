@@ -7381,11 +7381,63 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
   method public x (IF)F
   method public y (IF)F
   method public z (IF)F
+com/crystalgraphics/vfx/particle/gpu/CgVfxEvent
+  access public,final
+  extends java/lang/Object
+  field public,static,final CHILD_KEY_GLSL Ljava/lang/String;
+  field public,static,final MAX_CHILDREN I
+  field public,static,final MAX_EVENTS I
+  method public age ()F
+  method public child ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;
+  method public count ()I
+  method public inherit ()F
+  method public inherit (F)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public readback ()I
+  method public readback (I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public spawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public trigger ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  method public,static childKey (III)I
+  method public,static onAge (F)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public,static onDeath ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public,static onLanding ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+com/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AGE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  field public,static,final DEATH Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  field public,static,final LANDING Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+com/crystalgraphics/vfx/particle/gpu/CgVfxEventListener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract events (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;ILcom/crystalgraphics/vfx/particle/gpu/CgVfxEventRows;)V
+com/crystalgraphics/vfx/particle/gpu/CgVfxEventRows
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public add (IIDDDFFFFFF)V
+  method public clear ()V
+  method public count ()I
+  method public drop (I)V
+  method public dropped ()I
+  method public nx (I)F
+  method public ny (I)F
+  method public nz (I)F
+  method public parentId (I)I
+  method public slot (I)I
+  method public vx (I)F
+  method public vy (I)F
+  method public vz (I)F
+  method public x (I)D
+  method public y (I)D
+  method public z (I)D
 com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final CURVE_TEXELS I
   field public,static,final SPAWN_VECTORS I
+  method public events ()Ljava/util/List;
   method public,abstract modules ()Ljava/util/List;
   method public,abstract name ()Ljava/lang/String;
   method public,abstract renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
@@ -7494,9 +7546,11 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public slotCount ()I
   method public spawn (III)V
   method public storage ()I
+  method public,static listen (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
   method public,static prepare (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)V
   method public,static release (Ljava/lang/Object;)V
+  method public,static stopListening (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   access public,final
   extends java/lang/Object
