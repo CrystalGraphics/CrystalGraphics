@@ -89,9 +89,9 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # and kept: the comparison for the retained path
 
 # VFX (vfx/CLAUDE.md)
--Dcrystalgraphics.vfx.sim=gpu                        # cpu|gpu: where effects' particles simulate, cpu by default; V
-                                                     # switches it in any harness scene with a 3D camera. gpu is not
-                                                     # built yet and runs cpu, logged once
+-Dcrystalgraphics.vfx.sim=cpu                        # cpu|gpu: where effects' particles simulate, gpu by default; V
+                                                     # switches it in any harness scene with a 3D camera. cpu is the
+                                                     # Java path, kept as the comparison until it is removed
 -Dcrystalgraphics.vfx.threads=1                      # threads the CPU path runs emitters on, the render thread one of
                                                      # them; one per core by default, 1 for all on the render thread
 -Dcrystalgraphics.vfx.skip=body_light,haze           # layers whose shader path contains any of these draw nothing:

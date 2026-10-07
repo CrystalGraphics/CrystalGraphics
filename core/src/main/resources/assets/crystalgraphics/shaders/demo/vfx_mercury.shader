@@ -7,7 +7,7 @@ Tags { "RenderType" = "Opaque" }
 Queue = "Geometry"
 
 Properties {
-    _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient"
 }
 
 struct v2f { vec3 worldPos; vec3 dir; };
@@ -20,23 +20,23 @@ Pass {
         Cull OFF
     }
 
-    // The surface: the unit sphere swelling and settling under slow, broad noise.
-    vec3 mercury_surface(vec3 dir, float t) {
-        float h = fx_value_fbm(dir * 1.1 + vec3(0.0, t * 0.3, t * 0.18), 3);
-        float wave = sin(dir.y * 4.0 + t * 1.8) * 0.5 + 0.5;
-        return dir * (0.96 + 0.06 * h + 0.012 * wave);
+    // The unit sphere swelling and settling under slow, broad noise: xyz the radius's gradient over dir, w the radius.
+    vec4 mercury_radius(vec3 dir, float t) {
+        vec4 h = fx_value_fbm_grad(dir * 1.1 + vec3(0.0, t * 0.3, t * 0.18), 3);
+        float phase = dir.y * 4.0 + t * 1.8;
+        float radius = 0.96 + 0.06 * h.w + 0.012 * (sin(phase) * 0.5 + 0.5);
+        return vec4(0.066 * h.xyz + vec3(0.0, 0.024 * cos(phase), 0.0), radius);
     }
 
-    // The surface's normal at {@code dir}, from the surface itself: per pixel, since a mirror shows every seam an
-    // interpolated per-vertex normal leaves.
+    vec3 mercury_surface(vec3 dir, float t) {
+        return dir * mercury_radius(dir, t).w;
+    }
+
+    // The surface's normal at {@code dir}, per pixel from the noise's own slope: a mirror shows every crease that
+    // differencing filtered noise leaves at its texels.
     vec3 mercury_normal(vec3 dir, float t) {
-        vec3 side = normalize(abs(dir.y) < 0.99 ? cross(dir, vec3(0.0, 1.0, 0.0)) : cross(dir, vec3(1.0, 0.0, 0.0)));
-        vec3 up = cross(side, dir);
-        vec3 p0 = mercury_surface(dir, t);
-        vec3 p1 = mercury_surface(normalize(dir + side * 0.01), t);
-        vec3 p2 = mercury_surface(normalize(dir + up * 0.01), t);
-        vec3 n = normalize(cross(p1 - p0, p2 - p0));
-        return dot(n, dir) < 0.0 ? -n : n;
+        vec4 r = mercury_radius(dir, t);
+        return normalize(dir - (r.xyz - dot(r.xyz, dir) * dir) / r.w);
     }
 
     void vertex(out v2f o) {

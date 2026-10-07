@@ -407,6 +407,10 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private void coastChildren(float dt) {
         for (CgVfxEmitterInstance child : children) {
             if (child == null) continue;
+            // The child's slot is placed by its own origin, which only tick and schedule set: it takes its parent's.
+            child.originX = originX;
+            child.originY = originY;
+            child.originZ = originZ;
             child.coast(dt);
             child.lastDeath = Math.max(child.lastDeath, lastDeath + dt * (float) Math.ceil(child.emitter.lifeMax / dt));
         }

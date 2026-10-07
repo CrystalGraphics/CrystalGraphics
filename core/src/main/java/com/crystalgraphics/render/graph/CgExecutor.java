@@ -11,6 +11,8 @@ import com.crystalgraphics.compute.cpu.CgCpuMirrors;
 import com.crystalgraphics.compute.cpu.CgCpuRunner;
 import com.crystalgraphics.compute.lower.CgLoweredKernel;
 import com.crystalgraphics.compute.lower.CgLoweredResources;
+import com.crystalgraphics.compute.emit.CgKernelTarget;
+import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgImageAccess;
@@ -649,6 +651,7 @@ public final class CgExecutor {
 
     /** Step {@code s} on the compute queue; the storage it touches is pending until the frame's queue waits for it. */
     private void computeAsync(CgFrame frame, int s, CgComputePass pass) {
+        if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         CgGL.cgBeginAsync();
         long point;
         try {
