@@ -387,6 +387,14 @@ public final class TrackedTextures implements TrackedPrograms.Samplers, TrackedP
         return samplers.computeIfAbsent(desc, d -> tracker.device().createSampler(d));
     }
 
+    /**
+     * Makes every {@link #incomplete} stand-in now, outside async work: one first written inside it lands on the
+     * compute queue, and the frame's queue would sample it with nothing ordering the two.
+     */
+    public void prepareStandIns() {
+        for (int kind = 0; kind < KIND_BUFFER; kind++) incomplete(kind);
+    }
+
     /** A 1x1 black, opaque image of {@code kind}: what GL samples from an incomplete texture. */
     private CgTextureView incomplete(int kind) {
         if (incomplete[kind] == null) {
