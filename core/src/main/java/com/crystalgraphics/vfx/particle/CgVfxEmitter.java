@@ -200,11 +200,18 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         CgVfxEvent e = events.get(event);
         CgVfxEmitter child = (CgVfxEmitter) e.child();
         if (child == null) return 0;
+        if (e.repeats()) {
+            // Each parent alive at once fires this often within a child's life: a rate by its period, a collision at
+            // most once a 60 Hz step. An upper bound; never drops a child.
+            float within = child.lifeMax + 0.1f;
+            float firings = e.trigger() == CgVfxEvent.Trigger.RATE ? within / e.age() : within * 60f;
+            return peakAlive() * (int) Math.ceil(firings) * e.count();
+        }
         // A parent fires once, this long after its birth at most; its children then live up to the child's longest life.
         float spread = switch (e.trigger()) {
             case AGE -> 0f;
             case DEATH -> lifeMax - lifeMin;
-            case LANDING -> lifeMax;
+            case LANDING, COLLISION, RATE -> lifeMax;
         };
         return spawnsWithin(spread + child.lifeMax + 0.1f) * e.count();
     }

@@ -410,7 +410,11 @@ public final class CgVfxParticlePool {
             stepping.bind("PARENT_EVENTS", children ? spawnStream : unfed).bind("PARENT_COUNT", children ? spawnCount : unfed)
                     .bind("FEEDS", children ? feedBuffer : unfed);
         }
-        if (shape.readsWorld()) CgVfxVoxelWindow.get().use().bind(stepping);
+        if (shape.readsWorld()) {
+            CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
+            if (shape.usesDistance()) window.useDistance();
+            window.bind(stepping);
+        }
         current = 1 - current;
     }
 
@@ -469,7 +473,8 @@ public final class CgVfxParticlePool {
                 into.add(slot, rows.getInt(at + 64),
                         rows.getInt(at + 48) + (double) rows.getFloat(at), rows.getInt(at + 52) + (double) rows.getFloat(at + 4),
                         rows.getInt(at + 56) + (double) rows.getFloat(at + 8), rows.getFloat(at + 16), rows.getFloat(at + 20),
-                        rows.getFloat(at + 24), rows.getFloat(at + 32), rows.getFloat(at + 36), rows.getFloat(at + 40));
+                        rows.getFloat(at + 24), rows.getFloat(at + 32), rows.getFloat(at + 36), rows.getFloat(at + 40),
+                        rows.getInt(at + 76));
             }
             for (Map.Entry<CgVfxGpuEmitter, CgVfxEventRows[]> e : groups.entrySet()) {
                 CgVfxEventRows[] group = e.getValue();

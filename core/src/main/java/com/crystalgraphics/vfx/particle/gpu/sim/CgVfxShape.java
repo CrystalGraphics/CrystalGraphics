@@ -8,6 +8,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -33,16 +35,18 @@ public final class CgVfxShape {
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
     /** The vec4s a parameter row gives its events, when it has any: each event's age, {@link CgVfxEvent#MAX_EVENTS} of them. */
     public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 4;
+    /** Each custom kind's text, as first seen: a kind name means one text. */
+    private static final Map<String, String> SOURCES = new ConcurrentHashMap<>();
 
     private final String key;
     private final CgVfxEmitter.Renderer renderer;
-    private final String[] kinds;
+    private final String[] kinds, sources;
     private final boolean[] afterSolve;
     private final int[] params, paramAt, lanesAt;
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld;
+    private final boolean readsWorld, usesDistance;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -53,6 +57,7 @@ public final class CgVfxShape {
         int n = modules.size();
         renderer = emitter.renderer();
         kinds = new String[n];
+        sources = new String[n];
         afterSolve = new boolean[n];
         params = new int[n];
         paramAt = new int[n];
@@ -69,6 +74,14 @@ public final class CgVfxShape {
                         + kind + "' is not a lower-case GLSL name");
             }
             kinds[i] = kind;
+            sources[i] = m.gpuSource();
+            if (sources[i] != null) {
+                String known = SOURCES.putIfAbsent(kind, sources[i]);
+                if (known != null && !known.equals(sources[i])) {
+                    throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " is given GLSL other than the "
+                            + "text another definition gave it: a kind name means one text");
+                }
+            }
             afterSolve[i] = m.afterSolve();
             params[i] = m.paramVectors();
             lanes[i] = m.instanceLanes().clone();
@@ -108,9 +121,13 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
-        boolean reads = false;
-        for (CgVfxWorldInput[] inputs : world) reads |= inputs.length > 0;
+        boolean reads = false, distance = false;
+        for (CgVfxWorldInput[] inputs : world) {
+            reads |= inputs.length > 0;
+            for (CgVfxWorldInput input : inputs) distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
+        }
         readsWorld = reads;
+        usesDistance = distance;
         this.key = key.toString();
     }
 
@@ -136,6 +153,11 @@ public final class CgVfxShape {
     /** Module {@code i}'s {@code <kind>}. */
     public String kind(int i) {
         return kinds[i];
+    }
+
+    /** Module {@code i}'s GLSL given as text, or null for its file. */
+    public String source(int i) {
+        return sources[i];
     }
 
     public boolean afterSolve(int i) {
@@ -172,6 +194,11 @@ public final class CgVfxShape {
         return readsWorld;
     }
 
+    /** Whether any module takes {@link CgVfxWorldInput#WORLD_DISTANCE}: the window's distance field is kept current. */
+    public boolean usesDistance() {
+        return usesDistance;
+    }
+
     /** How many events its definitions list. */
     public int events() {
         return triggers.length;
@@ -201,7 +228,7 @@ public final class CgVfxShape {
         return reports;
     }
 
-    /** Where the events' ages start in a parameter row, in vec4s ({@link #EVENT_VECTORS} of them); no events, none. */
+    /** Where the events' ages and periods start in a parameter row, in vec4s ({@link #EVENT_VECTORS}); no events, none. */
     public int eventsAt() {
         return eventsAt;
     }
