@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -237,6 +239,7 @@ public final class CgWorldRenderer {
 
     // Distortion: what plans and records it, and the distorting draws this firing.
     private final CgWorldDistortion distortion = new CgWorldDistortion();
+    private final CgWorldText text = new CgWorldText();
     private final Hazes hazes = new Hazes();
     private boolean[] distorts = new boolean[64];
 
@@ -273,6 +276,7 @@ public final class CgWorldRenderer {
         upsample = null;
         upsampleBound = null;
         distortion.release();
+        text.release();
     }
 
     /**
@@ -354,6 +358,40 @@ public final class CgWorldRenderer {
     /** Starts a draw of {@code mesh} under {@code material}: the shared scratch, so build and submit in one expression. */
     public Draw draw(CgMesh mesh, CgMaterial material) {
         return scratch.start(mesh, material);
+    }
+
+    /**
+     * Starts a label: a line of {@code text} in {@code font} at a point in the world, facing the camera unless turned,
+     * depth-tested against the scene and drawn after the transparent draws, as a name tag. Shared scratch, so build and
+     * submit in one expression; it lives for the frame. Render thread.
+     *
+     * <pre>{@code
+     * world.text("Attract + Orbit", font).at(x, y + 6, z).height(0.5f).submit();          // centred on its point
+     * world.text("12", font).at(x, y, z).color(0xFFFF5040).anchor(0.5f, 0f).submit();    // standing on its point
+     * world.text("North", font).at(x, y, z).rotation(new Quaternionf().rotateY(0f)).submit();   // fixed in the world
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code height} is a line's height in blocks: the font's size maps to it. Its raster tier (bitmap or
+     *       distance field) follows how tall it stands on screen, as {@code CgTextRenderer}'s world text does.</li>
+     *   <li>A label is unlit and unfogged, and writes no depth: labels behind a nearer one show through it.</li>
+     *   <li>A glyph not yet in the atlas draws a frame or more late, as all text does.</li>
+     * </ul>
+     */
+    public CgWorldText.Label text(String text, CgFont font) {
+        CgWorldText.Label label = this.text.next();
+        label.text = text;
+        label.font = font;
+        return label;
+    }
+
+    /** As {@link #text(String, CgFont)}, in {@code family} at {@code px} pixels, falling back across its faces. */
+    public CgWorldText.Label text(String text, CgFontFamily family, int px) {
+        CgWorldText.Label label = this.text.next();
+        label.text = text;
+        label.family = family;
+        label.px = px;
+        return label;
     }
 
     /** As {@link #draw(CgMesh, CgMaterial)}, of the level of {@code lods} for how tall the draw stands on screen. */
@@ -849,6 +887,7 @@ public final class CgWorldRenderer {
     }
 
     private void clear() {
+        text.clear();
         Arrays.fill(meshes, 0, count, null);
         Arrays.fill(lods, 0, count, null);
         Arrays.fill(materials, 0, count, null);
@@ -934,7 +973,10 @@ public final class CgWorldRenderer {
             notified = now;
             for (FrameListener listener : listeners) listener.frame(view);
         }
-        if (count == 0) return;
+        if (count == 0) {
+            if (which == TRANSPARENT) text.record(stage, view);
+            return;
+        }
         if (!irisWarned && CgIrisCompat.isShaderPackActive()) {
             irisWarned = true;
             LOGGER.warn("An Iris/Oculus shader pack is active: the world renderer draws into the main framebuffer, "
@@ -1001,6 +1043,7 @@ public final class CgWorldRenderer {
             }
             if (which == TRANSPARENT) recordEmission(stage, recording, view);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
+            if (which == TRANSPARENT) text.record(stage, view);
         }
     }
 
