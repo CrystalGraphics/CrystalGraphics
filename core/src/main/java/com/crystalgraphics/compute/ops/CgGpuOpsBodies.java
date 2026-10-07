@@ -170,84 +170,136 @@ final class CgGpuOpsBodies {
     /** {@code cull.compute}'s kernel, step for step: the same tests in the same order, then the same record. */
     static CgCompute cull(CgCompute file) {
         file.kernel("Cull").cpu(d -> {
-            CgCpuBuffer in = d.buffer("INSTANCES"), out = d.appended("OUT");
-            int n = count(d), keep = d.propertyInt("_Level"), levels = d.propertyInt("_Levels"), first = d.propertyInt("_First");
-            float[] place = columns(d, "_Place", 4), normal = columns(d, "_PlaceNormal", 3);
-            float[] clip = columns(d, "_Clip", 0), planes = new float[24], heights = new float[8];
+            Culling c = new Culling(d);
+            CgCpuBuffer out = d.appended("OUT");
+            int n = count(d), keep = d.propertyInt("_Level");
+            for (int e = d.first(); e < d.end(); e++) {
+                if (!below(e, n)) continue;
+                c.read(e);
+                if (c.level() == keep) c.write(out, d.append("OUT"));
+            }
+        });
+        file.kernel("CullFlags").cpu(d -> {
+            Culling c = new Culling(d);
+            CgCpuBuffer flags = d.buffer("FLAGS");
+            int n = count(d), keep = d.propertyInt("_Level");
+            for (int e = d.first(); e < d.end(); e++) {
+                boolean kept = false;
+                if (below(e, n)) {
+                    c.read(e);
+                    kept = c.level() == keep;
+                }
+                flags.setInt(e, 0, kept ? 1 : 0);
+            }
+        });
+        file.kernel("CullPlace").cpu(d -> {
+            Culling c = new Culling(d);
+            CgCpuBuffer kept = d.buffer("KEPT"), placed = d.buffer("PLACED");
+            int n = count(d);
+            for (int e = d.first(); e < d.end(); e++) {
+                if (!below(e, n)) continue;
+                c.read(kept.getInt(e, 0));
+                c.write(placed, e);
+            }
+        });
+        return file;
+    }
+
+    /** {@code cull.compute}'s cull_model, cull_level and cull_record over one dispatch's properties. */
+    private static final class Culling {
+        private final CgCpuDispatch d;
+        private final CgCpuBuffer in;
+        private final int levels, first, customs;
+        private final float[] place, normal, clip, planes = new float[24], heights = new float[8], stamps = new float[16];
+        private final float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
+        private final float scale, unscale;
+
+        Culling(CgCpuDispatch d) {
+            this.d = d;
+            in = d.buffer("INSTANCES");
+            levels = d.propertyInt("_Levels");
+            first = d.propertyInt("_First");
+            customs = d.propertyInt("_Customs");
+            place = columns(d, "_Place", 4);
+            normal = columns(d, "_PlaceNormal", 3);
+            clip = columns(d, "_Clip", 0);
             for (int i = 0; i < 6; i++) for (int c = 0; c < 4; c++) planes[i * 4 + c] = d.property("_Plane" + i, c);
             for (int c = 0; c < 4; c++) {
                 heights[c] = d.property("_Heights0", c);
                 heights[4 + c] = d.property("_Heights1", c);
             }
-            float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
-            float scale = d.property("_Scale"), unscale = d.property("_NormalScale");
-            int customs = d.propertyInt("_Customs");
-            float[] stamps = new float[16];
             for (int k = 0; k < 4; k++) for (int c = 0; c < 4; c++) stamps[k * 4 + c] = d.property("_Custom" + k, c);
-            for (int e = d.first(); e < d.end(); e++) {
-                if (!below(e, n)) continue;
-                for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + e, w);
-                for (int w = 0; w < 12; w++) r[w] *= scale;
-                for (int c = 0; c < 4; c++) {
-                    for (int row = 0; row < 4; row++) {
-                        m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]
-                                + place[8 + row] * r[c * 4 + 2] + place[12 + row] * r[c * 4 + 3];
-                    }
-                }
-                for (int k = 0; k < 3; k++) lo[k] = hi[k] = m[12 + k];
-                for (int a = 0; a < 3; a++) {
-                    float min = d.property("_Min", a), max = d.property("_Max", a);
-                    for (int k = 0; k < 3; k++) {
-                        float p = m[a * 4 + k] * min, q = m[a * 4 + k] * max;
-                        lo[k] += Math.min(p, q);
-                        hi[k] += Math.max(p, q);
-                    }
-                }
-                boolean outside = false;
-                for (int i = 0; i < 6 && !outside; i++) {
-                    float x = planes[i * 4], y = planes[i * 4 + 1], z = planes[i * 4 + 2];
-                    outside = x * (x < 0f ? lo[0] : hi[0]) + y * (y < 0f ? lo[1] : hi[1]) + z * (z < 0f ? lo[2] : hi[2])
-                            < -planes[i * 4 + 3];
-                }
-                if (outside) continue;
-                int level = 0;
-                if (levels > 0) {
-                    float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
-                    float dx = hi[0] - lo[0], dy = hi[1] - lo[1], dz = hi[2] - lo[2];
-                    float radius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
-                    float w = clip[12] * cx + clip[13] * cy + clip[14] * cz + clip[15];
-                    float screen = w <= radius ? 3.4e38f : radius * d.property("_ScreenY") / w;
-                    level = -1;
-                    for (int i = 0; i < levels; i++) {
-                        if (screen >= heights[i]) {
-                            level = i;
-                            break;
-                        }
-                    }
-                }
-                if (level != keep || occluded(d, clip, lo, hi)) continue;
+            scale = d.property("_Scale");
+            unscale = d.property("_NormalScale");
+        }
 
-                int at = d.append("OUT");
-                for (int w = 0; w < 16; w++) out.setFloat(at, w, m[w]);
-                for (int c = 0; c < 3; c++) {
-                    for (int row = 0; row < 3; row++) {
-                        out.setFloat(at, 16 + c * 4 + row, (normal[row] * r[16 + c * 4] + normal[4 + row] * r[16 + c * 4 + 1]
-                                + normal[8 + row] * r[16 + c * 4 + 2]) * unscale);
-                    }
-                    out.setFloat(at, 16 + c * 4 + 3, r[16 + c * 4 + 3]);
-                }
-                boolean stamp = d.property("_Light", 2) > 0.5f;
-                out.setFloat(at, 28, stamp ? d.property("_Light", 0) : r[28]);
-                out.setFloat(at, 29, stamp ? d.property("_Light", 1) : r[29]);
-                out.setFloat(at, 30, r[30]);
-                out.setFloat(at, 31, r[31]);
-                for (int k = 0; k < 4; k++) {
-                    boolean stamped = (customs & 1 << k) != 0;
-                    for (int c = 0; c < 4; c++) out.setFloat(at, 32 + k * 4 + c, stamped ? stamps[k * 4 + c] : r[32 + k * 4 + c]);
+        /** Instance {@code index} of the set read, and its model matrix placed: cull_model. */
+        void read(int index) {
+            for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + index, w);
+            for (int w = 0; w < 12; w++) r[w] *= scale;
+            for (int c = 0; c < 4; c++) {
+                for (int row = 0; row < 4; row++) {
+                    m[c * 4 + row] = place[row] * r[c * 4] + place[4 + row] * r[c * 4 + 1]
+                            + place[8 + row] * r[c * 4 + 2] + place[12 + row] * r[c * 4 + 3];
                 }
             }
-        });
-        return file;
+        }
+
+        /** The level the instance read is kept at, or -1: cull_level. */
+        int level() {
+            for (int k = 0; k < 3; k++) lo[k] = hi[k] = m[12 + k];
+            for (int a = 0; a < 3; a++) {
+                float min = d.property("_Min", a), max = d.property("_Max", a);
+                for (int k = 0; k < 3; k++) {
+                    float p = m[a * 4 + k] * min, q = m[a * 4 + k] * max;
+                    lo[k] += Math.min(p, q);
+                    hi[k] += Math.max(p, q);
+                }
+            }
+            for (int i = 0; i < 6; i++) {
+                float x = planes[i * 4], y = planes[i * 4 + 1], z = planes[i * 4 + 2];
+                if (x * (x < 0f ? lo[0] : hi[0]) + y * (y < 0f ? lo[1] : hi[1]) + z * (z < 0f ? lo[2] : hi[2])
+                        < -planes[i * 4 + 3]) return -1;
+            }
+            int level = 0;
+            if (levels > 0) {
+                float cx = (lo[0] + hi[0]) * 0.5f, cy = (lo[1] + hi[1]) * 0.5f, cz = (lo[2] + hi[2]) * 0.5f;
+                float dx = hi[0] - lo[0], dy = hi[1] - lo[1], dz = hi[2] - lo[2];
+                float radius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+                float w = clip[12] * cx + clip[13] * cy + clip[14] * cz + clip[15];
+                float screen = w <= radius ? 3.4e38f : radius * d.property("_ScreenY") / w;
+                level = -1;
+                for (int i = 0; i < levels; i++) {
+                    if (screen >= heights[i]) {
+                        level = i;
+                        break;
+                    }
+                }
+            }
+            if (level != d.propertyInt("_Level") || occluded(d, clip, lo, hi)) return -1;
+            return level;
+        }
+
+        /** The record a draw reads for the instance read, into element {@code at} of {@code out}: cull_record. */
+        void write(CgCpuBuffer out, int at) {
+            for (int w = 0; w < 16; w++) out.setFloat(at, w, m[w]);
+            for (int c = 0; c < 3; c++) {
+                for (int row = 0; row < 3; row++) {
+                    out.setFloat(at, 16 + c * 4 + row, (normal[row] * r[16 + c * 4] + normal[4 + row] * r[16 + c * 4 + 1]
+                            + normal[8 + row] * r[16 + c * 4 + 2]) * unscale);
+                }
+                out.setFloat(at, 16 + c * 4 + 3, r[16 + c * 4 + 3]);
+            }
+            boolean stamp = d.property("_Light", 2) > 0.5f;
+            out.setFloat(at, 28, stamp ? d.property("_Light", 0) : r[28]);
+            out.setFloat(at, 29, stamp ? d.property("_Light", 1) : r[29]);
+            out.setFloat(at, 30, r[30]);
+            out.setFloat(at, 31, r[31]);
+            for (int k = 0; k < 4; k++) {
+                boolean stamped = (customs & 1 << k) != 0;
+                for (int c = 0; c < 4; c++) out.setFloat(at, 32 + k * 4 + c, stamped ? stamps[k * 4 + c] : r[32 + k * 4 + c]);
+            }
+        }
     }
 
     /** Vec4 properties {@code prefix0} on as one array of columns; 0 columns reads {@code _ClipX} to {@code _ClipW}. */

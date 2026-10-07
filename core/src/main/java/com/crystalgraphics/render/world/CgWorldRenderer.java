@@ -168,6 +168,7 @@ public final class CgWorldRenderer {
     /** Per draw: the customs it stated, a bit each, which a set's cull stamps; and a set's instance scale. */
     private int[] customsStated = new int[64];
     private float[] setScales = new float[64];
+    private boolean[] setOrdered = new boolean[64];
     private CgGpuCount[] setCounts = new CgGpuCount[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
@@ -381,6 +382,7 @@ public final class CgWorldRenderer {
         private int setFirst;
         private int stated;
         private float setScale;
+        private boolean setOrderedFlag;
         private CgGpuCount setCount;
         private CgBufferHandle buffer;
         private CgBindingPoints.Binding bufferPoint;
@@ -412,6 +414,7 @@ public final class CgWorldRenderer {
             setFirst = 0;
             stated = 0;
             setScale = 1f;
+            setOrderedFlag = false;
             setCount = null;
             buffer = null;
             bufferPoint = null;
@@ -620,6 +623,19 @@ public final class CgWorldRenderer {
             return this;
         }
 
+        /**
+         * Draws its {@link #instances} in the order the records hold them, on every tier: records sorted back to front
+         * for a material that blends over (VFX Range's sorted slots). Costs a compaction a level of the cull.
+         *
+         * <pre>{@code
+         * world.draw(billow, smoke).instances(range.objects(), range.base(slot), visible).ordered().gpuCulled().submit();
+         * }</pre>
+         */
+        public Draw ordered() {
+            setOrderedFlag = true;
+            return this;
+        }
+
         /** Grows the bounds it is culled by on every side, for a vertex shader that displaces. */
         public Draw pad(float radius) {
             pad = radius;
@@ -797,6 +813,7 @@ public final class CgWorldRenderer {
         setFirsts[count] = d.setFirst;
         customsStated[count] = d.stated;
         setScales[count] = d.setScale;
+        setOrdered[count] = d.setOrderedFlag;
         setCounts[count] = d.setCount;
         buffers[count] = d.buffer;
         bufferAt[count] = d.bufferPoint;
@@ -848,6 +865,7 @@ public final class CgWorldRenderer {
         setFirsts = Arrays.copyOf(setFirsts, n);
         customsStated = Arrays.copyOf(customsStated, n);
         setScales = Arrays.copyOf(setScales, n);
+        setOrdered = Arrays.copyOf(setOrdered, n);
         setCounts = Arrays.copyOf(setCounts, n);
         buffers = Arrays.copyOf(buffers, n);
         bufferAt = Arrays.copyOf(bufferAt, n);
@@ -1409,7 +1427,7 @@ public final class CgWorldRenderer {
         if (lods[i] != null) cull.mesh(lods[i]);
         else cull.mesh(meshes[i]);
         modelOf(i, view);
-        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]).scale(setScales[i]).ownCustoms();
+        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]).scale(setScales[i]).ordered(setOrdered[i]).ownCustoms();
         for (int k = 0; k < 4; k++) {
             int c = i * 16 + k * 4;
             if ((customsStated[i] & 1 << k) != 0) cull.custom(k, customs[c], customs[c + 1], customs[c + 2], customs[c + 3]);

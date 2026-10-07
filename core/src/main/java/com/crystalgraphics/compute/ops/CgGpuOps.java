@@ -444,7 +444,8 @@ public final class CgGpuOps {
      * }</pre>
      *
      * <ul>
-     *   <li>Kept records keep the order they were in on every tier but compute, where they come in any order.</li>
+     *   <li>Kept records keep the order they were in on every tier but compute, where they come in any order unless
+     *       the cull is {@link CgCull#ordered}.</li>
      *   <li>{@code counts} needs {@link CgBufferUsage#STORAGE} and the draws' {@code INDIRECT} use; the op zeroes its
      *       words first.</li>
      *   <li>The box is tested as it stands under the view: an instance whose shader moves its vertices states the
@@ -480,12 +481,34 @@ public final class CgGpuOps {
         counted(pass.dispatch(Files.fill().kernel("FillAt"), levels), CgGpuCount.of(levels), counts)
                 .bind("DST", counts).set("_At", word).set("_Value", 0);
         if (capacity == 0) return;
+        if (cull.ordered) {
+            cullOrdered(pass, cull, instances, first, count, out, counts, word, region);
+            return;
+        }
         CgKernel kernel = Files.cull().kernel("Cull");
         for (int l = 0; l < levels; l++) {
             CgDispatch dispatch = counted(pass.dispatch(kernel, capacity), count, instances)
                     .bind("INSTANCES", instances).bind("OUT", out, l * region, region)
                     .counter("OUT", counts, (word + l) * 4L).set("_Level", l).set("_First", first);
             cull.apply(dispatch);
+        }
+    }
+
+    /** Each level's instances flagged, listed in order by {@link #compact}, and their records written at their place. */
+    private static void cullOrdered(CgComputePass pass, CgCull cull, CgGraphBuffer instances, int first, CgGpuCount count,
+                                    CgGraphBuffer out, CgGraphBuffer counts, int word, long region) {
+        int capacity = count.capacity();
+        CgGraphBuffer flags = words(pass, "ops.cull.flags", capacity), kept = words(pass, "ops.cull.kept", capacity);
+        CgKernel flag = Files.cull().kernel("CullFlags"), place = Files.cull().kernel("CullPlace");
+        for (int l = 0; l < cull.levels(); l++) {
+            CgDispatch flagging = counted(pass.dispatch(flag, capacity), count, instances)
+                    .bind("INSTANCES", instances).bind("FLAGS", flags).set("_Level", l).set("_First", first);
+            cull.apply(flagging);
+            compact(pass, flags, null, count, kept, counts, word + l);
+            CgDispatch placing = counted(pass.dispatch(place, capacity), CgGpuCount.at(counts, word + l, capacity), kept)
+                    .bind("INSTANCES", instances).bind("KEPT", kept).bind("PLACED", out, l * region, region)
+                    .set("_First", first);
+            cull.apply(placing);
         }
     }
 
