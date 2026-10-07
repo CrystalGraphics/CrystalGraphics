@@ -318,7 +318,9 @@ public final class CgVfxRange {
             staging.putFloat(s * 16, open ? (float) (pool.origin(s, 0) - view.x()) : 0f);
             staging.putFloat(s * 16 + 4, open ? (float) (pool.origin(s, 1) - view.y()) : 0f);
             staging.putFloat(s * 16 + 8, open ? (float) (pool.origin(s, 2) - view.z()) : 0f);
-            staging.putFloat(s * 16 + 12, open ? pool.cullRadius(s) : 0f);
+            // Below 0: the slot is one sphere of that radius about its origin (cullAbout).
+            float source = open ? pool.cullSourceRadius(s) : 0f;
+            staging.putFloat(s * 16 + 12, !open ? 0f : source > 0f ? -source : pool.cullRadius(s));
         }
         staging.limit(slotCount * 16);
         recording.update(slots, 0, staging);

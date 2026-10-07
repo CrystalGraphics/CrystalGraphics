@@ -7444,8 +7444,10 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public capacity ()I
   method public capacity (I)I
   method public close (I)V
+  method public cullAbout (IF)V
   method public cullRadius (I)F
   method public cullScale (IF)V
+  method public cullSourceRadius (I)F
   method public curves ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public endStep ()V
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
