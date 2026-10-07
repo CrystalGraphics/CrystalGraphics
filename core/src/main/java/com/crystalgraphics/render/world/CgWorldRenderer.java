@@ -113,6 +113,8 @@ public final class CgWorldRenderer {
 
     /** Where the world renderer records in each world stage: after renderers at the default order, which may submit. */
     public static final int ORDER = 1000;
+    /** Where a firing starts the world renderer's frame and runs its {@code onFrame} listeners: after camera shake only. */
+    private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
@@ -271,8 +273,25 @@ public final class CgWorldRenderer {
     public void install() {
         if (installed) return;
         installed = true;
+        // Before anything else records (camera shake apart), so what onFrame submits reaches the renderers below ORDER
+        // that read it in the same firing: VFX pools and Range lay out slots from it.
+        CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
+        CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
+    }
+
+    /** Drops the previous ring frame's draws and runs the {@link #onFrame} listeners, once a ring frame. */
+    private void beginFrame(CgHostView view) {
+        long now = CgFrameRing.frame();
+        if (now != frame) {
+            clear();
+            frame = now;
+        }
+        if (now != notified) {
+            notified = now;
+            for (FrameListener listener : listeners) listener.frame(view);
+        }
     }
 
     /** Drops every draw. At context teardown. */
@@ -1016,15 +1035,7 @@ public final class CgWorldRenderer {
 
     private void record(CgStageFrame stage, int which) {
         CgHostView view = stage.host().view();
-        long now = CgFrameRing.frame();
-        if (now != frame) {
-            clear();
-            frame = now;
-        }
-        if (now != notified) {
-            notified = now;
-            for (FrameListener listener : listeners) listener.frame(view);
-        }
+        beginFrame(view);
         if (count == 0) {
             if (which == TRANSPARENT) text.record(stage, view);
             return;
