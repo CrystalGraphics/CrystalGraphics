@@ -213,7 +213,7 @@ public final class CgCapabilities {
     // backend, the device. @see #computeTier
     @Getter(AccessLevel.NONE)
     boolean compute, storageImages, subgroups, floatAtomics, drawIndirect, multiDrawIndirect, indirectCount,
-            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless;
+            drawParameters, multiDraw, feedbackCount, asyncCompute, bindless, independentBlend;
     @Getter(AccessLevel.NONE) ComputeTier computeTier;
     /** What a kernel may ask for; zeros without compute. @see #maxComputeWorkGroupSize */
     @Getter(AccessLevel.NONE) int maxComputeSharedMemory, maxComputeInvocations;
@@ -355,6 +355,7 @@ public final class CgCapabilities {
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
         caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
+        caps.independentBlend  = device == null || device.independentBlend();
         caps.computeTier       = computeTier(caps, device != null);
         caps.storageOffsetAlignment = ssbo || device != null ? CgGL.glGetInteger(CgGL.GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT) : 0;
         if (caps.compute) {
@@ -508,6 +509,12 @@ public final class CgCapabilities {
 
     /** Textures by handle rather than by unit: {@code ARB_bindless_texture}. */
     public boolean bindless() { return bindless; }
+
+    /**
+     * A draw's colour attachments may differ in write mask ({@code glColorMaski}): every GL context, and a device
+     * created with {@code independentBlend}, which Minecraft 26.2's is not.
+     */
+    public boolean independentBlend() { return independentBlend; }
 
     /** The GLSL version the context compiles: 330 to 460, 450 on a device. */
     public int glslVersion() { return glslVersion; }

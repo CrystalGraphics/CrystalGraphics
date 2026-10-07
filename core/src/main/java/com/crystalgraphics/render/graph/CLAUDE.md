@@ -117,7 +117,9 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 ```
 
 - A slot above 0 that a pipeline's program does not write is masked off for its draws (`CgPipeline.slotWrites`;
-  on a device, the pipeline's per-attachment write mask), so an unwritten output never lands.
+  on a device, the pipeline's per-attachment write mask), so an unwritten output never lands. Not on a device without
+  `independentBlend` (`CgCapabilities.independentBlend()`, Minecraft 26.2's), where one mask serves every slot: there
+  a shader drawn into such a target writes every slot.
 - One blend serves every slot below GL 4.0 (`glBlendFunci` is 4.0): what a pipeline writes into slot 1 must suit the
   pass's blend. The executor never assumes a blend per attachment.
 - `sceneColor` copies slot 0; hazards and the pool key on the texture as a whole.
@@ -136,8 +138,9 @@ chunks.draw(material.pipeline(CgInstanceKind.OBJECT).emissionTarget(), bindings,
 ```
 
 - `texture` is the target's size (GL would draw into the intersection, quietly): the executor throws otherwise.
-- Framebuffer 0 takes none, and nor does a multisampled host target: both throw. A recorder asks first
-  (`CgHostFrame.mainFramebuffer() > 0`) and keeps the old path.
+- Framebuffer 0 takes none, and nor does a multisampled host target: both throw. `attachmentIfTaken(texture)` draws
+  on the target alone there instead, logs once, and `CgRasterPass.refusesAttachment(fb)` answers true from then on.
+- Draws that leave slot 1 masked need `CgCapabilities.independentBlend()`; a recorder checks it before asking.
 
 **A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
 with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).

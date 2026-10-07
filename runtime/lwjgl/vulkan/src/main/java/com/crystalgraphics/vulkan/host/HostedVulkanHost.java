@@ -461,6 +461,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     /** Only a multi-draw reads them, and a hosted device has none. */
     @Override public boolean drawParameters() { return false; }
 
+    /** Minecraft 26.2 leaves it off: its validation layer refuses attachments differing in write mask. */
+    @Override public boolean independentBlend() { return false; }
+
     @Override public final boolean asyncCompute() { return asyncQueue != null; }
 
     @Override public final int asyncFamily() { return asyncQueueFamily == queueFamily() ? -1 : asyncQueueFamily; }

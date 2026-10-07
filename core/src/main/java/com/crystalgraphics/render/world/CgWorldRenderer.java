@@ -1250,14 +1250,16 @@ public final class CgWorldRenderer {
     /**
      * The target-sized emission the transparent passes write glows into beside the target, after a pass clearing it,
      * with {@link #merged} saying which draws do; null where none does, or the target is the default framebuffer
-     * (1.7.10 without framebuffers), which takes no second attachment.
+     * (1.7.10 without framebuffers), which takes no second attachment, or the device cannot mask the other draws'
+     * second slot alone.
      */
     @Nullable
     private CgGraphTexture mergedEmission(CgStageFrame stage, CgRecording recording) {
         if (merged.length < meshes.length) merged = new boolean[meshes.length];
         Arrays.fill(merged, 0, count, false);
         mergedDraws = 0;
-        if (!mergeEmission || stage.host().mainFramebuffer() <= 0 || !stage.resources().has(CgFrameKeys.EMISSION_READ)
+        if (!mergeEmission || !CgCapabilities.detect().independentBlend()
+                || stage.host().mainFramebuffer() <= 0 || !stage.resources().has(CgFrameKeys.EMISSION_READ)
                 || CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) return null;
         for (int i = 0; i < count; i++) {
             if (phase[i] != FORWARD && phase[i] != AFTER || queues[i] >= CgRenderQueue.OVERLAY_THRESHOLD || emissions[i] <= 0f) continue;
