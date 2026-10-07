@@ -98,7 +98,8 @@ registration only, reached through one bootstrapper per loader (`ForgeBootstrap`
 **The world passes**, by era — each handler rebinds `mc.getMainRenderTarget()` first, since Fabulous
 leaves a non-main FBO bound. **The transparent pass runs after Minecraft's clouds and weather**, so a haze bends
 them, and where the hook allows after Fabulous composites them too. An effect behind a cloud is then hidden by it
-(clouds write depth) rather than seen through it:
+(clouds write depth) rather than seen through it. **From 26.2 the hook stays inside the frame graph**: under Vulkan
+the world's depth is gone once the graph has run, and a depth reader (the showcase's sky) covered the whole world:
 
 | Loader | Opaque | Transparent |
 |---|---|---|
@@ -106,14 +107,14 @@ them, and where the hook allows after Fabulous composites them too. An effect be
 | Forge 1.18–1.19.2 | `RenderLevelStageEvent` `AFTER_CUTOUT_BLOCKS` (ahead of entities); 1.18–1.18.1 fall back to `RenderLevelLastEvent` at runtime | `AFTER_WEATHER` (ahead of Fabulous's composite: Forge 40–45 have no `AFTER_LEVEL`) |
 | Forge 1.19.3–1.19.4 | `AFTER_BLOCK_ENTITIES` | `AFTER_WEATHER` |
 | Forge 1.20.1–1.21.1 | `AFTER_BLOCK_ENTITIES` | `AFTER_LEVEL` (every Forge 46+ build has it) |
-| Forge 1.21.3–26.2 | node mixin `OpaquePassHook` | node mixin `TransparentPassHook`: tail of `LevelRenderer.renderLevel` (`render` on 26.2), which executes the frame graph |
+| Forge 1.21.3–26.1.2 · 26.2 | node mixin `OpaquePassHook` | node mixin `TransparentPassHook`: tail of `LevelRenderer.renderLevel`, which executes the frame graph · return of `WorldBorderRenderer.render`, the weather pass's last draw |
 | Forge 26.3 | head of `LevelRenderer.executeOit` / `executeClassicTransparency` | their tail, after the clouds and weather they draw |
 | NeoForge 1.20.2–1.21.3 | `RenderLevelStageEvent` `AFTER_BLOCK_ENTITIES` | `AFTER_LEVEL` |
 | NeoForge 1.21.4–1.21.8 · 1.21.9–1.21.11 | `RenderLevelStageEvent.AfterBlockEntities` · `.AfterEntities` | `AFTER_LEVEL` to 1.21.5, `.AfterLevel` from 1.21.6 (posted by `GameRenderer` once the level returns) |
-| NeoForge 26.1+ | `RenderLevelStageEvent.AfterOpaqueFeatures` | `.AfterLevel` |
+| NeoForge 26.1.2 · 26.2+ | `RenderLevelStageEvent.AfterOpaqueFeatures` | `.AfterLevel` · `.AfterWeather` |
 | Fabric 1.14.4–1.15.2 | node mixin `WorldPassHook` | the same |
 | Fabric 1.16.5–1.21.8 · 1.21.9–1.21.11 | `WorldRenderEvents.AFTER_ENTITIES` · `BEFORE_TRANSLUCENT` | `LAST` · node mixin `TransparentPassHook` (`renderLevel`/`method_22710` tail) |
-| Fabric 26.1+ | `LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN` | node mixin `TransparentPassHook` (`render` tail on 26.2+) |
+| Fabric 26.1+ | `LevelRenderEvents.BEFORE_TRANSLUCENT_TERRAIN` | node mixin `TransparentPassHook`: `renderLevel` tail on 26.1.2, `WorldBorderRenderer.render` return on 26.2, `executeOit`/`executeClassicTransparency` tail on 26.3 |
 
 The exact version splits are in each loader branch's `AGENTS.md`. **The frame ends after the GUI**, from
 a loader frame event or, on Fabric, a mixin — `runtime/mc/modern/common/CLAUDE.md` § *The frame end*,

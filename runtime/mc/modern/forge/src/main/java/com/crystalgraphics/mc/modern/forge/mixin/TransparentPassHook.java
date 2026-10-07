@@ -21,17 +21,20 @@ public abstract class TransparentPassHook {
 }
 *///?} elif >=26.2 {
 /*import com.crystalgraphics.mc.modern.platform.LifecycleModern;
-import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.WorldBorderRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// As below; 26.2 renamed renderLevel to render.
-@Mixin(value = LevelRenderer.class, remap = false)
+// Inside the frame graph, not after it: under Vulkan the world's depth is gone once the graph has run, and the
+// showcase's sky covered everything. The world border is the weather pass's last draw, after clouds and weather,
+// where NeoForge posts AfterWeather; LevelRenderer calls it once a frame.
+@Mixin(value = WorldBorderRenderer.class, remap = false)
 public abstract class TransparentPassHook {
 
-    @Inject(method = "render", at = @At("TAIL"), require = 1)
+    @Inject(method = "render(Lnet/minecraft/client/renderer/state/level/WorldBorderRenderState;Lnet/minecraft/world/phys/Vec3;DD)V",
+            at = @At("RETURN"), require = 1)
     private void crystalgraphics$transparentPass(CallbackInfo ci) {
         LifecycleModern.transparentPass();
     }
