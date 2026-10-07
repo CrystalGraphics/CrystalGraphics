@@ -118,7 +118,7 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 
 - A slot above 0 that a pipeline's program does not write is masked off for its draws (`CgPipeline.slotWrites`;
   on a device, the pipeline's per-attachment write mask), so an unwritten output never lands. Not on a device without
-  `independentBlend` (`CgCapabilities.independentBlend()`, Minecraft 26.2's), where one mask serves every slot: there
+  `independentBlend` (`CgCapabilities.independentBlend()`), where one mask serves every slot: there
   a shader drawn into such a target writes every slot.
 - One blend serves every slot below GL 4.0 (`glBlendFunci` is 4.0): what a pipeline writes into slot 1 must suit the
   pass's blend. The executor never assumes a blend per attachment.

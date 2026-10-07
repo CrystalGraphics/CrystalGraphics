@@ -189,6 +189,8 @@ public final class Blaze3dVulkanHost
     @Override public int framesInFlight() { return VulkanCommandEncoder.MAX_SUBMITS_IN_FLIGHT; }
     // Minecraft's device enables no line rasterization extension.
     @Override public boolean bresenhamLines() { return false; }
+    // Asked of Minecraft's device where the GPU has it (DeviceFeaturesHook).
+    @Override public boolean independentBlend() { return MinecraftDeviceFeatures.independentBlend(); }
     *///?}
 
     // Minecraft creates a compute queue and a transfer queue it never submits to: in 26.2 and 26.3 no class but

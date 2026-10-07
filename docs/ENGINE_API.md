@@ -134,7 +134,8 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   on its Forward pass's blend draws its glow in the same draw, into an emission beside the target. That emission is the
   target's size whatever the scale: 33 MB of transient R11G11B10F at 4K, against 8 MB at half size. A host target that
   takes no second attachment (multisampled, scaled, framebuffer 0) is logged once and drawn the old way, and so is
-  every glow on a device without `independentBlend` (`CgCapabilities.independentBlend()`; Minecraft 26.2's).
+  every glow on a device without `independentBlend` (`CgCapabilities.independentBlend()`; Minecraft 26.2's device is
+  created with it where the GPU has it).
   `world.mergeEmission(false)` draws every Emissive pass on its own again.
 - **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
   `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
