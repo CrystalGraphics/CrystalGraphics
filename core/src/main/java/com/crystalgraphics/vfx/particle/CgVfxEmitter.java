@@ -63,6 +63,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
     final CgKeyframes sizeOverLife, opacityOverLife;
+    /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
+    private final float sizePeak;
 
     private CgVfxEmitter(Builder b) {
         name = b.name;
@@ -96,6 +98,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
+        float peak = 0f;
+        for (int i = 0; i < CgVfxGpuEmitter.CURVE_TEXELS; i++) {
+            peak = Math.max(peak, sizeAt((float) i / (CgVfxGpuEmitter.CURVE_TEXELS - 1)));
+        }
+        sizePeak = peak;
     }
 
     public static Builder builder(String name) {
@@ -181,6 +188,30 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
         int fromRate = rate > 0f ? (int) Math.ceil(rate * Math.min(span, rateUntil - rateFrom)) + 2 : 0;
         return bursts + fromRate;
+    }
+
+    /**
+     * How far from its source one of its particles can get within its life, in blocks: its spawn radius, its launch
+     * speed, and what its modules can add pulling one way the whole time, {@code windSpeed} being the most the system's
+     * wind blows ({@link CgVfxAir#maxSpeed()}). What a look drawn about the source, an arc, is culled by.
+     *
+     * <pre>{@code
+     * float reach = SPARKS.reach(system.air().maxSpeed()) + SPARKS.largestSize() * stretch;
+     * }</pre>
+     */
+    public float reach(float windSpeed) {
+        float pull = 0f;
+        boolean wind = false;
+        for (int i = 0; i < modules.size(); i++) {
+            pull += modules.get(i).pull(heat);
+            wind |= modules.get(i) instanceof CgVfxModule.Wind;
+        }
+        return shapeRadius + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
+    }
+
+    /** The largest a particle draws, before a look's own scale: its largest size times its size curve's peak. */
+    public float largestSize() {
+        return sizeMax * sizePeak;
     }
 
     /** Seconds from the instance's start after which this emitter spawns nothing more. */

@@ -50,6 +50,32 @@ public class CgVfxEmitterScheduleTest {
         assertEquals(2f, row[row.length - 2], 1e-6f);
     }
 
+    @Test
+    public void noParticleGetsPastItsReach() {
+        CgVfxAir air = new CgVfxAir().wind(3f, 0f, -2f).gusts(0.6f, 0.4f);
+        CgVfxEmitter[] definitions = {
+                CgVfxEmitter.builder("falling").capacity(2000).burst(0f, 600).life(1f, 2.5f).speed(2f, 9f).shape(0.4f)
+                        .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Wind(2f)).build(),
+                CgVfxEmitter.builder("rising").capacity(2000).rate(300f, 0f, 1f).life(1.5f, 3f).speed(0.5f, 2f).heat(1f)
+                        .module(new CgVfxModule.Buoyancy(16f, 0.9f)).module(new CgVfxModule.Turbulence(8f, 0.12f, 0.6f))
+                        .module(new CgVfxModule.Updraft(12f, 2f, 6f, 1.5f)).module(new CgVfxModule.Wind(1f)).build()};
+        for (CgVfxEmitter definition : definitions) {
+            CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.37f);
+            instance.start(0.5f, 1f, -0.25f);
+            float reach = definition.reach(air.maxSpeed()), far = 0f;
+            for (int step = 0; step < 400 && !instance.finished(); step++) {
+                air.tick(step * DT);
+                instance.tick(DT, air, 120.0, 70.0, -40.0);
+                CgVfxParticleSet p = instance.particles();
+                for (int i = 0; i < p.count(); i++) {
+                    float dx = p.x[i] - 0.5f, dy = p.y[i] - 1f, dz = p.z[i] + 0.25f;
+                    far = Math.max(far, (float) Math.sqrt(dx * dx + dy * dy + dz * dz));
+                }
+            }
+            assertTrue(definition.name() + " reached " + far + " past its reach " + reach, far <= reach);
+        }
+    }
+
     private static void check(CgVfxEmitter definition, float share) {
         CgVfxEmitterInstance cpu = new CgVfxEmitterInstance(definition, 0.71f).share(share);
         CgVfxEmitterInstance gpu = new CgVfxEmitterInstance(definition, 0.71f).share(share);

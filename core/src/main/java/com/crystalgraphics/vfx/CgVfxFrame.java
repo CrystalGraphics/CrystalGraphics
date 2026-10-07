@@ -47,9 +47,6 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
-    /** A cull scale no particle's distance from the view exceeds. */
-    private static final float UNCULLED = 1.0e6f;
-
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
@@ -196,7 +193,8 @@ public final class CgVfxFrame {
         for (int k = 0; k < layers.size(); k++) {
             CgVfxLayer layer = layers.get(k);
             if (!name.equals(layer.slot()) || skips(layer)) continue;
-            if (blendsInOrder(system.material(layer))) range.sorted(slot);
+            boolean inOrder = blendsInOrder(system.material(layer));
+            if (inOrder) range.sorted(slot);
             if (meshes) {
                 // One record set for every layer: the cull stamps each draw's customs and scale onto it.
                 reach = Math.max(reach, layer.radius());
@@ -206,6 +204,7 @@ public final class CgVfxFrame {
                         .gpuCulled()
                         .at(effect.originX, effect.originY, effect.originZ)
                         .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed);
+                if (inOrder) draw.ordered();
                 color(draw, 2, layer.colorA(), values);
                 color(draw, 3, layer.colorB(), values);
                 CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
@@ -228,8 +227,14 @@ public final class CgVfxFrame {
             CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
         }
-        // An arc reaches from its source to its particle, which no radius about the particle covers.
-        if (reach > 0f) pool.cullScale(slot, arcs ? UNCULLED : reach);
+        if (reach <= 0f) return;
+        if (arcs) {
+            // An arc reaches from its source to its particle, which no radius about the particle covers.
+            CgVfxEmitter def = emitter.emitter();
+            pool.cullAbout(slot, def.reach(system.air().maxSpeed()) + def.largestSize() * reach);
+        } else {
+            pool.cullScale(slot, reach);
+        }
     }
 
     /**

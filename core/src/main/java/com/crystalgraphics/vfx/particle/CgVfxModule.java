@@ -47,12 +47,26 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         return false;
     }
 
+    /**
+     * The most acceleration it gives a particle of {@code heat}, in blocks a second squared: what bounds how far one
+     * gets ({@link CgVfxEmitter#reach}). 0 for one that only slows or turns a particle, and for {@link Wind}, whose
+     * bound is the wind's speed.
+     */
+    default float pull(float heat) {
+        return 0f;
+    }
+
     /** A constant pull down, in blocks a second squared: 9.8 is Earth's. */
     record Gravity(float strength) implements CgVfxModule {
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             for (int i = 0; i < p.count(); i++) p.ay[i] -= strength;
+        }
+
+        @Override
+        public float pull(float heat) {
+            return Math.abs(strength);
         }
 
         @Override
@@ -153,6 +167,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public float pull(float heat) {
+            return Math.abs(strength);
+        }
+
+        @Override
         public String gpuKind() {
             return "turbulence";
         }
@@ -199,6 +218,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public float pull(float heat) {
+            return Math.abs(lift * heat);
+        }
+
+        @Override
         public String gpuKind() {
             return "buoyancy";
         }
@@ -230,6 +254,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
                 float column = (float) Math.exp(-(dx * dx + dz * dz) * inv) * (1f - smooth(0f, height, up));
                 p.ay[i] += strength * column * fading;
             }
+        }
+
+        @Override
+        public float pull(float heat) {
+            return Math.abs(strength);
         }
 
         private static float smooth(float edge0, float edge1, float x) {
