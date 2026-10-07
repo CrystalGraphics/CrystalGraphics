@@ -43,7 +43,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
             MULTI_DRAW_ARRAYS_INDIRECT_COUNT = 110, MULTI_DRAW_ELEMENTS_INDIRECT_COUNT = 111, DISPATCH_COMPUTE = 112,
             DISPATCH_COMPUTE_INDIRECT = 113, MEMORY_BARRIER = 114, BIND_IMAGE_TEXTURE = 115, CG_BUFFER_BARRIER = 116,
             CG_IMAGE_BARRIER = 117, CG_FILL_BUFFER = 118, BEGIN_TRANSFORM_FEEDBACK = 119,
-            END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121, TEX_SUB_IMAGE_2D_O = 122, TEX_SUB_IMAGE_3D_O = 123;
+            END_TRANSFORM_FEEDBACK = 120, QUERY_TIMESTAMP = 121, TEX_SUB_IMAGE_2D_O = 122, TEX_SUB_IMAGE_3D_O = 123,
+            FRAMEBUFFER_TEXTURE = 124;
 
     private static final int MAX_SCOPES = 32;
     /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
@@ -171,6 +172,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
                     CgGL.glCopyImageSubData(ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri(), ri());
                     break;
                 case FRAMEBUFFER_TEXTURE_LAYER: CgGL.glFramebufferTextureLayer(ri(), ri(), ri(), ri(), ri()); break;
+                case FRAMEBUFFER_TEXTURE: CgGL.glFramebufferTexture(ri(), ri(), ri(), ri()); break;
                 case DELETE_FRAMEBUFFERS: CgGL.glDeleteFramebuffers(ri()); break;
                 case FRAMEBUFFER_TEXTURE_2D: CgGL.glFramebufferTexture2D(ri(), ri(), ri(), ri(), ri()); break;
                 case DRAW_BUFFERS: CgGL.glDrawBuffers(rints()); break;
@@ -477,6 +479,11 @@ final class CgGlRecordingBackend extends CgGLBackend {
     @Override
     public void framebufferTextureLayer(int target, int attachment, int texture, int level, int layer) {
         op(FRAMEBUFFER_TEXTURE_LAYER); i(target); i(attachment); i(texture); i(level); i(layer);
+    }
+
+    @Override
+    public void framebufferTexture(int target, int attachment, int texture, int level) {
+        op(FRAMEBUFFER_TEXTURE); i(target); i(attachment); i(texture); i(level);
     }
 
     @Override public int genFramebuffers() { throw refused("glGenFramebuffers", CREATES); }

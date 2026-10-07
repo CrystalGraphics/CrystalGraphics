@@ -563,25 +563,26 @@ public final class CgLoweredKernel {
         CgTexelTarget copy = null;
         if (loads[i]) copy = copyOf(image, b);
         int framebuffer = CgLoweredResources.framebuffer();
+        // A pass over every slice writes them in one draw, an instance a slice; one bound slice is a plain attachment,
+        // where gl_Layer is ignored and CG_TEXEL.z is 0.
         boolean layered = image.dimension() != CgImageDimension.D2 && b.layer(i) < 0;
         int layers = layered ? b.isIndirect() ? b.depth(i) : Math.min(b.z(), b.depth(i)) : 1;
         CgGL.glDisable(CgGL.GL_BLEND);
-        for (int z = 0; z < layers; z++) {
-            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
-            if (b.imageTarget(i) == CgGL.GL_TEXTURE_2D) {
-                CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, texture, level);
-            } else {
-                CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture, level,
-                        layered ? z : Math.max(0, b.layer(i)));
-            }
-            CgGL.glViewport(0, 0, width, height);
-            use(pass, b);
-            if (copy != null) texture(imageUnit[i], CgGL.GL_TEXTURE_2D, copy.texture());
-            if (copy != null && pass.level()[i] >= 0) CgGL.glUniform1i(pass.level()[i], 0);
-            pinLevels(pass, b, i);
-            CgGL.glUniform1i(pass.layer(), layered ? z : 0);
-            CgGL.glDrawArrays(CgGL.GL_TRIANGLES, 0, 3);
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, framebuffer);
+        if (b.imageTarget(i) == CgGL.GL_TEXTURE_2D) {
+            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, texture, level);
+        } else if (layered) {
+            CgGL.glFramebufferTexture(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture, level);
+        } else {
+            CgGL.glFramebufferTextureLayer(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, texture, level, Math.max(0, b.layer(i)));
         }
+        CgGL.glViewport(0, 0, width, height);
+        use(pass, b);
+        if (copy != null) texture(imageUnit[i], CgGL.GL_TEXTURE_2D, copy.texture());
+        if (copy != null && pass.level()[i] >= 0) CgGL.glUniform1i(pass.level()[i], 0);
+        pinLevels(pass, b, i);
+        CgGL.glUniform1i(pass.layer(), 0);
+        CgGL.glDrawArraysInstanced(CgGL.GL_TRIANGLES, 0, 3, layers);
         CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_TEXTURE_2D, 0, 0);
         discardTarget();
         if (copy != null) CgLoweredResources.release(copy);
