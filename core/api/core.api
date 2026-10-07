@@ -3129,6 +3129,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   method public lastCompileError ()Ljava/lang/String;
   method public markDirty ()V
   method public pollPending ()Z
+  method public prepareVariant (Ljava/lang/String;Ljava/util/Set;)Z
   method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public recompile ()V
@@ -5132,6 +5133,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public onFrame (Lcom/crystalgraphics/render/world/CgWorldRenderer$FrameListener;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public overdraw ()Z
   method public overdraw (Z)V
+  method public prepare (Lcom/crystalgraphics/api/material/CgMaterial;)Z
   method public release ()V
   method public,static get ()Lcom/crystalgraphics/render/world/CgWorldRenderer;
 com/crystalgraphics/render/world/CgWorldRenderer$Draw
