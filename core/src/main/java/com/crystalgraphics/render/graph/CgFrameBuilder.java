@@ -487,7 +487,8 @@ public final class CgFrameBuilder {
      * what a draw since the last copy wrote. Colour is copied before a reader whose rect, its bounds grown by its
      * shader's {@code SceneColorMargin}, the last copy does not hold or a draw since wrote into; the readers after it,
      * up to the next draw that writes colour without reading it, share the copy, which covers all their rects. A
-     * reader's own writes leave what it reads clean, so readers in a row never see each other.
+     * reader's own colour writes leave what it reads clean, so readers in a row never see each other's colour; any
+     * depth write, a reader's too, is seen by the next depth reader.
      */
     private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
         int sampled = (pass.sceneColorUnit() >= 0 ? CgTargetCopy.COLOR : 0)
@@ -532,7 +533,9 @@ public final class CgFrameBuilder {
                     run = -1;
                 }
             }
-            if ((writes & CgTargetCopy.DEPTH) != 0 && (reads & CgTargetCopy.DEPTH) == 0) depthUnseen = sampled & CgTargetCopy.DEPTH;
+            // A reader's depth write is seen by the next reader, unlike its colour: the distortion apply writes where it
+            // read from, and the sky seal after it must test that, not the unbent depth.
+            if ((writes & CgTargetCopy.DEPTH) != 0) depthUnseen = sampled & CgTargetCopy.DEPTH;
         }
     }
 
