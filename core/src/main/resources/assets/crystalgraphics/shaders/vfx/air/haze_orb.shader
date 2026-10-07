@@ -91,7 +91,7 @@ Pass {
         // Rings rippling out of the orb push the scene along the screen's radial; the rest is rising shimmer.
         float ring = sin((u * _Rings - age * _Pulse + tear * 0.6) * 6.28318531);
         vec2 flow = FX_HAZE_SCREEN_DIR(spot) * ring * (0.6 + 0.4 * fx_noise(drift * 0.7 + 3.3));
-        vec2 wobble = mix(fx_heat((centre + spot) * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
+        vec2 wobble = mix(fx_heat(spot * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
         float hold = FX_HAZE_HOLD(_Strength, radius, distance(eye, centre), _Hold);
         vec2 offset = wobble * _Strength * hold * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
         float fade = smoothstep(0.0, 0.1, strength);
