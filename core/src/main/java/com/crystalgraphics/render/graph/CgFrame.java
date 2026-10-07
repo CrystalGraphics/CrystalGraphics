@@ -312,6 +312,8 @@ public final class CgFrame {
         int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
+        /** Whether a batch's pipeline reads the tables (palette, clips, shapes), as an OBJECT text label does. */
+        boolean tables;
         /** Recorded draws its batches cover. */
         int draws;
         /** The frame's copy of its recording's clip table. */
@@ -351,6 +353,7 @@ public final class CgFrame {
             }
             count = batches;
             kinds = 0;
+            tables = false;
             indirects = 0;
             Arrays.fill(instances, 0, batches, 0);
             Arrays.fill(copyBefore, 0, batches, 0);
