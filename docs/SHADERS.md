@@ -1042,7 +1042,8 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 
 - One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws.
 - Its format's type is its filter: linear, nearest for an integer type, clamped at every face.
-- Below compute an `image` kernel writes a volume as a draw per slice, and one loading the volume it writes is refused.
+- Below compute an `image` kernel writes a volume in one draw, an instance a slice placed by a geometry stage's
+  `gl_Layer`, and one loading the volume it writes is refused.
 - In `textureLod` from a kernel, give the level: a kernel run as compute has no derivatives.
 
 A buffer declares every use it is put to: `STORAGE` for a kernel or a storage block, `INDIRECT` for
