@@ -105,11 +105,12 @@ public final class LifecycleModern {
     }
 
     /**
-     * Minecraft has drawn its translucent world; run the engine's transparent pass and end the frame.
+     * Minecraft has drawn its translucent world, clouds and weather; run the engine's transparent pass.
      *
-     * <p>Forge and NeoForge call this from {@code Stage.AFTER_PARTICLES}, Fabric from
-     * {@code WorldRenderEvents.AFTER_TRANSLUCENT} — after translucent terrain, tripwire and particles,
-     * with and without Fabulous.</p>
+     * <p>After clouds and weather so the distortion bends them: Forge from {@code Stage.AFTER_LEVEL} (1.20-1.21.1;
+     * {@code AFTER_WEATHER} before) and a node mixin from 1.21.3, NeoForge from {@code AFTER_LEVEL}/{@code AfterLevel},
+     * Fabric from {@code WorldRenderEvents.LAST} and a node mixin from 1.21.10. The full table is
+     * {@code docs/MINECRAFT_INTEGRATION.md} § <i>The world passes</i>.</p>
      *
      * <p>Engine geometry lands in the main FBO, outside Iris's GBuffer chain; {@code CgIrisCompat} is
      * the detection API if that ever needs handling.</p>
