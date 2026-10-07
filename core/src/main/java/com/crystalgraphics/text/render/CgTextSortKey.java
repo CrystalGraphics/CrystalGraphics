@@ -178,6 +178,11 @@ final class CgTextSortKey {
         return ((key >>> MODE_SHIFT) & 1L) != 0L;
     }
 
+    /** The glyph atlas an entry's texture is. */
+    static int atlasIdOf(long key) {
+        return (int) ((key >>> TEXTURE_SHIFT) & ((1L << TEXTURE_BITS) - 1L));
+    }
+
     /** The paint step this entry was keyed at. */
     static int stageOf(long key) {
         return (int) ((key >>> STAGE_SHIFT) & ((1L << STAGE_BITS) - 1L));

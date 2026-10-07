@@ -6,6 +6,10 @@ import com.crystalgraphics.api.buffer.CgBufferFormat;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.font.*;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.state.CgColorMask;
+import com.crystalgraphics.api.state.CgDepthState;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgStrokeAlign;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
@@ -21,7 +25,11 @@ import com.crystalgraphics.gl.render.CgClipTable;
 import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.draw.CgBufferHandle;
+import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgChunkSink;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
@@ -42,6 +50,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
 
@@ -189,6 +198,8 @@ public class CgTextRenderer {
             .vec4("u_TextGammaSmall")
             .vec4("u_TextGammaLarge")
             .vec4("u_TextGammaRamp")
+            // x: the alpha below which a fragment is discarded; 0 but in a label depth pass. @see #drawCapturedDepth
+            .vec4("u_TextCut")
             .build();
 
     /**
@@ -597,12 +608,16 @@ public class CgTextRenderer {
         // was a steady allocation per text draw.
         activeProjection.set(projection);
         projectionValid = true;
+        writeTextBlock(projection, 0f);
+    }
 
+    private void writeTextBlock(Matrix4f projection, float cut) {
         CgTextGamma.Level small = gamma.small(), large = gamma.large();
         textBlock.reset().beginRecord().mat4("u_Projection", projection)
                 .vec4("u_TextGammaSmall", small.exponent(), small.contrast(), 1f / small.exponent(), 0f)
                 .vec4("u_TextGammaLarge", large.exponent(), large.contrast(), 1f / large.exponent(), 0f)
-                .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f);
+                .vec4("u_TextGammaRamp", gamma.smallPx(), gamma.largePx(), gamma.isIdentity() ? 0f : 1f, 0f)
+                .vec4("u_TextCut", cut, 0f, 0f, 0f);
     }
 
     /**
@@ -718,6 +733,133 @@ public class CgTextRenderer {
     public CgTextRenderer drawQueued(Draw draw) {
         return draw.drawNow();
     }
+
+    /**
+     * Records {@code draw}'s quads into {@code into} instead of drawing them, in the draw's own space: its pose is not
+     * applied and nothing is culled. Draw them, frame after frame, with {@link #drawCaptured}.
+     *
+     * <pre>{@code
+     * if (!renderer.capture(label, kept)) recaptureNextFrame = true;   // a glyph or a shadow is still building
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Outside a batch, or between draws of none: quads queued and not yet flushed throw.</li>
+     *   <li>The raster tier is the context's for an identity pose, so capture only where the tier does not follow
+     *       the pose: world text ({@code CgTextRenderContext.world}), whose tier is fixed.</li>
+     * </ul>
+     *
+     * @return whether everything drew as asked; false while a glyph or a shadow cell is still building, and the
+     *         capture then holds what was ready
+     */
+    public boolean capture(Draw draw, CgTextCapture into) {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (bucketCount != 0 || quadRenderer.isDirty()) {
+            throw new IllegalStateException("capture() with quads queued: end the batch first");
+        }
+        if (draw.layout == null && draw.paragraph == null && draw.text == null) {
+            throw new IllegalStateException("CgTextRenderer.Draw requires text(...), paragraph(...), or layout(...) before capture()");
+        }
+        if (draw.layout == null && draw.family == null && draw.font == null) {
+            throw new IllegalStateException("CgTextRenderer.Draw requires font(...) or family(...) before capture()");
+        }
+        long degraded = degradedDrawCount;
+        into.begin(CgGlyphAtlas.evictions());
+        capturing = into;
+        try {
+            drawInternal(draw, IDENTITY_POSE_STACK.last());
+        } finally {
+            capturing = null;
+        }
+        int n = bucketCount;
+        bucketCount = 0;
+        lastBucket = null;
+        sortBuckets(n);
+        for (int i = 0; i < n; i++) {
+            Bucket b = buckets.get(i);
+            into.add(b.rank, b.batchBits, b.records, b.count);
+            b.count = 0;
+        }
+        return degradedDrawCount == degraded;
+    }
+
+    /** The capture {@link #capture} is filling: drawInternal culls nothing and notes its layout there. */
+    @Nullable
+    private CgTextCapture capturing;
+
+    /**
+     * Draws {@code count} captured records of {@code batch} ({@link CgTextCapture#batch}) from {@code records} into
+     * {@code chunks}' open chunk, each placed by the model matrix of the object record its {@code node} names in
+     * {@code labels}: one draw of {@code text.shader}'s {@code WORLD_LABEL} variant, under this renderer's projection.
+     *
+     * <pre>{@code
+     * chunks.bindings(recording.bindings()).begin(0, 0, 0);
+     * renderer.drawCaptured(chunks, batch, glyphs, glyphCount, labels);   // labels: CgInstanceKind.OBJECT records
+     * recorder.add(chunks.end());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code records} and {@code labels} need {@code STORAGE}; a graph buffer is read after the pass writing it.</li>
+     *   <li>A record's {@code node} is an index into {@code labels}, as a float.</li>
+     * </ul>
+     */
+    public void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count, CgBufferHandle labels) {
+        drawCaptured(chunks, batch, records, count, labels, false);
+    }
+
+    /**
+     * {@link #drawCaptured}'s depth pass: the records' solid core (alpha 0.5 and up) into depth alone. Drawn for every
+     * label's text and lines before any label's colour, it makes a nearer label's text hide a farther one's whatever
+     * order they draw in; a label's own layers lie in its plane and pass.
+     *
+     * <pre>{@code
+     * for (int b : textBatches) renderer.drawCapturedDepth(chunks, batch(b), glyphs(b), count(b), labels);
+     * for (int b : allBatches)  renderer.drawCaptured(chunks, batch(b), glyphs(b), count(b), labels);
+     * }</pre>
+     */
+    public void drawCapturedDepth(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count, CgBufferHandle labels) {
+        drawCaptured(chunks, batch, records, count, labels, true);
+    }
+
+    private void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count, CgBufferHandle labels,
+                              boolean depthPass) {
+        if (deleted) throw new IllegalStateException("CgTextRenderer has been deleted");
+        if (count <= 0) return;
+        syncProjection(context.projection());
+        if (depthPass) writeTextBlock(context.projection(), DEPTH_PASS_CUT);
+        textMaterial.toggleKeyword("MSDF_MODE", CgTextSortKey.isDistanceField(batch));
+        textMaterial.toggleKeyword("WORLD_LABEL", true);
+        atlasTexture.pointAt(CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
+        CgPipeline pipeline = textMaterial.pipeline(CgInstanceKind.OBJECT);
+        int bindings = textMaterial.captureBindings(chunks.bindings());
+        textMaterial.toggleKeyword("WORLD_LABEL", false);
+        if (depthPass) writeTextBlock(context.projection(), 0f);
+        // What the material holds is no batch's any more.
+        activeBatchBits = NO_ACTIVE_BATCH;
+        if (pipeline == null) return;
+        pipeline = pipeline.withState(labelState(pipeline.state(), depthPass));
+        chunks.draw(pipeline, bindings, CgMesh.quads(1)).objects(labels, 0, count)
+                .buffer(CgBindingPoints.QUAD_RENDERER, records);
+    }
+
+    /** The alpha a label's depth pass writes from: half covered, so an antialiased edge stays see-through. */
+    private static final float DEPTH_PASS_CUT = 0.5f;
+
+    /**
+     * A label's state from the text pass's: the depth pass with colour off and depth written, the colour passes with
+     * colour declared on, since the text pass leaves the mask undeclared and the depth pass's would stand. Kept per
+     * state: a pipeline is keyed by its identity.
+     */
+    private static synchronized CgRenderState labelState(CgRenderState text, boolean depthPass) {
+        if (labelStateFrom != text) {
+            labelDepthState = text.withColorMask(CgColorMask.NONE).withDepth(CgDepthState.TEST_WRITE);
+            labelColorState = text.withColorMask(CgColorMask.ALL);
+            labelStateFrom = text;
+        }
+        return depthPass ? labelDepthState : labelColorState;
+    }
+
+    /** {@link #labelState}: the text state they were made from, and the two. */
+    private static CgRenderState labelStateFrom, labelDepthState, labelColorState;
 
     /**
      * Fluent, mutable draw request — the replacement for {@code CgTextRenderer}'s fixed-arity
@@ -844,6 +986,47 @@ public class CgTextRenderer {
             strokeAlign = ALIGN_OUTSET;
             strokeOver = 0f;
             shadows.clear();
+            return this;
+        }
+
+        /**
+         * Whether {@code other} draws the same text the same way: every field but the pose. Text by content; layout,
+         * paragraph, font and family by identity.
+         *
+         * <pre>{@code
+         * if (!kept.sameAs(label)) { renderer.capture(label, capture); kept.set(label); }
+         * }</pre>
+         *
+         * <p>A field added to {@code Draw} joins this, {@link #set} and {@link #reset}, or a retained copy keeps a
+         * stale picture.</p>
+         */
+        public boolean sameAs(Draw other) {
+            return layout == other.layout && paragraph == other.paragraph && Objects.equals(text, other.text)
+                    && font == other.font && family == other.family && maxWidth == other.maxWidth
+                    && maxHeight == other.maxHeight && targetPx == other.targetPx && x == other.x && y == other.y
+                    && rgba == other.rgba && strokeWidthEm == other.strokeWidthEm && strokeArgb == other.strokeArgb
+                    && strokeAlign == other.strokeAlign && strokeOver == other.strokeOver
+                    && shadows.sameAs(other.shadows);
+        }
+
+        /** Takes every field of {@code other} but its pose: a copy to compare later draws against with {@link #sameAs}. */
+        public Draw set(Draw other) {
+            layout = other.layout;
+            paragraph = other.paragraph;
+            text = other.text;
+            font = other.font;
+            family = other.family;
+            maxWidth = other.maxWidth;
+            maxHeight = other.maxHeight;
+            targetPx = other.targetPx;
+            x = other.x;
+            y = other.y;
+            rgba = other.rgba;
+            strokeWidthEm = other.strokeWidthEm;
+            strokeArgb = other.strokeArgb;
+            strokeAlign = other.strokeAlign;
+            strokeOver = other.strokeOver;
+            shadows.set(other.shadows);
             return this;
         }
 
@@ -1367,7 +1550,9 @@ public class CgTextRenderer {
 
         // Before resolveGlyphs, not inside the quad loop: an off-screen layout otherwise pays for
         // full glyph resolution and quad building before anything notices. See CgTextCuller.
-        if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
+        if (capturing != null) {
+            capturing.layout(resolvedLayout);
+        } else if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
             CgTrace.add(CgChannels.TEXT, "text.drawsCulled", 1);
             return;
         }
@@ -1922,14 +2107,8 @@ public class CgTextRenderer {
         return lastBucket = b;
     }
 
-    /** Hands every bucket to the quad renderer, by rank then first seen, a transition between them. */
-    private void drainBuckets() {
-        int n = bucketCount;
-        if (n == 0) return;
-        // Cleared first: a transition flushes, and that flush must not drain again.
-        bucketCount = 0;
-        lastBucket = null;
-        // Insertion sort by rank alone, stable, so equal ranks keep the order they were first seen in.
+    /** Insertion sort of the first {@code n} buckets by rank alone, stable, so equal ranks keep their first-seen order. */
+    private void sortBuckets(int n) {
         for (int i = 1; i < n; i++) {
             Bucket b = buckets.get(i);
             int j = i - 1;
@@ -1939,6 +2118,16 @@ public class CgTextRenderer {
             }
             buckets.set(j + 1, b);
         }
+    }
+
+    /** Hands every bucket to the quad renderer, by rank then first seen, a transition between them. */
+    private void drainBuckets() {
+        int n = bucketCount;
+        if (n == 0) return;
+        // Cleared first: a transition flushes, and that flush must not drain again.
+        bucketCount = 0;
+        lastBucket = null;
+        sortBuckets(n);
         CgTrace.add(CgChannels.TEXT, "draw.buckets", n);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.drainBuckets")) {
             for (int i = 0; i < n; i++) {
