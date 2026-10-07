@@ -64,11 +64,12 @@ com/crystalgraphics/platform/device/CgDevice
 com/crystalgraphics/platform/device/CgDeviceInfo
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZZZZ)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;ZZZZZZZZZ)V
   method public anisotropy ()Z
   method public asyncCompute ()Z
   method public drawParameters ()Z
   method public driver ()Ljava/lang/String;
+  method public independentBlend ()Z
   method public indirectCount ()Z
   method public indirectFirstInstance ()Z
   method public limits ()Lcom/crystalgraphics/platform/device/CgDeviceInfo$Limits;
@@ -978,6 +979,7 @@ com/crystalgraphics/platform/gl/CgCapabilities
   method public glslVersion ()I
   method public hasDepth ()Z
   method public hasStencil ()Z
+  method public independentBlend ()Z
   method public indirectCount ()Z
   method public isArbSync ()Z
   method public isBufferStorageSupported ()Z

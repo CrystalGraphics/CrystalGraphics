@@ -116,6 +116,9 @@ public interface CgVulkanHost {
     /** Whether the device was created with {@code shaderDrawParameters}: a draw's bases and {@code gl_DrawID} in a shader. */
     boolean drawParameters();
 
+    /** Whether the device was created with {@code independentBlend}: attachments of one pipeline may differ in write mask. */
+    boolean independentBlend();
+
     /** Whether {@link #beginAsync} records onto a compute queue of its own, overlapping the frame's other work. */
     boolean asyncCompute();
 

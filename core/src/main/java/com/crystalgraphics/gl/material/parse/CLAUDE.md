@@ -185,6 +185,12 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   render state (step 7e'); with code, an absent `RenderState` defaults to `CgShaderParser.EMISSIVE_STATE`.
 - **Compiler**: `appendPassDefine` adds `CG_EMISSIVE_PASS`; the generated fragment `main` is unlit with fog mode 2,
   and discards behind the scene's depth unless the pass's depth state is test-on with `GL_ALWAYS`.
+- **Merged into the Forward draw**: `emissionMerge(shader)` says whether a codeless Emissive pass folds into the first
+  Forward pass: `SAME_BLEND`, or `ADDED` (ONE ONE under a premultiplied Forward pass), else `NONE` (code of its own, a
+  body naming `CG_EMISSIVE_PASS`, an MRT or opaque Forward pass, a different depth test or cull). Compiled with
+  `EMISSION_TARGET`, the Forward pass declares `_cg_fragColor` at location 0 and `_cg_emission` at 1, and writes the
+  Emissive pass's output there before lighting: times `CG_EMISSION`, faded by fog, its alpha 0 for `ADDED`.
+  `CgEmissionMergeTest` holds the rule.
 - **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
   `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
 

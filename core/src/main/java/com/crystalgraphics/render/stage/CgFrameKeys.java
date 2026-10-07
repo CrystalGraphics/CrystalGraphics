@@ -13,6 +13,17 @@ public final class CgFrameKeys {
     public static final CgFrameKey<CgGraphTexture> EMISSION = CgFrameKey.of("crystalgraphics:emission", CgGraphTexture.class);
 
     /**
+     * That something will read {@link #EMISSION} this firing: put before the world renderer records (the post stack puts
+     * it while its bloom will draw). Only then does the world renderer write glows in their own draws, which costs a
+     * target-sized emission; without it {@code EMISSION} is still published, drawn the old way, and culled unread.
+     *
+     * <pre>{@code
+     * CgRenderStage.WORLD_TRANSPARENT.register(0, frame -> frame.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE));
+     * }</pre>
+     */
+    public static final CgFrameKey<Boolean> EMISSION_READ = CgFrameKey.of("crystalgraphics:emission_read", Boolean.class);
+
+    /**
      * Where the scene was bent from this firing ({@link CgDistortionField}): published by the world renderer after the
      * transparent pass when any Distortion pass drew, already applied to the target by then. A post effect bends a side
      * input by it with {@code CgPostContext.distorted}.

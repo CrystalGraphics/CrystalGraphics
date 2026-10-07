@@ -102,6 +102,7 @@ public final class CgExecutor {
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
+    private static final CgComposedTargets COMPOSED = new CgComposedTargets();
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgHazards HAZARDS = new CgHazards();
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
@@ -156,9 +157,14 @@ public final class CgExecutor {
     /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
     private int startFramebuffer;
     private boolean startNoted, otherBound;
+    /** Whether the pass executing drew through a framebuffer of ours with its second attachment. */
+    private boolean composed;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
-    /** This execution's: whether an async pass runs beside the frame's queue, and whether runs of draws join. */
-    private boolean asyncCompute, multiDraw;
+    /**
+     * This execution's: whether an async pass runs beside the frame's queue, whether runs of draws join, and whether a
+     * slot above 0 may be masked apart from slot 0 (without it a pipeline writes every slot, as one mask serves all).
+     */
+    private boolean asyncCompute, multiDraw, independentMasks;
     /**
      * Storage async passes touched that the frame's queue has not waited for, each with the point covering it: across
      * the frame's executions, and dropped at the next, whose start the device orders after all of it.
@@ -263,6 +269,7 @@ public final class CgExecutor {
         BY_DEPTH.clear();
         POOL.delete();
         BUFFERS.delete();
+        COMPOSED.delete();
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
         HAZARDS.clear();
@@ -282,6 +289,7 @@ public final class CgExecutor {
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
+        independentMasks = CgCapabilities.detect().independentBlend();
         if (asyncUnwaited && CgFrameRing.frame() != asyncFrame) {   // the last frame's end waited for all of it
             asyncCount = 0;
             asyncUnwaited = false;
@@ -1043,13 +1051,15 @@ public final class CgExecutor {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, RASTER_BEGIN)) {
             rasterBegin(frame, pass, packed, damage);
         }
-        if (packed.count == 0) return;
-        rasterBatches(frame, pass, packed, damage);
+        if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
+        if (composed) COMPOSED.detach();
+        composed = false;
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
-        bindTarget(pass.target, pass.level, pass.layer);
+        composed = pass.attachment() != null && bindComposed(pass);
+        if (!composed) bindTarget(pass.target, pass.level, pass.layer);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
             if (damage == null) {
@@ -1089,6 +1099,7 @@ public final class CgExecutor {
         // The engine buffer a batch's buffer() stands in for, bound again once a batch without it draws.
         CgBindingPoints.Binding standIn = null;
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS) && CgGpuTrace.isMeasuring();
+        int slots = colorSlots(pass);
         int slot = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
             if (pass.depthFrom() != null) {
@@ -1135,6 +1146,7 @@ public final class CgExecutor {
                     try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_PIPELINE)) {
                         if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
                         usable = pipeline.bind();
+                        if (slots > 1 && independentMasks) maskSlots(pipeline, slots);
                     }
                     boundBinding = -1;
                 }
@@ -1439,6 +1451,70 @@ public final class CgExecutor {
         if ((bits & CgTargetCopy.DEPTH) != 0) copy.depth.bind(pass.sceneDepthUnit());
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
         CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
+    }
+
+    /** How many colour attachments a pass draws into: its target's slots, and its second attachment if bound. */
+    private int colorSlots(CgRasterPass pass) {
+        if (composed) return 2;
+        CgGraphTexture target = pass.target;
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) return 1;
+        return storage(target).getFormat().colorSlotCount();
+    }
+
+    /**
+     * Masks off every slot above 0 that {@code pipeline}'s program does not write, so an unwritten output never lands;
+     * on a device it is the pipeline's per-attachment write mask. Slot 0 keeps the pipeline's own mask.
+     */
+    private static void maskSlots(CgPipeline pipeline, int slots) {
+        int writes = pipeline.slotWrites();
+        for (int k = 1; k < slots; k++) {
+            boolean on = (writes & 1 << k) != 0;
+            CgGL.glColorMaski(k, on, on, on, on);
+        }
+    }
+
+    /**
+     * Binds a pass's target with its second attachment, and the target's viewport. Beside the current target that is
+     * a framebuffer of ours holding the host's colour and depth ({@link CgComposedTargets}). False, binding nothing,
+     * where the target takes none and the attachment is optional; where it is not, throws.
+     */
+    private boolean bindComposed(CgRasterPass pass) {
+        CgFrameBuffer extra = storage(pass.attachment());
+        CgGraphTexture target = pass.target;
+        int host, x, y, w, h;
+        if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
+            host = startFramebuffer;
+            x = startViewport.get(0);
+            y = startViewport.get(1);
+            w = startViewport.get(2);
+            h = startViewport.get(3);
+        } else {
+            CgFrameBuffer storage = storage(target);
+            host = storage.getId();
+            x = 0;
+            y = 0;
+            w = storage.getWidth();
+            h = storage.getHeight();
+        }
+        String refused = null;
+        if (x != 0 || y != 0 || extra.getWidth() != w || extra.getHeight() != h) {
+            // GL would draw into the intersection, quietly.
+            refused = pass.attachment() + " is " + extra.getWidth() + "x" + extra.getHeight() + ", beside a target of "
+                    + w + "x" + h + " at " + x + "," + y;
+        } else {
+            CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
+            refused = COMPOSED.bind(host, w, h, extra.getColorTexture(0).getId());
+        }
+        if (refused != null) {
+            if (!pass.attachmentOptional()) throw new IllegalStateException(pass + ": " + refused);
+            if (!CgComposedTargets.refused(host)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
+            CgComposedTargets.refuse(host);
+            otherBound = true;   // bindTarget binds the start framebuffer again
+            return false;
+        }
+        CgGL.glViewport(0, 0, w, h);
+        otherBound = startNoted;
+        return true;
     }
 
     /**

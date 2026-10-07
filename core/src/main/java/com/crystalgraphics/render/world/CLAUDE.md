@@ -38,6 +38,15 @@
   blurring and compositing are the post stack's (`render/post`), and with bloom off nothing reads the target, so the
   graph culls the pass. Its gate is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at emission scales
   1 and 0.5, on gl and vulkan.
+- **Merged emission** (`mergedEmission`, on by default, `mergeEmission(false)` for the comparison): where the stage's
+  target is a framebuffer of the host's (`mainFramebuffer() > 0`) and the device masks attachments independently
+  (`CgCapabilities.independentBlend()`: every GL context, not Minecraft 26.2's device), a transparent draw whose Emissive pass folds into its
+  Forward pass (`CgPipeline.emissionTarget`, codeless and on one blend) draws both at once, the transparent and
+  after-distortion passes writing a target-sized emission as a second attachment (`CgRasterPass.attachment`), cleared
+  by a pass before them. The emission pass then draws only what did not fold (opaque, half-size and authored Emissive
+  passes) into the same texture, loading it. Every other draw has the slot masked off, so smoke never dims a glow it
+  would not have before. At 60 beams it took the emission pass (2.8 ms) for about 0.5 ms more in the transparent pass;
+  GPU p90 15.8 to 13.3 ms. bloom-occlusion compares two transparent glows merged and apart byte for byte.
 - **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
   `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
   size, reading the target's depth through `sceneDepth(unit, from)`; then `world_half_upsample.shader` adds it over

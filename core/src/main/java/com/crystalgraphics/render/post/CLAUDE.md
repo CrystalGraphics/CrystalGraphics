@@ -37,8 +37,9 @@ filters in `shaders/lib/post/bloom.glsl`.
 - **One composite pass a firing.** A new screen-wide look is a `CgCompositeFeature`, or an effect at a point; never a
   second full-screen add.
 - **A mod's effect cannot join the composite** (Unreal's blendables run as their own passes too): it records at a point.
-- **Nothing is asked of the world renderer.** With bloom off, nothing reads the emission target and the graph culls
-  its pass; there is no flag between the two.
+- **What the stack asks of the world renderer goes through the blackboard too**: at `DEMAND_ORDER`, before the world
+  records, it blends the volumes and puts `CgFrameKeys.EMISSION_READ` while bloom will draw, which is what lets the
+  world write glows in their own draws. With bloom off nothing reads the emission target and the graph culls its pass.
 - **Dither the blend form by stochastic rounding, never by +-1 noise** (`post_round8`): an 8-bit attachment clamps a
   fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **An effect's look is a volume, never a write to the global settings**: it closes its volume when it ends, and the
