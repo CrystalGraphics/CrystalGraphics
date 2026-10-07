@@ -6831,7 +6831,6 @@ com/crystalgraphics/vfx/CgVfxSystem$Simulation
   extends java/lang/Enum
   field public,static,final CPU Lcom/crystalgraphics/vfx/CgVfxSystem$Simulation;
   field public,static,final GPU Lcom/crystalgraphics/vfx/CgVfxSystem$Simulation;
-  method public built ()Z
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxSystem$Simulation;
   method public,static values ()[Lcom/crystalgraphics/vfx/CgVfxSystem$Simulation;
 com/crystalgraphics/vfx/CgVfxTrace

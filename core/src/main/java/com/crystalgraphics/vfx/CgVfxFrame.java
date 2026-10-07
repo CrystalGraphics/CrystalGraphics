@@ -1,6 +1,10 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
+import com.crystalgraphics.compute.ops.CgGpuCount;
+import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -9,6 +13,8 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
@@ -36,7 +42,9 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_MESH = CgTrace.name("vfx.draws.particle-mesh"),
             DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
-            MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
+            DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
+    /** A cull scale no particle's distance from the view exceeds. */
+    private static final float UNCULLED = 1.0e6f;
 
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
@@ -139,6 +147,10 @@ public final class CgVfxFrame {
      * }</pre>
      */
     public void particles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+        if (emitter.scheduled()) {
+            gpuParticles(effect, emitter);
+            return;
+        }
         if (emitter.particles().count() == 0) return;
         String slot = emitter.emitter().layer();
         List<CgVfxLayer> layers = effect.look().layers();
@@ -156,6 +168,68 @@ public final class CgVfxFrame {
                         CgVfxRibbons.VERTICES, true);
             }
         }
+    }
+
+    /**
+     * A GPU-stepped emitter's particles: per layer, one draw of its pool slot's records as Range wrote them for this view,
+     * as many as it kept, so the look reads them as it reads the CPU path's. {@code QUADS} and {@code ARCS} get the
+     * customs {@link #particleDraws} gives, the count being the slot's capacity; {@code MESHES} draw Range's object
+     * records, each instance's customs those {@link #particleMeshes} gives.
+     */
+    private void gpuParticles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+        CgVfxGpuSteps.Tenant tenant = system.gpuTenant(emitter);
+        if (tenant == null) return;
+        CgVfxParticlePool pool = tenant.pool;
+        int slot = tenant.slot, capacity = pool.capacity(slot);
+        CgVfxEmitter.Renderer renderer = emitter.emitter().renderer();
+        boolean arcs = renderer == CgVfxEmitter.Renderer.ARCS, meshes = renderer == CgVfxEmitter.Renderer.MESHES;
+        float cx = arcs ? emitter.sourceX() : 0f, cy = arcs ? emitter.sourceY() : 0f, cz = arcs ? emitter.sourceZ() : 0f;
+        String name = emitter.emitter().layer();
+        List<CgVfxLayer> layers = effect.look().layers();
+        CgVfxValues values = effect.values();
+        CgVfxRange range = CgVfxRange.of(pool);
+        float reach = 0f;
+        for (int k = 0; k < layers.size(); k++) {
+            CgVfxLayer layer = layers.get(k);
+            if (!name.equals(layer.slot()) || skips(layer)) continue;
+            if (meshes) {
+                // One record set for every layer: the cull stamps each draw's customs and scale onto it.
+                reach = Math.max(reach, layer.radius());
+                CgWorldRenderer.Draw draw = world.draw(system.sphereMesh(), system.material(layer))
+                        .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, capacity))
+                        .instanceScale(layer.radius())
+                        .gpuCulled()
+                        .at(effect.originX, effect.originY, effect.originZ)
+                        .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed);
+                color(draw, 2, layer.colorA(), values);
+                color(draw, 3, layer.colorB(), values);
+                CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
+                CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
+                continue;
+            }
+            reach = Math.max(reach, Math.max(layer.radius(), 1f) * 4f);
+            CgMesh mesh = arcs ? CgMesh.vertices(sizeClass(capacity, CgVfxRibbons.COUNT) * CgVfxRibbons.VERTICES,
+                    CgMeshTopology.TRIANGLES) : CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
+            CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
+                    .buffer(CgBindingPoints.PARTICLES, range.drawn())
+                    .indirect(range.visible(), slot * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
+                            arcs ? CgVfxRibbons.VERTICES : 6)
+                    .gpuCulled()
+                    .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz)
+                    .custom(0, range.base(slot), capacity, layer.radius(), layer.parameter())
+                    .custom(1, cx, cy, cz, effect.age);
+            color(draw, 2, layer.colorA(), values);
+            color(draw, 3, layer.colorB(), values);
+            CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
+        }
+        // An arc reaches from its source to its particle, which no radius about the particle covers.
+        if (reach > 0f) pool.cullScale(slot, arcs ? UNCULLED : reach);
+    }
+
+    /** The mesh size a slot of {@code capacity} draws on: powers of two from {@code least}, so slots share meshes. */
+    private static int sizeClass(int capacity, int least) {
+        return Math.max(least, capacity <= 1 ? 1 : Integer.highestOneBit(capacity - 1) << 1);
     }
 
     private void particleMeshes(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer) {
