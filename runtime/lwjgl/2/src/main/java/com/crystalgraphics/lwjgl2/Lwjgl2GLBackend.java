@@ -9,6 +9,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -131,8 +132,16 @@ public class Lwjgl2GLBackend extends CgGLBackend {
 
     @Override
     public void glShaderSource(int shader, CharSequence source) {
-        GL20.glShaderSource(shader, source);
+        // UTF-8, as LWJGL 3 passes it. LWJGL 2's CharSequence form narrows each char to a byte, so a comment's U+2500
+        // became a NUL the driver stops at: an empty program that compiled, linked and drew nothing.
+        byte[] bytes = source.toString().getBytes(StandardCharsets.UTF_8);
+        if (sourceBytes == null || sourceBytes.capacity() < bytes.length) sourceBytes = ByteBuffer.allocateDirect(bytes.length);
+        sourceBytes.clear();
+        sourceBytes.put(bytes).flip();
+        GL20.glShaderSource(shader, sourceBytes);
     }
+
+    private ByteBuffer sourceBytes;
 
     @Override
     public void glCompileShader(int shader) {
