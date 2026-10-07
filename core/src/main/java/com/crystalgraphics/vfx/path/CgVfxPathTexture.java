@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.path;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgTexture2D;
+import com.crystalgraphics.gpu.CgUploadLease;
+import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.util.CgBufferUtils;
 
@@ -38,7 +40,7 @@ public final class CgVfxPathTexture {
 
     private CgTexture2D texture;
     private ByteBuffer pixels;
-    private int capacity;
+    private int capacity, textureRows;
     private int rows;
 
     public void begin() {
@@ -62,9 +64,17 @@ public final class CgVfxPathTexture {
 
     public void upload() {
         if (rows == 0) return;
-        if (texture == null) texture = CgTexture2D.createEmpty(WIDTH, capacity, SPEC);
-        pixels.position(0).limit(capacity * ROW_BYTES);
-        texture.upload(WIDTH, capacity, pixels, CgGL.GL_RGBA, CgGL.GL_FLOAT);
+        if (texture == null || textureRows < capacity) {
+            // A new texture when it must grow: re-specifying one frames in flight still sample blocks the render thread.
+            if (texture != null) texture.delete();
+            texture = CgTexture2D.createEmpty(WIDTH, capacity, SPEC);
+            textureRows = capacity;
+        }
+        // This frame's rows only, from an upload lease: copied on the GPU's timeline, behind the draws that read them.
+        pixels.position(0).limit(rows * ROW_BYTES);
+        CgUploadLease lease = CgUploads.lease(rows * ROW_BYTES).put(pixels);
+        pixels.clear();
+        texture.uploadRegion(0, 0, 0, WIDTH, rows, lease, CgGL.GL_RGBA, CgGL.GL_FLOAT);
     }
 
     /** The texture tube materials sample; null before the first upload. */
@@ -75,6 +85,7 @@ public final class CgVfxPathTexture {
     public void delete() {
         if (texture != null) texture.delete();
         texture = null;
+        textureRows = 0;
     }
 
     private void ensureCapacity(int needed) {
