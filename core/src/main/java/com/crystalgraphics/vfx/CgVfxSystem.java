@@ -344,7 +344,7 @@ public final class CgVfxSystem {
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
-                warm();
+                warm(world);
             }
             float alpha = Math.min(owed / TICK, 1f);
             // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
@@ -445,7 +445,7 @@ public final class CgVfxSystem {
      * effect's last layers (a blast, its cloud) appear seconds after it starts, and compiling them then stalls that
      * frame.
      */
-    private void warm() {
+    private void warm(CgWorldRenderer world) {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
             if (stepsOnGpu && !effect.gpuPrepared) {
@@ -466,8 +466,9 @@ public final class CgVfxSystem {
                 if (!warming.contains(material)) warming.add(material);
             }
         }
+        // Every pass the world draws a material with (depth, emissive, distortion, the joined form), not Forward alone.
         for (int i = warming.size() - 1; i >= 0; i--) {
-            if (warming.get(i).prepare()) warming.remove(i);
+            if (world.prepare(warming.get(i))) warming.remove(i);
         }
     }
 
