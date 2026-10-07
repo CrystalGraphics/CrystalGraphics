@@ -64,7 +64,7 @@ public interface CgVfxGpuEmitter {
 
     /**
      * Writes its curve row, {@code texels} pairs from {@code out[at]}: sample i, at progress {@code i / (texels - 1)}, is
-     * its size multiplier then its opacity, what the CPU path applies at that point of a particle's life. The pool calls
+     * its size multiplier then its opacity, what the CPU path applies at that point of its {@link #curveDomain()}. The pool calls
      * it when its parameter row opens; the row is one RG32F row of the curve atlas.
      *
      * <pre>{@code
@@ -73,4 +73,15 @@ public interface CgVfxGpuEmitter {
      * }</pre>
      */
     void writeCurves(float[] out, int at, int texels);
+
+    /**
+     * What its curves are sampled by: over life, or by speed.
+     *
+     * <pre>{@code
+     * public CgVfxCurveDomain curveDomain() { return CgVfxCurveDomain.speed(0.5f, 6f); }   // sparks shrink as they slow
+     * }</pre>
+     */
+    default CgVfxCurveDomain curveDomain() {
+        return CgVfxCurveDomain.LIFE;
+    }
 }

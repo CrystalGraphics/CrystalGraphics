@@ -121,13 +121,21 @@ void Key() {
     INDICES_WRITE(uint(CG_ELEMENT));
 }
 
-// Row row's size and opacity multipliers at progress t, between its two nearest samples.
+// Row row's size and opacity multipliers at t, between its two nearest samples. A row is _Texels samples, then its
+// domain's speeds.
 vec2 range_curve(uint row, float t) {
     float x = clamp(t, 0.0, 1.0) * float(_Texels - 1);
     int i0 = int(floor(x));
     int i1 = min(i0 + 1, _Texels - 1);
-    int at = int(row) * _Texels;
+    int at = int(row) * (_Texels + 1);
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
+}
+
+// Where r samples its curves (CgVfxCurveDomain.at): life progress, or its speed between its row's two.
+float range_curve_at(FxRecord r, float progress) {
+    vec2 speeds = CURVES(int(r.idSlot.w) * (_Texels + 1) + _Texels);
+    if (speeds.x < 0.0) return progress;
+    return clamp((length(r.velocitySize.xyz) - speeds.x) / (speeds.y - speeds.x), 0.0, 1.0);
 }
 
 // The slot whose records hold element e of this pool's, numbered across every pool: the last base at or below it,
@@ -162,7 +170,7 @@ void Place() {
     if (rank < int(VISIBLE(lo))) {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
-        vec2 curve = range_curve(r.idSlot.w, t);
+        vec2 curve = range_curve(r.idSlot.w, range_curve_at(r, t));
         // CgVfxParticleSet.x(i, alpha)'s order of operations, so the two round alike.
         d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
         d.motion = vec4(r.velocitySize.xyz, t);
@@ -192,7 +200,7 @@ void Objects() {
     if (rank < int(VISIBLE(lo))) {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
-        vec2 curve = range_curve(r.idSlot.w, t);
+        vec2 curve = range_curve(r.idSlot.w, range_curve_at(r, t));
         // CgVfxFrame.particleMeshes: turned by its seed and spin, sized by its size over life
         float turn = r.seedSpin.x * 6.2831853 + r.seedSpin.y;
         mat3 turned = range_turn(turn * 1.7, turn * 2.3, turn);
