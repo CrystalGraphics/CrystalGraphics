@@ -80,6 +80,10 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String BLAST_MARKER = "vfx.blast";
     private static final int STREAM_NS = CgTrace.name("vfx.wave.stream-ns"), GROUND_FILL_NS = CgTrace.name("vfx.wave.ground-fill-ns"),
             PATH_NS = CgTrace.name("vfx.wave.path-ns"), PATH_RINGS = CgTrace.name("vfx.wave.path-rings");
+    private static final int STREAM_ZONE = CgTrace.name("vfx.wave.stream"), BLAST_ZONE = CgTrace.name("vfx.wave.startBlast"),
+            MUZZLE_ZONE = CgTrace.name("vfx.wave.muzzle"), IMPACT_ZONE = CgTrace.name("vfx.wave.impact"),
+            PATH_ZONE = CgTrace.name("vfx.wave.path"), SHAPE_ZONE = CgTrace.name("vfx.wave.shape"),
+            BODY_ZONE = CgTrace.name("vfx.wave.body"), HEAD_ZONE = CgTrace.name("vfx.wave.head");
     /** The slot a layer draws the head in: a sphere at the front, its +z along the body. */
     public static final String SLOT_HEAD = "head";
     /** The charge ball, and after the release the beam's root: a sphere at the muzzle, its +z along the aim. */
@@ -411,10 +415,12 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     @Override
     protected void tick(float dt) {
-        long t = CgVfxTrace.start();
-        if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
-        stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
-        CgVfxTrace.lap(STREAM_NS, t);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
+            long t = CgVfxTrace.start();
+            if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
+            stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
+            CgVfxTrace.lap(STREAM_NS, t);
+        }
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
         shake();
@@ -422,7 +428,9 @@ public final class CgEnergyWave extends CgVfxEffect {
         // The tail has run into the target: it bursts.
         if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
             blastAge = age;
-            startBlast();
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BLAST_ZONE)) {
+                startBlast();
+            }
             playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
         boolean emitted = true;
@@ -543,23 +551,33 @@ public final class CgEnergyWave extends CgVfxEffect {
     @Override
     protected void submit(CgVfxFrame frame) {
         List<CgVfxLayer> layers = look().layers();
-        submitMuzzle(frame, layers);
-        submitImpact(frame, layers);
-        int needed = (stream.size() + 2) * 3;
-        if (points.length < needed) points = new float[needed * 2];
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MUZZLE_ZONE)) {
+            submitMuzzle(frame, layers);
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, IMPACT_ZONE)) {
+            submitImpact(frame, layers);
+        }
         boolean firing = state() == State.PLAYING && age >= releaseAge;
-        long t = CgVfxTrace.start();
-        int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, firing);
-        path.build(points, n, get(RING_SPACING));
-        CgVfxTrace.lap(PATH_NS, t);
-        CgVfxTrace.count(PATH_RINGS, path.count());
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, PATH_ZONE)) {
+            int needed = (stream.size() + 2) * 3;
+            if (points.length < needed) points = new float[needed * 2];
+            long t = CgVfxTrace.start();
+            int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, firing);
+            path.build(points, n, get(RING_SPACING));
+            CgVfxTrace.lap(PATH_NS, t);
+            CgVfxTrace.count(PATH_RINGS, path.count());
+        }
         if (path.count() < 2) return;
-        shape(firing);
-        int row = frame.path(path, seed, age);
-        for (int i = 0; i < layers.size(); i++) {
-            CgVfxLayer layer = layers.get(i);
-            if (CgVfxLayer.SLOT_BODY.equals(layer.slot())) frame.tube(this, path, row, layer);
-            else if (SLOT_BODY_ARCS.equals(layer.slot())) frame.pathRibbons(this, path, row, layer, 1f);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SHAPE_ZONE)) {
+            shape(firing);
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BODY_ZONE)) {
+            int row = frame.path(path, seed, age);
+            for (int i = 0; i < layers.size(); i++) {
+                CgVfxLayer layer = layers.get(i);
+                if (CgVfxLayer.SLOT_BODY.equals(layer.slot())) frame.tube(this, path, row, layer);
+                else if (SLOT_BODY_ARCS.equals(layer.slot())) frame.pathRibbons(this, path, row, layer, 1f);
+            }
         }
         if (stream.impacting()) {
             int last = path.count() - 1;
@@ -567,7 +585,9 @@ public final class CgEnergyWave extends CgVfxEffect {
             normalY = -path.tangentY(last);
             normalZ = -path.tangentZ(last);
         }
-        submitHead(frame, layers);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, HEAD_ZONE)) {
+            submitHead(frame, layers);
+        }
     }
 
     /** At the target: the contact orb, its sparks and rings while the beam hits, then the final blast. */
