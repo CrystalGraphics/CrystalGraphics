@@ -24,6 +24,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
@@ -478,9 +479,14 @@ public final class CgVfxSystem {
                 }
                 List<CgVfxEmitter> emitters = effect.look().emitters();
                 for (int k = 0; k < emitters.size(); k++) {
-                    CgVfxParticlePool.prepare(emitters.get(k));
+                    CgVfxEmitter emitter = emitters.get(k);
+                    CgVfxParticlePool.prepare(emitter);
+                    for (int e = 0; e < emitter.events().size(); e++) {
+                        CgVfxGpuEmitter child = emitter.events().get(e).child();
+                        if (child != null) CgVfxParticlePool.prepare(child);
+                    }
                     // The window's first use starts its kernels and its filling: at play, not on the first landing.
-                    if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
+                    if (readsWorld(emitter)) CgVfxVoxelWindow.get().use();
                 }
             }
             if (effect.warmed) continue;
