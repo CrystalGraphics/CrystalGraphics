@@ -138,6 +138,8 @@ public final class CgVfxRange {
         CgGpuOps.prepareSort(CgGpuOps.Element.UINT, CgGpuOps.Order.ASCENDING);
         CgGpuOps.prepareHistogram();
         CgGpuOps.prepareScan(CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT);
+        CgGpuOps.prepareDepthPyramid();
+        CgGpuOps.prepareCull(true);   // MESHES slots, drawn through the world renderer's cull
     }
 
     /** Forgets every range and stops recording. Tests, and context teardown. */

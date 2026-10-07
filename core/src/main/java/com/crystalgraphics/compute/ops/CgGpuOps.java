@@ -419,6 +419,25 @@ public final class CgGpuOps {
         prepare(Files.histogram().kernel("Histogram"));
     }
 
+    /** {@link #prepareSort}, for {@link #cull}; with {@code ordered}, its {@link CgCull#ordered} form too. */
+    public static void prepareCull(boolean ordered) {
+        prepare(Files.fill().kernel("FillAt"));
+        prepare(Files.cull().kernel("Cull"));
+        if (!ordered) return;
+        prepare(Files.cull().kernel("CullFlags"));
+        prepare(Files.cull().kernel("CullPlace"));
+        for (int k : new int[]{REDUCE_STEP, SCAN_BLOCK, COMPACT_INDICES, COMPACT_COUNT}) {
+            prepare(scanKernel(k, Fold.SUM, Element.UINT, k == REDUCE_STEP || k == SCAN_BLOCK, false));
+        }
+        prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
+    }
+
+    /** {@link #prepareSort}, for {@link #depthPyramid}: its seed material and its chain's kernel. */
+    public static void prepareDepthPyramid() {
+        CgMaterial.load(PYRAMID_SHADER).prepare();
+        prepare(downsampleKernel(IMAGE_TYPES.indexOf(PYRAMID_FORMAT.getColorSlot(0)), Filter.MAX));
+    }
+
     private static void prepare(CgKernel kernel) {
         if (kernel.runs()) kernel.prepare();
     }
