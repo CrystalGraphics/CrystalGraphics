@@ -39,6 +39,29 @@ public class CgTextShadowListTest {
     }
 
     @Test
+    public void aCopyIsTheSameUntilEitherChangesAndKeepsItsOwnScopes() {
+        int[] scopes = {0, 1};
+        CgTextShadowList list = new CgTextShadowList();
+        list.count(1);
+        list.set(0, 1f, 1f, 2f, 0f, 0xC0000000, false);
+        list.glyphScopes(scopes);
+        CgTextShadowList copy = new CgTextShadowList();
+        copy.set(list);
+        assertTrue(copy.sameAs(list));
+
+        scopes[1] = 5;   // the caller rewrites the array it lent: the copy holds what it was
+        assertFalse(copy.sameAs(list));
+        scopes[1] = 1;
+        list.set(0, 1f, 1f, 2f, 0f, 0xFF000000, false);
+        assertFalse(copy.sameAs(list));
+        list.count(0);
+        copy.count(0);
+        list.glyphScopes(null);
+        copy.set(list);
+        assertTrue(copy.sameAs(list));
+    }
+
+    @Test
     public void reachIsOffsetThreeSigmaAndSpreadOverShadowsThatCast() {
         CgTextShadowList list = new CgTextShadowList();
         list.count(2);
