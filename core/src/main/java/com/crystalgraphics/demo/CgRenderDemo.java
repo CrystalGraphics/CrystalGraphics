@@ -1,5 +1,10 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontStyle;
+import com.crystalgraphics.api.font.CgGenericFamily;
+import com.crystalgraphics.api.font.CgSystemFontFace;
+import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.CgPlatform;
@@ -9,6 +14,8 @@ import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -20,19 +27,23 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 /**
- * A development demo: the sixteen spheres of {@link CgVfxShowcase} floating in front of the player, drawn through
- * {@link CgWorldRenderer} under the host's own camera. On unless turned off.
+ * A development demo drawn through {@link CgWorldRenderer} under the host's own camera, on unless turned off:
+ * {@link CgVfxBlasts}, about 360,000 GPU particles bursting over the ground ahead of the player, or the sixteen spheres
+ * and thirty beams of {@link CgVfxShowcase}.
  *
  * <pre>{@code
- * -Dcrystalgraphics.demo=false                        // don't draw them
- * -Dcrystalgraphics.demo.sky=false                    // keep the world's own sky, not the showcase's
+ * -Dcrystalgraphics.demo=false                        // draw nothing
+ * -Dcrystalgraphics.demo=spheres                      // the showcase's spheres and beams instead of the blasts
+ * -Dcrystalgraphics.demo.blasts=240                   // how many blasts, 120 by default
+ * -Dcrystalgraphics.demo.sky=false                    // with the spheres: keep the world's own sky, not the showcase's
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
- * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the spheres were placed
+ * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the demo was placed
  * }</pre>
  *
- * <p>The grid is placed on the first world frame, some blocks ahead of the camera, standing on the world's ground there
+ * <p>The demo is placed on the first world frame, some blocks ahead of the camera, standing on the world's ground there
  * ({@link CgWorldQueries#groundBelow}); until the ground answers (no world, or its chunk still loading) it floats a little
  * above the eye, and settles onto the ground once it does. It stays there however far the player walks or flies, and
  * moves only when the level changes or the camera jumps more than {@code TELEPORT} blocks in one frame: a teleport, or
@@ -44,12 +55,14 @@ public final class CgRenderDemo {
 
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
-    private static final boolean ENABLED = !"false".equals(System.getProperty("crystalgraphics.demo"));
+    private static final String MODE = System.getProperty("crystalgraphics.demo");
+    private static final boolean ENABLED = !"false".equals(MODE), SPHERES = "spheres".equals(MODE);
     private static final boolean SKY = !"false".equals(System.getProperty("crystalgraphics.demo.sky"));
     private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
 
-    private static final int AHEAD = 12;      // blocks from the eye to the grid's centre, along the view
+    // blocks from the eye to the demo's centre, along the view: the blasts' near edge some blocks ahead
+    private static final int AHEAD = SPHERES ? 12 : (int) CgVfxBlasts.REACH + 10;
     private static final int ABOVE = 2;       // and up the screen, while it floats
     private static final int TELEPORT = 32;   // blocks the camera may move in one frame before the grid follows
     private static final int SEARCH = 24;     // blocks over the eye the ground search starts from, down twice as far
@@ -62,20 +75,35 @@ public final class CgRenderDemo {
     private int levelEpoch;
     private int worldFrames;
 
-    private final CgVfxShowcase showcase = CgVfxShowcase.stress(30);
+    private final CgVfxShowcase showcase = SPHERES ? CgVfxShowcase.stress(30) : null;
+    private final CgVfxBlasts blasts = SPHERES ? null : new CgVfxBlasts(Integer.getInteger("crystalgraphics.demo.blasts", 120));
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
+    /** The blasts' readout: the median of the particles drawn each frame over the last half second, top left. */
+    private static final long COUNT_WINDOW_NANOS = 500_000_000L;
+    private static final int COUNT_PX = 40;
+    private CgTextRenderer counter;
+    private CgFont counterFont;
+    private boolean counterFailed;
+    private int[] countSamples = new int[256];
+    private int countSampleCount, countMedian = -1;
+    private long countWindowStart;
+    private String countText = "Particles: -";
+    private final Runnable drawCount = this::drawCount;
     private CgRenderDemo() {
     }
 
-    /** Submits the spheres every frame, once, unless {@code -Dcrystalgraphics.demo=false}. */
+    /** Submits the demo every frame, once, unless {@code -Dcrystalgraphics.demo=false}. */
     public void install() {
         if (installed || !ENABLED) return;
         installed = true;
         CgWorldRenderer.get().onFrame(this::frame);
+        if (blasts != null) {
+            CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 1000,
+                    frame -> frame.callback("demo.particles", drawCount));        }
         if (CAPTURE != null) {
             CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 1, frame -> {
                 if (++worldFrames != CAPTURE_AT) return;
@@ -87,7 +115,47 @@ public final class CgRenderDemo {
 
     /** Releases GPU resources. Call on context destroy. */
     public void dispose() {
-        showcase.delete();
+        if (showcase != null) showcase.delete();
+        if (blasts != null) blasts.delete();
+        if (counter != null && !counter.isDeleted()) counter.delete();
+        counter = null;
+    }
+
+    /** Samples this frame's particles drawn and writes the latest half second's median over the frame. */
+    private void drawCount() {
+        if (counterFailed) return;
+        long now = System.nanoTime();
+        if (countSampleCount == countSamples.length) countSamples = Arrays.copyOf(countSamples, countSampleCount * 2);
+        countSamples[countSampleCount++] = CgVfxSystem.particlesDrawn();        if (now - countWindowStart >= COUNT_WINDOW_NANOS) {
+            Arrays.sort(countSamples, 0, countSampleCount);
+            int median = countSamples[countSampleCount / 2];
+            if (median != countMedian) {
+                countMedian = median;
+                countText = String.format("Particles: %,d", median);
+            }
+            countSampleCount = 0;
+            countWindowStart = now;
+        }
+        try {
+            if (counterFont == null) {
+                CgSystemFonts fonts = CgSystemFonts.get();
+                CgSystemFontFace face = fonts.generic(CgGenericFamily.SANS_SERIF, CgFontStyle.REGULAR);
+                if (face == null) {
+                    counterFailed = true;
+                    LOGGER.warn("[CgRenderDemo] no sans-serif font installed: no particle count");
+                    return;
+                }
+                counterFont = fonts.load(face, CgFontStyle.REGULAR, COUNT_PX);
+            }
+            if (counter == null) counter = CgTextRenderer.create();
+            counter.beginBatch();
+            counter.draw().text(countText).font(counterFont).at(16f, 16f + COUNT_PX).color(0xFFFF2A2A)
+                    .stroke(0.12f, 0xFF000000).submit();
+            counter.endBatch();
+        } catch (RuntimeException e) {
+            counterFailed = true;
+            LOGGER.error("[CgRenderDemo] the particle count failed; it stays off", e);
+        }
     }
 
     private void frame(CgHostView view) {
@@ -101,6 +169,10 @@ public final class CgRenderDemo {
         lastX = view.x();
         lastY = view.y();
         lastZ = view.z();
+        if (blasts != null) {
+            blasts.submit(CgWorldRenderer.get(), anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
+            return;
+        }
         showcase.submit(CgWorldRenderer.get(), anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
         if (SKY) showcase.submitSky(CgWorldRenderer.get(), view.x(), view.y(), view.z());
     }
@@ -128,7 +200,7 @@ public final class CgRenderDemo {
         anchored = true;
         grounded = false;
         worldFrames = 0;
-        LOGGER.info("[CgRenderDemo] spheres around ({}, {}, {}), camera at ({}, {}, {})",
+        LOGGER.info("[CgRenderDemo] demo around ({}, {}, {}), camera at ({}, {}, {})",
                 anchorX, anchorY, anchorZ, view.x(), view.y(), view.z());
     }
 
@@ -138,7 +210,7 @@ public final class CgRenderDemo {
         if (Double.isNaN(floor)) return;
         anchorY = floor;
         grounded = true;
-        LOGGER.info("[CgRenderDemo] spheres on the ground at y {}", floor);
+        LOGGER.info("[CgRenderDemo] demo on the ground at y {}", floor);
     }
 
     /**
