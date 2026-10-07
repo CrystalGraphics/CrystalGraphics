@@ -135,6 +135,8 @@ public final class CgGpuOps {
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     /** An object record's bytes: what each instance and each kept record of a cull is. */
     private static final int RECORD_BYTES = CgInstanceKind.OBJECT.floats() * 4;
+    /** Each instance buffer's keys start at a multiple of this in a batched cull: a binding offset is a whole 256 bytes. */
+    private static final int KEY_ALIGN = 64;
     /** Per image type: its kernels and images in image.compute. */
     static final String[] DOWNSAMPLE_KERNELS = {"DownsampleRgba8", "DownsampleRgba16f", "DownsampleR16f", "DownsampleR32f"},
             BLUR_KERNELS = {"BlurRgba8", "BlurRgba16f", "BlurR16f", "BlurR32f"},
@@ -423,6 +425,11 @@ public final class CgGpuOps {
     public static void prepareCull(boolean ordered) {
         prepare(Files.fill().kernel("FillAt"));
         prepare(Files.cull().kernel("Cull"));
+        prepare(Files.cull().kernel("CullKey"));
+        prepare(Files.cull().kernel("CullGather"));
+        prepareSort(Element.UINT, Order.ASCENDING);
+        prepareHistogram();
+        prepareScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
         if (!ordered) return;
         prepare(Files.cull().kernel("CullFlags"));
         prepare(Files.cull().kernel("CullPlace"));
@@ -547,6 +554,67 @@ public final class CgGpuOps {
                     .bind("INSTANCES", instances).bind("KEPT", kept).bind("PLACED", out, base + l * region, region)
                     .set("_First", first);
             cull.apply(placing);
+        }
+    }
+
+    /**
+     * Every set of {@code sets} culled at once, under {@code view}'s view and pyramid, each as {@link #cull} culls one:
+     * set s's level l kept records start at record {@code sets.first(s) + cullFirst(l, capacity)} of {@code out}, as
+     * many as word {@code sets.word(s) + l} of {@code counts} says. Two dispatches per instance buffer the sets read,
+     * and one sort, histogram and scan over them all, however many sets.
+     *
+     * <pre>{@code
+     * sets.clear();
+     * int rocks = sets.add(cull.mesh(rockLods).place(rockPlace), rockRecords, 0, CgGpuCount.of(n));
+     * int sparks = sets.add(cull.mesh(spark).place(sparkPlace).scale(0.2f), particles, base, CgGpuCount.at(visible, 3, m));
+     * CgGpuOps.cull(pass, cull.view(view, projection).pyramid(depth), sets, culled, counts);   // sized by sets.records(), sets.words()
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Each level's records keep the order their set holds them in, on every tier.</li>
+     *   <li>{@code counts} needs {@code INDIRECT} for the draws; its last word counts what no level kept.</li>
+     * </ul>
+     */
+    public static void cull(CgComputePass pass, CgCull view, CgCullSets sets, CgGraphBuffer out, CgGraphBuffer counts) {
+        int n = sets.size();
+        if (n == 0) return;
+        if (out.size() < (long) sets.records() * RECORD_BYTES) {
+            throw new IllegalArgumentException(out + " holds " + out.size() + " bytes; " + n + " sets write "
+                    + (long) sets.records() * RECORD_BYTES + ": size it by sets.records()");
+        }
+        if (counts.size() < sets.words() * 4L) {
+            throw new IllegalArgumentException(counts + " holds " + counts.size() / 4 + " words; " + n + " sets need "
+                    + sets.words() + ": size it by sets.words()");
+        }
+        int keys = sets.layout(KEY_ALIGN), culled = n * CgCull.MAX_LEVELS;
+        CgGraphBuffer rows = sets.rowsBuffer();
+        pass.recording().update(rows, 0, sets.rows());
+        CgGraphBuffer keyBuffer = words(pass, "ops.cull.keys", keys), indices = words(pass, "ops.cull.indices", keys);
+        CgGraphBuffer starts = words(pass, "ops.cull.starts", culled + 1);
+        CgKernel key = Files.cull().kernel("CullKey"), gather = Files.cull().kernel("CullGather");
+        for (int g = 0; g < sets.groups(); g++) {
+            CgGraphBuffer instances = sets.groupInstances(g), count = sets.groupCounts(g);
+            distinct(instances, out);
+            int span = sets.laid(g, 3), first = sets.laid(g, 2);
+            if (span == 0) continue;
+            CgDispatch keyed = pass.dispatch(key, span).bind("SETS", rows).bind("INSTANCES", instances)
+                    .bind("COUNT", count != null ? count : rows)
+                    .bind("KEYS", keyBuffer, first * 4L, span * 4L).bind("INDICES", indices, first * 4L, span * 4L)
+                    .set("_SetFirst", sets.laid(g, 0)).set("_Sets", sets.laid(g, 1)).set("_Culled", culled);
+            view.applyView(keyed);
+        }
+        CgGpuCount all = CgGpuCount.of(keys);
+        sort(pass, 32 - Integer.numberOfLeadingZeros(culled), Order.ASCENDING, keyBuffer, indices, all);
+        histogram(pass, keyBuffer, all, counts, culled + 1, 0);
+        scan(pass, Scan.EXCLUSIVE, Fold.SUM, Element.UINT, counts, CgGpuCount.of(culled + 1), starts);
+        for (int g = 0; g < sets.groups(); g++) {
+            int records = sets.laid(g, 5);
+            if (records == 0) continue;
+            long first = (long) sets.laid(g, 4) * RECORD_BYTES;
+            pass.dispatch(gather, records).bind("SETS", rows).bind("INSTANCES", sets.groupInstances(g))
+                    .bind("COUNTS", counts).bind("STARTS", starts).bind("SORTED", indices)
+                    .bind("PLACED", out, first, (long) records * RECORD_BYTES)
+                    .set("_SetFirst", sets.laid(g, 0)).set("_Sets", sets.laid(g, 1));
         }
     }
 

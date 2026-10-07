@@ -194,7 +194,7 @@ public final class CgCull {
 
     /** Its values on {@code d}, a dispatch of {@code cull.compute}'s kernel. */
     void apply(CgDispatch d) {
-        Matrix4f p = place, vp = viewProjection;
+        Matrix4f p = place;
         Matrix3f n = placeNormal;
         d.set("_Levels", levels)
                 .set("_Heights0", heights[0], heights[1], heights[2], heights[3])
@@ -208,18 +208,24 @@ public final class CgCull {
                 .set("_PlaceNormal0", n.m00(), n.m01(), n.m02(), 0f)
                 .set("_PlaceNormal1", n.m10(), n.m11(), n.m12(), 0f)
                 .set("_PlaceNormal2", n.m20(), n.m21(), n.m22(), 0f)
-                .set("_ClipX", vp.m00(), vp.m10(), vp.m20(), vp.m30())
-                .set("_ClipY", vp.m01(), vp.m11(), vp.m21(), vp.m31())
-                .set("_ClipZ", vp.m02(), vp.m12(), vp.m22(), vp.m32())
-                .set("_ClipW", vp.m03(), vp.m13(), vp.m23(), vp.m33())
-                .set("_Eye", eye[0], eye[1], eye[2], eye[3])
-                .set("_ScreenY", screenY)
                 .set("_Light", lightBlock, lightSky, stampLight ? 1f : 0f, 0f)
                 .set("_Customs", stampCustoms).set("_Scale", scale).set("_NormalScale", normalScale)
                 .set("_Custom0", customs[0], customs[1], customs[2], customs[3])
                 .set("_Custom1", customs[4], customs[5], customs[6], customs[7])
                 .set("_Custom2", customs[8], customs[9], customs[10], customs[11])
                 .set("_Custom3", customs[12], customs[13], customs[14], customs[15]);
+        applyView(d);
+    }
+
+    /** Its view and pyramid on {@code d}: all a batched cull's dispatches take of it ({@link CgCullSets}). */
+    void applyView(CgDispatch d) {
+        Matrix4f vp = viewProjection;
+        d.set("_ClipX", vp.m00(), vp.m10(), vp.m20(), vp.m30())
+                .set("_ClipY", vp.m01(), vp.m11(), vp.m21(), vp.m31())
+                .set("_ClipZ", vp.m02(), vp.m12(), vp.m22(), vp.m32())
+                .set("_ClipW", vp.m03(), vp.m13(), vp.m23(), vp.m33())
+                .set("_Eye", eye[0], eye[1], eye[2], eye[3])
+                .set("_ScreenY", screenY);
         for (int i = 0; i < 6; i++) d.set(PLANES[i], planes[i].x, planes[i].y, planes[i].z, planes[i].w);
         if (pyramid != null) {
             d.texture("_Pyramid", pyramid)

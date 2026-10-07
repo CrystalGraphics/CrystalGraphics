@@ -6,9 +6,16 @@
 //
 // An ordered cull keeps each level's records in their order: CullFlags marks the instances kept at a level,
 // CgGpuOps.compact lists them in order, and CullPlace writes the kept record of each listed one.
+//
+// Many sets at once (CgCullSets): each set's values are a row of SETS rather than properties. CullKey, once per
+// instance buffer, keys each instance of its sets by row and level (_Culled for none); one sort, histogram and scan
+// over every set's keys give each level's count and start; CullGather, once per instance buffer, writes each level's
+// kept records in their order.
 #pragma kernel Cull append
 #pragma kernel CullFlags map
 #pragma kernel CullPlace gather
+#pragma kernel CullKey map
+#pragma kernel CullGather gather
 
 #include "crystalgraphics:shaders/lib/occlusion.glsl"
 
@@ -51,12 +58,28 @@ Properties {
     _Custom3      ("Custom 3 stamped",                                 vec4) = (0, 0, 0, 0)
     _Scale        ("Each instance scaled about its own origin",        float) = 1.0
     _NormalScale  ("What that scale does to a normal matrix",          float) = 1.0
+    _SetFirst     ("This instance buffer's first row of SETS",         int)  = 0
+    _Sets         ("Its rows",                                         int)  = 0
+    _Culled       ("The key of an instance no level keeps",            int)  = 0
 }
 
 struct CullRecord {   // CgInstanceKind.OBJECT's 48 floats
     vec4 model0; vec4 model1; vec4 model2; vec4 model3;
     vec4 normal0; vec4 normal1; vec4 normal2; vec4 normal3;
     vec4 custom0; vec4 custom1; vec4 custom2; vec4 custom3;
+};
+
+// One set of CgCullSets: what a CgCull holds for it. Its levels' counts are words 8 * row on of COUNTS.
+struct CullSet {
+    vec4 place0; vec4 place1; vec4 place2; vec4 place3;
+    vec4 normal0; vec4 normal1; vec4 normal2;
+    vec4 lo;        // the padded box's low corner; w the scale
+    vec4 hi;        // its high corner; w what the scale does to a normal matrix
+    vec4 heights0; vec4 heights1;
+    vec4 light;     // block and sky stamped; z 1 to stamp
+    vec4 custom0; vec4 custom1; vec4 custom2; vec4 custom3;
+    ivec4 info;     // levels (0: never culled by size), customs stamped, the count's word in COUNT (-1: none), capacity
+    ivec4 at;       // its first record of INSTANCES, its first key and its first output record in its dispatch's
 };
 
 Buffers {
@@ -66,6 +89,12 @@ Buffers {
     FLAGS     ("1 for each instance kept at this level",   uint,       writeonly)
     KEPT      ("The kept instances, in order",             uint,       readonly)
     PLACED    ("Each listed instance's kept record",       CullRecord, writeonly)
+    SETS      ("Every set's values",                       CullSet,    readonly)
+    KEYS      ("Each instance's row and level",            uint,       writeonly)
+    INDICES   ("Each instance's record, sorted by key",    uint,       writeonly)
+    COUNTS    ("Each set's levels' counts, 8 a row",       uint,       readonly)
+    STARTS    ("Where each count's run starts in SORTED",  uint,       readonly)
+    SORTED    ("The kept instances' records, by key",      uint,       readonly)
 }
 
 bool outside(vec4 plane, vec3 lo, vec3 hi) {
@@ -73,46 +102,63 @@ bool outside(vec4 plane, vec3 lo, vec3 hi) {
             + plane.z * (plane.z < 0.0 ? lo.z : hi.z) < -plane.w;
 }
 
+// The one set a dispatch of the per-set kernels culls, from its properties.
+CullSet cull_set() {
+    CullSet s;
+    s.place0 = _Place0; s.place1 = _Place1; s.place2 = _Place2; s.place3 = _Place3;
+    s.normal0 = _PlaceNormal0; s.normal1 = _PlaceNormal1; s.normal2 = _PlaceNormal2;
+    s.lo = vec4(_Min.xyz, _Scale);
+    s.hi = vec4(_Max.xyz, _NormalScale);
+    s.heights0 = _Heights0; s.heights1 = _Heights1;
+    s.light = _Light;
+    s.custom0 = _Custom0; s.custom1 = _Custom1; s.custom2 = _Custom2; s.custom3 = _Custom3;
+    s.info = ivec4(_Levels, _Customs, _CountAt, _Capacity);
+    s.at = ivec4(_First, 0, 0, 0);
+    return s;
+}
+
 // Record r's model matrix, scaled and placed in the camera-relative world.
-mat4 cull_model(CullRecord r) {
-    return mat4(_Place0, _Place1, _Place2, _Place3) * mat4(r.model0 * _Scale, r.model1 * _Scale, r.model2 * _Scale, r.model3);
+mat4 cull_model(CullSet s, CullRecord r) {
+    float scale = s.lo.w;
+    return mat4(s.place0, s.place1, s.place2, s.place3) * mat4(r.model0 * scale, r.model1 * scale, r.model2 * scale, r.model3);
 }
 
 // The level an instance of model matrix m is kept at, or -1.
-int cull_level(mat4 m) {
+int cull_level(CullSet s, mat4 m) {
     // The box in the camera-relative world: JOML's transformAab, term for term.
     vec3 lo = m[3].xyz, hi = m[3].xyz;
     for (int a = 0; a < 3; a++) {
-        vec3 p = m[a].xyz * _Min[a], q = m[a].xyz * _Max[a];
+        vec3 p = m[a].xyz * s.lo[a], q = m[a].xyz * s.hi[a];
         lo += min(p, q);
         hi += max(p, q);
     }
     if (outside(_Plane0, lo, hi) || outside(_Plane1, lo, hi) || outside(_Plane2, lo, hi)
             || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return -1;
 
-    int level = 0;
-    if (_Levels > 0) {
+    int level = 0, levels = s.info.x;
+    if (levels > 0) {
         vec3 c = (lo + hi) * 0.5;
         float radius = 0.5 * length(hi - lo);
         float w = dot(_ClipW, vec4(c, 1.0));
         float screen = w <= radius ? 3.4e38 : radius * _ScreenY / w;
         level = -1;
-        for (int i = 0; i < _Levels; i++) {
-            float height = i < 4 ? _Heights0[i] : _Heights1[i - 4];
+        for (int i = 0; i < levels; i++) {
+            float height = i < 4 ? s.heights0[i] : s.heights1[i - 4];
             if (screen >= height) {
                 level = i;
                 break;
             }
         }
     }
-    if (level != _Level || cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return -1;
+    if (level < 0 || cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return -1;
     return level;
 }
 
 // The record a draw reads for r, placed by m: the normal matrix placed and scaled, the stamps applied.
-CullRecord cull_record(CullRecord r, mat4 m) {
-    mat3 normal = mat3(_PlaceNormal0.xyz, _PlaceNormal1.xyz, _PlaceNormal2.xyz)
-            * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz) * _NormalScale;
+CullRecord cull_record(CullSet s, CullRecord r, mat4 m) {
+    mat3 normal = mat3(s.normal0.xyz, s.normal1.xyz, s.normal2.xyz)
+            * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz) * s.hi.w;
+    int customs = s.info.y;
     CullRecord o;
     o.model0 = m[0];
     o.model1 = m[1];
@@ -121,36 +167,76 @@ CullRecord cull_record(CullRecord r, mat4 m) {
     o.normal0 = vec4(normal[0], r.normal0.w);
     o.normal1 = vec4(normal[1], r.normal1.w);
     o.normal2 = vec4(normal[2], r.normal2.w);
-    o.normal3 = _Light.z > 0.5 ? vec4(_Light.xy, r.normal3.zw) : r.normal3;   // CG_OBJECT_LIGHT
-    o.custom0 = (_Customs & 1) != 0 ? _Custom0 : r.custom0;
-    o.custom1 = (_Customs & 2) != 0 ? _Custom1 : r.custom1;
-    o.custom2 = (_Customs & 4) != 0 ? _Custom2 : r.custom2;
-    o.custom3 = (_Customs & 8) != 0 ? _Custom3 : r.custom3;
+    o.normal3 = s.light.z > 0.5 ? vec4(s.light.xy, r.normal3.zw) : r.normal3;   // CG_OBJECT_LIGHT
+    o.custom0 = (customs & 1) != 0 ? s.custom0 : r.custom0;
+    o.custom1 = (customs & 2) != 0 ? s.custom1 : r.custom1;
+    o.custom2 = (customs & 4) != 0 ? s.custom2 : r.custom2;
+    o.custom3 = (customs & 8) != 0 ? s.custom3 : r.custom3;
     return o;
 }
 
-uint cull_count() {
-    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+// How many of set s's instances there are.
+uint cull_count(CullSet s) {
+    return s.info.z < 0 ? uint(s.info.w) : min(COUNT(s.info.z), uint(s.info.w));
 }
 
 void Cull() {
-    if (uint(CG_ELEMENT) >= cull_count()) return;
+    CullSet s = cull_set();
+    if (uint(CG_ELEMENT) >= cull_count(s)) return;
     CullRecord r = INSTANCES(_First + CG_ELEMENT);
-    mat4 m = cull_model(r);
-    if (cull_level(m) == _Level) OUT_APPEND(cull_record(r, m));
+    mat4 m = cull_model(s, r);
+    if (cull_level(s, m) == _Level) OUT_APPEND(cull_record(s, r, m));
 }
 
 void CullFlags() {
+    CullSet s = cull_set();
     uint kept = 0u;
-    if (uint(CG_ELEMENT) < cull_count()) {
-        kept = cull_level(cull_model(INSTANCES(_First + CG_ELEMENT))) == _Level ? 1u : 0u;
+    if (uint(CG_ELEMENT) < cull_count(s)) {
+        kept = cull_level(s, cull_model(s, INSTANCES(_First + CG_ELEMENT))) == _Level ? 1u : 0u;
     }
     FLAGS_WRITE(kept);
 }
 
 // Dispatched over the capacity with COUNT the compaction's count: element k writes the kth kept record.
 void CullPlace() {
-    if (uint(CG_ELEMENT) >= cull_count()) return;
+    CullSet s = cull_set();
+    if (uint(CG_ELEMENT) >= cull_count(s)) return;
     CullRecord r = INSTANCES(_First + int(KEPT(CG_ELEMENT)));
-    PLACED_WRITE(cull_record(r, cull_model(r)));
+    PLACED_WRITE(cull_record(s, r, cull_model(s, r)));
+}
+
+// The row of this dispatch's sets whose span holds e: the last whose first (component c of at) is at or below it.
+int cull_row(int e, int c) {
+    int lo = _SetFirst, hi = _SetFirst + _Sets - 1;
+    while (lo < hi) {
+        int mid = (lo + hi + 1) >> 1;
+        if (SETS(mid).at[c] <= e) lo = mid; else hi = mid - 1;
+    }
+    return lo;
+}
+
+// Over this instance buffer's keys: each instance of its sets keyed by row and level, every other key _Culled.
+void CullKey() {
+    uint key = uint(_Culled), index = 0u;
+    int row = cull_row(CG_ELEMENT, 1);
+    CullSet s = SETS(row);
+    int rank = CG_ELEMENT - s.at.y;
+    if (rank < s.info.w && uint(rank) < cull_count(s)) {
+        index = uint(s.at.x + rank);
+        int level = cull_level(s, cull_model(s, INSTANCES(int(index))));
+        if (level >= 0) key = uint(row) * 8u + uint(level);
+    }
+    KEYS_WRITE(key);
+    INDICES_WRITE(index);
+}
+
+// Over this instance buffer's output: each level's region of each set, the nth kept record at the region's nth.
+void CullGather() {
+    int row = cull_row(CG_ELEMENT, 2);
+    CullSet s = SETS(row);
+    int region = (s.info.w + 3) & ~3, local = CG_ELEMENT - s.at.z;
+    int level = local / region, rank = local - level * region, bin = row * 8 + level;
+    if (uint(rank) >= COUNTS(bin)) return;
+    CullRecord r = INSTANCES(int(SORTED(int(STARTS(bin)) + rank)));
+    PLACED_WRITE(cull_record(s, r, cull_model(s, r)));
 }

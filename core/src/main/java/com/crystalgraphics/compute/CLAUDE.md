@@ -107,6 +107,11 @@ and compiles the builtins it reaches at each one's lowest GLSL (`lowestGlsl`: 4.
 - **The cull** (`cull.compute`) is one append dispatch a level, each testing every instance and keeping those at its
   level, into that level's region of the output: an append writes one buffer, so the levels' records stay in one
   buffer a multi-draw can share. `FillAt` zeroes its counters where they sit, so `counts` needs only `STORAGE`.
+- **Many sets at once** (`CgCullSets`) are Range's shape: `CullKey` per instance buffer keys each instance by its
+  set's row and level into one keys buffer, bound at the buffer's offset; one sort, histogram and scan over them all
+  give each level's count and start; `CullGather` per instance buffer writes each level's records. A set's values are
+  a row of `SETS` in place of properties, and the cull's functions take a `CullSet`, which the per-set kernels build
+  from their properties.
 - **Mip chains** are image kernels, one per format in `IMAGE_TYPES`. Below compute, a kernel reading one level of the
   texture it writes another of samples it with the base and max level pinned to the level read, which keeps the draw
   from being a feedback loop.
