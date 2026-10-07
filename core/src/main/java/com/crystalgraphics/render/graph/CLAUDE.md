@@ -25,7 +25,9 @@ builder.recycle(frame);
 `CgGraphBuffer`s — the twin of `CgGraphTexture`: transient (pooled by size class), persistent, history (the newest two
 versions, every write making the next) or imported — and on graph textures as storage images. A dispatch's bindings
 say what it reads and writes, taken from the accessors its kernel uses, so ordering, culling and lifetimes come from
-them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write.
+them as from a raster pass's; `fill`, `update` and `copy` on buffers are passes ordered like any write. `update` copies
+its bytes when recorded; its `float[]` form reads the caller's array when the frame executes, for a buffer rewritten
+every frame, so that array must not change until then.
 `resize(buffer, desc)` is copies of each version into a new handle and a release of the old: a pool outgrowing its
 capacity.
 

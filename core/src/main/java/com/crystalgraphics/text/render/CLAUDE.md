@@ -181,6 +181,29 @@ shadow cells. 10,000 outlined, shadowed labels went from 15,723 flushes a frame 
   such change.
 - A quad keeps its draw's pose, clip and nodes in a pose entry (`pushPose`); `draw.drainBuckets` times the replay.
 
+**Captured text** (`capture`, `drawCaptured`, `CgTextCapture`): a draw's bucketed records kept rather than drawn, in
+the draw's own space, for text whose content stays while its pose moves. `drawCaptured` draws one batch of them from a
+buffer as one OBJECT draw of `text.shader`'s `WORLD_LABEL` variant, each record placed by the model matrix of the
+object record its `node` names. `CgWorldText` keeps every label this way: 10,000 shadowed labels went from 34 ms a
+frame to 4.3.
+
+```java
+CgTextRenderer.Draw drawn = renderer.retainedDraw();
+CgTextCapture kept = new CgTextCapture();
+if (!drawn.sameAs(label) || kept.evictions() != CgGlyphAtlas.evictions()) {
+    drawn.set(label);
+    boolean whole = renderer.capture(label, kept);    // false: capture again next frame
+}
+renderer.drawCaptured(chunks, kept.batch(b), glyphBuffer, count, labelMatrices);
+```
+
+- `drawCapturedDepth` is its depth pass: the records' solid core (alpha 0.5 and up, `u_TextCut`) into depth alone,
+  colour off. Drawn for every label's text before any colour, a nearer label hides a farther one. The colour draws
+  declare the colour mask on, since `text.shader` leaves it undeclared and the depth pass's would stand on GL.
+- Capture only where the raster tier ignores the pose (world text): the tier is resolved for an identity pose.
+- A capture that returned false holds what was ready; capture it again until it returns true.
+- `Draw.sameAs`/`set`/`reset` name every field: a new `Draw` field joins all three.
+
 ### `CgTextRenderer.Draw`
 
 Non-static inner class — the fluent draw request. See "Fluent `Draw` request replaced

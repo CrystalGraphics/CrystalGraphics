@@ -43,6 +43,9 @@
 // CgGlyphAtlas and pay the 2x memory. Extend CgMsdfQualityProbe to score the 4th
 // channel before deciding -- it currently only does median-of-3.
 #pragma cg_feature MSDF_MODE
+// A retained world label's glyphs (CgWorldText), drawn as OBJECT instances: each record is in its label's own space,
+// and its node is the label's object record, whose model matrix places it under the firing's view.
+#pragma cg_feature WORLD_LABEL
 
 #include "crystalgraphics:shaders/lib/texel.glsl"
 #include "crystalgraphics:shaders/lib/rect_blur.glsl"
@@ -137,7 +140,19 @@ Pass {
     // orthographic UI projection unrelated to the scene camera) -- reusing cg_ProjMatrix would
     // clobber whatever the real frame projection is for anything else sharing that frame.
     void vertex(out v2f o) {
+#ifdef WORLD_LABEL
+        int label = int(QUAD_DATA(CG_INSTANCE_ID).node);
+#ifdef CG_USE_SSBO
+        mat4 place = cg_Objects[label].modelMatrix;
+#else
+        mat4 place = cg_FetchObjectData(label).modelMatrix;
+#endif
+        vec3 local = QUAD_DATA(CG_INSTANCE_ID).origin + CG_VERTEX_CORNER.x * QUAD_DATA(CG_INSTANCE_ID).right
+                + CG_VERTEX_CORNER.y * QUAD_DATA(CG_INSTANCE_ID).up;
+        gl_Position = u_Projection * (place * vec4(local, 1.0));
+#else
         gl_Position = u_Projection * vec4(CG_QUAD_WORLD_POS, 1.0);
+#endif
         o.uv         = CG_QUAD_UV;
         o.color      = CG_QUAD_COLOR;
         o.atlasLayer = CG_QUAD_ATLAS_LAYER;
@@ -415,5 +430,7 @@ Pass {
                                       u_TextGammaSmall, u_TextGammaLarge, u_TextGammaRamp) * i.color.a;
         fragColor = vec4(i.color.rgb, alpha * boxClip);
 #endif
+        // A world label's depth pass writes its solid core alone (CgTextRenderer.drawCapturedDepth).
+        if (fragColor.a < u_TextCut.x) discard;
     }
 }

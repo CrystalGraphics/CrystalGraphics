@@ -290,6 +290,29 @@ public final class CgRecording {
     }
 
     /**
+     * Writes {@code count} floats of {@code src} from {@code from} into {@code buffer} at {@code offset}, read when the
+     * frame executes rather than copied now: for a buffer rewritten every frame, which a copy would allocate for.
+     *
+     * <pre>{@code
+     * recording.update(labels, 0, matrices, 0, n * 48);   // matrices untouched until the frame has executed
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code src} must not change until the recording has executed.</li>
+     * </ul>
+     */
+    public void update(CgGraphBuffer buffer, long offset, float[] src, int from, int count) {
+        requireOpen();
+        requireWritable(buffer, CgBufferUsage.COPY);
+        if (from < 0 || count < 0 || from + count > src.length) {
+            throw new IndexOutOfBoundsException("floats " + from + " to " + (from + count) + " of " + src.length);
+        }
+        CgPass.Update update = new CgPass.Update(buffer, offset, src, from, count);
+        add(update);
+        write(update, buffer, CgAccess.COPY_WRITE);
+    }
+
+    /**
      * Reads {@code size} bytes of {@code buffer} from {@code offset} back to the CPU, as everything recorded before it
      * left them: {@code sink} gets them on the render thread a few frames after the frame executes, and the request is
      * done once it has. The buffer needs {@code COPY}.

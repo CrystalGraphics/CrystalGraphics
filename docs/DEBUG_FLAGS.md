@@ -85,6 +85,8 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 
 -Dcrystalgraphics.world.halfResolution=false        # draws marked halfResolution() at full size, in the transparent
                                                      # pass (H in the harness)
+-Dcrystalgraphics.text.retainedLabels=false          # world.text labels drawn every frame as any text, not captured
+                                                     # and kept: the comparison for the retained path
 
 # VFX (vfx/CLAUDE.md)
 -Dcrystalgraphics.vfx.sim=gpu                        # cpu|gpu: where effects' particles simulate, cpu by default; V
