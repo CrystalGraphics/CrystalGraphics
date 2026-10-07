@@ -418,6 +418,7 @@ public final class CgGraphicsLifecycle {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
                 }
+                CgCompute.finishPrepared();   // ahead of the dispatches that take them
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, LISTENERS)) {
                 listeners.dispatch("onFrame", l -> l.onFrame(frameCounter));

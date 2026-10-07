@@ -1060,6 +1060,9 @@ particles.kernel("Simulate").withKeywords("WIND").prepare();
 
 - Where the driver links on its own threads (`KHR_parallel_shader_compile`), the link runs while frames go on; the
   dispatch that takes the program waits for what is left (`compute.compileWait`, counted by `compute.compile-waits`).
+- Once the driver has linked it, a frame boundary makes it ready and binds it once (`compute.finishPrepared`, about
+  1 ms a frame at most): on NVIDIA a program's first bind costs up to 1.6 ms, which would otherwise land on its first
+  dispatch.
 - A lowered kernel's passes are built at once; a Java body needs nothing.
 - On a Vulkan device a host keeps shaderc's output and the pipeline cache across launches
   (`CgCacheDirectory`, `crystalgraphics/cache/` under the game directory): a second launch compiles roughly half as
