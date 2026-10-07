@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 
@@ -62,6 +63,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float shapeRadius, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
+    final List<CgVfxEvent> events;
     final CgKeyframes sizeOverLife, opacityOverLife;
     /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
     private final float sizePeak;
@@ -96,6 +98,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         spinMax = b.spinMax;
         heat = b.heat;
         modules = Collections.unmodifiableList(new ArrayList<>(b.modules));
+        events = Collections.unmodifiableList(new ArrayList<>(b.events));
         sizeOverLife = b.sizeOverLife;
         opacityOverLife = b.opacityOverLife;
         float peak = 0f;
@@ -141,6 +144,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     @Override
+    public List<CgVfxEvent> events() {
+        return events;
+    }
+
+    @Override
     public void writeSpawn(CgVfxWords out) {
         out.vec4(shapeRadius, upMin, upMax, upBias)
            .vec4(speedMin, speedMax, lifeMin, lifeMax)
@@ -177,7 +185,32 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
      */
     public int peakAlive() {
         // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
-        float span = lifeMax + 0.1f;
+        return spawnsWithin(lifeMax + 0.1f);
+    }
+
+    /**
+     * The most children event {@code event} (its index in {@link #events()}) of one instance can have alive at once:
+     * what its child slot is sized by, and its CPU set.
+     *
+     * <pre>{@code
+     * int childSlot = childPool.open(DUST, DEBRIS.peakChildren(0));
+     * }</pre>
+     */
+    public int peakChildren(int event) {
+        CgVfxEvent e = events.get(event);
+        CgVfxEmitter child = (CgVfxEmitter) e.child();
+        if (child == null) return 0;
+        // A parent fires once, this long after its birth at most; its children then live up to the child's longest life.
+        float spread = switch (e.trigger()) {
+            case AGE -> 0f;
+            case DEATH -> lifeMax - lifeMin;
+            case LANDING -> lifeMax;
+        };
+        return spawnsWithin(spread + child.lifeMax + 0.1f) * e.count();
+    }
+
+    /** The most spawn candidates within any {@code span} seconds. */
+    private int spawnsWithin(float span) {
         int bursts = 0;
         for (float from : burstTimes) {
             int alive = 0;
@@ -239,6 +272,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float spinMin, spinMax;
         private float heat;
         private final List<CgVfxModule> modules = new ArrayList<>();
+        private final List<CgVfxEvent> events = new ArrayList<>();
         private CgKeyframes sizeOverLife = CgKeyframes.constant(1f);
         private CgKeyframes opacityOverLife = CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR)
                 .to(1f, 0f, CgEasings.OUT_QUAD).build();
@@ -276,6 +310,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             spinMax = e.spinMax;
             heat = e.heat;
             modules.addAll(e.modules);
+            events.addAll(e.events);
             sizeOverLife = e.sizeOverLife;
             opacityOverLife = e.opacityOverLife;
         }
@@ -380,6 +415,34 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         public Builder clearModules() {
             modules.clear();
+            return this;
+        }
+
+        /**
+         * Reacts to what its particles do: children spawned where one lands, dies or reaches an age, rows to the CPU, or
+         * both ({@link CgVfxEvent}). On both simulations.
+         *
+         * <pre>{@code
+         * .event(CgVfxEvent.onLanding().spawn(DUST, 3).inherit(0.2f))   // debris raising dust
+         * .event(CgVfxEvent.onDeath().readback(16))                     // a hiss for each ember that dies
+         * }</pre>
+         *
+         * <ul>
+         *   <li>At most {@link CgVfxEvent#MAX_EVENTS}, in the order given: an event's index is its place here.</li>
+         *   <li>A child definition may report rows but not spawn children of its own.</li>
+         *   <li>A child spawns only from its parent's events: its own bursts and rate are ignored, so one definition can
+         *       play alone and as a child.</li>
+         * </ul>
+         */
+        public Builder event(CgVfxEvent event) {
+            if (events.size() == CgVfxEvent.MAX_EVENTS) {
+                throw new IllegalArgumentException(name + " has " + CgVfxEvent.MAX_EVENTS + " events already");
+            }
+            if (event.child() != null && !(event.child() instanceof CgVfxEmitter)) {
+                // The CPU path runs the child too, from its numbers and modules.
+                throw new IllegalArgumentException(name + "'s child " + event.child().name() + " is not a CgVfxEmitter");
+            }
+            events.add(event);
             return this;
         }
 

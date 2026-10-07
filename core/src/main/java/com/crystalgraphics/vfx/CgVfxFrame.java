@@ -142,12 +142,17 @@ public final class CgVfxFrame {
      *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin the records are relative to. An
      *       {@code ARCS} draw is centred on the emitter's source, so {@code CG_OBJECT_TO_WORLD[3]} is the source.</li>
      * </ul>
+     * Its events' children are drawn with it, each through the layers in its own definition's slot.
      *
      * <pre>{@code
      * for (CgVfxEmitterInstance emitter : emitters) frame.particles(this, emitter);
      * }</pre>
      */
     public void particles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+        for (int e = 0; e < emitter.emitter().events().size(); e++) {
+            CgVfxEmitterInstance child = emitter.child(e);
+            if (child != null) particles(effect, child);
+        }
         if (emitter.scheduled()) {
             gpuParticles(effect, emitter);
             return;

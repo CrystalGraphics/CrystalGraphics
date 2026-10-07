@@ -23,6 +23,7 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
@@ -165,6 +166,7 @@ public final class CgVfxSystem {
 
     private final List<CgVfxEffect> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
+    private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
     private final CgVfxTube tube = new CgVfxTube();
     private final CgVfxFrame frame = new CgVfxFrame(this);
@@ -210,6 +212,21 @@ public final class CgVfxSystem {
     /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
     public void onMoment(CgVfxMomentListener listener) {
         momentListeners.add(listener);
+    }
+
+    /**
+     * Hears the rows of every event marked {@code readback}, from either simulation: decals, sounds, gameplay hooks
+     * ({@link CgVfxEventListener}). Render thread; the GPU path's rows arrive a few frames after their step.
+     *
+     * <pre>{@code
+     * vfx.onEvents((definition, event, rows) -> {
+     *     for (int i = 0; i < rows.count(); i++) sounds.play(HISS, rows.x(i), rows.y(i), rows.z(i));
+     * });
+     * }</pre>
+     */
+    public void onEvents(CgVfxEventListener listener) {
+        eventListeners.add(listener);
+        CgVfxParticlePool.listen(listener);
     }
 
     boolean hasMomentListeners() {
@@ -258,7 +275,10 @@ public final class CgVfxSystem {
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
                         workers.run(emitting.size(), tickEach);
-                        for (int i = 0; i < emitting.size(); i++) emitting.get(i).admitScheduled(gpuSteps);
+                        for (int i = 0; i < emitting.size(); i++) {
+                            emitting.get(i).admitScheduled(gpuSteps);
+                            emitting.get(i).deliverRows(eventListeners);
+                        }
                     } finally {
                         emitting.clear();
                     }
@@ -479,6 +499,8 @@ public final class CgVfxSystem {
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         effects.clear();
+        for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
+        eventListeners.clear();
         gpuSteps.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
