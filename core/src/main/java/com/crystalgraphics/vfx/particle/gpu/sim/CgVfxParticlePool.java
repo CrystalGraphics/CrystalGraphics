@@ -705,8 +705,8 @@ public final class CgVfxParticlePool {
     }
 
     private void growSlots(int n) {
+        if (n <= slotEmitter.length) return;
         int size = Math.max(n, Math.max(4, slotEmitter.length * 2));
-        if (size <= slotEmitter.length) return;
         slotEmitter = Arrays.copyOf(slotEmitter, size);
         slotCapacity = Arrays.copyOf(slotCapacity, size);
         slotRow = Arrays.copyOf(slotRow, size);
