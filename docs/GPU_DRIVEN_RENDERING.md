@@ -184,7 +184,7 @@ Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));   // quad n draws the nth live spark
 
 ```java
 world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
-     .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6).at(x, y, z).gpuCulled().submit();
+     .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6).at(x, y, z).gpuCulled().submit();
 ```
 
 ## 5. Recipe: many draws from one pool, ordered on the GPU
@@ -221,8 +221,12 @@ Spark s = SPARKS(INDEX(FIRST(slot) + uint(CG_VERTEX_ID >> 2)));
 - **Why**: N effects cost one simulation dispatch, one bin, one sort and one draw call, where one pool per effect
   costs N of each. The sort runs only for pools with an alpha-blended renderer; additive and opaque slots skip it.
 - **Inverting the depth** puts far first inside an ascending sort, so a slot's run stays where the scan says it starts.
-- Composed from built ops (`histogram`, `scan`, `sort`, indirect draws), each gated on every tier; the composition
-  itself has no gate scene yet.
+- **Several pools, one sort.** Pools of different record layouts still share the lists: a bin dispatch per pool into
+  its own region of one keys buffer (bound at an offset), slots numbered across every pool, then one histogram, scan
+  and sort over them all. Below compute each sort pass costs the same whatever it sorts, so one sort for every pool
+  rather than one each took VFX Range from 7.3 to 3.1 ms of GPU at G33 (`CgVfxRange`, `--mode=vfx-range`).
+- Composed from built ops (`histogram`, `scan`, `sort`, indirect draws), each gated on every tier; `CgVfxRange` is the
+  composition, gated by `--mode=vfx-range`.
 
 ## 6. Recipe: culling by hand in a renderer of your own
 
