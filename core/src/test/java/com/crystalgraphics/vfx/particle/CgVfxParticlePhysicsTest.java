@@ -48,7 +48,7 @@ public class CgVfxParticlePhysicsTest {
         CgVfxParticleSet p = run.particles();
         for (int i = 0; i < p.count(); i++) {
             assertEquals("resting " + i, 1f, p.resting[i], 0f);
-            assertEquals("on the ground " + i, 0f, p.y[i], 1.0e-4f);
+            assertEquals("on the ground as a ball of its size " + i, p.size[i], p.y[i], 1.0e-4f);
         }
     }
 

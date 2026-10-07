@@ -48,7 +48,8 @@ public class CgVfxEmitterEventsTest {
                 assertTrue("a child of " + parentId + " whose parent is gone", at != null);
                 assertEquals(1f, p.resting[at], 0f);
                 assertEquals(p.x[at], c.x[i], 0f);
-                assertEquals(0f, c.y[i], 0f);
+                assertEquals(p.size[at], p.y[at], 0f);   // resting on the ground as a ball of its size
+                assertEquals(p.y[at], c.y[i], 0f);
                 assertEquals(p.z[at], c.z[i], 0f);
             }
             most = Math.max(most, c.count());
