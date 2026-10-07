@@ -66,7 +66,7 @@ final class CgVfxGpuSteps {
     void admit(CgVfxEmitterInstance instance) {
         if (byInstance.containsKey(instance)) return;
         CgVfxEmitter definition = instance.emitter();
-        CgVfxParticlePool pool = CgVfxParticlePool.of(definition);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition);
         if (!pools.contains(pool)) pools.add(pool);
         Tenant tenant = new Tenant(instance, pool, pool.open(definition, definition.peakAlive()));
         tenant.timeAfter = instance.stepTime();
