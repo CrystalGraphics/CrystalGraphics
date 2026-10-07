@@ -97,16 +97,18 @@ world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).
 // A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
 world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
 
-// A label: a line of text facing the camera, or turned as a sign, depth-tested and never writing depth
-world.text("Spawn", font).at(x, y + 2, z).height(0.5f).submit();
-world.text("North gate", family, 48).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).color(0xFFFFD060).submit();
+// A label: a CgTextRenderer.Draw at a point, facing the camera or turned as a sign; depth-tested, never writing depth
+world.text(x, y + 2, z).height(0.5f).text("Spawn").font(font).stroke(0.08f, 0xFF000000).submit();
+world.text(x, y, z).rotation(facingSouth).anchor(0f, 0f).draw().paragraph(sign).family(family).targetPx(48).submit();
 ```
 
 - **Drawing what kernels wrote** (`.indirect`, `.instances`) is its own workflow:
   [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
 - A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
 - **Labels** (`world.text`) draw after every transparent draw of the firing, unsorted among them: a glow in front
-  of a label does not cover it. `height` is a line's height in blocks; one `CgTextRenderer` serves them all.
+  of a label does not cover it. A label is a queued `CgTextRenderer.Draw` (strokes, shadows, families, paragraphs),
+  drawn under each firing's camera; `height` is a line's height in blocks. One renderer draws them all, batched:
+  vfx-modules' 24 labels are 2 flushes a frame.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
   defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a

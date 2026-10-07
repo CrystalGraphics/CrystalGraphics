@@ -83,6 +83,10 @@ matrix again. That entire surface is gone. The only public entry points now are:
   that renderer, from *any* call site.
 - `renderer.retainedDraw()` — allocates a standalone `Draw` the caller may hold across
   frames (e.g. a cached HUD line, mutating only `.text(...)` each tick).
+- `renderer.queuedDraw(queue)` — a retained `Draw` whose `submit()` hands it to `queue` instead of
+  drawing; its owner draws it later with `drawQueued(draw)`, under a pose it only knows then.
+  `CgWorldRenderer`'s labels are these. `Draw.reset()` clears one for reuse, `basePx()` is the size
+  a pose scales.
 - `Draw` chain methods: `layout(CgTextLayout)`/`paragraph(CgShapedParagraph)`/`text(String)`
   (each wins over the next — layout is already fully resolved, paragraph is already shaped,
   text needs both), `font(CgFont)`/`family(CgFontFamily)` (family wins if both set — strictly
