@@ -1085,6 +1085,8 @@ public final class CgVfxParticlePool {
             List<CgVfxEvent> events = emitter.events();
             for (int e = 0; e < CgVfxEvent.MAX_EVENTS; e++) {
                 params[at + shape.eventsAt() * 4 + e] = Float.floatToRawIntBits(e < events.size() ? events.get(e).age() : 0f);
+                params[at + shape.eventsAt() * 4 + CgVfxEvent.MAX_EVENTS + e] =
+                        Float.floatToRawIntBits(e < events.size() ? (float) events.get(e).firings() : 0f);
             }
         }
         rows.put(emitter, new int[]{index, 1});

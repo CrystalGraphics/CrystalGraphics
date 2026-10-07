@@ -68,13 +68,13 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private final CgVfxEmitterInstance[] children;
     private final CgVfxEventRows[] rows;
     private boolean rowsDue;
-    /** Velocity after the solver and resting before Ground, per particle: a landing's row. Null with no landing event. */
+    /** Velocity after the solver and resting before Ground, per particle: a landing's and a collision's row. Null with neither event. */
     private final float[] hitVx, hitVy, hitVz, wasResting;
     /** A child's: the event that feeds it, its index in the parent's events, and the step's fires waiting to spawn. */
     private final CgVfxEvent feed;
     private final int feedEvent;
     private float[] fires;
-    private int[] fireIds;
+    private int[] fireIds, fireFirings;
     private int fireCount;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
@@ -90,6 +90,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         if (feed != null) {
             fires = new float[9 * 16];
             fireIds = new int[16];
+            fireFirings = new int[16];
         }
         List<CgVfxEvent> events = emitter.events;
         children = new CgVfxEmitterInstance[events.size()];
@@ -102,7 +103,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
                 children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, emitter.peakChildren(e), event, e);
             }
             if (event.readback() > 0) rows[e] = new CgVfxEventRows();
-            landings |= event.trigger() == CgVfxEvent.Trigger.LANDING;
+            landings |= event.trigger() == CgVfxEvent.Trigger.LANDING || event.trigger() == CgVfxEvent.Trigger.COLLISION;
         }
         hitVx = landings ? new float[capacity] : null;
         hitVy = landings ? new float[capacity] : null;
@@ -197,6 +198,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
                 wasResting[i] = p.resting[i];
             }
         }
+        // A strike is this step's alone, as fx_hit's is.
+        for (int i = 0; i < p.count(); i++) p.hit[i] = 0f;
         for (int m = 0; m < modules.size(); m++) {
             CgVfxModule module = modules.get(m);
             if (!module.afterSolve()) continue;
@@ -225,37 +228,46 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             CgVfxEvent event = events.get(e);
             switch (event.trigger()) {
                 case LANDING -> {
-                    if (wasResting[i] == 0f && p.resting[i] != 0f) fire(e, event, i, hitVx[i], hitVy[i], hitVz[i], 0f, 1f, 0f);
+                    if (wasResting[i] == 0f && p.resting[i] != 0f) fire(e, event, i, hitVx[i], hitVy[i], hitVz[i], 0f, 1f, 0f, 0);
                 }
                 case DEATH -> {
-                    if (p.age[i] >= p.life[i]) fireMoving(e, event, i);
+                    if (p.age[i] >= p.life[i]) fireMoving(e, event, i, 0);
                 }
                 case AGE -> {
-                    if (p.age[i] - dt < event.age() && event.age() <= p.age[i]) fireMoving(e, event, i);
+                    if (p.age[i] - dt < event.age() && event.age() <= p.age[i]) fireMoving(e, event, i, 0);
+                }
+                case COLLISION -> {
+                    if (p.hit[i] != 0f && p.collisions[i] <= event.firings()) fire(e, event, i, hitVx[i], hitVy[i], hitVz[i], p.hitNx[i], p.hitNy[i], p.hitNz[i], p.collisions[i]);
+                }
+                case RATE -> {
+                    // fx: floor((age - dt) / T) < floor(age / T), in float as the Step kernel works it
+                    float period = event.age(), before = (float) Math.floor((p.age[i] - dt) / period), now = (float) Math.floor(p.age[i] / period);
+                    if (before < now && now <= event.firings()) fireMoving(e, event, i, (int) now);
                 }
             }
         }
     }
 
-    /** A death's or an age's fire: its normal is its velocity's direction, up when it barely moves. */
-    private void fireMoving(int e, CgVfxEvent event, int i) {
+    /** A death's, an age's or a rate's fire: its normal is its velocity's direction, up when it barely moves. */
+    private void fireMoving(int e, CgVfxEvent event, int i, int firing) {
         CgVfxParticleSet p = particles;
         float vx = p.vx[i], vy = p.vy[i], vz = p.vz[i], d = vx * vx + vy * vy + vz * vz;
         if (d <= 1e-12f) {
-            fire(e, event, i, vx, vy, vz, 0f, 1f, 0f);
+            fire(e, event, i, vx, vy, vz, 0f, 1f, 0f, firing);
         } else {
             float inv = 1f / (float) Math.sqrt(d);
-            fire(e, event, i, vx, vy, vz, vx * inv, vy * inv, vz * inv);
+            fire(e, event, i, vx, vy, vz, vx * inv, vy * inv, vz * inv, firing);
         }
     }
 
-    private void fire(int e, CgVfxEvent event, int i, float vx, float vy, float vz, float nx, float ny, float nz) {
+    /** Event {@code e} of particle {@code i}; {@code firing} which of a repeating event's firings, 0 for one that fires once. */
+    private void fire(int e, CgVfxEvent event, int i, float vx, float vy, float vz, float nx, float ny, float nz, int firing) {
         CgVfxParticleSet p = particles;
-        if (children[e] != null) children[e].queue(p.id[i], p.x[i], p.y[i], p.z[i], vx, vy, vz, nx, ny, nz);
+        if (children[e] != null) children[e].queue(p.id[i], firing, p.x[i], p.y[i], p.z[i], vx, vy, vz, nx, ny, nz);
         CgVfxEventRows r = rows[e];
         if (r != null) {
             if (r.count() < event.readback()) {
-                r.add(-1, p.id[i], originX + p.x[i], originY + p.y[i], originZ + p.z[i], vx, vy, vz, nx, ny, nz);
+                r.add(-1, p.id[i], originX + p.x[i], originY + p.y[i], originZ + p.z[i], vx, vy, vz, nx, ny, nz, firing);
             } else {
                 r.drop(1);
             }
@@ -264,11 +276,13 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     }
 
     /** A parent's fire, for this child's next step to spawn its children from. */
-    private void queue(int parentId, float x, float y, float z, float vx, float vy, float vz, float nx, float ny, float nz) {
+    private void queue(int parentId, int firing, float x, float y, float z, float vx, float vy, float vz, float nx, float ny, float nz) {
         if (fireCount == fireIds.length) {
             fires = Arrays.copyOf(fires, fires.length * 2);
             fireIds = Arrays.copyOf(fireIds, fireIds.length * 2);
+            fireFirings = Arrays.copyOf(fireFirings, fireFirings.length * 2);
         }
+        fireFirings[fireCount] = firing;
         int at = fireCount * 9;
         fires[at] = x;
         fires[at + 1] = y;
@@ -538,7 +552,10 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private void spawnFed() {
         int count = feed.count();
         for (int f = 0; f < fireCount; f++) {
-            for (int c = 0; c < count; c++) spawnChild(f, CgVfxEvent.childKey(fireIds[f], feedEvent, c));
+            int firing = fireFirings[f];
+            for (int c = 0; c < count; c++) {
+                spawnChild(f, firing == 0 ? CgVfxEvent.childKey(fireIds[f], feedEvent, c) : CgVfxEvent.childKey(fireIds[f], feedEvent, c, firing));
+            }
         }
         fireCount = 0;
     }
