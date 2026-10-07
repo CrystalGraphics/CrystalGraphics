@@ -512,7 +512,7 @@ public final class CgCapabilities {
 
     /**
      * A draw's colour attachments may differ in write mask ({@code glColorMaski}): every GL context, and a device
-     * created with {@code independentBlend}, which Minecraft 26.2's is not.
+     * created with {@code independentBlend}: the owned device, and Minecraft 26.2's where the GPU has it.
      */
     public boolean independentBlend() { return independentBlend; }
 
