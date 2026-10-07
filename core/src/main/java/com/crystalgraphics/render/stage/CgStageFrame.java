@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.texture.CgHostSamplers;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
@@ -19,6 +20,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 
 /**
  * One firing of a {@link CgRenderStage}: the recording every {@link CgStageRenderer} of it records into, on the host's
@@ -53,6 +55,8 @@ public final class CgStageFrame {
     private final CgRenderStage stage;
     private CgHostFrame host;
     private final CgPassConstants hostConstants = new CgPassConstants();
+    private CgGraphTexture pyramid;
+    private boolean pyramidBuilt;
 
     CgStageFrame(CgRenderStage stage) {
         this.stage = stage;
@@ -115,6 +119,32 @@ public final class CgStageFrame {
         return recording.raster(target(), CgLoad.load(), constants, null, order);
     }
 
+    /**
+     * The depth pyramid of the host's target as recorded so far, built at the first ask of a firing and shared by every
+     * renderer that asks after ({@link CgGpuOps#depthPyramid}: each level the farthest eye depth it covers). What a GPU
+     * cull tests occlusion against.
+     *
+     * <pre>{@code
+     * cull.view(view.view(), view.projection()).pyramid(frame.depthPyramid());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Holds the depth of what was recorded before the first ask: asked ahead of a renderer's own draws, it hides
+     *       nothing behind them. At {@code WORLD_OPAQUE}, everything the host drew before firing it.</li>
+     * </ul>
+     */
+    public CgGraphTexture depthPyramid() {
+        if (!pyramidBuilt) {
+            int w = (int) host.width(), h = (int) host.height();
+            if (pyramid == null || pyramid.getWidth() != w || pyramid.getHeight() != h) {
+                pyramid = CgGraphTexture.transientTexture("stage.pyramid", new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
+            }
+            CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
+            pyramidBuilt = true;
+        }
+        return pyramid;
+    }
+
     /** Runs {@code body} at this point in the stage, on the host's target, with GL state restored after. */
     public CgRequest callback(String name, Runnable body) {
         return recording.callback(name, target(), body);
@@ -123,6 +153,7 @@ public final class CgStageFrame {
     void begin(CgHostFrame host) {
         this.host = host;
         recording.reset();
+        pyramidBuilt = false;
     }
 
     /** Builds and executes what was recorded, then resets for the next firing. */
