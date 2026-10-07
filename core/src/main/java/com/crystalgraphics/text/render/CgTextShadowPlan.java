@@ -66,7 +66,8 @@ final class CgTextShadowPlan {
     static final byte FIELD_INSET = 4;
 
     private static final int KEPT_HIT = CgTrace.name("shadowPlan.kept"), PLANNED = CgTrace.name("shadowPlan.planned");
-    private static final int MAX_KEPT = 1024;
+    /** A backstop, as the layout and placement caches' counts: {@link #MAX_KEPT_SLOTS} is the bound. */
+    private static final int MAX_KEPT = 32_768;
     /** (shadow, glyph) slots every kept plan holds together, about 9 bytes each. */
     private static final int MAX_KEPT_SLOTS = 1 << 18;
 
