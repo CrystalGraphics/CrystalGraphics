@@ -4,11 +4,13 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -18,11 +20,14 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +75,8 @@ public final class CgVfxRange {
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
     private static final int DRAWN_BYTES = 64;
+    /** The low key bits a sorting slot's view depth takes. */
+    private static final int DEPTH_BITS = 16;
 
     /** Every range, by pool, and in the order made. Render thread. */
     private static final Map<CgVfxParticlePool, CgVfxRange> RANGES = new IdentityHashMap<>();
@@ -78,8 +85,11 @@ public final class CgVfxRange {
 
     private final CgVfxParticlePool pool;
     private final String passName, keysName, indicesName, startsName, drawnName, visibleName, slotsName, basesName,
-            objectsName;
-    private CgGraphBuffer drawn, visible, slots, bases, objects;
+            objectsName, sortsName;
+    private CgGraphBuffer drawn, visible, slots, bases, objects, sorts;
+    /** Per slot: whether this frame draws its particles far to near. */
+    private boolean[] sortedSlots = new boolean[8];
+    private boolean anySorted;
     /** Whether {@link #objects()} was asked for since the last recording. */
     private boolean objectsAsked;
     private final List<CgGraphBuffer> retired = new ArrayList<>();
@@ -101,6 +111,7 @@ public final class CgVfxRange {
         slotsName = name + ".slots";
         basesName = name + ".bases";
         objectsName = name + ".objects";
+        sortsName = name + ".sorts";
     }
 
     /** {@code pool}'s range, made the first time; the first made registers ranges' recording. Render thread. */
@@ -161,6 +172,18 @@ public final class CgVfxRange {
         return objects;
     }
 
+    /**
+     * Has this frame's {@link #drawn()} hold {@code slot}'s particles far to near, for a layer that blends them in
+     * order. The other slots keep the pool's order, and the sort takes 16 more bits in a frame any slot asks. Each
+     * frame, before the world records.
+     */
+    public CgVfxRange sorted(int slot) {
+        if (slot >= sortedSlots.length) sortedSlots = Arrays.copyOf(sortedSlots, Math.max(slot + 1, sortedSlots.length * 2));
+        sortedSlots[slot] = true;
+        anySorted = true;
+        return this;
+    }
+
     /** How many of each slot's particles are visible: a {@code uint} at {@code slot * 4}, a draw's indirect count. */
     public CgGraphBuffer visible() {
         int need = pool.slotCount() + 1;
@@ -186,7 +209,9 @@ public final class CgVfxRange {
                 ALL.remove(i);
             }
         }
-        for (int i = 0; i < ALL.size(); i++) ALL.get(i).record(frame.recording(), frame.host().view());
+        if (ALL.isEmpty()) return;
+        CgGraphTexture pyramid = frame.depthPyramid();
+        for (int i = 0; i < ALL.size(); i++) ALL.get(i).record(frame.recording(), frame.host().view(), pyramid);
     }
 
     /**
@@ -194,6 +219,14 @@ public final class CgVfxRange {
      * {@link CgRenderStage#WORLD_OPAQUE}; call it only where that stage does not fire, as a check scene. Render thread.
      */
     public void record(CgRecording recording, CgHostView view) {
+        record(recording, view, null);
+    }
+
+    /**
+     * {@link #record(CgRecording, CgHostView)}, testing each particle's reach against {@code pyramid} too
+     * ({@code CgStageFrame.depthPyramid}, under the same view): what hides behind the scene's depth is culled.
+     */
+    public void record(CgRecording recording, CgHostView view, @Nullable CgGraphTexture pyramid) {
         for (int i = 0; i < retired.size(); i++) recording.release(retired.get(i));
         retired.clear();
         CgGraphBuffer drawn = drawn(), visible = visible();
@@ -201,6 +234,7 @@ public final class CgVfxRange {
         CgGraphBuffer records = pool.records();
         if (records == null || pool.openSlots() == 0) {
             recording.fill(visible, 0);
+            clearSorted();
             return;
         }
         uploadSlots(recording, view, slotCount);
@@ -212,16 +246,29 @@ public final class CgVfxRange {
         CgGraphBuffer indices = recording.scratch(indicesName, storage * 4L, CgBufferUsage.STORAGE);
         CgGraphBuffer starts = recording.scratch(startsName, sizeClass(slotCount + 1) * 4L, CgBufferUsage.STORAGE);
         CgGpuCount live = CgGpuCount.at(pool.live(), 0, storage);
+        int depthBits = anySorted ? DEPTH_BITS : 0;
+        Matrix4fc projection = view.projection();
+        Matrix4f vp = viewProjection;
 
         CgComputePass pass = recording.compute(passName).timed(GPU_RANGE);
         CgDispatch keyed = pass.dispatch(key, storage).bind("RECORDS", records).bind("LIVE", pool.live()).bind("SLOTS", slots)
-                .bind("KEYS", keys).bind("INDICES", indices).set("_Slots", slotCount);
+                .bind("KEYS", keys).bind("INDICES", indices).bind("SORTS", sorts).set("_Slots", slotCount)
+                .set("_DepthBits", depthBits)
+                .set("_ClipX", vp.m00(), vp.m10(), vp.m20(), vp.m30()).set("_ClipY", vp.m01(), vp.m11(), vp.m21(), vp.m31())
+                .set("_ClipZ", vp.m02(), vp.m12(), vp.m22(), vp.m32()).set("_ClipW", vp.m03(), vp.m13(), vp.m23(), vp.m33())
+                .set("_Eye", projection.m22(), projection.m23(), projection.m32(), projection.m33());
+        if (pyramid != null) {
+            keyed.texture("_Pyramid", pyramid).set("_PyramidSize", pyramid.getWidth(), pyramid.getHeight(), pyramid.getLevels(), 0f);
+        } else {
+            keyed.texture("_Pyramid", CgFallbackTextures.WHITE_1x1).set("_PyramidSize", 0f, 0f, 0f, 0f);
+        }
         for (int p = 0; p < 6; p++) {
             viewProjection.frustumPlane(p, plane);
             keyed.set(PLANES[p], plane.x, plane.y, plane.z, plane.w);
         }
-        CgGpuOps.sort(pass, 32 - Integer.numberOfLeadingZeros(slotCount), CgGpuOps.Order.ASCENDING, keys, indices, live);
-        CgGpuOps.histogram(pass, keys, live, visible, slotCount + 1, 0);
+        CgGpuOps.sort(pass, 32 - Integer.numberOfLeadingZeros(slotCount) + depthBits, CgGpuOps.Order.ASCENDING, keys,
+                indices, live);
+        CgGpuOps.histogram(pass, keys, live, visible, slotCount + 1, depthBits);
         CgGpuOps.scan(pass, CgGpuOps.Scan.EXCLUSIVE, CgGpuOps.Fold.SUM, CgGpuOps.Element.UINT, visible,
                 CgGpuCount.of(slotCount + 1), starts);
         if (pool.capacity() > 0) pass.dispatch(place, pool.capacity()).bind("RECORDS", records).bind("INDICES", indices).bind("VISIBLE", visible)
@@ -235,13 +282,20 @@ public final class CgVfxRange {
                     .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
         }
         objectsAsked = false;
+        clearSorted();
         pass.end();
     }
 
-    /** Each slot's origin from the camera and its reach, and its list base, for this view. */
+    private void clearSorted() {
+        if (anySorted) Arrays.fill(sortedSlots, false);
+        anySorted = false;
+    }
+
+    /** Each slot's origin from the camera and its reach, its list base, and whether it sorts, for this view. */
     private void uploadSlots(CgRecording recording, CgHostView view, int slotCount) {
         slots = fit(recording, slots, slotsName, slotCount * 16L);
         bases = fit(recording, bases, basesName, slotCount * 4L);
+        sorts = fit(recording, sorts, sortsName, slotCount * 4L);
         if (staging.capacity() < slotCount * 16) staging = ByteBuffer.allocate(Math.max(slotCount * 16, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
         staging.clear();
         for (int s = 0; s < slotCount; s++) {
@@ -260,14 +314,18 @@ public final class CgVfxRange {
         }
         staging.limit(slotCount * 4);
         recording.update(bases, 0, staging);
+        staging.clear();
+        for (int s = 0; s < slotCount; s++) staging.putInt(s * 4, s < sortedSlots.length && sortedSlots[s] ? 1 : 0);
+        staging.limit(slotCount * 4);
+        recording.update(sorts, 0, staging);
     }
 
     private void release(CgRecording recording) {
         for (int i = 0; i < retired.size(); i++) recording.release(retired.get(i));
         retired.clear();
-        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects};
+        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        drawn = visible = slots = bases = objects = null;
+        drawn = visible = slots = bases = objects = sorts = null;
     }
 
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */

@@ -1,13 +1,16 @@
 // Range (vfx-gpu §13.4), a particle pool's draws for one view: CgVfxRange.
 //
-// Key gives each live particle a key, its slot if it may be on screen and the slot count if not, so the culled sort
-// past the end; and its index, which the sort carries. CgGpuOps then sorts, counts each slot's visible particles and
+// Key gives each live particle a key, its slot if it may be on screen (inside the view, and not behind the scene's
+// depth) and the slot count if not, so the culled sort past the end; and its index, which the sort carries. With
+// _DepthBits 16 a slot that sorts takes its view depth in the low bits, far first. CgGpuOps then sorts, counts each slot's visible particles and
 // scans the counts into each slot's start. Place writes the particles a slot's draws read, in CgParticleBuffer's
 // layout, from the slot's list base: what CgVfxSystem's writeRecords writes on the CPU path. Objects writes the same
 // particles as object records, for a mesh drawn per particle: what CgVfxFrame.particleMeshes draws.
 #pragma kernel Key map
 #pragma kernel Place gather
 #pragma kernel Objects gather
+
+#include "crystalgraphics:shaders/lib/occlusion.glsl"
 
 Properties {
     _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
@@ -20,6 +23,14 @@ Properties {
     _Alpha  ("How far the frame is from the last step to the next", float) = 1
     _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
     _Texels ("Samples a curve row holds",                           int)   = 256
+    _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
+    _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
+    _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
+    _ClipZ       ("Row 2",                                           vec4)      = (0, 0, 1, 0)
+    _ClipW       ("Row 3",                                           vec4)      = (0, 0, 0, 1)
+    _Eye         ("Projection [2][2], [2][3], [3][2], [3][3]",       vec4)      = (-1, -1, 0, 0)
+    _Pyramid     ("The scene's depth, CgGpuOps.depthPyramid's",      sampler2D) = "white"
+    _PyramidSize ("Its width, height and levels; no levels, no test", vec4)     = (0, 0, 0, 0)
 }
 
 // A particle as a pool stores it: CgVfxRecord.GLSL, which a test holds this line to.
@@ -44,6 +55,7 @@ Buffers {
     RECORDS ("Particles",                                         FxRecord, readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
     SLOTS   ("Each slot's origin from the camera, and its reach", vec4,     readonly)
+    SORTS   ("Each slot's: 1 when it sorts far to near",          uint,     readonly)
     KEYS    ("Keys",                                              uint,     writeonly)
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
@@ -58,8 +70,14 @@ bool range_outside(vec4 plane, vec3 c, float r) {
     return dot(plane.xyz, c) + plane.w < -r;
 }
 
+// A view depth as 16 bits, logarithmic from 1/64 to 1024 blocks: CgSortKey's distance, coarser.
+uint range_depth(vec3 c) {
+    float w = max(dot(_ClipW, vec4(c, 1.0)), 1.0 / 64.0);
+    return uint(clamp((log2(w) + 6.0) / 16.0, 0.0, 1.0) * 65535.0);
+}
+
 void Key() {
-    uint key = uint(_Slots);
+    uint key = uint(_Slots) << _DepthBits;
     if (CG_ELEMENT < int(LIVE(0))) {
         FxRecord r = RECORDS(CG_ELEMENT);
         vec4 slot = SLOTS(int(r.idSlot.y));
@@ -69,7 +87,12 @@ void Key() {
         bool outside = range_outside(_Plane0, c, reach) || range_outside(_Plane1, c, reach)
                 || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
-        if (!outside) key = r.idSlot.y;
+        vec3 lo = c - vec3(reach), hi = c + vec3(reach);
+        if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
+            uint owner = r.idSlot.y;
+            key = owner << _DepthBits;
+            if (_DepthBits > 0 && SORTS(int(owner)) != 0u) key |= 65535u - range_depth(c);
+        }
     }
     KEYS_WRITE(key);
     INDICES_WRITE(uint(CG_ELEMENT));
