@@ -21,6 +21,7 @@ import java.util.logging.Logger;
  *     _Noise   ("Noise",   sampler3D) = "cg_noise"         // gradient, about -1..1, four decorrelated channels
  *     _Voronoi ("Voronoi", sampler3D) = "cg_voronoi"       // F1, F2, the cell's hash
  *     _VoronoiNearest ("Cells", sampler3D) = "cg_voronoi_nearest"   // F1's gradient, F1: a normal from cells
+ *     _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient"   // value noise's gradient and value: a normal
  * }
  * float n = cg_noise3(_Noise, p);                           // lib/noise_volume.glsl
  * }</pre>
@@ -39,14 +40,14 @@ public final class CgNoiseVolumes {
 
     /** The engine texture names, in {@link CgEngineTextures}. */
     public static final String GRADIENT = "cg_noise", VALUE = "cg_value_noise", VORONOI = "cg_voronoi", CURL = "cg_curl",
-            VORONOI_NEAREST = "cg_voronoi_nearest";
+            VORONOI_NEAREST = "cg_voronoi_nearest", VALUE_GRADIENT = "cg_value_gradient";
 
     /** Lattice cells across a volume; {@code CG_NOISE_PERIOD} in {@code lib/noise_volume.glsl}. */
     public static final int PERIOD = 16;
 
     public static final int SIZE = Integer.getInteger("crystalgraphics.noise.size", 64);
 
-    private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST};
+    private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT};
     private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)
             .minFilter(CgGL.GL_LINEAR).magFilter(CgGL.GL_LINEAR)
             .wrapS(CgGL.GL_REPEAT).wrapT(CgGL.GL_REPEAT).wrapR(CgGL.GL_REPEAT).build();
@@ -124,7 +125,7 @@ public final class CgNoiseVolumes {
         float[] gradient = CgNoiseBake.gradient(SIZE, PERIOD);
         return new ByteBuffer[][]{chain(gradient), chain(CgNoiseBake.value(SIZE, PERIOD)),
                 chain(CgNoiseBake.voronoi(SIZE, PERIOD)), chain(CgNoiseBake.curl(gradient, SIZE, PERIOD)),
-                chain(CgNoiseBake.voronoiNearest(SIZE, PERIOD))};
+                chain(CgNoiseBake.voronoiNearest(SIZE, PERIOD)), chain(CgNoiseBake.valueGradient(SIZE, PERIOD))};
     }
 
     /**

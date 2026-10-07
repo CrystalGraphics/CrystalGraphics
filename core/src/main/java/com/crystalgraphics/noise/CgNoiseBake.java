@@ -46,6 +46,27 @@ public final class CgNoiseBake {
     }
 
     /**
+     * Value noise with its slope, the first seed of {@link #value}: rgb its gradient in lattice units, a the value. What a
+     * surface displaced by value noise takes its normal from: the gradient interpolates smoothly where differences of
+     * the filtered value crease at every texel.
+     */
+    public static float[] valueGradient(int size, int period) {
+        float[] out = new float[size * size * size * 4];
+        float[] sample = new float[4];
+        float scale = (float) period / size;
+        int i = 0;
+        for (int z = 0; z < size; z++) {
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++, i += 4) {
+                    valueGradientAt((x + 0.5f) * scale, (y + 0.5f) * scale, (z + 0.5f) * scale, period, SEEDS[0], sample);
+                    System.arraycopy(sample, 0, out, i, 4);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
      * Cellular noise ({@code fx_voronoi}): r the distance to the nearest feature point, g to the second, both in cells;
      * b the nearest cell's hash, 0..1; a 0.
      */
@@ -245,6 +266,10 @@ public final class CgNoiseBake {
         return f * f * f * (f * (f * 6f - 15f) + 10f);
     }
 
+    private static float quinticSlope(float f) {
+        return 30f * f * f * (f * (f - 2f) + 1f);
+    }
+
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * t;
     }
@@ -285,6 +310,27 @@ public final class CgNoiseBake {
         float z0 = wrap(iz, period) + seed[2], z1 = wrap(iz + 1, period) + seed[2];
         return lerp(lerp(lerp(hash31(x0, y0, z0), hash31(x1, y0, z0), ux), lerp(hash31(x0, y1, z0), hash31(x1, y1, z0), ux), uy),
                 lerp(lerp(hash31(x0, y0, z1), hash31(x1, y0, z1), ux), lerp(hash31(x0, y1, z1), hash31(x1, y1, z1), ux), uy), uz);
+    }
+
+    /**
+     * {@link #valueAt}'s gradient into {@code out[0..2]} and its value into {@code out[3]}: the trilinear blend's
+     * derivative through the quintic (Quilez, "value noise derivatives").
+     */
+    static void valueGradientAt(float px, float py, float pz, int period, float[] seed, float[] out) {
+        float ix = (float) Math.floor(px), iy = (float) Math.floor(py), iz = (float) Math.floor(pz);
+        float fx = px - ix, fy = py - iy, fz = pz - iz;
+        float ux = quintic(fx), uy = quintic(fy), uz = quintic(fz);
+        float x0 = wrap(ix, period) + seed[0], x1 = wrap(ix + 1, period) + seed[0];
+        float y0 = wrap(iy, period) + seed[1], y1 = wrap(iy + 1, period) + seed[1];
+        float z0 = wrap(iz, period) + seed[2], z1 = wrap(iz + 1, period) + seed[2];
+        float a = hash31(x0, y0, z0), b = hash31(x1, y0, z0), c = hash31(x0, y1, z0), d = hash31(x1, y1, z0);
+        float e = hash31(x0, y0, z1), f = hash31(x1, y0, z1), g = hash31(x0, y1, z1), h = hash31(x1, y1, z1);
+        float k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f;
+        float k7 = -a + b + c - d + e - f - g + h;
+        out[0] = quinticSlope(fx) * (k1 + k4 * uy + k6 * uz + k7 * uy * uz);
+        out[1] = quinticSlope(fy) * (k2 + k4 * ux + k5 * uz + k7 * ux * uz);
+        out[2] = quinticSlope(fz) * (k3 + k6 * ux + k5 * uy + k7 * ux * uy);
+        out[3] = a + k1 * ux + k2 * uy + k3 * uz + k4 * ux * uy + k5 * uy * uz + k6 * ux * uz + k7 * ux * uy * uz;
     }
 
     /**

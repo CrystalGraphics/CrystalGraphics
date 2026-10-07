@@ -42,6 +42,24 @@ public class CgNoiseBakeTest {
     }
 
     @Test
+    public void valueSlopeIsTheValuesGradient() {
+        float[] sample = new float[4];
+        float e = 1e-3f;
+        for (float[] p : new float[][]{{0.31f, 2.47f, 9.13f}, {5.6f, 11.2f, 3.3f}, {15.95f, 0.02f, 7.5f}}) {
+            CgNoiseBake.valueGradientAt(p[0], p[1], p[2], 16, SEED, sample);
+            assertEquals(CgNoiseBake.valueAt(p[0], p[1], p[2], 16, SEED), sample[3], 1e-6f);
+            for (int axis = 0; axis < 3; axis++) {
+                float[] a = p.clone(), b = p.clone();
+                a[axis] += e;
+                b[axis] -= e;
+                float slope = (CgNoiseBake.valueAt(a[0], a[1], a[2], 16, SEED)
+                        - CgNoiseBake.valueAt(b[0], b[1], b[2], 16, SEED)) / (2 * e);
+                assertEquals("axis " + axis, slope, sample[axis], 1e-2f);
+            }
+        }
+    }
+
+    @Test
     public void aMipTexelAveragesTheEightItCovers() {
         int size = 4;
         float[] cube = new float[size * size * size * 4];

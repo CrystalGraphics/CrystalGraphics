@@ -9,6 +9,7 @@
 //       _Voronoi    ("Voronoi",     sampler3D) = "cg_voronoi"       // F1, F2, the cell's hash
 //       _VoronoiNearest ("Cells",   sampler3D) = "cg_voronoi_nearest" // F1's gradient, F1
 //       _Curl       ("Curl",        sampler3D) = "cg_curl"          // a divergence-free flow
+//       _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient" // value noise's gradient, its value
 //   }
 //   float n = cg_fbm3(_Noise, p, 3);
 //
@@ -45,6 +46,24 @@ float cg_fbm3(sampler3D volume, vec3 p, int octaves) {
         sum += amplitude * cg_noise4(volume, p)[k & 3];
         norm += amplitude;
         p = CG_NOISE_OCTAVE * p * 2.03;
+        amplitude *= 0.5;
+    }
+    return sum / norm;
+}
+
+// Value noise's fbm with its slope, from "cg_value_gradient": xyz the gradient in p's units, w the value, 0..1. A normal
+// for a surface displaced by it: the gradient interpolates smoothly, where differences of a filtered value crease at
+// every texel. One seed, the octaves turned and scaled as cg_fbm3's.
+vec4 cg_value_fbm_grad3(sampler3D volume, vec3 p, int octaves) {
+    vec4 sum = vec4(0.0);
+    float amplitude = 0.5, norm = 0.0;
+    mat3 chain = mat3(1.0);   // d(octave p) / dp
+    for (int k = 0; k < octaves; k++) {
+        vec4 s = cg_noise4(volume, p);
+        sum += amplitude * vec4(transpose(chain) * s.xyz, s.w);
+        norm += amplitude;
+        p = CG_NOISE_OCTAVE * p * 2.03;
+        chain = CG_NOISE_OCTAVE * chain * 2.03;
         amplitude *= 0.5;
     }
     return sum / norm;
