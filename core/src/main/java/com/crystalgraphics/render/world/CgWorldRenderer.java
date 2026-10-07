@@ -413,21 +413,31 @@ public final class CgWorldRenderer {
      * </ul>
      */
     public CgWorldText.Label text(String text) {
-        CgWorldText.Label label = this.text.next();
+        CgWorldText.Label label = label();
         label.draw().text(text);
         return label;
     }
 
     /** As {@link #text(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
     public CgWorldText.Label text(CgShapedParagraph paragraph) {
-        CgWorldText.Label label = this.text.next();
+        CgWorldText.Label label = label();
         label.draw().paragraph(paragraph);
         return label;
     }
 
+    /** The next label, dropping the last frame's draws first as {@link #add} does: a frame of labels alone keeps them. */
+    private CgWorldText.Label label() {
+        long now = CgFrameRing.frame();
+        if (now != frame) {
+            clear();
+            frame = now;
+        }
+        return text.next();
+    }
+
     /** As {@link #text(String)}, of a finished layout: its fonts are its own, so {@code draw()} may submit as it is. */
     public CgWorldText.Label text(CgTextLayout layout) {
-        CgWorldText.Label label = this.text.next();
+        CgWorldText.Label label = label();
         label.draw().layout(layout);
         return label;
     }
