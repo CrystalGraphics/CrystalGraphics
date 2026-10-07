@@ -22,6 +22,7 @@ import com.crystalgraphics.gl.render.CgQuadRenderer;
 import com.crystalgraphics.gl.texture.CgTextureMutable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgChunkSink;
+import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.cache.CgFontRegistry;
@@ -1665,7 +1666,7 @@ public class CgTextRenderer {
                               boolean pixelSnap, Matrix4f modelView,
                               int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
         int shadows = shadowList.count();
-        int pose = pushPose(modelView);
+        float node = CgPalette.pack(spatialNode, effectNode);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
@@ -1808,14 +1809,31 @@ public class CgTextRenderer {
             }
 
             Bucket b = bucket(paint - shadows, batchBits, isDistanceField, atlasId);
-            float[] q = b.reserve();
-            int o = (b.count - 1) * QUAD_FLOATS;
-            q[o] = quadX; q[o + 1] = quadY; q[o + 2] = quadW; q[o + 3] = quadH;
-            q[o + 4] = u0; q[o + 5] = v0; q[o + 6] = u1; q[o + 7] = v1;
-            q[o + 8] = Float.intBitsToFloat(rgba); q[o + 9] = Float.intBitsToFloat(atlasLayer);
-            q[o + 10] = c0x; q[o + 11] = c0y; q[o + 12] = c0z; q[o + 13] = c0w;
-            q[o + 14] = c1x; q[o + 15] = c1y; q[o + 16] = c1z; q[o + 17] = c1w;
-            q[o + 18] = c2; q[o + 19] = Float.intBitsToFloat(pose);
+            float[] q = b.reserve(spatialNode);
+            int o = (b.count - 1) * RECORD;
+            // As Quad.submit bakes a pose, through the same JOML calls, so the floats are the same.
+            bakeOrigin.set(quadX, quadY, 0f);
+            bakeRight.set(quadW, 0f, 0f);
+            bakeUp.set(0f, quadH, 0f);
+            modelView.transformPosition(bakeOrigin);
+            modelView.transformDirection(bakeRight);
+            modelView.transformDirection(bakeUp);
+            q[o + R_ORIGIN] = bakeOrigin.x; q[o + R_ORIGIN + 1] = bakeOrigin.y; q[o + R_ORIGIN + 2] = bakeOrigin.z;
+            q[o + R_RIGHT] = bakeRight.x; q[o + R_RIGHT + 1] = bakeRight.y; q[o + R_RIGHT + 2] = bakeRight.z;
+            q[o + R_UP] = bakeUp.x; q[o + R_UP + 1] = bakeUp.y; q[o + R_UP + 2] = bakeUp.z;
+            q[o + R_UV0] = u0; q[o + R_UV0 + 1] = v0;
+            q[o + R_UV1] = u1; q[o + R_UV1 + 1] = v1;
+            // Division, not a reciprocal multiply: CgBufferWriter.colorAt's exact floats.
+            q[o + R_COLOR] = ((rgba >>> 16) & 0xFF) / 255f;
+            q[o + R_COLOR + 1] = ((rgba >>> 8) & 0xFF) / 255f;
+            q[o + R_COLOR + 2] = (rgba & 0xFF) / 255f;
+            q[o + R_COLOR + 3] = ((rgba >>> 24) & 0xFF) / 255f;
+            q[o + R_ATLAS_LAYER] = atlasLayer;
+            q[o + R_CUSTOM2] = c2;
+            q[o + R_CLIP] = clip;
+            q[o + R_NODE] = node;
+            q[o + R_CUSTOM0] = c0x; q[o + R_CUSTOM0 + 1] = c0y; q[o + R_CUSTOM0 + 2] = c0z; q[o + R_CUSTOM0 + 3] = c0w;
+            q[o + R_CUSTOM1] = c1x; q[o + R_CUSTOM1 + 1] = c1y; q[o + R_CUSTOM1 + 2] = c1z; q[o + R_CUSTOM1 + 3] = c1w;
 
             if (traceQuadLoop) {
                 long now = System.nanoTime();
@@ -1848,24 +1866,36 @@ public class CgTextRenderer {
     // A batch's quads wait in a bucket per (paint rank, batch) and are drawn bucket by bucket when it flushes, so a
     // run of draws alternating atlases or shadow cells costs a transition per bucket rather than per draw. The rank
     // (a draw's paint step less its shadow count) means the same layer in every draw, which keeps each draw's own
-    // layering; across draws in one batch every shadow lies beneath every glyph.
+    // layering; across draws in one batch every shadow lies beneath every glyph. A bucket holds final instance
+    // records, so draining one is a copy per run of spatial node.
 
-    /** A quad: position, size, uv, colour, layer, custom0-2, its pose entry. */
-    private static final int QUAD_FLOATS = 20;
+    private static final int RECORD = CgQuadRenderer.Record.FLOATS;
+    private static final int R_ORIGIN = CgQuadRenderer.Record.ORIGIN, R_RIGHT = CgQuadRenderer.Record.RIGHT,
+            R_UP = CgQuadRenderer.Record.UP, R_UV0 = CgQuadRenderer.Record.UV0, R_UV1 = CgQuadRenderer.Record.UV1,
+            R_COLOR = CgQuadRenderer.Record.COLOR, R_ATLAS_LAYER = CgQuadRenderer.Record.ATLAS_LAYER,
+            R_CUSTOM0 = CgQuadRenderer.Record.CUSTOM0, R_CUSTOM1 = CgQuadRenderer.Record.CUSTOM1,
+            R_CUSTOM2 = CgQuadRenderer.Record.CUSTOM2, R_CLIP = CgQuadRenderer.Record.CLIP,
+            R_NODE = CgQuadRenderer.Record.NODE;
 
     private static final class Bucket {
         int rank;
         long batchBits;
         boolean distanceField;
         int atlasId;
-        float[] quads = new float[QUAD_FLOATS * 64];
+        /** Records in {@code CgQuadRenderer.Record}'s layout; padding is never written, so stays 0. */
+        float[] records = new float[RECORD * 64];
+        /** Per record, its spatial node: a run of one node is one copy. */
+        int[] spatial = new int[64];
         int count;
 
-        /** Room for one more quad, counted; it is written at {@code (count - 1) * QUAD_FLOATS}. */
-        float[] reserve() {
-            if ((count + 1) * QUAD_FLOATS > quads.length) quads = Arrays.copyOf(quads, quads.length * 2);
-            count++;
-            return quads;
+        /** Room for one more record in {@code node}, counted; it is written at {@code (count - 1) * RECORD}. */
+        float[] reserve(int node) {
+            if (count == spatial.length) {
+                spatial = Arrays.copyOf(spatial, count * 2);
+                records = Arrays.copyOf(records, count * 2 * RECORD);
+            }
+            spatial[count++] = node;
+            return records;
         }
     }
 
@@ -1873,24 +1903,7 @@ public class CgTextRenderer {
     private int bucketCount;
     @Nullable
     private Bucket lastBucket;
-    /** Per pose entry: a draw's model-view, and its clip and nodes. */
-    private float[] poses = new float[16 * 64];
-    private int[] poseState = new int[3 * 64];
-    private int poseCount;
-    private final Matrix4f replayPose = new Matrix4f();
-
-    private int pushPose(Matrix4f modelView) {
-        if ((poseCount + 1) * 16 > poses.length) {
-            poses = Arrays.copyOf(poses, poses.length * 2);
-            poseState = Arrays.copyOf(poseState, poseState.length * 2);
-        }
-        modelView.get(poses, poseCount * 16);
-        int s = poseCount * 3;
-        poseState[s] = clip;
-        poseState[s + 1] = spatialNode;
-        poseState[s + 2] = effectNode;
-        return poseCount++;
-    }
+    private final Vector3f bakeOrigin = new Vector3f(), bakeRight = new Vector3f(), bakeUp = new Vector3f();
 
     private Bucket bucket(int rank, long batchBits, boolean distanceField, int atlasId) {
         Bucket last = lastBucket;
@@ -1931,35 +1944,15 @@ public class CgTextRenderer {
             for (int i = 0; i < n; i++) {
                 Bucket b = buckets.get(i);
                 if (b.batchBits != activeBatchBits) transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
-                replay(b);
+                int[] spatial = b.spatial;
+                for (int from = 0, to; from < b.count; from = to) {
+                    int node = spatial[from];
+                    to = from + 1;
+                    while (to < b.count && spatial[to] == node) to++;
+                    quadRenderer.records(b.records, from, to - from, node);
+                }
                 b.count = 0;
             }
-        }
-        poseCount = 0;
-    }
-
-    private void replay(Bucket b) {
-        float[] q = b.quads;
-        int lastPose = -1;
-        for (int o = 0, end = b.count * QUAD_FLOATS; o < end; o += QUAD_FLOATS) {
-            int pose = Float.floatToRawIntBits(q[o + 19]);
-            if (pose != lastPose) {
-                replayPose.set(poses, pose * 16);
-                lastPose = pose;
-            }
-            int s = pose * 3;
-            quadRenderer.quad()
-                    .at(q[o], q[o + 1]).size(q[o + 2], q[o + 3])
-                    .uv(q[o + 4], q[o + 5], q[o + 6], q[o + 7])
-                    .color(Float.floatToRawIntBits(q[o + 8]))
-                    .atlasLayer(Float.floatToRawIntBits(q[o + 9]))
-                    .custom0(q[o + 10], q[o + 11], q[o + 12], q[o + 13])
-                    .custom1(q[o + 14], q[o + 15], q[o + 16], q[o + 17])
-                    .custom2(q[o + 18])
-                    .clip(poseState[s])
-                    .node(poseState[s + 1], poseState[s + 2])
-                    .pose(replayPose)
-                    .submit();
         }
     }
 

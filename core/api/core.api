@@ -3312,6 +3312,7 @@ com/crystalgraphics/gl/render/CgQuadRenderer
   method public delete ()V
   method public flush ()V
   method public quad ()Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
+  method public records ([FIII)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
   method public retainedQuad ()Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
   method public sink (Lcom/crystalgraphics/render/draw/CgChunkSink;)V
   method public useMaterial (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/gl/render/CgQuadRenderer;
@@ -3336,6 +3337,22 @@ com/crystalgraphics/gl/render/CgQuadRenderer$Quad
   method public size (FF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
   method public submit ()Lcom/crystalgraphics/gl/render/CgQuadRenderer;
   method public uv (FFFF)Lcom/crystalgraphics/gl/render/CgQuadRenderer$Quad;
+com/crystalgraphics/gl/render/CgQuadRenderer$Record
+  access public,final
+  extends java/lang/Object
+  field public,static,final ATLAS_LAYER I
+  field public,static,final CLIP I
+  field public,static,final COLOR I
+  field public,static,final CUSTOM0 I
+  field public,static,final CUSTOM1 I
+  field public,static,final CUSTOM2 I
+  field public,static,final FLOATS I
+  field public,static,final NODE I
+  field public,static,final ORIGIN I
+  field public,static,final RIGHT I
+  field public,static,final UP I
+  field public,static,final UV0 I
+  field public,static,final UV1 I
 com/crystalgraphics/gl/render/CgShapeTable
   access public,final
   extends java/lang/Object
