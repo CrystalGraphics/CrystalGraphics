@@ -23,6 +23,8 @@ import java.util.List;
  * }</pre>
  *
  * <ul>
+ *   <li>Each event that spawns children gets a slot of its own in the child's pool, fed by the parent's slot, opened and
+ *       released with it.</li>
  *   <li>A tenant its effect did not step this tick (killed, or gone) coasts: no spawns, its particles still moving and
  *       ageing until they die, since a slot closed early would hand them to its next owner.</li>
  * </ul>
@@ -36,11 +38,15 @@ final class CgVfxGpuSteps {
         final int slot;
         /** Its time after the last step: still that after the workers, its effect did not step it. */
         float timeAfter;
+        /** A child's parent tenant, which releases it; null for a parent. */
+        final Tenant parent;
 
-        private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot) {
+        private Tenant(CgVfxEmitterInstance instance, CgVfxParticlePool pool, int slot, Tenant parent) {
             this.instance = instance;
             this.pool = pool;
             this.slot = slot;
+            this.parent = parent;
+            timeAfter = instance.stepTime();
         }
     }
 
@@ -63,16 +69,30 @@ final class CgVfxGpuSteps {
     private final List<CgVfxParticlePool> pools = new ArrayList<>();
     private final StepView view = new StepView();
 
-    /** Opens a slot for {@code instance}, whose first {@code schedule} has just run. Between steps. */
+    /**
+     * Opens a slot for {@code instance}, whose first {@code schedule} has just run, and one for each event's children,
+     * fed by its slot. Between steps.
+     */
     void admit(CgVfxEmitterInstance instance) {
         if (byInstance.containsKey(instance)) return;
         CgVfxEmitter definition = instance.emitter();
+        Tenant tenant = add(instance, definition.peakAlive(), null);
+        for (int e = 0; e < definition.events().size(); e++) {
+            CgVfxEmitterInstance child = instance.child(e);
+            if (child == null) continue;
+            Tenant fed = add(child, definition.peakChildren(e), tenant);
+            fed.pool.feed(fed.slot, tenant.pool, tenant.slot, e);
+        }
+    }
+
+    private Tenant add(CgVfxEmitterInstance instance, int capacity, Tenant parent) {
+        CgVfxEmitter definition = instance.emitter();
         CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition);
         if (!pools.contains(pool)) pools.add(pool);
-        Tenant tenant = new Tenant(instance, pool, pool.open(definition, definition.peakAlive()));
-        tenant.timeAfter = instance.stepTime();
+        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity), parent);
         tenants.add(tenant);
         byInstance.put(instance, tenant);
+        return tenant;
     }
 
     /** {@code instance}'s tenancy, or null when it holds no slot. */
@@ -99,13 +119,22 @@ final class CgVfxGpuSteps {
             tenant.timeAfter = instance.time();
             view.of = instance;
             tenant.pool.instance(tenant.slot, instance.seedBits(), instance.share(), instance.groundY(), view);
-            tenant.pool.spawn(tenant.slot, instance.stepFirstSpawn(), instance.stepCandidates());
+            // A fed slot spawns only what its parent's events spawn.
+            if (tenant.parent == null) tenant.pool.spawn(tenant.slot, instance.stepFirstSpawn(), instance.stepCandidates());
         }
         view.of = null;
         for (int i = 0; i < pools.size(); i++) pools.get(i).endStep();
         for (int i = tenants.size() - 1; i >= 0; i--) {
             Tenant tenant = tenants.get(i);
-            if (tenant.instance.finished()) release(i);
+            // A parent finishes once its children have; a child alone may look finished before its parent spawns any.
+            if (tenant.parent == null && tenant.instance.finished()) releaseWithChildren(tenant);
+        }
+    }
+
+    private void releaseWithChildren(Tenant parent) {
+        for (int i = tenants.size() - 1; i >= 0; i--) {
+            Tenant tenant = tenants.get(i);
+            if (tenant == parent || tenant.parent == parent) release(i);
         }
     }
 
