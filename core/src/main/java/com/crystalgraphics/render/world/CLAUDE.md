@@ -40,7 +40,7 @@
   1 and 0.5, on gl and vulkan.
 - **Merged emission** (`mergedEmission`, on by default, `mergeEmission(false)` for the comparison): where the stage's
   target is a framebuffer of the host's (`mainFramebuffer() > 0`) and the device masks attachments independently
-  (`CgCapabilities.independentBlend()`: every GL context, not Minecraft 26.2's device), a transparent draw whose Emissive pass folds into its
+  (`CgCapabilities.independentBlend()`: every GL context, the owned device, Minecraft 26.2's where the GPU has it), a transparent draw whose Emissive pass folds into its
   Forward pass (`CgPipeline.emissionTarget`, codeless and on one blend) draws both at once, the transparent and
   after-distortion passes writing a target-sized emission as a second attachment (`CgRasterPass.attachment`), cleared
   by a pass before them. The emission pass then draws only what did not fold (opaque, half-size and authored Emissive

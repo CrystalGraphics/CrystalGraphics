@@ -1,7 +1,8 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostFrame;
@@ -19,7 +20,6 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 
 /**
  * A development demo: the sixteen spheres of {@link CgVfxShowcase} floating in front of the player, drawn through
@@ -66,7 +66,7 @@ public final class CgRenderDemo {
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
-    private final Runnable capture = () -> capture(captured.width(), captured.height());
+    private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
     private CgRenderDemo() {
     }
@@ -141,10 +141,15 @@ public final class CgRenderDemo {
         LOGGER.info("[CgRenderDemo] spheres on the ground at y {}", floor);
     }
 
-    /** The host's target as it stands after the transparent stage. Synchronous: a diagnostic, once. */
-    private static void capture(int w, int h) {
-        ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
-        CgGL.glReadPixels(0, 0, w, h, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE, pixels);
+    /**
+     * The host's target as it stands after the transparent stage, written once the GPU has copied it, frames later: a
+     * hosted Vulkan device refuses a read that waits.
+     */
+    private static void capture(int framebuffer, int w, int h) {
+        CgReadback.pixels(Math.max(framebuffer, 0), 0, 0, w, h, CgTextureType.RGBA8, pixels -> write(pixels, w, h));
+    }
+
+    private static void write(ByteBuffer pixels, int w, int h) {
         BufferedImage image = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
         for (int y = 0; y < h; y++) {
             for (int x = 0; x < w; x++) {

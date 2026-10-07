@@ -70,7 +70,9 @@ its desktop and HUD from there on those nodes.
   to (`computeQueue()`, guarded per version by a Stonecutter range: 26.2 and 26.3 checked), waiting on a value our
   hand-over signals in Minecraft's submit; a version outside the range runs it in order. Copies into our new images
   run the same way on the transfer queue Minecraft creates and never submits to (`transferQueue()`, the same range),
-  each batch submitted at once and waited for inside Minecraft's submit. At the shutdown signal
+  each batch submitted at once and waited for inside Minecraft's submit. Minecraft creates its device with the
+  features of ours the GPU has (`vulkan.MinecraftDeviceFeatures`, through each loader's `DeviceFeaturesHook` on
+  26.2): `independentBlend`, which merged emission needs. At the shutdown signal
   our device's close is queued on Blaze3D's destroy queue, which runs it once our last submit has completed or
   inside `VulkanDevice.close`, before the device goes.
 - **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
