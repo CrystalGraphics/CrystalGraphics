@@ -12,6 +12,8 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
@@ -76,6 +78,7 @@ public final class CgVfxParticlePool {
     private static final Map<Object, Map<String, CgVfxParticlePool>> POOLS = new IdentityHashMap<>();
     private static final List<CgVfxParticlePool> ALL = new ArrayList<>(), RELEASED = new ArrayList<>();
     private static CgRenderStage.Registration recording;
+    private static final List<CgVfxEventListener> LISTENERS = new ArrayList<>();
 
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
     private static final CgGpuCount ONE = CgGpuCount.of(1);
@@ -184,6 +187,23 @@ public final class CgVfxParticlePool {
     public static void prepare(CgVfxGpuEmitter emitter) {
         CgVfxEmitterCompiler.compile(CgVfxShape.of(emitter)).kernel("Step").prepare();
         CgGpuOps.prepareFill();
+    }
+
+    /**
+     * Hears the rows of every pool's events marked {@link CgVfxEvent#readback}, a few frames after their step. Render
+     * thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool.listen(hisses);
+     * CgVfxParticlePool.stopListening(hisses);
+     * }</pre>
+     */
+    public static void listen(CgVfxEventListener listener) {
+        LISTENERS.add(listener);
+    }
+
+    public static void stopListening(CgVfxEventListener listener) {
+        LISTENERS.remove(listener);
     }
 
     /** Drops {@code owner}'s pools; their GPU storage is released at the next recording. Render thread. */
