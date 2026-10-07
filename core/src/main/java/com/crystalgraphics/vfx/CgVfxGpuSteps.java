@@ -4,6 +4,7 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
+import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 
 import java.util.ArrayList;
@@ -108,9 +109,18 @@ final class CgVfxGpuSteps {
         }
     }
 
-    /** Gives every slot back: the system is going, and its particles with it. Between steps. */
+    /**
+     * Where this frame draws every pool's particles: {@code alpha} of the way between their last two steps, spin pushed
+     * {@code aheadSeconds} on, as the CPU path writes its records. Before the world records.
+     */
+    void frame(float alpha, float aheadSeconds) {
+        for (int i = 0; i < pools.size(); i++) CgVfxRange.of(pools.get(i)).frame(alpha, aheadSeconds);
+    }
+
+    /** Gives every slot back and drops its pools: the system is going, and its particles with it. Between steps. */
     void clear() {
         for (int i = tenants.size() - 1; i >= 0; i--) release(i);
+        CgVfxParticlePool.release(this);
     }
 
     private void release(int i) {

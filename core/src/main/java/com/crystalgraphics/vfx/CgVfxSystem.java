@@ -27,9 +27,6 @@ import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -74,23 +71,16 @@ public final class CgVfxSystem {
      * }</pre>
      *
      * <ul>
-     *   <li>{@link #GPU} is not built yet (plan {@code vfx-gpu} X1): chosen, every system still runs {@link #CPU},
-     *       {@link #built()} says so, and the first update logs it once.</li>
+     *   <li>A switch reaches emitter instances that start after it; one already playing finishes where it started.</li>
+     *   <li>Under {@link #GPU}, {@code MESHES} emitters (billows) still run on the CPU until plan {@code vfx-gpu} X2.</li>
      * </ul>
      */
     public enum Simulation {
-        CPU, GPU;
-
-        /** Whether this path exists; one that does not runs {@link #CPU}. */
-        public boolean built() {
-            return this == CPU;
-        }
+        CPU, GPU
     }
 
-    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static Simulation simulation =
             "gpu".equalsIgnoreCase(System.getProperty("crystalgraphics.vfx.sim")) ? Simulation.GPU : Simulation.CPU;
-    private static boolean unbuiltLogged;
 
     /** The simulation chosen for every system: what a HUD shows, built or not. */
     public static Simulation simulation() {
@@ -240,11 +230,7 @@ public final class CgVfxSystem {
     public void update(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
-        stepsOnGpu = simulation == Simulation.GPU && simulation.built();
-        if (!simulation.built() && !unbuiltLogged) {
-            unbuiltLogged = true;
-            LOGGER.warn("[vfx] the {} simulation is not built yet; effects run on the CPU", simulation);
-        }
+        stepsOnGpu = simulation == Simulation.GPU;
         if (Double.isNaN(clock)) {
             clock = seconds;
             return;
@@ -304,6 +290,11 @@ public final class CgVfxSystem {
         return stepsOnGpu;
     }
 
+    /** {@code emitter}'s slot in a GPU pool, or null when it holds none: stepped on the CPU, or every particle dead. */
+    CgVfxGpuSteps.Tenant gpuTenant(CgVfxEmitterInstance emitter) {
+        return gpuSteps.of(emitter);
+    }
+
     /** Whether this tick moves particles: one in {@link #particleStep()}. */
     boolean particleTick() {
         return particleTick;
@@ -356,6 +347,7 @@ public final class CgVfxSystem {
             float alpha = Math.min(owed / TICK, 1f);
             // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
             frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f));
+            gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
             paths.begin();
             for (int i = 0; i < effects.size(); i++) {
                 try (CgTrace.Zone effect = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_ZONE)) {

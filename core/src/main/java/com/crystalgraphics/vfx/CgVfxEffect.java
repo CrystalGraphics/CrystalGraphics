@@ -5,6 +5,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.Arrays;
@@ -243,7 +244,9 @@ public abstract class CgVfxEffect {
         boolean gpu = system != null && system.stepsOnGpu();
         for (int i = 0; i < dueCount; i++) {
             CgVfxEmitterInstance emitter = due[i];
-            if (emitter.scheduled() || gpu && emitter.time() == 0f) {
+            // Billows stay on the CPU until Range writes object records (vfx-gpu X2).
+            if (emitter.scheduled()
+                    || gpu && emitter.time() == 0f && emitter.emitter().renderer() != CgVfxEmitter.Renderer.MESHES) {
                 boolean fresh = !emitter.scheduled();
                 emitter.schedule(dueDt, originX, originY, originZ);
                 if (fresh) {
