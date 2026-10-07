@@ -30,8 +30,15 @@ import javax.annotation.Nullable;
  *       {@code CgWorldRenderer} does, and put the difference in the place's translation.</li>
  *   <li>A plain mesh ({@link #mesh(CgMesh)}) has one level and is never culled by size; a {@link CgMeshLods} of up to
  *       {@link #MAX_LEVELS} levels culls what is smaller on screen than its last.</li>
- *   <li>Each kept record's light ({@code CG_OBJECT_LIGHT}) is its own unless {@link #light} stamps one.</li>
+ *   <li>Each kept record's light ({@code CG_OBJECT_LIGHT}) is its own unless {@link #light} stamps one; each custom
+ *       likewise, unless {@link #custom} stamps it.</li>
  * </ul>
+ *
+ * <p>One set of records drawn by several draws, each its own size and constants: a particle mesh per layer.</p>
+ *
+ * <pre>{@code
+ * cull.scale(layerRadius).ownCustoms().custom(0, radius, parameter, age, seed).custom(2, r, g, b, a);
+ * }</pre>
  */
 public final class CgCull {
 
@@ -57,6 +64,10 @@ public final class CgCull {
     CgGraphTexture pyramid;
     float lightBlock, lightSky;
     boolean stampLight;
+    final float[] customs = new float[16];
+    int stampCustoms;
+    float scale = 1f, normalScale = 1f;
+    private final Matrix4f scaling = new Matrix4f();
 
     public CgCull() {
         view(new Matrix4f(), new Matrix4f());
@@ -136,6 +147,35 @@ public final class CgCull {
         return this;
     }
 
+    /** Stamps custom {@code slot} (0 to 3, {@code CG_OBJECT_CUSTOM<slot>}) of every kept record. */
+    public CgCull custom(int slot, float x, float y, float z, float w) {
+        if (slot < 0 || slot > 3) throw new IllegalArgumentException("custom " + slot + "; there are four");
+        customs[slot * 4] = x;
+        customs[slot * 4 + 1] = y;
+        customs[slot * 4 + 2] = z;
+        customs[slot * 4 + 3] = w;
+        stampCustoms |= 1 << slot;
+        return this;
+    }
+
+    /** Keeps every record's own customs. */
+    public CgCull ownCustoms() {
+        stampCustoms = 0;
+        return this;
+    }
+
+    /**
+     * Scales every instance by {@code scale} about its own origin, after its record's model and before the place: a
+     * renderer's mesh size over records it shares. 1 by default.
+     */
+    public CgCull scale(float scale) {
+        if (!(scale > 0f)) throw new IllegalArgumentException("scale " + scale);
+        this.scale = scale;
+        // JOML's own inverse transpose, so a draw scaled on the CPU and this one round alike
+        normalScale = scaling.scaling(scale).normal().m00();
+        return this;
+    }
+
     /** The levels a cull keeps instances at: 1 for a plain mesh. */
     public int levels() {
         return Math.max(1, levels);
@@ -163,7 +203,12 @@ public final class CgCull {
                 .set("_ClipW", vp.m03(), vp.m13(), vp.m23(), vp.m33())
                 .set("_Eye", eye[0], eye[1], eye[2], eye[3])
                 .set("_ScreenY", screenY)
-                .set("_Light", lightBlock, lightSky, stampLight ? 1f : 0f, 0f);
+                .set("_Light", lightBlock, lightSky, stampLight ? 1f : 0f, 0f)
+                .set("_Customs", stampCustoms).set("_Scale", scale).set("_NormalScale", normalScale)
+                .set("_Custom0", customs[0], customs[1], customs[2], customs[3])
+                .set("_Custom1", customs[4], customs[5], customs[6], customs[7])
+                .set("_Custom2", customs[8], customs[9], customs[10], customs[11])
+                .set("_Custom3", customs[12], customs[13], customs[14], customs[15]);
         for (int i = 0; i < 6; i++) d.set(PLANES[i], planes[i].x, planes[i].y, planes[i].z, planes[i].w);
         if (pyramid != null) {
             d.texture("_Pyramid", pyramid)

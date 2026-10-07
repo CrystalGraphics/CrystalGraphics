@@ -134,6 +134,9 @@ world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds
 - **Records are in the draw's own space**: `.at()` places the set, a record places a tree within it. `.bounds()` is the
   whole set's box, culled once on the CPU; each tree is culled by its mesh's box, grown by `.pad()`.
 - A count only the GPU knows works the same way: `CgGpuCount.at(alive, 0, capacity)`.
+- **One set of records, several draws**: a custom the draw states (`.custom(k, …)`) replaces custom k of every kept
+  record, and `.instanceScale(s)` scales each instance about its own origin, as Unity's property block does over
+  `DrawMeshInstancedIndirect`. A particle mesh drawn by each of its layers at that layer's size and colours is one.
 - A persistent buffer outlives the frame, so the pass writing it is never culled; release it with
   `recording.release(trees)` when the forest goes.
 
