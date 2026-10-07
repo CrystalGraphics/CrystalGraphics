@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Generates complete GLSL vertex and fragment source strings from a {@link CgParsedShader}
@@ -111,6 +112,68 @@ public final class CgMaterialShaderCompiler {
      * discard behind the scene's depth) and {@code discard}, its colour replaced by a count of 1 in red.
      */
     public static final String DEBUG_OVERDRAW = "CG_DEBUG_OVERDRAW";
+
+    /**
+     * The engine's keyword for a Forward pass that also writes its Emissive pass's glow at location 1, into a target's
+     * second attachment, in the same draw. Compiled only where {@link #emissionMerge} is not {@code NONE}.
+     */
+    public static final String EMISSION_TARGET = "CG_EMISSION_TARGET";
+
+    /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
+    private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
+
+    /** Whether, and how, a shader's Emissive pass folds into its Forward draw as a second output. */
+    public enum EmissionMerge {
+        /** It stays a draw of its own. */
+        NONE,
+        /** Its blend is the Forward pass's: the glow is written with the colour's alpha, as that pass writes it. */
+        SAME_BLEND,
+        /**
+         * It adds (ONE ONE) under a premultiplied Forward pass (ONE, ONE_MINUS_SRC_ALPHA): written with an alpha of 0,
+         * ONE_MINUS_SRC_ALPHA is 1 and the shared blend adds.
+         */
+        ADDED
+    }
+
+    /**
+     * How {@code shader}'s Emissive pass merges into its first Forward pass. Only a codeless Emissive pass merges (the
+     * Forward pass's own code), never one the shared code tells apart by {@code CG_EMISSIVE_PASS}; and only where one
+     * blend serves both outputs, since below GL 4.0 every draw buffer shares the draw's blend.
+     */
+    public static EmissionMerge emissionMerge(CgParsedShader shader) {
+        CgParsedPass emissive = shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_EMISSIVE);
+        CgParsedPass forward = shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_FORWARD);
+        if (emissive == null || forward == null || forward.fragOutput().isMrt()) return EmissionMerge.NONE;
+        // A codeless pass holds the Forward pass's own strings (CgShaderParser step 7e').
+        if (emissive.fragmentBody() != forward.fragmentBody() || emissive.vertexBody() != forward.vertexBody()) {
+            return EmissionMerge.NONE;
+        }
+        if (forward.fragmentBody().contains("CG_EMISSIVE_PASS") || forward.vertexBody().contains("CG_EMISSIVE_PASS")
+                || forward.globalDecls().contains("CG_EMISSIVE_PASS")) return EmissionMerge.NONE;
+        CgRenderState f = forward.renderState(), e = emissive.renderState();
+        // A cull the Emissive pass leaves unset is whatever its pass leaves; the merged draw takes the Forward pass's.
+        boolean sameCull = e.getCull() == null || e.getCull().equals(f.getCull());
+        if (f.writesNothing() || !sameCull || !sameTest(f.getDepth(), e.getDepth())) return EmissionMerge.NONE;
+        CgBlendState fb = f.getBlend(), eb = e.getBlend();
+        if (fb == null || !fb.enabled()) return EmissionMerge.NONE;   // an opaque Forward pass would overwrite the glow beneath
+        if (fb.equals(eb)) return EmissionMerge.SAME_BLEND;
+        boolean premultiplied = fb.srcRgb() == CgGL.GL_ONE && fb.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA
+                && fb.blendEquationRgb() == CgGL.GL_FUNC_ADD;
+        boolean adds = eb != null && eb.enabled() && eb.srcRgb() == CgGL.GL_ONE && eb.dstRgb() == CgGL.GL_ONE
+                && eb.blendEquationRgb() == CgGL.GL_FUNC_ADD;
+        return premultiplied && adds ? EmissionMerge.ADDED : EmissionMerge.NONE;
+    }
+
+    /**
+     * Whether the Forward pass's hardware test hides what the Emissive pass's scene-depth discard hides: both test, or
+     * neither. An Emissive pass discards unless it says {@code DepthTest ALWAYS}; a Forward pass with no depth state
+     * takes the transparent pass's, which tests.
+     */
+    private static boolean sameTest(CgDepthState forward, CgDepthState emissive) {
+        boolean forwardTests = forward == null || forward.test() && forward.compareFunc() != CgGL.GL_ALWAYS;
+        boolean emissiveTests = emissive == null || !(emissive.test() && emissive.compareFunc() == CgGL.GL_ALWAYS);
+        return forwardTests == emissiveTests;
+    }
 
     private CgMaterialShaderCompiler() {
         throw new AssertionError("CgMaterialShaderCompiler is not instantiable");
@@ -576,14 +639,16 @@ public final class CgMaterialShaderCompiler {
         appendGlobalDecls(sb, codeLines);
 
         // Fragment output declarations (single-output or MRT)
-        appendFragmentOutputDeclarations(sb, pass);
+        EmissionMerge merge = config.activeKeywords().contains(EMISSION_TARGET)
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) ? emissionMerge(shader) : EmissionMerge.NONE;
+        appendFragmentOutputDeclarations(sb, pass, merge);
 
         // User fragment function
         sb.append("// User fragment function\n");
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
-        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW));
+        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge);
 
         return sb.toString();
     }
@@ -749,8 +814,10 @@ public final class CgMaterialShaderCompiler {
         sb.append("}\n");
     }
 
-    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedPass pass) {
-        if (!pass.fragOutput().isMrt()) {
+    private static void appendFragmentOutputDeclarations(StringBuilder sb, CgParsedPass pass, EmissionMerge merge) {
+        if (merge != EmissionMerge.NONE) {
+            sb.append("layout(location = 0) out vec4 _cg_fragColor;\nlayout(location = 1) out vec4 _cg_emission;\n");
+        } else if (!pass.fragOutput().isMrt()) {
             sb.append("out vec4 _cg_fragColor;\n");
         } else {
             List<String> fieldNames = pass.fragOutput().fieldNames();
@@ -808,7 +875,8 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
-                                            CgParsedPass pass, CgParsedShader shader, boolean overdraw) {
+                                            CgParsedPass pass, CgParsedShader shader, boolean overdraw,
+                                            EmissionMerge merge) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
@@ -841,8 +909,15 @@ public final class CgMaterialShaderCompiler {
             }
         } else if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+            if (merge != EmissionMerge.NONE) {
+                // What the Emissive pass would write: unlit, faded by fog as an added colour is.
+                sb.append("  _cg_emission = _cg_fragColor;\n");
+                if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
+                if (shader.fogged()) sb.append("  _cg_emission.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
+                if (merge == EmissionMerge.ADDED) sb.append("  _cg_emission.a = 0.0;\n");
+            }
             // Code that reads CG_EMISSION has applied it already.
-            if (emissive && !pass.fragmentBody().contains("CG_EMISSION")) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
+            if (emissive && !READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
             // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
             // light is not lit, only faded by the fog.
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());

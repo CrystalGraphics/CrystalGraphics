@@ -69,7 +69,9 @@ matters; that is what makes it debuggable at full speed.
 - **A glowing layer is `"Lighting" = "Unlit"` and ends with a codeless Emissive pass**,
   `Pass { Tags { "LightMode" = "Emissive" } }`, so it blooms (`docs/SHADERS.md` § *The Emissive pass*). Not ink strokes,
   debris, smoke, the air shaders, the light pools (`*_light`) or the sky. A premultiplied glow authors
-  `RenderState { Blend ONE ONE ... }` in that pass, or it darkens the glows behind it in the bloom target.
+  `RenderState { Blend ONE ONE ... }` in that pass, or it darkens the glows behind it in the bloom target. Kept
+  codeless and on the Forward pass's blend, the world renderer draws the glow in the layer's own draw, at no draw of its
+  own; a body that branches on `CG_EMISSIVE_PASS` gives that up.
 - **A glow is bloom's, never a halo volume drawn round a layer**: bloom spreads what a layer emits, bent with the scene;
   a halo drawn per effect cost the beam phase a fifth of its frame and doubled the glow.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.

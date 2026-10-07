@@ -46,7 +46,8 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_MESH = CgTrace.name("vfx.draws.particle-mesh"),
             DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
-            DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes");
+            DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes"),
+            GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
@@ -154,7 +155,9 @@ public final class CgVfxFrame {
             if (child != null) particles(effect, child);
         }
         if (emitter.scheduled()) {
-            gpuParticles(effect, emitter);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_ZONE)) {
+                gpuParticles(effect, emitter);
+            }
             return;
         }
         if (emitter.particles().count() == 0) return;
@@ -217,8 +220,7 @@ public final class CgVfxFrame {
                 continue;
             }
             reach = Math.max(reach, Math.max(layer.radius(), 1f) * 4f);
-            CgMesh mesh = arcs ? CgMesh.vertices(sizeClass(capacity, CgVfxRibbons.COUNT) * CgVfxRibbons.VERTICES,
-                    CgMeshTopology.TRIANGLES) : CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
+            CgMesh mesh = slotMesh(renderer, capacity);
             CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
                     .indirect(range.visible(), range.visibleWord(slot) * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
@@ -250,6 +252,19 @@ public final class CgVfxFrame {
     private static boolean blendsInOrder(CgMaterial material) {
         CgBlendState blend = material.getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
         return blend != null && blend.enabled() && blend.dstRgb() != CgGL.GL_ONE;
+    }
+
+    /**
+     * The shared mesh a GPU slot of {@code capacity} draws a {@code QUADS} or {@code ARCS} layer on, made on its first
+     * ask; null for {@code MESHES}, which draw the particle sphere.
+     */
+    static CgMesh slotMesh(CgVfxEmitter.Renderer renderer, int capacity) {
+        return switch (renderer) {
+            case QUADS -> CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
+            case ARCS -> CgMesh.vertices(sizeClass(capacity, CgVfxRibbons.COUNT) * CgVfxRibbons.VERTICES,
+                    CgMeshTopology.TRIANGLES);
+            case MESHES -> null;
+        };
     }
 
     /** The mesh size a slot of {@code capacity} draws on: powers of two from {@code least}, so slots share meshes. */
