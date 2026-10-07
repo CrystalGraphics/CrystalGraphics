@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
@@ -501,6 +502,11 @@ public final class CgVfxSystem {
 
     CgMesh tubeMesh() {
         return tubeMesh;
+    }
+
+    /** What a particle mesh is drawn on: the sphere at levels, each kept until a coarser one strays half a pixel. */
+    CgMeshLods particleSphere() {
+        return CgMeshShapes.sphereLods();
     }
 
     CgMesh sphereMesh() {

@@ -198,7 +198,7 @@ public final class CgVfxFrame {
             if (meshes) {
                 // One record set for every layer: the cull stamps each draw's customs and scale onto it.
                 reach = Math.max(reach, layer.radius());
-                CgWorldRenderer.Draw draw = world.draw(system.sphereMesh(), system.material(layer))
+                CgWorldRenderer.Draw draw = world.draw(system.particleSphere(), system.material(layer))
                         .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, capacity))
                         .instanceScale(layer.radius())
                         .gpuCulled()
@@ -260,7 +260,8 @@ public final class CgVfxFrame {
         for (int i = 0; i < p.count(); i++) {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
-            mesh(effect, layer, p.x(i, a), p.y(i, a), p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i]);
+            dress(world.draw(system.particleSphere(), system.material(layer)), effect, layer, p.x(i, a), p.y(i, a),
+                    p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i]).submit();
         }
     }
 
@@ -382,10 +383,15 @@ public final class CgVfxFrame {
     /** A draw of {@code layer} on {@code mesh} with the per-draw data every effect shader reads, for the caller to submit. */
     private CgWorldRenderer.Draw draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z,
                                       Matrix4fc transform, float ex, float ey, float ez, float ew) {
+        return dress(world.draw(mesh, system.material(layer)), effect, layer, x, y, z, transform, ex, ey, ez, ew);
+    }
+
+    /** {@code draw} given the placement and per-draw data of {@link #draw}, whatever mesh it draws. */
+    private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect effect, CgVfxLayer layer, float x, float y,
+                                       float z, Matrix4fc transform, float ex, float ey, float ez, float ew) {
         CgVfxValues values = effect.values();
         scaled.set(transform).scale(layer.radius());
-        CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
-                .at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled)
+        draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled)
                 .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);
