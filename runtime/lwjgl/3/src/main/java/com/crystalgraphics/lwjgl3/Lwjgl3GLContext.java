@@ -2,9 +2,12 @@ package com.crystalgraphics.lwjgl3;
 
 import com.crystalgraphics.platform.gl.CgGLContext;
 import org.lwjgl.opengl.GL;
-import org.lwjgl.opengl.GL11C;
-import org.lwjgl.opengl.GL30C;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 import org.lwjgl.opengl.GLCapabilities;
+
+// Minecraft 1.13.2 runs this class on LWJGL 3.1.6, which has no GLxxC classes and is not rewritten for it as the
+// backend is (generateLwjgl31Backend): name GL11, GL30, ... here.
 
 /**
  * LWJGL 3 implementation of {@link CgGLContext}.
@@ -36,8 +39,8 @@ public final class Lwjgl3GLContext implements CgGLContext {
     }
 
     private static boolean lists(String extension) {
-        for (int i = 0, n = GL11C.glGetInteger(GL30C.GL_NUM_EXTENSIONS); i < n; i++) {
-            if (extension.equals(GL30C.glGetStringi(GL11C.GL_EXTENSIONS, i))) return true;
+        for (int i = 0, n = GL11.glGetInteger(GL30.GL_NUM_EXTENSIONS); i < n; i++) {
+            if (extension.equals(GL30.glGetStringi(GL11.GL_EXTENSIONS, i))) return true;
         }
         return false;
     }
