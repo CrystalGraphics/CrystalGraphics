@@ -7412,18 +7412,26 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   access public,final
   extends java/lang/Object
+  field public,static,final CURVE_WORDS I
   field public,static,final INSTANCE_HEADER I
   field public,static,final ORDER I
   method public beginStep (FFFF)V
   method public capacity ()I
   method public capacity (I)I
   method public close (I)V
+  method public cullRadius (I)F
+  method public cullScale (IF)V
+  method public curves ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public endStep ()V
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
+  method public isOpen (I)Z
+  method public isReleased ()Z
   method public listBase (I)I
   method public live ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
   method public openSlots ()I
+  method public origin (II)D
+  method public paramRow (I)I
   method public queuedSteps ()I
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public records ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
@@ -7432,7 +7440,8 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public slotCount ()I
   method public spawn (III)V
   method public storage ()I
-  method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+  method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
+  method public,static release (Ljava/lang/Object;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   access public,final
   extends java/lang/Object
