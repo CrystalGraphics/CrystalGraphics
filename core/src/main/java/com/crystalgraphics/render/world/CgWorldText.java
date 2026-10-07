@@ -10,6 +10,8 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.text.render.context.CgTextRenderContext;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
@@ -69,7 +71,7 @@ public final class CgWorldText {
         renderer.context().updateProjection(projection, w, h);
         recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
         renderer.sink(recorder);
-        try {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
             renderer.beginBatch();
             for (int i = 0; i < count; i++) draw(labels.get(i), view);
             renderer.endBatch();

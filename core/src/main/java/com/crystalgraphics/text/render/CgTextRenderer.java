@@ -38,6 +38,7 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
@@ -62,6 +63,10 @@ import java.util.logging.Logger;
  * {@link #submitBatchedQuads}) so bitmap batches draw before distance-field batches. On
  * batch-state transitions the active material keywords, atlas texture, and pxRange property
  * are swapped (triggering a flush of whatever was pending under the previous state).</p>
+ *
+ * <p>Within a batch, quads wait in a bucket per paint layer and batch key, drained in layer order when the batch
+ * flushes ({@link #drainBuckets}): draws alternating atlases or shadow cells cost a transition per bucket, not per
+ * draw. Each draw keeps its own layering; across draws, every shadow lies beneath every glyph.</p>
  *
  * <h3>Three-Space Model</h3>
  * <p>The text rendering pipeline enforces a strict three-space separation
@@ -395,6 +400,7 @@ public class CgTextRenderer {
      * instead of drawing them; null draws at once again.
      */
     public CgTextRenderer sink(@Nullable CgChunkSink sink) {
+        flush();
         quadRenderer.sink(sink);
         projectionValid = false;
         return this;
@@ -563,6 +569,7 @@ public class CgTextRenderer {
      * owns its depth decides it from G3 on.</p>
      */
     private void flush() {
+        drainBuckets();
         if (!quadRenderer.isDirty()) return;
 
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "gl.flush")) {
@@ -599,7 +606,7 @@ public class CgTextRenderer {
 
     /**
      * Transitions {@link #textMaterial} to the given batch state, flushing whatever was
-     * pending under the previous state first. Callers (just {@link #submitBatchedQuads}) are
+     * pending under the previous state first. Callers (just {@link #drainBuckets}) are
      * responsible for only calling this when the state actually changed — this method always
      * flushes and applies unconditionally, it does not re-check for a no-op transition itself.
      *
@@ -1658,6 +1665,7 @@ public class CgTextRenderer {
                               boolean pixelSnap, Matrix4f modelView,
                               int strokeArgb, float strokeWidthTexels, float strokeAlign, float strokeOver) {
         int shadows = shadowList.count();
+        int pose = pushPose(modelView);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.quadLoop")) {
         // Per-iteration timing, off unless -Dcrystalgraphics.text.traceQuadLoop=true.
         //
@@ -1799,22 +1807,15 @@ public class CgTextRenderer {
                 }
             }
 
-            if (batchBits != activeBatchBits) {
-                transitionToMaterial(batchBits, isDistanceField, atlasId);
-            }
-
-            quadRenderer.quad()
-                    .at(quadX, quadY).size(quadW, quadH)
-                    .uv(u0, v0, u1, v1)
-                    .color(rgba)
-                    .atlasLayer(atlasLayer)
-                    .custom0(c0x, c0y, c0z, c0w)
-                    .custom1(c1x, c1y, c1z, c1w)
-                    .custom2(c2)
-                    .clip(clip)
-                    .node(spatialNode, effectNode)
-                    .pose(modelView)
-                    .submit();
+            Bucket b = bucket(paint - shadows, batchBits, isDistanceField, atlasId);
+            float[] q = b.reserve();
+            int o = (b.count - 1) * QUAD_FLOATS;
+            q[o] = quadX; q[o + 1] = quadY; q[o + 2] = quadW; q[o + 3] = quadH;
+            q[o + 4] = u0; q[o + 5] = v0; q[o + 6] = u1; q[o + 7] = v1;
+            q[o + 8] = Float.intBitsToFloat(rgba); q[o + 9] = Float.intBitsToFloat(atlasLayer);
+            q[o + 10] = c0x; q[o + 11] = c0y; q[o + 12] = c0z; q[o + 13] = c0w;
+            q[o + 14] = c1x; q[o + 15] = c1y; q[o + 16] = c1z; q[o + 17] = c1w;
+            q[o + 18] = c2; q[o + 19] = Float.intBitsToFloat(pose);
 
             if (traceQuadLoop) {
                 long now = System.nanoTime();
@@ -1840,6 +1841,125 @@ public class CgTextRenderer {
             CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.maxIterIndex", traceMaxIndex);
             CgTrace.counter(CgChannels.TEXT, "draw.quadLoop.slowIters", traceSlowIters);
         }
+        }
+    }
+
+    // ── Buckets ─────────────────────────────────────────────────────────────
+    // A batch's quads wait in a bucket per (paint rank, batch) and are drawn bucket by bucket when it flushes, so a
+    // run of draws alternating atlases or shadow cells costs a transition per bucket rather than per draw. The rank
+    // (a draw's paint step less its shadow count) means the same layer in every draw, which keeps each draw's own
+    // layering; across draws in one batch every shadow lies beneath every glyph.
+
+    /** A quad: position, size, uv, colour, layer, custom0-2, its pose entry. */
+    private static final int QUAD_FLOATS = 20;
+
+    private static final class Bucket {
+        int rank;
+        long batchBits;
+        boolean distanceField;
+        int atlasId;
+        float[] quads = new float[QUAD_FLOATS * 64];
+        int count;
+
+        /** Room for one more quad, counted; it is written at {@code (count - 1) * QUAD_FLOATS}. */
+        float[] reserve() {
+            if ((count + 1) * QUAD_FLOATS > quads.length) quads = Arrays.copyOf(quads, quads.length * 2);
+            count++;
+            return quads;
+        }
+    }
+
+    private final List<Bucket> buckets = new ArrayList<>();
+    private int bucketCount;
+    @Nullable
+    private Bucket lastBucket;
+    /** Per pose entry: a draw's model-view, and its clip and nodes. */
+    private float[] poses = new float[16 * 64];
+    private int[] poseState = new int[3 * 64];
+    private int poseCount;
+    private final Matrix4f replayPose = new Matrix4f();
+
+    private int pushPose(Matrix4f modelView) {
+        if ((poseCount + 1) * 16 > poses.length) {
+            poses = Arrays.copyOf(poses, poses.length * 2);
+            poseState = Arrays.copyOf(poseState, poseState.length * 2);
+        }
+        modelView.get(poses, poseCount * 16);
+        int s = poseCount * 3;
+        poseState[s] = clip;
+        poseState[s + 1] = spatialNode;
+        poseState[s + 2] = effectNode;
+        return poseCount++;
+    }
+
+    private Bucket bucket(int rank, long batchBits, boolean distanceField, int atlasId) {
+        Bucket last = lastBucket;
+        if (last != null && last.rank == rank && last.batchBits == batchBits) return last;
+        for (int i = 0; i < bucketCount; i++) {
+            Bucket b = buckets.get(i);
+            if (b.rank == rank && b.batchBits == batchBits) return lastBucket = b;
+        }
+        if (bucketCount == buckets.size()) buckets.add(new Bucket());
+        Bucket b = buckets.get(bucketCount++);
+        b.rank = rank;
+        b.batchBits = batchBits;
+        b.distanceField = distanceField;
+        b.atlasId = atlasId;
+        b.count = 0;
+        return lastBucket = b;
+    }
+
+    /** Hands every bucket to the quad renderer, by rank then first seen, a transition between them. */
+    private void drainBuckets() {
+        int n = bucketCount;
+        if (n == 0) return;
+        // Cleared first: a transition flushes, and that flush must not drain again.
+        bucketCount = 0;
+        lastBucket = null;
+        // Insertion sort by rank alone, stable, so equal ranks keep the order they were first seen in.
+        for (int i = 1; i < n; i++) {
+            Bucket b = buckets.get(i);
+            int j = i - 1;
+            while (j >= 0 && buckets.get(j).rank > b.rank) {
+                buckets.set(j + 1, buckets.get(j));
+                j--;
+            }
+            buckets.set(j + 1, b);
+        }
+        CgTrace.add(CgChannels.TEXT, "draw.buckets", n);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.drainBuckets")) {
+            for (int i = 0; i < n; i++) {
+                Bucket b = buckets.get(i);
+                if (b.batchBits != activeBatchBits) transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
+                replay(b);
+                b.count = 0;
+            }
+        }
+        poseCount = 0;
+    }
+
+    private void replay(Bucket b) {
+        float[] q = b.quads;
+        int lastPose = -1;
+        for (int o = 0, end = b.count * QUAD_FLOATS; o < end; o += QUAD_FLOATS) {
+            int pose = Float.floatToRawIntBits(q[o + 19]);
+            if (pose != lastPose) {
+                replayPose.set(poses, pose * 16);
+                lastPose = pose;
+            }
+            int s = pose * 3;
+            quadRenderer.quad()
+                    .at(q[o], q[o + 1]).size(q[o + 2], q[o + 3])
+                    .uv(q[o + 4], q[o + 5], q[o + 6], q[o + 7])
+                    .color(Float.floatToRawIntBits(q[o + 8]))
+                    .atlasLayer(Float.floatToRawIntBits(q[o + 9]))
+                    .custom0(q[o + 10], q[o + 11], q[o + 12], q[o + 13])
+                    .custom1(q[o + 14], q[o + 15], q[o + 16], q[o + 17])
+                    .custom2(q[o + 18])
+                    .clip(poseState[s])
+                    .node(poseState[s + 1], poseState[s + 2])
+                    .pose(replayPose)
+                    .submit();
         }
     }
 
