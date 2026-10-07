@@ -1976,6 +1976,7 @@ com/crystalgraphics/compute/ops/CgCull
   method public light (FF)Lcom/crystalgraphics/compute/ops/CgCull;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/compute/ops/CgCull;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public ordered (Z)Lcom/crystalgraphics/compute/ops/CgCull;
   method public ownCustoms ()Lcom/crystalgraphics/compute/ops/CgCull;
   method public ownLight ()Lcom/crystalgraphics/compute/ops/CgCull;
   method public pad (F)Lcom/crystalgraphics/compute/ops/CgCull;
@@ -5141,6 +5142,7 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public layer (Lcom/crystalgraphics/render/world/CgSortLayer;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public light (FF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public order (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public ordered ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public pad (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public queue (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public submesh (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;

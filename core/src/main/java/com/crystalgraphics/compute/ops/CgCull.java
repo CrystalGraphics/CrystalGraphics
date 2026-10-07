@@ -67,6 +67,7 @@ public final class CgCull {
     final float[] customs = new float[16];
     int stampCustoms;
     float scale = 1f, normalScale = 1f;
+    boolean ordered;
     private final Matrix4f scaling = new Matrix4f();
 
     public CgCull() {
@@ -173,6 +174,16 @@ public final class CgCull {
         this.scale = scale;
         // JOML's own inverse transpose, so a draw scaled on the CPU and this one round alike
         normalScale = scaling.scaling(scale).normal().m00();
+        return this;
+    }
+
+    /**
+     * Keeps each level's records in the order the set holds them, on every tier: for instances that blend in order,
+     * sorted beforehand (VFX Range's sorted slots). Off by default, where compute keeps them in any order, since it
+     * costs a compaction a level.
+     */
+    public CgCull ordered(boolean ordered) {
+        this.ordered = ordered;
         return this;
     }
 

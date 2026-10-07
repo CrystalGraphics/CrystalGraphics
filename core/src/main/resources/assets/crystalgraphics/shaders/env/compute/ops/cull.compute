@@ -3,7 +3,12 @@
 // Each kept at this dispatch's level is appended as the object record a draw reads. One dispatch a level, every one
 // testing every instance: an append writes one buffer. CgWorldRenderer's tests on the CPU, step for step;
 // CgGpuOpsBodies.cull is the CPU tier's twin, line for line.
+//
+// An ordered cull keeps each level's records in their order: CullFlags marks the instances kept at a level,
+// CgGpuOps.compact lists them in order, and CullPlace writes the kept record of each listed one.
 #pragma kernel Cull append
+#pragma kernel CullFlags map
+#pragma kernel CullPlace gather
 
 #include "crystalgraphics:shaders/lib/occlusion.glsl"
 
@@ -55,9 +60,12 @@ struct CullRecord {   // CgInstanceKind.OBJECT's 48 floats
 };
 
 Buffers {
-    COUNT     ("The count",   uint,       readonly)
-    INSTANCES ("Instances",   CullRecord, readonly)
-    OUT       ("Kept",        CullRecord, append)
+    COUNT     ("The count",                                uint,       readonly)
+    INSTANCES ("Instances",                                CullRecord, readonly)
+    OUT       ("Kept",                                     CullRecord, append)
+    FLAGS     ("1 for each instance kept at this level",   uint,       writeonly)
+    KEPT      ("The kept instances, in order",             uint,       readonly)
+    PLACED    ("Each listed instance's kept record",       CullRecord, writeonly)
 }
 
 bool outside(vec4 plane, vec3 lo, vec3 hi) {
@@ -65,13 +73,13 @@ bool outside(vec4 plane, vec3 lo, vec3 hi) {
             + plane.z * (plane.z < 0.0 ? lo.z : hi.z) < -plane.w;
 }
 
-void Cull() {
-    uint n = _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
-    if (uint(CG_ELEMENT) >= n) return;
-    CullRecord r = INSTANCES(_First + CG_ELEMENT);
-    mat4 place = mat4(_Place0, _Place1, _Place2, _Place3);
-    mat4 m = place * mat4(r.model0 * _Scale, r.model1 * _Scale, r.model2 * _Scale, r.model3);
+// Record r's model matrix, scaled and placed in the camera-relative world.
+mat4 cull_model(CullRecord r) {
+    return mat4(_Place0, _Place1, _Place2, _Place3) * mat4(r.model0 * _Scale, r.model1 * _Scale, r.model2 * _Scale, r.model3);
+}
 
+// The level an instance of model matrix m is kept at, or -1.
+int cull_level(mat4 m) {
     // The box in the camera-relative world: JOML's transformAab, term for term.
     vec3 lo = m[3].xyz, hi = m[3].xyz;
     for (int a = 0; a < 3; a++) {
@@ -80,7 +88,7 @@ void Cull() {
         hi += max(p, q);
     }
     if (outside(_Plane0, lo, hi) || outside(_Plane1, lo, hi) || outside(_Plane2, lo, hi)
-            || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return;
+            || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return -1;
 
     int level = 0;
     if (_Levels > 0) {
@@ -97,8 +105,12 @@ void Cull() {
             }
         }
     }
-    if (level != _Level || cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return;
+    if (level != _Level || cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return -1;
+    return level;
+}
 
+// The record a draw reads for r, placed by m: the normal matrix placed and scaled, the stamps applied.
+CullRecord cull_record(CullRecord r, mat4 m) {
     mat3 normal = mat3(_PlaceNormal0.xyz, _PlaceNormal1.xyz, _PlaceNormal2.xyz)
             * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz) * _NormalScale;
     CullRecord o;
@@ -114,5 +126,31 @@ void Cull() {
     o.custom1 = (_Customs & 2) != 0 ? _Custom1 : r.custom1;
     o.custom2 = (_Customs & 4) != 0 ? _Custom2 : r.custom2;
     o.custom3 = (_Customs & 8) != 0 ? _Custom3 : r.custom3;
-    OUT_APPEND(o);
+    return o;
+}
+
+uint cull_count() {
+    return _CountAt < 0 ? uint(_Capacity) : min(COUNT(_CountAt), uint(_Capacity));
+}
+
+void Cull() {
+    if (uint(CG_ELEMENT) >= cull_count()) return;
+    CullRecord r = INSTANCES(_First + CG_ELEMENT);
+    mat4 m = cull_model(r);
+    if (cull_level(m) == _Level) OUT_APPEND(cull_record(r, m));
+}
+
+void CullFlags() {
+    uint kept = 0u;
+    if (uint(CG_ELEMENT) < cull_count()) {
+        kept = cull_level(cull_model(INSTANCES(_First + CG_ELEMENT))) == _Level ? 1u : 0u;
+    }
+    FLAGS_WRITE(kept);
+}
+
+// Dispatched over the capacity with COUNT the compaction's count: element k writes the kth kept record.
+void CullPlace() {
+    if (uint(CG_ELEMENT) >= cull_count()) return;
+    CullRecord r = INSTANCES(_First + int(KEPT(CG_ELEMENT)));
+    PLACED_WRITE(cull_record(r, cull_model(r)));
 }
