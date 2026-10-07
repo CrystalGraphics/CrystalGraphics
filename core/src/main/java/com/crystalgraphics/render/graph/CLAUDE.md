@@ -162,8 +162,9 @@ kernel's writes are draws, ordered like any draw, and a CPU body's are uploads.
 `cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
 pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:
 colour by any draw with colour writes on, depth only by a depth write. The pass starts with neither copied, so its
-first reader always copies. A reader's own writes leave what it reads clean, so readers in a row share one copy and
-never see each other (Godot's screen-texture rule). There is no cap: a colour copy is cut to the union of its
+first reader always copies. A reader's own colour writes leave what it reads clean, so readers in a row share one
+copy and never see each other (Godot's screen-texture rule). A depth write is seen by the next depth reader even when
+a reader made it: the distortion apply writes the depth it read from, and a reader after it must test that. There is no cap: a colour copy is cut to the union of its
 readers' screen bounds, each grown by its shader's `SceneColorMargin` tag (a share of the target's height: how far
 it samples past its geometry, required of every shader reading `cg_SceneColor`, which otherwise fails to parse), and
 refreshed in place in one texture per pass; a reader whose rect the last copy holds and no draw since wrote into

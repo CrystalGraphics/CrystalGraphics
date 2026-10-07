@@ -175,6 +175,54 @@ public class CgFrameBuilderTest {
         builder.recycle(frame);
     }
 
+    private static final String DEPTH_WRITING_READER = """
+            #type none
+            Tags { "RenderType" = "Transparent" }
+            Pass {
+                RenderState { DepthTest ALWAYS DepthWrite ON }
+                void vertex(out v2f o) { }
+                void fragment(in v2f i, out vec4 fragColor) {
+                    fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r);
+                    gl_FragDepth = 0.5;
+                }
+            }
+            """;
+
+    private static final String DEPTH_READER = """
+            #type none
+            Tags { "RenderType" = "Transparent" }
+            Pass {
+                RenderState { DepthTest ALWAYS DepthWrite OFF }
+                void vertex(out v2f o) { }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r); }
+            }
+            """;
+
+    /**
+     * A reader's depth write is seen by the next depth reader, unlike its colour writes: the distortion apply writes the
+     * depth it read from, and the sky seal after it tests that.
+     */
+    @Test
+    public void aReadersDepthWriteIsCopiedForTheNextReader() {
+        CgMaterial apply = CgMaterial.fromSource(DEPTH_WRITING_READER), seal = CgMaterial.fromSource(DEPTH_READER);
+        CgPipeline writes = apply.pipeline(CgInstanceKind.QUAD), reads = seal.pipeline(CgInstanceKind.QUAD);
+        CgRecording rec = new CgRecording();
+        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
+                .sceneDepth(6);
+        pass.add(keyed(rec, apply, writes, 1));
+        pass.add(keyed(rec, seal, reads, 2));
+        pass.end();
+        CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
+        CgFrame.Raster packed = frame.rasters[0];
+
+        int depthCopies = 0;
+        for (int b = 0; b < packed.count; b++) {
+            if ((packed.copyBefore[b] & CgTargetCopy.DEPTH) != 0) depthCopies++;
+        }
+        assertEquals(2, depthCopies);
+        builder.recycle(frame);
+    }
+
     /** A nested scissor is issued once per pass, from the entry that changed, each inside the one before it. */
     @Test
     public void aScissorChainIsIssuedFromWhereItChanged() {
