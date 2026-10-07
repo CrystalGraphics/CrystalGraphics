@@ -141,7 +141,7 @@ public final class CgVfxSystem {
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
-            EMITTERS_ZONE = CgTrace.name("vfx.emitters"),
+            EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written"),
             FILL_ZONE = CgTrace.name("vfx.particles.fill"), LIGHT_ZONE = CgTrace.name("vfx.particles.light"),
             UPLOAD_ZONE = CgTrace.name("vfx.particles.upload");
@@ -272,7 +272,11 @@ public final class CgVfxSystem {
                     }
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
-                        if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+                        if (effect.state() != CgVfxEffect.State.DEAD) {
+                            try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_TICK_ZONE)) {
+                                effect.step(TICK);
+                            }
+                        }
                         if (effect.hasEmitterTicks()) emitting.add(effect);
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
