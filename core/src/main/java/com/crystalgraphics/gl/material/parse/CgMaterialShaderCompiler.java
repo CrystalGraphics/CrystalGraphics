@@ -23,6 +23,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Generates complete GLSL vertex and fragment source strings from a {@link CgParsedShader}
@@ -117,6 +118,9 @@ public final class CgMaterialShaderCompiler {
      * second attachment, in the same draw. Compiled only where {@link #emissionMerge} is not {@code NONE}.
      */
     public static final String EMISSION_TARGET = "CG_EMISSION_TARGET";
+
+    /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
+    private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
     /** Whether, and how, a shader's Emissive pass folds into its Forward draw as a second output. */
     public enum EmissionMerge {
@@ -908,12 +912,12 @@ public final class CgMaterialShaderCompiler {
             if (merge != EmissionMerge.NONE) {
                 // What the Emissive pass would write: unlit, faded by fog as an added colour is.
                 sb.append("  _cg_emission = _cg_fragColor;\n");
-                if (!pass.fragmentBody().contains("CG_EMISSION")) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
+                if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
                 if (shader.fogged()) sb.append("  _cg_emission.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
                 if (merge == EmissionMerge.ADDED) sb.append("  _cg_emission.a = 0.0;\n");
             }
             // Code that reads CG_EMISSION has applied it already.
-            if (emissive && !pass.fragmentBody().contains("CG_EMISSION")) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
+            if (emissive && !READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
             // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
             // light is not lit, only faded by the fog.
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());

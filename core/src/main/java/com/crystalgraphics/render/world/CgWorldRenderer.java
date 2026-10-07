@@ -231,6 +231,7 @@ public final class CgWorldRenderer {
     /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
     private CgGraphTexture emissionFull;
     private boolean[] merged = new boolean[64];
+    private int mergedDraws;
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
@@ -343,6 +344,11 @@ public final class CgWorldRenderer {
 
     public boolean mergeEmission() {
         return mergeEmission;
+    }
+
+    /** How many draws the last transparent firing recorded with their glow in their own draw: for gates and readouts. */
+    public int mergedDraws() {
+        return mergedDraws;
     }
 
     /**
@@ -1248,16 +1254,17 @@ public final class CgWorldRenderer {
     private CgGraphTexture mergedEmission(CgStageFrame stage, CgRecording recording) {
         if (merged.length < meshes.length) merged = new boolean[meshes.length];
         Arrays.fill(merged, 0, count, false);
-        if (!mergeEmission || stage.host().mainFramebuffer() <= 0) return null;
-        boolean any = false;
+        mergedDraws = 0;
+        if (!mergeEmission || stage.host().mainFramebuffer() <= 0 || !stage.resources().has(CgFrameKeys.EMISSION_READ)
+                || CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) return null;
         for (int i = 0; i < count; i++) {
             if (phase[i] != FORWARD && phase[i] != AFTER || queues[i] >= CgRenderQueue.OVERLAY_THRESHOLD || emissions[i] <= 0f) continue;
             merged[i] = true;
-            if (!any) {
-                for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) any |= foldsEmission(link);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (foldsEmission(link)) mergedDraws++;
             }
         }
-        if (!any) return null;
+        if (mergedDraws == 0) return null;
         int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
         if (emissionFull == null || emissionFull.getWidth() != w || emissionFull.getHeight() != h) {
             emissionFull = CgGraphTexture.transientTexture("cg_emission_full", new CgTextureDesc(w, h, EMISSION_FORMAT));
@@ -1490,7 +1497,7 @@ public final class CgWorldRenderer {
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        if (emission != null) pass.attachment(emission);
+        if (emission != null) pass.attachmentIfTaken(emission);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)

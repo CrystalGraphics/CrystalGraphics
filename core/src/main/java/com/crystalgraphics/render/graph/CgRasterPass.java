@@ -98,9 +98,10 @@ public final class CgRasterPass extends CgPass {
     @Nullable
     private CgTargetCopy depthFromCopy;
 
-    /** Its second colour attachment, or null. */
+    /** Its second colour attachment, or null; and whether a target that takes none draws without it. */
     @Nullable
     private CgGraphTexture attachment;
+    private boolean attachmentOptional;
 
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = new int[0];
@@ -438,6 +439,31 @@ public final class CgRasterPass extends CgPass {
         attachment = texture;
         recording.read(this, texture, CgAccess.COLOR_WRITE);
         return this;
+    }
+
+    /**
+     * As {@link #attachment}, for an optimisation with a fallback of its own: where the target takes no second
+     * attachment (framebuffer 0, multisampled, of another size, a colour attachment that is no 2D texture or
+     * renderbuffer), the pass draws into the target alone, what its draws write at location 1 is lost, it says why
+     * once in the log, and {@link #refusesAttachment} answers true for that framebuffer from then on.
+     *
+     * <pre>{@code
+     * if (!CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) pass.attachmentIfTaken(emission);
+     * }</pre>
+     */
+    public CgRasterPass attachmentIfTaken(CgGraphTexture texture) {
+        attachment(texture);
+        attachmentOptional = true;
+        return this;
+    }
+
+    boolean attachmentOptional() {
+        return attachmentOptional;
+    }
+
+    /** Whether framebuffer {@code framebuffer} refused a second attachment this context ({@link #attachmentIfTaken}). */
+    public static boolean refusesAttachment(int framebuffer) {
+        return CgComposedTargets.refused(framebuffer);
     }
 
     /** Its second colour attachment ({@link #attachment}), or null. */
