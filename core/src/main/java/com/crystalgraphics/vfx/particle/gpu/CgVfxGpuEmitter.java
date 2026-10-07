@@ -44,6 +44,21 @@ public interface CgVfxGpuEmitter {
      */
     void writeSpawn(CgVfxWords out);
 
+    /**
+     * What its particles do that it reacts to, in order: an event's index here is what {@link CgVfxEvent#childKey} and
+     * {@link CgVfxEventListener} name it by. The triggers' kinds join its {@link CgVfxShape}; at most
+     * {@link CgVfxEvent#MAX_EVENTS}.
+     *
+     * <pre>{@code
+     * public List<CgVfxEvent> events() {
+     *     return List.of(CgVfxEvent.onLanding().spawn(DUST, 3).inherit(0.2f), CgVfxEvent.onDeath().readback(16));
+     * }
+     * }</pre>
+     */
+    default List<CgVfxEvent> events() {
+        return List.of();
+    }
+
     /** Samples a curve row holds: the atlas's width. */
     int CURVE_TEXELS = 256;
 
