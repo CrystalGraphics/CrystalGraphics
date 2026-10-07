@@ -318,28 +318,39 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         // AFTER_BLOCK_ENTITIES fires after block entities, before renderChunkLayer(translucent); it
         // arrived in Forge 44 (1.19.3). Before that the last stage ahead of translucent terrain is
-        // AFTER_CUTOUT_BLOCKS, which is also ahead of entities. AFTER_PARTICLES follows translucent
-        // terrain, tripwire and particles, Fabulous or not.
+        // AFTER_CUTOUT_BLOCKS, which is also ahead of entities. The transparent pass runs after clouds and
+        // weather, so hazes bend them: AFTER_LEVEL from Forge 46 (1.20), after Fabulous composites them too;
+        // before it AFTER_WEATHER, ahead of that composite.
         //? if >=1.21.3 {
         /*// (the mixins)
-        *///?} elif >=1.19.3 {
+        *///?} elif >=1.20 {
         private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
             LifecycleModern.opaquePass(event.getPartialTick());
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
-            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
             LifecycleModern.transparentPass();
         }
-        //?} elif >=1.18 {
+        //?} elif >=1.19.3 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_BLOCK_ENTITIES) return;
+            LifecycleModern.opaquePass(event.getPartialTick());
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_WEATHER) return;
+            LifecycleModern.transparentPass();
+        }
+        *///?} elif >=1.18 {
         /*private static void onRenderLevelOpaque(RenderLevelStageEvent event) {
             if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) return;
             LifecycleModern.opaquePass(event.getPartialTick());
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
-            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_WEATHER) return;
             LifecycleModern.transparentPass();
         }
         *///?}

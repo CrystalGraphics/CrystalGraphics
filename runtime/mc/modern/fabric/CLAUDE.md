@@ -7,7 +7,9 @@
 mappings, and ship their jar as compiled (`fabricRunsIntermediary` in `ModernTree.kt`). Below 1.16 Fabric API has no
 world-render event, so the 1.15.2 node hooks `LevelRenderer.renderLevel` and the 1.14.4 node
 `GameRenderer.renderLevel` with a node mixin (`mixin/WorldPassHook`, gated by
-`CrystalGraphicsFabricMixins`). Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
+`CrystalGraphicsFabricMixins`). From 1.21.9 no Fabric API event fires after clouds and weather, so the transparent
+pass is `mixin/TransparentPassHook` at the tail of `LevelRenderer.renderLevel` (`render` from 26.2) on 1.21.10 on;
+1.16.5–1.21.8 take `WorldRenderEvents.LAST`. Pins and toolchains: `docs/BUILD.md` § *Nodes and toolchains*.
 
 ## The loader is registration only
 

@@ -275,14 +275,15 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         // -- NEOFORGE bus -----------------------------------------------------------
 
         // NeoForge 21.6 made each stage an event class of its own; 21.9 draws block entities with the
-        // entities, so AfterEntities is the last opaque stage. 26.1 names them for what they draw:
-        // entities are features, and AfterTranslucentParticles follows the particles' reset.
+        // entities, so AfterEntities is the last opaque stage. 26.1 names them for what they draw: entities
+        // are features. The transparent pass is AfterLevel, after clouds, weather and Fabulous's composite of
+        // them, so hazes bend them.
         //? if >=26.1 {
         /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
             LifecycleModern.opaquePass(partialTick(event));
         }
 
-        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterTranslucentParticles event) {
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterLevel event) {
             LifecycleModern.transparentPass();
         }
         *///?} elif >=1.21.9 {
@@ -290,7 +291,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             LifecycleModern.opaquePass(partialTick(event));
         }
 
-        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterParticles event) {
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterLevel event) {
             LifecycleModern.transparentPass();
         }
         *///?} elif >=1.21.6 {
@@ -298,7 +299,7 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             LifecycleModern.opaquePass(partialTick(event));
         }
 
-        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterParticles event) {
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterLevel event) {
             LifecycleModern.transparentPass();
         }
         *///?} else {
@@ -310,9 +311,8 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         }
 
         private static void onRenderLevelTransparent(RenderLevelStageEvent event) {
-            // Validated: AFTER_PARTICLES fires at LevelRenderer.java line ~1215/1230 (MC 1.20.4),
-            // after translucent terrain + tripwire + particles (both Fabulous and non-Fabulous).
-            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
+            // AFTER_LEVEL: after clouds and weather, Fabulous or not, so hazes bend them.
+            if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
             LifecycleModern.transparentPass();
         }
         //?}
