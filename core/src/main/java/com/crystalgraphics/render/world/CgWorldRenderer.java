@@ -232,6 +232,7 @@ public final class CgWorldRenderer {
     private CgGraphTexture emissionFull;
     private boolean[] merged = new boolean[64];
     private int mergedDraws;
+    private boolean mergeNoted;
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
@@ -279,6 +280,7 @@ public final class CgWorldRenderer {
         upsample = null;
         upsampleBound = null;
         distortion.release();
+        mergeNoted = false;
     }
 
     /**
@@ -1270,6 +1272,10 @@ public final class CgWorldRenderer {
             emissionFull = CgGraphTexture.transientTexture("cg_emission_full", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
         recording.raster(emissionFull, CgLoad.clear(0f, 0f, 0f, 0f), stage.constants(), null, CgOrder.SORTED).end();
+        if (!mergeNoted) {
+            mergeNoted = true;
+            LOGGER.info("Glows merge into their surfaces' draws: an emission of {}x{} beside framebuffer {}", w, h, stage.host().mainFramebuffer());
+        }
         return emissionFull;
     }
 
