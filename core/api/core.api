@@ -7478,9 +7478,11 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
 com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   access public,abstract,interface
   extends java/lang/Object
+  field public,static,final NO_TEXTURES [Lcom/crystalgraphics/api/texture/CgTexture;
   method public gpuSource ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public paramVectors ()I
+  method public textures ()[Lcom/crystalgraphics/api/texture/CgTexture;
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,abstract afterSolve ()Z
@@ -7519,6 +7521,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWords
 com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final DEPTH Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final WORLD Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -7584,6 +7587,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public slotCount ()I
   method public spawn (III)V
   method public storage ()I
+  method public,static depth (Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public,static listen (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
   method public,static prepare (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)V
@@ -7627,6 +7631,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public eventsAt ()I
   method public hashCode ()I
   method public instanceRowVectors ()I
+  method public kernelKey ()Ljava/lang/String;
   method public key ()Ljava/lang/String;
   method public kind (I)Ljava/lang/String;
   method public lanes (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
@@ -7640,9 +7645,14 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public reports ()Z
   method public source (I)Ljava/lang/String;
   method public spawns ()Z
+  method public texture (II)Lcom/crystalgraphics/api/texture/CgTexture;
+  method public textureCount (I)I
+  method public textures (I)[Lcom/crystalgraphics/api/texture/CgTexture;
   method public toString ()Ljava/lang/String;
   method public trigger (I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  method public usesDepth ()Z
   method public usesDistance ()Z
+  method public volume (II)Z
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
 com/crystalgraphics/vfx/path/CgVfxPath

@@ -31,7 +31,13 @@ public enum CgVfxWorldInput {
      * {@link #WORLD}, with the window's distance field kept current while the shape plays: {@code fx_world_sdf}, the
      * distance to the nearest solid octant and its gradient, Niagara's and Unity's distance field collision.
      */
-    WORLD_DISTANCE("FxWorld", "world");
+    WORLD_DISTANCE("FxWorld", "world"),
+    /**
+     * The scene's depth as the camera saw it this frame, as an {@code FxDepth} that {@code fx_depth_at.glsl}'s readers
+     * take: Niagara's and Unity's depth buffer collision. Blind off screen and behind the first surface; the voxel
+     * window is the primary collider, this one for what it does not hold (entities, a mod's meshes).
+     */
+    DEPTH("FxDepth", "depth");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};
