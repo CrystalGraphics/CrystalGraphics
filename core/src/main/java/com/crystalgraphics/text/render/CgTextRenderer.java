@@ -1943,7 +1943,11 @@ public class CgTextRenderer {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.TEXT_DETAIL, "draw.drainBuckets")) {
             for (int i = 0; i < n; i++) {
                 Bucket b = buckets.get(i);
-                if (b.batchBits != activeBatchBits) transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
+                if (b.batchBits != activeBatchBits) {
+                    transitionToMaterial(b.batchBits, b.distanceField, b.atlasId);
+                    // records() appends under the material as last captured: capture it as the transition left it.
+                    quadRenderer.useMaterial(textMaterial);
+                }
                 int[] spatial = b.spatial;
                 for (int from = 0, to; from < b.count; from = to) {
                     int node = spatial[from];
