@@ -2,7 +2,15 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 import org.junit.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -52,7 +60,50 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(glsl, glsl.contains("fx_ground(p, s, step_param(row + " + shape.paramAt(ground) + "), step_floor(p, inst));"));
         // a world input reads the voxel window, so the kernel declares it
         assertTrue(shape.readsWorld());
-        assertTrue(glsl.contains("lib/vfx/fx_world.glsl") && glsl.contains("_WorldLive") && glsl.contains("float step_floor("));
+        assertTrue(glsl.contains("lib/vfx/sim/fx_world_at.glsl") && glsl.contains("_WorldLive") && glsl.contains("float step_floor("));
+    }
+
+    /** A kind given as text, bouncing on the window's distance field, its impacts and a rate as events. */
+    private static final class Bounce implements CgVfxGpuModule {
+        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.WORLD_DISTANCE};
+        public String gpuKind() { return "test_bounce"; }
+        public boolean afterSolve() { return true; }
+        public CgVfxWorldInput[] worldInputs() { return WORLD; }
+        public void writeParams(CgVfxWords out) { out.vec4(0.5f, 1f, 0f, 0f); }
+        public String gpuSource() {
+            return """
+                    void fx_test_bounce(inout FxParticle p, FxStep s, vec4 m, FxWorld world) {
+                        vec3 g;
+                        if (fx_world_sdf(world, p.position, g) > 0.25 || !fx_world_solid(world, p.position)) return;
+                        vec3 n = length(g) > 0.0 ? normalize(g) : vec3(0.0, 1.0, 0.0);
+                        if (-dot(p.velocity, n) >= m.y) fx_hit(p, n);
+                        p.velocity = reflect(p.velocity, n) * m.x;
+                    }
+                    """;
+        }
+    }
+
+    private record Hooked(CgVfxEmitter of, List<CgVfxGpuModule> modules, List<CgVfxEvent> events) implements CgVfxGpuEmitter {
+        public String name() { return of.name(); }
+        public CgVfxEmitter.Renderer renderer() { return of.renderer(); }
+        public void writeSpawn(CgVfxWords out) { of.writeSpawn(out); }
+        public void writeCurves(float[] out, int at, int texels) { of.writeCurves(out, at, texels); }
+    }
+
+    @Test
+    public void aCustomKindOnTheDistanceFieldFiresCollisionsAndARate() {
+        List<CgVfxGpuModule> modules = new ArrayList<>(EVERY_KIND.modules());
+        modules.add(new Bounce());
+        CgVfxGpuEmitter hooked = new Hooked(EVERY_KIND, modules,
+                List.of(CgVfxEvent.onCollision().spawn(EVERY_KIND, 2), CgVfxEvent.every(0.1f).readback(8)));
+        CgVfxShape shape = CgVfxShape.of(hooked);
+        String glsl = CgVfxEmitterCompiler.source(shape);
+        assertTrue(shape.usesDistance() && shape.readsWorld());
+        assertEquals(1, count(glsl, "void fx_test_bounce("));                                   // inlined, once
+        assertTrue(glsl.contains("fx_test_bounce(p, s, step_param(row + " + shape.paramAt(modules.size() - 1) + "), step_world(inst));"));
+        assertTrue(glsl.contains("if (p.hit.w > 0.0)") && glsl.contains("p.collisions);"));
+        assertTrue(glsl.contains("floor((p.age - s.dt) / step_param(row + " + shape.eventsAt() + ")[1])"));
+        CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
 
     @Test

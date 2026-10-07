@@ -7397,6 +7397,7 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
 com/crystalgraphics/vfx/particle/gpu/CgVfxEvent
   access public,final
   extends java/lang/Object
+  field public,static,final CHILD_KEY_AT_GLSL Ljava/lang/String;
   field public,static,final CHILD_KEY_GLSL Ljava/lang/String;
   field public,static,final MAX_CHILDREN I
   field public,static,final MAX_EVENTS I
@@ -7407,18 +7408,24 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxEvent
   method public inherit (F)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
   method public readback ()I
   method public readback (I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public repeats ()Z
   method public spawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
   method public trigger ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   method public,static childKey (III)I
+  method public,static childKey (IIII)I
+  method public,static every (F)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
   method public,static onAge (F)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
+  method public,static onCollision ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
   method public,static onDeath ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
   method public,static onLanding ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent;
 com/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger
   access public,final,enum
   extends java/lang/Enum
   field public,static,final AGE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  field public,static,final COLLISION Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   field public,static,final DEATH Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   field public,static,final LANDING Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  field public,static,final RATE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
 com/crystalgraphics/vfx/particle/gpu/CgVfxEventListener
@@ -7430,10 +7437,12 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxEventRows
   extends java/lang/Object
   method public <init> ()V
   method public add (IIDDDFFFFFF)V
+  method public add (IIDDDFFFFFFI)V
   method public clear ()V
   method public count ()I
   method public drop (I)V
   method public dropped ()I
+  method public firing (I)I
   method public nx (I)F
   method public ny (I)F
   method public nz (I)F
@@ -7459,6 +7468,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
 com/crystalgraphics/vfx/particle/gpu/CgVfxGpuModule
   access public,abstract,interface
   extends java/lang/Object
+  method public gpuSource ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public paramVectors ()I
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -7501,6 +7511,8 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput
   extends java/lang/Enum
   field public,static,final FLOOR_Y Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   field public,static,final NONE [Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final WORLD Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
+  field public,static,final WORLD_DISTANCE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public argument ()Ljava/lang/String;
   method public glsl ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
@@ -7573,6 +7585,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
   extends java/lang/Object
   field public,static,final AGE I
   field public,static,final BYTES I
+  field public,static,final COLLISIONS_SHIFT I
   field public,static,final FLAGS I
   field public,static,final GLSL Ljava/lang/String;
   field public,static,final HEAT I
@@ -7615,9 +7628,11 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public readsWorld ()Z
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
   method public reports ()Z
+  method public source (I)Ljava/lang/String;
   method public spawns ()Z
   method public toString ()Ljava/lang/String;
   method public trigger (I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
+  method public usesDistance ()Z
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
 com/crystalgraphics/vfx/path/CgVfxPath

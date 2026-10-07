@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 /**
  * One step's rows of one event, as a {@link CgVfxEventListener} reads them: where each fired, absolute, its parent's
- * velocity and the event's normal, the slot it came from and the parent's id. Both paths fill it, so a listener never
+ * velocity and the event's normal, the slot it came from, the parent's id and, for a trigger that repeats, which firing. Both paths fill it, so a listener never
  * knows which ran.
  *
  * <pre>{@code
@@ -16,6 +16,7 @@ import java.util.Arrays;
  * // a path filling it
  * rows.clear();
  * rows.add(slot, parentId, x, y, z, vx, vy, vz, nx, ny, nz);
+ * rows.add(slot, parentId, x, y, z, vx, vy, vz, nx, ny, nz, firing);   // a collision's or a rate's, from 1
  * rows.drop(past);                                    // found past the cap
  * }</pre>
  *
@@ -28,7 +29,7 @@ public final class CgVfxEventRows {
 
     private double[] at = new double[3 * 16];
     private float[] motion = new float[6 * 16];
-    private int[] ids = new int[2 * 16];
+    private int[] ids = new int[3 * 16];
     private int count, dropped;
 
     public void clear() {
@@ -36,6 +37,11 @@ public final class CgVfxEventRows {
     }
 
     public void add(int slot, int parentId, double x, double y, double z, float vx, float vy, float vz, float nx, float ny, float nz) {
+        add(slot, parentId, x, y, z, vx, vy, vz, nx, ny, nz, 0);
+    }
+
+    public void add(int slot, int parentId, double x, double y, double z, float vx, float vy, float vz, float nx, float ny,
+                    float nz, int firing) {
         if (count * 3 == at.length) {
             at = Arrays.copyOf(at, at.length * 2);
             motion = Arrays.copyOf(motion, motion.length * 2);
@@ -50,8 +56,9 @@ public final class CgVfxEventRows {
         motion[count * 6 + 3] = nx;
         motion[count * 6 + 4] = ny;
         motion[count * 6 + 5] = nz;
-        ids[count * 2] = slot;
-        ids[count * 2 + 1] = parentId;
+        ids[count * 3] = slot;
+        ids[count * 3 + 1] = parentId;
+        ids[count * 3 + 2] = firing;
         count++;
     }
 
@@ -80,7 +87,10 @@ public final class CgVfxEventRows {
     public float nz(int i) { return motion[i * 6 + 5]; }
 
     /** The pool slot the parent was in. */
-    public int slot(int i) { return ids[i * 2]; }
+    public int slot(int i) { return ids[i * 3]; }
 
-    public int parentId(int i) { return ids[i * 2 + 1]; }
+    public int parentId(int i) { return ids[i * 3 + 1]; }
+
+    /** Which firing of a trigger that repeats, from 1: a collision's count, a rate's period index. 0 for the rest. */
+    public int firing(int i) { return ids[i * 3 + 2]; }
 }
