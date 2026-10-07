@@ -7435,12 +7435,13 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public objects ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
-  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
-  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public sorted (I)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public visibleWord (I)I
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public,static prepare ()V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
   access public,final
   extends java/lang/Object
@@ -7605,6 +7606,39 @@ com/crystalgraphics/vfx/sim/CgVfxStream
   method public tick (FFFF)V
   method public via (FFF)V
   method public viaReached ()Z
+com/crystalgraphics/vfx/world/CgVfxVoxelWindow
+  access public,final
+  extends java/lang/Object
+  field public,static,final BUDGET_NANOS J
+  field public,static,final DEPTH I
+  field public,static,final HEIGHT I
+  field public,static,final IDLE_FRAMES I
+  field public,static,final ORDER I
+  field public,static,final REFRESH_FRAMES I
+  field public,static,final SECTIONS_X I
+  field public,static,final SECTIONS_Y I
+  field public,static,final SECTIONS_Z I
+  field public,static,final WIDTH I
+  method public base (I)I
+  method public bind (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
+  method public live ()Z
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
+  method public sections ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public use ()Lcom/crystalgraphics/vfx/world/CgVfxVoxelWindow;
+  method public volume ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static get ()Lcom/crystalgraphics/vfx/world/CgVfxVoxelWindow;
+com/crystalgraphics/vfx/world/CgVfxVoxels
+  access public,final
+  extends java/lang/Object
+  field public,static,final BOXES I
+  field public,static,final SECTION I
+  field public,static,final SECTION_BYTES I
+  method public,static fluidHeight (B)F
+  method public,static fluidKind (B)I
+  method public,static light (B)I
+  method public,static octants (B)I
+  method public,static octants (Lcom/crystalgraphics/platform/service/CgWorldQuery;III[F)I
+  method public,static pack (Lcom/crystalgraphics/platform/service/CgWorldQuery;IIILjava/nio/ByteBuffer;[F)Z
 com/crystalgraphics/world/CgEntityAttachments
   access public,final
   extends java/lang/Object

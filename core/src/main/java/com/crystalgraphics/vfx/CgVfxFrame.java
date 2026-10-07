@@ -199,7 +199,8 @@ public final class CgVfxFrame {
                 // One record set for every layer: the cull stamps each draw's customs and scale onto it.
                 reach = Math.max(reach, layer.radius());
                 CgWorldRenderer.Draw draw = world.draw(system.particleSphere(), system.material(layer))
-                        .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, capacity))
+                        .instances(range.objects(), range.base(slot),
+                                CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
                         .instanceScale(layer.radius())
                         .gpuCulled()
                         .at(effect.originX, effect.originY, effect.originZ)
@@ -216,7 +217,7 @@ public final class CgVfxFrame {
                     CgMeshTopology.TRIANGLES) : CgMesh.quads(sizeClass(capacity, CgVfxQuads.COUNT));
             CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
-                    .indirect(range.visible(), slot * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
+                    .indirect(range.visible(), range.visibleWord(slot) * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                             arcs ? CgVfxRibbons.VERTICES : 6)
                     .gpuCulled()
                     .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz)
