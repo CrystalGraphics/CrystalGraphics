@@ -3113,6 +3113,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   method public detach (Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Lcom/crystalgraphics/gl/material/CgMaterialShader;
   method public detach (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/CgMaterialShader;
   method public detachUbo (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/CgMaterialShader;
+  method public emissionMerge ()Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
   method public ensureParsed ()Lcom/crystalgraphics/gl/material/parse/CgParsedShader;
   method public getAttachedBuffers ()Ljava/util/List;
   method public getLastParsed ()Lcom/crystalgraphics/gl/material/parse/CgParsedShader;
@@ -3160,6 +3161,7 @@ com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
   access public,final
   extends java/lang/Object
   field public,static,final DEBUG_OVERDRAW Ljava/lang/String;
+  field public,static,final EMISSION_TARGET Ljava/lang/String;
   field public,static,final MULTI_DRAW Ljava/lang/String;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/gl/material/parse/CgParsedPass;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/platform/gl/CgCapabilities$ShaderBufferPath;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
@@ -3167,6 +3169,7 @@ com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler
   method public,static compile (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compileDepthAutoGen (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/gl/material/parse/CgParsedPass;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
   method public,static compileShadowAutoGen (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;Lcom/crystalgraphics/gl/material/parse/CgParsedPass;Ljava/util/List;Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource;
+  method public,static emissionMerge (Lcom/crystalgraphics/gl/material/parse/CgParsedShader;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
   method public,static isSimpleVertex (Lcom/crystalgraphics/gl/material/parse/CgParsedPass;)Z
 com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompileConfig
   access public,final,record
@@ -3187,6 +3190,14 @@ com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$CompiledSource
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADDED Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
+  field public,static,final NONE Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
+  field public,static,final SAME_BLEND Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
+  method public,static values ()[Lcom/crystalgraphics/gl/material/parse/CgMaterialShaderCompiler$EmissionMerge;
 com/crystalgraphics/gl/material/parse/CgParsedPass
   access public,final,record
   extends java/lang/Record
@@ -4256,6 +4267,7 @@ com/crystalgraphics/render/draw/CgPipeline
   access public,final
   extends java/lang/Object
   method public bind ()Z
+  method public emissionTarget ()Lcom/crystalgraphics/render/draw/CgPipeline;
   method public id ()I
   method public instanceBase (I)V
   method public keywords ()Ljava/util/Set;
@@ -4267,6 +4279,7 @@ com/crystalgraphics/render/draw/CgPipeline
   method public program ()Lcom/crystalgraphics/api/shader/CgShader;
   method public shader ()Lcom/crystalgraphics/gl/material/CgMaterialShader;
   method public sharedInstance (I)V
+  method public slotWrites ()I
   method public state ()Lcom/crystalgraphics/api/state/CgRenderState;
   method public toString ()Ljava/lang/String;
   method public vertexBase (I)V
@@ -4536,6 +4549,9 @@ com/crystalgraphics/render/graph/CgRasterPass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public attachment ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public attachment (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public attachmentIfTaken (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public chunks ()Ljava/util/List;
   method public damage ()[I
   method public damage (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
@@ -4554,6 +4570,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public timed (Lcom/crystalgraphics/render/CgGpuBudget;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public useScissor (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public view (IFF)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public,static refusesAttachment (I)Z
 com/crystalgraphics/render/graph/CgRecording
   access public,final
   extends java/lang/Object
@@ -4735,6 +4752,7 @@ com/crystalgraphics/render/post/CgPostPoint
 com/crystalgraphics/render/post/CgPostStack
   access public,final
   extends java/lang/Object
+  field public,static,final DEMAND_ORDER I
   field public,static,final ORDER I
   method public add (Lcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public bloom ()Lcom/crystalgraphics/render/post/bloom/CgBloom;
@@ -4945,6 +4963,7 @@ com/crystalgraphics/render/stage/CgFrameKeys
   extends java/lang/Object
   field public,static,final DISTORTION Lcom/crystalgraphics/render/stage/CgFrameKey;
   field public,static,final EMISSION Lcom/crystalgraphics/render/stage/CgFrameKey;
+  field public,static,final EMISSION_READ Lcom/crystalgraphics/render/stage/CgFrameKey;
   field public,static,final OVERDRAW Lcom/crystalgraphics/render/stage/CgFrameKey;
 com/crystalgraphics/render/stage/CgFrameResources
   access public,final
@@ -5132,6 +5151,9 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public halfResolution ()Z
   method public halfResolution (Z)V
   method public install ()V
+  method public mergeEmission ()Z
+  method public mergeEmission (Z)V
+  method public mergedDraws ()I
   method public onFrame (Lcom/crystalgraphics/render/world/CgWorldRenderer$FrameListener;)Lcom/crystalgraphics/render/stage/CgRenderStage$Registration;
   method public overdraw ()Z
   method public overdraw (Z)V
