@@ -918,11 +918,16 @@ public final class CgExecutor {
 
     private void update(CgPass.Update update) {
         int id = bufferStorage(update.buffer, true);
-        int bytes = update.bytes.length;
+        int bytes = update.size;
         if (staging == null) staging = CgStreamBuffer.create(CgGL.GL_COPY_READ_BUFFER, Math.max(bytes, 1 << 16));
         int at;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, UPDATE_STAGE)) {
-            staging.map(bytes).put(update.bytes);
+            ByteBuffer mapped = staging.map(bytes);
+            if (update.floats != null) {
+                mapped.order(ByteOrder.nativeOrder()).asFloatBuffer().put(update.floats, update.from, bytes / Float.BYTES);
+            } else {
+                mapped.put(update.bytes);
+            }
             at = staging.commit(bytes);
         }
         CgGL.glBindBuffer(CgGL.GL_COPY_READ_BUFFER, staging.getGlBufferId());
@@ -1080,7 +1085,7 @@ public final class CgExecutor {
         frame.bindings.bind(packed.constants);
         for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) instanceBuffers[k].bind();
         packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
-        if ((packed.kinds & UNIT_KINDS) != 0) {
+        if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
             packed.clips.bindForDraw();
             packed.shapes.bindForDraw();
             packed.palette.bindForDraw();

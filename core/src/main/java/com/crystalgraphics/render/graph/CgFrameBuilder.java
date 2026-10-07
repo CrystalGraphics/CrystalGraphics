@@ -420,6 +420,7 @@ public final class CgFrameBuilder {
             packed.pipeline[b] = batcher.batchPipeline(b);
             packed.binding[b] = batcher.batchBinding(b);
             packed.kind[b] = ki;
+            if (!packed.tables && CgPipeline.byId(packed.pipeline[b]).readsTables()) packed.tables = true;
             packed.mesh[b] = (CgMesh) batcher.batchMesh(b);
             packed.submesh[b] = batcher.batchSubmesh(b);
             packed.rangeFirst[b] = batcher.batchRangeFirst(b);

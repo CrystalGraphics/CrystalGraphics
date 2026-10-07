@@ -124,17 +124,36 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
     }
 
-    /** Bytes into a buffer, copied when recorded. */
+    /** Bytes into a buffer, copied when recorded; or a caller's floats, read when executed. */
     static final class Update extends CgPass {
         final CgGraphBuffer buffer;
         final long offset;
+        @Nullable
         final byte[] bytes;
+        @Nullable
+        final float[] floats;
+        final int from;
+        /** In bytes. */
+        final int size;
 
         Update(CgGraphBuffer buffer, long offset, byte[] bytes) {
             super("update " + buffer.name(), null, null);
             this.buffer = buffer;
             this.offset = offset;
             this.bytes = bytes;
+            this.floats = null;
+            this.from = 0;
+            this.size = bytes.length;
+        }
+
+        Update(CgGraphBuffer buffer, long offset, float[] floats, int from, int count) {
+            super("update " + buffer.name(), null, null);
+            this.buffer = buffer;
+            this.offset = offset;
+            this.bytes = null;
+            this.floats = floats;
+            this.from = from;
+            this.size = count * Float.BYTES;
         }
     }
 
