@@ -43,6 +43,16 @@ import java.util.Map;
  *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
  * }</pre>
  *
+ * <p>A mesh per particle ({@code MESHES}) draws the same particles as object records, culled and given levels again on
+ * the GPU; each layer scales them and states its own customs:</p>
+ *
+ * <pre>{@code
+ * world.draw(billow, smoke)
+ *      .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, capacity))
+ *      .instanceScale(layer.radius()).custom(0, radius, parameter, age, seed)
+ *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
+ * }</pre>
+ *
  * <ul>
  *   <li>It records on every firing of {@link CgRenderStage#WORLD_OPAQUE} at {@link #ORDER}, after the pools step and
  *       before the world renderer: a second firing with another view culls again.</li>
@@ -67,8 +77,11 @@ public final class CgVfxRange {
     private static CgRenderStage.Registration registration;
 
     private final CgVfxParticlePool pool;
-    private final String passName, keysName, indicesName, startsName, drawnName, visibleName, slotsName, basesName;
-    private CgGraphBuffer drawn, visible, slots, bases;
+    private final String passName, keysName, indicesName, startsName, drawnName, visibleName, slotsName, basesName,
+            objectsName;
+    private CgGraphBuffer drawn, visible, slots, bases, objects;
+    /** Whether {@link #objects()} was asked for since the last recording. */
+    private boolean objectsAsked;
     private final List<CgGraphBuffer> retired = new ArrayList<>();
     private float alpha = 1f, ahead;
 
@@ -87,6 +100,7 @@ public final class CgVfxRange {
         visibleName = name + ".visible";
         slotsName = name + ".slots";
         basesName = name + ".bases";
+        objectsName = name + ".objects";
     }
 
     /** {@code pool}'s range, made the first time; the first made registers ranges' recording. Render thread. */
@@ -129,6 +143,22 @@ public final class CgVfxRange {
                     CgBufferDesc.elements(sizeClass(need), DRAWN_BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         return drawn;
+    }
+
+    /**
+     * The same particles as {@link #drawn()}, as {@code CgInstanceKind.OBJECT} records from {@link #base}: each turned
+     * by its seed and spin and sized by its size over life, as {@code CgVfxFrame.particleMeshes} draws them, custom 1
+     * its progress, seed, opacity and heat. Written only in a frame that asks for it.
+     */
+    public CgGraphBuffer objects() {
+        objectsAsked = true;
+        int need = Math.max(1, pool.capacity());
+        if (objects == null || objects.size() < (long) need * CgGpuOps.cullRecordBytes()) {
+            if (objects != null) retired.add(objects);
+            objects = CgGraphBuffer.persistent(objectsName,
+                    CgBufferDesc.elements(sizeClass(need), CgGpuOps.cullRecordBytes(), CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+        }
+        return objects;
     }
 
     /** How many of each slot's particles are visible: a {@code uint} at {@code slot * 4}, a draw's indirect count. */
@@ -198,6 +228,13 @@ public final class CgVfxRange {
                 .bind("STARTS", starts).bind("BASES", bases).bind("CURVES", pool.curves()).bind("DRAWN", drawn)
                 .set("_Slots", slotCount).set("_Alpha", alpha).set("_Ahead", ahead)
                 .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+        if (objectsAsked && pool.capacity() > 0) {
+            pass.dispatch(kernels.kernel("Objects"), pool.capacity()).bind("RECORDS", records).bind("INDICES", indices)
+                    .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("CURVES", pool.curves())
+                    .bind("OBJECTS", objects).set("_Slots", slotCount).set("_Alpha", alpha)
+                    .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+        }
+        objectsAsked = false;
         pass.end();
     }
 
@@ -228,9 +265,9 @@ public final class CgVfxRange {
     private void release(CgRecording recording) {
         for (int i = 0; i < retired.size(); i++) recording.release(retired.get(i));
         retired.clear();
-        CgGraphBuffer[] owned = {drawn, visible, slots, bases};
+        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        drawn = visible = slots = bases = null;
+        drawn = visible = slots = bases = objects = null;
     }
 
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */

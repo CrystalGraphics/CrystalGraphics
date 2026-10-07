@@ -37,6 +37,13 @@ Properties {
     _Pyramid      ("Eye depth, each level the farthest it covers",     sampler2D) = "white"
     _PyramidSize  ("Its width, height and levels; no levels, no test", vec4) = (0, 0, 0, 0)
     _Light        ("Block and sky light stamped; z 1 to stamp",        vec4) = (0, 0, 0, 0)
+    _Customs      ("Bit k set: custom k stamped from _Custom<k>",      int)  = 0
+    _Custom0      ("Custom 0 stamped",                                 vec4) = (0, 0, 0, 0)
+    _Custom1      ("Custom 1 stamped",                                 vec4) = (0, 0, 0, 0)
+    _Custom2      ("Custom 2 stamped",                                 vec4) = (0, 0, 0, 0)
+    _Custom3      ("Custom 3 stamped",                                 vec4) = (0, 0, 0, 0)
+    _Scale        ("Each instance scaled about its own origin",        float) = 1.0
+    _NormalScale  ("What that scale does to a normal matrix",          float) = 1.0
 }
 
 struct CullRecord {   // CgInstanceKind.OBJECT's 48 floats
@@ -103,7 +110,7 @@ void Cull() {
     if (uint(CG_ELEMENT) >= n) return;
     CullRecord r = INSTANCES(_First + CG_ELEMENT);
     mat4 place = mat4(_Place0, _Place1, _Place2, _Place3);
-    mat4 m = place * mat4(r.model0, r.model1, r.model2, r.model3);
+    mat4 m = place * mat4(r.model0 * _Scale, r.model1 * _Scale, r.model2 * _Scale, r.model3);
 
     // The box in the camera-relative world: JOML's transformAab, term for term.
     vec3 lo = m[3].xyz, hi = m[3].xyz;
@@ -133,7 +140,7 @@ void Cull() {
     if (level != _Level || occluded(lo, hi)) return;
 
     mat3 normal = mat3(_PlaceNormal0.xyz, _PlaceNormal1.xyz, _PlaceNormal2.xyz)
-            * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz);
+            * mat3(r.normal0.xyz, r.normal1.xyz, r.normal2.xyz) * _NormalScale;
     CullRecord o;
     o.model0 = m[0];
     o.model1 = m[1];
@@ -143,9 +150,9 @@ void Cull() {
     o.normal1 = vec4(normal[1], r.normal1.w);
     o.normal2 = vec4(normal[2], r.normal2.w);
     o.normal3 = _Light.z > 0.5 ? vec4(_Light.xy, r.normal3.zw) : r.normal3;   // CG_OBJECT_LIGHT
-    o.custom0 = r.custom0;
-    o.custom1 = r.custom1;
-    o.custom2 = r.custom2;
-    o.custom3 = r.custom3;
+    o.custom0 = (_Customs & 1) != 0 ? _Custom0 : r.custom0;
+    o.custom1 = (_Customs & 2) != 0 ? _Custom1 : r.custom1;
+    o.custom2 = (_Customs & 4) != 0 ? _Custom2 : r.custom2;
+    o.custom3 = (_Customs & 8) != 0 ? _Custom3 : r.custom3;
     OUT_APPEND(o);
 }

@@ -3,9 +3,11 @@
 // Key gives each live particle a key, its slot if it may be on screen and the slot count if not, so the culled sort
 // past the end; and its index, which the sort carries. CgGpuOps then sorts, counts each slot's visible particles and
 // scans the counts into each slot's start. Place writes the particles a slot's draws read, in CgParticleBuffer's
-// layout, from the slot's list base: what CgVfxSystem's writeRecords writes on the CPU path.
+// layout, from the slot's list base: what CgVfxSystem's writeRecords writes on the CPU path. Objects writes the same
+// particles as object records, for a mesh drawn per particle: what CgVfxFrame.particleMeshes draws.
 #pragma kernel Key map
 #pragma kernel Place gather
+#pragma kernel Objects gather
 
 Properties {
     _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
@@ -31,6 +33,13 @@ struct FxDrawn {
     vec4 light;
 };
 
+// A particle as a mesh draws it: CgInstanceKind.OBJECT's record.
+struct FxObject {
+    vec4 model0; vec4 model1; vec4 model2; vec4 model3;
+    vec4 normal0; vec4 normal1; vec4 normal2; vec4 normal3;
+    vec4 custom0; vec4 custom1; vec4 custom2; vec4 custom3;
+};
+
 Buffers {
     RECORDS ("Particles",                                         FxRecord, readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
@@ -42,6 +51,7 @@ Buffers {
     BASES   ("Where each slot's records start in DRAWN",          uint,     readonly)
     CURVES  ("Each parameter row's size and opacity curves",      vec2,     readonly)
     DRAWN   ("The particles a look draws",                        FxDrawn,  writeonly)
+    OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
 }
 
 bool range_outside(vec4 plane, vec3 c, float r) {
@@ -74,14 +84,21 @@ vec2 range_curve(uint row, float t) {
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
 }
 
-void Place() {
-    // The slot whose records hold this one: the last base at or below it. A closed slot's base is the next one's.
+// The slot whose records hold element e: the last base at or below it, and e's rank in it. A closed slot's base is the
+// next one's.
+int range_slot(int e, out int rank) {
     int lo = 0, hi = _Slots - 1;
     while (lo < hi) {
         int mid = (lo + hi + 1) >> 1;
-        if (int(BASES(mid)) <= CG_ELEMENT) lo = mid; else hi = mid - 1;
+        if (int(BASES(mid)) <= e) lo = mid; else hi = mid - 1;
     }
-    int rank = CG_ELEMENT - int(BASES(lo));
+    rank = e - int(BASES(lo));
+    return lo;
+}
+
+void Place() {
+    int rank;
+    int lo = range_slot(CG_ELEMENT, rank);
     FxDrawn d;
     d.place = vec4(0.0);
     d.motion = vec4(0.0);
@@ -97,4 +114,42 @@ void Place() {
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
     }
     DRAWN_WRITE(d);
+}
+
+// JOML's rotationXYZ(ax, ay, az), term for term: its three columns.
+mat3 range_turn(float ax, float ay, float az) {
+    float sx = sin(ax), cx = cos(ax), sy = sin(ay), cy = cos(ay), sz = sin(az), cz = cos(az);
+    float nm21 = -sx, nm22 = cx;
+    float nm01 = nm21 * -sy, nm02 = nm22 * -sy;
+    return mat3(vec3(cy * cz, nm01 * cz + cx * sz, nm02 * cz + sx * sz),
+                vec3(cy * -sz, nm01 * -sz + cx * cz, nm02 * -sz + sx * cz),
+                vec3(sy, nm21 * cy, nm22 * cy));
+}
+
+void Objects() {
+    int rank;
+    int lo = range_slot(CG_ELEMENT, rank);
+    FxObject o;
+    o.model0 = vec4(0.0); o.model1 = vec4(0.0); o.model2 = vec4(0.0); o.model3 = vec4(0.0, 0.0, 0.0, 1.0);
+    o.normal0 = vec4(0.0); o.normal1 = vec4(0.0); o.normal2 = vec4(0.0); o.normal3 = vec4(15.0, 15.0, 0.0, 1.0);
+    o.custom0 = vec4(0.0); o.custom1 = vec4(0.0); o.custom2 = vec4(0.0); o.custom3 = vec4(0.0);
+    if (rank < int(VISIBLE(lo))) {
+        FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
+        float t = min(r.positionAge.w / r.previousLife.w, 1.0);
+        vec2 curve = range_curve(r.idSlot.w, t);
+        // CgVfxFrame.particleMeshes: turned by its seed and spin, sized by its size over life
+        float turn = r.seedSpin.x * 6.2831853 + r.seedSpin.y;
+        mat3 turned = range_turn(turn * 1.7, turn * 2.3, turn);
+        float size = r.velocitySize.w * curve.x, inverse = size > 0.0 ? 1.0 / size : 0.0;
+        o.model0 = vec4(turned[0] * size, 0.0);
+        o.model1 = vec4(turned[1] * size, 0.0);
+        o.model2 = vec4(turned[2] * size, 0.0);
+        o.model3 = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, 1.0);
+        // Matrix4f.normal: the inverse transpose, a rotation over its size
+        o.normal0 = vec4(turned[0] * inverse, 0.0);
+        o.normal1 = vec4(turned[1] * inverse, 0.0);
+        o.normal2 = vec4(turned[2] * inverse, 0.0);
+        o.custom1 = vec4(t, r.seedSpin.x, curve.y, r.seedSpin.w);
+    }
+    OBJECTS_WRITE(o);
 }

@@ -165,6 +165,9 @@ public final class CgWorldRenderer {
     /** Per draw: the object records a set of instances draws, else null, and how many of them. */
     private CgGraphBuffer[] sets = new CgGraphBuffer[64];
     private int[] setFirsts = new int[64];
+    /** Per draw: the customs it stated, a bit each, which a set's cull stamps; and a set's instance scale. */
+    private int[] customsStated = new int[64];
+    private float[] setScales = new float[64];
     private CgGpuCount[] setCounts = new CgGpuCount[64];
     private CgMaterial[] materials = new CgMaterial[64];
     private double[] positions = new double[64 * 3];
@@ -378,6 +381,8 @@ public final class CgWorldRenderer {
         private int indirectFactor;
         private CgGraphBuffer set;
         private int setFirst;
+        private int stated;
+        private float setScale;
         private CgGpuCount setCount;
         private CgBufferHandle buffer;
         private CgBindingPoints.Binding bufferPoint;
@@ -407,6 +412,8 @@ public final class CgWorldRenderer {
             indirect = null;
             set = null;
             setFirst = 0;
+            stated = 0;
+            setScale = 1f;
             setCount = null;
             buffer = null;
             bufferPoint = null;
@@ -569,8 +576,9 @@ public final class CgWorldRenderer {
          * <ul>
          *   <li>{@link #bounds} is the whole set's box, culled on the CPU; without it the set is culled per instance
          *       only. Each instance is culled by its mesh's box, grown by {@link #pad}.</li>
-         *   <li>A record's model matrix places it in this draw's space, and its customs are its own; every kept record
-         *       is lit by this draw's light ({@link #light}, else the world's at its position).</li>
+         *   <li>A record's model matrix places it in this draw's space, and its customs are its own but those this draw
+         *       states with {@link #custom}, which every kept record takes; every kept record is lit by this draw's
+         *       light ({@link #light}, else the world's at its position).</li>
          *   <li>A transparent set draws its instances in no order among themselves.</li>
          *   <li>Not with {@link #indirect}: the cull writes the count. The mesh needs bounds, and a {@link CgMeshLods} at
          *       most {@link CgCull#MAX_LEVELS} levels.</li>
@@ -599,6 +607,21 @@ public final class CgWorldRenderer {
             return this;
         }
 
+        /**
+         * Scales each of its {@link #instances} by {@code scale} about the instance's own origin: one set of records
+         * drawn at several sizes, as a particle mesh is by each layer that draws it. 1 by default.
+         *
+         * <pre>{@code
+         * world.draw(billow, smoke).instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), slot, n))
+         *      .instanceScale(layer.radius()).custom(0, radius, parameter, age, seed).at(x, y, z).gpuCulled().submit();
+         * }</pre>
+         */
+        public Draw instanceScale(float scale) {
+            if (!(scale > 0f)) throw new IllegalArgumentException("instance scale " + scale);
+            setScale = scale;
+            return this;
+        }
+
         /** Grows the bounds it is culled by on every side, for a vertex shader that displaces. */
         public Draw pad(float radius) {
             pad = radius;
@@ -619,9 +642,10 @@ public final class CgWorldRenderer {
             return this;
         }
 
-        /** {@code CG_OBJECT_CUSTOM<slot>}, slot 0 to 3. */
+        /** {@code CG_OBJECT_CUSTOM<slot>}, slot 0 to 3: of every kept record, for a draw of {@link #instances}. */
         public Draw custom(int slot, float x, float y, float z, float w) {
             int at = slot * 4;
+            stated |= 1 << slot;
             custom[at] = x;
             custom[at + 1] = y;
             custom[at + 2] = z;
@@ -773,6 +797,8 @@ public final class CgWorldRenderer {
         countFactors[count] = d.indirectFactor;
         sets[count] = d.set;
         setFirsts[count] = d.setFirst;
+        customsStated[count] = d.stated;
+        setScales[count] = d.setScale;
         setCounts[count] = d.setCount;
         buffers[count] = d.buffer;
         bufferAt[count] = d.bufferPoint;
@@ -822,6 +848,8 @@ public final class CgWorldRenderer {
         countFactors = Arrays.copyOf(countFactors, n);
         sets = Arrays.copyOf(sets, n);
         setFirsts = Arrays.copyOf(setFirsts, n);
+        customsStated = Arrays.copyOf(customsStated, n);
+        setScales = Arrays.copyOf(setScales, n);
         setCounts = Arrays.copyOf(setCounts, n);
         buffers = Arrays.copyOf(buffers, n);
         bufferAt = Arrays.copyOf(bufferAt, n);
@@ -1393,7 +1421,11 @@ public final class CgWorldRenderer {
         if (lods[i] != null) cull.mesh(lods[i]);
         else cull.mesh(meshes[i]);
         modelOf(i, view);
-        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]);
+        cull.place(model).pad(pads[i]).light(lights[i * 2], lights[i * 2 + 1]).scale(setScales[i]).ownCustoms();
+        for (int k = 0; k < 4; k++) {
+            int c = i * 16 + k * 4;
+            if ((customsStated[i] & 1 << k) != 0) cull.custom(k, customs[c], customs[c + 1], customs[c + 2], customs[c + 3]);
+        }
         int capacity = setCounts[i].capacity(), k = setsCulled++;
         if (k == cullOut.length) {
             cullOut = Arrays.copyOf(cullOut, k * 2);
