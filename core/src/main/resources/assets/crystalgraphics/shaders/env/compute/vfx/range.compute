@@ -7,12 +7,13 @@
 // slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the particles a
 // slot's draws read, in CgParticleBuffer's layout, from the slot's list base: what CgVfxSystem's writeRecords writes
 // on the CPU path. Objects writes the same particles as object records, for a mesh drawn per particle: what
-// CgVfxFrame.particleMeshes draws.
+// CgVfxFrame.particleMeshes draws. Both light each particle from the voxel window at its block (CgVfxVoxelWindow).
 #pragma kernel Key map
 #pragma kernel Place gather
 #pragma kernel Objects gather
 
 #include "crystalgraphics:shaders/lib/occlusion.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
 
 Properties {
     _Plane0 ("The frustum's planes, JOML's order, camera-relative", vec4)  = (0, 0, 0, 1)
@@ -35,6 +36,17 @@ Properties {
     _Eye         ("Projection [2][2], [2][3], [3][2], [3][3]",       vec4)      = (-1, -1, 0, 0)
     _Pyramid     ("The scene's depth, CgGpuOps.depthPyramid's",      sampler2D) = "white"
     _PyramidSize ("Its width, height and levels; no levels, no test", vec4)     = (0, 0, 0, 0)
+    // CgVfxVoxelWindow.PROPERTIES
+    _World         ("The voxel window: a block a texel",    sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",     sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",        int)       = 0
+    _WorldBaseY    ("y",                                    int)       = 0
+    _WorldBaseZ    ("z",                                    int)       = 0
+    _WorldWrapX    ("That block's texel: x",                int)       = 0
+    _WorldWrapY    ("y",                                    int)       = 0
+    _WorldWrapZ    ("z",                                    int)       = 0
+    _WorldLive     ("1 with a level, else 0: read nothing", int)       = 0
+    _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
 }
 
 // A particle as a pool stores it: CgVfxRecord.GLSL, which a test holds this line to.
@@ -47,6 +59,9 @@ struct FxDrawn {
     vec4 state;
     vec4 light;
 };
+
+// A slot's origin, absolute: its whole blocks, and where in that block.
+struct FxOrigin { ivec4 block; vec4 within; };
 
 // A particle as a mesh draws it: CgInstanceKind.OBJECT's record.
 struct FxObject {
@@ -65,6 +80,7 @@ Buffers {
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
     BASES   ("Where each slot's records start in its pool's DRAWN", uint,   readonly)
+    ORIGINS ("Each slot's origin, absolute",                      FxOrigin, readonly)
     CURVES  ("Each parameter row's size and opacity curves",      vec2,     readonly)
     DRAWN   ("The particles a look draws",                        FxDrawn,  writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
@@ -126,6 +142,15 @@ int range_slot(int e, out int rank) {
     return lo;
 }
 
+// Block and sky light, 0 to 15, at p from slot's origin: full with no level, or where the window does not know.
+vec2 range_light(int slot, vec3 p) {
+    if (_WorldLive == 0) return vec2(15.0);
+    FxOrigin o = ORIGINS(slot);
+    ivec3 b = fx_world_block(o.block.xyz, o.within.xyz, p);
+    return fx_world_light(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
+            ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), b, vec2(15.0));
+}
+
 void Place() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
@@ -142,6 +167,7 @@ void Place() {
         d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
         d.motion = vec4(r.velocitySize.xyz, t);
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
+        d.light = vec4(range_light(lo, d.place.xyz), 0.0, 0.0);
     }
     DRAWN_WRITE(d);
 }
@@ -179,6 +205,7 @@ void Objects() {
         o.normal0 = vec4(turned[0] * inverse, 0.0);
         o.normal1 = vec4(turned[1] * inverse, 0.0);
         o.normal2 = vec4(turned[2] * inverse, 0.0);
+        o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, 1.0);
         o.custom1 = vec4(t, r.seedSpin.x, curve.y, r.seedSpin.w);
     }
     OBJECTS_WRITE(o);
