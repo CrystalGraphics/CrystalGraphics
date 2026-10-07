@@ -207,11 +207,13 @@ public final class CgWorldRenderer {
     private final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
 
     // Sets culled on the GPU: one cull, its values copied into each dispatch; per draw, the records and level counts its
-    // cull wrote this stage; and the k-th set culled in a stage writes the k-th buffers.
+    // cull wrote this stage, and where its own start in them. Every set one cull pass culls shares one records buffer
+    // and one counts buffer, so their draws join; the k-th pass of a stage writes the k-th pair.
     private final CgCull cull = new CgCull();
     private CgGraphBuffer[] culled = new CgGraphBuffer[64], culledCounts = new CgGraphBuffer[64];
+    private int[] culledFirst = new int[64], culledWord = new int[64];
     private CgGraphBuffer[] cullOut = new CgGraphBuffer[4], cullLevels = new CgGraphBuffer[4];
-    private int setsCulled;
+    private int cullPasses;
 
     // Emission: the target Emissive passes draw into, and its constants.
     private boolean[] emits = new boolean[64];
@@ -871,6 +873,8 @@ public final class CgWorldRenderer {
         bufferAt = Arrays.copyOf(bufferAt, n);
         culled = Arrays.copyOf(culled, n);
         culledCounts = Arrays.copyOf(culledCounts, n);
+        culledFirst = Arrays.copyOf(culledFirst, n);
+        culledWord = Arrays.copyOf(culledWord, n);
     }
     // ── Recording ────────────────────────────────────────────────────────────────────────────────
 
@@ -917,7 +921,7 @@ public final class CgWorldRenderer {
             prepare(view);
             Arrays.fill(culled, 0, count, null);
             Arrays.fill(culledCounts, 0, count, null);
-            setsCulled = 0;
+            cullPasses = 0;
             boolean prepass = false;
             int drawn = 0;
             for (int i = 0; i < count; i++) {
@@ -1410,20 +1414,46 @@ public final class CgWorldRenderer {
      * {@code emitting}, those its bloom draws. The first asks for the stage's depth pyramid.
      */
     private void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, boolean emitting) {
-        CgComputePass pass = null;
+        int records = 0, sets = 0;
         for (int i = 0; i < count; i++) {
-            if (sets[i] == null || culled[i] != null || (emitting ? !emits[i] : phase[i] == SKIP)) continue;
-            if (pass == null) {
-                cull.view(view.view(), view.projection()).pyramid(stage.depthPyramid());
-                pass = recording.compute("world.cull");
-            }
-            cullSet(pass, i, view);
+            if (!culls(i, emitting)) continue;
+            records += CgGpuOps.cullFirst(lods[i] != null ? lods[i].levelCount() : 1, setCounts[i].capacity());
+            sets++;
         }
-        if (pass != null) pass.end();
+        if (sets == 0) return;
+        int k = cullPasses++;
+        if (k == cullOut.length) {
+            cullOut = Arrays.copyOf(cullOut, k * 2);
+            cullLevels = Arrays.copyOf(cullLevels, k * 2);
+        }
+        long bytes = (long) records * CgGpuOps.cullRecordBytes(), words = (long) sets * CgCull.MAX_LEVELS * 4L;
+        if (cullOut[k] == null || cullOut[k].size() < bytes) {
+            cullOut[k] = CgGraphBuffer.transientBuffer("cg_world.culled", CgBufferDesc.of(bytes, CgBufferUsage.STORAGE));
+        }
+        if (cullLevels[k] == null || cullLevels[k].size() < words) {
+            cullLevels[k] = CgGraphBuffer.transientBuffer("cg_world.kept",
+                    CgBufferDesc.of(words, CgBufferUsage.STORAGE, CgBufferUsage.INDIRECT));
+        }
+        cull.view(view.view(), view.projection()).pyramid(stage.depthPyramid());
+        CgComputePass pass = recording.compute("world.cull");
+        int first = 0, word = 0;
+        for (int i = 0; i < count; i++) {
+            if (!culls(i, emitting)) continue;
+            cullSet(pass, i, view, cullOut[k], first, cullLevels[k], word);
+            first += CgGpuOps.cullRecords(cull, setCounts[i].capacity());
+            word += CgCull.MAX_LEVELS;
+        }
+        pass.end();
     }
 
-    /** Set {@code i}'s cull into the stage's next output buffers, placed by its model. */
-    private void cullSet(CgComputePass pass, int i, CgHostView view) {
+    /** Whether this {@link #cullSets} culls draw {@code i}: a set not culled yet that the stage, or its bloom, draws. */
+    private boolean culls(int i, boolean emitting) {
+        return sets[i] != null && culled[i] == null && (emitting ? emits[i] : phase[i] != SKIP);
+    }
+
+    /** Set {@code i}'s cull into {@code out} from record {@code first} and {@code counts} from {@code word}, placed by its model. */
+    private void cullSet(CgComputePass pass, int i, CgHostView view, CgGraphBuffer out, int first, CgGraphBuffer counts,
+                         int word) {
         if (lods[i] != null) cull.mesh(lods[i]);
         else cull.mesh(meshes[i]);
         modelOf(i, view);
@@ -1432,22 +1462,11 @@ public final class CgWorldRenderer {
             int c = i * 16 + k * 4;
             if ((customsStated[i] & 1 << k) != 0) cull.custom(k, customs[c], customs[c + 1], customs[c + 2], customs[c + 3]);
         }
-        int capacity = setCounts[i].capacity(), k = setsCulled++;
-        if (k == cullOut.length) {
-            cullOut = Arrays.copyOf(cullOut, k * 2);
-            cullLevels = Arrays.copyOf(cullLevels, k * 2);
-        }
-        long bytes = (long) CgGpuOps.cullRecords(cull, capacity) * CgGpuOps.cullRecordBytes();
-        if (cullOut[k] == null || cullOut[k].size() < bytes) {
-            cullOut[k] = CgGraphBuffer.transientBuffer("cg_world.culled", CgBufferDesc.of(bytes, CgBufferUsage.STORAGE));
-        }
-        if (cullLevels[k] == null) {
-            cullLevels[k] = CgGraphBuffer.transientBuffer("cg_world.kept",
-                    CgBufferDesc.of(CgCull.MAX_LEVELS * 4L, CgBufferUsage.STORAGE, CgBufferUsage.INDIRECT));
-        }
-        CgGpuOps.cull(pass, cull, sets[i], setFirsts[i], setCounts[i], cullOut[k], cullLevels[k], 0);
-        culled[i] = cullOut[k];
-        culledCounts[i] = cullLevels[k];
+        CgGpuOps.cull(pass, cull, sets[i], setFirsts[i], setCounts[i], out, first, counts, word);
+        culled[i] = out;
+        culledCounts[i] = counts;
+        culledFirst[i] = first;
+        culledWord[i] = word;
     }
 
     private void group(CgChunkBuilder chunks, int i) {
@@ -1462,8 +1481,8 @@ public final class CgWorldRenderer {
             group(chunks, i);
             if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
             if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-            chunks.objects(culled[i], CgGpuOps.cullFirst(l, capacity), capacity)
-                    .indirect(culledCounts[i], l * 4L, CgIndirect.INSTANCES, 1);
+            chunks.objects(culled[i], culledFirst[i] + CgGpuOps.cullFirst(l, capacity), capacity)
+                    .indirect(culledCounts[i], (culledWord[i] + l) * 4L, CgIndirect.INSTANCES, 1);
         }
     }
 
