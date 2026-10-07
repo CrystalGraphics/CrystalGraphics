@@ -43,7 +43,7 @@ public final class CgVfxPath {
         count = 0;
         length = 0f;
         if (n < 2) return;
-        int denseCount = densify(n);
+        int denseCount = densify(n, spacing);
         length = cumulative[denseCount - 1];
         if (length <= MERGE) return;
         count = Math.min(MAX_RINGS, Math.max(2, (int) Math.ceil(length / spacing) + 1));
@@ -98,18 +98,25 @@ public final class CgVfxPath {
         return n;
     }
 
-    /** The spline as a dense polyline with cumulative length; answers its point count. */
-    private int densify(int n) {
-        int denseCount = (n - 1) * SUBDIVISIONS + 1;
-        if (dense.length < denseCount * 3) {
-            dense = new float[denseCount * 3 * 2];
-            cumulative = new float[denseCount * 2];
+    /**
+     * The spline as a dense polyline with cumulative length; answers its point count. Each segment is cut no finer than
+     * the rings will be spaced: they lie on its chords, within a step squared times the curvature over eight of it.
+     */
+    private int densify(int n, float spacing) {
+        int most = (n - 1) * SUBDIVISIONS + 1;
+        if (dense.length < most * 3) {
+            dense = new float[most * 3 * 2];
+            cumulative = new float[most * 2];
         }
+        float chords = 0f;
+        for (int i = 0; i < n - 1; i++) chords += chord(i);
+        // Past MAX_RINGS the rings spread out, and so may the polyline.
+        float step = Math.max(spacing, chords / (MAX_RINGS - 1));
         int d = 0;
         for (int i = 0; i < n - 1; i++) {
-            for (int k = 0; k < SUBDIVISIONS; k++) {
-                catmullRom(n, i, (float) k / SUBDIVISIONS, d++);
-            }
+            int cuts = Math.max(1, Math.min(SUBDIVISIONS, (int) Math.ceil(chord(i) / step)));
+            segment(n, i);
+            for (int k = 0; k < cuts; k++) catmullRom((float) k / cuts, d++);
         }
         System.arraycopy(points, (n - 1) * 3, dense, d * 3, 3);
         d++;
@@ -123,8 +130,14 @@ public final class CgVfxPath {
         return d;
     }
 
-    /** Barry and Goldman's pyramid for the centripetal spline on segment {@code i}, at {@code u} of it. */
-    private void catmullRom(int n, int i, float u, int out) {
+    private float chord(int i) {
+        float dx = points[i * 3 + 3] - points[i * 3], dy = points[i * 3 + 4] - points[i * 3 + 1];
+        float dz = points[i * 3 + 5] - points[i * 3 + 2];
+        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    /** Segment {@code i}'s four control points and its knots, for {@link #catmullRom}. */
+    private void segment(int n, int i) {
         for (int c = 0; c < 3; c++) {
             float p1 = points[i * 3 + c], p2 = points[(i + 1) * 3 + c];
             float p0 = i > 0 ? points[(i - 1) * 3 + c] : 2f * p1 - p2;
@@ -134,16 +147,29 @@ public final class CgVfxPath {
             scratch[c * 4 + 2] = p2;
             scratch[c * 4 + 3] = p3;
         }
-        float t0 = 0f;
-        float t1 = t0 + knot(0, 1);
-        float t2 = t1 + knot(1, 2);
-        float t3 = t2 + knot(2, 3);
+        t1 = knot(0, 1);
+        t2 = t1 + knot(1, 2);
+        t3 = t2 + knot(2, 3);
+        r10 = 1f / t1;
+        r21 = 1f / (t2 - t1);
+        r32 = 1f / (t3 - t2);
+        r20 = 1f / t2;
+        r31 = 1f / (t3 - t1);
+    }
+
+    /** The segment's knots (t0 is 0) and the reciprocals of the spans the pyramid divides by. */
+    private float t1, t2, t3, r10, r21, r32, r20, r31;
+
+    /** Barry and Goldman's pyramid for the centripetal spline on the {@link #segment}, at {@code u} of it. */
+    private void catmullRom(float u, int out) {
         float t = t1 + (t2 - t1) * u;
+        // Each level's weights, shared by the three axes.
+        float a1 = t * r10, a2 = (t - t1) * r21, a3 = (t - t2) * r32, b1 = t * r20, b2 = (t - t1) * r31;
         for (int c = 0; c < 3; c++) {
             float p0 = scratch[c * 4], p1 = scratch[c * 4 + 1], p2 = scratch[c * 4 + 2], p3 = scratch[c * 4 + 3];
-            float a1 = lerp(p0, p1, t0, t1, t), a2 = lerp(p1, p2, t1, t2, t), a3 = lerp(p2, p3, t2, t3, t);
-            float b1 = lerp(a1, a2, t0, t2, t), b2 = lerp(a2, a3, t1, t3, t);
-            dense[out * 3 + c] = lerp(b1, b2, t1, t2, t);
+            float q1 = p0 + (p1 - p0) * a1, q2 = p1 + (p2 - p1) * a2, q3 = p2 + (p3 - p2) * a3;
+            float s1 = q1 + (q2 - q1) * b1, s2 = q2 + (q3 - q2) * b2;
+            dense[out * 3 + c] = s1 + (s2 - s1) * a2;
         }
     }
 
@@ -155,10 +181,6 @@ public final class CgVfxPath {
         float dy = scratch[4 + b] - scratch[4 + a];
         float dz = scratch[8 + b] - scratch[8 + a];
         return Math.max((float) Math.sqrt(Math.sqrt(dx * dx + dy * dy + dz * dz)), 1.0e-4f);
-    }
-
-    private static float lerp(float a, float b, float ta, float tb, float t) {
-        return a + (b - a) * (t - ta) / (tb - ta);
     }
 
     private void resample(int denseCount) {
