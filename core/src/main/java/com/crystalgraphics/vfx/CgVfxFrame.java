@@ -1,9 +1,13 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
+import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.compute.ops.CgGpuCount;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
@@ -192,6 +196,7 @@ public final class CgVfxFrame {
         for (int k = 0; k < layers.size(); k++) {
             CgVfxLayer layer = layers.get(k);
             if (!name.equals(layer.slot()) || skips(layer)) continue;
+            if (blendsInOrder(system.material(layer))) range.sorted(slot);
             if (meshes) {
                 // One record set for every layer: the cull stamps each draw's customs and scale onto it.
                 reach = Math.max(reach, layer.radius());
@@ -225,6 +230,16 @@ public final class CgVfxFrame {
         }
         // An arc reaches from its source to its particle, which no radius about the particle covers.
         if (reach > 0f) pool.cullScale(slot, arcs ? UNCULLED : reach);
+    }
+
+    /**
+     * Whether {@code material}'s Forward pass blends so that order matters: over, not added. An additive blend commutes,
+     * and so does none; a material still compiling answers no. A look drawn through OIT must answer no too: it needs
+     * neither the sort nor ordered instances (plan vfx-gpu decision 10).
+     */
+    private static boolean blendsInOrder(CgMaterial material) {
+        CgBlendState blend = material.getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
+        return blend != null && blend.enabled() && blend.dstRgb() != CgGL.GL_ONE;
     }
 
     /** The mesh size a slot of {@code capacity} draws on: powers of two from {@code least}, so slots share meshes. */
