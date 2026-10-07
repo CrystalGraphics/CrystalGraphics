@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
+import com.crystalgraphics.api.texture.CgTexture;
+
 /**
  * A module kind's GPU side: the GLSL function the emitter compiler calls in its Step kernel, in stack order, and the
  * numbers that call gets. A kind is one function, {@code fx_<kind>} in
@@ -85,6 +87,31 @@ public interface CgVfxGpuModule {
     default CgVfxWorldInput[] worldInputs() {
         return CgVfxWorldInput.NONE;
     }
+
+    /**
+     * Textures it samples, passed after its world inputs as {@code sampler2D} or {@code sampler3D} by each one's kind:
+     * a vector field (Unity's Vector Field Force, Niagara's Sample Vector Field), a heightfield (Godot's). Each texture
+     * is part of the pool's identity, so definitions sampling different ones step in different pools; numbers placing it
+     * stay in {@link #writeParams} and the lanes.
+     *
+     * <pre>{@code
+     * private final CgTexture[] field = {CgTexture3D.create(CgTextureType.RGBA32F.toTextureSpec(), "mymod:fields/swirl.png")};
+     * public CgTexture[] textures() { return field; }
+     * // void fx_mymod_field(inout FxParticle p, inout FxForces f, FxStep s, vec4 m, sampler3D field)
+     * //     { f.accel += texture(field, (p.position - m.xyz) * m.w).xyz; }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Answer the same array every time: it is asked as definitions open and as each step binds.</li>
+     *   <li>A kind name keeps one signature: two definitions giving it a 2D and a 3D texture break the second's shape.</li>
+     * </ul>
+     */
+    default CgTexture[] textures() {
+        return NO_TEXTURES;
+    }
+
+    /** No textures. Never write into it. */
+    CgTexture[] NO_TEXTURES = {};
 
     /** Writes its {@link #paramVectors()} vec4s of numbers: once, when its definition first plays in a pool. */
     void writeParams(CgVfxWords out);
