@@ -331,6 +331,23 @@ public final class CgMaterialShader {
         }
     }
 
+    /** {@link #emissionMerge()}'s answer and the parse it was asked of. */
+    private volatile Object[] merge;
+
+    /**
+     * How this shader's Emissive pass folds into its Forward draw ({@link CgMaterialShaderCompiler#emissionMerge}), as
+     * last parsed; {@code NONE} where it does not parse. Any thread.
+     */
+    public CgMaterialShaderCompiler.EmissionMerge emissionMerge() {
+        CgParsedShader parsed = ensureParsed();
+        if (parsed == null) return CgMaterialShaderCompiler.EmissionMerge.NONE;
+        Object[] held = merge;
+        if (held != null && held[0] == parsed) return (CgMaterialShaderCompiler.EmissionMerge) held[1];
+        CgMaterialShaderCompiler.EmissionMerge answer = CgMaterialShaderCompiler.emissionMerge(parsed);
+        merge = new Object[] {parsed, answer};
+        return answer;
+    }
+
     /**
      * Compiles (or recompiles) this shader asset from {@link #resourcePath}.
      *

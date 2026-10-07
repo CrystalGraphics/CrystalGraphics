@@ -426,6 +426,13 @@ Pass {
 - **Write HDR colour with an alpha of 0.** It adds into a float target; the alpha is unused.
 - **Codeless**, it takes the first Forward pass's v2f, code and render state, and fails to parse when no Forward pass
   comes before it. A `RenderState` of its own replaces the Forward pass's.
+- **Codeless on one blend, it costs no draw of its own.** In a transparent material whose Emissive pass is codeless
+  and blends as the Forward pass does, or adds (`Blend ONE ONE`) under a premultiplied Forward pass
+  (`ONE ONE_MINUS_SRC_ALPHA`), the world renderer draws both in one draw: the Forward pass compiled with
+  `CG_EMISSION_TARGET` also writes the glow at location 1, into the emission beside the target
+  (`CgMaterialShaderCompiler.emissionMerge`, `CgPipeline.emissionTarget`). A body naming `CG_EMISSIVE_PASS` never
+  merges, since one draw cannot be both passes. Below GL 4.0 both outputs share one blend, which is why the blends must
+  agree.
 - **With code and no `RenderState`**, it draws ONE ONE with no depth test and back faces culled. An authored state
   replaces all of it, including the cull, so list everything. ONE ONE is not `CgBlendState.ADDITIVE`, which is
   SRC_ALPHA ONE and adds nothing at alpha 0.
