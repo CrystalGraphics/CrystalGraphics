@@ -41,6 +41,13 @@ public final class CgVfxAir {
         windZ = (baseZ + baseX * veer) * swell;
     }
 
+    /** The fastest it ever blows, in blocks a second: the steady wind at the top of a gust, veered. */
+    public float maxSpeed() {
+        float g = Math.abs(gust);
+        return (float) Math.sqrt(baseX * baseX + baseY * baseY + baseZ * baseZ) * (1f + g)
+                * (float) Math.sqrt(1f + 0.16f * g * g);
+    }
+
     public float windX() {
         return windX;
     }
