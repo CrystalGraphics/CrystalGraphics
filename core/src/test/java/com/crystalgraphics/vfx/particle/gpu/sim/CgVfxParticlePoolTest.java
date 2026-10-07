@@ -15,11 +15,14 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class CgVfxParticlePoolTest {
+
+    private static final Object OWNER = new Object();
 
     /** A kind with one vec4 of numbers. */
     private static final class Pull implements CgVfxGpuModule {
@@ -184,14 +187,17 @@ public class CgVfxParticlePoolTest {
         assertEquals("QUADS|pull:1|swirl:1:IVEC4,VEC4", a.key());
         assertNotEquals(a, CgVfxShape.of(new Def("c", CgVfxEmitter.Renderer.QUADS, new Swirl(0.12), new Pull(9.8f))));
         assertNotEquals(a, CgVfxShape.of(new Def("d", CgVfxEmitter.Renderer.MESHES, new Pull(9.8f), new Swirl(0.12))));
-        assertSame(CgVfxParticlePool.of(new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))),
-                CgVfxParticlePool.of(new Def("b", CgVfxEmitter.Renderer.QUADS, new Pull(1f), new Swirl(3.0))));
+        assertSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))),
+                CgVfxParticlePool.of(OWNER, new Def("b", CgVfxEmitter.Renderer.QUADS, new Pull(1f), new Swirl(3.0))));
+        // Another simulation steps its own: a step moves every particle of a pool.
+        assertNotSame(CgVfxParticlePool.of(OWNER, new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))),
+                CgVfxParticlePool.of(new Object(), new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12))));
     }
 
     @Test
     public void aParameterRowIsTheSpawnNumbersThenEachModulesNumbers() {
         Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.12));
-        CgVfxParticlePool pool = CgVfxParticlePool.of(def);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         pool.open(def, 100);
         CgVfxShape shape = pool.shape();
         assertEquals(CgVfxGpuEmitter.SPAWN_VECTORS + 2, shape.paramRowVectors());
@@ -205,7 +211,7 @@ public class CgVfxParticlePoolTest {
     @Test
     public void anInstanceRowIsItsHeaderThenEachModulesLanes() {
         Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(9.8f), new Swirl(0.5));
-        CgVfxParticlePool pool = CgVfxParticlePool.of(def);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         pool.open(def, 10);
         int slot = pool.open(def, 20);
         pool.beginStep(1f / 60f, 0f, 0f, 0f);
@@ -231,7 +237,7 @@ public class CgVfxParticlePoolTest {
     public void aKindWritingOtherThanItDeclaresIsNamed() {
         Swirl swirl = new Swirl(0.5);
         Def def = new Def("embers", CgVfxEmitter.Renderer.QUADS, swirl);
-        CgVfxParticlePool pool = CgVfxParticlePool.of(def);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int slot = pool.open(def, 10);
         swirl.writes = 1;
         pool.beginStep(0.01f, 0f, 0f, 0f);
@@ -252,7 +258,7 @@ public class CgVfxParticlePoolTest {
     public void slotsAreReusedAndListBasesFollowCapacities() {
         Def a = new Def("a", CgVfxEmitter.Renderer.MESHES, new Floor(true));
         Def b = new Def("b", CgVfxEmitter.Renderer.MESHES, new Floor(true));
-        CgVfxParticlePool pool = CgVfxParticlePool.of(a);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, a);
         int s0 = pool.open(a, 100), s1 = pool.open(b, 50), s2 = pool.open(a, 25);
         assertEquals(175, pool.capacity());
         assertEquals(0, pool.listBase(s0));
@@ -271,7 +277,7 @@ public class CgVfxParticlePoolTest {
     @Test
     public void aStepNeedsEveryOpenSlotsRowAndCountsItsSpawns() {
         Def def = new Def("a", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
-        CgVfxParticlePool pool = CgVfxParticlePool.of(def);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, def);
         int s0 = pool.open(def, 100), s1 = pool.open(def, 100);
         pool.beginStep(0.01f, 1f, 0f, 0f);
         pool.instance(s0, 0, 1f, 0f, new At(0, 0f));

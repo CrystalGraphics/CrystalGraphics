@@ -33,8 +33,8 @@ import java.util.Map;
  * kernel ({@link CgVfxEmitterCompiler}) each, and a draw reads what they left: {@link #records()} and {@link #live()}.
  *
  * <pre>{@code
- * CgVfxParticlePool pool = CgVfxParticlePool.of(EMBERS);
- * int slot = pool.open(EMBERS, 400);                 // at play: the most this instance can have alive
+ * CgVfxParticlePool pool = CgVfxParticlePool.of(system, EMBERS);
+ * int slot = pool.open(EMBERS, EMBERS.peakAlive());  // at play: the most this instance can have alive
  *
  * // each particle step, after the emitters' ticks, for every pool
  * pool.beginStep(dt, wind.x, wind.y, wind.z);
@@ -63,12 +63,15 @@ public final class CgVfxParticlePool {
      */
     public static final int INSTANCE_HEADER = 3;
 
+    /** A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers. */
+    public static final int CURVE_WORDS = 2 * CgVfxGpuEmitter.CURVE_TEXELS;
+
     /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
     public static final int ORDER = CgWorldRenderer.ORDER - 100;
 
-    /** Every pool, by shape key, and in the order made. Render thread. */
-    private static final Map<String, CgVfxParticlePool> POOLS = new HashMap<>();
-    private static final List<CgVfxParticlePool> ALL = new ArrayList<>();
+    /** Every pool, by owner and shape key, and in the order made; and those released since the last recording. */
+    private static final Map<Object, Map<String, CgVfxParticlePool>> POOLS = new IdentityHashMap<>();
+    private static final List<CgVfxParticlePool> ALL = new ArrayList<>(), RELEASED = new ArrayList<>();
     private static CgRenderStage.Registration recording;
 
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
@@ -78,7 +81,7 @@ public final class CgVfxParticlePool {
     private final CgVfxShape shape;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, paramsName, instancesName, spawnsName;
+    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName;
     private final String[] countNames;
 
     /** Each definition playing here: its row, and how many open slots use it. */
@@ -88,9 +91,16 @@ public final class CgVfxParticlePool {
     private int[] freeRows = new int[0];
     private int freeRowCount;
     private boolean paramsChanged;
+    /** Per row: its curve row's words ({@link #CURVE_WORDS}), and the largest size multiplier on it. */
+    private int[] curves = new int[0];
+    private float[] rowSizeMax = new float[0];
+    private final float[] curveScratch = new float[CURVE_WORDS];
 
     private CgVfxGpuEmitter[] slotEmitter = new CgVfxGpuEmitter[0];
     private int[] slotCapacity = new int[0], slotRow = new int[0], slotBase = new int[0];
+    /** Per slot: its origin as its last step gave it (3), and how far past its particles' size a look reaches. */
+    private double[] slotOrigin = new double[0];
+    private float[] slotScale = new float[0];
     private int slotCount, openSlots, capacity;
     private boolean basesStale;
 
@@ -111,11 +121,12 @@ public final class CgVfxParticlePool {
 
     // The GPU half: made at the first recording, grown as slots open.
     private CgKernel step;
-    private CgGraphBuffer records, paramBuffer, instanceBuffer, spawnBuffer;
+    private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer;
     /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
     private final CgGraphBuffer[] counts = new CgGraphBuffer[2];
     private int current, storage;
     private ByteBuffer staging = ByteBuffer.allocate(0);
+    private boolean released;
 
     private CgVfxParticlePool(CgVfxShape shape) {
         this.shape = shape;
@@ -125,20 +136,29 @@ public final class CgVfxParticlePool {
         passName = name + ".step";
         recordsName = name + ".records";
         paramsName = name + ".params";
+        curvesName = name + ".curves";
         instancesName = name + ".instances";
         spawnsName = name + ".spawns";
         countNames = new String[]{name + ".live0", name + ".live1"};
     }
 
     /**
-     * The pool every definition of {@code emitter}'s shape shares, made the first time. The first pool made registers
-     * the pools' recording on {@link CgRenderStage#WORLD_OPAQUE}. Render thread.
+     * The pool {@code owner}'s definitions of {@code emitter}'s shape share, made the first time: one simulation steps
+     * its own pools, since a step moves every particle of one. The first pool made registers the pools' recording on
+     * {@link CgRenderStage#WORLD_OPAQUE}. Render thread.
+     *
+     * <pre>{@code
+     * CgVfxParticlePool pool = CgVfxParticlePool.of(system, EMBERS);   // a system's own, by identity
+     * CgVfxParticlePool.release(system);                               // when the system is discarded
+     * }</pre>
      */
-    public static CgVfxParticlePool of(CgVfxGpuEmitter emitter) {
+    public static CgVfxParticlePool of(Object owner, CgVfxGpuEmitter emitter) {
         CgVfxShape shape = CgVfxShape.of(emitter);
-        CgVfxParticlePool pool = POOLS.get(shape.key());
+        Map<String, CgVfxParticlePool> owned = POOLS.get(owner);
+        if (owned == null) POOLS.put(owner, owned = new HashMap<>());
+        CgVfxParticlePool pool = owned.get(shape.key());
         if (pool == null) {
-            POOLS.put(shape.key(), pool = new CgVfxParticlePool(shape));
+            owned.put(shape.key(), pool = new CgVfxParticlePool(shape));
             ALL.add(pool);
             if (recording == null) {
                 recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, frame -> recordAll(frame.recording()));
@@ -147,10 +167,22 @@ public final class CgVfxParticlePool {
         return pool;
     }
 
+    /** Drops {@code owner}'s pools; their GPU storage is released at the next recording. Render thread. */
+    public static void release(Object owner) {
+        Map<String, CgVfxParticlePool> owned = POOLS.remove(owner);
+        if (owned == null) return;
+        for (CgVfxParticlePool pool : owned.values()) {
+            ALL.remove(pool);
+            pool.released = true;
+            RELEASED.add(pool);
+        }
+    }
+
     /** Forgets every pool and stops recording. Tests, and context teardown. */
     static void forgetAll() {
         POOLS.clear();
         ALL.clear();
+        RELEASED.clear();
         if (recording != null) {
             recording.close();
             recording = null;
@@ -159,7 +191,20 @@ public final class CgVfxParticlePool {
 
     /** Records every pool's queued steps into {@code recording}, once a host frame. Render thread. */
     static void recordAll(CgRecording recording) {
+        for (int i = 0; i < RELEASED.size(); i++) RELEASED.get(i).releaseStorage(recording);
+        RELEASED.clear();
         for (int i = 0; i < ALL.size(); i++) ALL.get(i).record(recording);
+    }
+
+    /** Whether {@link #release} dropped it: what holds it lets it go. */
+    public boolean isReleased() {
+        return released;
+    }
+
+    private void releaseStorage(CgRecording recording) {
+        CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer};
+        for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
+        records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
     }
 
     public CgVfxShape shape() {
@@ -185,6 +230,7 @@ public final class CgVfxParticlePool {
         slotEmitter[slot] = emitter;
         slotCapacity[slot] = capacity;
         slotRow[slot] = useRow(emitter);
+        slotScale[slot] = 1f;
         if (slot == slotCount) slotCount++;
         openSlots++;
         this.capacity += capacity;
@@ -286,6 +332,9 @@ public final class CgVfxParticlePool {
         int s = steps;
         if (written[slot] == s + 1) throw new IllegalStateException("slot " + slot + " written twice in one step");
         written[slot] = s + 1;
+        slotOrigin[slot * 3] = view.originX();
+        slotOrigin[slot * 3 + 1] = view.originY();
+        slotOrigin[slot * 3 + 2] = view.originZ();
         int at = stepInstanceAt[s] + slot * instanceWords;
         String who = emitter.name();
         words.target(instances, at, INSTANCE_HEADER, who);
@@ -357,6 +406,43 @@ public final class CgVfxParticlePool {
     /** The records {@link #records()} has room for. */
     public int storage() {
         return storage;
+    }
+
+    /** Each parameter row's curves, {@link #CURVE_WORDS} floats a row; null before the first step is recorded. */
+    public CgGraphBuffer curves() {
+        return curveBuffer;
+    }
+
+    /** Whether {@code slot} is open. */
+    public boolean isOpen(int slot) {
+        return slot >= 0 && slot < slotCount && slotEmitter[slot] != null;
+    }
+
+    /** {@code slot}'s parameter row: its definition's. */
+    public int paramRow(int slot) {
+        openSlot(slot, "paramRow");
+        return slotRow[slot];
+    }
+
+    /** {@code slot}'s origin on {@code axis} (0 x, 1 y, 2 z) as its last step gave it, in absolute coordinates. */
+    public double origin(int slot, int axis) {
+        openSlot(slot, "origin");
+        return slotOrigin[slot * 3 + axis];
+    }
+
+    /**
+     * How far past their size a look draws {@code slot}'s particles: a streak's stretch along its motion, a halo. 1
+     * until set.
+     */
+    public void cullScale(int slot, float scale) {
+        openSlot(slot, "cullScale");
+        slotScale[slot] = scale;
+    }
+
+    /** What a cull takes as the radius of each of {@code slot}'s particles, times its size at birth. */
+    public float cullRadius(int slot) {
+        openSlot(slot, "cullRadius");
+        return rowSizeMax[slotRow[slot]] * slotScale[slot];
     }
 
     /**
@@ -446,10 +532,13 @@ public final class CgVfxParticlePool {
 
     /** This frame's instance and spawn rows, and the parameter table when a row was written since the last. */
     private void upload(CgRecording recording) {
-        int paramEnd = rowCount * paramWords;
+        int paramEnd = rowCount * paramWords, curveEnd = rowCount * CURVE_WORDS;
         CgGraphBuffer params = fit(recording, paramBuffer, paramsName, paramEnd);
+        CgGraphBuffer rowCurves = fit(recording, curveBuffer, curvesName, curveEnd);
         if (paramsChanged || params != paramBuffer) put(recording, params, this.params, paramEnd);
+        if (paramsChanged || rowCurves != curveBuffer) put(recording, rowCurves, curves, curveEnd);
         paramBuffer = params;
+        curveBuffer = rowCurves;
         paramsChanged = false;
         instanceBuffer = fit(recording, instanceBuffer, instancesName, instanceEnd);
         put(recording, instanceBuffer, instances, instanceEnd);
@@ -565,6 +654,17 @@ public final class CgVfxParticlePool {
             emitter.modules().get(i).writeParams(words);
             words.finish("its numbers");
         }
+        if (curves.length < (index + 1) * CURVE_WORDS) {
+            curves = Arrays.copyOf(curves, Math.max((index + 1) * CURVE_WORDS, curves.length * 2));
+            rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / CURVE_WORDS);
+        }
+        emitter.writeCurves(curveScratch, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        float most = 0f;
+        for (int w = 0; w < CURVE_WORDS; w++) {
+            curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
+            if ((w & 1) == 0) most = Math.max(most, curveScratch[w]);
+        }
+        rowSizeMax[index] = most;
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
@@ -578,6 +678,8 @@ public final class CgVfxParticlePool {
         slotRow = Arrays.copyOf(slotRow, size);
         slotBase = Arrays.copyOf(slotBase, size);
         written = Arrays.copyOf(written, size);
+        slotOrigin = Arrays.copyOf(slotOrigin, size * 3);
+        slotScale = Arrays.copyOf(slotScale, size);
     }
 
     private CgVfxGpuEmitter openSlot(int slot, String call) {
