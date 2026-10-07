@@ -62,7 +62,9 @@ import static org.lwjgl.vulkan.VK12.vkResetQueryPool;
  */
 public final class VulkanEncoder implements CgCommandEncoder {
 
-    private static final int SHADER_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    /** A rested texture's readers. Compute too: an async pass's command buffer keeps only that stage of these. */
+    private static final int SHADER_STAGES = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT
+            | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
     private final CgVulkanDevice device;
     private VulkanPass open;
