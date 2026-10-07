@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.PoseStack;
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgPassRecorder;
@@ -106,8 +108,9 @@ public final class CgWorldText {
     }
 
     /**
-     * One label's place in the world: a point, a height, which point of the text stands there, and a turn. What it
-     * says, and how, is its {@link #draw()}, submitted to queue it. Build it from {@link CgWorldRenderer#text}.
+     * One label's place in the world: a point, a height, which point of the text stands there, and a turn. How it
+     * draws is its {@link CgTextRenderer.Draw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
+     * queue it. Build it from {@link CgWorldRenderer#text}.
      */
     public static final class Label {
         private final CgTextRenderer.Draw draw;
@@ -128,8 +131,8 @@ public final class CgWorldText {
             return this;
         }
 
-        /** Where its anchor stands, absolute, in doubles. */
-        Label at(double x, double y, double z) {
+        /** Where its anchor stands, absolute, in doubles. The origin unless set. */
+        public Label at(double x, double y, double z) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -158,14 +161,19 @@ public final class CgWorldText {
             return this;
         }
 
-        /** What it draws: every field a {@link CgTextRenderer.Draw} has. Its {@code submit()} queues the label. */
-        public CgTextRenderer.Draw draw() {
-            return draw;
+        /** Its draw, in {@code font}: every field a {@link CgTextRenderer.Draw} has. Its {@code submit()} queues it. */
+        public CgTextRenderer.Draw font(CgFont font) {
+            return draw.font(font);
         }
 
-        /** {@code draw().text(text)}: the common case. */
-        public CgTextRenderer.Draw text(String text) {
-            return draw.text(text);
+        /** Its draw, in {@code family}, falling back across its faces; size it with {@code targetPx}. */
+        public CgTextRenderer.Draw family(CgFontFamily family) {
+            return draw.family(family);
+        }
+
+        /** Its draw as it stands: for a layout, whose fonts are its own. */
+        public CgTextRenderer.Draw draw() {
+            return draw;
         }
     }
 }
