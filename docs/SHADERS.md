@@ -406,10 +406,11 @@ The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache.
 
 #### The Emissive pass
 
-What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` draws it into its bloom
-target after the transparent pass, blurs it and adds it over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*).
-Unity's, Godot's and Unreal's emission is a material output added to an HDR scene colour; Minecraft's target is
-8-bit, so here it is a pass that draws the mesh again into a float target.
+What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` writes it into a float
+emission target, which bloom blurs and adds over the world (`docs/ENGINE_API.md` § *CgWorldRenderer*). Unity's,
+Godot's and Unreal's emission is a material output added to an HDR scene colour; Minecraft's target is 8-bit, so here
+it is a pass of its own. A codeless one on the Forward pass's blend is written by the Forward draw itself, as a second
+output; any other is the mesh drawn again into the emission target after the transparent pass.
 
 ```glsl
 // The Forward pass's code and render state again: what it draws, it also blooms
@@ -441,7 +442,21 @@ Pass {
   `CG_EMISSIVE_DEPTH_BIAS`, in `cg_env.glsl`). `DepthTest ALWAYS` turns that off for a shader that tests depth itself:
   a volume drawn on its back faces.
 - Unlit and fogged additively whatever the material's tags. `CG_EMISSIVE_PASS` is defined in both stages, so a body
-  it shares with the Forward pass can tell them apart.
+  it shares with the Forward pass can tell them apart (which keeps the two from merging):
+
+```glsl
+Pass {
+    Tags { "LightMode" = "Forward" }
+    void fragment(in v2f i, out vec4 fragColor) {
+#ifdef CG_EMISSIVE_PASS
+        fragColor = vec4(_GlowColor.rgb * mask(i.uv), 0.0);   // the glow alone
+        return;
+#endif
+        fragColor = shade(i);                                  // the surface
+    }
+}
+Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the body above, CG_EMISSIVE_PASS defined
+```
 - It takes the material's keywords, as the Forward pass does.
 - **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
   `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
