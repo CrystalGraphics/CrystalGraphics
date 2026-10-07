@@ -38,6 +38,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
+    private final boolean readsWorld;
 
     private CgVfxShape(CgVfxGpuEmitter emitter) {
         List<? extends CgVfxGpuModule> modules = emitter.modules();
@@ -78,6 +79,9 @@ public final class CgVfxShape {
         }
         paramRow = param;
         instanceRow = lane;
+        boolean reads = false;
+        for (CgVfxWorldInput[] inputs : world) reads |= inputs.length > 0;
+        readsWorld = reads;
         this.key = key.toString();
     }
 
@@ -132,6 +136,11 @@ public final class CgVfxShape {
     /** Module {@code i}'s world inputs; a copy. */
     public CgVfxWorldInput[] worldInputs(int i) {
         return world[i].clone();
+    }
+
+    /** Whether any module takes a world input: its Step kernel reads the voxel window. */
+    public boolean readsWorld() {
+        return readsWorld;
     }
 
     int laneCount(int i) {
