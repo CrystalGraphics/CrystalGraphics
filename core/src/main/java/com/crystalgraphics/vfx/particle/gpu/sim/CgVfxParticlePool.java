@@ -12,6 +12,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
@@ -89,8 +90,11 @@ public final class CgVfxParticlePool {
             "struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };";
     public static final int EVENT_BYTES = 80;
 
-    /** A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers. */
-    public static final int CURVE_WORDS = 2 * CgVfxGpuEmitter.CURVE_TEXELS;
+    /**
+     * A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers, then its
+     * {@link CgVfxCurveDomain}'s speeds, (-1, -1) over life.
+     */
+    public static final int CURVE_WORDS = 2 * (CgVfxGpuEmitter.CURVE_TEXELS + 1);
 
     /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
     public static final int ORDER = CgWorldRenderer.ORDER - 100;
@@ -994,10 +998,13 @@ public final class CgVfxParticlePool {
             rowSizeMax = Arrays.copyOf(rowSizeMax, curves.length / CURVE_WORDS);
         }
         emitter.writeCurves(curveScratch, 0, CgVfxGpuEmitter.CURVE_TEXELS);
+        CgVfxCurveDomain domain = emitter.curveDomain();
+        curveScratch[CURVE_WORDS - 2] = domain.min();
+        curveScratch[CURVE_WORDS - 1] = domain.max();
         float most = 0f;
         for (int w = 0; w < CURVE_WORDS; w++) {
             curves[index * CURVE_WORDS + w] = Float.floatToRawIntBits(curveScratch[w]);
-            if ((w & 1) == 0) most = Math.max(most, curveScratch[w]);
+            if ((w & 1) == 0 && w < CURVE_WORDS - 2) most = Math.max(most, curveScratch[w]);
         }
         rowSizeMax[index] = most;
         if (shape.events() > 0) {

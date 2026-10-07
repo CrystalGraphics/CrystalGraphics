@@ -7394,6 +7394,15 @@ com/crystalgraphics/vfx/particle/CgVfxParticleSet
   method public x (IF)F
   method public y (IF)F
   method public z (IF)F
+com/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain
+  access public,final
+  extends java/lang/Object
+  field public,static,final LIFE Lcom/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain;
+  method public at (FFFFF)F
+  method public bySpeed ()Z
+  method public max ()F
+  method public min ()F
+  method public,static speed (FF)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain;
 com/crystalgraphics/vfx/particle/gpu/CgVfxEvent
   access public,final
   extends java/lang/Object
@@ -7459,6 +7468,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   extends java/lang/Object
   field public,static,final CURVE_TEXELS I
   field public,static,final SPAWN_VECTORS I
+  method public curveDomain ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain;
   method public events ()Ljava/util/List;
   method public,abstract modules ()Ljava/util/List;
   method public,abstract name ()Ljava/lang/String;
