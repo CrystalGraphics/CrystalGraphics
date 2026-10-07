@@ -1,11 +1,13 @@
-// Range (vfx-gpu §13.4), a particle pool's draws for one view: CgVfxRange.
+// Range (vfx-gpu §13.4), every particle pool's draws for one view: CgVfxRange.
 //
-// Key gives each live particle a key, its slot if it may be on screen (inside the view, and not behind the scene's
-// depth) and the slot count if not, so the culled sort past the end; and its index, which the sort carries. With
-// _DepthBits 16 a slot that sorts takes its view depth in the low bits, far first. CgGpuOps then sorts, counts each slot's visible particles and
-// scans the counts into each slot's start. Place writes the particles a slot's draws read, in CgParticleBuffer's
-// layout, from the slot's list base: what CgVfxSystem's writeRecords writes on the CPU path. Objects writes the same
-// particles as object records, for a mesh drawn per particle: what CgVfxFrame.particleMeshes draws.
+// Slots are numbered across every pool, each pool's from _SlotFirst. Key, once per pool, gives each live particle a
+// key, its slot if it may be on screen (inside the view, and not behind the scene's depth) and _AllSlots if not, so
+// the culled sort past the end; and its index in its pool, which the sort carries. With _DepthBits 16 a slot that
+// sorts takes its view depth in the low bits, far first. CgGpuOps then sorts every pool's keys at once, counts each
+// slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the particles a
+// slot's draws read, in CgParticleBuffer's layout, from the slot's list base: what CgVfxSystem's writeRecords writes
+// on the CPU path. Objects writes the same particles as object records, for a mesh drawn per particle: what
+// CgVfxFrame.particleMeshes draws.
 #pragma kernel Key map
 #pragma kernel Place gather
 #pragma kernel Objects gather
@@ -19,7 +21,9 @@ Properties {
     _Plane3 ("Plane 3",                                             vec4)  = (0, 0, 0, 1)
     _Plane4 ("Plane 4",                                             vec4)  = (0, 0, 0, 1)
     _Plane5 ("Plane 5",                                             vec4)  = (0, 0, 0, 1)
-    _Slots  ("The pool's slots: a culled particle's key",           int)   = 0
+    _Slots     ("The pool's slots",                                  int)   = 0
+    _SlotFirst ("Its first slot among every pool's",                 int)   = 0
+    _AllSlots  ("Every pool's slots: a culled particle's key",       int)   = 0
     _Alpha  ("How far the frame is from the last step to the next", float) = 1
     _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
     _Texels ("Samples a curve row holds",                           int)   = 256
@@ -60,7 +64,7 @@ Buffers {
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
     STARTS  ("Where each slot's run starts in INDICES",           uint,     readonly)
-    BASES   ("Where each slot's records start in DRAWN",          uint,     readonly)
+    BASES   ("Where each slot's records start in its pool's DRAWN", uint,   readonly)
     CURVES  ("Each parameter row's size and opacity curves",      vec2,     readonly)
     DRAWN   ("The particles a look draws",                        FxDrawn,  writeonly)
     OBJECTS ("The particles a mesh draws",                        FxObject, writeonly)
@@ -77,10 +81,11 @@ uint range_depth(vec3 c) {
 }
 
 void Key() {
-    uint key = uint(_Slots) << _DepthBits;
+    uint key = uint(_AllSlots) << _DepthBits;
     if (CG_ELEMENT < int(LIVE(0))) {
         FxRecord r = RECORDS(CG_ELEMENT);
-        vec4 slot = SLOTS(int(r.idSlot.y));
+        uint owner = uint(_SlotFirst) + r.idSlot.y;
+        vec4 slot = SLOTS(int(owner));
         vec3 p = slot.xyz + r.positionAge.xyz;
         // Its size, and its last step's motion: a frame draws it anywhere between its last two steps. A slot culled
         // about its source (w below 0) is one sphere of radius -w at its origin.
@@ -92,7 +97,6 @@ void Key() {
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
         vec3 lo = c - vec3(reach), hi = c + vec3(reach);
         if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
-            uint owner = r.idSlot.y;
             key = owner << _DepthBits;
             if (_DepthBits > 0 && SORTS(int(owner)) != 0u) key |= 65535u - range_depth(p);
         }
@@ -110,10 +114,10 @@ vec2 range_curve(uint row, float t) {
     return mix(CURVES(at + i0), CURVES(at + i1), x - float(i0));
 }
 
-// The slot whose records hold element e: the last base at or below it, and e's rank in it. A closed slot's base is the
-// next one's.
+// The slot whose records hold element e of this pool's, numbered across every pool: the last base at or below it,
+// and e's rank in it. A closed slot's base is the next one's.
 int range_slot(int e, out int rank) {
-    int lo = 0, hi = _Slots - 1;
+    int lo = _SlotFirst, hi = _SlotFirst + _Slots - 1;
     while (lo < hi) {
         int mid = (lo + hi + 1) >> 1;
         if (int(BASES(mid)) <= e) lo = mid; else hi = mid - 1;

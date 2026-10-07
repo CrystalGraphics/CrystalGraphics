@@ -7435,12 +7435,13 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public objects ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
-  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
-  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public sorted (I)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public visibleWord (I)I
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public,static prepare ()V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxEmitterCompiler
   access public,final
   extends java/lang/Object

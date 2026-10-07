@@ -319,7 +319,7 @@ public final class CgChunkBuilder {
      *
      * <pre>{@code
      * chunks.draw(pipeline, bindings, quads).buffer(CgBindingPoints.PARTICLES, range.drawn())
-     *       .indirect(range.visible(), slot * 4L, CgIndirect.INDICES, 6);
+     *       .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6);
      * }</pre>
      *
      * <ul>
