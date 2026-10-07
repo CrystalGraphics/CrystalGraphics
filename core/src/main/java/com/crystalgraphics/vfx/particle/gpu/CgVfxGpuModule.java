@@ -31,6 +31,19 @@ package com.crystalgraphics.vfx.particle.gpu;
  * // void fx_ground(inout FxParticle p, FxStep s, vec4 m, float floorY)
  * }</pre>
  *
+ * <p>A kind of the caller's own, its GLSL given as text rather than a file (Unity VFX Graph's Custom HLSL block, Niagara's
+ * scratch pad):</p>
+ * <pre>{@code
+ * public String gpuKind() { return "mymod_swirl"; }
+ * public String gpuSource() {
+ *     return """
+ *             void fx_mymod_swirl(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) {
+ *                 f.accel += cross(vec3(0.0, 1.0, 0.0), p.position) * m.x;
+ *             }
+ *             """;
+ * }
+ * }</pre>
+ *
  * <ul>
  *   <li>{@link #gpuKind()} names the file and the function: lower case letters, digits and underscores.</li>
  *   <li>Write exactly what is declared: {@link #paramVectors()} vec4s in {@link #writeParams}, one per lane in
@@ -45,6 +58,15 @@ public interface CgVfxGpuModule {
 
     /** {@code fx_<kind>}'s {@code <kind>}: its function and its file. */
     String gpuKind();
+
+    /**
+     * The kind's GLSL, in place of {@code fx_<kind>.glsl}; null for the file. It sees {@code fx_types.glsl}, and
+     * {@code fx_world_at.glsl} when the kind takes the world. One text a kind name: two kinds giving different text under
+     * one name throw when the second is compiled. Prefix the name with the mod's, as for any resource.
+     */
+    default String gpuSource() {
+        return null;
+    }
 
     /** True for a kind that runs after the solver has moved the particles. */
     boolean afterSolve();

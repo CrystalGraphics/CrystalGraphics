@@ -40,6 +40,9 @@ public final class CgVfxRecord {
     /** {@link #FLAGS}' bit for a particle at rest on the ground. */
     public static final int RESTING = 1;
 
+    /** Where {@link #FLAGS} holds the particle's collisions so far, 16 bits, saturating: {@code fx_hit}'s count. */
+    public static final int COLLISIONS_SHIFT = 16;
+
     private CgVfxRecord() {
     }
 
