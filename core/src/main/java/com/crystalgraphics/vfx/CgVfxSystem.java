@@ -55,6 +55,8 @@ import java.util.List;
  *   <li>{@link #update} runs {@link #TICK}-second steps, as many as the clock owes, at most {@value #MAX_TICKS} a
  *       call and none past {@code -Dcrystalgraphics.vfx.simBudgetMs} (12) of catching up, so a hitch or more particles
  *       than the CPU keeps up with slows effects down rather than stalling the frame. It touches no GPU state.</li>
+ *   <li>GPU particles step when {@code WORLD_OPAQUE} records: while the world is not drawn every effect holds, once half
+ *       a second of steps waits ({@code vfx.ticks.held}).</li>
  *   <li>Each tick steps every effect in order, then runs their particle emitters on several threads, one effect a
  *       thread ({@code -Dcrystalgraphics.vfx.threads}, one per core by default).</li>
  *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture and the particle
@@ -140,7 +142,7 @@ public final class CgVfxSystem {
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
-            TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
+            TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), EFFECT_EMITTERS_ZONE = CgTrace.name("vfx.effect.emitters"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
             GPU_STEPS_ZONE = CgTrace.name("vfx.gpu.steps"),
@@ -156,6 +158,8 @@ public final class CgVfxSystem {
     /** Fewer records than this are written on the render thread alone. */
     private static final int PARALLEL_RECORDS = 4096;
     private static final int MAX_TICKS = 12;
+    /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
+    private static final int MAX_QUEUED_STEPS = 30;
     /** Wall time an update may spend catching up before it drops what it still owes. */
     private static final long SIM_BUDGET_NANOS =
             (long) (Double.parseDouble(System.getProperty("crystalgraphics.vfx.simBudgetMs", "12")) * 1_000_000L);
@@ -264,6 +268,14 @@ public final class CgVfxSystem {
         }
         owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world));
         clock = seconds;
+        // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, the CPU's included, as
+        // Niagara and VFX Graph pause what is not drawn: dropped steps would leave particles alive in a slot the CPU
+        // closes as finished.
+        if (gpuSteps.queuedSteps() >= MAX_QUEUED_STEPS) {
+            owed = 0f;
+            CgVfxTrace.count(HELD, 1);
+            return;
+        }
         int ticks = 0, step = particleStep;
         long start = System.nanoTime();
         boolean overBudget = false;
