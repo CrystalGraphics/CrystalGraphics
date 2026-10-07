@@ -72,7 +72,6 @@ public final class CgVfxSystem {
      *
      * <ul>
      *   <li>A switch reaches emitter instances that start after it; one already playing finishes where it started.</li>
-     *   <li>Under {@link #GPU}, {@code MESHES} emitters (billows) still run on the CPU until plan {@code vfx-gpu} X2.</li>
      * </ul>
      */
     public enum Simulation {
