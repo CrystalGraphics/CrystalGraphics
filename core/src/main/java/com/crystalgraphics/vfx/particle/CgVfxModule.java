@@ -307,10 +307,20 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * The ground: the host world's surface under each particle (the instance's {@link CgVfxGround}), or its fixed
      * height where there is no world. A particle reaching it bounces back up at {@code restitution} of its speed, loses
      * {@code friction} of its sliding speed, and comes to rest once slower than {@code rest} blocks a second. Runs after
-     * the solver.
+     * the solver. A particle rests on it as a ball of {@code radius} times its size, all of it by default, as
+     * {@link Collide} does.
      */
-    record Ground(float restitution, float friction, float rest) implements CgVfxModule {
+    record Ground(float restitution, float friction, float rest, float radius) implements CgVfxModule {
         private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+
+        public Ground(float restitution, float friction, float rest) {
+            this(restitution, friction, rest, 1f);
+        }
+
+        /** Rests as a ball of {@code radius} times a particle's size. */
+        public Ground radius(float radius) {
+            return new Ground(restitution, friction, rest, radius);
+        }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
@@ -319,7 +329,9 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             for (int i = 0; i < p.count(); i++) {
                 if (p.resting[i] != 0f) continue;
                 float floor = emitter.floorUnder(i);
-                if (Float.isNaN(floor) || p.y[i] > floor) continue;
+                if (Float.isNaN(floor)) continue;
+                floor += radius * p.size[i];
+                if (p.y[i] > floor) continue;
                 p.y[i] = floor;
                 if (p.vy[i] < 0f) p.vy[i] = -p.vy[i] * restitution;
                 p.vx[i] *= 1f - friction;
@@ -345,7 +357,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(restitution, friction, rest, 0f);
+            out.vec4(restitution, friction, rest, radius);
         }
 
         @Override
@@ -921,7 +933,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * }</pre>
      *
      * <ul>
-     *   <li>A particle collides as a ball of {@code radius} times its size: half, by default.</li>
+     *   <li>A particle collides as a ball of {@code radius} times its size, its quad's half-width: all of it by default,
+     *       so a piece rests on a surface rather than sunk into it. Godot's base size is a diameter; this is not.</li>
      *   <li>A {@link #killing()} collider is Godot's hide on contact: a hit, then death at the end of the step.</li>
      * </ul>
      */
@@ -934,7 +947,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public Collide(Volume volume, float bounce, float friction, float rest) {
-            this(volume, bounce, friction, rest, 0.5f, false, false);
+            this(volume, bounce, friction, rest, 1f, false, false);
         }
 
         /** Collides as a ball of {@code radius} times a particle's size. */
