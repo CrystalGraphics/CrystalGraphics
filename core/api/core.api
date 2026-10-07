@@ -7517,6 +7517,8 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   access public,final
   extends java/lang/Object
   field public,static,final CURVE_WORDS I
+  field public,static,final EVENT_BYTES I
+  field public,static,final EVENT_GLSL Ljava/lang/String;
   field public,static,final INSTANCE_HEADER I
   field public,static,final ORDER I
   method public beginStep (FFFF)V
@@ -7529,6 +7531,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public cullSourceRadius (I)F
   method public curves ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public endStep ()V
+  method public feed (ILcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;II)V
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
   method public isOpen (I)Z
   method public isReleased ()Z
@@ -7549,6 +7552,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public,static listen (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
   method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;
   method public,static prepare (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Ljava/util/List;)V
   method public,static release (Ljava/lang/Object;)V
   method public,static stopListening (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
@@ -7578,8 +7582,13 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxRecord
 com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   access public,final
   extends java/lang/Object
+  field public,static,final EVENT_VECTORS I
   method public afterSolve (I)Z
   method public equals (Ljava/lang/Object;)Z
+  method public eventReports (I)Z
+  method public eventSpawns (I)Z
+  method public events ()I
+  method public eventsAt ()I
   method public hashCode ()I
   method public instanceRowVectors ()I
   method public key ()Ljava/lang/String;
@@ -7592,7 +7601,10 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape
   method public paramVectors (I)I
   method public readsWorld ()Z
   method public renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
+  method public reports ()Z
+  method public spawns ()Z
   method public toString ()Ljava/lang/String;
+  method public trigger (I)Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEvent$Trigger;
   method public worldInputs (I)[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;)Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
 com/crystalgraphics/vfx/path/CgVfxPath
