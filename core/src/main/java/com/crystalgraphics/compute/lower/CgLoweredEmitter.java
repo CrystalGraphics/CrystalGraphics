@@ -147,7 +147,7 @@ public final class CgLoweredEmitter {
     static String pack(String type, String value) {
         if (type.equals("float") || type.startsWith("vec")) return "floatBitsToUint(" + value + ")";
         if (type.equals("int")) return "uint(" + value + ")";
-        if (type.startsWith("ivec")) return "u" + type + "(" + value + ")";
+        if (type.startsWith("ivec")) return "u" + type.substring(1) + "(" + value + ")";
         return value;
     }
 
