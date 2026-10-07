@@ -14,6 +14,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
@@ -21,8 +22,10 @@ import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -58,6 +61,16 @@ import java.util.Map;
  *   <li>Close a slot only once its particles have all died: a reopened slot's particles would be its new owner's.</li>
  *   <li>Steps allocate nothing once the tables have grown to what the effects need.</li>
  * </ul>
+ *
+ * <p>Events ({@link CgVfxEvent}): a slot of a definition whose events spawn children feeds a child slot opened for each
+ * of them, in the child's pool; each step, the pools whose events spawn step first, and their children spawn in the
+ * same step. Rows marked for the CPU reach {@link #listen}'s listeners a few frames later.</p>
+ *
+ * <pre>{@code
+ * int parent = debris.open(DEBRIS, n), child = dust.open(DUST, dustCapacity);
+ * dust.feed(child, debris, parent, 0);              // DEBRIS.events().get(0) spawns DUST
+ * // each step both get instance rows; the child's seed bits are the parent's
+ * }</pre>
  */
 public final class CgVfxParticlePool {
 
@@ -67,6 +80,14 @@ public final class CgVfxParticlePool {
      * blocks, 0)}, {@code vec4(origin within its block, 0)}: the last two place a particle in the world's blocks.
      */
     public static final int INSTANCE_HEADER = 5;
+
+    /**
+     * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
+     * its velocity and age, its normal, that block, and {@code (parent id, pool << 16 | slot, event, 0)}.
+     */
+    public static final String EVENT_GLSL =
+            "struct FxEvent { vec4 position; vec4 velocityAge; vec4 normal; ivec4 block; uvec4 ids; };";
+    public static final int EVENT_BYTES = 80;
 
     /** A curve row's words: {@link CgVfxGpuEmitter#CURVE_TEXELS} pairs of size and opacity multipliers. */
     public static final int CURVE_WORDS = 2 * CgVfxGpuEmitter.CURVE_TEXELS;
@@ -79,12 +100,19 @@ public final class CgVfxParticlePool {
     private static final List<CgVfxParticlePool> ALL = new ArrayList<>(), RELEASED = new ArrayList<>();
     private static CgRenderStage.Registration recording;
     private static final List<CgVfxEventListener> LISTENERS = new ArrayList<>();
+    /** The pools stepping in this recording, and the event streams between them: shared, as one step crosses pools. */
+    private static final List<CgVfxParticlePool> STEPPING = new ArrayList<>();
+    private static CgGraphBuffer spawnStream, spawnCount, reportStream, reportCounts, unfed;
+    private static final ArrayDeque<Report> REPORTS = new ArrayDeque<>();
+    private static int nextId;
 
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
 
     private final CgVfxShape shape;
+    /** What event rows name it by: below 2^13, as a feed's key takes it. */
+    private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
     private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName;
@@ -109,6 +137,14 @@ public final class CgVfxParticlePool {
     private float[] slotScale = new float[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
     private float[] slotSourceReach = new float[0];
+    /** Per slot: the parent slot and event it is fed by, and the parent's definition then; null pool for none. */
+    private CgVfxParticlePool[] feedPool = new CgVfxParticlePool[0];
+    private CgVfxGpuEmitter[] feedParent = new CgVfxGpuEmitter[0];
+    private int[] feedSlot = new int[0], feedEvent = new int[0];
+    /** This recording's feeds, four words a slot fed, by key; how many, and the most children an event spawns. */
+    private int[] feedWords = new int[0];
+    private int feeds, childMax;
+    private CgGraphBuffer feedBuffer;
     private int slotCount, openSlots, capacity;
     private boolean basesStale;
 
@@ -232,7 +268,233 @@ public final class CgVfxParticlePool {
     static void recordAll(CgRecording recording) {
         for (int i = 0; i < RELEASED.size(); i++) RELEASED.get(i).releaseStorage(recording);
         RELEASED.clear();
-        for (int i = 0; i < ALL.size(); i++) ALL.get(i).record(recording);
+        recordPools(recording, ALL);
+    }
+
+    /**
+     * Records {@code pools}' queued steps step by step, in one compute pass: each step, the pools whose events spawn
+     * children first, then the rest, whose child slots spawn from the rows the first appended. Then each step's rows
+     * for the CPU are read back.
+     */
+    private static void recordPools(CgRecording recording, List<CgVfxParticlePool> pools) {
+        STEPPING.clear();
+        int maxSteps = 0, spawnRows = 0, reportRows = 0;
+        for (int i = 0; i < pools.size(); i++) {
+            CgVfxParticlePool pool = pools.get(i);
+            if (!pool.begin(recording)) continue;
+            STEPPING.add(pool);
+            maxSteps = Math.max(maxSteps, pool.steps);
+            spawnRows += pool.eventRows(true);
+            reportRows += pool.eventRows(false);
+        }
+        if (STEPPING.isEmpty()) return;
+        if (unfed == null) {
+            unfed = CgGraphBuffer.persistent("vfx.pool.unfed", CgBufferDesc.of(256, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            recording.fill(unfed, 0);
+        }
+        if (spawnRows > 0) {
+            spawnStream = fitRows(recording, spawnStream, "vfx.pool.spawn-events", spawnRows);
+            if (spawnCount == null) spawnCount = counter("vfx.pool.spawn-count");
+        }
+        if (reportRows > 0) {
+            reportStream = fitRows(recording, reportStream, "vfx.pool.report-events", reportRows * maxSteps);
+            reportCounts = fit(recording, reportCounts, "vfx.pool.report-counts", maxSteps);
+        }
+        for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording, spawnRows);
+        CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
+        if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
+        for (int s = 0; s < maxSteps; s++) {
+            boolean parents = false;
+            for (int i = 0; i < STEPPING.size(); i++) parents |= STEPPING.get(i).shape.spawns() && s < STEPPING.get(i).steps;
+            if (parents && spawnRows > 0) CgGpuOps.fill(pass, spawnCount, 0, ONE);
+            for (int phase = 0; phase < 2; phase++) {
+                for (int i = 0; i < STEPPING.size(); i++) {
+                    CgVfxParticlePool pool = STEPPING.get(i);
+                    if (pool.shape.spawns() == (phase == 0) && s < pool.steps) {
+                        pool.dispatchStep(pass, s, parents ? spawnRows : 0, reportRows);
+                    }
+                }
+            }
+        }
+        pass.end();
+        if (reportRows > 0) {
+            for (int s = 0; s < maxSteps; s++) {
+                Report report = REPORTS.isEmpty() ? new Report() : REPORTS.poll();
+                report.take(STEPPING);
+                CgGpuOps.readRows(recording, reportStream, (long) s * reportRows * EVENT_BYTES, EVENT_BYTES,
+                        CgGpuCount.at(reportCounts, s, reportRows), report);
+            }
+        }
+        for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).takeSteps();
+        STEPPING.clear();
+    }
+
+    /** Readies this pool to step: its kernel, storage and rows. False, its steps taken, when it has nothing to step. */
+    private boolean begin(CgRecording recording) {
+        betweenSteps("record");
+        if (steps == 0) return false;
+        if (openSlots == 0) {
+            // A slot closes only once its particles have died, so there is nothing to step.
+            takeSteps();
+            return false;
+        }
+        if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
+        reserve(recording, capacity);
+        upload(recording);
+        return true;
+    }
+
+    /**
+     * The rows one step of this pool can append, every open slot's capacity once for each event of its definition that
+     * spawns ({@code spawning}) or reports: each particle fires each event at most once.
+     */
+    private int eventRows(boolean spawning) {
+        if (spawning ? !shape.spawns() : !shape.reports()) return 0;
+        int events = 0;
+        for (int e = 0; e < shape.events(); e++) if (spawning ? shape.eventSpawns(e) : shape.eventReports(e)) events++;
+        return capacity * events;
+    }
+
+    /** This recording's feeds, sorted by key, of slots whose parent is stepping: what {@code step_child} searches. */
+    private void uploadFeeds(CgRecording recording, int spawnRows) {
+        feeds = childMax = 0;
+        if (shape.spawns() || spawnRows == 0) return;
+        for (int slot = 0; slot < slotCount; slot++) {
+            CgVfxParticlePool parent = feedPool[slot];
+            if (parent == null || !STEPPING.contains(parent) || !parent.isOpen(feedSlot[slot])
+                    || parent.slotEmitter[feedSlot[slot]] != feedParent[slot]) {
+                continue;
+            }
+            CgVfxEvent event = feedParent[slot].events().get(feedEvent[slot]);
+            if (feedWords.length < (feeds + 1) * 4) feedWords = Arrays.copyOf(feedWords, Math.max(16, feedWords.length * 2));
+            int at = feeds * 4;
+            feedWords[at] = parent.id << 19 | feedSlot[slot] << 3 | feedEvent[slot];
+            feedWords[at + 1] = slot;
+            feedWords[at + 2] = event.count();
+            feedWords[at + 3] = Float.floatToRawIntBits(event.inherit());
+            childMax = Math.max(childMax, event.count());
+            // Insertion by unsigned key: a handful of slots.
+            for (int i = feeds; i > 0 && Integer.compareUnsigned(feedWords[(i - 1) * 4], feedWords[i * 4]) > 0; i--) {
+                for (int w = 0; w < 4; w++) {
+                    int t = feedWords[(i - 1) * 4 + w];
+                    feedWords[(i - 1) * 4 + w] = feedWords[i * 4 + w];
+                    feedWords[i * 4 + w] = t;
+                }
+            }
+            feeds++;
+        }
+        if (feeds == 0) return;
+        feedBuffer = fit(recording, feedBuffer, name() + ".feeds", feeds * 4);
+        put(recording, feedBuffer, feedWords, feeds * 4);
+    }
+
+    /** Step {@code s}'s dispatch, its children read from {@code spawnRows} rows when its parents stepped. */
+    private void dispatchStep(CgComputePass pass, int s, int spawnRows, int reportRows) {
+        CgGraphBuffer next = counts[1 - current];
+        CgGpuOps.fill(pass, next, 0, ONE);
+        boolean children = feeds > 0 && spawnRows > 0;
+        CgDispatch stepping = pass.dispatch(step, storage + stepSpawned[s] + (children ? spawnRows * childMax : 0))
+                .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
+                .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
+                .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
+                .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
+                .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]).set("_PoolId", id)
+                .set("_ChildRows", children ? spawnRows : 0).set("_ChildMax", children ? childMax : 0)
+                .set("_Feeds", children ? feeds : 0);
+        if (shape.spawns()) stepping.bind("SPAWN_EVENTS", spawnStream).counter("SPAWN_EVENTS", spawnCount, 0);
+        if (shape.reports()) {
+            stepping.bind("REPORT_EVENTS", reportStream, (long) s * reportRows * EVENT_BYTES, (long) reportRows * EVENT_BYTES)
+                    .counter("REPORT_EVENTS", reportCounts, s * 4L);
+        }
+        if (!shape.spawns()) {
+            stepping.bind("PARENT_EVENTS", children ? spawnStream : unfed).bind("PARENT_COUNT", children ? spawnCount : unfed)
+                    .bind("FEEDS", children ? feedBuffer : unfed);
+        }
+        if (shape.readsWorld()) CgVfxVoxelWindow.get().use().bind(stepping);
+        current = 1 - current;
+    }
+
+    private String name() {
+        return passName.substring(0, passName.length() - ".step".length());
+    }
+
+    private static CgGraphBuffer fitRows(CgRecording recording, CgGraphBuffer buffer, String name, int rows) {
+        return fit(recording, buffer, name, rows * (EVENT_BYTES / 4));
+    }
+
+    private static CgGraphBuffer counter(String name) {
+        return CgGraphBuffer.persistent(name, CgBufferDesc.of(16, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+    }
+
+    /**
+     * One step's rows for the CPU on their way back: which definition each stepping pool's slots held then, so a row
+     * finds its event's definition and cap however the slots have changed since. Reused once delivered.
+     */
+    private static final class Report implements CgGpuOps.Rows {
+        private final IdentityHashMap<CgVfxParticlePool, CgVfxGpuEmitter[]> slots = new IdentityHashMap<>();
+        private final IdentityHashMap<CgVfxGpuEmitter, CgVfxEventRows[]> groups = new IdentityHashMap<>();
+        private CgVfxParticlePool[] byId = new CgVfxParticlePool[0];
+
+        void take(List<CgVfxParticlePool> pools) {
+            for (int i = 0; i < pools.size(); i++) {
+                CgVfxParticlePool pool = pools.get(i);
+                if (!pool.shape.reports()) continue;
+                CgVfxGpuEmitter[] held = slots.get(pool);
+                if (held == null || held.length < pool.slotCount) slots.put(pool, held = new CgVfxGpuEmitter[pool.slotEmitter.length]);
+                System.arraycopy(pool.slotEmitter, 0, held, 0, pool.slotCount);
+                Arrays.fill(held, pool.slotCount, held.length, null);
+                if (byId.length <= pool.id) byId = Arrays.copyOf(byId, Math.max(pool.id + 1, byId.length * 2));
+                byId[pool.id] = pool;
+            }
+        }
+
+        @Override
+        public void accept(int count, ByteBuffer rows) {
+            for (CgVfxEventRows[] g : groups.values()) for (CgVfxEventRows r : g) if (r != null) r.clear();
+            for (int at = 0; at < rows.limit(); at += EVENT_BYTES) {
+                int key = rows.getInt(at + 68), event = rows.getInt(at + 72);
+                int poolId = key >>> 16, slot = key & 0xFFFF;
+                CgVfxParticlePool pool = poolId < byId.length ? byId[poolId] : null;
+                CgVfxGpuEmitter[] held = pool == null ? null : slots.get(pool);
+                CgVfxGpuEmitter definition = held == null || slot >= held.length ? null : held[slot];
+                if (definition == null || event >= definition.events().size()) continue;
+                CgVfxEventRows[] group = groups.get(definition);
+                if (group == null) groups.put(definition, group = new CgVfxEventRows[CgVfxEvent.MAX_EVENTS]);
+                CgVfxEventRows into = group[event];
+                if (into == null) into = group[event] = new CgVfxEventRows();
+                if (into.count() >= definition.events().get(event).readback()) {
+                    into.drop(1);
+                    continue;
+                }
+                into.add(slot, rows.getInt(at + 64),
+                        rows.getInt(at + 48) + (double) rows.getFloat(at), rows.getInt(at + 52) + (double) rows.getFloat(at + 4),
+                        rows.getInt(at + 56) + (double) rows.getFloat(at + 8), rows.getFloat(at + 16), rows.getFloat(at + 20),
+                        rows.getFloat(at + 24), rows.getFloat(at + 32), rows.getFloat(at + 36), rows.getFloat(at + 40));
+            }
+            for (Map.Entry<CgVfxGpuEmitter, CgVfxEventRows[]> e : groups.entrySet()) {
+                CgVfxEventRows[] group = e.getValue();
+                for (int event = 0; event < group.length; event++) {
+                    CgVfxEventRows r = group[event];
+                    if (r == null || r.count() == 0 && r.dropped() == 0) continue;
+                    // From the end, so a listener may stop listening as it hears.
+                    for (int l = LISTENERS.size() - 1; l >= 0; l--) {
+                        if (l < LISTENERS.size()) LISTENERS.get(l).events(e.getKey(), event, r);
+                    }
+                }
+            }
+            done();
+        }
+
+        @Override
+        public void failed(String reason) {
+            done();
+        }
+
+        private void done() {
+            slots.clear();
+            Arrays.fill(byId, null);
+            REPORTS.add(this);
+        }
     }
 
     /** Whether {@link #release} dropped it: what holds it lets it go. */
@@ -291,9 +553,31 @@ public final class CgVfxParticlePool {
         capacity -= slotCapacity[slot];
         slotEmitter[slot] = null;
         slotCapacity[slot] = 0;
+        feedPool[slot] = null;
         openSlots--;
         while (slotCount > 0 && slotEmitter[slotCount - 1] == null) slotCount--;
         basesStale = true;
+    }
+
+    /**
+     * Makes {@code slot} the child slot of {@code parent}'s slot {@code parentSlot}'s event {@code event}: each step its
+     * children spawn here, in the step the event fired. Closing either slot ends it. Render thread, between steps.
+     *
+     * @throws IllegalArgumentException if that event does not spawn this slot's definition, or the parent's pool is
+     *                                  not one whose events spawn
+     */
+    public void feed(int slot, CgVfxParticlePool parent, int parentSlot, int event) {
+        betweenSteps("feed");
+        CgVfxGpuEmitter child = openSlot(slot, "feed");
+        CgVfxGpuEmitter from = parent.openSlot(parentSlot, "feed's parent");
+        List<CgVfxEvent> events = from.events();
+        if (event < 0 || event >= events.size() || events.get(event).child() != child) {
+            throw new IllegalArgumentException(from.name() + "'s event " + event + " does not spawn " + child.name());
+        }
+        feedPool[slot] = parent;
+        feedParent[slot] = from;
+        feedSlot[slot] = parentSlot;
+        feedEvent[slot] = event;
     }
 
     /** The particles {@code slot} can have alive. */
@@ -549,32 +833,15 @@ public final class CgVfxParticlePool {
      * not fire, as a check scene. Render thread, between steps.
      */
     public void record(CgRecording recording) {
-        betweenSteps("record");
-        if (steps == 0) return;
-        if (openSlots == 0) {
-            // A slot closes only once its particles have died, so there is nothing to step.
-            takeSteps();
-            return;
-        }
-        if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
-        reserve(recording, capacity);
-        upload(recording);
-        CgVfxVoxelWindow window = shape.readsWorld() ? CgVfxVoxelWindow.get().use() : null;
-        CgComputePass pass = recording.compute(passName).timed(GPU_STEP).async();
-        for (int s = 0; s < steps; s++) {
-            CgGraphBuffer next = counts[1 - current];
-            CgGpuOps.fill(pass, next, 0, ONE);
-            CgDispatch stepping = pass.dispatch(step, storage + stepSpawned[s])
-                    .bind("IN", records).bind("OUT", records).counter("OUT", next, 0).bind("LIVE", counts[current])
-                    .bind("PARAMS", paramBuffer).bind("INSTANCES", instanceBuffer).bind("SPAWNS", spawnBuffer)
-                    .set("_Step", stepBlock[s * 4], stepBlock[s * 4 + 1], stepBlock[s * 4 + 2], stepBlock[s * 4 + 3])
-                    .set("_InstanceAt", stepInstanceAt[s] / 4).set("_SpawnAt", stepSpawnAt[s] / 4)
-                    .set("_SpawnRows", stepSpawnRows[s]).set("_Spawned", stepSpawned[s]);
-            if (window != null) window.bind(stepping);
-            current = 1 - current;
-        }
-        pass.end();
-        takeSteps();
+        recordPools(recording, Collections.singletonList(this));
+    }
+
+    /**
+     * {@link #record} for several pools at once, in step order, so their events reach each other: a check scene's
+     * parent and child pools. Render thread, between steps.
+     */
+    public static void record(CgRecording recording, List<CgVfxParticlePool> pools) {
+        recordPools(recording, pools);
     }
 
     /** Makes the records and counts the first time, and grows the records to hold {@code need}. */
@@ -728,6 +995,12 @@ public final class CgVfxParticlePool {
             if ((w & 1) == 0) most = Math.max(most, curveScratch[w]);
         }
         rowSizeMax[index] = most;
+        if (shape.events() > 0) {
+            List<CgVfxEvent> events = emitter.events();
+            for (int e = 0; e < CgVfxEvent.MAX_EVENTS; e++) {
+                params[at + shape.eventsAt() * 4 + e] = Float.floatToRawIntBits(e < events.size() ? events.get(e).age() : 0f);
+            }
+        }
         rows.put(emitter, new int[]{index, 1});
         paramsChanged = true;
         return index;
@@ -744,6 +1017,10 @@ public final class CgVfxParticlePool {
         slotOrigin = Arrays.copyOf(slotOrigin, size * 3);
         slotScale = Arrays.copyOf(slotScale, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
+        feedPool = Arrays.copyOf(feedPool, size);
+        feedParent = Arrays.copyOf(feedParent, size);
+        feedSlot = Arrays.copyOf(feedSlot, size);
+        feedEvent = Arrays.copyOf(feedEvent, size);
     }
 
     private CgVfxGpuEmitter openSlot(int slot, String call) {

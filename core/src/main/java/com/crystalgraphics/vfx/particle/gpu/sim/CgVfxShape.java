@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
@@ -11,8 +12,9 @@ import java.util.regex.Pattern;
 
 /**
  * What makes two emitter definitions share a pool and its kernels: their module kinds in stack order, what each kind
- * declares it takes, and the renderer. Never a number, so tuning a definition recompiles nothing. Also the layout of a
- * pool's rows, which follows from it.
+ * declares it takes, the renderer, and their events' triggers with whether each spawns children and reports to the
+ * CPU. Never a number, so tuning a definition recompiles nothing. Also the layout of a pool's rows, which follows from
+ * it.
  *
  * <pre>{@code
  * CgVfxShape shape = CgVfxShape.of(EMBERS);
@@ -29,6 +31,8 @@ import java.util.regex.Pattern;
 public final class CgVfxShape {
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
+    /** The vec4s a parameter row gives its events, when it has any: each event's age, {@link CgVfxEvent#MAX_EVENTS} of them. */
+    public static final int EVENT_VECTORS = CgVfxEvent.MAX_EVENTS / 4;
 
     private final String key;
     private final CgVfxEmitter.Renderer renderer;
@@ -39,6 +43,10 @@ public final class CgVfxShape {
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
     private final boolean readsWorld;
+    private final CgVfxEvent.Trigger[] triggers;
+    private final boolean[] eventSpawns, eventReports;
+    private final int eventsAt;
+    private final boolean spawns, reports;
 
     private CgVfxShape(CgVfxGpuEmitter emitter) {
         List<? extends CgVfxGpuModule> modules = emitter.modules();
@@ -77,6 +85,27 @@ public final class CgVfxShape {
             for (int l = 0; l < lanes[i].length; l++) key.append(l == 0 ? ':' : ',').append(lanes[i][l].name());
             for (int w = 0; w < world[i].length; w++) key.append(w == 0 ? '@' : ',').append(world[i][w].name());
         }
+        List<CgVfxEvent> events = emitter.events();
+        if (events.size() > CgVfxEvent.MAX_EVENTS) {
+            throw new IllegalArgumentException(emitter.name() + " lists " + events.size() + " events, past " + CgVfxEvent.MAX_EVENTS);
+        }
+        triggers = new CgVfxEvent.Trigger[events.size()];
+        eventSpawns = new boolean[events.size()];
+        eventReports = new boolean[events.size()];
+        boolean anySpawns = false, anyReports = false;
+        for (int e = 0; e < triggers.length; e++) {
+            CgVfxEvent event = events.get(e);
+            triggers[e] = event.trigger();
+            eventSpawns[e] = event.child() != null;
+            eventReports[e] = event.readback() > 0;
+            anySpawns |= eventSpawns[e];
+            anyReports |= eventReports[e];
+            key.append(e == 0 ? "|ev:" : ",").append(triggers[e].name()).append(eventSpawns[e] ? "+s" : "").append(eventReports[e] ? "+r" : "");
+        }
+        spawns = anySpawns;
+        reports = anyReports;
+        eventsAt = param;
+        if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
         boolean reads = false;
@@ -143,11 +172,45 @@ public final class CgVfxShape {
         return readsWorld;
     }
 
+    /** How many events its definitions list. */
+    public int events() {
+        return triggers.length;
+    }
+
+    public CgVfxEvent.Trigger trigger(int e) {
+        return triggers[e];
+    }
+
+    /** Whether event {@code e} spawns children. */
+    public boolean eventSpawns(int e) {
+        return eventSpawns[e];
+    }
+
+    /** Whether event {@code e} reports rows to the CPU. */
+    public boolean eventReports(int e) {
+        return eventReports[e];
+    }
+
+    /** Whether any event spawns children: its pool steps ahead of the pools of its children. */
+    public boolean spawns() {
+        return spawns;
+    }
+
+    /** Whether any event reports rows to the CPU. */
+    public boolean reports() {
+        return reports;
+    }
+
+    /** Where the events' ages start in a parameter row, in vec4s ({@link #EVENT_VECTORS} of them); no events, none. */
+    public int eventsAt() {
+        return eventsAt;
+    }
+
     int laneCount(int i) {
         return lanes[i].length;
     }
 
-    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order. */
+    /** A parameter row's vec4s: the spawn numbers, then each module's in stack order, then its events' ages. */
     public int paramRowVectors() {
         return paramRow;
     }
