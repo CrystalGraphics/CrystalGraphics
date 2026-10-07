@@ -140,9 +140,10 @@ world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds
 - **One set of records, several draws**: a custom the draw states (`.custom(k, …)`) replaces custom k of every kept
   record, and `.instanceScale(s)` scales each instance about its own origin, as Unity's property block does over
   `DrawMeshInstancedIndirect`. A particle mesh drawn by each of its layers at that layer's size and colours is one.
-- **Records sorted for blending keep their order only with `.ordered()`** (`CgCull.ordered` by hand): on compute the
-  cull's append keeps instances in any order. Ordered, each level's survivors are flagged and compacted in order, a
-  compaction a level more, so ask it only of a material that blends over.
+- **Every set of a stage is culled at once** (`CgCullSets`): a key and a gather dispatch per instance buffer the sets
+  read, one sort, histogram and scan over them all, however many draws. Each level keeps its records in the order
+  the set holds them, so records sorted for blending draw in that order. By hand, `CgGpuOps.cull(pass, view, sets,
+  out, counts)`; one set alone keeps its order only with `CgCull.ordered`.
 - A persistent buffer outlives the frame, so the pass writing it is never culled; release it with
   `recording.release(trees)` when the forest goes.
 

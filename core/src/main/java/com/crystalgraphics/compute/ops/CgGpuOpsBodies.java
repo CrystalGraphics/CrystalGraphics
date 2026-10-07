@@ -167,75 +167,175 @@ final class CgGpuOpsBodies {
         return file;
     }
 
-    /** {@code cull.compute}'s kernel, step for step: the same tests in the same order, then the same record. */
+    /** {@code cull.compute}'s kernels, step for step: the same tests in the same order, then the same record. */
     static CgCompute cull(CgCompute file) {
         file.kernel("Cull").cpu(d -> {
-            Culling c = new Culling(d);
+            Culling c = new Culling(d, false).fromProperties();
             CgCpuBuffer out = d.appended("OUT");
             int n = count(d), keep = d.propertyInt("_Level");
             for (int e = d.first(); e < d.end(); e++) {
                 if (!below(e, n)) continue;
-                c.read(e);
+                c.read(c.first + e);
                 if (c.level() == keep) c.write(out, d.append("OUT"));
             }
         });
         file.kernel("CullFlags").cpu(d -> {
-            Culling c = new Culling(d);
+            Culling c = new Culling(d, false).fromProperties();
             CgCpuBuffer flags = d.buffer("FLAGS");
             int n = count(d), keep = d.propertyInt("_Level");
             for (int e = d.first(); e < d.end(); e++) {
                 boolean kept = false;
                 if (below(e, n)) {
-                    c.read(e);
+                    c.read(c.first + e);
                     kept = c.level() == keep;
                 }
                 flags.setInt(e, 0, kept ? 1 : 0);
             }
         });
         file.kernel("CullPlace").cpu(d -> {
-            Culling c = new Culling(d);
+            Culling c = new Culling(d, false).fromProperties();
             CgCpuBuffer kept = d.buffer("KEPT"), placed = d.buffer("PLACED");
             int n = count(d);
             for (int e = d.first(); e < d.end(); e++) {
                 if (!below(e, n)) continue;
-                c.read(kept.getInt(e, 0));
+                c.read(c.first + kept.getInt(e, 0));
+                c.write(placed, e);
+            }
+        });
+        file.kernel("CullKey").cpu(d -> {
+            Culling c = new Culling(d, true);
+            CgCpuBuffer keys = d.buffer("KEYS"), indices = d.buffer("INDICES");
+            int culled = d.propertyInt("_Culled");
+            for (int e = d.first(); e < d.end(); e++) {
+                int row = c.row(e, 1), key = culled, index = 0;
+                c.fromRow(row);
+                int rank = e - c.keyAt;
+                if (rank < c.capacity && rank < c.count()) {
+                    index = c.first + rank;
+                    c.read(index);
+                    int level = c.level();
+                    if (level >= 0) key = row * CgCull.MAX_LEVELS + level;
+                }
+                keys.setInt(e, 0, key);
+                indices.setInt(e, 0, index);
+            }
+        });
+        file.kernel("CullGather").cpu(d -> {
+            Culling c = new Culling(d, true);
+            CgCpuBuffer counts = d.buffer("COUNTS"), starts = d.buffer("STARTS"), sorted = d.buffer("SORTED");
+            CgCpuBuffer placed = d.buffer("PLACED");
+            for (int e = d.first(); e < d.end(); e++) {
+                int row = c.row(e, 2);
+                c.fromRow(row);
+                int region = (c.capacity + 3) & ~3, local = e - c.outAt;
+                int level = local / region, rank = local - level * region, bin = row * CgCull.MAX_LEVELS + level;
+                if (Integer.compareUnsigned(rank, counts.getInt(bin, 0)) >= 0) continue;
+                c.read(sorted.getInt(starts.getInt(bin, 0) + rank, 0));
                 c.write(placed, e);
             }
         });
         return file;
     }
 
-    /** {@code cull.compute}'s cull_model, cull_level and cull_record over one dispatch's properties. */
+    /**
+     * {@code cull.compute}'s cull_model, cull_level and cull_record: the view from the dispatch's properties, the set
+     * from them too ({@link #fromProperties}) or from a row of {@code SETS} ({@link #fromRow}).
+     */
     private static final class Culling {
         private final CgCpuDispatch d;
         private final CgCpuBuffer in;
-        private final int levels, first, customs;
-        private final float[] place, normal, clip, planes = new float[24], heights = new float[8], stamps = new float[16];
+        private final float[] clip, planes = new float[24];
+        private final float screenY;
+        private final float[] place = new float[16], normal = new float[12], min = new float[3], max = new float[3];
+        private final float[] heights = new float[8], stamps = new float[16], light = new float[3];
         private final float[] lo = new float[3], hi = new float[3], r = new float[48], m = new float[16];
-        private final float scale, unscale;
+        private float scale, unscale;
+        private int levels, customs, countAt;
+        int first, capacity, keyAt, outAt;
+        private CgCpuBuffer sets;
+        private int setFirst, setCount;
 
-        Culling(CgCpuDispatch d) {
+        /** {@code rows}: a batched kernel's, its sets read from SETS. */
+        Culling(CgCpuDispatch d, boolean rows) {
             this.d = d;
             in = d.buffer("INSTANCES");
-            levels = d.propertyInt("_Levels");
-            first = d.propertyInt("_First");
-            customs = d.propertyInt("_Customs");
-            place = columns(d, "_Place", 4);
-            normal = columns(d, "_PlaceNormal", 3);
             clip = columns(d, "_Clip", 0);
             for (int i = 0; i < 6; i++) for (int c = 0; c < 4; c++) planes[i * 4 + c] = d.property("_Plane" + i, c);
+            screenY = d.property("_ScreenY");
+            if (rows) {
+                sets = d.buffer("SETS");
+                setFirst = d.propertyInt("_SetFirst");
+                setCount = d.propertyInt("_Sets");
+            }
+        }
+
+        /** The set a per-set kernel's properties describe. */
+        Culling fromProperties() {
+            float[] p = columns(d, "_Place", 4), n = columns(d, "_PlaceNormal", 3);
+            System.arraycopy(p, 0, place, 0, 16);
+            System.arraycopy(n, 0, normal, 0, 12);
+            for (int a = 0; a < 3; a++) {
+                min[a] = d.property("_Min", a);
+                max[a] = d.property("_Max", a);
+            }
             for (int c = 0; c < 4; c++) {
                 heights[c] = d.property("_Heights0", c);
                 heights[4 + c] = d.property("_Heights1", c);
             }
             for (int k = 0; k < 4; k++) for (int c = 0; c < 4; c++) stamps[k * 4 + c] = d.property("_Custom" + k, c);
+            for (int c = 0; c < 3; c++) light[c] = d.property("_Light", c);
             scale = d.property("_Scale");
             unscale = d.property("_NormalScale");
+            levels = d.propertyInt("_Levels");
+            customs = d.propertyInt("_Customs");
+            countAt = d.propertyInt("_CountAt");
+            capacity = d.propertyInt("_Capacity");
+            first = d.propertyInt("_First");
+            return this;
         }
 
-        /** Instance {@code index} of the set read, and its model matrix placed: cull_model. */
+        /** Row {@code row} of SETS: CgCullSets' layout. */
+        void fromRow(int row) {
+            CgCpuBuffer t = sets;
+            for (int w = 0; w < 16; w++) place[w] = t.getFloat(row, w);
+            for (int w = 0; w < 12; w++) normal[w] = t.getFloat(row, 16 + w);
+            for (int a = 0; a < 3; a++) {
+                min[a] = t.getFloat(row, 28 + a);
+                max[a] = t.getFloat(row, 32 + a);
+            }
+            scale = t.getFloat(row, 31);
+            unscale = t.getFloat(row, 35);
+            for (int w = 0; w < 8; w++) heights[w] = t.getFloat(row, 36 + w);
+            for (int c = 0; c < 3; c++) light[c] = t.getFloat(row, 44 + c);
+            for (int w = 0; w < 16; w++) stamps[w] = t.getFloat(row, 48 + w);
+            levels = t.getInt(row, 64);
+            customs = t.getInt(row, 65);
+            countAt = t.getInt(row, 66);
+            capacity = t.getInt(row, 67);
+            first = t.getInt(row, 68);
+            keyAt = t.getInt(row, 69);
+            outAt = t.getInt(row, 70);
+        }
+
+        /** cull_row: the last of the dispatch's rows whose first (word {@code 68 + c}) is at or below {@code e}. */
+        int row(int e, int c) {
+            int low = setFirst, high = setFirst + setCount - 1;
+            while (low < high) {
+                int mid = (low + high + 1) >> 1;
+                if (sets.getInt(mid, 68 + c) <= e) low = mid;
+                else high = mid - 1;
+            }
+            return low;
+        }
+
+        /** cull_count, of the set loaded. */
+        int count() {
+            return countAt < 0 ? capacity : (int) Math.min(d.buffer("COUNT").getInt(countAt, 0) & 0xFFFFFFFFL, capacity);
+        }
+
+        /** Record {@code index} of INSTANCES read, and its model matrix placed: cull_model. */
         void read(int index) {
-            for (int w = 0; w < 48; w++) r[w] = in.getFloat(first + index, w);
+            for (int w = 0; w < 48; w++) r[w] = in.getFloat(index, w);
             for (int w = 0; w < 12; w++) r[w] *= scale;
             for (int c = 0; c < 4; c++) {
                 for (int row = 0; row < 4; row++) {
@@ -249,9 +349,8 @@ final class CgGpuOpsBodies {
         int level() {
             for (int k = 0; k < 3; k++) lo[k] = hi[k] = m[12 + k];
             for (int a = 0; a < 3; a++) {
-                float min = d.property("_Min", a), max = d.property("_Max", a);
                 for (int k = 0; k < 3; k++) {
-                    float p = m[a * 4 + k] * min, q = m[a * 4 + k] * max;
+                    float p = m[a * 4 + k] * min[a], q = m[a * 4 + k] * max[a];
                     lo[k] += Math.min(p, q);
                     hi[k] += Math.max(p, q);
                 }
@@ -267,7 +366,7 @@ final class CgGpuOpsBodies {
                 float dx = hi[0] - lo[0], dy = hi[1] - lo[1], dz = hi[2] - lo[2];
                 float radius = 0.5f * (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
                 float w = clip[12] * cx + clip[13] * cy + clip[14] * cz + clip[15];
-                float screen = w <= radius ? 3.4e38f : radius * d.property("_ScreenY") / w;
+                float screen = w <= radius ? 3.4e38f : radius * screenY / w;
                 level = -1;
                 for (int i = 0; i < levels; i++) {
                     if (screen >= heights[i]) {
@@ -276,7 +375,7 @@ final class CgGpuOpsBodies {
                     }
                 }
             }
-            if (level != d.propertyInt("_Level") || occluded(d, clip, lo, hi)) return -1;
+            if (level < 0 || occluded(d, clip, lo, hi)) return -1;
             return level;
         }
 
@@ -290,9 +389,9 @@ final class CgGpuOpsBodies {
                 }
                 out.setFloat(at, 16 + c * 4 + 3, r[16 + c * 4 + 3]);
             }
-            boolean stamp = d.property("_Light", 2) > 0.5f;
-            out.setFloat(at, 28, stamp ? d.property("_Light", 0) : r[28]);
-            out.setFloat(at, 29, stamp ? d.property("_Light", 1) : r[29]);
+            boolean stamp = light[2] > 0.5f;
+            out.setFloat(at, 28, stamp ? light[0] : r[28]);
+            out.setFloat(at, 29, stamp ? light[1] : r[29]);
             out.setFloat(at, 30, r[30]);
             out.setFloat(at, 31, r[31]);
             for (int k = 0; k < 4; k++) {
