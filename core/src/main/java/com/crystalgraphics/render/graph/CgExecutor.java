@@ -160,8 +160,11 @@ public final class CgExecutor {
     /** Whether the pass executing drew through a framebuffer of ours with its second attachment. */
     private boolean composed;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
-    /** This execution's: whether an async pass runs beside the frame's queue, and whether runs of draws join. */
-    private boolean asyncCompute, multiDraw;
+    /**
+     * This execution's: whether an async pass runs beside the frame's queue, whether runs of draws join, and whether a
+     * slot above 0 may be masked apart from slot 0 (without it a pipeline writes every slot, as one mask serves all).
+     */
+    private boolean asyncCompute, multiDraw, independentMasks;
     /**
      * Storage async passes touched that the frame's queue has not waited for, each with the point covering it: across
      * the frame's executions, and dropped at the next, whose start the device orders after all of it.
@@ -286,6 +289,7 @@ public final class CgExecutor {
         computeBarriers = BARRIERS && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
+        independentMasks = CgCapabilities.detect().independentBlend();
         if (asyncUnwaited && CgFrameRing.frame() != asyncFrame) {   // the last frame's end waited for all of it
             asyncCount = 0;
             asyncUnwaited = false;
@@ -1142,7 +1146,7 @@ public final class CgExecutor {
                     try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_PIPELINE)) {
                         if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
                         usable = pipeline.bind();
-                        if (slots > 1) maskSlots(pipeline, slots);
+                        if (slots > 1 && independentMasks) maskSlots(pipeline, slots);
                     }
                     boundBinding = -1;
                 }
