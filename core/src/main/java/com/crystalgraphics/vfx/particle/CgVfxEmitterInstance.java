@@ -2,8 +2,12 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -28,6 +32,8 @@ import java.util.Locale;
  *       sampled, so effects at different places see different eddies.</li>
  *   <li>{@link #share} thins what spawns by particle index, so a sparser burst keeps the same particles where it keeps
  *       any: the effect's shape, only fewer. A playing effect's share is its system's, set every tick.</li>
+ *   <li>An emitter's events ({@link CgVfxEmitter.Builder#event}) run inside it: each event's children are an instance
+ *       of their own ({@link #child}), stepped right after it, drawn with it, and {@link #finished} waits for them.</li>
  * </ul>
  */
 public final class CgVfxEmitterInstance implements CgVfxInstanceView {
@@ -58,11 +64,50 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private int stepFirst, stepCandidates;
     /** When its latest-dying particle dies, the last step's length, and when that step began. */
     private float lastDeath = -1f, stepDt, stepTime;
+    /** By event index: the instance its children run in, and this step's rows to the CPU; null where it has none. */
+    private final CgVfxEmitterInstance[] children;
+    private final CgVfxEventRows[] rows;
+    private boolean rowsDue;
+    /** Velocity after the solver and resting before Ground, per particle: a landing's row. Null with no landing event. */
+    private final float[] hitVx, hitVy, hitVz, wasResting;
+    /** A child's: the event that feeds it, its index in the parent's events, and the step's fires waiting to spawn. */
+    private final CgVfxEvent feed;
+    private final int feedEvent;
+    private float[] fires;
+    private int[] fireIds;
+    private int fireCount;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
+        this(emitter, Float.floatToIntBits(seed), emitter.capacity, null, -1);
+    }
+
+    private CgVfxEmitterInstance(CgVfxEmitter emitter, int seedBits, int capacity, CgVfxEvent feed, int feedEvent) {
         this.emitter = emitter;
-        this.particles = new CgVfxParticleSet(emitter.capacity);
-        this.seed = Float.floatToIntBits(seed);
+        this.particles = new CgVfxParticleSet(capacity);
+        this.seed = seedBits;
+        this.feed = feed;
+        this.feedEvent = feedEvent;
+        if (feed != null) {
+            fires = new float[9 * 16];
+            fireIds = new int[16];
+        }
+        List<CgVfxEvent> events = emitter.events;
+        children = new CgVfxEmitterInstance[events.size()];
+        rows = new CgVfxEventRows[events.size()];
+        boolean landings = false;
+        for (int e = 0; e < events.size(); e++) {
+            CgVfxEvent event = events.get(e);
+            if (event.child() != null) {
+                // Seeded as its parent, so a child is the same particle on both paths.
+                children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, emitter.peakChildren(e), event, e);
+            }
+            if (event.readback() > 0) rows[e] = new CgVfxEventRows();
+            landings |= event.trigger() == CgVfxEvent.Trigger.LANDING;
+        }
+        hitVx = landings ? new float[capacity] : null;
+        hitVy = landings ? new float[capacity] : null;
+        hitVz = landings ? new float[capacity] : null;
+        wasResting = landings ? new float[capacity] : null;
     }
 
     /** Starts spawning at {@code (x, y, z)}, relative to the effect's origin, from this tick on. */
@@ -76,6 +121,10 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         rateOwed = 0f;
         lastDeath = -1f;
         particles.clear();
+        fireCount = 0;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.start(x, y, z);
+        }
     }
 
     /**
@@ -84,12 +133,18 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
      */
     public CgVfxEmitterInstance ground(float y) {
         groundY = y;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.ground(y);
+        }
         return this;
     }
 
     /** The host world's surfaces around the burst, shared by its emitters; null for the fixed height alone. */
     public CgVfxEmitterInstance ground(CgVfxGround field) {
         this.field = field;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.ground(field);
+        }
         return this;
     }
 
@@ -120,7 +175,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         CgVfxParticleSet p = particles;
         long t = CgVfxTrace.start();
         int before = p.count();
-        spawn(dt);
+        clearRows();
+        if (feed != null) spawnFed(); else spawn(dt);
         if (t != 0L) CgVfxTrace.count(SPAWNED, p.count() - before);
         t = CgVfxTrace.lap(SPAWN_NS, t);
         List<CgVfxModule> modules = emitter.modules;
@@ -132,6 +188,15 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         }
         solve(dt);
         t = CgVfxTrace.lap(SOLVE_NS, t);
+        if (hitVx != null) {
+            // What a particle strikes the floor with: Ground below takes its speed away.
+            for (int i = 0; i < p.count(); i++) {
+                hitVx[i] = p.vx[i];
+                hitVy[i] = p.vy[i];
+                hitVz[i] = p.vz[i];
+                wasResting[i] = p.resting[i];
+            }
+        }
         for (int m = 0; m < modules.size(); m++) {
             CgVfxModule module = modules.get(m);
             if (!module.afterSolve()) continue;
@@ -139,12 +204,118 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             if (t != 0L) t = CgVfxTrace.lap(MODULE_NS.get(module.getClass()), t);
         }
         if (t != 0L) CgVfxTrace.count(TICKED, p.count());
+        boolean events = !emitter.events.isEmpty();
         for (int i = p.count() - 1; i >= 0; i--) {
             p.age[i] += dt;
+            if (events) fireEvents(i, dt);
             if (p.age[i] >= p.life[i]) p.remove(i);
         }
         CgVfxTrace.lap(AGE_NS, t);
         time += dt;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.tick(dt, air, originX, originY, originZ);
+        }
+    }
+
+    /** The events particle {@code i} fired this step, its age just moved on by {@code dt} ({@link CgVfxEvent}'s rules). */
+    private void fireEvents(int i, float dt) {
+        CgVfxParticleSet p = particles;
+        List<CgVfxEvent> events = emitter.events;
+        for (int e = 0; e < events.size(); e++) {
+            CgVfxEvent event = events.get(e);
+            switch (event.trigger()) {
+                case LANDING -> {
+                    if (wasResting[i] == 0f && p.resting[i] != 0f) fire(e, event, i, hitVx[i], hitVy[i], hitVz[i], 0f, 1f, 0f);
+                }
+                case DEATH -> {
+                    if (p.age[i] >= p.life[i]) fireMoving(e, event, i);
+                }
+                case AGE -> {
+                    if (p.age[i] - dt < event.age() && event.age() <= p.age[i]) fireMoving(e, event, i);
+                }
+            }
+        }
+    }
+
+    /** A death's or an age's fire: its normal is its velocity's direction, up when it barely moves. */
+    private void fireMoving(int e, CgVfxEvent event, int i) {
+        CgVfxParticleSet p = particles;
+        float vx = p.vx[i], vy = p.vy[i], vz = p.vz[i], d = vx * vx + vy * vy + vz * vz;
+        if (d <= 1e-12f) {
+            fire(e, event, i, vx, vy, vz, 0f, 1f, 0f);
+        } else {
+            float inv = 1f / (float) Math.sqrt(d);
+            fire(e, event, i, vx, vy, vz, vx * inv, vy * inv, vz * inv);
+        }
+    }
+
+    private void fire(int e, CgVfxEvent event, int i, float vx, float vy, float vz, float nx, float ny, float nz) {
+        CgVfxParticleSet p = particles;
+        if (children[e] != null) children[e].queue(p.id[i], p.x[i], p.y[i], p.z[i], vx, vy, vz, nx, ny, nz);
+        CgVfxEventRows r = rows[e];
+        if (r != null) {
+            if (r.count() < event.readback()) {
+                r.add(-1, p.id[i], originX + p.x[i], originY + p.y[i], originZ + p.z[i], vx, vy, vz, nx, ny, nz);
+            } else {
+                r.drop(1);
+            }
+            rowsDue = true;
+        }
+    }
+
+    /** A parent's fire, for this child's next step to spawn its children from. */
+    private void queue(int parentId, float x, float y, float z, float vx, float vy, float vz, float nx, float ny, float nz) {
+        if (fireCount == fireIds.length) {
+            fires = Arrays.copyOf(fires, fires.length * 2);
+            fireIds = Arrays.copyOf(fireIds, fireIds.length * 2);
+        }
+        int at = fireCount * 9;
+        fires[at] = x;
+        fires[at + 1] = y;
+        fires[at + 2] = z;
+        fires[at + 3] = vx;
+        fires[at + 4] = vy;
+        fires[at + 5] = vz;
+        fires[at + 6] = nx;
+        fires[at + 7] = ny;
+        fires[at + 8] = nz;
+        fireIds[fireCount++] = parentId;
+    }
+
+    /** The instance event {@code event}'s children run in, or null where it spawns none. */
+    public CgVfxEmitterInstance child(int event) {
+        return children[event];
+    }
+
+    /** Whether its last step, or a child's, left rows for {@link #deliverRows}. */
+    public boolean rowsDue() {
+        if (rowsDue) return true;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null && child.rowsDue()) return true;
+        }
+        return false;
+    }
+
+    /** Hands its last step's rows, and its children's, to {@code listeners}, once. Render thread. */
+    public void deliverRows(List<CgVfxEventListener> listeners) {
+        if (rowsDue) {
+            rowsDue = false;
+            for (int e = 0; e < rows.length; e++) {
+                CgVfxEventRows r = rows[e];
+                if (r == null || r.count() == 0 && r.dropped() == 0) continue;
+                for (int l = 0; l < listeners.size(); l++) listeners.get(l).events(emitter, e, r);
+            }
+        }
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.deliverRows(listeners);
+        }
+    }
+
+    private void clearRows() {
+        rowsDue = false;
+        for (CgVfxEventRows r : rows) {
+            if (r != null) r.clear();
+        }
     }
 
     /**
@@ -188,6 +359,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         }
         stepCandidates = spawned - stepFirst;
         time += dt;
+        coastChildren(dt);
     }
 
     /** A spawn candidate: thinned by the share as {@code spawnOne} is, its death kept if it spawns. */
@@ -211,6 +383,19 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         stepFirst = spawned;
         stepCandidates = 0;
         time += dt;
+        coastChildren(dt);
+    }
+
+    /**
+     * Its children's step on the GPU path, where the pool spawns them from the parent's fires. The last fire is at its
+     * latest-dying particle's death, and a child spawned then lives its longest life after it.
+     */
+    private void coastChildren(float dt) {
+        for (CgVfxEmitterInstance child : children) {
+            if (child == null) continue;
+            child.coast(dt);
+            child.lastDeath = Math.max(child.lastDeath, lastDeath + dt * (float) Math.ceil(child.emitter.lifeMax / dt));
+        }
     }
 
     /** Whether it is stepped by {@link #schedule}: its particles live in a GPU pool. */
@@ -247,9 +432,14 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
      * after its latest-dying particle's death, which its spawns' lives give.
      */
     public boolean finished() {
-        boolean spawnedAll = time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null && !child.finished()) return false;
+        }
+        // A child spawns from its parent alone, which waits for it: its own schedule never runs.
+        boolean spawnedAll = feed != null
+                || time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length;
         if (scheduled) return spawnedAll && time >= lastDeath + stepDt;
-        return spawnedAll && particles.count() == 0;
+        return spawnedAll && particles.count() == 0 && fireCount == 0;
     }
 
     /** Spawn indices handed out so far, kept or thinned. */
@@ -324,17 +514,12 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     }
 
     private void spawnOne() {
-        CgVfxEmitter e = emitter;
         int k = spawned++;
         if (share < 1f && rand(k, 10) >= share) return;
-        int i = particles.add();
-        if (i < 0) {
-            // The GPU simulation sizes for its schedule and never drops: a shipped emitter keeps this at 0 (vfx-gpu §13.7).
-            CgVfxTrace.count(DROPPED, 1);
-            return;
-        }
+        int i = add();
+        if (i < 0) return;
+        CgVfxEmitter e = emitter;
         CgVfxParticleSet p = particles;
-        p.id[i] = k;
         float up = e.upMin + (e.upMax - e.upMin) * (float) Math.pow(rand(k, 0), e.upBias);
         float heading = rand(k, 1) * 6.2831853f, across = (float) Math.sqrt(Math.max(1f - up * up, 0f));
         float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);
@@ -346,6 +531,74 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         p.vx[i] = dx * speed;
         p.vy[i] = up * speed;
         p.vz[i] = dz * speed;
+        draws(i, k);
+    }
+
+    /** This step's children, {@code feed.count()} at each fire its parent queued. */
+    private void spawnFed() {
+        int count = feed.count();
+        for (int f = 0; f < fireCount; f++) {
+            for (int c = 0; c < count; c++) spawnChild(f, CgVfxEvent.childKey(fireIds[f], feedEvent, c));
+        }
+        fireCount = 0;
+    }
+
+    /**
+     * Spawn {@code k} launched as {@link #spawnOne} launches one, its frame turned from up onto fire {@code f}'s normal
+     * (Duff et al. 2017, "Building an Orthonormal Basis, Revisited"), from where its parent was, plus a share of the
+     * parent's velocity.
+     */
+    private void spawnChild(int f, int k) {
+        if (share < 1f && rand(k, 10) >= share) return;
+        int i = add();
+        if (i < 0) return;
+        CgVfxEmitter e = emitter;
+        CgVfxParticleSet p = particles;
+        float[] at = fires;
+        int o = f * 9;
+        float up = e.upMin + (e.upMax - e.upMin) * (float) Math.pow(rand(k, 0), e.upBias);
+        float heading = rand(k, 1) * 6.2831853f, across = (float) Math.sqrt(Math.max(1f - up * up, 0f));
+        float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);
+        float start = e.shapeRadius * (float) Math.cbrt(rand(k, 2));
+        float speed = e.speedMin + (e.speedMax - e.speedMin) * rand(k, 3);
+        float nx = at[o + 6], ny = at[o + 7], nz = at[o + 8], wx, wy, wz;
+        if (nx == 0f && nz == 0f && ny > 0f) {
+            // Up exactly, as a flat landing's is: spawnOne's frame untouched, where the basis below would mirror z.
+            wx = dx;
+            wy = up;
+            wz = dz;
+        } else {
+            // n.z >= 0 rather than copysign, so -0 takes GLSL's branch.
+            float s = nz >= 0f ? 1f : -1f, a = -1f / (s + nz), b = nx * ny * a;
+            float tx = 1f + s * nx * nx * a, ty = s * b, tz = -s * nx;
+            float ux = b, uy = s + ny * ny * a, uz = -ny;
+            wx = tx * dx + nx * up + ux * dz;
+            wy = ty * dx + ny * up + uy * dz;
+            wz = tz * dx + nz * up + uz * dz;
+        }
+        float inherit = feed.inherit();
+        p.x[i] = p.px[i] = at[o] + wx * start;
+        p.y[i] = p.py[i] = at[o + 1] + wy * start;
+        p.z[i] = p.pz[i] = at[o + 2] + wz * start;
+        p.vx[i] = wx * speed + inherit * at[o + 3];
+        p.vy[i] = wy * speed + inherit * at[o + 4];
+        p.vz[i] = wz * speed + inherit * at[o + 5];
+        draws(i, k);
+    }
+
+    /** A new particle's index, or -1 when its set is full. */
+    private int add() {
+        int i = particles.add();
+        // The GPU simulation sizes for its schedule and never drops: a shipped emitter keeps this at 0 (vfx-gpu §13.7).
+        if (i < 0) CgVfxTrace.count(DROPPED, 1);
+        return i;
+    }
+
+    /** Spawn {@code k}'s draws after its launch, into particle {@code i}: its id, life, size, seed and spin. */
+    private void draws(int i, int k) {
+        CgVfxEmitter e = emitter;
+        CgVfxParticleSet p = particles;
+        p.id[i] = k;
         p.life[i] = e.lifeMin + (e.lifeMax - e.lifeMin) * rand(k, 4);
         p.size[i] = e.sizeMin + (e.sizeMax - e.sizeMin) * (float) Math.pow(rand(k, 5), e.sizeSkew);
         p.seed[i] = rand(k, 6);

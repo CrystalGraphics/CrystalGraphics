@@ -6,8 +6,10 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * An effect playing in a world: placed at an origin in doubles, simulated in floats relative to it on the
@@ -61,6 +63,9 @@ public abstract class CgVfxEffect {
     /** The emitters {@link #tickEmitters} scheduled for the first time, for the system's GPU queue. */
     private CgVfxEmitterInstance[] admitted = new CgVfxEmitterInstance[0];
     private int admittedCount;
+    /** The CPU-stepped emitters whose step this tick left event rows, delivered by the system after the steps. */
+    private CgVfxEmitterInstance[] reporting = new CgVfxEmitterInstance[0];
+    private int reportingCount;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -226,6 +231,10 @@ public abstract class CgVfxEffect {
         }
         if (!system.particleTick()) return;
         emitter.share(system.spawnShare(emitter.emitter()));
+        for (int e = 0; e < emitter.emitter().events().size(); e++) {
+            CgVfxEmitterInstance child = emitter.child(e);
+            if (child != null) child.share(system.spawnShare(child.emitter()));
+        }
         if (dueCount == due.length) due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
         due[dueCount++] = emitter;
         dueDt = dt / CgVfxSystem.TICK * system.particleDt();
@@ -254,6 +263,10 @@ public abstract class CgVfxEffect {
                 }
             } else {
                 emitter.tick(dueDt, air, originX, originY, originZ);
+                if (emitter.rowsDue()) {
+                    if (reporting.length == reportingCount) reporting = Arrays.copyOf(reporting, Math.max(4, reportingCount * 2));
+                    reporting[reportingCount++] = emitter;
+                }
             }
             due[i] = null;
         }
@@ -267,6 +280,15 @@ public abstract class CgVfxEffect {
             admitted[i] = null;
         }
         admittedCount = 0;
+    }
+
+    /** Hands the event rows its CPU-stepped emitters left this tick to {@code listeners}. Render thread. */
+    final void deliverRows(List<CgVfxEventListener> listeners) {
+        for (int i = 0; i < reportingCount; i++) {
+            reporting[i].deliverRows(listeners);
+            reporting[i] = null;
+        }
+        reportingCount = 0;
     }
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
