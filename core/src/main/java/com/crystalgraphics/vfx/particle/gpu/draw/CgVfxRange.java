@@ -19,6 +19,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
+import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector4f;
@@ -90,7 +91,7 @@ public final class CgVfxRange {
     private static final List<CgVfxRange> ALL = new ArrayList<>();
     private static CgRenderStage.Registration registration;
 
-    private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts;
+    private static CgGraphBuffer drawn, visible, slots, bases, objects, sorts, origins;
     private static final List<CgGraphBuffer> RETIRED = new ArrayList<>();
     private static boolean anySorted;
     /** Whether {@link #objects()} was asked for since the last recording. */
@@ -296,6 +297,7 @@ public final class CgVfxRange {
             return;
         }
         uploadSlots(recording, view, allSlots);
+        CgVfxVoxelWindow window = CgVfxVoxelWindow.get().use();
         VIEW_PROJECTION.set(view.projection()).mul(view.view());
         CgCompute kernels = CgCompute.load(KERNELS);
         CgKernel key = kernels.kernel("Key"), place = kernels.kernel("Place"), objected = kernels.kernel("Objects");
@@ -345,18 +347,20 @@ public final class CgVfxRange {
             if (p.isReleased()) continue;
             int capacity = p.capacity();
             if (keyed(p) && capacity > 0) {
-                pass.dispatch(place, capacity).bind("RECORDS", p.records()).bind("INDICES", indices).bind("VISIBLE", visible)
-                        .bind("STARTS", starts).bind("BASES", bases).bind("CURVES", p.curves())
+                window.bind(pass.dispatch(place, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
+                        .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
+                        .bind("CURVES", p.curves())
                         .bind("DRAWN", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                        .set("_Ahead", range.ahead).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+                        .set("_Ahead", range.ahead).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
-                    pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
-                            .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("CURVES", p.curves())
+                    window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
+                            .bind("VISIBLE", visible).bind("STARTS", starts).bind("BASES", bases).bind("ORIGINS", origins)
+                            .bind("CURVES", p.curves())
                             .bind("OBJECTS", objects, drawnFirst * bytes, capacity * bytes)
                             .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                            .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS);
+                            .set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
                 }
             }
             drawnFirst += align(capacity, RECORD_ALIGN);
@@ -373,12 +377,16 @@ public final class CgVfxRange {
         anySorted = false;
     }
 
-    /** Each slot's origin from the camera and its reach, its list base in its pool, and whether it sorts, for this view. */
+    /**
+     * Each slot's origin from the camera and its reach, its list base in its pool, whether it sorts, for this view, and
+     * its origin in whole blocks and within one.
+     */
     private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
         slots = fit(recording, slots, "vfx.range.slots", allSlots * 16L);
         bases = fit(recording, bases, "vfx.range.bases", allSlots * 4L);
         sorts = fit(recording, sorts, "vfx.range.sorts", allSlots * 4L);
-        if (staging.capacity() < allSlots * 16) staging = ByteBuffer.allocate(Math.max(allSlots * 16, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
+        origins = fit(recording, origins, "vfx.range.origins", allSlots * 32L);
+        if (staging.capacity() < allSlots * 32) staging = ByteBuffer.allocate(Math.max(allSlots * 32, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxParticlePool p = ALL.get(i).pool;
@@ -415,15 +423,29 @@ public final class CgVfxRange {
         }
         staging.limit(allSlots * 4);
         recording.update(sorts, 0, staging);
+        staging.clear();
+        for (int i = 0, g = 0; i < ALL.size(); i++) {
+            CgVfxParticlePool p = ALL.get(i).pool;
+            if (p.isReleased()) continue;
+            for (int s = 0; s < p.slotCount(); s++, g++) {
+                for (int axis = 0; axis < 3; axis++) {
+                    double at = p.isOpen(s) ? p.origin(s, axis) : 0.0, whole = Math.floor(at);
+                    staging.putInt(g * 32 + axis * 4, (int) whole);
+                    staging.putFloat(g * 32 + 16 + axis * 4, (float) (at - whole));
+                }
+            }
+        }
+        staging.limit(allSlots * 32);
+        recording.update(origins, 0, staging);
     }
 
     /** The shared buffers, once no pool is left. */
     private static void release(CgRecording recording) {
         for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
         RETIRED.clear();
-        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts};
+        CgGraphBuffer[] owned = {drawn, visible, slots, bases, objects, sorts, origins};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
-        drawn = visible = slots = bases = objects = sorts = null;
+        drawn = visible = slots = bases = objects = sorts = origins = null;
     }
 
     /** {@code buffer}, or one of the next size class in its place when it holds fewer than {@code bytes}. */

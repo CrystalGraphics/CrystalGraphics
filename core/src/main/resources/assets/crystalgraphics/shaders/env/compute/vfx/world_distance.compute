@@ -1,0 +1,112 @@
+// The voxel window's distance field (CgVfxVoxelWindow): each block's distance from its centre to the nearest solid
+// octant, up to FX_WORLD_FAR, by a jump flood (Rong and Tan) over the blocks around what changed. Seed gives each block
+// of the domain with a solid octant itself; each Jump keeps, of a block's own seed and the seeds of the 26 blocks a
+// step away, the one whose solid octants are nearest (steps 8, 4, 2, 1, then 1 again); Settle writes every block of
+// the window: within _OutLo to _OutHi the distance to its seed, elsewhere what the field held. A seed carries its
+// block's octants, so the flood ranks by them: a block's whole box would prefer a stair's step to a nearer corner.
+//
+// Blocks are counted from the window's base, never wrapped: the domain is a box of them from _Domain, a texel each of
+// SEEDS and FROM; Settle runs over the window's own texels and finds each one's block through the wrap.
+#pragma kernel Seed 4 4 4 image
+#pragma kernel Jump 4 4 4 image
+#pragma kernel Settle 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
+
+Properties {
+    _World         ("The voxel window: a block a texel",    sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",     sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",        int)       = 0
+    _WorldBaseY    ("y",                                    int)       = 0
+    _WorldBaseZ    ("z",                                    int)       = 0
+    _WorldWrapX    ("That block's texel: x",                int)       = 0
+    _WorldWrapY    ("y",                                    int)       = 0
+    _WorldWrapZ    ("z",                                    int)       = 0
+    _Step          ("This pass's jump, in blocks",          int)       = 1
+    _Domain        ("The flood's first block from the base", vec4)     = (0, 0, 0, 0)
+    _OutLo         ("The first block Settle writes anew",   vec4)      = (0, 0, 0, 0)
+    _OutHi         ("One past the last",                    vec4)      = (0, 0, 0, 0)
+}
+
+Images {
+    SEEDS    ("Each block's nearest solid block so far: its index from the base, shifted 8, then its octants", r32ui, writeonly, 3d)
+    FROM     ("The pass before's seeds",                                                                  r32ui, readonly,  3d)
+    PREVIOUS ("The field before this flood",                                                              r8,    readonly,  3d)
+    DISTANCE ("Distance to the nearest solid octant over FX_WORLD_FAR",                                  r8,    writeonly, 3d)
+}
+
+const uint WD_NONE = 0xffffffffu;
+
+ivec3 wd_wrap() { return ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ); }
+
+uint wd_pack(ivec3 rel, uint octants) {
+    return uint(rel.x + FX_WORLD_SIZE.x * (rel.y + FX_WORLD_SIZE.y * rel.z)) << 8u | octants;
+}
+
+ivec3 wd_block(uint seed) {
+    int i = int(seed >> 8u);
+    return ivec3(i % FX_WORLD_SIZE.x, (i / FX_WORLD_SIZE.x) % FX_WORLD_SIZE.y, i / (FX_WORLD_SIZE.x * FX_WORLD_SIZE.y));
+}
+
+// The squared distance from p to the nearest of a seed's solid octants; first, to its whole block, which bounds it
+// from below, so a seed further than best is left at that.
+float wd_reach(vec3 p, uint seed, float best) {
+    vec3 b = vec3(wd_block(seed));
+    vec3 e = max(max(b - p, p - b - 1.0), vec3(0.0));
+    if (dot(e, e) >= best) return best;
+    uint bits = seed & 255u;
+    for (int o = 0; o < 8; o++, bits >>= 1) {
+        if ((bits & 1u) == 0u) continue;
+        vec3 lo = b + 0.5 * vec3(o & 1, (o >> 1) & 1, (o >> 2) & 1);
+        e = max(max(lo - p, p - lo - 0.5), vec3(0.0));
+        best = min(best, dot(e, e));
+    }
+    return best;
+}
+
+void Seed() {
+    ivec3 rel = ivec3(_Domain.xyz) + CG_TEXEL.xyz;
+    uint octants = 0u;
+    if (fx_world_known(_WorldSections, ivec3(0), wd_wrap(), rel)) octants = fx_world_bytes(_World, ivec3(0), wd_wrap(), rel).x;
+    SEEDS_WRITE(uvec4(octants != 0u ? wd_pack(rel, octants) : WD_NONE, 0u, 0u, 0u));
+}
+
+void Jump() {
+    ivec3 rel = ivec3(_Domain.xyz) + CG_TEXEL.xyz, size = FROM_SIZE();
+    vec3 p = vec3(rel) + 0.5;
+    uint best = FROM_LOAD(CG_TEXEL.xyz).r;
+    // A block with a solid octant is its own seed, at 0: its centre is a corner of every octant.
+    if (best != WD_NONE && best >> 8u == wd_pack(rel, 0u) >> 8u) {
+        SEEDS_WRITE(uvec4(best, 0u, 0u, 0u));
+        return;
+    }
+    float bestD = best == WD_NONE ? 1e30 : wd_reach(p, best, 1e30);
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                ivec3 n = CG_TEXEL.xyz + ivec3(x, y, z) * _Step;
+                if ((x | y | z) == 0 || any(lessThan(n, ivec3(0))) || any(greaterThanEqual(n, size))) continue;
+                uint seed = FROM_LOAD(n).r;
+                if (seed == WD_NONE) continue;
+                float d2 = wd_reach(p, seed, bestD);
+                if (d2 < bestD) {
+                    bestD = d2;
+                    best = seed;
+                }
+            }
+        }
+    }
+    SEEDS_WRITE(uvec4(best, 0u, 0u, 0u));
+}
+
+void Settle() {
+    ivec3 t = CG_TEXEL.xyz - wd_wrap();
+    ivec3 rel = t + FX_WORLD_SIZE * ivec3(lessThan(t, ivec3(0)));
+    if (any(lessThan(rel, ivec3(_OutLo.xyz))) || any(greaterThanEqual(rel, ivec3(_OutHi.xyz)))) {
+        DISTANCE_WRITE(PREVIOUS_LOAD(CG_TEXEL.xyz));
+        return;
+    }
+    uint seed = FROM_LOAD(rel - ivec3(_Domain.xyz)).r;
+    float nearest = seed == WD_NONE ? FX_WORLD_FAR : sqrt(wd_reach(vec3(rel) + 0.5, seed, 1e30));
+    DISTANCE_WRITE(vec4(min(nearest / FX_WORLD_FAR, 1.0), 0.0, 0.0, 0.0));
+}

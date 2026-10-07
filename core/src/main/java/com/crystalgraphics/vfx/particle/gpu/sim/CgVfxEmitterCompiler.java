@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
+import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -52,6 +53,7 @@ public final class CgVfxEmitterCompiler {
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) kinds.add(shape.kind(i));
         for (String kind : kinds) s.append("#include \"").append(KIND_DIR).append(kind).append(".glsl\"\n");
+        if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_world.glsl\"\n");
         s.append("""
 
                 Properties {
@@ -60,9 +62,9 @@ public final class CgVfxEmitterCompiler {
                     _SpawnAt    ("This step's spawn rows",           int)  = 0
                     _SpawnRows  ("How many spawn rows",              int)  = 0
                     _Spawned    ("Spawn candidates, every row's",    int)  = 0
-                }
-
                 """);
+        if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
+        s.append("}\n\n");
         s.append(CgVfxRecord.GLSL).append("\n\n");
         s.append("""
                 Buffers {
@@ -86,6 +88,21 @@ public final class CgVfxEmitterCompiler {
                 vec4 step_instance(int at) {
                     return uintBitsToFloat(INSTANCES(at));
                 }
+""");
+        if (shape.readsWorld()) {
+            s.append("""
+
+                    // The floor under p from the voxel window (CgVfxGround.floor's), relative to its origin; the
+                    // instance's fixed height with no level.
+                    float step_floor(FxParticle p, int inst) {
+                        if (_WorldLive == 0) return step_instance(inst + 2).y;
+                        return fx_world_floor(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
+                                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), ivec3(INSTANCES(inst + 3).xyz),
+                                step_instance(inst + 4).xyz, p.position, p.previous.y);
+                    }
+                    """);
+        }
+        s.append("""
 
                 FxParticle step_unpack(FxRecord r) {
                     FxParticle p;
@@ -168,7 +185,6 @@ public final class CgVfxEmitterCompiler {
                     int inst = _InstanceAt + int(p.slot) * STEP_INSTANCE_ROW;
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
-                    float ground = step_instance(inst + 2).y;
                     FxStep s;
                     s.dt = _Step.x;
                     s.wind = _Step.yzw;
@@ -213,7 +229,7 @@ public final class CgVfxEmitterCompiler {
         }
         for (CgVfxWorldInput input : shape.worldInputs(i)) {
             switch (input) {
-                case FLOOR_Y -> s.append(", ground");
+                case FLOOR_Y -> s.append(", step_floor(p, inst)");
             }
         }
         s.append(");\n");

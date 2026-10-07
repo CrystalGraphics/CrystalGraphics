@@ -49,7 +49,10 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(glsl, glsl.contains("fx_turbulence(p, f, s, step_param(row + " + p + "), ivec4(INSTANCES(inst + " + l
                 + ")), step_instance(inst + " + (l + 1) + "), ivec4(INSTANCES(inst + " + (l + 2) + ")), step_instance(inst + "
                 + (l + 3) + "));"));
-        assertTrue(glsl, glsl.contains("fx_ground(p, s, step_param(row + " + shape.paramAt(ground) + "), ground);"));
+        assertTrue(glsl, glsl.contains("fx_ground(p, s, step_param(row + " + shape.paramAt(ground) + "), step_floor(p, inst));"));
+        // a world input reads the voxel window, so the kernel declares it
+        assertTrue(shape.readsWorld());
+        assertTrue(glsl.contains("lib/vfx/fx_world.glsl") && glsl.contains("_WorldLive") && glsl.contains("float step_floor("));
     }
 
     @Test
