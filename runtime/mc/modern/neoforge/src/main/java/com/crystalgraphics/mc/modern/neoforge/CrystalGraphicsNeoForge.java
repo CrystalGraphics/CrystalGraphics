@@ -277,8 +277,17 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         // NeoForge 21.6 made each stage an event class of its own; 21.9 draws block entities with the
         // entities, so AfterEntities is the last opaque stage. 26.1 names them for what they draw: entities
         // are features. The transparent pass is AfterLevel, after clouds, weather and Fabulous's composite of
-        // them, so hazes bend them.
-        //? if >=26.1 {
+        // them, so hazes bend them; from 26.2 AfterWeather, inside the frame graph, since under Vulkan the world's
+        // depth is gone once the graph has run.
+        //? if >=26.2 {
+        /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
+            LifecycleModern.opaquePass(partialTick(event));
+        }
+
+        private static void onRenderLevelTransparent(RenderLevelStageEvent.AfterWeather event) {
+            LifecycleModern.transparentPass();
+        }
+        *///?} elif >=26.1 {
         /*private static void onRenderLevelOpaque(RenderLevelStageEvent.AfterOpaqueFeatures event) {
             LifecycleModern.opaquePass(partialTick(event));
         }
