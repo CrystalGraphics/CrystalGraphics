@@ -4,6 +4,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
@@ -98,6 +99,15 @@ public final class CgVfxRange {
     private static boolean anySorted;
     /** Whether {@link #objects()} was asked for since the last recording. */
     private static boolean objectsAsked;
+    /** Whether each frame's visible counts are read back: from the first {@link #visibleCount()}. */
+    private static boolean counting;
+    private static int visibleCount;
+    /** Sums every slot's visible count read back; the hidden bin past them is not read. */
+    private static final CgReadback.Sink COUNT = data -> {
+        int sum = 0;
+        for (int at = data.position(); at + 4 <= data.limit(); at += 4) sum += data.getInt(at);
+        visibleCount = sum;
+    };
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
     private static final Vector4f PLANE = new Vector4f();
@@ -230,6 +240,15 @@ public final class CgVfxRange {
         return visible;
     }
 
+    /**
+     * Every pool's particles Range kept to draw, as last read back: a frame or two behind. The first ask starts a small
+     * readback each frame, so it answers 0 until one lands. Render thread.
+     */
+    public static int visibleCount() {
+        counting = true;
+        return visibleCount;
+    }
+
     /** Which word of {@link #visible()} counts {@code slot}'s visible particles: its byte offset over 4. */
     public int visibleWord(int slot) {
         return slotsBefore(ALL.indexOf(this)) + slot;
@@ -308,6 +327,7 @@ public final class CgVfxRange {
         }
         if (keys == 0) {
             recording.fill(visible, 0);
+            visibleCount = 0;
             clearSorted();
             return;
         }
@@ -384,6 +404,7 @@ public final class CgVfxRange {
         objectsAsked = false;
         clearSorted();
         pass.end();
+        if (counting && allSlots > 0) recording.readback(visible, 0, allSlots * 4L, COUNT);
     }
 
     private static void clearSorted() {
