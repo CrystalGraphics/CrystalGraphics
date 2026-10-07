@@ -102,6 +102,8 @@ struct v2f {
 //   Forward      -- standard forward-lit draw (default when LightMode is absent)
 //   ShadowCaster -- depth-from-light (typically auto-generated; no need to author)
 //   Depth        -- early depth pre-pass
+//   Emissive     -- the light the material gives off, bloomed (below; docs/SHADERS.md)
+//   Distortion   -- screen-space offsets that bend what is behind (docs/SHADERS.md)
 // =============================================================================
 
 Pass {
@@ -209,6 +211,47 @@ Pass {
         fragColor = vec4(albedo.rgb + _Emission.rgb, albedo.a);
     }
 }
+
+// -- Emissive pass -- what blooms ----------------------------------------------
+// At most one. Its output is HDR colour with alpha 0, multiplied by CG_EMISSION
+// (_EmissionColor.rgb x _EmissionStrength where declared, x the draw's .emission(scale))
+// unless its code names CG_EMISSION itself. Three ways to write it:
+//
+// 1. Codeless: the Forward pass's code and render state again, so what it draws blooms.
+//    In a transparent material it costs no draw when it blends as the Forward pass
+//    does, or adds (a RenderState of Blend ONE ONE here) under a premultiplied
+//    Forward pass: the Forward draw writes the glow too, as a second output.
+//
+// Pass { Tags { "LightMode" = "Emissive" } }
+//
+// 2. Its own code: only what it writes blooms. Always a draw of its own; with no
+//    RenderState it draws ONE ONE, no depth test, back faces culled.
+//
+// Pass {
+//     Tags { "LightMode" = "Emissive" }
+//     void vertex(out v2f o) {
+//         gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
+//         o.uv = cg_TexCoord0 + _Offset;
+//         o.worldPos = vec3(0.0);
+//         o.normalWs = vec3(0.0);
+//     }
+//     void fragment(in v2f i, out vec4 fragColor) {
+//         fragColor = vec4(_Emission.rgb * texture(_MainTex, i.uv).a, 0.0);
+//     }
+// }
+//
+// 3. Codeless, sharing the Forward pass's body: CG_EMISSIVE_PASS is defined in the
+//    Emissive pass alone, so the body tells them apart. Naming it means the two
+//    are never merged into one draw.
+//
+//     void fragment(in v2f i, out vec4 fragColor) {      // in the Forward pass
+// #ifdef CG_EMISSIVE_PASS
+//         fragColor = vec4(_Emission.rgb, 0.0);
+//         return;
+// #endif
+//         ...
+//     }
+// Pass { Tags { "LightMode" = "Emissive" } }
 
 // -- ShadowCaster pass -- auto-generated ---------------------------------------
 // Because this shader has Tags { "RenderType" = "Opaque" } and does NOT declare
