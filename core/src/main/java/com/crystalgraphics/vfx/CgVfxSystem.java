@@ -24,6 +24,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
+import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
@@ -140,7 +141,7 @@ public final class CgVfxSystem {
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
-            EMITTERS_ZONE = CgTrace.name("vfx.emitters"),
+            EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written"),
             FILL_ZONE = CgTrace.name("vfx.particles.fill"), LIGHT_ZONE = CgTrace.name("vfx.particles.light"),
             UPLOAD_ZONE = CgTrace.name("vfx.particles.upload");
@@ -271,7 +272,11 @@ public final class CgVfxSystem {
                     }
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
-                        if (effect.state() != CgVfxEffect.State.DEAD) effect.step(TICK);
+                        if (effect.state() != CgVfxEffect.State.DEAD) {
+                            try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_TICK_ZONE)) {
+                                effect.step(TICK);
+                            }
+                        }
                         if (effect.hasEmitterTicks()) emitting.add(effect);
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
@@ -478,9 +483,14 @@ public final class CgVfxSystem {
                 }
                 List<CgVfxEmitter> emitters = effect.look().emitters();
                 for (int k = 0; k < emitters.size(); k++) {
-                    CgVfxParticlePool.prepare(emitters.get(k));
+                    CgVfxEmitter emitter = emitters.get(k);
+                    CgVfxParticlePool.prepare(emitter);
+                    for (int e = 0; e < emitter.events().size(); e++) {
+                        CgVfxGpuEmitter child = emitter.events().get(e).child();
+                        if (child != null) CgVfxParticlePool.prepare(child);
+                    }
                     // The window's first use starts its kernels and its filling: at play, not on the first landing.
-                    if (readsWorld(emitters.get(k))) CgVfxVoxelWindow.get().use();
+                    if (readsWorld(emitter)) CgVfxVoxelWindow.get().use();
                 }
             }
             if (effect.warmed) continue;
