@@ -9,6 +9,11 @@ package com.crystalgraphics.vfx.particle.gpu;
  * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
  * public CgVfxWorldInput[] worldInputs() { return WORLD; }
  * // void fx_ground(inout FxParticle p, FxStep s, vec4 m, float floorY)
+ *
+ * // the voxel window itself, for collision against blocks from any side, fluids and light
+ * private static final CgVfxWorldInput[] WINDOW = {CgVfxWorldInput.WORLD};
+ * // #include "crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl"
+ * // void fx_blocks(inout FxParticle p, FxStep s, vec4 m, FxWorld world) { if (fx_world_solid(world, p.position)) ... }
  * }</pre>
  */
 public enum CgVfxWorldInput {
@@ -16,7 +21,17 @@ public enum CgVfxWorldInput {
      * The ground's height under the particle, relative to its instance's origin, in blocks; NaN where there is none.
      * The instance's fixed height until the voxel window (vfx-gpu X4).
      */
-    FLOOR_Y("float", "floorY");
+    FLOOR_Y("float", "floorY"),
+    /**
+     * The voxel window, as an {@code FxWorld} that {@code fx_world_at.glsl}'s readers take: solid octants, fluid and
+     * light at a point relative to the instance's origin. With no level they answer "nothing there".
+     */
+    WORLD("FxWorld", "world"),
+    /**
+     * {@link #WORLD}, with the window's distance field kept current while the shape plays: {@code fx_world_sdf}, the
+     * distance to the nearest solid octant and its gradient, Niagara's and Unity's distance field collision.
+     */
+    WORLD_DISTANCE("FxWorld", "world");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};

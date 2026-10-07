@@ -54,10 +54,13 @@ public final class CgVfxEmitterCompiler {
         s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl\"\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_rand.glsl\"\n");
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_event.glsl\"\n");
+        if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
         Set<String> kinds = new LinkedHashSet<>();
-        for (int i = 0; i < shape.modules(); i++) kinds.add(shape.kind(i));
-        for (String kind : kinds) s.append("#include \"").append(KIND_DIR).append(kind).append(".glsl\"\n");
-        if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_world.glsl\"\n");
+        for (int i = 0; i < shape.modules(); i++) {
+            if (!kinds.add(shape.kind(i))) continue;
+            if (shape.source(i) == null) s.append("#include \"").append(KIND_DIR).append(shape.kind(i)).append(".glsl\"\n");
+            else s.append("\n// fx_").append(shape.kind(i)).append(", given as text\n").append(shape.source(i)).append('\n');
+        }
         s.append("""
 
                 Properties {
@@ -115,6 +118,15 @@ public final class CgVfxEmitterCompiler {
                                 ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), ivec3(INSTANCES(inst + 3).xyz),
                                 step_instance(inst + 4).xyz, p.position, p.previous.y);
                     }
+
+                    // The window as a kind taking WORLD reads it: from this instance's origin.
+                    FxWorld step_world(int inst) {
+                        FxWorld w;
+                        w.originBlock = ivec3(INSTANCES(inst + 3).xyz);
+                        w.originFrac = step_instance(inst + 4).xyz;
+                        w.live = _WorldLive != 0;
+                        return w;
+                    }
                     """);
         }
         s.append("""
@@ -132,8 +144,10 @@ public final class CgVfxEmitterCompiler {
                     p.spinRate = r.seedSpin.z;
                     p.heat = r.seedSpin.w;
                     p.resting = (r.idSlot.z & 1u) != 0u;
+                    p.collisions = r.idSlot.z >> 16u;
                     p.id = r.idSlot.x;
                     p.slot = r.idSlot.y;
+                    p.hit = vec4(0.0);
                     return p;
                 }
 
@@ -143,7 +157,7 @@ public final class CgVfxEmitterCompiler {
                     r.previousLife = vec4(p.previous, p.life);
                     r.velocitySize = vec4(p.velocity, p.size);
                     r.seedSpin = vec4(p.seed, p.spin, p.spinRate, p.heat);
-                    r.idSlot = uvec4(p.id, p.slot, p.resting ? 1u : 0u, paramRow);
+                    r.idSlot = uvec4(p.id, p.slot, (p.resting ? 1u : 0u) | p.collisions << 16u, paramRow);
                     return r;
                 }
 
@@ -178,6 +192,8 @@ public final class CgVfxEmitterCompiler {
                     p.spin = fx_rand(seed, k, 9u) * 6.2831853;
                     p.heat = s2.w;
                     p.resting = false;
+                    p.collisions = 0u;
+                    p.hit = vec4(0.0);
                 }
 
                 // CgVfxEmitterInstance.spawnOne: spawn k of the instance in slot, unless its share thins it out.
@@ -214,7 +230,9 @@ public final class CgVfxEmitterCompiler {
                     int inst = _InstanceAt + int(slot) * STEP_INSTANCE_ROW;
                     uvec4 head = INSTANCES(inst);
                     float share = step_instance(inst + 2).x;
-                    uint seed = head.y, k = fx_child_key(ev.ids.x, ev.ids.z, uint(i));
+                    // A repeating event's firing, from 1, in w: each firing's children are other particles.
+                    uint seed = head.y, k = ev.ids.w == 0u ? fx_child_key(ev.ids.x, ev.ids.z, uint(i))
+                            : fx_child_key_at(ev.ids.x, ev.ids.z, uint(i), ev.ids.w);
                     if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
                     // From the parent's block and the place within it to this slot's origin.
                     vec3 at = vec3(ev.block.xyz - ivec3(INSTANCES(inst + 3).xyz)) + ev.position.xyz - step_instance(inst + 4).xyz;
@@ -232,15 +250,15 @@ public final class CgVfxEmitterCompiler {
                     return d > 1e-12 ? v / sqrt(d) : vec3(0.0, 1.0, 0.0);
                 }
 
-                // Event e of p, its velocity v and normal n: where it fired, as its slot's origin's block and the place
-                // within it.
-                FxEvent step_event(FxParticle p, int inst, uint e, vec3 v, vec3 n) {
+                // Event e of p, its velocity v and normal n, and for a repeating trigger which firing: where it fired, as
+                // its slot's origin's block and the place within it.
+                FxEvent step_event(FxParticle p, int inst, uint e, vec3 v, vec3 n, uint firing) {
                     FxEvent ev;
                     ev.position = vec4(step_instance(inst + 4).xyz + p.position, 0.0);
                     ev.velocityAge = vec4(v, p.age);
                     ev.normal = vec4(n, 0.0);
                     ev.block = ivec4(INSTANCES(inst + 3));
-                    ev.ids = uvec4(p.id, uint(_PoolId) << 16u | p.slot, e, 0u);
+                    ev.ids = uvec4(p.id, uint(_PoolId) << 16u | p.slot, e, firing);
                     return ev;
                 }
 """);
@@ -291,8 +309,9 @@ public final class CgVfxEmitterCompiler {
                         p.position += p.velocity * s.dt;
                         p.spin += p.spinRate * s.dt;
                     }
-                    // What it struck the floor with: a landing's velocity.
+                    // What it struck with: a landing's and a collision's velocity.
                     vec3 impact = p.velocity;
+                    p.hit = vec4(0.0);
                 """);
         for (int i = 0; i < shape.modules(); i++) if (shape.afterSolve(i)) call(s, shape, i);
         s.append("""
@@ -300,16 +319,19 @@ public final class CgVfxEmitterCompiler {
                 """);
         for (int e = 0; e < shape.events(); e++) {
             switch (shape.trigger(e)) {
-                case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)");
-                case AGE -> event(s, shape, e, "p.age - s.dt < step_param(row + " + (shape.eventsAt() + e / 4) + ")[" + e % 4
-                        + "] && step_param(row + " + (shape.eventsAt() + e / 4) + ")[" + e % 4 + "] <= p.age",
-                        "p.velocity", "step_normal(p.velocity)");
+                case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "0u");
+                case AGE -> event(s, shape, e, "p.age - s.dt < " + eventValue(shape, e) + " && " + eventValue(shape, e)
+                        + " <= p.age", "p.velocity", "step_normal(p.velocity)", "0u");
+                case COLLISION -> event(s, shape, e, "p.hit.w > 0.0", "impact", "p.hit.xyz", "p.collisions");
+                case RATE -> event(s, shape, e, "floor((p.age - s.dt) / " + eventValue(shape, e) + ") < floor(p.age / "
+                        + eventValue(shape, e) + ")", "p.velocity", "step_normal(p.velocity)",
+                        "uint(floor(p.age / " + eventValue(shape, e) + "))");
                 case DEATH -> { }
             }
         }
         s.append("    if (p.age >= p.life) {\n");
         for (int e = 0; e < shape.events(); e++) {
-            if (shape.trigger(e) == CgVfxEvent.Trigger.DEATH) event(s, shape, e, "true", "p.velocity", "step_normal(p.velocity)");
+            if (shape.trigger(e) == CgVfxEvent.Trigger.DEATH) event(s, shape, e, "true", "p.velocity", "step_normal(p.velocity)", "0u");
         }
         s.append("""
                         return;
@@ -320,10 +342,17 @@ public final class CgVfxEmitterCompiler {
         return s.toString();
     }
 
+    /** Event {@code e}'s age or period, from the parameter row. */
+    private static String eventValue(CgVfxShape shape, int e) {
+        return "step_param(row + " + (shape.eventsAt() + e / 4) + ")[" + e % 4 + "]";
+    }
+
     /** Event {@code e}'s row, appended to each stream it goes to when {@code when} holds. */
-    private static void event(StringBuilder s, CgVfxShape shape, int e, String when, String velocity, String normal) {
+    private static void event(StringBuilder s, CgVfxShape shape, int e, String when, String velocity, String normal,
+                              String firing) {
         s.append("    if (").append(when).append(") {\n");
-        s.append("        FxEvent ev = step_event(p, inst, ").append(e).append("u, ").append(velocity).append(", ").append(normal).append(");\n");
+        s.append("        FxEvent ev = step_event(p, inst, ").append(e).append("u, ").append(velocity).append(", ").append(normal)
+                .append(", ").append(firing).append(");\n");
         if (shape.eventSpawns(e)) s.append("        SPAWN_EVENTS_APPEND(ev);\n");
         if (shape.eventReports(e)) s.append("        REPORT_EVENTS_APPEND(ev);\n");
         s.append("    }\n");
@@ -344,6 +373,7 @@ public final class CgVfxEmitterCompiler {
         for (CgVfxWorldInput input : shape.worldInputs(i)) {
             switch (input) {
                 case FLOOR_Y -> s.append(", step_floor(p, inst)");
+                case WORLD, WORLD_DISTANCE -> s.append(", step_world(inst)");
             }
         }
         s.append(");\n");
