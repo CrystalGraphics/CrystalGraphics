@@ -54,7 +54,7 @@ struct FxObject {
 Buffers {
     RECORDS ("Particles",                                         FxRecord, readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
-    SLOTS   ("Each slot's origin from the camera, and its reach", vec4,     readonly)
+    SLOTS   ("Each slot's origin from the camera, and its reach (below 0: one sphere's)", vec4, readonly)
     SORTS   ("Each slot's: 1 when it sorts far to near",          uint,     readonly)
     KEYS    ("Keys",                                              uint,     writeonly)
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
@@ -81,9 +81,12 @@ void Key() {
     if (CG_ELEMENT < int(LIVE(0))) {
         FxRecord r = RECORDS(CG_ELEMENT);
         vec4 slot = SLOTS(int(r.idSlot.y));
-        vec3 c = slot.xyz + r.positionAge.xyz;
-        // Its size, and its last step's motion: a frame draws it anywhere between its last two steps.
-        float reach = r.velocitySize.w * slot.w + distance(r.positionAge.xyz, r.previousLife.xyz);
+        vec3 p = slot.xyz + r.positionAge.xyz;
+        // Its size, and its last step's motion: a frame draws it anywhere between its last two steps. A slot culled
+        // about its source (w below 0) is one sphere of radius -w at its origin.
+        bool source = slot.w < 0.0;
+        vec3 c = source ? slot.xyz : p;
+        float reach = source ? -slot.w : r.velocitySize.w * slot.w + distance(r.positionAge.xyz, r.previousLife.xyz);
         bool outside = range_outside(_Plane0, c, reach) || range_outside(_Plane1, c, reach)
                 || range_outside(_Plane2, c, reach) || range_outside(_Plane3, c, reach)
                 || range_outside(_Plane4, c, reach) || range_outside(_Plane5, c, reach);
@@ -91,7 +94,7 @@ void Key() {
         if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
             uint owner = r.idSlot.y;
             key = owner << _DepthBits;
-            if (_DepthBits > 0 && SORTS(int(owner)) != 0u) key |= 65535u - range_depth(c);
+            if (_DepthBits > 0 && SORTS(int(owner)) != 0u) key |= 65535u - range_depth(p);
         }
     }
     KEYS_WRITE(key);

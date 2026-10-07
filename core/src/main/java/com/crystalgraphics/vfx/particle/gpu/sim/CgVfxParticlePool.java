@@ -101,6 +101,8 @@ public final class CgVfxParticlePool {
     /** Per slot: its origin as its last step gave it (3), and how far past its particles' size a look reaches. */
     private double[] slotOrigin = new double[0];
     private float[] slotScale = new float[0];
+    /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
+    private float[] slotSourceReach = new float[0];
     private int slotCount, openSlots, capacity;
     private boolean basesStale;
 
@@ -245,6 +247,7 @@ public final class CgVfxParticlePool {
         slotCapacity[slot] = capacity;
         slotRow[slot] = useRow(emitter);
         slotScale[slot] = 1f;
+        slotSourceReach[slot] = 0f;
         if (slot == slotCount) slotCount++;
         openSlots++;
         this.capacity += capacity;
@@ -451,6 +454,23 @@ public final class CgVfxParticlePool {
     public void cullScale(int slot, float scale) {
         openSlot(slot, "cullScale");
         slotScale[slot] = scale;
+    }
+
+    /**
+     * Culls {@code slot}'s particles together, as one sphere of {@code radius} blocks about its origin, rather than each
+     * by its size: for a look drawn round its source that its particles' sizes do not bound, as an arc is. 0, the
+     * default, culls each particle again. Each frame's sort still orders them by their own depth.
+     */
+    public void cullAbout(int slot, float radius) {
+        openSlot(slot, "cullAbout");
+        if (!(radius >= 0f)) throw new IllegalArgumentException("a radius of " + radius);
+        slotSourceReach[slot] = radius;
+    }
+
+    /** {@link #cullAbout}'s radius for {@code slot}, or 0 when its particles are culled one by one. */
+    public float cullSourceRadius(int slot) {
+        openSlot(slot, "cullSourceRadius");
+        return slotSourceReach[slot];
     }
 
     /** What a cull takes as the radius of each of {@code slot}'s particles, times its size at birth. */
@@ -694,6 +714,7 @@ public final class CgVfxParticlePool {
         written = Arrays.copyOf(written, size);
         slotOrigin = Arrays.copyOf(slotOrigin, size * 3);
         slotScale = Arrays.copyOf(slotScale, size);
+        slotSourceReach = Arrays.copyOf(slotSourceReach, size);
     }
 
     private CgVfxGpuEmitter openSlot(int slot, String call) {
