@@ -161,8 +161,18 @@ public final class CgLoweredEmitter {
                     captures(pass.buffer()));
             case SCATTER -> new Stages(PASS_VERTEX, kernelStage(source, kernel, keywords, pass, target),
                     valueFragment(pass.floats()), null);
-            case IMAGE -> new Stages(FULLSCREEN_VERTEX, null, kernelStage(source, kernel, keywords, pass, target), null);
+            case IMAGE -> layered(pass)
+                    ? new Stages(LAYERED_VERTEX, LAYER_GEOMETRY, kernelStage(source, kernel, keywords, pass, target), null)
+                    : new Stages(FULLSCREEN_VERTEX, null, kernelStage(source, kernel, keywords, pass, target), null);
         };
+    }
+
+    /**
+     * Whether an image pass writes a 3D or array image: drawn once, an instance a slice, each into its layer by
+     * {@code gl_Layer}, which only a geometry stage may set below GL 4.5.
+     */
+    public static boolean layered(Pass pass) {
+        return pass.kind() == Kind.IMAGE && pass.image().dimension() != CgImageDimension.D2;
     }
 
     /** One vertex per element, passing its index to the geometry stage. */
@@ -173,6 +183,18 @@ public final class CgLoweredEmitter {
     static final String FULLSCREEN_VERTEX = "#version 330 core\nvoid main() {\n"
             + "    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
             + "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n}\n";
+
+    /** {@link #FULLSCREEN_VERTEX}, passing on its instance: the slice it covers. */
+    static final String LAYERED_VERTEX = "#version 330 core\nflat out int _cg_instance;\nvoid main() {\n"
+            + "    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+            + "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n    _cg_instance = gl_InstanceID;\n}\n";
+
+    /** The triangle into its instance's layer, which the fragment stage reads as {@link #LAYER}. */
+    static final String LAYER_GEOMETRY = "#version 330 core\nlayout(triangles) in;\n"
+            + "layout(triangle_strip, max_vertices = 3) out;\nflat in int _cg_instance[];\nflat out int " + LAYER + ";\n"
+            + "void main() {\n    for (int i = 0; i < 3; i++) {\n"
+            + "        gl_Layer = _cg_instance[0];\n        " + LAYER + " = _cg_instance[0];\n"
+            + "        gl_Position = gl_in[i].gl_Position;\n        EmitVertex();\n    }\n    EndPrimitive();\n}\n";
 
     /** Each appended element adds one to the count texel. */
     static final String COUNT_FRAGMENT = "#version 330 core\nout vec4 _cg_count;\nvoid main() { _cg_count = vec4(1.0); }\n";
@@ -262,7 +284,8 @@ public final class CgLoweredEmitter {
                   .append(")) * 2.0 - 1.0, 0.0, 1.0);\n")
                   .append("    _cg_value = v;\n    EmitVertex();\n    EndPrimitive();\n}\n");
             }
-            case IMAGE -> sb.append("uniform int ").append(LAYER).append(";\nout ").append(pass.image().format().kind.texel)
+            case IMAGE -> sb.append(layered(pass) ? "flat in int " : "uniform int ").append(LAYER).append(";\nout ")
+                    .append(pass.image().format().kind.texel)
                     .append(" _cg_out;\nbool _cg_wrote = false;\n");
         }
     }
