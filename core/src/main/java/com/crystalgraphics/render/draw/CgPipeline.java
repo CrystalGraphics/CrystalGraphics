@@ -265,6 +265,29 @@ public final class CgPipeline {
         return shader;
     }
 
+    /**
+     * Whether its shader reads a recording's tables (palette, clips, shapes) through {@code cg_use quad}, {@code curve},
+     * {@code clip} or {@code shape}: whatever kind draws it, its pass binds them.
+     */
+    public boolean readsTables() {
+        CgParsedShader parsed = shader.ensureParsed();
+        if (parsed == null) return false;
+        if (parsed != tablesParse) {
+            boolean reads = false;
+            for (String token : parsed.engineBuffers()) {
+                reads |= token.equals("quad") || token.equals("curve") || token.equals("clip") || token.equals("shape");
+            }
+            tables = reads;
+            tablesParse = parsed;
+        }
+        return tables;
+    }
+
+    /** {@link #readsTables()}, for the parse it was read from. */
+    @Nullable
+    private volatile CgParsedShader tablesParse;
+    private volatile boolean tables;
+
     public CgRenderPassVariant pass() {
         return pass;
     }

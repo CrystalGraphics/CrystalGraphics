@@ -134,6 +134,43 @@ final class CgTextShadowList {
         return reach;
     }
 
+    /** Whether {@code o} casts the same shadows, glyph scopes compared by content. */
+    boolean sameAs(CgTextShadowList o) {
+        if (count != o.count) return false;
+        for (int i = 0; i < count; i++) {
+            if (x[i] != o.x[i] || y[i] != o.y[i] || sigma[i] != o.sigma[i] || spread[i] != o.spread[i]
+                    || argb[i] != o.argb[i] || inset[i] != o.inset[i] || scope[i] != o.scope[i]) {
+                return false;
+            }
+        }
+        if (glyphScopes == null || o.glyphScopes == null) return glyphScopes == o.glyphScopes;
+        return Arrays.equals(glyphScopes, o.glyphScopes);
+    }
+
+    /** Becomes a copy of {@code o}, its glyph scopes copied too: a copy outlives the array its source holds. */
+    void set(CgTextShadowList o) {
+        count(o.count);
+        for (int i = 0; i < o.count; i++) {
+            x[i] = o.x[i];
+            y[i] = o.y[i];
+            sigma[i] = o.sigma[i];
+            spread[i] = o.spread[i];
+            argb[i] = o.argb[i];
+            inset[i] = o.inset[i];
+            scope[i] = o.scope[i];
+        }
+        if (o.glyphScopes == null) {
+            glyphScopes = null;
+        } else {
+            if (ownScopes == null || ownScopes.length != o.glyphScopes.length) ownScopes = new int[o.glyphScopes.length];
+            System.arraycopy(o.glyphScopes, 0, ownScopes, 0, ownScopes.length);
+            glyphScopes = ownScopes;
+        }
+    }
+
+    /** {@link #set}'s copy of glyph scopes, reused. */
+    private int[] ownScopes;
+
     private void checkIndex(int index) {
         if (index < 0 || index >= count) {
             throw new IndexOutOfBoundsException("shadow " + index + " of " + count);
