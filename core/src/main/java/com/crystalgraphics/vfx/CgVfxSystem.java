@@ -142,6 +142,8 @@ public final class CgVfxSystem {
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
+            WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), EFFECT_EMITTERS_ZONE = CgTrace.name("vfx.effect.emitters"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
+            GPU_STEPS_ZONE = CgTrace.name("vfx.gpu.steps"),
             EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written"),
             FILL_ZONE = CgTrace.name("vfx.particles.fill"), LIGHT_ZONE = CgTrace.name("vfx.particles.light"),
             UPLOAD_ZONE = CgTrace.name("vfx.particles.upload");
@@ -186,7 +188,11 @@ public final class CgVfxSystem {
     private final CgVfxWorkers workers = new CgVfxWorkers();
     /** The effects that queued emitter ticks this tick: what the workers run. */
     private final List<CgVfxEffect> emitting = new ArrayList<>();
-    private final CgVfxWorkers.Job tickEach = i -> emitting.get(i).tickEmitters();
+    private final CgVfxWorkers.Job tickEach = i -> {
+        try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
+            emitting.get(i).tickEmitters();
+        }
+    };
     private final CgVfxWorkers.Job writeEach = this::writeRecords;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean stepsOnGpu, rangePrepared;
@@ -280,15 +286,23 @@ public final class CgVfxSystem {
                         if (effect.hasEmitterTicks()) emitting.add(effect);
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        workers.run(emitting.size(), tickEach);
-                        for (int i = 0; i < emitting.size(); i++) {
-                            emitting.get(i).admitScheduled(gpuSteps);
-                            emitting.get(i).deliverRows(eventListeners);
+                        try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
+                            workers.run(emitting.size(), tickEach);
+                        }
+                        try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
+                            for (int i = 0; i < emitting.size(); i++) {
+                                emitting.get(i).admitScheduled(gpuSteps);
+                                emitting.get(i).deliverRows(eventListeners);
+                            }
                         }
                     } finally {
                         emitting.clear();
                     }
-                    if (particleTick) gpuSteps.step(particleDt, air);
+                    if (particleTick) {
+                        try (CgTrace.Zone steps = CgTrace.zone(CgVfxTrace.CHANNEL, GPU_STEPS_ZONE)) {
+                            gpuSteps.step(particleDt, air);
+                        }
+                    }
                     sinceParticleTick = particleTick ? 0 : sinceParticleTick + 1;
                 }
                 simulated += TICK;
@@ -485,9 +499,13 @@ public final class CgVfxSystem {
                 for (int k = 0; k < emitters.size(); k++) {
                     CgVfxEmitter emitter = emitters.get(k);
                     CgVfxParticlePool.prepare(emitter);
+                    // Each slot's draw mesh, built and placed on its first ask: here, not in the first burst's frame.
+                    CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
                     for (int e = 0; e < emitter.events().size(); e++) {
                         CgVfxGpuEmitter child = emitter.events().get(e).child();
-                        if (child != null) CgVfxParticlePool.prepare(child);
+                        if (child == null) continue;
+                        CgVfxParticlePool.prepare(child);
+                        CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
                     }
                     // The window's first use starts its kernels and its filling: at play, not on the first landing.
                     if (readsWorld(emitter)) CgVfxVoxelWindow.get().use();
@@ -495,6 +513,11 @@ public final class CgVfxSystem {
             }
             if (effect.warmed) continue;
             effect.warmed = true;
+            List<CgVfxEmitter> looked = effect.look().emitters();
+            for (int k = 0; k < looked.size(); k++) {
+                // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
+                if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
+            }
             List<CgVfxLayer> layers = effect.look().layers();
             for (int k = 0; k < layers.size(); k++) {
                 CgMaterial material = material(layers.get(k));
