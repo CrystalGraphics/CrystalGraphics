@@ -1033,6 +1033,8 @@ public final class CgExecutor {
         }
         CgPipeline pipeline = null;
         boolean usable = false, objectsBound = false;
+        // The engine buffer a batch's buffer() stands in for, bound again once a batch without it draws.
+        CgBindingPoints.Binding standIn = null;
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS) && CgGpuTrace.isMeasuring();
         int slot = 0;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.batchLoop")) {
@@ -1048,7 +1050,8 @@ public final class CgExecutor {
                     end = gpuCounts ? runs[b] : b;
                     slot += end - b + 1;
                 } else {
-                    end = packed.objects[b] == null && multiDraw && b + 1 < packed.count && joinable(packed, b, b + 1)
+                    end = packed.objects[b] == null && packed.buffers[b] == null && multiDraw && b + 1 < packed.count
+                            && joinable(packed, b, b + 1)
                             ? joinRun(packed, b) : b;
                     if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
                             && breaksOnBinding(packed, b, end + 1)) {
@@ -1095,11 +1098,19 @@ public final class CgExecutor {
                     }
                 }
                 if (packed.objects[b] != null) {
-                    bindObjects(packed.objects[b]);
+                    bindRecords(packed.objects[b], CgBindingPoints.OBJECT_DATA);
                     objectsBound = true;
                 } else if (objectsBound && packed.kind[b] == OBJECT) {
                     instanceBuffers[OBJECT].bind();
                     objectsBound = false;
+                }
+                if (packed.buffers[b] != null) {
+                    if (standIn != null && !standIn.equals(packed.bufferAt[b])) bindEngineBuffer(standIn);
+                    bindRecords(packed.buffers[b], packed.bufferAt[b]);
+                    standIn = packed.bufferAt[b];
+                } else if (standIn != null) {
+                    bindEngineBuffer(standIn);
+                    standIn = null;
                 }
                 if (end > b) {
                     try (CgTrace.Zone drawing = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_DRAW)) {
@@ -1132,6 +1143,7 @@ public final class CgExecutor {
                     }
                 }
             }
+            if (standIn != null) bindEngineBuffer(standIn);
         } finally {
             if (groups) CgGpuTrace.markEnd();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
@@ -1179,8 +1191,8 @@ public final class CgExecutor {
 
     /** Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it. */
     private static boolean joinable(CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] == null && packed.objects[k] == null && packed.copyBefore[k] == 0
-                && packed.pipeline[k] == packed.pipeline[b]
+        return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k] == null
+                && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
                 && packed.binding[k] == packed.binding[b] && packed.scissor[k] == packed.scissor[b]
                 && packed.group[k] == packed.group[b];
     }
@@ -1194,6 +1206,7 @@ public final class CgExecutor {
         return packed.counts[k] != null && !sharesRecord(packed, k) && packed.copyBefore[k] == 0
                 && packed.pipeline[k] == packed.pipeline[b] && packed.binding[k] == packed.binding[b]
                 && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
+                && packed.buffers[k] == packed.buffers[b] && packed.bufferAt[k] == packed.bufferAt[b]
                 && packed.group[k] == packed.group[b]
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
@@ -1211,15 +1224,21 @@ public final class CgExecutor {
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 
-    /** Binds a GPU buffer of object records where {@code CG_OBJECT_DATA} reads the frame's own. */
-    private static void bindObjects(CgBufferHandle objects) {
-        int id = objects instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : objects.bufferId();
+    /** Binds a GPU buffer of records where an engine buffer's macros read the frame's own. */
+    private static void bindRecords(CgBufferHandle records, CgBindingPoints.Binding at) {
+        int id = records instanceof CgGraphBuffer graph ? bufferStorage(graph, false) : records.bufferId();
         if (CgBindingPoints.PATH == CgCapabilities.ShaderBufferPath.TBO) {
-            CgBufferTextures.bind(CgBindingPoints.OBJECT_DATA.tbo(), CgGL.GL_RGBA32F, id);
+            CgBufferTextures.bind(at.tbo(), CgGL.GL_RGBA32F, id);
             CgTexture.active(0);
         } else {
-            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, CgBindingPoints.OBJECT_DATA.ssbo(), id);
+            CgGL.glBindBufferBase(CgGL.GL_SHADER_STORAGE_BUFFER, at.ssbo(), id);
         }
+    }
+
+    /** Binds the engine buffer made at {@code at} again, after draws that read their own there. */
+    private static void bindEngineBuffer(CgBindingPoints.Binding at) {
+        CgShaderBuffer owner = CgShaderBufferRegistry.get().ownerOf(at);
+        if (owner != null) owner.bind();
     }
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */

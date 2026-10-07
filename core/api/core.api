@@ -2734,6 +2734,7 @@ com/crystalgraphics/gl/buffer/shader/CgShaderBufferRegistry
   method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;I)Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;
   method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;
   method public getOrCreateUboInternal (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gl/buffer/shader/CgUniformBuffer;
+  method public ownerOf (Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gl/buffer/shader/CgShaderBuffer;
   method public,static get ()Lcom/crystalgraphics/gl/buffer/shader/CgShaderBufferRegistry;
 com/crystalgraphics/gl/buffer/shader/CgShaderStorageBuffer
   access public,final
@@ -4122,6 +4123,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public bindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public bounds (FFFF)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public buffer (Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public data ()[F
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public draw (Lcom/crystalgraphics/render/draw/CgPipeline;ILcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
@@ -4145,6 +4147,8 @@ com/crystalgraphics/render/draw/CgDrawChunk
   extends java/lang/Object
   method public binding (I)I
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
+  method public buffer (I)Lcom/crystalgraphics/render/draw/CgBufferHandle;
+  method public bufferAt (I)Lcom/crystalgraphics/api/CgBindingPoints$Binding;
   method public clip ()I
   method public data (Lcom/crystalgraphics/render/draw/CgInstanceKind;)[F
   method public draws ()I
@@ -5113,9 +5117,11 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public afterDistortion ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public buffer (Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public emission (F)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public fullBright ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public gpuCulled ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public gpuGroup (Ljava/lang/String;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public group (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public halfResolution ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
