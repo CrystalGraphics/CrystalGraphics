@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.render.post.volume.CgImpact;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.settings.CgQuality;
@@ -188,12 +189,19 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.6f, 0.4f, CgEasings.OUT_CUBIC)
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
-    /** The blast's screen flash over the blast (0..1 of it), a share of its peak: a pop at the burst, gone as it cools. */
+    /**
+     * The blast's screen flash over the blast (0..1 of it), a share of its peak: a big explosion's double flash, a short
+     * pulse, a dip as the shock front hides the fireball, then the main pulse, held and gone as it cools.
+     */
     public static final CgVfxParam BLAST_FLASH = SCHEMA.curve("blastFlash", CgKeyframes.start(0f, 0f)
-            .to(0.025f, 1f, CgEasings.OUT_QUAD)
-            .to(0.08f, 0.85f, CgEasings.LINEAR)
-            .to(0.5f, 0f, CgEasings.OUT_CUBIC)
+            .to(0.008f, 0.3f, CgEasings.OUT_QUAD)
+            .to(0.025f, 0.1f, CgEasings.LINEAR)
+            .to(0.0625f, 1f, CgEasings.OUT_QUAD)
+            .to(0.12f, 0.85f, CgEasings.LINEAR)
+            .to(0.55f, 0f, CgEasings.OUT_CUBIC)
             .build());
+    /** Seconds the picture turns negative as the blast bursts, an impact frame over the first pulse; 0 for none. */
+    public static final CgVfxParam BLAST_IMPACT_SECONDS = SCHEMA.scalar("blastImpactSeconds", 0.06f);
     /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
     public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
     public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
@@ -206,8 +214,8 @@ public final class CgEnergyWave extends CgVfxEffect {
      * {@link #BLAST_SHAKE} arrives with.
      */
     private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
-    /** The blast flash's volume priority, over a scene's mood volumes. */
-    private static final int FLASH_PRIORITY = 10;
+    /** The blast's volume priorities, over a scene's mood volumes: the impact frame over the flash. */
+    private static final int FLASH_PRIORITY = 10, IMPACT_PRIORITY = 11;
     /** Held over the charge at the muzzle, its level the charge's progress squared. */
     public static final CgVfxParam CHARGE_SHAKE = SCHEMA.shake("chargeShake",
             CgCameraShakes.RUMBLE.toBuilder().trauma(0.4f).radii(3f, 24f).build());
@@ -325,8 +333,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
     /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
     private CgVfxGround blastGround;
-    /** The blast's screen flash; opened when it bursts. */
-    private CgPostVolume blastFlash;
+    /** The blast's screen flash and impact frame; opened when it bursts. */
+    private CgPostVolume blastFlash, blastImpact;
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -445,8 +453,14 @@ public final class CgEnergyWave extends CgVfxEffect {
                     new CgPostSettings().flash(get(BLAST_FLASH_STOPS)).chromatic(get(BLAST_FLASH_CHROMATIC))
                             .bloom(get(BLAST_FLASH_BLOOM)),
                     stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach).blend(2f * reach);
+            if (get(BLAST_IMPACT_SECONDS) > 0f) {
+                blastImpact = openVolume(IMPACT_PRIORITY, new CgPostSettings().impact(CgImpact.INVERT, 1f),
+                        stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach).blend(2f * reach);
+            }
         }
         if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min((age - blastAge) / get(BLAST_TIME), 1f)));
+        // Held whole, then cut: an impact frame never fades.
+        if (blastImpact != null) blastImpact.weight(age - blastAge < get(BLAST_IMPACT_SECONDS) ? 1f : 0f);
         boolean emitted = true;
         if (blastGround != null) {
             long fill = CgVfxTrace.start();

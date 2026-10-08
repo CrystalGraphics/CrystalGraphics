@@ -7063,6 +7063,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final BLAST_FLASH_REACH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_STOPS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_IMPACT_SECONDS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_MARKER Ljava/lang/String;
   field public,static,final BLAST_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
