@@ -30,6 +30,11 @@ public final class CgGraphicsSettings {
             "How much each effect draws. Low drops distortion and optional layers, draws a cheaper bloom, and halves optional particles.",
             CgQuality.HIGH);
 
+    public static final CgSetting.Toggle HDR = FILE.toggle("effects", "hdr", "HDR lighting",
+            "Draws effects in linear light past white, so glows bloom where they are brightest. Off draws straight into"
+                    + " Minecraft's picture, for a mod or shader pack that draws there too.",
+            true);
+
     public static final CgSetting.Number SHAKE = FILE.number("comfort", "shake", "Camera shake",
             "Scales camera shake, on top of Minecraft's Screen Effects.", 1f, 0f, 1f, 0.05f);
 
