@@ -17,6 +17,8 @@ Properties {
     _Clouds ("Cloud undersides, share of the light", float) = 1.6
     _Slab   ("Cloud thickness, blocks", float) = 6.0
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
+    _Strength    ("Brightness", float) = 1.0
+    _StrengthHdr ("Brightness under HDR", float) = 0.5
 }
 
 struct v2f { vec3 world; };
@@ -60,6 +62,6 @@ Pass {
             float patches = cloud ? 1.0 : 0.6 * smoothstep(0.45, 0.75, fx_value_fbm(vec3(CG_ABSOLUTE_WORLD_POS(p).xz * 0.02, 0.0), 3));
             glow += _Clouds * lit * patches;
         }
-        fragColor = vec4(light * glow * night, 1.0);
+        fragColor = vec4(light * glow * night * CG_HDR(_Strength, _StrengthHdr), 1.0);
     }
 }

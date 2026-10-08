@@ -12,7 +12,8 @@ Queue = "Transparent"
 
 Properties {
     _FxPath   ("Path rings", sampler2D) = "black"
-    _Strength ("Brightness", float) = 1.6
+    _Strength    ("Brightness", float) = 1.6
+    _StrengthHdr ("Brightness under HDR", float) = 0.8
 }
 
 struct v2f { vec3 world; };
@@ -50,6 +51,6 @@ Pass {
             float size = max(ring.w, 1.0e-3);
             light += spacing / size * fx_point_light(surface, normal, origin + ring.xyz, size, size * CG_OBJECT_CUSTOM0.z);
         }
-        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * light * _Strength, 1.0);
+        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
     }
 }

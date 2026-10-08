@@ -168,6 +168,8 @@ float cg_LinearEyeDepth(float windowDepth) {
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
 // What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
 #define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
+// A material's value for each path, e.g. CG_HDR(_Strength, _StrengthHdr): one program, picked at runtime.
+#define CG_HDR(off, on)        (CG_LINEAR_SCENE ? (on) : (off))
 // sRGB to linear up to 1; above it the excess passes unchanged, so an HDR colour keeps its brightness past white.
 vec3 cg_SceneDecode(vec3 c) {
     vec3 s = clamp(c, 0.0, 1.0);
