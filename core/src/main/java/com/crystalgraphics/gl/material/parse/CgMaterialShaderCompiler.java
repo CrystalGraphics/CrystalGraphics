@@ -119,6 +119,12 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String EMISSION_TARGET = "CG_EMISSION_TARGET";
 
+    /**
+     * The engine's keyword for a Forward pass drawn into an emission target alone: black at its colour's alpha, hidden
+     * by the scene's depth as an Emissive pass is, so its blend covers the glows drawn behind it there.
+     */
+    public static final String EMISSION_COVER = "CG_EMISSION_COVER";
+
     /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
@@ -132,7 +138,13 @@ public final class CgMaterialShaderCompiler {
          * It adds (ONE ONE) under a premultiplied Forward pass (ONE, ONE_MINUS_SRC_ALPHA): written with an alpha of 0,
          * ONE_MINUS_SRC_ALPHA is 1 and the shared blend adds.
          */
-        ADDED
+        ADDED,
+        /**
+         * No glow of its own merges: black at the colour's alpha, so the shared blend covers the glow beneath as it
+         * covers the colour. What a Forward pass compiled with {@link #EMISSION_TARGET} writes when
+         * {@link #emissionMerge} answers {@code NONE}; never answered by it.
+         */
+        COVER
     }
 
     /**
@@ -639,8 +651,11 @@ public final class CgMaterialShaderCompiler {
         appendGlobalDecls(sb, codeLines);
 
         // Fragment output declarations (single-output or MRT)
-        EmissionMerge merge = config.activeKeywords().contains(EMISSION_TARGET)
-                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) ? emissionMerge(shader) : EmissionMerge.NONE;
+        EmissionMerge merge = EmissionMerge.NONE;
+        if (config.activeKeywords().contains(EMISSION_TARGET) && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode())) {
+            merge = emissionMerge(shader);
+            if (merge == EmissionMerge.NONE && !pass.fragOutput().isMrt()) merge = EmissionMerge.COVER;
+        }
         appendFragmentOutputDeclarations(sb, pass, merge);
 
         // User fragment function
@@ -648,7 +663,9 @@ public final class CgMaterialShaderCompiler {
         appendFragmentUserFunction(sb, pass);
 
         // Generated main()
-        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge);
+        boolean cover = config.activeKeywords().contains(EMISSION_COVER) && merge == EmissionMerge.NONE
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
+        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover);
 
         return sb.toString();
     }
@@ -876,7 +893,7 @@ public final class CgMaterialShaderCompiler {
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
-                                            EmissionMerge merge) {
+                                            EmissionMerge merge, boolean cover) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
@@ -889,7 +906,7 @@ public final class CgMaterialShaderCompiler {
         CgDepthState depth = pass.renderState().getDepth();
         // The overdraw view's target has no depth either: its test is the pass's own, as a discard.
         boolean overdrawTested = overdraw && (depth == null || depth.test() && depth.compareFunc() != CgGL.GL_ALWAYS);
-        if ((emissive || distortion) && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)
+        if ((emissive || distortion || cover) && !(depth != null && depth.test() && depth.compareFunc() == CgGL.GL_ALWAYS)
                 || overdrawTested) {
             // The bloom and distortion targets have no depth, so this is the pass's depth test: the scene's depth, a copy at its own size
             // read by uv. "DepthTest ALWAYS" leaves occlusion to the shader, as a volume drawn on its back faces needs.
@@ -909,7 +926,7 @@ public final class CgMaterialShaderCompiler {
             }
         } else if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
-            if (merge != EmissionMerge.NONE) {
+            if (merge != EmissionMerge.NONE && merge != EmissionMerge.COVER) {
                 // What the Emissive pass would write: unlit, faded by fog as an added colour is.
                 sb.append("  _cg_emission = _cg_fragColor;\n");
                 if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
@@ -923,6 +940,8 @@ public final class CgMaterialShaderCompiler {
             boolean forward = CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode());
             if (forward && shader.lit()) sb.append("  _cg_fragColor = cg_Lit(_cg_fragColor);\n");
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
+            if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
+            if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

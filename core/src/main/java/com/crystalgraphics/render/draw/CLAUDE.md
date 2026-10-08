@@ -41,7 +41,9 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   its own instances needs nothing. A pipeline's `multiDraw()` sibling, compiled with `CG_MULTI_DRAW`, has neither it
   nor `cg_VertexBase`: each draw of a multi-draw carries its own in its command (`render/graph/CLAUDE.md`).
 - **`emissionTarget()`** is a Forward pipeline's sibling that draws its Emissive pass too, writing the glow at location
-  1 (`CG_EMISSION_TARGET`); null where the shader's Emissive pass stays a draw of its own. `slotWrites()` is the colour
+  1 (`CG_EMISSION_TARGET`); null where the shader's Emissive pass stays a draw of its own. `emissionCover()` is the
+  same variant for a draw that glows nothing: black at its colour's alpha at location 1, so its blend covers the glow
+  behind it; null where it adds. `slotWrites()` is the colour
   attachments a pipeline's program writes, which a pass with more than one masks the rest off by.
 - A pipeline lives for the session, and is keyed by the *identity* of its render state: the first compile reuses the
   parse of unchanged source, so a key named before it is the one that draws after it.

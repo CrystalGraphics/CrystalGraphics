@@ -34,7 +34,10 @@
 - **Emission** (`recordEmission`, after the transparent pass): every visible draw whose chain has an Emissive pass
   draws that pass into a transient R11G11B10F target, the tier's share of the target's size (Low 0.25, Ultra 1, else 0.5;
   `emissionScale` overrides it), reading the stage
-  target's depth through `sceneDepth(unit, from)`, and publishes it as `CgFrameKeys.EMISSION`. **It produces and stops**:
+  target's depth through `sceneDepth(unit, from)`, and publishes it as `CgFrameKeys.EMISSION`. Every transparent
+  surface that blends over what is behind it is drawn there too, as black at its alpha (`CgPipeline.emissionOccluder`),
+  sorted with the glows: a transparent thing writes no depth, so this is what hides the glows behind it from bloom, as
+  an opaque thing's depth does. **It produces and stops**:
   blurring and compositing are the post stack's (`render/post`), and with bloom off nothing reads the target, so the
   graph culls the pass. Its gate is `--mode=bloom-occlusion`: a ball behind a wall changes no pixel, at emission scales
   1 and 0.5, on gl and vulkan.
@@ -44,8 +47,11 @@
   Forward pass (`CgPipeline.emissionTarget`, codeless and on one blend) draws both at once, the transparent and
   after-distortion passes writing a target-sized emission as a second attachment (`CgRasterPass.attachment`), cleared
   by a pass before them. The emission pass then draws only what did not fold (opaque, half-size and authored Emissive
-  passes) into the same texture, loading it. Every other draw has the slot masked off, so smoke never dims a glow it
-  would not have before. At 60 beams it took the emission pass (2.8 ms) for about 0.5 ms more in the transparent pass;
+  passes) into the same texture, loading it. Every other draw that blends over what is behind it writes black at its
+  colour's alpha there (`CgPipeline.emissionCover`), so a surface in front of a glow hides it from bloom as it hides its
+  colour; one that adds leaves the slot masked off. The emission pass is split to keep that order: the glows whose
+  colour draws before the transparent pass (opaque and half-size draws: a beam's volumes) go into the emission before
+  it, the rest after it, where nothing covers them. At 60 beams it took the emission pass (2.8 ms) for about 0.5 ms more in the transparent pass;
   GPU p90 15.8 to 13.3 ms. bloom-occlusion compares two transparent glows merged and apart byte for byte.
 - **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
   `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
