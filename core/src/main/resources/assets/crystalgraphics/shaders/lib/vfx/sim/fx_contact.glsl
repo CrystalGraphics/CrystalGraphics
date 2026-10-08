@@ -90,14 +90,14 @@ bool fx_volume_contact(vec4 e, bool container, vec3 r, float size, out vec3 n, o
 // Godot's rigid response to a contact: pushed out by depth, the speed into the surface taken away, friction of the
 // rest, and a bounce once the impact is fast enough (slide_to_bounce_trigger), which is the punctual hit a collision
 // event fires on. Slower than rest after it, the particle rests. r: bounce, friction, rest (blocks a second), and kill:
-// Godot's hide on contact, a hit then death.
+// Godot's hide on contact, a hit then death, on the surface so what the hit spawns starts there.
 void fx_contact_respond(inout FxParticle p, vec3 n, float depth, vec4 r) {
+    p.position += n * depth;
     if (r.w > 0.0) {
         fx_hit(p, n);
         p.life = p.age;
         return;
     }
-    p.position += n * depth;
     float response = n.x * p.velocity.x + n.y * p.velocity.y + n.z * p.velocity.z;
     if (response >= 0.0) return;
     float trigger = -response < 2.0 / max(1.0, min(r.x + 1.0, 2.0)) ? 0.0 : 1.0;

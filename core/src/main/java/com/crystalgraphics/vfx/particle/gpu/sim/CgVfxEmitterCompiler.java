@@ -151,6 +151,7 @@ public final class CgVfxEmitterCompiler {
                         w.originBlock = ivec3(INSTANCES(inst + 3).xyz);
                         w.originFrac = step_instance(inst + 4).xyz;
                         w.live = _WorldLive != 0;
+                        w.floorY = step_instance(inst + 2).y;
                         return w;
                     }
                     """);
