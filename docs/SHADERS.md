@@ -67,7 +67,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_ProjMatrix` | `mat4` | Projection matrix |
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
-| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1. Read through `cg_LinearEyeDepth`, not directly |
+| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1, `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`), `w` the scene's glow gain (`CG_SCENE_GLOW`). Read through `cg_LinearEyeDepth`, not directly |
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
@@ -116,6 +116,23 @@ void fragment(in v2f i, out vec4 fragColor) {
 | `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out |
 
 - The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
+- **Colour is authored in sRGB**, as Minecraft's is. Where a pass draws into the HDR scene (`CG_LINEAR_SCENE`), the
+  generated `main` decodes a Forward pass's colour after light and fog (`cg_SceneDecode`): a premultiplied blend
+  (`ONE ONE_MINUS_SRC_ALPHA`) is decoded unpremultiplied, and a value above 1 keeps its excess. A blend over what is
+  behind (`... ONE_MINUS_SRC_ALPHA`) also has its alpha remapped (`cg_SceneCoverage`: `1 - decode(1 - a)`), so smoke
+  hides as much as it did in the encoded picture rather than thinning out in linear light. `"ColorSpace" =
+  "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.
+  An Emissive pass is linear always.
+- **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
+  program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds, a light pool's falloff,
+  reads dimmer under the scene; `body_light` carries an HDR twin of its strength:
+
+  ```glsl
+  _Strength    ("Brightness", float) = 1.6
+  _StrengthHdr ("Brightness under HDR", float) = 3.0
+  ...
+  fragColor = vec4(colour * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
+  ```
 - A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
@@ -458,6 +475,12 @@ Pass {
 Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the body above, CG_EMISSIVE_PASS defined
 ```
 - It takes the material's keywords, as the Forward pass does.
+- **Under the HDR scene** (`CgWorldRenderer.hdrScene`) there is no emission target: the pass adds into the scene
+  itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
+  what is in front covers it, times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
+  strength set for a blurred bloom floods a sharp core). Bloom then takes the scene's light past `CgBloom.threshold`
+  (1), so a glow blooms where it takes the scene past white; the composite rolls what passes white toward white,
+  keeping its hue.
 - **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
   `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
   (`CG_OBJECT_EMISSION`). The compiler multiplies an Emissive pass's output by it, unless the pass's code names

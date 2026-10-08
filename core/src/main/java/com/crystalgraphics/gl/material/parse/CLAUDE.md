@@ -196,6 +196,12 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
 - **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
   `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
 
+## The HDR scene's decode
+
+A single-output Forward pass, not overdraw, cover or merged, ends its generated `main` with
+`if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(...)`, after light and fog: unpremultiplied under
+`ONE ONE_MINUS_SRC_ALPHA`. `"ColorSpace" = "Linear"` (`CgParsedShader.linearColor`) leaves it out.
+
 ## The Distortion pass
 
 Authoring: `docs/SHADERS.md` § *The Distortion pass*. The parser forces its name to `Distortion`; a pass with no

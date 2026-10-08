@@ -200,6 +200,11 @@ public final class CgShaderParser {
         if (!"On".equals(fog) && !"Off".equals(fog)) {
             throw new CgShaderParseException("[" + resourcePath + "] Fog is \"On\" or \"Off\", not \"" + fog + "\"");
         }
+        String colorSpace = topTags.getOrDefault("ColorSpace", "sRGB");
+        if (!"sRGB".equals(colorSpace) && !"Linear".equals(colorSpace)) {
+            throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\" or \"Linear\", not \""
+                    + colorSpace + "\"");
+        }
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -380,7 +385,7 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
-                Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
+                "Linear".equals(colorSpace), Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
     }
 
     /** The {@code "SceneColorMargin"} tag: a share of the target's height, above 0; NaN when absent. */

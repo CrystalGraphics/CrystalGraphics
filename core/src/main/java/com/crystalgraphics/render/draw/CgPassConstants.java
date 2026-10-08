@@ -64,6 +64,8 @@ public final class CgPassConstants {
     private float cameraZ;
     private boolean depthReversed;
     private boolean depthZeroToOne;
+    private boolean linearScene;
+    private float sceneGlow = 1f;
     private float originX;
     private float originY;
     private float originZ;
@@ -105,6 +107,21 @@ public final class CgPassConstants {
     public CgPassConstants depth(boolean reversed, boolean zeroToOne) {
         this.depthReversed = reversed;
         this.depthZeroToOne = zeroToOne;
+        return this;
+    }
+
+    /**
+     * Whether the target is the linear HDR scene ({@code CG_LINEAR_SCENE}): a Forward pass's colour is then decoded
+     * from sRGB as it is written. {@code CgStageFrame.defaults} sets it while the stage draws into the scene.
+     */
+    public CgPassConstants linearScene(boolean linear) {
+        this.linearScene = linear;
+        return this;
+    }
+
+    /** What an Emissive pass drawn into the HDR scene multiplies its glow by ({@code CG_SCENE_GLOW}): 1 by default. */
+    public CgPassConstants sceneGlow(float gain) {
+        this.sceneGlow = gain;
         return this;
     }
 
@@ -169,6 +186,8 @@ public final class CgPassConstants {
         cameraZ = block[at + 42];
         depthReversed = block[at + 44] != 0f;
         depthZeroToOne = block[at + 45] != 0f;
+        linearScene = block[at + 46] != 0f;
+        sceneGlow = block[at + 47];
         originX = block[at + 48];
         originY = block[at + 49];
         originZ = block[at + 50];
@@ -213,8 +232,8 @@ public final class CgPassConstants {
         out[at + 43] = 1f;
         out[at + 44] = depthReversed ? 1f : 0f;
         out[at + 45] = depthZeroToOne ? 1f : 0f;
-        out[at + 46] = 0f;
-        out[at + 47] = 0f;
+        out[at + 46] = linearScene ? 1f : 0f;
+        out[at + 47] = sceneGlow;
         out[at + 48] = originX;
         out[at + 49] = originY;
         out[at + 50] = originZ;

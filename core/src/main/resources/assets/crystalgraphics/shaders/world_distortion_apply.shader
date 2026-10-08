@@ -10,7 +10,7 @@
 #type none
 
 // It samples at most a bend away from its rect: a haze's largest, with its split, is under 0.1 of the height.
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "SceneColorMargin" = "0.1" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "SceneColorMargin" = "0.1" }
 Queue = "Overlay"
 
 Properties {

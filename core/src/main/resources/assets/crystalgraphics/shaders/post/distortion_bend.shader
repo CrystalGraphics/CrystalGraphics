@@ -3,7 +3,7 @@
 // CgPostDistortion draws it.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {

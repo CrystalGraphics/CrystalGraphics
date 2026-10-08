@@ -8,8 +8,10 @@
 //   FLASH      the picture times _Exposure, in linear light; bloom is added after, unscaled
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   the corners darkened by _Vignette
-//   IMPACT     _Impact.x of the way to an impact frame (_Impact.y: 0 negative, 1 black and white, 2 speed lines)
-//   SCENE      reads the linear HDR scene (_Scene) instead of the target, clamped; a value within 0.1 of an 8-bit code
+//   IMPACT     _Impact.x of the way to an impact frame (_Impact.y: CgImpact's order: negative, black and white, speed
+//              lines, then what glows white on black, inverted, and with white speed lines)
+//   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
+//              hue, then clamped; a value within 0.1 of an 8-bit code
 //              is what the scene decoded from the host, written back exact rather than dithered
 #type none
 #pragma cg_feature SCENE
@@ -20,7 +22,7 @@
 #pragma cg_feature IMPACT
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {
@@ -72,6 +74,15 @@ Pass {
         vec3 c = post_decode_srgb(scene.rgb);
 #endif
 #endif
+#ifdef IMPACT
+        // What glows, taken before the flash brightens everything: the scene's light past white, or the near-white.
+        float hot = max(c.r, max(c.g, c.b));
+#ifdef SCENE
+        float subject = smoothstep(0.9, 1.4, hot);
+#else
+        float subject = smoothstep(0.85, 1.0, hot);
+#endif
+#endif
 #ifdef FLASH
         c *= _Exposure;
 #endif
@@ -82,9 +93,15 @@ Pass {
 #ifdef VIGNETTE
         c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
 #endif
+#ifdef SCENE
+        // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where
+        // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact.
+        float peak = max(c.r, max(c.g, c.b));
+        if (peak > 1.0) c = mix(c / peak, vec3(1.0), 1.0 - 1.0 / peak);
+#endif
         vec3 encoded = post_encode_srgb(c);
 #ifdef IMPACT
-        encoded = mix(encoded, post_impact(encoded, _Impact.y, i.uv, _Focus.xy, CG_RESOLUTION, CG_TIME), _Impact.x);
+        encoded = mix(encoded, post_impact(encoded, subject, _Impact.y, i.uv, _Focus.xy, CG_RESOLUTION, CG_TIME), _Impact.x);
 #endif
 #ifdef SCENE
         vec3 e = clamp(encoded, 0.0, 1.0) * 255.0;

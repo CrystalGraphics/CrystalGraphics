@@ -109,6 +109,11 @@ public final class CgVfxBlasts {
         for (CgVfxLook look : LOOKS) vfx.prepare(look);
     }
 
+    /** Whether everything {@link #prepare} started compiling is built. */
+    public boolean warmed() {
+        return vfx.warmed();
+    }
+
     /** Ends every burst at once; from the next {@link #submit} each spot fires at its next turn. */
     public void clear() {
         vfx.clear();

@@ -177,6 +177,38 @@ public class CgMaterialShaderCompilerTest {
                 + "    void fragment(in v2f i, out vec4 offset) { offset = vec4(0.0); } }\n");
     }
 
+    // ── The HDR scene ─────────────────────────────────────────────────────────
+
+    @Test
+    public void forwardPass_decodesIntoTheLinearScene_afterLightAndFog_unlessLinearOrEmissive() {
+        String plain = "if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);";
+        CgParsedShader shader = parse(EMISSIVE);
+        String forward = CgMaterialShaderCompiler.compile(shader, NO_BUFFERS).fragmentSource();
+        assertTrue("after the fog", forward.indexOf(plain) > forward.indexOf("_cg_fragColor = cg_Fog(_cg_fragColor);"));
+        String glow = CgMaterialShaderCompiler.compile(shader, shader.getPassByLightMode("Emissive"), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertFalse("emitted light is linear already", glow.contains("cg_SceneDecode"));
+
+        String premultiplied = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertTrue("decoded unpremultiplied", premultiplied.contains("cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_cover"));
+        assertTrue("its coverage remapped", premultiplied.contains("_cg_fragColor.a = _cg_cover;"));
+        String alpha = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertTrue(alpha.contains("cg_SceneCoverage(_cg_fragColor.a)"));
+        String added = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend SRC_ALPHA ONE }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse("an additive blend's alpha is its strength, kept", added.contains("cg_SceneCoverage"));
+
+        String linear = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Linear\" }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse(linear.contains("cg_SceneDecode"));
+    }
+
     @Test
     public void overdrawVariant_countsOnceAfterTheFragmentRuns() {
         CgParsedShader shader = parse(DISTORTION);
@@ -205,13 +237,13 @@ public class CgMaterialShaderCompilerTest {
                 + "Pass { Tags { \"LightMode\" = \"Emissive\" } }\n");
         String frag = CgMaterialShaderCompiler.compile(codeless, codeless.getPassByLightMode("Emissive"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
-        assertTrue(frag.contains("#define CG_EMISSION (vec3(1.0) * _EmissionColor.rgb * _EmissionStrength * CG_OBJECT_EMISSION)"));
+        assertTrue(frag.contains("#define CG_EMISSION (vec3(1.0) * _EmissionColor.rgb * _EmissionStrength * CG_OBJECT_EMISSION * CG_SCENE_GLOW)"));
         assertTrue(frag.indexOf("_cg_fragColor.rgb *= CG_EMISSION;") > frag.indexOf("fragment(_v2f_local, _cg_fragColor);"));
 
         CgParsedShader authored = parse(EMISSIVE.replace("vec4(4.0, 2.0, 1.0, 0.0)", "vec4(CG_EMISSION, 0.0)"));
         String own = CgMaterialShaderCompiler.compile(authored, authored.getPassByLightMode("Emissive"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
-        assertTrue("no properties: the draw's scale alone", own.contains("#define CG_EMISSION (vec3(1.0) * CG_OBJECT_EMISSION)"));
+        assertTrue("no properties: the draw's scale alone", own.contains("#define CG_EMISSION (vec3(1.0) * CG_OBJECT_EMISSION * CG_SCENE_GLOW)"));
         assertFalse(own.contains("*= CG_EMISSION"));
         assertFalse("Forward is never scaled", CgMaterialShaderCompiler.compile(authored, NO_BUFFERS).fragmentSource()
                 .contains("*= CG_EMISSION"));

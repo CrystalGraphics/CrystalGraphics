@@ -863,7 +863,8 @@ public final class CgMaterialShaderCompiler {
     /**
      * {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart; and
      * in every pass {@code CG_EMISSION}, the glow's multiplier: {@code _EmissionColor.rgb} (a color property) times
-     * {@code _EmissionStrength} (a float) where the shader declares them, times the draw's {@code CG_OBJECT_EMISSION}.
+     * {@code _EmissionStrength} (a float) where the shader declares them, times the draw's {@code CG_OBJECT_EMISSION};
+     * in an Emissive pass, times {@code CG_SCENE_GLOW} too, the world's gain on glows drawn into the HDR scene.
      */
     private static void appendPassDefine(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
@@ -872,6 +873,7 @@ public final class CgMaterialShaderCompiler {
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
         if (shader.readsObjectRecord()) sb.append(" * CG_OBJECT_EMISSION");
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append(" * CG_SCENE_GLOW");
         sb.append(")\n");
     }
 
@@ -889,6 +891,29 @@ public final class CgMaterialShaderCompiler {
         if (blend == null || !blend.enabled()) return 0;
         if (blend.dstRgb() == CgGL.GL_ONE) return 2;
         return blend.srcRgb() == CgGL.GL_ONE ? 1 : 0;
+    }
+
+    /**
+     * Decodes a Forward colour, authored as sRGB, where the pass draws into the linear scene. A blend over what is
+     * behind also has its coverage remapped ({@code cg_SceneCoverage}), so it hides as much as it did encoded; a
+     * premultiplied colour is decoded unpremultiplied and multiplied by that coverage.
+     */
+    private static void appendSceneDecode(StringBuilder sb, CgParsedPass pass) {
+        CgBlendState blend = pass.renderState().getBlend();
+        boolean over = blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        if (over && blend.srcRgb() == CgGL.GL_ONE) {
+            sb.append("  if (CG_LINEAR_SCENE) {\n")
+              .append("    float _cg_cover = cg_SceneCoverage(_cg_fragColor.a);\n")
+              .append("    _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
+              .append(" ? cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_cover")
+              .append(" : cg_SceneDecode(_cg_fragColor.rgb);\n")
+              .append("    _cg_fragColor.a = _cg_cover;\n  }\n");
+        } else if (over && blend.srcRgb() == CgGL.GL_SRC_ALPHA) {
+            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor = vec4(cg_SceneDecode(_cg_fragColor.rgb),")
+              .append(" cg_SceneCoverage(_cg_fragColor.a));\n");
+        } else {
+            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);\n");
+        }
     }
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
@@ -942,6 +967,7 @@ public final class CgMaterialShaderCompiler {
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
             if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
+            if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) appendSceneDecode(sb, pass);
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");
