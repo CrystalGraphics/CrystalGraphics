@@ -10,8 +10,7 @@ Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
-    _Strength    ("Brightness", float) = 2.0
-    _StrengthHdr ("Brightness under HDR", float) = 1.0
+    _Strength ("Brightness", float) = 4.0
 }
 
 struct v2f { vec3 world; };
@@ -40,6 +39,6 @@ Pass {
         float reach = length(CG_OBJECT_TO_WORLD[0].xyz);
         if (distance(surface, centre) > reach) discard;
         float light = fx_point_light(surface, normal, centre, max(CG_OBJECT_CUSTOM1.x, 1.0e-3), reach);
-        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
+        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * light * _Strength, 1.0);
     }
 }

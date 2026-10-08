@@ -124,11 +124,12 @@ void fragment(in v2f i, out vec4 fragColor) {
   "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.
   An Emissive pass is linear always.
 - **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
-  program. Light that adds reads hotter in linear light, so a light volume carries an HDR twin of its strength:
+  program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds, a light pool's falloff,
+  reads dimmer under the scene; `body_light` carries an HDR twin of its strength:
 
   ```glsl
   _Strength    ("Brightness", float) = 1.6
-  _StrengthHdr ("Brightness under HDR", float) = 0.8
+  _StrengthHdr ("Brightness under HDR", float) = 3.0
   ...
   fragColor = vec4(colour * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
   ```
