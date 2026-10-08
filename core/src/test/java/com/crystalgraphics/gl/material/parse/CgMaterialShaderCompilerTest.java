@@ -192,7 +192,16 @@ public class CgMaterialShaderCompilerTest {
         String premultiplied = CgMaterialShaderCompiler.compile(
                 parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
                 .fragmentSource();
-        assertTrue("decoded unpremultiplied", premultiplied.contains("cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a"));
+        assertTrue("decoded unpremultiplied", premultiplied.contains("cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_cover"));
+        assertTrue("its coverage remapped", premultiplied.contains("_cg_fragColor.a = _cg_cover;"));
+        String alpha = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertTrue(alpha.contains("cg_SceneCoverage(_cg_fragColor.a)"));
+        String added = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend SRC_ALPHA ONE }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse("an additive blend's alpha is its strength, kept", added.contains("cg_SceneCoverage"));
 
         String linear = CgMaterialShaderCompiler.compile(
                 parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Linear\" }\n")), NO_BUFFERS)
