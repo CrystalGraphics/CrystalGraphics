@@ -2483,6 +2483,7 @@ com/crystalgraphics/demo/CgVfxBlasts
   method public prepare ()V
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
+  method public warmed ()Z
 com/crystalgraphics/demo/CgVfxModules
   access public,final
   extends java/lang/Object
@@ -2492,6 +2493,7 @@ com/crystalgraphics/demo/CgVfxModules
   method public prepare ()V
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
+  method public warmed ()Z
 com/crystalgraphics/demo/CgVfxShowcase
   access public,final
   extends java/lang/Object
@@ -2508,6 +2510,7 @@ com/crystalgraphics/demo/CgVfxShowcase
   method public submitSky (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDD)V
   method public submitStage (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDDDD)V
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
+  method public warmed ()Z
   method public,static stress (I)Lcom/crystalgraphics/demo/CgVfxShowcase;
 com/crystalgraphics/easing/CgConstantEasing
   access public,final
@@ -6993,6 +6996,7 @@ com/crystalgraphics/vfx/CgVfxSystem
   method public spawnShare (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)F
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;)V
   method public update (D)V
+  method public warmed ()Z
   method public,static pace (Lcom/crystalgraphics/render/stage/CgHostEnvironment;)F
   method public,static particleStep ()I
   method public,static particleStep (I)V

@@ -555,6 +555,21 @@ public final class CgVfxSystem {
     }
 
     /**
+     * Whether every program the looks {@link #prepare}d or played draw with is built, polling those still compiling. Hold
+     * a scene's first submit on it and its first frames wait on no compile. Render thread.
+     *
+     * <pre>{@code
+     * vfx.prepare(look);                  // at install
+     * if (!vfx.warmed()) return;          // each frame, until it answers true
+     * vfx.play(...);
+     * }</pre>
+     */
+    public boolean warmed() {
+        pollWarming(CgWorldRenderer.get());
+        return warming.isEmpty();
+    }
+
+    /**
      * Ends every effect at once and gives back the GPU slots they held, keeping meshes, pools and warmed programs: what
      * plays next starts as quickly as on a system never cleared. Its clock starts again at the next {@link #update}, so
      * a system left unupdated meanwhile does not fast-forward the time it missed. Between frames, on the render thread.
