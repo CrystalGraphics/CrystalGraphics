@@ -117,7 +117,8 @@ public final class CgStageFrame {
     public CgPassConstants defaults(CgPassConstants constants) {
         constants.time(CgFrameClock.seconds())
                 .resolution(host.width(), host.height())
-                .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne());
+                .depth(CgGL.isDepthReversed(), CgGL.isDepthZeroToOne())
+                .linearScene(target != null);
         return CgWorldAtmosphere.apply(host.environment(), constants);
     }
 

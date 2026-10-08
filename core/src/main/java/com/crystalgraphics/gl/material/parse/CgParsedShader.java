@@ -55,6 +55,9 @@ import java.util.List;
  * @param unfogged
  *     {@code true} for {@code "Fog" = "Off"}: its Forward colour is not put behind the host's fog, as such a material's
  *     otherwise is, lit or not.
+ * @param linearColor
+ *     {@code true} for {@code "ColorSpace" = "Linear"}: its Forward colour is linear already (a post pass, a copy of
+ *     the scene), so it is not decoded from sRGB when drawn into the HDR scene ({@code CG_LINEAR_SCENE}).
  * @param passes
  *     Ordered, unmodifiable list of parsed {@link CgParsedPass} records.
  *     Contains at least one entry — the parser throws
@@ -70,7 +73,7 @@ import java.util.List;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
-                              boolean unfogged,
+                              boolean unfogged, boolean linearColor,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
 
     /** The declared buffer of that name, or null. */

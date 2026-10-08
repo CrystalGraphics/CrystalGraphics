@@ -10,7 +10,7 @@ Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
-    _Strength ("Brightness", float) = 2.0
+    _Strength ("Brightness", float) = 4.0
 }
 
 struct v2f { vec3 world; };

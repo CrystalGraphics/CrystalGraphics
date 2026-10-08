@@ -5,7 +5,7 @@
 
 #pragma cg_feature HEAT
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {

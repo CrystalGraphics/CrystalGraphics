@@ -12,9 +12,11 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -47,7 +49,8 @@ import java.util.function.Consumer;
  * wherever it stands, else on its floor. The harness's {@code vfx-modules}, and a scene of {@link CgRenderDemo}.
  *
  * <pre>{@code
- * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: it makes its textures and materials
+ * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: its textures and materials; the
+ *                                                   // flipbook sheets fill from a worker a moment later
  * world.onFrame(view -> modules.submit(world, x, y, z, CgFrameClock.seconds()));
  * modules.delete();
  * }</pre>
@@ -59,6 +62,7 @@ public final class CgVfxModules {
     private static final Logger LOG = LogManager.getLogger("CgVfxModules");
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
+    private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
     /** Columns of world ground a play's particles find, each way from its station: past the widest station's spread. */
     private static final int GROUND_REACH = 16;
     /** The station grid: columns along x, rows along z, toward the camera. */
@@ -106,6 +110,9 @@ public final class CgVfxModules {
     private final CgVfxSystem vfx = new CgVfxSystem();
     private final List<Station> stations = new ArrayList<>();
     private final List<CgTexture> sheets = new ArrayList<>();
+    /** Each sheet's texels, waiting for {@link #fillSheets()}'s worker; and whether {@link #delete()} has run. */
+    private final List<Runnable> fills = new ArrayList<>();
+    private volatile boolean deleted;
     private final Matrix4f transform = new Matrix4f();
     private float nextPlay;
     private CgMesh sphere, cube;
@@ -167,6 +174,7 @@ public final class CgVfxModules {
         CgTexture rune = sheet(1, 1, 128, (f, u, v, out) -> rune(u, v, out));
         CgTexture ring = sheet(1, 1, 128, (f, u, v, out) -> ring(u, v, out));
         CgTexture shard = sheet(1, 1, 64, (f, u, v, out) -> shard(u, v, out));
+        fillSheets();
 
         gather(COLUMNS[0], ROWS[0]);
         tornado(COLUMNS[1], ROWS[0], smokeSheet);
@@ -869,24 +877,52 @@ public final class CgVfxModules {
         void at(int frame, float u, float v, float[] out);
     }
 
-    /** A {@code columns} x {@code rows} sheet of {@code cell}-texel frames, frame 0 at the top left. */
+    /**
+     * A {@code columns} x {@code rows} sheet of {@code cell}-texel frames, frame 0 at the top left: made empty here, its
+     * texels computed by {@link #fillSheets()}.
+     */
     private CgTexture sheet(int columns, int rows, int cell, Texel texel) {
         int w = columns * cell, h = rows * cell;
-        ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
-        float[] out = new float[4];
-        for (int y = 0; y < h; y++) {
-            int row = rows - 1 - y / cell;
-            for (int x = 0; x < w; x++) {
-                int frame = row * columns + x / cell;
-                texel.at(frame, (x % cell + 0.5f) / cell, (y % cell + 0.5f) / cell, out);
-                for (int c = 0; c < 4; c++) pixels.put((byte) Math.round(Math.max(0f, Math.min(1f, out[c])) * 255f));
-            }
-        }
-        pixels.flip();
         CgTexture2D texture = CgTexture2D.createEmpty(w, h, CgTextureSpec.RGBA8_LINEAR);
-        texture.uploadRegion(0, 0, 0, w, h, pixels, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
         sheets.add(texture);
+        fills.add(() -> {
+            ByteBuffer pixels = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder());
+            float[] out = new float[4];
+            for (int y = 0; y < h; y++) {
+                int row = rows - 1 - y / cell;
+                for (int x = 0; x < w; x++) {
+                    int frame = row * columns + x / cell;
+                    texel.at(frame, (x % cell + 0.5f) / cell, (y % cell + 0.5f) / cell, out);
+                    for (int c = 0; c < 4; c++) pixels.put((byte) Math.round(Math.max(0f, Math.min(1f, out[c])) * 255f));
+                }
+            }
+            pixels.flip();
+            synchronized (sheets) {
+                if (!deleted) texture.uploadRegion(0, 0, 0, w, h, pixels, CgGL.GL_RGBA, CgGL.GL_UNSIGNED_BYTE);
+            }
+        });
         return texture;
+    }
+
+    /**
+     * Computes every sheet's texels on a worker, each uploaded as it finishes (a texture lands what a worker queued before
+     * the next frame): on the render thread they cost the first frame 1.6 s in Minecraft. A sheet draws empty until then.
+     */
+    private void fillSheets() {
+        List<Runnable> work = new ArrayList<>(fills);
+        fills.clear();
+        Thread worker = new Thread(() -> {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SHEETS_ZONE)) {
+                for (Runnable fill : work) {
+                    if (deleted) return;
+                    fill.run();
+                }
+            } catch (RuntimeException e) {
+                LOG.warn("[vfx-modules] flipbook sheets failed", e);
+            }
+        }, "CrystalGraphics vfx-modules sheets");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /**
@@ -1129,6 +1165,12 @@ public final class CgVfxModules {
         world.prepare(copper);
     }
 
+    /** Whether everything {@link #prepare} started compiling is built. */
+    public boolean warmed() {
+        CgWorldRenderer world = CgWorldRenderer.get();
+        return vfx.warmed() & world.prepare(mercury) & world.prepare(copper);
+    }
+
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */
     public void clear() {
         vfx.clear();
@@ -1143,7 +1185,10 @@ public final class CgVfxModules {
     /** Stops every station and frees what it made. The font is the caller's. */
     public void delete() {
         vfx.delete();
-        for (CgTexture sheet : sheets) sheet.delete();
-        sheets.clear();
+        synchronized (sheets) {
+            deleted = true;
+            for (CgTexture sheet : sheets) sheet.delete();
+            sheets.clear();
+        }
     }
 }

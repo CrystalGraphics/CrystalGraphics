@@ -2,7 +2,10 @@ package com.crystalgraphics.vfx.effect.beam;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.post.volume.CgImpact;
+import com.crystalgraphics.render.post.volume.CgImpactSequence;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -53,9 +56,9 @@ import java.util.List;
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
  * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
- * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1); {@link #SLOT_BLAST_SKY} on a sphere holding
- * the camera ({@code CG_OBJECT_CUSTOM1}: the cloud height, how far the clouds are lit, the intensity). The blast's cloud, debris, embers and
- * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts.
+ * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
+ * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts; its
+ * screen flash is a post volume there ({@link #BLAST_FLASH}), fading with the camera's distance.
  * Heat haze shimmers round the charge, the beam, the impact and the blast's heart, and a shock front bends the air as
  * the blast goes off: {@code shaders/vfx/air/}, dropped at the Low quality tier.</p>
  *
@@ -106,8 +109,6 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST = "blast";
     /** The blast's flash and its heart: spheres at the target. */
     public static final String SLOT_BLAST_GLOW = "blastGlow";
-    /** The sky's answer to the blast, its tint and the clouds lit over it: a sphere at the target holding the camera. */
-    public static final String SLOT_BLAST_SKY = "blastSky";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
     /** Heat haze round the charge ball and round the contact orb, at their steady size: spheres, without the pulse. */
@@ -124,6 +125,13 @@ public final class CgEnergyWave extends CgVfxEffect {
             MOMENT_SPLASH = "splash", MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail",
             MOMENT_BLAST_START = "blast-start", MOMENT_BLAST_PEAK = "blast-peak", MOMENT_BLAST_FADE = "blast-fade",
             MOMENT_END = "end";
+    /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
+    public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
+    /** The impact frame's frames announced as moments, from bit 18 of {@code momentsFired}. */
+    private static final String[] IMPACT_FRAME_MOMENTS = new String[8];
+    static {
+        for (int k = 0; k < IMPACT_FRAME_MOMENTS.length; k++) IMPACT_FRAME_MOMENTS[k] = MOMENT_IMPACT_FRAME + (k + 1);
+    }
 
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.8f);
@@ -189,17 +197,39 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.6f, 0.4f, CgEasings.OUT_CUBIC)
             .to(1f, 0f, CgEasings.LINEAR)
             .build());
+    /**
+     * The blast's screen flash over the blast (0..1 of it), a share of its peak: a big explosion's double flash, a short
+     * pulse, a dip as the shock front hides the fireball, then the main pulse, held and gone as it cools.
+     */
+    public static final CgVfxParam BLAST_FLASH = SCHEMA.curve("blastFlash", CgKeyframes.start(0f, 0f)
+            .to(0.008f, 0.3f, CgEasings.OUT_QUAD)
+            .to(0.025f, 0.1f, CgEasings.LINEAR)
+            .to(0.0625f, 1f, CgEasings.OUT_QUAD)
+            .to(0.12f, 0.85f, CgEasings.LINEAR)
+            .to(0.55f, 0f, CgEasings.OUT_CUBIC)
+            .build());
+    /** 1 for the blast's impact frame and the hitstop it plays in ({@link #BLAST_BEATS}); 0 for neither. */
+    public static final CgVfxParam BLAST_IMPACT = SCHEMA.scalar("blastImpact", 1f);
+    /** Seconds into the blast its hitstop starts: past the double flash's first pulse, the dome already blazing. */
+    public static final CgVfxParam BLAST_HOLD_AT = SCHEMA.scalar("blastHoldAt", 0.06f);
+    /** The impact frame's beats, played while the blast holds: what glows white on black, inverted, back, then lines. */
+    public static final CgImpactSequence BLAST_BEATS = CgImpactSequence.at(24f)
+            .beat(CgImpact.SUBJECT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.SUBJECT, 1)
+            .beat(CgImpact.SUBJECT_LINES, 1).build();
+    /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
+    public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
+    public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
+    public static final CgVfxParam BLAST_FLASH_BLOOM = SCHEMA.scalar("blastFlashBloom", 2f);
+    /** Full within this many blast radii of the burst, fading out over twice that beyond. */
+    public static final CgVfxParam BLAST_FLASH_REACH = SCHEMA.scalar("blastFlashReach", 3f);
 
     /**
      * Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius: what
      * {@link #BLAST_SHAKE} arrives with.
      */
     private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
-    /**
-     * The sky's answer: the radius of the sphere it is drawn on, blocks; how far the clouds over the blast are lit, as a
-     * multiple of the blast's radius; and the cloud height above the blast where the host gives none.
-     */
-    private static final float SKY_SPHERE = 384f, SKY_REACH = 10f, SKY_CLOUDS = 128f;
+    /** The blast's volume priorities, over a scene's mood volumes: the impact frame over the flash. */
+    private static final int FLASH_PRIORITY = 10, IMPACT_PRIORITY = 11;
     /** Held over the charge at the muzzle, its level the charge's progress squared. */
     public static final CgVfxParam CHARGE_SHAKE = SCHEMA.shake("chargeShake",
             CgCameraShakes.RUMBLE.toBuilder().trauma(0.4f).radii(3f, 24f).build());
@@ -271,8 +301,6 @@ public final class CgEnergyWave extends CgVfxEffect {
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
                     .colors(CORE, SHELL).order(CgVfxLayer.ORDER_SURFACE).build())
             .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
-            .layer(CgVfxLayer.builder(BEAM + "blast_sky.shader").slot(SLOT_BLAST_SKY)
-                    .colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).from(CgQuality.MEDIUM).build())
             .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
                     .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS)
@@ -319,6 +347,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
     /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
     private CgVfxGround blastGround;
+    /** The blast's screen flash and impact frame; opened when it bursts. */
+    private CgPostVolume blastFlash, blastImpact;
+    private CgPostSettings blastImpactLook;
+    /** The blast's own clock, held through its hitstop; NaN until it bursts. Whether its emitters have started. */
+    private float blastSince = Float.NaN;
+    private boolean blastReleased;
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -428,11 +462,19 @@ public final class CgEnergyWave extends CgVfxEffect {
         // The tail has run into the target: it bursts.
         if (drained && !Float.isNaN(impactAge) && Float.isNaN(blastAge)) {
             blastAge = age;
-            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BLAST_ZONE)) {
-                startBlast();
+            float reach = get(RADIUS) * get(BLAST_RADIUS) * get(BLAST_FLASH_REACH);
+            blastFlash = openVolume(FLASH_PRIORITY,
+                    new CgPostSettings().flash(get(BLAST_FLASH_STOPS)).chromatic(get(BLAST_FLASH_CHROMATIC))
+                            .bloom(get(BLAST_FLASH_BLOOM)),
+                    stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach).blend(2f * reach);
+            if (get(BLAST_IMPACT) > 0f) {
+                // A hard edge: an impact frame is whole or absent, since part of one is a muddy grey.
+                blastImpactLook = new CgPostSettings().impact(CgImpact.SUBJECT, 1f);
+                blastImpact = openVolume(IMPACT_PRIORITY, blastImpactLook,
+                        stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach);
             }
-            playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
+        if (!Float.isNaN(blastAge)) tickBlast();
         boolean emitted = true;
         if (blastGround != null) {
             long fill = CgVfxTrace.start();
@@ -444,9 +486,33 @@ public final class CgEnergyWave extends CgVfxEffect {
             emitted &= blast.get(i).finished();
         }
         boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
-                : age > blastAge + get(BLAST_TIME) && emitted;
+                : blastReleased && blastSince > get(BLAST_TIME) && emitted;
         if (momentsHeard()) moments(ending);
         if (ending) die();
+    }
+
+    /**
+     * The blast's hitstop: its clock runs to {@link #BLAST_HOLD_AT}, holds there while {@link #BLAST_BEATS} play, then
+     * runs on. Its emitters and shake start as it releases, since a GPU tenant its effect leaves unstepped coasts on
+     * rather than holding.
+     */
+    private void tickBlast() {
+        float real = age - blastAge, holdAt = get(BLAST_HOLD_AT);
+        float hold = blastImpact != null ? BLAST_BEATS.seconds() : 0f;
+        blastSince = real <= holdAt ? real : Math.max(holdAt, real - hold);
+        if (!blastReleased && (hold == 0f || real >= holdAt + hold)) {
+            blastReleased = true;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BLAST_ZONE)) {
+                startBlast();
+            }
+            playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
+        }
+        if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min(blastSince / get(BLAST_TIME), 1f)));
+        if (blastImpact != null) {
+            CgImpact look = BLAST_BEATS.look(real - holdAt);
+            if (look != null) blastImpactLook.impact(look, 1f);
+            blastImpact.weight(look != null ? 1f : 0f);
+        }
     }
 
     /** How far the blast's shock front has come, in blocks, {@code since} seconds after the burst. */
@@ -504,10 +570,17 @@ public final class CgEnergyWave extends CgVfxEffect {
         float atTarget = radius * get(BLAST_RADIUS) * 1.3f;
         if (age >= impactAge + 0.3f) atImpact(14, MOMENT_SPLASH, radius * 12f);
         float blastTime = get(BLAST_TIME);
-        if (age >= blastAge + 0.06f) atImpact(15, MOMENT_BLAST_START, atTarget);
-        if (age >= blastAge + 0.3f * blastTime) atImpact(16, MOMENT_BLAST_PEAK, atTarget);
+        if (blastSince >= 0.06f) atImpact(15, MOMENT_BLAST_START, atTarget);
+        if (blastSince >= 0.3f * blastTime) atImpact(16, MOMENT_BLAST_PEAK, atTarget);
         // By then the cloud has spread past the dome.
-        if (age >= blastAge + 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, radius * get(BLAST_RADIUS) * 1.9f);
+        if (blastSince >= 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, radius * get(BLAST_RADIUS) * 1.9f);
+        if (blastImpact != null) {
+            float intoBeats = age - blastAge - get(BLAST_HOLD_AT);
+            int frames = Math.min(BLAST_BEATS.frames(), IMPACT_FRAME_MOMENTS.length);
+            for (int k = 0; k < frames; k++) {
+                if (intoBeats >= k / BLAST_BEATS.fps()) atImpact(18 + k, IMPACT_FRAME_MOMENTS[k], atTarget);
+            }
+        }
         if (age >= impactAge + 0.8f) onFlight(9, MOMENT_HOLDING);
         if (age >= stopAge + 0.05f) onFlight(10, MOMENT_STOP);
         if (!Float.isNaN(stopAge) && stream.size() <= sizeAtStop / 2) onFlight(11, MOMENT_TAIL);
@@ -613,7 +686,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                     impactLevel * (1f - ring) * (1f - ring), (float) CgEasings.OUT_CUBIC.ease(ring), false);
         }
         if (Float.isNaN(blastAge)) return;
-        float since = age - blastAge, blastTime = get(BLAST_TIME), t = Math.min(since / blastTime, 1f);
+        float since = blastSince, blastTime = get(BLAST_TIME), t = Math.min(since / blastTime, 1f);
         float dome = radius * get(BLAST_RADIUS) * curve(BLAST_SIZE).at(t);
         facing(placed, normalX, normalY, normalZ).scale(dome);
         drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, t, false);
@@ -622,11 +695,6 @@ public final class CgEnergyWave extends CgVfxEffect {
             float heart = dome * 0.5f;
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
             drawAt(frame, layers, SLOT_BLAST_GLOW, x, y, z, placed, heart, heart, glow, 0f, false);
-            float clouds = CgRenderStage.WORLD_OPAQUE.host().environment().cloudHeight();
-            if (Float.isNaN(clouds)) clouds = (float) (originY + y) + SKY_CLOUDS;
-            placed.identity().scale(SKY_SPHERE);
-            drawAt(frame, layers, SLOT_BLAST_SKY, x, y, z, placed, clouds, radius * get(BLAST_RADIUS) * SKY_REACH, glow,
-                    0f, false);
         }
         // The shock front races out well ahead of the dust, gone in a little over a second.
         float shockTime = since / SHOCK_SECONDS;
