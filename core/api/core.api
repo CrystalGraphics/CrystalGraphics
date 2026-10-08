@@ -4912,8 +4912,22 @@ com/crystalgraphics/render/post/volume/CgImpact
   field public,static,final CONTRAST Lcom/crystalgraphics/render/post/volume/CgImpact;
   field public,static,final INVERT Lcom/crystalgraphics/render/post/volume/CgImpact;
   field public,static,final LINES Lcom/crystalgraphics/render/post/volume/CgImpact;
+  field public,static,final SUBJECT Lcom/crystalgraphics/render/post/volume/CgImpact;
+  field public,static,final SUBJECT_INVERTED Lcom/crystalgraphics/render/post/volume/CgImpact;
+  field public,static,final SUBJECT_LINES Lcom/crystalgraphics/render/post/volume/CgImpact;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgImpact;
   method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgImpact;
+com/crystalgraphics/render/post/volume/CgImpactSequence
+  access public,final
+  extends java/lang/Object
+  method public look (F)Lcom/crystalgraphics/render/post/volume/CgImpact;
+  method public seconds ()F
+  method public,static at (F)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
+com/crystalgraphics/render/post/volume/CgImpactSequence$Builder
+  access public,final
+  extends java/lang/Object
+  method public beat (Lcom/crystalgraphics/render/post/volume/CgImpact;I)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
+  method public build ()Lcom/crystalgraphics/render/post/volume/CgImpactSequence;
 com/crystalgraphics/render/post/volume/CgPostSettings
   access public,final
   extends java/lang/Object
@@ -7057,13 +7071,15 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   access public,final
   extends com/crystalgraphics/vfx/CgVfxEffect
   field public,static,final BLAST Lcom/crystalgraphics/vfx/element/CgVfxExplosion;
+  field public,static,final BLAST_BEATS Lcom/crystalgraphics/render/post/volume/CgImpactSequence;
   field public,static,final BLAST_FLASH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_BLOOM Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_CHROMATIC Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_REACH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_STOPS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam;
-  field public,static,final BLAST_IMPACT_SECONDS Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_HOLD_AT Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_IMPACT Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_MARKER Ljava/lang/String;
   field public,static,final BLAST_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
