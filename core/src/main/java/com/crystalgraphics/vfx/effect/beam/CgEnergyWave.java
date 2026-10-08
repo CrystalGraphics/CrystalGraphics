@@ -125,6 +125,13 @@ public final class CgEnergyWave extends CgVfxEffect {
             MOMENT_SPLASH = "splash", MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail",
             MOMENT_BLAST_START = "blast-start", MOMENT_BLAST_PEAK = "blast-peak", MOMENT_BLAST_FADE = "blast-fade",
             MOMENT_END = "end";
+    /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
+    public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
+    /** The impact frame's frames announced as moments, from bit 18 of {@code momentsFired}. */
+    private static final String[] IMPACT_FRAME_MOMENTS = new String[8];
+    static {
+        for (int k = 0; k < IMPACT_FRAME_MOMENTS.length; k++) IMPACT_FRAME_MOMENTS[k] = MOMENT_IMPACT_FRAME + (k + 1);
+    }
 
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.8f);
@@ -567,6 +574,13 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (blastSince >= 0.3f * blastTime) atImpact(16, MOMENT_BLAST_PEAK, atTarget);
         // By then the cloud has spread past the dome.
         if (blastSince >= 0.7f * blastTime) atImpact(17, MOMENT_BLAST_FADE, radius * get(BLAST_RADIUS) * 1.9f);
+        if (blastImpact != null) {
+            float intoBeats = age - blastAge - get(BLAST_HOLD_AT);
+            int frames = Math.min(BLAST_BEATS.frames(), IMPACT_FRAME_MOMENTS.length);
+            for (int k = 0; k < frames; k++) {
+                if (intoBeats >= k / BLAST_BEATS.fps()) atImpact(18 + k, IMPACT_FRAME_MOMENTS[k], atTarget);
+            }
+        }
         if (age >= impactAge + 0.8f) onFlight(9, MOMENT_HOLDING);
         if (age >= stopAge + 0.05f) onFlight(10, MOMENT_STOP);
         if (!Float.isNaN(stopAge) && stream.size() <= sizeAtStop / 2) onFlight(11, MOMENT_TAIL);

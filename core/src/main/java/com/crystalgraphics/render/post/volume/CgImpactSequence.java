@@ -53,7 +53,16 @@ public final class CgImpactSequence {
 
     /** How long it lasts. */
     public float seconds() {
-        return ends.length == 0 ? 0f : ends[ends.length - 1] / fps;
+        return frames() / fps;
+    }
+
+    /** Its frames, every beat's together; frame {@code k} starts {@code k / fps()} seconds in. */
+    public int frames() {
+        return ends.length == 0 ? 0 : ends[ends.length - 1];
+    }
+
+    public float fps() {
+        return fps;
     }
 
     public static final class Builder {
