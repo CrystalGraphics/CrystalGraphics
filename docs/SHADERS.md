@@ -67,7 +67,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_ProjMatrix` | `mat4` | Projection matrix |
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
-| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1, `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`). Read through `cg_LinearEyeDepth`, not directly |
+| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1, `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`), `w` the scene's glow gain (`CG_SCENE_GLOW`). Read through `cg_LinearEyeDepth`, not directly |
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
@@ -467,8 +467,10 @@ Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the b
 - It takes the material's keywords, as the Forward pass does.
 - **Under the HDR scene** (`CgWorldRenderer.hdrScene`) there is no emission target: the pass adds into the scene
   itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
-  what is in front covers it. Bloom then takes the scene's light past `CgBloom.threshold` (1), so a glow blooms where
-  it takes the scene past white.
+  what is in front covers it, times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
+  strength set for a blurred bloom floods a sharp core). Bloom then takes the scene's light past `CgBloom.threshold`
+  (1), so a glow blooms where it takes the scene past white; the composite rolls what passes white toward white,
+  keeping its hue.
 - **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
   `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
   (`CG_OBJECT_EMISSION`). The compiler multiplies an Emissive pass's output by it, unless the pass's code names

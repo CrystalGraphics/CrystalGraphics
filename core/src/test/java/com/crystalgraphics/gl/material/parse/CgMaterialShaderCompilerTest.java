@@ -237,13 +237,13 @@ public class CgMaterialShaderCompilerTest {
                 + "Pass { Tags { \"LightMode\" = \"Emissive\" } }\n");
         String frag = CgMaterialShaderCompiler.compile(codeless, codeless.getPassByLightMode("Emissive"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
-        assertTrue(frag.contains("#define CG_EMISSION (vec3(1.0) * _EmissionColor.rgb * _EmissionStrength * CG_OBJECT_EMISSION)"));
+        assertTrue(frag.contains("#define CG_EMISSION (vec3(1.0) * _EmissionColor.rgb * _EmissionStrength * CG_OBJECT_EMISSION * CG_SCENE_GLOW)"));
         assertTrue(frag.indexOf("_cg_fragColor.rgb *= CG_EMISSION;") > frag.indexOf("fragment(_v2f_local, _cg_fragColor);"));
 
         CgParsedShader authored = parse(EMISSIVE.replace("vec4(4.0, 2.0, 1.0, 0.0)", "vec4(CG_EMISSION, 0.0)"));
         String own = CgMaterialShaderCompiler.compile(authored, authored.getPassByLightMode("Emissive"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
-        assertTrue("no properties: the draw's scale alone", own.contains("#define CG_EMISSION (vec3(1.0) * CG_OBJECT_EMISSION)"));
+        assertTrue("no properties: the draw's scale alone", own.contains("#define CG_EMISSION (vec3(1.0) * CG_OBJECT_EMISSION * CG_SCENE_GLOW)"));
         assertFalse(own.contains("*= CG_EMISSION"));
         assertFalse("Forward is never scaled", CgMaterialShaderCompiler.compile(authored, NO_BUFFERS).fragmentSource()
                 .contains("*= CG_EMISSION"));

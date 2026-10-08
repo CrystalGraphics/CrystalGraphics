@@ -11,7 +11,7 @@ layout(std140) uniform CgFrameBlock {
     vec2 cg_Resolution;  // viewport size in pixels
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
     vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1;
-                         // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE)
+                         // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE); w: its glow gain
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
@@ -166,6 +166,8 @@ float cg_LinearEyeDepth(float windowDepth) {
 // Whether this pass draws into the linear HDR scene. A Forward pass's colour is authored as sRGB, so the generated
 // main decodes it there (cg_SceneDecode), unless the shader is tagged "ColorSpace" = "Linear".
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
+// What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
+#define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
 // sRGB to linear up to 1; above it the excess passes unchanged, so an HDR colour keeps its brightness past white.
 vec3 cg_SceneDecode(vec3 c) {
     vec3 s = clamp(c, 0.0, 1.0);

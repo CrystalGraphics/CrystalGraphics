@@ -4308,6 +4308,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public read ([FI)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public resolution (FF)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public sceneGlow (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public sun (FFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public time (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public write ([FI)V
@@ -5209,6 +5210,7 @@ com/crystalgraphics/render/world/CgWorldRenderer
   access public,final
   extends java/lang/Object
   field public,static,final ORDER I
+  field public,static,final SCENE_EMISSION F
   method public distortionScale ()F
   method public distortionScale (F)V
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
@@ -5228,6 +5230,8 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public overdraw (Z)V
   method public prepare (Lcom/crystalgraphics/api/material/CgMaterial;)Z
   method public release ()V
+  method public sceneEmission ()F
+  method public sceneEmission (F)Lcom/crystalgraphics/render/world/CgWorldRenderer;
   method public text (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public text (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/render/world/CgWorldText$Label;
   method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/world/CgWorldText$Label;

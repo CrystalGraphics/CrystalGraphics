@@ -65,6 +65,7 @@ public final class CgPassConstants {
     private boolean depthReversed;
     private boolean depthZeroToOne;
     private boolean linearScene;
+    private float sceneGlow = 1f;
     private float originX;
     private float originY;
     private float originZ;
@@ -115,6 +116,12 @@ public final class CgPassConstants {
      */
     public CgPassConstants linearScene(boolean linear) {
         this.linearScene = linear;
+        return this;
+    }
+
+    /** What an Emissive pass drawn into the HDR scene multiplies its glow by ({@code CG_SCENE_GLOW}): 1 by default. */
+    public CgPassConstants sceneGlow(float gain) {
+        this.sceneGlow = gain;
         return this;
     }
 
@@ -180,6 +187,7 @@ public final class CgPassConstants {
         depthReversed = block[at + 44] != 0f;
         depthZeroToOne = block[at + 45] != 0f;
         linearScene = block[at + 46] != 0f;
+        sceneGlow = block[at + 47];
         originX = block[at + 48];
         originY = block[at + 49];
         originZ = block[at + 50];
@@ -225,7 +233,7 @@ public final class CgPassConstants {
         out[at + 44] = depthReversed ? 1f : 0f;
         out[at + 45] = depthZeroToOne ? 1f : 0f;
         out[at + 46] = linearScene ? 1f : 0f;
-        out[at + 47] = 0f;
+        out[at + 47] = sceneGlow;
         out[at + 48] = originX;
         out[at + 49] = originY;
         out[at + 50] = originZ;

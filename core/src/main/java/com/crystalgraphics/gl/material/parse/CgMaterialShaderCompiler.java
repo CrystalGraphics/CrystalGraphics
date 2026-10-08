@@ -863,7 +863,8 @@ public final class CgMaterialShaderCompiler {
     /**
      * {@code CG_EMISSIVE_PASS} in an Emissive pass, so a body it shares with the Forward pass can tell them apart; and
      * in every pass {@code CG_EMISSION}, the glow's multiplier: {@code _EmissionColor.rgb} (a color property) times
-     * {@code _EmissionStrength} (a float) where the shader declares them, times the draw's {@code CG_OBJECT_EMISSION}.
+     * {@code _EmissionStrength} (a float) where the shader declares them, times the draw's {@code CG_OBJECT_EMISSION};
+     * in an Emissive pass, times {@code CG_SCENE_GLOW} too, the world's gain on glows drawn into the HDR scene.
      */
     private static void appendPassDefine(StringBuilder sb, CgParsedShader shader, CgParsedPass pass) {
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append("#define CG_EMISSIVE_PASS 1\n");
@@ -872,6 +873,7 @@ public final class CgMaterialShaderCompiler {
         if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
         if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
         if (shader.readsObjectRecord()) sb.append(" * CG_OBJECT_EMISSION");
+        if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append(" * CG_SCENE_GLOW");
         sb.append(")\n");
     }
 
