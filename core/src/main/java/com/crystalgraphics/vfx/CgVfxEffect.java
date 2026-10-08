@@ -1,6 +1,9 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -34,6 +37,8 @@ import java.util.List;
  *   <li>It shakes the camera through shakes declared on its schema, so a look can change them:
  *       {@link #playShake} for a hit, {@link #holdShake} every tick for a tremor that lasts. What it holds stops when
  *       it dies.</li>
+ *   <li>Its screen-wide look at a moment (a flash, an aberration) is a post volume it opens with {@link #openVolume}
+ *       and weighs each tick; it closes when the effect dies.</li>
  * </ul>
  */
 public abstract class CgVfxEffect {
@@ -56,6 +61,8 @@ public abstract class CgVfxEffect {
     /** The shakes it holds, by parameter; made when first held. */
     private CgVfxParam[] heldParams;
     private CgCameraShake.Held[] held;
+    /** The post volumes it opened, closed when it dies. */
+    private CgPostVolume[] volumes;
     /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
     private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
     private int dueCount;
@@ -101,6 +108,26 @@ public abstract class CgVfxEffect {
                 if (h != null) h.close();
             }
         }
+        if (volumes != null) {
+            for (CgPostVolume v : volumes) v.close();
+            volumes = null;
+        }
+    }
+
+    /**
+     * A post volume applying {@code settings} at {@code priority}, centred at {@code (x, y, z)} relative to the
+     * origin, at weight 0: size it, then weigh it each tick. It closes when the effect dies.
+     *
+     * <pre>{@code
+     * flash = openVolume(10, new CgPostSettings().flash(1.5f), hitX, hitY, hitZ).radius(24f).blend(64f);
+     * flash.weight(curve(FLASH).at(t));   // each tick
+     * }</pre>
+     */
+    protected final CgPostVolume openVolume(int priority, CgPostSettings settings, float x, float y, float z) {
+        CgPostVolume volume = CgPostStack.get().volume(priority, settings).at(originX + x, originY + y, originZ + z).weight(0f);
+        volumes = volumes == null ? new CgPostVolume[1] : Arrays.copyOf(volumes, volumes.length + 1);
+        volumes[volumes.length - 1] = volume;
+        return volume;
     }
 
     public final State state() {

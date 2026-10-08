@@ -6916,6 +6916,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   method protected,final holdShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFF)V
   method protected,final moment (Ljava/lang/String;FFFF)V
   method protected,final momentsHeard ()Z
+  method protected,final openVolume (ILcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)Lcom/crystalgraphics/render/post/volume/CgPostVolume;
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)V
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFFFF)V
   method protected,final tick (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
@@ -7056,6 +7057,10 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   access public,final
   extends com/crystalgraphics/vfx/CgVfxEffect
   field public,static,final BLAST Lcom/crystalgraphics/vfx/element/CgVfxExplosion;
+  field public,static,final BLAST_FLASH Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_FLASH_CHROMATIC Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_FLASH_REACH Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_FLASH_STOPS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_MARKER Ljava/lang/String;
   field public,static,final BLAST_RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
@@ -7113,7 +7118,6 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final SLOT_BLAST Ljava/lang/String;
   field public,static,final SLOT_BLAST_GLOW Ljava/lang/String;
   field public,static,final SLOT_BLAST_SHOCK Ljava/lang/String;
-  field public,static,final SLOT_BLAST_SKY Ljava/lang/String;
   field public,static,final SLOT_BODY_ARCS Ljava/lang/String;
   field public,static,final SLOT_CHARGE Ljava/lang/String;
   field public,static,final SLOT_CHARGE_HAZE Ljava/lang/String;

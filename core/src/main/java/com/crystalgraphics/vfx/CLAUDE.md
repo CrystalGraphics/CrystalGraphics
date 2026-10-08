@@ -68,12 +68,15 @@ matters; that is what makes it debuggable at full speed.
   arguments, and what must name them is a macro.
 - **A glowing layer is `"Lighting" = "Unlit"` and ends with a codeless Emissive pass**,
   `Pass { Tags { "LightMode" = "Emissive" } }`, so it blooms (`docs/SHADERS.md` § *The Emissive pass*). Not ink strokes,
-  debris, smoke, the air shaders, the light pools (`*_light`) or the sky. A premultiplied glow authors
+  debris, smoke, the air shaders or the light pools (`*_light`). A premultiplied glow authors
   `RenderState { Blend ONE ONE ... }` in that pass, or it darkens the glows behind it in the bloom target. Kept
   codeless and on the Forward pass's blend, the world renderer draws the glow in the layer's own draw, at no draw of its
   own; a body that branches on `CG_EMISSIVE_PASS` gives that up.
 - **A glow is bloom's, never a halo volume drawn round a layer**: bloom spreads what a layer emits, bent with the scene;
   a halo drawn per effect cost the beam phase a fifth of its frame and doubled the glow.
+- **A screen-wide moment is a post volume, never a layer drawn round the camera**: `openVolume` at the effect's
+  point (a flash, an aberration), weighed each tick and closed when it dies, so distance fades it and the player's
+  `FLASHES` setting scales it. A sky sphere tinting everything for a blast read as a fog and was deleted.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
 - **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
   thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
