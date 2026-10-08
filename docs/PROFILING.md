@@ -113,6 +113,7 @@ channels that register later — except a **detail channel**, which only its ful
 | `crystalgraphics.shadergraph` | the shader graph's emitters and preview renderers | a few dozen a frame with a graph open |
 | `crystalgraphics.async` | background workers | varies |
 | `crystalgraphics.misc` | everything else; the harness's own frame phases | light |
+| `crystalgraphics.host` | Minecraft's own profiler sections as zones (`HostProfiler`, NeoForge 26.2), its `incrementCounter`s as counters; while on, the trace frame opens at the top of Minecraft's frame. `frameLimiter` is a wait | a few hundred a frame in a world |
 | `gpu` | `CgGpuTrace` timer queries | one per GPU zone |
 | `crystalgraphics.gpu.groups` | **detail** — a timed raster pass split by material, `gpu:<zone>/<shader path>`: a timestamp wherever the material changes. Needs `gpu` too. `--mode=gpu-groups` is its gate | one per material change |
 | `images` | a small picture of the frame every 30 frames (`CgFrameImages`) | one readback per 30 frames |
@@ -236,6 +237,19 @@ run directory (CrystalGUI's desktop does) writes `report.txt` and `meta.json` in
 `<game>/crystalgui/cache/trace/latest/` on exit; CrystalGraphics alone writes nothing to disk, and a mod on
 it reads `CgTraceReport.of(CgTrace.snapshot())` itself. **Profile world rendering in the game**, not the
 harness: the world passes only exist there.
+
+Unattended, a demo scene in a world (`CgRenderDemo`): `-Dcrystalgraphics.demo.profile=<frames>` warms up
+(`.profile.warmup`, 600 frames on the ground) then writes `<game>/crystalgraphics/profile-<scene>-<n>f/report.txt`
+and `report-full.txt`. CrystalGUI's autotest loads the world without its desktop:
+
+```bash
+./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula \
+    -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgui.autotest.desktop=false \
+    -Dcrystalgraphics.demo.profile=300 -Dcrystalgraphics.trace.channels=crystalgraphics,gpu \
+    -Dcrystalgraphics.trace.zones=4194304 -Dcrystalgraphics.trace.frames=400
+```
+
+It does not quit; close the game once the log says `profile written`.
 
 ### Tests
 
@@ -427,6 +441,7 @@ same 9 ms moved to the thumbnails'. Switch the suspect off and see where the tim
 | `-Dcrystalgraphics.harness.profile.zonesPerFrame=<n>` | zones a profiled frame may hold per thread (16,384) |
 | `-Dcrystalgraphics.harness.profile.splitAt=<marker>` | also write `-before` and `-after` reports, split at the frame of that marker's first appearance: a scene's two phases from one run (`vfx.blast` in `vfx-spheres-stress`) |
 | `-Dcrystalgraphics.harness.profile.keepOpen=true` | write the report and keep the scene running, for a profile someone pilots |
+| `-Dcrystalgraphics.demo.profile=<frames>` / `.profile.warmup=<n>` | game: `CgRenderDemo` records that many frames after `n` on the ground (600) and writes `<game>/crystalgraphics/profile-<scene>-<frames>f/` |
 | `-Dcrystalgraphics.harness.fps=<n>` | harness frame cap (120); `0` takes it off — a headroom measurement wants it off, since a capped frame's wall time is the cap |
 | `-Pharness.jvmArgs="..."` | JVM flags for the harness — JFR, GC logging |
 | `-Dcrystalgraphics.state.verify=true` / `.noDedup=true` | GL state manager diagnosis — not profiling, and very slow |
