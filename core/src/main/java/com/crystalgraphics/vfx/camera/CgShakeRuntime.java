@@ -43,6 +43,7 @@ final class CgShakeRuntime {
     private static int punches;
 
     private static boolean installed, moving;
+    static boolean enabled = true;
     private static double lastFrame = Double.NaN, cx, cy, cz;
     private static final Vector3f ORIGIN = new Vector3f(), FORWARD = new Vector3f(), RIGHT = new Vector3f();
 
@@ -133,8 +134,8 @@ final class CgShakeRuntime {
         eye(host.view());
         arrive(now);
         float shake = MODEL.step(dt, cx, cy, cz);
-        float screen = (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get();
-        float fovEffects = (Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects()) * CgGraphicsSettings.FOV_KICK.get();
+        float screen = enabled ? (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get() : 0f;
+        float fovEffects = enabled ? (Float.isNaN(world.fovEffects()) ? 1f : world.fovEffects()) * CgGraphicsSettings.FOV_KICK.get() : 0f;
         float fov = kicks(now);
         float s = shake * screen, t = (float) now;
         float px = 0f, py = 0f, pz = 0f, pYaw = 0f, pPitch = 0f, pRoll = 0f;
