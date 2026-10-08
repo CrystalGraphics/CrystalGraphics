@@ -49,7 +49,7 @@ import java.util.function.Supplier;
  * N  the next scene, placed ahead of the camera
  * C  camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
  * L  bloom in the target's encoding, in linear light, then off
- * V  the VFX simulation on the CPU or the GPU
+ * V  the VFX simulation on the CPU or the GPU; the scene starts over on it
  * </pre>
  *
  * <pre>{@code
@@ -114,6 +114,8 @@ public final class CgRenderDemo {
     private boolean installed;
     private final Scene[] scenes = new Scene[kinds.length];
     private int current = -1, wanted;
+    /** V switched the simulation: the scene is cleared at the next frame, so all of it plays on the new one. */
+    private boolean restart;
     private boolean anchored, grounded;
     private long anchorX, anchorZ;
     private double anchorY, eyeY;
@@ -275,6 +277,9 @@ public final class CgRenderDemo {
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgHostView view) {
+        // Here, before the pools record: a key is read mid-frame, after they have.
+        if (restart && current >= 0) scenes[current].clear();
+        restart = false;
         if (wanted != current) {
             if (current >= 0) scenes[current].clear();
             if (scenes[wanted] == null) build(wanted);
@@ -350,8 +355,13 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_N -> wanted = (wanted + 1) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> cycleBloom();
-            case CgKeyCodes.KEY_V -> CgVfxSystem.simulation(CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU
-                    ? CgVfxSystem.Simulation.GPU : CgVfxSystem.Simulation.CPU);
+            case CgKeyCodes.KEY_V -> {
+                CgVfxSystem.simulation(CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU
+                        ? CgVfxSystem.Simulation.GPU : CgVfxSystem.Simulation.CPU);
+                // What is in flight stays on the simulation it started on: a CPU batch would hold the frame until
+                // it played out.
+                restart = true;
+            }
             default -> {
             }
         }
