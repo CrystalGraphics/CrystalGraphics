@@ -34,7 +34,9 @@ composite the scene (`composite.scene`) and the stage its host target back (`ret
 records. The composite then always draws, in the copy form with `SCENE`: it reads the scene rather than a copy of the
 target, clamps, and writes a value within 0.1 of an 8-bit code back exact rather than dithered, so a pixel nothing drew
 over returns byte for byte. `AFTER_WORLD` and `BEFORE_COMPOSITE` effects draw into the scene; `AFTER_COMPOSITE` into the
-host.
+host. Bloom's source is then the scene's light past `CgBloom.threshold` (`excess.shader`: half size, R11G11B10F, each
+texel's excess soft-capped at 32 before the 2x2 average), already bent, rather than the emission. A shader drawing into
+the scene with linear colour is tagged `"ColorSpace" = "Linear"`, as every one here is, or the compiler decodes it.
 
 ## Rules
 

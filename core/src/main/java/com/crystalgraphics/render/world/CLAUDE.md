@@ -54,6 +54,11 @@
   colour draws before the transparent pass (opaque and half-size draws: a beam's volumes) go into the emission before
   it, the rest after it, where nothing covers them. At 60 beams it took the emission pass (2.8 ms) for about 0.5 ms more in the transparent pass;
   GPU p90 15.8 to 13.3 ms. bloom-occlusion compares two transparent glows merged and apart byte for byte.
+- **Glows under the HDR scene** (`CgFrameKeys.SCENE` on the firing): no emission target, merged or not. Opaque and
+  half-size draws' Emissive passes add into the scene before the transparent pass (`recordSceneGlows`, reading its
+  depth through `sceneDepth(unit)`); a transparent draw's Emissive pass follows its Forward draw in the transparent pass
+  at the same key (`recordPass`), which SORTED keeps in order, so a nearer surface covers glow and colour alike. Bloom
+  reads the scene (`CgBloom`).
 - **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
   `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
   size, reading the target's depth through `sceneDepth(unit, from)`; then `world_half_upsample.shader` adds it over

@@ -1128,21 +1128,24 @@ public final class CgWorldRenderer {
                 afterDrawn = 0;
                 for (int i = 0; i < count; i++) if (phase[i] == AFTER) afterDrawn++;
             }
+            // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
+            boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
+            if (scene) recordSceneGlows(stage, recording, view);
             if (drawn > 0) {
                 cullSets(stage, recording, view, false);
-                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null);
+                if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null, false);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
                 if (emission != null) recordEmission(stage, recording, view, emission, EMIT_BEFORE);
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
                 if (drawn > halfDrawn + afterDrawn) {
                     recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
-                            view, emission);
+                            view, emission, scene);
                 }
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
-                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission);
+                if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
             }
-            if (which == TRANSPARENT) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
+            if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT) text.record(stage, view);
         }
@@ -1306,21 +1309,7 @@ public final class CgWorldRenderer {
      */
     private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view, @Nullable CgGraphTexture merged,
                                 int part) {
-        if (emits.length < meshes.length) emits = new boolean[meshes.length];
-        int emitting = 0, recorded = 0;
-        for (int i = 0; i < count; i++) {
-            int queue = queues[i];
-            // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
-            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
-                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
-                    && (merged == null || !allMerged(i));
-            if (e) emitting++;
-            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || phase[i] == HALF;
-            e &= part == EMIT_ALL || (part == EMIT_BEFORE) == before;
-            emits[i] = e;
-            if (e) recorded++;
-        }
-        if (part != EMIT_BEFORE) CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        int recorded = markGlows(view, merged, part);
         if (merged != null) stage.resources().put(CgFrameKeys.EMISSION, merged);
         if (recorded == 0) return;
         cullSets(stage, recording, view, true);
@@ -1363,6 +1352,53 @@ public final class CgWorldRenderer {
         glow.add(chunks.end());
         glow.end();
         stage.resources().put(CgFrameKeys.EMISSION, into);
+    }
+
+    /**
+     * Marks {@link #emits}: the visible draws with a glow in {@code part}, less those {@code merged} drew whole; answers
+     * how many. Counts every visible glow, but for a merged emission's {@link #EMIT_BEFORE}, which its second part follows.
+     */
+    private int markGlows(CgHostView view, @Nullable CgGraphTexture merged, int part) {
+        if (emits.length < meshes.length) emits = new boolean[meshes.length];
+        int emitting = 0, recorded = 0;
+        for (int i = 0; i < count; i++) {
+            int queue = queues[i];
+            // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
+            boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
+                    && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
+                    && (merged == null || !allMerged(i));
+            if (e) emitting++;
+            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || phase[i] == HALF;
+            e &= part == EMIT_ALL || (part == EMIT_BEFORE) == before;
+            emits[i] = e;
+            if (e) recorded++;
+        }
+        if (merged == null || part != EMIT_BEFORE) CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        return recorded;
+    }
+
+    /**
+     * Under the HDR scene, the Emissive passes of the draws whose colour draws before the transparent pass (opaque and
+     * half-size draws) added into the scene, hidden by its depth, so the transparent pass covers them as it covers what
+     * they glow on. A transparent draw's glow follows its own draw in that pass ({@link #recordPass}).
+     */
+    private void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        if (markGlows(view, null, EMIT_BEFORE) == 0) return;
+        cullSets(stage, recording, view, true);
+        CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants(), EMISSIVE_STATE, CgOrder.SORTED)
+                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!emits[i]) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                CgPipeline pipeline = link.hasEmissivePass() ? link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
+                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
+            }
+        }
+        glow.add(chunks.end());
+        glow.end();
     }
 
     /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
@@ -1627,9 +1663,13 @@ public final class CgWorldRenderer {
                 .m32(model.m32() + (float) (positions[i * 3 + 2] - view.z()));
     }
 
-    /** The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. */
+    /**
+     * The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. With
+     * {@code sceneGlows}, each draw's Emissive pass follows it, at its key, adding its glow into the HDR scene.
+     */
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                            boolean depthOnlyPass, boolean after, CgHostView view, @Nullable CgGraphTexture emission) {
+                            boolean depthOnlyPass, boolean after, CgHostView view, @Nullable CgGraphTexture emission,
+                            boolean sceneGlows) {
         CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
@@ -1641,8 +1681,16 @@ public final class CgWorldRenderer {
                     || (phase[i] == AFTER) != after) continue;
             modelOf(i, view);
             model.normal(normal);
+            boolean glows = sceneGlows && emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
+                if (glows && link.hasEmissivePass()) {
+                    // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
+                    if (pipeline != null && !pipeline.state().writesNothing()) passDraw(chunks, pipeline, link, recording, i);
+                    CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                    if (glow != null) passDraw(chunks, glow, link, recording, i);
+                    continue;
+                }
                 if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
                 if (emission != null && !depthOnlyPass) {
                     // A surface that does not glow covers the glows behind it as it covers their colour, so bloom
@@ -1651,19 +1699,24 @@ public final class CgWorldRenderer {
                     if (glowing == null) glowing = pipeline.emissionCover();
                     if (glowing != null) pipeline = glowing;
                 }
-                if (sets[i] != null) {
-                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                group(chunks, i);
-                if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
-                writeInstance(chunks, i);
+                passDraw(chunks, pipeline, link, recording, i);
             }
         }
         if (state == TRANSPARENT_STATE && !depthOnlyPass && !after) distortion.addApplies(chunks, recording);
         pass.add(chunks.end());
         pass.end();
+    }
+
+    /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
+    private void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+        if (sets[i] != null) {
+            drawSet(chunks, pipeline, bindingOf(link, recording), i);
+            return;
+        }
+        chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+        group(chunks, i);
+        if (!Float.isNaN(screens[i * 4])) chunks.bounds(screens[i * 4], screens[i * 4 + 1], screens[i * 4 + 2], screens[i * 4 + 3]);
+        writeInstance(chunks, i);
     }
 
     /**

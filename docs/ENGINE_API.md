@@ -143,8 +143,9 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
   pass decodes the host's colour into it and makes it the stage's target (`CgStageFrame.retarget`, `CgFrameKeys.SCENE`);
   the post stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL
-  into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Merged emission stands down while it
-  is on. Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
+  into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Materials' sRGB colour is decoded as
+  it is written (`docs/SHADERS.md` § *Lighting and fog*). Glows add into the scene itself, with no emission target, and
+  bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
 - **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
   `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
   depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`

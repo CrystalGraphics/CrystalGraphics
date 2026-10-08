@@ -463,6 +463,10 @@ Pass {
 Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the body above, CG_EMISSIVE_PASS defined
 ```
 - It takes the material's keywords, as the Forward pass does.
+- **Under the HDR scene** (`CgWorldRenderer.hdrScene`) there is no emission target: the pass adds into the scene
+  itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
+  what is in front covers it. Bloom then takes the scene's light past `CgBloom.threshold` (1), so a glow blooms where
+  it takes the scene past white.
 - **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
   `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
   (`CG_OBJECT_EMISSION`). The compiler multiplies an Emissive pass's output by it, unless the pass's code names
