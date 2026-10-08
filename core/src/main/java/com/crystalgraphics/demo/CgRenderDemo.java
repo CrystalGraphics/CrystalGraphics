@@ -9,6 +9,7 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -46,7 +47,7 @@ import java.util.function.Supplier;
  * beams     CgVfxShowcase: sixteen effect spheres and three beams, under its sky
  * modules   CgVfxModules: X6's particle modules, a station each
  *
- * N  the next scene, placed ahead of the camera
+ * N  the next scene, placed ahead of the camera; Shift+N the previous one
  * C  camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
  * L  bloom in the target's encoding, in linear light, then off
  * V  the VFX simulation on the CPU or the GPU; the scene starts over on it
@@ -343,16 +344,17 @@ public final class CgRenderDemo {
     private void keys(boolean screenOpen) {
         CgInputService input = CgPlatform.input();
         boolean ctrl = input.isKeyDown(CgKeyCodes.KEY_LCONTROL) || input.isKeyDown(CgKeyCodes.KEY_RCONTROL);
+        boolean shift = input.isKeyDown(CgKeyCodes.KEY_LSHIFT) || input.isKeyDown(CgKeyCodes.KEY_RSHIFT);
         for (int i = 0; i < KEYS.length; i++) {
             boolean down = input.isKeyDown(KEYS[i]);
-            if (down && !held[i] && !screenOpen && !ctrl) press(KEYS[i]);
+            if (down && !held[i] && !screenOpen && !ctrl) press(KEYS[i], shift);
             held[i] = down;
         }
     }
 
-    private void press(int key) {
+    private void press(int key, boolean shift) {
         switch (key) {
-            case CgKeyCodes.KEY_N -> wanted = (wanted + 1) % kinds.length;
+            case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> cycleBloom();
             case CgKeyCodes.KEY_V -> {
@@ -418,6 +420,11 @@ public final class CgRenderDemo {
                 hudDirty = false;
             }
             if (hud == null) hud = CgTextRenderer.create();
+            // Drawn in a world pass with the host's depth bound: its z = 0 glyphs put on the nearest depth (+1 reversed,
+            // -1 standard) pass the test against every pixel, the showcase's sky seal included. The depth row stays
+            // non-zero, or the culler's far plane is all zeros and culls every glyph. Again each frame, since a resize
+            // rebuilds the ortho.
+            hud.context().projection().m22(-1.0e-4f).m32(CgGL.isDepthReversed() ? 1f : -1f);
             hud.beginBatch();
             hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).submit();
             hud.endBatch();
