@@ -29,7 +29,7 @@ import java.util.List;
  * blasts.delete();
  * }</pre>
  *
- * <p>Each burst's debris lands on the world's ground under it where the host answers {@link CgWorldQueries#groundBelow},
+ * <p>Each burst's debris lands on the world's ground under it where the host answers {@link CgWorldQueries#groundUnder},
  * else on the floor at {@code y}. Moving the centre moves the bursts that follow; those in flight finish where they are.</p>
  */
 public final class CgVfxBlasts {
@@ -59,6 +59,8 @@ public final class CgVfxBlasts {
     private final CgVfxSystem vfx = new CgVfxSystem();
     /** Per spot, the burst it last fired. */
     private final int[] shots;
+    /** Whether {@link #shots} follow the clock; false until the first submit, and again after a clear. */
+    private boolean started;
 
     /** {@code count} spots, each bursting once a {@link #CYCLE}, staggered evenly over it. */
     public CgVfxBlasts(int count) {
@@ -74,6 +76,15 @@ public final class CgVfxBlasts {
     /** Fires the bursts due at {@code seconds} round {@code (x, z)} over a floor at {@code y}, and submits every one alive. */
     public void submit(CgWorldRenderer world, double x, double y, double z, float seconds) {
         int count = shots.length;
+        if (!started) {
+            // Taken up mid-cycle (a host's clock is far from 0, or after a clear): each spot waits for its own next
+            // burst, as the stagger has it, rather than all of them firing in this frame.
+            for (int i = 0; i < count; i++) {
+                float t = seconds - i * CYCLE / count;
+                shots[i] = t < 0f ? -1 : (int) (t / CYCLE);
+            }
+            started = true;
+        }
         for (int i = 0; i < count; i++) {
             float t = seconds - i * CYCLE / count;
             if (t < 0f) continue;
@@ -84,7 +95,7 @@ public final class CgVfxBlasts {
             float angle = i * 2.39996f, out = REACH * (float) Math.sqrt((i + 0.5f) / count);
             double bx = x + Math.cos(angle) * out + STRAY * (hash(i, shot, 1) * 2f - 1f);
             double bz = z + Math.sin(angle) * out + STRAY * (hash(i, shot, 2) * 2f - 1f);
-            double floor = CgWorldQueries.groundBelow(bx, y + SEARCH, bz, DEPTH);
+            double floor = CgWorldQueries.groundUnder(bx, y + SEARCH, bz, DEPTH);
             if (Double.isNaN(floor)) floor = y;
             double by = floor + LOW + (HIGH - LOW) * hash(i, shot, 3);
             vfx.play(new Burst(LOOKS[i % LOOKS.length], bx, by, bz, floor));
@@ -98,9 +109,10 @@ public final class CgVfxBlasts {
         for (CgVfxLook look : LOOKS) vfx.prepare(look);
     }
 
-    /** Ends every burst at once; the next {@link #submit} fires those due from then. */
+    /** Ends every burst at once; from the next {@link #submit} each spot fires at its next turn. */
     public void clear() {
         vfx.clear();
+        started = false;
     }
 
     /** The system the blasts play through. */
