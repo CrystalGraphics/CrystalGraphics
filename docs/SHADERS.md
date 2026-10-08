@@ -67,7 +67,7 @@ A `layout(std140) uniform CgFrameBlock` wired post-link by the engine. Available
 | `cg_ProjMatrix` | `mat4` | Projection matrix |
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
-| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1. Read through `cg_LinearEyeDepth`, not directly |
+| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1, `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`). Read through `cg_LinearEyeDepth`, not directly |
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |
@@ -116,6 +116,11 @@ void fragment(in v2f i, out vec4 fragColor) {
 | `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out |
 
 - The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
+- **Colour is authored in sRGB**, as Minecraft's is. Where a pass draws into the HDR scene (`CG_LINEAR_SCENE`), the
+  generated `main` decodes a Forward pass's colour after light and fog (`cg_SceneDecode`): a premultiplied blend
+  (`ONE ONE_MINUS_SRC_ALPHA`) is decoded unpremultiplied, and a value above 1 keeps its excess. `"ColorSpace" =
+  "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.
+  An Emissive pass is linear always.
 - A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path

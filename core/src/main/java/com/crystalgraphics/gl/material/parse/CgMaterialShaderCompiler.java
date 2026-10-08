@@ -891,6 +891,23 @@ public final class CgMaterialShaderCompiler {
         return blend.srcRgb() == CgGL.GL_ONE ? 1 : 0;
     }
 
+    /**
+     * Decodes a Forward colour, authored as sRGB, where the pass draws into the linear scene. A premultiplied colour is
+     * decoded unpremultiplied, so its coverage stays linear.
+     */
+    private static void appendSceneDecode(StringBuilder sb, CgParsedPass pass) {
+        CgBlendState blend = pass.renderState().getBlend();
+        boolean premultiplied = blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
+                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        if (premultiplied) {
+            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
+              .append(" ? cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a")
+              .append(" : cg_SceneDecode(_cg_fragColor.rgb);\n");
+        } else {
+            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);\n");
+        }
+    }
+
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
                                             EmissionMerge merge, boolean cover) {
@@ -942,6 +959,7 @@ public final class CgMaterialShaderCompiler {
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
             if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
+            if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) appendSceneDecode(sb, pass);
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");

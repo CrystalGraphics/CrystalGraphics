@@ -20,7 +20,7 @@
 #pragma cg_feature IMPACT
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {

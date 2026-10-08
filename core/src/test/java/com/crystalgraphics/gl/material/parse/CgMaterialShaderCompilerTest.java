@@ -177,6 +177,29 @@ public class CgMaterialShaderCompilerTest {
                 + "    void fragment(in v2f i, out vec4 offset) { offset = vec4(0.0); } }\n");
     }
 
+    // ── The HDR scene ─────────────────────────────────────────────────────────
+
+    @Test
+    public void forwardPass_decodesIntoTheLinearScene_afterLightAndFog_unlessLinearOrEmissive() {
+        String plain = "if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);";
+        CgParsedShader shader = parse(EMISSIVE);
+        String forward = CgMaterialShaderCompiler.compile(shader, NO_BUFFERS).fragmentSource();
+        assertTrue("after the fog", forward.indexOf(plain) > forward.indexOf("_cg_fragColor = cg_Fog(_cg_fragColor);"));
+        String glow = CgMaterialShaderCompiler.compile(shader, shader.getPassByLightMode("Emissive"), NO_BUFFERS, null,
+                CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
+        assertFalse("emitted light is linear already", glow.contains("cg_SceneDecode"));
+
+        String premultiplied = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertTrue("decoded unpremultiplied", premultiplied.contains("cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a"));
+
+        String linear = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("#type spatial\n", "#type spatial\nTags { \"ColorSpace\" = \"Linear\" }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse(linear.contains("cg_SceneDecode"));
+    }
+
     @Test
     public void overdrawVariant_countsOnceAfterTheFragmentRuns() {
         CgParsedShader shader = parse(DISTORTION);

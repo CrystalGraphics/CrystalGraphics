@@ -10,7 +10,8 @@ layout(std140) uniform CgFrameBlock {
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
-    vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1
+    vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1;
+                         // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE)
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
     vec4 cg_FogColor;     // the host's fog colour; a 1 while there is fog, 0 for none
@@ -162,6 +163,15 @@ float cg_LinearEyeDepth(float windowDepth) {
 // apply pulls nothing nearer than that depth into the bend. Alpha is the closeness, kept by a MAX blend.
 #define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
+// Whether this pass draws into the linear HDR scene. A Forward pass's colour is authored as sRGB, so the generated
+// main decodes it there (cg_SceneDecode), unless the shader is tagged "ColorSpace" = "Linear".
+#define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)
+// sRGB to linear up to 1; above it the excess passes unchanged, so an HDR colour keeps its brightness past white.
+vec3 cg_SceneDecode(vec3 c) {
+    vec3 s = clamp(c, 0.0, 1.0);
+    vec3 lin = mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));
+    return lin + max(c - 1.0, 0.0);
+}
 // How far behind the scene an Emissive pass's fragment may be and still bloom: an opaque emissive surface is at the
 // depth it wrote, give or take the depth buffer's precision. Eye units.
 #define CG_EMISSIVE_DEPTH_SLACK 1.002

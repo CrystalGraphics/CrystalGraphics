@@ -3,7 +3,7 @@
 // into a depth nothing there has. One triangle over the target; CgGpuOps draws it, nothing else should.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 struct v2f { vec2 uv; };

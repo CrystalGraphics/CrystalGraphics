@@ -5,7 +5,7 @@
 #pragma cg_feature DEPTH
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "SceneColorMargin" = "0.001" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" "SceneColorMargin" = "0.001" }
 Queue = "Overlay"
 
 struct v2f { vec2 uv; };
