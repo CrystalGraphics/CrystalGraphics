@@ -293,6 +293,10 @@ draw has:
   no shared record. `INDICES` and `VERTICES` draws do.
 - **Ordering decides adjacency.** The world renderer sorts opaque draws by sort layer, material, distance, mesh, so
   draws of one material and slab tend to sit together; transparent draws sort back to front, a `.group()` as one.
+  Within a group, `.batchKey(k)` sorts before distance, so draws of one material given one key sit together and join;
+  without it, effects of mixed materials alternate pipelines and nothing joins.
+- **`indirectEach` is one draw of many commands**: each `.each()` record is its own command and object record, and
+  they join as one multi-draw where the mesh joins, or else draw one call per record.
 - **The picture never changes**: joining is a pure call reduction, and `-Dcrystalgraphics.mesh.multiDraw=false` proves
   it (§14).
 
@@ -403,6 +407,46 @@ spheres, most off screen.
   culled set landing in one call.
 - **Async**: beside eight 1080p blurs (2.5 ms), half of 1 ms of fill-bound drawing disappears on the Vulkan device.
 
+### Case study: 360,000 particles in Minecraft 26.2
+
+`CgVfxBlasts` (120 spots of explosions, ~360,000 GPU particles, ~350 live effects), on NeoForge 26.2's Vulkan
+device, RTX 4070 SUPER, 854x480, median of 300 warm frames. Evidence and every run:
+`plan/crystalgraphics/mc-perf-notes.md`.
+
+| Step | Frame | fps | GPU | Recorded draws | Draw calls | Compute dispatches |
+|---|---|---|---|---|---|---|
+| Start | 16.97 ms | 59 | 5.04 ms | 1,255 | ~1,255 | ~1,311 |
+| Async compute in order on Minecraft's device; multi-draw enabled there | 9.87 ms | 101 | 2.08 ms | 1,255 | ~933 | ~1,311 |
+| Indirect commands written in one dispatch per count buffer | 7.82 ms | 128 | 1.82 ms | 1,257 | ~933 | 63 |
+| Particle draws keyed by material within their group, joined | 6.81 ms | 147 | 1.84 ms | 1,255 | ~19 | 65 |
+| One recorded draw per pool and material (`indirectEach`) | **5.41 ms** | **185** | 1.65 ms | **19** | **~19** | **63** |
+
+The particle draw calls went from 1,241 to 5 multi-draws. In the harness, like for like, the frame went from 7.86 to
+2.45 ms. On OpenGL the first fix was Minecraft's GL debug output: 15.37 → 9.61 ms, every GL call of ours and of
+Minecraft's cheaper. The host traps are in
+[`MINECRAFT_RENDERING_CONVENTIONS.md`](MINECRAFT_RENDERING_CONVENTIONS.md) rows 47-49.
+
+What each step teaches, for any consumer:
+
+1. **Measure the host before the engine.** The first 7 ms was in no zone of ours. It was a GPU waiting in
+   `vkQueuePresentKHR`, plus a device feature the host had and we assumed it lacked. A trace from the host's frame top
+   (`docs/PROFILING.md`, `HostProfiler`) and a JFR found both. No per-draw optimisation would have.
+2. **A command a draw is a dispatch a draw.** Every GPU-counted draw had its command written by its own `DrawArgs`
+   dispatch: 1,241 dispatches of one thread each, 2 ms of CPU. `CgIndirectArgs` now queues a row per command and
+   writes a pass's commands in one dispatch per count buffer. A consumer needs to do nothing for this.
+3. **Transparent draws join only if the sort puts them side by side.** Draws sorted back to front by effect
+   alternated materials, so 919 of 935 run breaks were pipeline changes. A `.group()` per system and a `.batchKey()` per
+   material make each material one run (§8). The cost is blend order: a material's particles now blend as one layer
+   over another's, not effect by effect. That was the right trade for additive and soft particles, and it is the
+   consumer's call.
+4. **A recorded draw a slot is O(effects) Java a frame.** Joined calls still left ~2,000 draw builders a frame to
+   record, sort and pack: 2 ms of CPU. Most of the warm-up ramp was this same code running interpreted. One
+   `indirectEach` draw per pool and material carries every slot as a record with its own command. The CPU then
+   records tens of draws, as the rule at the top says.
+5. **Async compute is not free on a host that submits once a frame.** On Minecraft's device an async pass serialised
+   the GPU (5 ms a frame); it runs in order there now (`ENGINE_API.md` § *Async compute*). Mark passes `async()` all
+   the same: the owned device overlaps them.
+
 ## 13. Scaling to the GPU it runs on: `CgGpuBudget`
 
 An effect sized on the author's GPU runs on a Mac, an integrated GPU or a lowered tier at a fraction of the speed, and
@@ -498,6 +542,8 @@ against 0.221 on Vulkan, inside the 5% it allows over.
 - **Different textures per draw** break joining: share one material, use customs and atlases.
 - **`INSTANCES` draws of the frame's records never join**: a mesh per element wants `objects()` or `.instances()`.
 - **No bounds** on an indirect draw: the count is unknown when it is culled, so it is culled by its mesh's box alone.
+- **A recorded draw per slot or per effect** where they share a mesh and material: thousands of draw builders a frame.
+  Use one `indirectEach` draw with a record each (§2), and a `.batchKey()` so transparent ones join (§8).
 - **`CgKernelProgram`** orders nothing after it and does not run below compute; a graph's dispatch does both.
 - **Work sized for the author's GPU**: on a weak one it takes the frame rate. Charge the passes to a `CgGpuBudget` and
   scale the spawns by it (§13).
