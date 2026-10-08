@@ -607,7 +607,7 @@ public final class CgFrameBuilder {
 
     private static int readsOf(CgPipeline pipeline) {
         return (pipeline.shader().readsSceneColor() ? CgTargetCopy.COLOR : 0)
-                | (pipeline.shader().readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
+                | (pipeline.readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
     }
 
     /** What a pipeline's draws write into the target: its own state, else the pass's; undeclared is a write. */

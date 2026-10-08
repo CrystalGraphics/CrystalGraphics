@@ -353,6 +353,15 @@ public final class CgPipeline {
     private volatile CgParsedShader tablesParse;
     private volatile boolean tables;
 
+    /**
+     * Whether its draws sample {@code cg_DepthBuffer}: its shader names it, or the compiler's discard behind the scene
+     * does, which an Emissive, Distortion, cover or overdraw pipeline has whatever its source names.
+     */
+    public boolean readsSceneDepth() {
+        return shader.readsSceneDepth() || pass == CgRenderPassVariant.EMISSIVE || pass == CgRenderPassVariant.DISTORTION
+                || cover || overdraw;
+    }
+
     public CgRenderPassVariant pass() {
         return pass;
     }
