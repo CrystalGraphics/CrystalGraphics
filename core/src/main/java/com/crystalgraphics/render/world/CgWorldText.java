@@ -33,8 +33,9 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * Text in the world: labels {@link CgWorldRenderer#text} queues for the frame, recorded into each transparent world
- * stage after its transparent draws, depth-tested against the scene and never writing depth, as Minecraft's name tags.
+ * Text in the world: labels {@link CgWorldRenderer#text} queues for the frame, drawn into each transparent world stage
+ * depth-tested against the scene, as Minecraft's name tags: their text's depth before the stage's transparent draws and
+ * glows, which hides a glow behind it from bloom too, and their colour after every transparent draw.
  * Each label is a queued {@link CgTextRenderer.Draw} of one renderer, drawn at every firing under that firing's camera.
  *
  * <p>Labels are retained: a label's glyphs are captured once ({@link CgTextRenderer#capture}) into a buffer per batch
@@ -79,6 +80,8 @@ public final class CgWorldText {
     private CgGraphBuffer matrixBuffer;
     private int matrixCapacity;
     private final CgChunkBuilder chunks = new CgChunkBuilder(null);
+    /** This firing's labels placed and their depth drawn by {@link #recordDepth}; {@link #record} draws only colour. */
+    private boolean depthDrawn;
 
     CgWorldText() {
     }
@@ -103,15 +106,34 @@ public final class CgWorldText {
         count = 0;
     }
 
-    /** Records the frame's labels into {@code stage}'s target, under its view. Render thread. */
+    /**
+     * Places the frame's labels and draws their text into {@code stage}'s depth, before the stage's transparent draws and
+     * glows, so a glow behind a label is hidden from bloom as from the picture. {@link #record} then draws their colour.
+     * Retained labels only. Render thread.
+     */
+    void recordDepth(CgStageFrame stage, CgHostView view) {
+        depthDrawn = false;
+        if (!RETAINED || count == 0 && keptCount == 0) return;
+        begin(stage, view);
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
+            prepareRetained(stage, view);
+            drawRetained(stage, true);
+        }
+        depthDrawn = true;
+    }
+
+    /** Records the frame's labels into {@code stage}'s target, under its view: their colour, after {@link #recordDepth}. Render thread. */
     void record(CgStageFrame stage, CgHostView view) {
         if (count == 0 && keptCount == 0) return;
-        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
-        projection.set(view.projection());
-        renderer.context().updateProjection(projection, w, h);
+        begin(stage, view);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
             if (RETAINED) {
-                recordRetained(stage, view);
+                if (!depthDrawn) {
+                    prepareRetained(stage, view);
+                    drawRetained(stage, true);
+                }
+                depthDrawn = false;
+                drawRetained(stage, false);
                 return;
             }
             recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
@@ -133,6 +155,12 @@ public final class CgWorldText {
                 recorder.stop();
             }
         }
+    }
+
+    private void begin(CgStageFrame stage, CgHostView view) {
+        int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
+        projection.set(view.projection());
+        renderer.context().updateProjection(projection, w, h);
     }
 
     private void draw(Label label, CgHostView view) {
@@ -163,7 +191,8 @@ public final class CgWorldText {
 
     // ── Retained ────────────────────────────────────────────────────────────
 
-    private void recordRetained(CgStageFrame stage, CgHostView view) {
+    /** Captures what changed, writes the batches and every label's matrix: once a firing, before either pass. */
+    private void prepareRetained(CgStageFrame stage, CgHostView view) {
         CgRecording recording = stage.recording();
         long evictions = CgGlyphAtlas.evictions();
         int captured = 0;
@@ -247,20 +276,21 @@ public final class CgWorldText {
         if (count > 0) recording.update(matrixBuffer, 0, matrices, 0, count * OBJECT);
 
         for (int b = 0; b < batches.size(); b++) batches.get(b).upload(recording);
+    }
 
-        recorder.recordInto(recording, stage.target(), CgLoad.load(), stage.constants());
+    /** The text and its lines into depth, so a nearer label's text hides a farther one's; else every batch's colour. */
+    private void drawRetained(CgStageFrame stage, boolean depth) {
+        recorder.recordInto(stage.recording(), stage.target(), CgLoad.load(), stage.constants());
         try {
             chunks.bindings(recorder.bindings()).begin(0, 0, 0);
-            // Text and its lines into depth first, so a nearer label's text hides a farther one's.
             for (int b = 0; b < batches.size(); b++) {
                 Batch batch = batches.get(b);
-                if (batch.rank >= 0 && batch.rank <= TEXT_RANKS && batch.used > batch.holes) {
+                if (batch.used <= batch.holes) continue;
+                if (!depth) {
+                    renderer.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
+                } else if (batch.rank >= 0 && batch.rank <= TEXT_RANKS) {
                     renderer.drawCapturedDepth(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
                 }
-            }
-            for (int b = 0; b < batches.size(); b++) {
-                Batch batch = batches.get(b);
-                if (batch.used > batch.holes) renderer.drawCaptured(chunks, batch.key, batch.gpu, batch.used, matrixBuffer);
             }
             recorder.add(chunks.end());
         } finally {

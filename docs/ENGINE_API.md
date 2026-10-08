@@ -110,8 +110,9 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   drawn under each firing's camera; `height` is a line's height in blocks. Labels are retained: a label's glyphs are
   captured when what it draws changes and kept on the GPU, and a frame otherwise writes one matrix a label. 10,000
   outlined, shadowed labels are 3 draws and about 230 ns a label (`--mode=world-labels`). Their text writes depth
-  where it is half covered or more, in a pass before any label's colour, so a nearer label's text hides a farther
-  one's; a farther label's text may still show over a nearer one's shadow.
+  where it is half covered or more, so a nearer label's text hides a farther one's; without the HDR scene that pass
+  runs before the firing's transparent draws and glows, so a glow behind a label is hidden from bloom too (with it,
+  bloom reads the finished scene). A farther label's text may still show over a nearer one's shadow.
 - **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
   (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
   defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a
