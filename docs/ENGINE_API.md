@@ -451,8 +451,8 @@ try {
 ### Async compute
 
 `CgComputePass.async()` runs a pass on the device's compute queue (`CgCapabilities.asyncCompute()`: the owned Vulkan
-device, and Minecraft 26.2 and 26.3's, whose own compute queue Minecraft leaves unused), beside the drawing between it and its first reader, which waits for it. Everywhere else
-it runs in order. `docs/SHADERS.md` § *Beside the drawing* says which passes to mark.
+device), beside the drawing between it and its first reader, which waits for it. Everywhere else it runs in order,
+Minecraft's device included (below). `docs/SHADERS.md` § *Beside the drawing* says which passes to mark.
 
 ```java
 CgComputePass step = recording.compute("sparks.step").async();
@@ -460,9 +460,31 @@ step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
 step.end();
 ```
 
-- On Minecraft's device an async pass may not touch Minecraft's own textures (its main target, the lightmap): it throws.
 - `-Dcrystalgraphics.vulkan.asyncCompute=false|graphics` runs it in order, or on a second queue of the frame's family;
   `-Dcrystalgraphics.graph.asyncAll=true` sends every pass that can go async.
+
+#### On Minecraft's device: in order, for now
+
+Off by default on a hosted device; `-Dcrystalgraphics.vulkan.asyncCompute=true` turns it back on, and then an async
+pass may not touch Minecraft's own textures (its main target, the lightmap): it throws.
+
+**Why off.** Minecraft submits once a frame, at its end, and our work reaches the GPU only inside that submit. An
+async pass waits for the work recorded before it (the step reads this frame's particle uploads), so it can start only
+once Minecraft's whole frame has run; its reader then waits inside the next frame's submit, and that wait holds back
+the whole submit, Minecraft's own work included. Nothing overlaps: frame, async pass, frame. In the blasts scene on
+26.2 that was 5 ms a frame (16.97 ms with it, 12.06 without), all of it a GPU wait in Minecraft's present. The owned
+device submits mid-frame, so there the same pass does overlap.
+
+**What would bring it back.** Two changes together, so the pass never waits on Minecraft's submit:
+
+- Its inputs reach the GPU without the main queue: through the transfer queue, which we submit on our own timeline,
+  or from the previous frame. It can then start as soon as it is recorded, beside the frame's drawing.
+- Its reader takes the result a frame later (the graph already carries async waits into later executions), so the
+  wait lands in a submit the pass has already finished by. The cost is a frame of latency on what it computes.
+
+**When it is worth it.** Only for a large compute pass in a GPU-bound frame. The blasts scene's async pass, the
+particle step, is 0.03 to 0.2 ms of GPU, and the frame is CPU-bound (9.87 ms a frame, 2.08 of GPU), so a perfect
+overlap would save nothing.
 
 ### Readbacks
 

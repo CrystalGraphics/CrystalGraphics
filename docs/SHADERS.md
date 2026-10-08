@@ -1184,8 +1184,8 @@ frame its whole time, where async it costs little or nothing. A pass fits when a
 Leave it off a small pass, a pass whose reader is the next thing the frame does, and heavy compute beside heavy
 compute, which only fight for the same units.
 
-- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device, and Minecraft
-  26.2's, whose own compute queue Minecraft leaves unused), the pass runs on it, after every step placed before it.
+- **Where the device has a compute queue** (`CgCapabilities.asyncCompute()`: the owned Vulkan device; not Minecraft's,
+  where it could wait only on Minecraft's end-of-frame submit), the pass runs on it, after every step placed before it.
   The steps after it that touch nothing it reads or writes run beside it, and the first that does waits for it, in
   this stage or a later one of the frame; a callback waits for all of it.
 - **Its waits cross stages for what only the graph reaches**: graph buffers (not imported ones) and transient

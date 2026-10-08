@@ -66,13 +66,15 @@ its desktop and HUD from there on those nodes.
   from 26.3, which has no GLFW, takes a device that is not Vulkan as GL. 26.3 under Vulkan stands down for
   now: Forge's world hooks run inside the render pass Minecraft opens for terrain, where Blaze3D refuses our
   submit, and the 26.3 bring-up settles them (plan platform-transparent-pass). `-Dcrystalgraphics.host.verify=true`
-  checks every hand-over. An `async()` compute pass runs on the compute queue Minecraft creates and never submits
-  to (`computeQueue()`, guarded per version by a Stonecutter range: 26.2 and 26.3 checked), waiting on a value our
-  hand-over signals in Minecraft's submit; a version outside the range runs it in order. Copies into our new images
+  checks every hand-over. An `async()` compute pass runs in order: on the compute queue Minecraft creates and never
+  submits to it could wait only on a value Minecraft's one end-of-frame submit signals, so it ran after the whole
+  frame and the next frame waited for it, 5 ms a frame in the blasts scene. `-Dcrystalgraphics.vulkan.asyncCompute=true`
+  puts it back there (`computeQueue()`, a Stonecutter range: 26.2 and 26.3 checked). Copies into our new images
   run the same way on the transfer queue Minecraft creates and never submits to (`transferQueue()`, the same range),
   each batch submitted at once and waited for inside Minecraft's submit. Minecraft creates its device with the
   features of ours the GPU has (`vulkan.MinecraftDeviceFeatures`, through each loader's `DeviceFeaturesHook` on
-  26.2): `independentBlend`, which merged emission needs. At the shutdown signal
+  26.2): `independentBlend`, which merged emission needs, and `drawIndirectFirstInstance`, which with Minecraft's own
+  required `multiDrawIndirect` and `shaderDrawParameters` joins runs of draws into one call. At the shutdown signal
   our device's close is queued on Blaze3D's destroy queue, which runs it once our last submit has completed or
   inside `VulkanDevice.close`, before the device goes.
 - **SDL3 from 26.3.** 26.3 ships no GLFW: `PlatformServiceModern` registers `runtime/lwjgl/sdl`'s
