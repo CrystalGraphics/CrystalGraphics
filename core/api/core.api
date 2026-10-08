@@ -7058,6 +7058,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   extends com/crystalgraphics/vfx/CgVfxEffect
   field public,static,final BLAST Lcom/crystalgraphics/vfx/element/CgVfxExplosion;
   field public,static,final BLAST_FLASH Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  field public,static,final BLAST_FLASH_BLOOM Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_CHROMATIC Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_REACH Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final BLAST_FLASH_STOPS Lcom/crystalgraphics/vfx/look/CgVfxParam;

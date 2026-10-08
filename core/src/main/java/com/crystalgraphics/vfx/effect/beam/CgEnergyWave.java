@@ -191,11 +191,13 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The blast's screen flash over the blast (0..1 of it), a share of its peak: a pop at the burst, gone as it cools. */
     public static final CgVfxParam BLAST_FLASH = SCHEMA.curve("blastFlash", CgKeyframes.start(0f, 0f)
             .to(0.025f, 1f, CgEasings.OUT_QUAD)
-            .to(0.4f, 0f, CgEasings.OUT_CUBIC)
+            .to(0.08f, 0.85f, CgEasings.LINEAR)
+            .to(0.5f, 0f, CgEasings.OUT_CUBIC)
             .build());
-    /** The flash's peak: stops of exposure, and red and blue split from the burst, 0 to 1. */
-    public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 1.5f);
-    public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.3f);
+    /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
+    public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
+    public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
+    public static final CgVfxParam BLAST_FLASH_BLOOM = SCHEMA.scalar("blastFlashBloom", 2f);
     /** Full within this many blast radii of the burst, fading out over twice that beyond. */
     public static final CgVfxParam BLAST_FLASH_REACH = SCHEMA.scalar("blastFlashReach", 3f);
 
@@ -440,7 +442,8 @@ public final class CgEnergyWave extends CgVfxEffect {
             playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
             float reach = get(RADIUS) * get(BLAST_RADIUS) * get(BLAST_FLASH_REACH);
             blastFlash = openVolume(FLASH_PRIORITY,
-                    new CgPostSettings().flash(get(BLAST_FLASH_STOPS)).chromatic(get(BLAST_FLASH_CHROMATIC)),
+                    new CgPostSettings().flash(get(BLAST_FLASH_STOPS)).chromatic(get(BLAST_FLASH_CHROMATIC))
+                            .bloom(get(BLAST_FLASH_BLOOM)),
                     stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach).blend(2f * reach);
         }
         if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min((age - blastAge) / get(BLAST_TIME), 1f)));
