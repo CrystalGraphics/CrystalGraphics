@@ -302,6 +302,17 @@ public final class CgVfxShowcase {
         vfx.prepare(CgVfxHeatHaze.standard());
     }
 
+    /** Whether everything {@link #prepare} started compiling is built. */
+    public boolean warmed() {
+        CgWorldRenderer world = CgWorldRenderer.get();
+        boolean built = vfx.warmed();
+        for (CgMaterial material : materials) built &= world.prepare(material);
+        for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
+            built &= world.prepare(material);
+        }
+        return built;
+    }
+
     /** Ends every wave and the haze at once; the next {@link #submit} starts the loop over. */
     public void clear() {
         vfx.clear();

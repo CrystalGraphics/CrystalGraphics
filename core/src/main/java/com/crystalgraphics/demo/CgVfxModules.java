@@ -1165,6 +1165,12 @@ public final class CgVfxModules {
         world.prepare(copper);
     }
 
+    /** Whether everything {@link #prepare} started compiling is built. */
+    public boolean warmed() {
+        CgWorldRenderer world = CgWorldRenderer.get();
+        return vfx.warmed() & world.prepare(mercury) & world.prepare(copper);
+    }
+
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */
     public void clear() {
         vfx.clear();

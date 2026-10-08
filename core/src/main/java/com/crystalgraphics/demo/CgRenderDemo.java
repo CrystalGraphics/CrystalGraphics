@@ -62,8 +62,9 @@ import java.util.function.Supplier;
  * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the demo was placed
  * }</pre>
  *
- * <p>Every scene is built and warmed at install (its programs and kernels compiled), and a scene switched away from
- * is cleared, not deleted, so a switch compiles and builds nothing. A scene is placed on the first world frame, some
+ * <p>The scene shown is built at install and the others at their first switch, each drawing nothing until its programs
+ * and kernels are built, so no frame waits on a compile; a scene switched away from is cleared, not deleted, so a later
+ * switch to it builds and compiles nothing. A scene is placed on the first world frame, some
  * blocks ahead of the camera, standing on the world's ground there ({@link CgWorldQueries#groundBelow}); until the ground
  * answers (no world, or its chunk still loading) it floats a little above the eye, and settles onto the ground once it
  * does. It stays there however far the player walks or flies, and moves only when the scene changes, the level changes
@@ -85,13 +86,13 @@ public final class CgRenderDemo {
     private static final int TELEPORT = 32;   // blocks the camera may move in one frame before the scene follows
     private static final int SEARCH = 24;     // blocks over the eye the ground search starts from, down twice as far
 
-    /**
-     * A scene of the demo: built and warmed at install, ended when switched away from, so a switch has nothing to build
-     * or compile.
-     */
+    /** A scene of the demo: built when first shown, ended when switched away from, kept for the next switch. */
     private interface Scene {
         /** Warms every program and kernel it draws or simulates with. */
         void prepare();
+
+        /** Whether what {@link #prepare} started compiling is built: it draws nothing until then. */
+        boolean warmed();
 
         void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds);
 
@@ -114,6 +115,8 @@ public final class CgRenderDemo {
 
     private boolean installed;
     private final Scene[] scenes = new Scene[kinds.length];
+    /** Frames each scene has waited for its programs since it was built; -1 once warmed. */
+    private final int[] warmFrames = new int[kinds.length];
     private int current = -1, wanted;
     /** V switched the simulation: the scene is cleared at the next frame, so all of it plays on the new one. */
     private boolean restart;
@@ -176,15 +179,17 @@ public final class CgRenderDemo {
                 frame.callback("demo.capture", capture);
             });
         }
-        for (int i = 0; i < kinds.length; i++) build(i);
+        // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan).
+        build(wanted);
     }
 
-    /** Builds and warms scene {@code i}: its textures, meshes, programs and kernels, ahead of its first frame. */
+    /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
     private void build(int i) {
         long start = System.nanoTime();
         scenes[i] = kinds[i].make().get();
         scenes[i].prepare();
-        LOGGER.info("[CgRenderDemo] {} built and warmed in {} ms", kinds[i].name(), (System.nanoTime() - start) / 1_000_000);
+        warmFrames[i] = 0;
+        LOGGER.info("[CgRenderDemo] {} built in {} ms", kinds[i].name(), (System.nanoTime() - start) / 1_000_000);
     }
 
     /** Releases GPU resources. Call on context destroy. */
@@ -214,6 +219,11 @@ public final class CgRenderDemo {
             }
 
             @Override
+            public boolean warmed() {
+                return blasts.warmed();
+            }
+
+            @Override
             public void clear() {
                 blasts.clear();
             }
@@ -240,6 +250,11 @@ public final class CgRenderDemo {
             }
 
             @Override
+            public boolean warmed() {
+                return showcase.warmed();
+            }
+
+            @Override
             public void clear() {
                 showcase.clear();
             }
@@ -263,6 +278,11 @@ public final class CgRenderDemo {
             @Override
             public void prepare() {
                 modules.prepare();
+            }
+
+            @Override
+            public boolean warmed() {
+                return modules.warmed();
             }
 
             @Override
@@ -300,6 +320,15 @@ public final class CgRenderDemo {
         lastX = view.x();
         lastY = view.y();
         lastZ = view.z();
+        // Nothing drawn until its programs are built, so no frame waits on a compile at its first draw.
+        if (warmFrames[current] >= 0) {
+            if (!scenes[current].warmed()) {
+                warmFrames[current]++;
+                return;
+            }
+            LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[current].name(), warmFrames[current]);
+            warmFrames[current] = -1;
+        }
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
     }
 
