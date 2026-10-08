@@ -40,6 +40,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private final Kind kind;
     @Nullable
     private final CgTextureDesc desc;
+    /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */
+    private boolean currentDepth;
 
     /** Render thread only: the storage while resolved. */
     @Nullable
@@ -74,6 +76,44 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** Storage made on first use and kept until released. */
     public static CgGraphTexture requested(String name, CgTextureDesc desc) {
         return new CgGraphTexture(Kind.REQUESTED, name, desc, null);
+    }
+
+    /**
+     * A transient colour target whose depth and stencil are the current target's: a linear scene drawn in place of the
+     * host's colour, depth-tested against and writing into the host's depth. Every raster pass into it draws through a
+     * framebuffer of ours holding it beside the host's depth; a read of its depth reads the host's.
+     *
+     * <pre>{@code
+     * CgGraphTexture scene = CgGraphTexture.besideCurrentDepth("scene", new CgTextureDesc(w, h, rgba16f));
+     * CgRasterPass pass = recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
+     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);    // the host's depth, as the pass sees it
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code desc} is one level of colour alone, the current viewport's size.</li>
+     *   <li>Framebuffer 0 and a multisampled host lend no depth: check {@link #takesCurrentDepth} first, and give the
+     *       scene a depth of its own there. A pass refused at execution draws without depth, once, and logs why.</li>
+     *   <li>A pass into it is ordered as a write of the current target too, and may not clear depth.</li>
+     * </ul>
+     */
+    public static CgGraphTexture besideCurrentDepth(String name, CgTextureDesc desc) {
+        if (desc.format().hasDepth() || desc.format().colorSlotCount() != 1 || desc.levels() != 1 || desc.isArray()
+                || desc.isVolume()) {
+            throw new IllegalArgumentException(name + ": a texture beside the current depth is one level of colour alone");
+        }
+        CgGraphTexture texture = new CgGraphTexture(Kind.TRANSIENT, name, desc, null);
+        texture.currentDepth = true;
+        return texture;
+    }
+
+    /** Whether framebuffer {@code framebuffer} lends its depth to a {@link #besideCurrentDepth} texture. */
+    public static boolean takesCurrentDepth(int framebuffer) {
+        return framebuffer != 0 && !CgComposedTargets.refused(framebuffer);
+    }
+
+    /** Whether its depth is the current target's ({@link #besideCurrentDepth}). */
+    public boolean drawsBesideCurrentDepth() {
+        return currentDepth;
     }
 
     public Kind kind() {

@@ -132,7 +132,7 @@ public final class CgRenderDemo {
     private static final int HUD_COLOR = 0xFFFF0000, HUD_PX = 16;
     private static final float HUD_HEIGHT = 600f;
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
-    private static final int[] KEYS = {CgKeyCodes.KEY_N, CgKeyCodes.KEY_C, CgKeyCodes.KEY_L, CgKeyCodes.KEY_V};
+    private static final int[] KEYS = {CgKeyCodes.KEY_N, CgKeyCodes.KEY_C, CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G};
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
 
@@ -160,7 +160,8 @@ public final class CgRenderDemo {
         if (installed || !ENABLED) return;
         installed = true;
         CgWorldRenderer.get().onFrame(this::frame);
-        CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 1000, frame -> {
+        // After the post stack's composite, so the HUD lands on the host's target and not in the HDR scene.
+        CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1000, frame -> {
             CgHostEnvironment world = frame.host().environment();
             keys(world.screenOpen());
             if (world.guiHidden()) return;
@@ -168,7 +169,8 @@ public final class CgRenderDemo {
             frame.callback("demo.hud", drawHud);
         });
         if (CAPTURE != null) {
-            CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 1, frame -> {
+            // After the composite: with the HDR scene on, the host's target holds the world only from then.
+            CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1, frame -> {
                 if (++worldFrames != CAPTURE_AT) return;
                 captured = frame.host();
                 frame.callback("demo.capture", capture);
@@ -364,6 +366,7 @@ public final class CgRenderDemo {
                 // it played out.
                 restart = true;
             }
+            case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
             default -> {
             }
         }
@@ -442,6 +445,7 @@ public final class CgRenderDemo {
                 : "\nShake [C]: off")
                 + (bloom.intensity() == 0f ? "\nBloom [L]: off" : bloom.linear() ? "\nBloom [L]: linear" : "\nBloom [L]: blend")
                 + "\nVFX sim [V]: " + (CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU ? "cpu" : "gpu")
+                + "\nHDR scene [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
                 + "\n" + String.format("Particles: %,d", particles);
     }
 

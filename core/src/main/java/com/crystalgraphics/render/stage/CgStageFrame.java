@@ -22,6 +22,8 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.render.graph.CgTextureDesc;
 
+import javax.annotation.Nullable;
+
 /**
  * One firing of a {@link CgRenderStage}: the recording every {@link CgStageRenderer} of it records into, on the host's
  * target, built and executed once they all have.
@@ -57,6 +59,8 @@ public final class CgStageFrame {
     private final CgPassConstants hostConstants = new CgPassConstants();
     private CgGraphTexture pyramid;
     private boolean pyramidBuilt;
+    @Nullable
+    private CgGraphTexture target;
 
     CgStageFrame(CgRenderStage stage) {
         this.stage = stage;
@@ -85,9 +89,25 @@ public final class CgStageFrame {
         return resources;
     }
 
-    /** The host's target, as the recording names it: whatever the host has bound when the stage executes. */
+    /**
+     * What the stage's renderers draw into: the host's target as the recording names it, whatever the host has bound
+     * when the stage executes; or, between {@link #retarget} and its undoing, the texture given there.
+     */
     public CgGraphTexture target() {
-        return CgGraphTexture.current();
+        return target != null ? target : CgGraphTexture.current();
+    }
+
+    /**
+     * Makes {@link #target()} answer {@code target} for the rest of this firing, or the host's target again for null:
+     * every renderer recording after drawing into it unawares. The HDR scene is the user.
+     *
+     * <pre>{@code
+     * frame.retarget(scene);   // scene in
+     * frame.retarget(null);    // the composite, which encodes the scene back into the host's target
+     * }</pre>
+     */
+    public void retarget(@Nullable CgGraphTexture target) {
+        this.target = target;
     }
 
     /**
@@ -154,6 +174,7 @@ public final class CgStageFrame {
         this.host = host;
         recording.reset();
         pyramidBuilt = false;
+        target = null;
     }
 
     /** Builds and executes what was recorded, then resets for the next firing. */

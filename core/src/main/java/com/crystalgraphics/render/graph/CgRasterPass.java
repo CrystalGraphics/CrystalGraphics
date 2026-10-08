@@ -6,6 +6,7 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.device.command.CgAccess;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -97,6 +98,12 @@ public final class CgRasterPass extends CgPass {
     private int depthFromUnit = -1;
     @Nullable
     private CgTargetCopy depthFromCopy;
+    /** Another target whose colour its draws sample ({@link #sceneColor(int, CgGraphTexture)}), the unit, and the copy. */
+    @Nullable
+    private CgGraphTexture colorFrom;
+    private int colorFromUnit = -1;
+    @Nullable
+    private CgTargetCopy colorFromCopy;
 
     /** Its second colour attachment, or null; and whether a target that takes none draws without it. */
     @Nullable
@@ -110,6 +117,9 @@ public final class CgRasterPass extends CgPass {
     CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, int layer, CgLoad load,
                  float[] constants, @Nullable CgRenderState state, CgOrder order) {
         super(name, target, null);
+        if (target.drawsBesideCurrentDepth() && (load.mask() & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
+            throw new IllegalArgumentException(name + " would clear the host's depth: " + target + " draws beside it");
+        }
         this.recording = recording;
         this.level = level;
         this.layer = layer;
@@ -363,7 +373,8 @@ public final class CgRasterPass extends CgPass {
         if (from == target) return sceneDepth(unit);
         CgFrameBufferFormat format = from.desc() != null ? from.desc().format()
                 : from.framebuffer() != null ? from.framebuffer().getFormat() : null;
-        if (from.kind() != CgGraphTexture.Kind.CURRENT && (format == null || !format.hasDepth())) {
+        if (from.kind() != CgGraphTexture.Kind.CURRENT && !from.drawsBesideCurrentDepth()
+                && (format == null || !format.hasDepth())) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
         depthFrom = from;
@@ -371,6 +382,44 @@ public final class CgRasterPass extends CgPass {
         if (depthFromCopy == null) depthFromCopy = new CgTargetCopy();
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
+    }
+
+    /**
+     * Lets draws sample {@code from}'s colour at {@code unit}, as it stands after every write to it recorded before this
+     * call, copied once, whole, when the pass begins: a pass into a target of its own reading the host's picture.
+     *
+     * <pre>{@code
+     * recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
+     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, CgGraphTexture.current());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The copy has {@code from}'s colour format: RGBA8 for the current target.</li>
+     *   <li>Not {@code target} itself: that is {@link #sceneColor(int)}.</li>
+     * </ul>
+     */
+    public CgRasterPass sceneColor(int unit, CgGraphTexture from) {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        if (from == target) throw new IllegalArgumentException(this + " reads its own target: use sceneColor(unit)");
+        colorFrom = from;
+        colorFromUnit = unit;
+        if (colorFromCopy == null) colorFromCopy = new CgTargetCopy();
+        recording.read(this, from, CgAccess.SAMPLED_READ);
+        return this;
+    }
+
+    @Nullable
+    CgGraphTexture colorFrom() {
+        return colorFrom;
+    }
+
+    int colorFromUnit() {
+        return colorFromUnit;
+    }
+
+    @Nullable
+    CgTargetCopy colorFromCopy() {
+        return colorFromCopy;
     }
 
     @Nullable
@@ -483,6 +532,11 @@ public final class CgRasterPass extends CgPass {
         if (ended) throw new IllegalStateException(this + " has already ended");
         recording.requireOpen();
         ended = true;
+        if (target.drawsBesideCurrentDepth()) {
+            // It tests and writes the host's depth: ordered after what wrote it, before what reads it.
+            recording.read(this, CgGraphTexture.current(), CgAccess.SAMPLED_READ);
+            recording.write(this, CgGraphTexture.current(), CgAccess.COLOR_WRITE);
+        }
         recording.write(this, target, CgAccess.COLOR_WRITE);
         if (attachment != null) recording.write(this, attachment, CgAccess.COLOR_WRITE);
     }

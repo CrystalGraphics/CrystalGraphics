@@ -104,7 +104,7 @@ public final class CgExecutor {
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
-    private static final CgComposedTargets COMPOSED = new CgComposedTargets();
+    private static final CgComposedTargets COMPOSED = new CgComposedTargets(true), BESIDE = new CgComposedTargets(false);
     private static final CgBufferPool BUFFERS = new CgBufferPool();
     private static final CgHazards HAZARDS = new CgHazards();
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
@@ -159,8 +159,13 @@ public final class CgExecutor {
     /** The framebuffer and viewport bound when this execution began, where a pass reads the current target's depth. */
     private int startFramebuffer;
     private boolean startNoted, otherBound;
-    /** Whether the pass executing drew through a framebuffer of ours with its second attachment. */
-    private boolean composed;
+    /**
+     * Whether the pass executing drew through a framebuffer of ours: with its second attachment, or with its target
+     * beside the current target's depth.
+     */
+    private boolean composed, beside;
+    /** The last sizes a {@link CgGraphTexture#besideCurrentDepth} target and its host disagreed at, logged once. */
+    private static long besideMismatch;
     private final IntBuffer startViewport = ByteBuffer.allocateDirect(16 * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
     /**
      * This execution's: whether an async pass runs beside the frame's queue, whether runs of draws join, and whether a
@@ -272,6 +277,7 @@ public final class CgExecutor {
         POOL.delete();
         BUFFERS.delete();
         COMPOSED.delete();
+        BESIDE.delete();
         for (CgGraphBuffer buffer : KEPT) freeKept(buffer);
         KEPT.clear();
         HAZARDS.clear();
@@ -511,8 +517,14 @@ public final class CgExecutor {
             } else if (pass instanceof CgPass.Callback callback) {
                 boolean bound = otherBound;   // the scope restores the binding it found
                 try (CgGlScope ignored = CgGlState.saveAll()) {
-                    bindTarget(callback.target, 0, 0);
-                    callback.body.run();
+                    boolean drawsBeside = callback.target != null && callback.target.drawsBesideCurrentDepth()
+                            && bindBeside(callback.target);
+                    if (!drawsBeside) bindTarget(callback.target, 0, 0);
+                    try {
+                        callback.body.run();
+                    } finally {
+                        if (drawsBeside) BESIDE.detach();
+                    }
                 }
                 otherBound = bound;
                 callback.request.complete();
@@ -1061,13 +1073,15 @@ public final class CgExecutor {
         }
         if (packed.count > 0) rasterBatches(frame, pass, packed, damage);
         if (composed) COMPOSED.detach();
-        composed = false;
+        if (beside) BESIDE.detach();
+        composed = beside = false;
     }
 
     /** {@code pass}'s target bound and cleared, and what every batch shares bound. */
     private void rasterBegin(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage) {
         composed = pass.attachment() != null && bindComposed(pass);
-        if (!composed) bindTarget(pass.target, pass.level, pass.layer);
+        beside = !composed && pass.target != null && pass.target.drawsBesideCurrentDepth() && bindBeside(pass.target);
+        if (!composed && !beside) bindTarget(pass.target, pass.level, pass.layer);
         CgLoad load = pass.load;
         if (load.mask() != 0) {
             if (damage == null) {
@@ -1114,6 +1128,7 @@ public final class CgExecutor {
                 if (groups) CgGpuTrace.mark(DEPTH_FROM_GROUP);
                 copyDepthFrom(pass);
             }
+            if (pass.colorFrom() != null) copyColorFrom(pass);
             for (int b = 0; b < packed.count; b++) {
                 if (groups) CgGpuTrace.mark(packed.group[b] >= 0 ? packed.group[b] : groupLabel(packed.pipeline[b]));   // before its target copy, which it pays for
                 int command = packed.counts[b] != null ? slot : -1;
@@ -1221,6 +1236,7 @@ public final class CgExecutor {
             if (groups) CgGpuTrace.markEnd();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
             if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
+            if (pass.colorFromCopy() != null) pass.colorFromCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
     }
@@ -1318,13 +1334,27 @@ public final class CgExecutor {
     private void copyDepthFrom(CgRasterPass pass) {
         CgGraphTexture from = pass.depthFrom();
         CgTargetCopy copy = pass.depthFromCopy();
-        if (from.kind() == CgGraphTexture.Kind.CURRENT) {
+        if (from.kind() == CgGraphTexture.Kind.CURRENT || from.drawsBesideCurrentDepth()) {
             copy.copyDepth(startFramebuffer, null, startViewport.get(2), startViewport.get(3), pass, POOL);
         } else {
             CgFrameBuffer storage = storage(from);
             copy.copyDepth(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), pass, POOL);
         }
         copy.depth.bind(pass.depthFromUnit());
+        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
+    }
+
+    /** Copies another target's colour whole, for a pass reading it ({@link CgRasterPass#sceneColor(int, CgGraphTexture)}). */
+    private void copyColorFrom(CgRasterPass pass) {
+        CgGraphTexture from = pass.colorFrom();
+        CgTargetCopy copy = pass.colorFromCopy();
+        if (from.kind() == CgGraphTexture.Kind.CURRENT) {
+            copy.copyColor(startFramebuffer, null, startViewport.get(2), startViewport.get(3), POOL);
+        } else {
+            CgFrameBuffer storage = storage(from);
+            copy.copyColor(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), POOL);
+        }
+        copy.color.bind(pass.colorFromUnit());
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
@@ -1450,6 +1480,10 @@ public final class CgExecutor {
         long pixels;
         if (target == null || target.kind() == CgGraphTexture.Kind.CURRENT) {
             pixels = copy.copy(startFramebuffer, null, startViewport.get(2), startViewport.get(3), bits, rects, at, POOL);
+        } else if (target.drawsBesideCurrentDepth()) {
+            CgFrameBuffer storage = storage(target);
+            pixels = copy.copyBeside(storage.getId(), storage.getFormat(), startFramebuffer, storage.getWidth(),
+                    storage.getHeight(), bits, rects, at, POOL);
         } else {
             CgFrameBuffer storage = storage(target);
             pixels = copy.copy(storage.getId(), storage.getFormat(), storage.getWidth(), storage.getHeight(), bits,
@@ -1518,6 +1552,36 @@ public final class CgExecutor {
             if (!CgComposedTargets.refused(host)) LOGGER.warn("{} draws without its second attachment: {}", pass, refused);
             CgComposedTargets.refuse(host);
             otherBound = true;   // bindTarget binds the start framebuffer again
+            return false;
+        }
+        CgGL.glViewport(0, 0, w, h);
+        otherBound = startNoted;
+        return true;
+    }
+
+    /**
+     * Binds {@code target} beside the current target's depth ({@link CgGraphTexture#besideCurrentDepth}), and its
+     * viewport. False, binding nothing, where the current target lends none: logged once, and the pass draws into the
+     * target alone.
+     */
+    private boolean bindBeside(CgGraphTexture target) {
+        CgFrameBuffer scene = storage(target);
+        int x = startViewport.get(0), y = startViewport.get(1), w = startViewport.get(2), h = startViewport.get(3);
+        if (x != 0 || y != 0 || scene.getWidth() != w || scene.getHeight() != h) {
+            // A recorder sizing it from a stale size, as across a resize: this pass alone, not the framebuffer, refused.
+            long sizes = (long) scene.getWidth() << 48 | (long) scene.getHeight() << 32 | (long) w << 16 | h;
+            if (sizes != besideMismatch) {
+                besideMismatch = sizes;
+                LOGGER.warn("{} is {}x{}, beside a target of {}x{} at {},{}: drawn without the host's depth", target,
+                        scene.getWidth(), scene.getHeight(), w, h, x, y);
+            }
+            return false;
+        }
+        CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, startFramebuffer);
+        String refused = BESIDE.bind(startFramebuffer, w, h, scene.getColorTexture(0).getId());
+        if (refused != null) {
+            if (!CgComposedTargets.refused(startFramebuffer)) LOGGER.warn("{} draws without the host's depth: {}", target, refused);
+            CgComposedTargets.refuse(startFramebuffer);
             return false;
         }
         CgGL.glViewport(0, 0, w, h);

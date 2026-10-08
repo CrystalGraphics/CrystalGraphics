@@ -259,6 +259,10 @@ public final class CgWorldRenderer {
     private final int[] overdrawCounts = new int[256];
     private final CgReadback.Sink overdrawSink = this::summariseOverdraw;
 
+    // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on.
+    private boolean hdrScene = "true".equals(System.getProperty("crystalgraphics.world.hdrScene"));
+    private final CgSceneTarget sceneTarget = new CgSceneTarget();
+
     private boolean installed;
     private boolean irisWarned;
 
@@ -277,6 +281,7 @@ public final class CgWorldRenderer {
         // that read it in the same firing: VFX pools and Range lay out slots from it.
         CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
         CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
+        CgRenderStage.WORLD_TRANSPARENT.register(CgSceneTarget.ORDER, sceneTarget::record);
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
     }
@@ -303,6 +308,7 @@ public final class CgWorldRenderer {
         upsampleBound = null;
         distortion.release();
         text.release();
+        sceneTarget.release();
         mergeNoted = false;
     }
 
@@ -351,6 +357,30 @@ public final class CgWorldRenderer {
 
     public boolean halfResolution() {
         return halfResolution;
+    }
+
+    /**
+     * Whether the transparent stage draws into a linear HDR scene (RGBA16F beside the host's depth) that the post
+     * stack's composite encodes back into the host's target, off by default; {@code -Dcrystalgraphics.world.hdrScene=true}
+     * starts it on. Takes effect at the next firing, so it can be flipped live to compare.
+     *
+     * <pre>{@code
+     * CgWorldRenderer.get().hdrScene(true);   // blends, glows and edges in linear light
+     * }</pre>
+     *
+     * <ul>
+     *   <li>On, every renderer on {@code WORLD_TRANSPARENT} between the scene's first pass and the composite draws into
+     *       the scene through {@code CgStageFrame.target()}; raw GL into the host's framebuffer there is overwritten.</li>
+     *   <li>{@code cg_SceneColor} there reads linear HDR, not the host's encoded 8 bits.</li>
+     *   <li>Merged emission stands down while it is on.</li>
+     * </ul>
+     */
+    public void hdrScene(boolean on) {
+        hdrScene = on;
+    }
+
+    public boolean hdrScene() {
+        return hdrScene;
     }
 
     /**
@@ -1357,7 +1387,7 @@ public final class CgWorldRenderer {
         if (merged.length < meshes.length) merged = new boolean[meshes.length];
         Arrays.fill(merged, 0, count, false);
         mergedDraws = 0;
-        if (!mergeEmission || !CgCapabilities.detect().independentBlend()
+        if (!mergeEmission || !CgCapabilities.detect().independentBlend() || stage.resources().has(CgFrameKeys.SCENE)
                 || stage.host().mainFramebuffer() <= 0 || !stage.resources().has(CgFrameKeys.EMISSION_READ)
                 || CgRasterPass.refusesAttachment(stage.host().mainFramebuffer())) return null;
         for (int i = 0; i < count; i++) {
