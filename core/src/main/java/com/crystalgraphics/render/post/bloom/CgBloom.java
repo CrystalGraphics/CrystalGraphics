@@ -1,15 +1,30 @@
 package com.crystalgraphics.render.post.bloom;
 
+import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
+import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.draw.CgOrder;
+import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.graph.CgRasterPass;
+import com.crystalgraphics.render.graph.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.stage.CgFrameKey;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.trace.CgGpuTrace;
 
 /**
- * The post stack's bloom: what the scene emits ({@link CgFrameKeys#EMISSION}) spread wide by a chain of raster passes
+ * The post stack's bloom: what the scene emits ({@link CgFrameKeys#EMISSION}), or under the HDR scene
+ * ({@link CgFrameKeys#SCENE}) its light past {@link #threshold}, spread wide by a chain of raster passes
  * ({@link CgBloomChain}) and added over the picture by the composite. Its settings are global, as every engine's are;
  * {@code CgPostStack.get().bloom()} is the instance.
  *
@@ -21,6 +36,7 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
  * CgPostStack.get().bloom().mode(CgBloom.Mode.ENERGY_CONSERVING).intensity(0.15f);
  * CgPostStack.get().bloom().tint(1f, 0.85f, 0.7f);   // a warm glow
  * CgPostStack.get().bloom().linear(true);            // composite in linear light, at the cost of a copy of the target
+ * CgPostStack.get().bloom().threshold(0.8f);         // under the HDR scene: light past 0.8 blooms, not past 1
  * }</pre>
  *
  * <ul>
@@ -43,8 +59,19 @@ public final class CgBloom implements CgPostEffect {
     /** The firing's chain, its glow in level 0: published for a later effect (the debug view) to read. */
     public static final CgFrameKey<CgGraphTexture> CHAIN = CgFrameKey.of("crystalgraphics:bloom_chain", CgGraphTexture.class);
 
+    private static final String EXCESS = "crystalgraphics:shaders/post/bloom/excess.shader";
+    private static final CgFrameBufferFormat EXCESS_FORMAT = CgFrameBufferFormat.builder("cg_bloom_excess")
+            .color(0, CgTextureType.R11F_G11F_B10F).build();
+    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
+    private static final int GPU_EXCESS = CgGpuTrace.name("post.bloom.excess");
+
     private final CgBloomChain chain = new CgBloomChain();
-    private float intensity = 1f, tintR = 1f, tintG = 1f, tintB = 1f;
+    private float intensity = 1f, tintR = 1f, tintG = 1f, tintB = 1f, threshold = 1f;
+    private CgMaterial excessMaterial;
+    private CgGraphTexture excess, boundScene;
+    private float boundThreshold = Float.NaN;
+    private final CgPassConstants excessConstants = new CgPassConstants();
+    private final float[] block = new float[CgPassConstants.FLOATS];
     private Mode mode = Mode.ADDITIVE;
     /** {@code -Dcrystalgraphics.post.bloom.linear=true} starts it in linear light: the two forms side by side. */
     private boolean linear = Boolean.getBoolean("crystalgraphics.post.bloom.linear");
@@ -91,6 +118,16 @@ public final class CgBloom implements CgPostEffect {
         return linear;
     }
 
+    /** Under the HDR scene, the linear brightness past which light blooms: 1 by default, the screen's white. */
+    public CgBloom threshold(float threshold) {
+        this.threshold = Math.max(0f, threshold);
+        return this;
+    }
+
+    public float threshold() {
+        return threshold;
+    }
+
     @Override
     public CgPostPoint point() {
         return CgPostPoint.BEFORE_COMPOSITE;
@@ -98,13 +135,16 @@ public final class CgBloom implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return intensity * post.settings().bloom() > 0f && post.resources().has(CgFrameKeys.EMISSION);
+        return intensity * post.settings().bloom() > 0f
+                && (post.resources().has(CgFrameKeys.EMISSION) || post.resources().has(CgFrameKeys.SCENE));
     }
 
     @Override
     public void record(CgPostContext post) {
-        // Bent as the scene beneath was, or the glow sits unbent over every haze.
-        CgGraphTexture emission = post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+        CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
+        // Bent as the scene beneath was, or the glow sits unbent over every haze; the scene is bent already.
+        CgGraphTexture emission = scene != null ? excess(post, scene) : post.distorted(post.resources().get(CgFrameKeys.EMISSION));
+        if (emission == null) return;
         CgGraphTexture glow = chain.record(post.recording(), emission, post.constants(), CgGraphicsSettings.QUALITY.get());
         if (glow == null) return;
         post.resources().put(CHAIN, glow);
@@ -113,8 +153,38 @@ public final class CgBloom implements CgPostEffect {
         if (linear) post.composite().linear();
     }
 
+    /** The scene's light past the threshold, at half its size; null while the pass's program is not ready. */
+    private CgGraphTexture excess(CgPostContext post, CgGraphTexture scene) {
+        int w = Math.max(1, scene.getWidth() / 2), h = Math.max(1, scene.getHeight() / 2);
+        if (excess == null || excess.getWidth() != w || excess.getHeight() != h) {
+            excess = CgGraphTexture.transientTexture("cg_bloom_excess", new CgTextureDesc(w, h, EXCESS_FORMAT));
+        }
+        if (excessMaterial == null) excessMaterial = CgMaterial.newInstance(EXCESS);
+        if (scene != boundScene || threshold != boundThreshold) {
+            float t = threshold;
+            excessMaterial.applyProperties(b -> b.sampler("_Scene", 0, scene).set1f("_Threshold", t));
+            boundScene = scene;
+            boundThreshold = t;
+        }
+        CgPipeline pipeline = excessMaterial.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return null;
+        post.constants().write(block, 0);
+        excessConstants.read(block, 0).resolution(w, h);
+        CgRasterPass pass = post.recording().raster(excess, CgLoad.clear(0f, 0f, 0f, 0f), excessConstants, null, CgOrder.SORTED)
+                .timed(GPU_EXCESS);
+        CgChunkBuilder chunks = post.recording().chunks().begin();
+        chunks.draw(pipeline, excessMaterial.captureBindings(post.recording().bindings()), FULLSCREEN);
+        chunks.instance();
+        pass.add(chunks.end());
+        pass.end();
+        return excess;
+    }
+
     /** Forgets what it made on the GPU. At context teardown, through the stack. */
     public void release() {
         chain.release();
+        excessMaterial = null;
+        excess = boundScene = null;
+        boundThreshold = Float.NaN;
     }
 }
