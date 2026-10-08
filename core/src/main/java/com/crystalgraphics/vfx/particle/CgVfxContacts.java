@@ -105,18 +105,19 @@ final class CgVfxContacts {
      * Godot's rigid response to a contact on particle {@code i}: pushed out by {@code depth}, the speed into the surface
      * taken away, {@code friction} of the rest, and a bounce of {@code bounce} once the impact is fast enough
      * ({@code slide_to_bounce_trigger}), which is the punctual hit a collision event fires on. Slower than {@code rest}
-     * after it, the particle rests. With {@code kill} it is Godot's hide on contact: a hit, then death.
+     * after it, the particle rests. With {@code kill} it is Godot's hide on contact: a hit, then death, on the surface
+     * so what the hit spawns starts there.
      */
     static void respond(CgVfxParticleSet p, int i, float nx, float ny, float nz, float depth, float bounce, float friction,
                         float rest, boolean kill) {
+        p.x[i] += nx * depth;
+        p.y[i] += ny * depth;
+        p.z[i] += nz * depth;
         if (kill) {
             p.hit(i, nx, ny, nz);
             p.life[i] = p.age[i];
             return;
         }
-        p.x[i] += nx * depth;
-        p.y[i] += ny * depth;
-        p.z[i] += nz * depth;
         float response = nx * p.vx[i] + ny * p.vy[i] + nz * p.vz[i];
         if (response >= 0f) return;
         float trigger = -response < 2f / Math.max(1f, Math.min(bounce + 1f, 2f)) ? 0f : 1f;

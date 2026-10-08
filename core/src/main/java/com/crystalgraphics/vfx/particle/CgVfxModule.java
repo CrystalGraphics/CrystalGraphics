@@ -396,12 +396,15 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * Volume.plane(0f, 1f, 0f).at(0f, -1f, 0f)    // solid below the block under the source
      * }</pre>
      */
-    record Volume(Form form, float x, float y, float z, float ex, float ey, float ez) {
+    record Volume(Form form, float x, float y, float z, float ex, float ey, float ez, float reach) {
         /** Its shape; a plane's extents are its unit normal. */
         public enum Form { SPHERE, BOX, PLANE }
 
         public Volume {
             Objects.requireNonNull(form, "form");
+            if (reach != 0f && !(form == Form.PLANE && reach > 0f)) {
+                throw new IllegalArgumentException("a reach of " + reach + " on a " + form);
+            }
             if (form == Form.SPHERE && !(ex > 0f)) throw new IllegalArgumentException("a sphere of radius " + ex);
             if (form == Form.BOX && !(ex > 0f && ey > 0f && ez > 0f)) {
                 throw new IllegalArgumentException("a box of half extents " + ex + ", " + ey + ", " + ez);
@@ -409,23 +412,39 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         public static Volume sphere(float radius) {
-            return new Volume(Form.SPHERE, 0f, 0f, 0f, radius, radius, radius);
+            return new Volume(Form.SPHERE, 0f, 0f, 0f, radius, radius, radius, 0f);
         }
 
         public static Volume box(float halfX, float halfY, float halfZ) {
-            return new Volume(Form.BOX, 0f, 0f, 0f, halfX, halfY, halfZ);
+            return new Volume(Form.BOX, 0f, 0f, 0f, halfX, halfY, halfZ, 0f);
         }
 
         /** Through the source, solid on the side away from {@code (nx, ny, nz)}, which need not be unit. */
         public static Volume plane(float nx, float ny, float nz) {
             float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
             if (!(length > 0f)) throw new IllegalArgumentException("a plane needs a normal");
-            return new Volume(Form.PLANE, 0f, 0f, 0f, nx / length, ny / length, nz / length);
+            return new Volume(Form.PLANE, 0f, 0f, 0f, nx / length, ny / length, nz / length, 0f);
         }
 
         /** The same volume centred {@code (x, y, z)} from the source. */
         public Volume at(float x, float y, float z) {
-            return new Volume(form, x, y, z, ex, ey, ez);
+            return new Volume(form, x, y, z, ex, ey, ez, reach);
+        }
+
+        /**
+         * A plane that ends: a disc {@code reach} blocks round its centre, so a particle past its edge falls off rather
+         * than sliding on forever. For {@link Collide} only; {@link Kill} refuses it.
+         */
+        public Volume within(float reach) {
+            return new Volume(form, x, y, z, ex, ey, ez, reach);
+        }
+
+        /** Whether {@code (rx, ry, rz)} from the centre is over the volume: always, but past a bounded plane's edge. */
+        boolean over(float rx, float ry, float rz) {
+            if (reach == 0f) return true;
+            float d = rx * ex + ry * ey + rz * ez;
+            float tx = rx - ex * d, ty = ry - ey * d, tz = rz - ez * d;
+            return tx * tx + ty * ty + tz * tz <= reach * reach;
         }
 
         void writeShape(CgVfxWords out) {
@@ -433,7 +452,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         void writeCentre(CgVfxInstanceView instance, CgVfxWords out) {
-            out.vec4(instance.sourceX() + x, instance.sourceY() + y, instance.sourceZ() + z, 0f);
+            out.vec4(instance.sourceX() + x, instance.sourceY() + y, instance.sourceZ() + z, reach);
         }
     }
 
@@ -930,6 +949,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * new CgVfxModule.Collide(Volume.sphere(1.5f).at(0f, 1.5f, 0f), 0.6f, 0.1f, 0.2f)    // a boulder sparks bounce off
      * new CgVfxModule.Collide(Volume.box(3f, 3f, 3f), 0.8f, 0f, 0f).container()          // kept inside a box
      * new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f), 0f, 0f, 0f).killing()            // die on the plane
+     * new CgVfxModule.Collide(Volume.plane(0.4f, 1f, 0f).within(5f), 0.3f, 0f, 0f)     // a ramp pieces fall off
      * }</pre>
      *
      * <ul>
@@ -971,7 +991,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             float[] n = emitter.scratch();
             float cx = emitter.sourceX() + volume.x(), cy = emitter.sourceY() + volume.y(), cz = emitter.sourceZ() + volume.z();
             for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
+                if (p.resting[i] != 0f || !volume.over(p.x[i] - cx, p.y[i] - cy, p.z[i] - cz)) continue;
                 float depth = CgVfxContacts.contact(volume, keepsInside, p.x[i] - cx, p.y[i] - cy, p.z[i] - cz,
                         radius * p.size[i], n);
                 if (depth == depth) CgVfxContacts.respond(p, i, n[0], n[1], n[2], depth, bounce, friction, rest, kill);
@@ -1013,7 +1033,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     /**
      * The host world's blocks, with {@link Collide}'s response: on the GPU every solid half-block octant of the voxel
      * window, a particle inside one leaving by the face the distance field points through. The CPU path has only the
-     * instance's ground ({@link CgVfxEmitterInstance#ground(float)}), as {@link Ground} has. Runs after the solver.
+     * instance's ground ({@link CgVfxEmitterInstance#ground(float)}), as {@link Ground} has, and so has the GPU with no
+     * level. Unlike {@link Ground} it fires {@link CgVfxEvent#onCollision()} and can kill. Runs after the solver.
      *
      * <pre>{@code
      * new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f)             // debris on stairs and walls
@@ -1130,6 +1151,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         public Kill {
             Objects.requireNonNull(volume, "volume");
+            if (volume.reach() != 0f) throw new IllegalArgumentException("a kill volume cannot end: " + volume);
         }
 
         @Override

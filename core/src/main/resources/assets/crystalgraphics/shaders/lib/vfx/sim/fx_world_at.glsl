@@ -17,11 +17,13 @@
 #pragma once
 #include "crystalgraphics:shaders/lib/vfx/fx_world.glsl"
 
-// Where the instance's origin is: whole blocks plus a fraction, so a point far from 0 keeps its precision.
+// Where the instance's origin is: whole blocks plus a fraction, so a point far from 0 keeps its precision. floorY is
+// the instance's fixed ground (CgVfxEmitterInstance.ground), NaN for none: what a collider stands on with no level.
 struct FxWorld {
     ivec3 originBlock;
     vec3 originFrac;
     bool live;
+    float floorY;
 };
 
 ivec3 fx_world_base() {

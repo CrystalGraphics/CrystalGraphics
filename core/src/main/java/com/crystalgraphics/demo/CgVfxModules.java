@@ -22,6 +22,7 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
+import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.CgVfxModule.Volume;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
@@ -42,8 +43,8 @@ import java.util.function.Consumer;
  * obstacle course); damping beside drag, a speed limit; flipbook smoke and fire, and the five facing modes. Every station
  * replays every {@link #PERIOD} seconds, so a switch of {@link CgVfxSystem#simulation} reaches it within one. The
  * stations span about 60 blocks along x and 30 along z round the origin; each stands on the world's ground under it
- * ({@link CgWorldQueries#groundBelow}), else at the origin's height. The harness's {@code vfx-modules}, and a scene of
- * {@link CgRenderDemo}.
+ * ({@link CgWorldQueries#groundBelow}), else at the origin's height, and its particles land on the world's ground
+ * wherever it stands, else on its floor. The harness's {@code vfx-modules}, and a scene of {@link CgRenderDemo}.
  *
  * <pre>{@code
  * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: it makes its textures and materials
@@ -58,6 +59,8 @@ public final class CgVfxModules {
     private static final Logger LOG = LogManager.getLogger("CgVfxModules");
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
+    /** Columns of world ground a play's particles find, each way from its station: past the widest station's spread. */
+    private static final int GROUND_REACH = 16;
     /** The station grid: columns along x, rows along z, toward the camera. */
     private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f};
 
@@ -112,23 +115,29 @@ public final class CgVfxModules {
     /** Each station's floor this play, absolute. */
     private float[] floors;
 
-    /** A station playing: its emitters ticked until the period ends and they have all finished. */
+    /**
+     * A station playing: its emitters ticked until the period ends and they have all finished. Its particles land on the
+     * world's ground, wherever the station stands, else on the station's floor.
+     */
     private static final class Play extends CgVfxEffect {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
+        private final CgVfxGround ground;
 
         Play(Station station, double x, double y, double z) {
             super(station.look(), x + station.x(), y, z + station.z());
+            ground = new CgVfxGround(GROUND_REACH).reset(originX, originY, originZ, 0f, 0f, 0f);
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.emitters().get(i), seed + i * 0.137f);
                 float[] s = station.sources()[i];
                 emitter.start(s[0], s[1], s[2]);
-                emitter.ground(0f);
+                emitter.ground(0f).ground(ground);
                 emitters.add(emitter);
             }
         }
 
         @Override
         protected void tick(float dt) {
+            ground.fill(CgVfxGround.FILL_PER_TICK);
             boolean done = true;
             for (int i = 0; i < emitters.size(); i++) {
                 tick(emitters.get(i), dt);
@@ -245,7 +254,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f))
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.7f, 0f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -0.3f, 0f), 0.2f, 0.05f, 0.3f))
+                .module(new CgVfxModule.Ground(0.2f, 0.05f, 0.3f))
                 .opacity(FADE).build();
         CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
                 .rate(45f, 0f, PERIOD - 2.5f).shape(2.5f).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
@@ -253,7 +262,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f))
                 .module(new CgVfxModule.Force(0f, -2f, 0f))
                 .module(new CgVfxModule.Drag(1.5f, 0f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -0.3f, 0f), 0f, 0.05f, 0.1f))
+                .module(new CgVfxModule.Ground(0f, 0.05f, 0.1f))
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.55f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
@@ -439,7 +448,7 @@ public final class CgVfxModules {
                 .size(0.08f, 0.14f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(Volume.sphere(1.8f).at(0f, -5.2f, 0f), 0.6f, 0.05f, 0.3f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -7f, 0f), 0.35f, 0.4f, 0.4f))
+                .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f))
                 .event(CgVfxEvent.onCollision().spawn(flash, 1))
                 .event(CgVfxEvent.onCollision().spawn(chips, 4))
                 .opacity(FADE).build();
@@ -506,10 +515,10 @@ public final class CgVfxModules {
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 1.5f))
-                .module(new CgVfxModule.Collide(Volume.plane(nx, ny, 0f).at(0f, top - source, 0f), 0.3f, 0.02f, 0f))
+                .module(new CgVfxModule.Collide(Volume.plane(nx, ny, 0f).at(0f, top - source, 0f).within(ramp / 2f),
+                        0.3f, 0.02f, 0f))
                 // Friction takes its share of the sliding speed every step: 0.05 skids a piece off the ramp a block or two.
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -source, 0f), 0.3f, 0.05f, 0.1f))
-                .module(new CgVfxModule.Kill(Volume.box(6.5f, 8f, 6.5f), false))
+                .module(new CgVfxModule.CollideWorld(0.3f, 0.05f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(snow, 1))
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(shards).emitter(snow)
@@ -560,21 +569,21 @@ public final class CgVfxModules {
 
     /**
      * Rain from {@code source} blocks over the floor, starting within {@code spread} of the middle, onto the 3x2x3 block
-     * and the floor; each drop dies where it lands, splashing and rippling. Spread past the block's edge, it is the
-     * floor's rain, and dies in the column over the block instead.
+     * and the world's ground; each drop dies where it lands, splashing and rippling. Spread past the block's edge, it is
+     * the ground's rain, and dies in the column over the block instead.
      */
     private static CgVfxEmitter rain(String name, float rate, float spread, float source, CgVfxEmitter splash,
                                      CgVfxEmitter ripple) {
         // Still at launch, so gravity alone sets them falling straight down; the launch only spreads where they start.
+        // Long enough lived to fall 90 blocks, to the ground under a station standing in the air.
         CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(1000)
-                .rate(rate, 0f, PERIOD - 3f).shape(spread).launch(-1f, 0f, 1f).speed(0f, 0f).life(1.5f, 1.5f)
+                .rate(rate, 0f, PERIOD - 3f).shape(spread).launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f)
                 .size(0.025f, 0.035f, 1f).heat(0.4f)
                 .module(new CgVfxModule.Gravity(20f))
                 .module(new CgVfxModule.Collide(Volume.box(1.5f, 1f, 1.5f).at(0f, 1f - source, 0f), 0f, 0f, 0f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -source, 0f), 0f, 0f, 0f))
-                // Just past each surface: a drop is killed the step it lands, after its collision fired.
+                // Just past the block's surface: a drop is killed the step it lands, after its collision fired.
                 .module(new CgVfxModule.Kill(Volume.box(1.52f, 1.03f, 1.52f).at(0f, 1f - source, 0f), true))
-                .module(new CgVfxModule.Kill(Volume.plane(0f, 1f, 0f).at(0f, 0.03f - source, 0f), true));
+                .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).killing());
         if (spread > 1.5f) {
             float column = (source - 2f) / 2f;
             rain.module(new CgVfxModule.Kill(Volume.box(1.55f, column, 1.55f).at(0f, -column, 0f), true));
@@ -586,7 +595,7 @@ public final class CgVfxModules {
     /**
      * An obstacle course, colliders in a row: molten beads pour onto a sphere, glance off it onto a cube sitting in a
      * ramp, run down the ramp and skid across the floor, cooling from white-hot to red and throwing sparks at each
-     * impact. The ramp is a plane: a kill box keeps beads to the part drawn.
+     * impact. The ramp is a plane ending where it is drawn, so beads run off its end onto whatever ground is below.
      */
     private void obstacles(float x, float z) {
         // World heights and offsets from the station's centre; every volume is from the source, so each is less it.
@@ -595,6 +604,7 @@ public final class CgVfxModules {
         float sphereX = -3f, sphereY = 6.4f, sphereR = 0.9f;
         float nx = 0.45f, rampY = 2.25f, rampFrom = -5f, rampTo = rampY / nx;   // its height at 0, and where it meets the floor
         float cubeX = -1.5f, cubeHalf = 0.9f, cubeY = rampY - nx * (cubeX + cubeHalf) + cubeHalf;   // resting on the ramp downhill
+        float rampLength = (rampTo - rampFrom) * (float) Math.sqrt(1f + nx * nx);
         CgVfxEmitter sparks = CgVfxEmitter.builder("obstacleSparks").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
                 .launch(0.2f, 1f, 1f).speed(1.5f, 4f).life(0.15f, 0.4f).size(0.015f, 0.03f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -608,16 +618,15 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Collide(Volume.sphere(sphereR).at(sphereX - sx, sphereY - sy, 0f), 0.5f, 0.05f, 0.3f))
                 .module(new CgVfxModule.Collide(Volume.box(cubeHalf, cubeHalf, cubeHalf).at(cubeX - sx, cubeY - sy, 0f),
                         0.35f, 0.05f, 0.3f))
-                .module(new CgVfxModule.Collide(Volume.plane(nx, 1f, 0f).at(-sx, rampY - sy, 0f), 0.3f, 0.02f, 0f))
-                // A grippy floor stops a bead within a block or so, well inside the box: it cools and fades where it rests.
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -sy, 0f), 0.3f, 0.12f, 0.1f))
-                .module(new CgVfxModule.Kill(Volume.box(7.1f, 6f, 3.2f).at(1.9f - sx, 6f - sy, 0f), false))
+                .module(new CgVfxModule.Collide(Volume.plane(nx, 1f, 0f).at(-sx, rampY - sy, 0f).within(rampLength / 2f),
+                        0.3f, 0.02f, 0f))
+                // A grippy floor stops a bead within a block or so: it cools and fades where it rests.
+                .module(new CgVfxModule.CollideWorld(0.3f, 0.12f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(sparks, 2))
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(beads).emitter(sparks)
                 .layer(sparkLayer(beads, EMBER, FLAME)).layer(sparkLayer(sparks, FLAME, WHITE)).build();
         float angle = -(float) Math.atan2(nx, 1f), rampMid = (rampFrom + rampTo) / 2f;
-        float rampLength = (rampTo - rampFrom) * (float) Math.sqrt(1f + nx * nx);
         stations.add(new Station("obstacles: a sphere, a cube in a ramp, the floor", x, z, look, List.of(beads),
                 new float[][]{{sx, sy, 0f}}, p -> {
                     p.sphere(sphereX, sphereY, 0f, sphereR - 0.02f);
@@ -684,7 +693,7 @@ public final class CgVfxModules {
                 .rate(120f, 0f, PERIOD - 3f).launch(0.85f, 1f, 1f).speed(9f, 12f).life(3f, 3.5f)
                 .size(0.08f, 0.12f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -0.3f, 0f), 0.3f, 0.3f, 0.5f))
+                .module(new CgVfxModule.Ground(0.3f, 0.3f, 0.5f))
                 .opacity(FADE).build();
         CgVfxEmitter limited = free.toBuilder().name("limited").module(new CgVfxModule.LimitSpeed(3f)).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(free).emitter(limited)
@@ -786,7 +795,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 0.6f))
                 .module(new CgVfxModule.Drag(0.3f, 0f))
-                .module(new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f).at(0f, -0.4f, 0f), 0.35f, 0.1f, 0.2f))
+                .module(new CgVfxModule.Ground(0.35f, 0.1f, 0.2f))
                 .opacity(CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
