@@ -1522,6 +1522,9 @@ public final class CgGL {
     public static void setDepthReversed(boolean reversed, boolean zeroToOne) {
         depthReversed = reversed;
         depthZeroToOne = reversed && zeroToOne;
+        // A device backend otherwise remaps every vertex's depth from GL's -1..1, squeezing the host's 0..1 into the
+        // half nearest the eye: everything drawn passes the depth test against everything the host drew.
+        if (backend != null) backend.cgClipZeroToOne(depthZeroToOne);
     }
 
     public static boolean isDepthReversed() {
