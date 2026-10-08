@@ -45,6 +45,8 @@ public final class CgPostComposite {
     private static final int GPU = CgGpuTrace.name("post.composite");
     private static final CgCompositeFeature[] FEATURES = CgCompositeFeature.values();
     private static final CgCompositeForm[] FORMS = CgCompositeForm.values();
+    /** The keyword set's bit for {@code SCENE}, above every feature's. */
+    private static final int SCENE_KEY = 1 << 30;
 
     /** Per form: its material, the features its keywords are set to, and what its properties were last set to. */
     private final CgMaterial[] materials = new CgMaterial[FORMS.length];
@@ -56,6 +58,7 @@ public final class CgPostComposite {
     private boolean copy;
     private final Inputs inputs = new Inputs();
     private final Consumer<CgShaderBindings> properties = b -> {
+        if (inputs.scene != null) b.sampler("_Scene", 0, inputs.scene);
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
         b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
                 .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
@@ -65,18 +68,19 @@ public final class CgPostComposite {
 
     /** What the composite's properties hold. */
     private static final class Inputs {
-        CgGraphTexture bloom;
+        CgGraphTexture scene, bloom;
         float intensity = Float.NaN, r, g, b;
         boolean conserve;
         float exposure = 1f, vignette, chromatic, impact, look, focusX = 0.5f, focusY = 0.5f;
 
         boolean same(Inputs o) {
-            return bloom == o.bloom && intensity == o.intensity && r == o.r && g == o.g && b == o.b && conserve == o.conserve
+            return scene == o.scene && bloom == o.bloom && intensity == o.intensity && r == o.r && g == o.g && b == o.b && conserve == o.conserve
                     && exposure == o.exposure && vignette == o.vignette && chromatic == o.chromatic && impact == o.impact
                     && look == o.look && focusX == o.focusX && focusY == o.focusY;
         }
 
         void copyFrom(Inputs o) {
+            scene = o.scene;
             bloom = o.bloom;
             intensity = o.intensity;
             r = o.r;
@@ -97,7 +101,18 @@ public final class CgPostComposite {
     public void begin() {
         active = 0;
         copy = false;
+        inputs.scene = null;
         inputs.bloom = null;
+    }
+
+    /**
+     * Composites from {@code scene}, the firing's linear HDR scene ({@code CgFrameKeys.SCENE}), into the target: the
+     * pass then always draws, in the copy form, reading the scene rather than a copy of the target. The stack's.
+     */
+    public CgPostComposite scene(CgGraphTexture scene) {
+        inputs.scene = scene;
+        copy = true;
+        return this;
     }
 
     /**
@@ -167,16 +182,19 @@ public final class CgPostComposite {
 
     /** Records the pass onto {@code target} if any feature is on. The stack's. */
     public void record(CgRecording recording, CgGraphTexture target, CgPassConstants constants) {
-        if (active == 0) return;
+        boolean fromScene = inputs.scene != null;
+        if (active == 0 && !fromScene) return;
         CgCompositeForm form = form();
         int f = form.ordinal();
         CgMaterial material = materials[f];
         if (material == null) material = materials[f] = CgMaterial.newInstance(form.shader);
-        if (active != keyed[f]) {
+        int keys = active | (fromScene ? SCENE_KEY : 0);
+        if (keys != keyed[f]) {
             for (CgCompositeFeature feature : FEATURES) {
                 if (form == CgCompositeForm.COPY || feature.blend) material.toggleKeyword(feature.keyword, active(feature));
             }
-            keyed[f] = active;
+            if (form == CgCompositeForm.COPY) material.toggleKeyword("SCENE", fromScene);
+            keyed[f] = keys;
         }
         if (!inputs.same(set[f])) {
             material.applyProperties(properties);
@@ -185,7 +203,7 @@ public final class CgPostComposite {
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster(target, CgLoad.load(), constants, null, CgOrder.SORTED).timed(GPU);
-        if (form == CgCompositeForm.COPY) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+        if (form == CgCompositeForm.COPY && !fromScene) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
@@ -198,6 +216,7 @@ public final class CgPostComposite {
         for (int f = 0; f < FORMS.length; f++) {
             materials[f] = null;
             keyed[f] = -1;
+            set[f].scene = null;
             set[f].bloom = null;
             set[f].intensity = Float.NaN;
         }
