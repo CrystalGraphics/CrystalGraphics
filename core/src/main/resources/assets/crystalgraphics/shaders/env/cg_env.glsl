@@ -172,6 +172,11 @@ vec3 cg_SceneDecode(vec3 c) {
     vec3 lin = mix(s / 12.92, pow((s + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), s));
     return lin + max(c - 1.0, 0.0);
 }
+// A blend's coverage as it reads in the scene: what lets through (1 - a) decoded, so a dark blend darkens linear
+// light as much as it darkened the encoded picture, and smoke keeps the density it was tuned at.
+float cg_SceneCoverage(float a) {
+    return 1.0 - cg_SceneDecode(vec3(1.0 - clamp(a, 0.0, 1.0))).x;
+}
 // How far behind the scene an Emissive pass's fragment may be and still bloom: an opaque emissive surface is at the
 // depth it wrote, give or take the depth buffer's precision. Eye units.
 #define CG_EMISSIVE_DEPTH_SLACK 1.002

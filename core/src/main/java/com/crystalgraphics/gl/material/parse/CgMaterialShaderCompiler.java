@@ -892,17 +892,23 @@ public final class CgMaterialShaderCompiler {
     }
 
     /**
-     * Decodes a Forward colour, authored as sRGB, where the pass draws into the linear scene. A premultiplied colour is
-     * decoded unpremultiplied, so its coverage stays linear.
+     * Decodes a Forward colour, authored as sRGB, where the pass draws into the linear scene. A blend over what is
+     * behind also has its coverage remapped ({@code cg_SceneCoverage}), so it hides as much as it did encoded; a
+     * premultiplied colour is decoded unpremultiplied and multiplied by that coverage.
      */
     private static void appendSceneDecode(StringBuilder sb, CgParsedPass pass) {
         CgBlendState blend = pass.renderState().getBlend();
-        boolean premultiplied = blend != null && blend.enabled() && blend.srcRgb() == CgGL.GL_ONE
-                && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
-        if (premultiplied) {
-            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
-              .append(" ? cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_fragColor.a")
-              .append(" : cg_SceneDecode(_cg_fragColor.rgb);\n");
+        boolean over = blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE_MINUS_SRC_ALPHA;
+        if (over && blend.srcRgb() == CgGL.GL_ONE) {
+            sb.append("  if (CG_LINEAR_SCENE) {\n")
+              .append("    float _cg_cover = cg_SceneCoverage(_cg_fragColor.a);\n")
+              .append("    _cg_fragColor.rgb = _cg_fragColor.a > 0.0")
+              .append(" ? cg_SceneDecode(_cg_fragColor.rgb / _cg_fragColor.a) * _cg_cover")
+              .append(" : cg_SceneDecode(_cg_fragColor.rgb);\n")
+              .append("    _cg_fragColor.a = _cg_cover;\n  }\n");
+        } else if (over && blend.srcRgb() == CgGL.GL_SRC_ALPHA) {
+            sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor = vec4(cg_SceneDecode(_cg_fragColor.rgb),")
+              .append(" cg_SceneCoverage(_cg_fragColor.a));\n");
         } else {
             sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);\n");
         }
