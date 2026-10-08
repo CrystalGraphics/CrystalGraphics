@@ -491,10 +491,15 @@ public final class CgWorldRenderer {
         for (CgMaterial link = material; link != null; link = link.getNextPass()) {
             ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
             if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
+            CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
             if (link.hasEmissivePass()) {
                 ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
-                CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
                 if (forward != null) ready &= prepared(forward.emissionTarget(), joins);
+            }
+            // What a transparent draw covers the glows behind it with: merged, and in an emission drawn on its own.
+            if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+                ready &= prepared(forward.emissionCover(), joins);
+                ready &= prepared(forward.emissionOccluder(), joins);
             }
             if (link.hasDistortionPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT), joins);
         }
@@ -1098,6 +1103,7 @@ public final class CgWorldRenderer {
                 cullSets(stage, recording, view, false);
                 if (prepass) recordPass(stage, recording, constants, OPAQUE_STATE, true, false, view, null);
                 if (halfDrawn > 0) recordHalf(stage, recording, view);
+                if (emission != null) recordEmission(stage, recording, view, emission, EMIT_BEFORE);
                 if (distorting > 0) distortion.recordBends(stage, recording, hazes);
                 if (drawn > halfDrawn + afterDrawn) {
                     recordPass(stage, recording, constants, which == OPAQUE ? OPAQUE_STATE : TRANSPARENT_STATE, false, false,
@@ -1106,7 +1112,7 @@ public final class CgWorldRenderer {
                 if (distorting > 0) distortion.recordFinal(stage, recording, hazes);
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission);
             }
-            if (which == TRANSPARENT) recordEmission(stage, recording, view, emission);
+            if (which == TRANSPARENT) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT) text.record(stage, view);
         }
@@ -1258,26 +1264,35 @@ public final class CgWorldRenderer {
         return exponent == 0 ? 0 : Math.round(Math.scalb((float) (1024 + (half & 0x3ff)), exponent - 25));
     }
 
+    /** {@link #recordEmission}'s parts: every glow, or those whose colour draws before the transparent pass, or after. */
+    private static final int EMIT_ALL = 0, EMIT_BEFORE = 1, EMIT_AFTER = 2;
+
     /**
      * Every visible draw with an Emissive pass, opaque or transparent, into the emission target hidden by the stage's
-     * depth, published as {@link CgFrameKeys#EMISSION}. After the transparent pass, so it glows over everything. What
-     * nothing reads (bloom off, or below its quality) the graph culls, with its depth copy.
+     * depth, published as {@link CgFrameKeys#EMISSION}. After the transparent pass, so it glows over everything; into a
+     * merged emission, the glows whose colour draws before that pass (opaque and half-size draws) go before it too, so
+     * the surfaces it draws over them cover them there as well ({@code CgPipeline.emissionCover}). What nothing reads
+     * (bloom off, or below its quality) the graph culls, with its depth copy.
      */
-    private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view, @Nullable CgGraphTexture merged) {
+    private void recordEmission(CgStageFrame stage, CgRecording recording, CgHostView view, @Nullable CgGraphTexture merged,
+                                int part) {
         if (emits.length < meshes.length) emits = new boolean[meshes.length];
-        int emitting = 0;
+        int emitting = 0, recorded = 0;
         for (int i = 0; i < count; i++) {
             int queue = queues[i];
             // A transparent draw was classified for this stage; an opaque one is classified again, its pass recorded.
             boolean e = queue < CgRenderQueue.OVERLAY_THRESHOLD && emissions[i] > 0f && emitsLight(materials[i])
                     && (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? phase[i] != SKIP : classify(i, OPAQUE, view) != SKIP)
                     && (merged == null || !allMerged(i));
-            emits[i] = e;
             if (e) emitting++;
+            boolean before = queue < CgRenderQueue.TRANSPARENT_THRESHOLD || phase[i] == HALF;
+            e &= part == EMIT_ALL || (part == EMIT_BEFORE) == before;
+            emits[i] = e;
+            if (e) recorded++;
         }
-        CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
+        if (part != EMIT_BEFORE) CgTrace.counter(CgChannels.WORLD, "world.emissiveDraws", emitting);
         if (merged != null) stage.resources().put(CgFrameKeys.EMISSION, merged);
-        if (emitting == 0) return;
+        if (recorded == 0) return;
         cullSets(stage, recording, view, true);
 
         CgGraphTexture into = merged;
@@ -1297,25 +1312,38 @@ public final class CgWorldRenderer {
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            if (!emits[i]) continue;
+            // Drawn on its own, the emission takes each transparent surface's cover too, in the glows' order: what
+            // the merged emission's surfaces write beside their colour.
+            boolean covers = merged == null && (phase[i] == FORWARD || phase[i] == AFTER)
+                    && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
+            if (!emits[i] && !covers) continue;
             modelOf(i, view);
             model.normal(normal);
             for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
-                if (!link.hasEmissivePass() || merged != null && this.merged[i] && foldsEmission(link)) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
-                if (sets[i] != null) {
-                    drawSet(chunks, pipeline, bindingOf(link, recording), i);
-                    continue;
+                CgPipeline forward = covers ? link.pipeline(CgInstanceKind.OBJECT) : null;
+                if (forward != null && !forward.state().writesNothing()) {
+                    CgPipeline occluder = forward.emissionOccluder();
+                    if (occluder != null) emissionDraw(chunks, occluder, link, recording, i);
                 }
-                chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
-                group(chunks, i);
-                writeInstance(chunks, i);
+                if (!emits[i] || !link.hasEmissivePass() || merged != null && this.merged[i] && foldsEmission(link)) continue;
+                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
             }
         }
         glow.add(chunks.end());
         glow.end();
         stage.resources().put(CgFrameKeys.EMISSION, into);
+    }
+
+    /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
+    private void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+        if (sets[i] != null) {
+            drawSet(chunks, pipeline, bindingOf(link, recording), i);
+            return;
+        }
+        chunks.draw(pipeline, bindingOf(link, recording), meshes[i]).sortKey(keys[i]);
+        group(chunks, i);
+        writeInstance(chunks, i);
     }
 
     /**
@@ -1586,8 +1614,11 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
-                if (emission != null && merged[i] && link.hasEmissivePass()) {
-                    CgPipeline glowing = pipeline.emissionTarget();
+                if (emission != null && !depthOnlyPass) {
+                    // A surface that does not glow covers the glows behind it as it covers their colour, so bloom
+                    // does not lay them back over it.
+                    CgPipeline glowing = merged[i] && link.hasEmissivePass() ? pipeline.emissionTarget() : null;
+                    if (glowing == null) glowing = pipeline.emissionCover();
                     if (glowing != null) pipeline = glowing;
                 }
                 if (sets[i] != null) {

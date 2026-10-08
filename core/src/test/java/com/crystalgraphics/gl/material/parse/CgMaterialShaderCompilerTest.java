@@ -121,6 +121,18 @@ public class CgMaterialShaderCompilerTest {
         assertFalse(CgMaterialShaderCompiler.compile(shader, NO_BUFFERS).fragmentSource().contains("CG_EMISSIVE_PASS"));
     }
 
+    @Test
+    public void emissionTarget_withNoGlow_writesBlackAtTheColoursAlpha() {
+        CgParsedShader shader = parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n"));
+        String frag = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,
+                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.EMISSION_TARGET)))
+                .fragmentSource();
+        assertTrue(frag.contains("layout(location = 1) out vec4 _cg_emission;"));
+        int cover = frag.indexOf("_cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);");
+        assertTrue("the cover", cover >= 0);
+        assertTrue("after the colour is final", cover > frag.indexOf("fragment(_v2f_local, _cg_fragColor);"));
+    }
+
     @Test(expected = CgShaderParseException.class)
     public void emissivePass_withNoCode_needsAForwardPassBeforeIt() {
         parse("#type spatial\nPass { Tags { \"LightMode\" = \"Emissive\" } }\n" + MINIMAL.substring(MINIMAL.indexOf("Pass")));

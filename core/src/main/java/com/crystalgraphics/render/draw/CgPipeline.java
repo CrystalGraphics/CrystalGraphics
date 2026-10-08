@@ -63,6 +63,7 @@ public final class CgPipeline {
     private final boolean multiDraw;
     private final boolean overdraw;
     private final boolean emission;
+    private final boolean cover;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -71,6 +72,8 @@ public final class CgPipeline {
     private CgPipeline overdrawn;
     @Nullable
     private CgPipeline emitting;
+    @Nullable
+    private CgPipeline occluding;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -94,12 +97,14 @@ public final class CgPipeline {
         this.multiDraw = (key.flags & MULTI) != 0;
         this.overdraw = (key.flags & OVERDRAW) != 0;
         this.emission = (key.flags & EMISSION) != 0;
+        this.cover = (key.flags & COVER) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission) {
+        if (multiDraw || overdraw || emission || cover) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
             if (emission) more.add(CgMaterialShaderCompiler.EMISSION_TARGET);
+            if (cover) more.add(CgMaterialShaderCompiler.EMISSION_COVER);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -120,10 +125,10 @@ public final class CgPipeline {
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, 0), CgPipeline::register);
     }
 
-    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4;
+    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8;
 
     private int flags() {
-        return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0);
+        return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0);
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
@@ -164,7 +169,7 @@ public final class CgPipeline {
         if (made == null) {
             CgRenderState counting = CgRenderState.builder().blend(ADD).depth(CgDepthState.NONE).cull(state.getCull())
                     .colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, (flags() | OVERDRAW) & ~EMISSION),
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, (flags() | OVERDRAW) & ~(EMISSION | COVER)),
                     CgPipeline::register);
             overdrawn = made;
         }
@@ -191,6 +196,66 @@ public final class CgPipeline {
             if (shader.emissionMerge() == CgMaterialShaderCompiler.EmissionMerge.NONE) return null;
             made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
             emitting = made;
+        }
+        return made;
+    }
+
+    /**
+     * This Forward pipeline as a pass with an emission attachment draws a surface glowing nothing: it writes black at
+     * its colour's alpha at location 1, so its blend covers the glows drawn behind it as it covers their colour, and
+     * bloom does not lay them back over it. Null where it covers nothing: it adds ({@code dst} factor ONE), or is not a
+     * single-output Forward pass. A shader whose Emissive pass merges answers {@link #emissionTarget()}'s pipeline,
+     * its glow scaled by the draw's emission. Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline covering = pipeline.emissionCover();
+     * chunks.draw(covering != null ? covering : pipeline, bindings, mesh);   // into recording.raster(...).attachment(emission)
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline emissionCover() {
+        if (emission) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw) return null;
+        CgBlendState blend = state.getBlend();
+        // Unset is the transparent pass's alpha blend.
+        if (blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE) return null;
+        CgPipeline made = emitting;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            if (own == null || own.fragOutput().isMrt()) return null;
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
+            emitting = made;
+        }
+        return made;
+    }
+
+    /**
+     * {@link #emissionCover()} for an emission target drawn on its own, after the surfaces: the cover alone at location 0,
+     * under this pipeline's blend, hidden by the scene's depth as an Emissive pass is, since that target has none. Drawn
+     * in the same order as the glows, it covers those behind it. Null where it covers nothing. Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline occluder = forward.emissionOccluder();
+     * if (occluder != null) chunks.draw(occluder, bindings, mesh).sortKey(key);   // into the emission pass, sorted with the glows
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline emissionOccluder() {
+        if (cover) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission) return null;
+        CgBlendState blend = state.getBlend();
+        if (blend != null && blend.enabled() && blend.dstRgb() == CgGL.GL_ONE) return null;
+        CgPipeline made = occluding;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            CgParsedPass own = parsed == null ? null : parsed.getPassByLightMode(pass.lightModeName());
+            if (own == null || own.fragOutput().isMrt()) return null;
+            // Unset is the transparent pass's alpha blend; the emission pass's own is ONE ONE.
+            CgRenderState covering = CgRenderState.builder().blend(blend != null ? blend : CgBlendState.ALPHA)
+                    .depth(CgDepthState.NONE).cull(state.getCull()).colorMask(CgColorMask.ALL).build();
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, covering, kind, flags() | COVER), CgPipeline::register);
+            occluding = made;
         }
         return made;
     }
