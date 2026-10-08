@@ -18,7 +18,7 @@ vfx.submit(CgWorldRenderer.get());
 
 | Package | Owns |
 |---|---|
-| `vfx` | Running effects: `CgVfxSystem` (fixed tick, submission, every mesh and material the engine draws), `CgVfxEffect` (a playing effect), `CgVfxFrame` (what an effect draws through), `CgVfxMomentListener` (an effect's named moments, framed: the capture hook) |
+| `vfx` | Running effects: `CgVfxSystem` (fixed tick, submission, every mesh and material the engine draws; `prepare(look)` warms a look's kernels, slot meshes and programs before it plays, `clear()` ends every effect and gives its GPU slots back while keeping what it built), `CgVfxEffect` (a playing effect), `CgVfxFrame` (what an effect draws through), `CgVfxMomentListener` (an effect's named moments, framed: the capture hook) |
 | `vfx.look` | How an effect looks and behaves: `CgVfxLook`, `CgVfxLayer` (one draw, in a slot), `CgVfxSchema` and `CgVfxParam` (what an effect reads: numbers, colours, curves and camera shakes), `CgVfxValues` (a value for each) |
 | `vfx.camera` | Camera shake: `CgCameraShake` (a definition: trauma, punch, tremor and FOV kick, radii in units of the scale it is played at, and an optional front it arrives with), `CgCameraShakes` (presets). An effect declares its shakes on its schema (`SCHEMA.shake`) and plays them with `playShake`/`holdShake`, so a look can change them; never with numbers in the effect. `CgCameraShake.enabled(false)` stills every shake for the run, leaving the saved `SHAKE` setting alone (the demo's C). The runtime that sums every shake into the host camera (`CgShakeRuntime`, `CgShakeModel`) is package-private |
 | `vfx.path` | Centrelines: `CgVfxPath` (spline, arc-length rings, rotation-minimising frames), `CgVfxPathTexture` (paths on the GPU) |

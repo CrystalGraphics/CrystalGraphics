@@ -20,6 +20,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -525,42 +526,84 @@ public final class CgVfxSystem {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
             if (stepsOnGpu && !effect.gpuPrepared) {
-                // Below compute each kernel is several lowered programs; built on the first burst, they stall it.
                 effect.gpuPrepared = true;
-                if (!rangePrepared) {
-                    rangePrepared = true;
-                    CgVfxRange.prepare();
-                }
-                List<CgVfxEmitter> emitters = effect.look().emitters();
-                for (int k = 0; k < emitters.size(); k++) {
-                    CgVfxEmitter emitter = emitters.get(k);
-                    CgVfxParticlePool.prepare(emitter);
-                    // Each slot's draw mesh, built and placed on its first ask: here, not in the first burst's frame.
-                    CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
-                    for (int e = 0; e < emitter.events().size(); e++) {
-                        CgVfxGpuEmitter child = emitter.events().get(e).child();
-                        if (child == null) continue;
-                        CgVfxParticlePool.prepare(child);
-                        CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
-                    }
-                    // The window's first use starts its kernels and its filling: at play, not on the first landing.
-                    if (readsWorld(emitter)) CgVfxVoxelWindow.get().use();
-                }
+                prepareGpu(effect.look(), true);
             }
             if (effect.warmed) continue;
             effect.warmed = true;
-            List<CgVfxEmitter> looked = effect.look().emitters();
-            for (int k = 0; k < looked.size(); k++) {
-                // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
-                if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
-            }
-            List<CgVfxLayer> layers = effect.look().layers();
-            for (int k = 0; k < layers.size(); k++) {
-                CgMaterial material = material(layers.get(k));
-                if (!warming.contains(material)) warming.add(material);
-            }
+            prepareDraws(effect.look());
         }
-        // Every pass the world draws a material with (depth, emissive, distortion, the joined form), not Forward alone.
+        pollWarming(world);
+    }
+
+    /**
+     * Warms what {@code look} simulates and draws before any effect of it plays: its GPU kernels, slot meshes and
+     * materials' programs, so its first play stalls no frame. On the render thread, ahead of time: a loading screen's
+     * work. Programs still compiling are polled while this system submits.
+     *
+     * <pre>{@code
+     * CgVfxSystem vfx = new CgVfxSystem();
+     * vfx.prepare(CgEnergyWave.kamehameha());   // at init
+     * // ...later, at once:
+     * vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
+     * }</pre>
+     */
+    public void prepare(CgVfxLook look) {
+        prepareGpu(look, false);
+        prepareDraws(look);
+        pollWarming(CgWorldRenderer.get());
+    }
+
+    /**
+     * Ends every effect at once and gives back the GPU slots they held, keeping meshes, pools and warmed programs: what
+     * plays next starts as quickly as on a system never cleared. Between frames, on the render thread.
+     */
+    public void clear() {
+        for (int i = 0; i < effects.size(); i++) effects.get(i).kill();
+        effects.clear();
+        gpuSteps.releaseAll();
+    }
+
+    /** {@code look}'s kernels and slot meshes; the voxel window's too when {@code useWindow}, which starts it filling. */
+    private void prepareGpu(CgVfxLook look, boolean useWindow) {
+        // Below compute each kernel is several lowered programs; built on the first burst, they stall it.
+        if (!rangePrepared) {
+            rangePrepared = true;
+            CgVfxRange.prepare();
+        }
+        List<CgVfxEmitter> emitters = look.emitters();
+        for (int k = 0; k < emitters.size(); k++) {
+            CgVfxEmitter emitter = emitters.get(k);
+            CgVfxParticlePool.prepare(emitter);
+            // Each slot's draw mesh, built and placed on its first ask: here, not in the first burst's frame.
+            CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
+            for (int e = 0; e < emitter.events().size(); e++) {
+                CgVfxGpuEmitter child = emitter.events().get(e).child();
+                if (child == null) continue;
+                CgVfxParticlePool.prepare(child);
+                CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
+            }
+            // The window's first use starts its kernels and its filling: at play, not on the first landing.
+            if (useWindow && readsWorld(emitter)) CgVfxVoxelWindow.get().use();
+        }
+    }
+
+    /** Queues {@code look}'s materials for {@link #pollWarming}, and builds the particle sphere if it draws one. */
+    private void prepareDraws(CgVfxLook look) {
+        List<CgVfxEmitter> looked = look.emitters();
+        for (int k = 0; k < looked.size(); k++) {
+            // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
+            if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
+        }
+        List<CgVfxLayer> layers = look.layers();
+        for (int k = 0; k < layers.size(); k++) {
+            CgMaterial material = material(layers.get(k));
+            if (!warming.contains(material)) warming.add(material);
+        }
+    }
+
+    /** Every pass the world draws a material with (depth, emissive, distortion, the joined form), not Forward alone. */
+    private void pollWarming(CgWorldRenderer world) {
         for (int i = warming.size() - 1; i >= 0; i--) {
             if (world.prepare(warming.get(i))) warming.remove(i);
         }
