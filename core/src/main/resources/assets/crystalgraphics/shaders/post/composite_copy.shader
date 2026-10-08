@@ -9,7 +9,8 @@
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   the corners darkened by _Vignette
 //   IMPACT     _Impact.x of the way to an impact frame (_Impact.y: 0 negative, 1 black and white, 2 speed lines)
-//   SCENE      reads the linear HDR scene (_Scene) instead of the target, clamped; a value within 0.1 of an 8-bit code
+//   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
+//              hue, then clamped; a value within 0.1 of an 8-bit code
 //              is what the scene decoded from the host, written back exact rather than dithered
 #type none
 #pragma cg_feature SCENE
@@ -81,6 +82,12 @@ Pass {
 #endif
 #ifdef VIGNETTE
         c *= post_vignette(i.uv, CG_RESOLUTION, _Vignette);
+#endif
+#ifdef SCENE
+        // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where
+        // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact.
+        float peak = max(c.r, max(c.g, c.b));
+        if (peak > 1.0) c = mix(c / peak, vec3(1.0), 1.0 - 1.0 / peak);
 #endif
         vec3 encoded = post_encode_srgb(c);
 #ifdef IMPACT
