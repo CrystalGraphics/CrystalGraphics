@@ -42,14 +42,22 @@ float post_vignette(vec2 uv, vec2 resolution, float amount) {
     return 1.0 - amount * smoothstep(0.35, 1.0, r);
 }
 
-// An impact frame's look of an encoded colour e: 0 its negative, 1 stark black and white, 2 dark speed lines from
-// focus, a new set each of 24 frames a second.
-vec3 post_impact(vec3 e, float look, vec2 uv, vec2 focus, vec2 resolution, float time) {
-    if (look < 0.5) return 1.0 - clamp(e, 0.0, 1.0);
-    if (look < 1.5) return vec3(step(0.5, dot(clamp(e, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722))));
+// Speed lines radiating from focus, 1 on a line: a new set each of 24 frames a second, clear round the focus.
+float post_speed_lines(vec2 uv, vec2 focus, vec2 resolution, float time) {
     vec2 p = (uv - focus) * vec2(resolution.x / resolution.y, 1.0);
     float spoke = floor((atan(p.y, p.x) / 6.2831853 + 0.5) * 96.0);
     float h = fract(sin(spoke * 12.9898 + floor(time * 24.0) * 78.233) * 43758.5453);
-    float line = step(0.7, h) * smoothstep(0.12, 0.5, length(p));
-    return e * (1.0 - line);
+    return step(0.7, h) * smoothstep(0.12, 0.5, length(p));
+}
+
+// An impact frame's look (CgImpact's order) of an encoded colour e, subject the share of the pixel that glows: 0 its
+// negative, 1 stark black and white, 2 dark speed lines from focus, 3 what glows white on black, 4 black on white, 5 3
+// with white speed lines.
+vec3 post_impact(vec3 e, float subject, float look, vec2 uv, vec2 focus, vec2 resolution, float time) {
+    if (look < 0.5) return 1.0 - clamp(e, 0.0, 1.0);
+    if (look < 1.5) return vec3(step(0.5, dot(clamp(e, 0.0, 1.0), vec3(0.2126, 0.7152, 0.0722))));
+    if (look < 2.5) return e * (1.0 - post_speed_lines(uv, focus, resolution, time));
+    if (look < 3.5) return vec3(subject);
+    if (look < 4.5) return vec3(1.0 - subject);
+    return vec3(max(subject, post_speed_lines(uv, focus, resolution, time)));
 }

@@ -189,7 +189,20 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
 ```
 
 - The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames (`CgImpact`:
-  negative, black and white, speed lines). Flash and impact frames are scaled by the player's `FLASHES` comfort setting.
+  negative, black and white, speed lines; and `SUBJECT`, `SUBJECT_INVERTED`, `SUBJECT_LINES`, what glows split from
+  the world, masked by the HDR scene's light past white). Flash and impact frames are scaled by the player's `FLASHES`
+  comfort setting.
+- **An impact frame is beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts;
+  an effect sets the look it returns on a volume at full weight, with a hard edge. `CgEnergyWave`'s blast plays one
+  inside a hitstop (`BLAST_BEATS`); `--mode=vfx-blast-flash` shows it.
+
+```java
+static final CgImpactSequence HIT = CgImpactSequence.at(24f)
+        .beat(CgImpact.SUBJECT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.SUBJECT_LINES, 2).build();
+CgImpact look = HIT.look(sinceHit);                      // each tick; null outside it
+impact.weight(look != null ? 1f : 0f);
+if (look != null) settings.impact(look, 1f);
+```
 - A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
 - **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at
   `AFTER_WORLD` or `AFTER_COMPOSITE`, or composite inputs at `BEFORE_COMPOSITE`. `render/post/CLAUDE.md` § *Writing an
