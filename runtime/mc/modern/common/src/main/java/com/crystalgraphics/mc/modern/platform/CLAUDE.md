@@ -33,7 +33,8 @@ nothing in any log. `Blaze3dMirrorTest` pins the list; `HostStateVerifier` is th
 
 ## Lifecycle
 
-Initialisation is lazy, on the first frame that owns the render context. `LifecycleModern.opaquePass`
+The engine starts in `FrameHooks.endFrame` once `LifecycleModern.reload()` has seen the first resource reload
+finish: on the title screen, so a world's first frame compiles almost nothing. `LifecycleModern.opaquePass`
 and `transparentPass`, from the loader's world-render hooks, fire `CgRenderStage.WORLD_OPAQUE` and
 `WORLD_TRANSPARENT`. At shutdown the loaders call
 `CgGraphicsLifecycle.shutdown()`, which stops the engine and frees nothing: Minecraft dispatches render

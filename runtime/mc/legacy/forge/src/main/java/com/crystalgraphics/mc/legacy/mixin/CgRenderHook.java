@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.legacy.platform.world.EnvironmentLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.CgPlatform;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EntityRenderer;
@@ -60,6 +61,9 @@ public abstract class CgRenderHook {
 
     @Inject(method = "func_181560_a", remap = false, require = 1, at = @At("TAIL"))
     private void cg$frameRendered(float partialTicks, long nanoTime, CallbackInfo ci) {
+        // The engine starts on the first frame, the title screen's, so its shaders compile before a world exists.
+        Minecraft mc = Minecraft.getMinecraft();
+        CgGraphicsLifecycle.ensureContext(mc.displayWidth, mc.displayHeight);
         CgPlatform.lifecycle().onFrameRendered();
     }
 }

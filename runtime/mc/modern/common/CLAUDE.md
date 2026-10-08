@@ -17,7 +17,8 @@ loader branches (Forge 1.21.3+, Fabric 1.14.4–1.15.2), never here.
 
 ## Key design points
 
-- **No GL in constructors.** GL work waits for the first frame that owns the render context.
+- **No GL in constructors.** The engine starts at a frame's end once the first resource reload has finished
+  (`FrameHooks`): the title screen, so its shaders compile before a world exists.
 - **Mixin AP comes from the toolchain.** A second `annotationProcessor` for Mixin produces duplicate-AP
   SRG mapping errors.
 

@@ -92,8 +92,8 @@ public final class CrystalGraphics{
         // VAOs and FBOs are not -- so a VAO built now is named in a context the renderer never
         // uses, and glGenVertexArrays hands the same id to the next caller on the first real
         // frame. Two owners of one VAO, no GL error, and the second writer's layout silently
-        // replaces the first's. A stage's first firing initialises lazily on a frame
-        // that genuinely owns the render context; that is the only correct moment.
+        // replaces the first's. The engine starts at the first game-loop frame's end (CgRenderHook),
+        // the title screen's, which owns the render context.
 
         // Aggregate validation of all mod OpenGL requirements registered during pre-init.
         // On dedicated server this is a no-op (returns immediately).
