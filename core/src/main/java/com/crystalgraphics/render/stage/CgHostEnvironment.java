@@ -17,7 +17,7 @@ package com.crystalgraphics.render.stage;
  * CgHostEnvironment out = CgRenderStage.WORLD_OPAQUE.host().environment().clear();
  * out.sun(celestialAngle, moonPhase, stars, skyBrightness).weather(rain, thunder, flash)
  *    .sky(hasSky, hasCeiling, ultraWarm, r, g, b, cloudHeight)
- *    .camera(fluid, perspective, fov, renderDistance, guiHidden).sight(nightVision, blindness, darkness)
+ *    .camera(fluid, perspective, fov, renderDistance, guiHidden).screen(open).sight(nightVision, blindness, darkness)
  *    .settings(particles, graphics, screenEffects, fovEffects).time(gameTime, dayTime, paused, tickRate, frozen);
  * }</pre>
  *
@@ -47,7 +47,7 @@ public final class CgHostEnvironment {
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private int cameraFluid, perspective;
     private float fov, renderDistance;
-    private boolean guiHidden;
+    private boolean guiHidden, screenOpen;
     private float nightVision, blindness, darkness;
     private int particles, graphics;
     private float screenEffects, fovEffects;
@@ -193,6 +193,11 @@ public final class CgHostEnvironment {
         return guiHidden;
     }
 
+    /** Whether a screen is up (chat, the inventory, a menu): the keys go to it, not to the game. */
+    public boolean screenOpen() {
+        return screenOpen;
+    }
+
     /** The player's night vision, 0 to 1. */
     public float nightVision() {
         return nightVision;
@@ -314,6 +319,12 @@ public final class CgHostEnvironment {
         return this;
     }
 
+    /** Host side: whether a screen is up. */
+    public CgHostEnvironment screen(boolean open) {
+        screenOpen = open;
+        return this;
+    }
+
     /** Host side: the effects on the player's sight. */
     public CgHostEnvironment sight(float nightVision, float blindness, float darkness) {
         this.nightVision = nightVision;
@@ -346,7 +357,7 @@ public final class CgHostEnvironment {
         sun(o.celestialAngle, o.moonPhase, o.starBrightness, o.skyBrightness).weather(o.rain, o.thunder, o.flash)
                 .sky(o.hasSky, o.hasCeiling, o.ultraWarm, o.skyRed, o.skyGreen, o.skyBlue, o.cloudHeight)
                 .fog(o.fogRed, o.fogGreen, o.fogBlue, o.fogStart, o.fogEnd)
-                .camera(o.cameraFluid, o.perspective, o.fov, o.renderDistance, o.guiHidden)
+                .camera(o.cameraFluid, o.perspective, o.fov, o.renderDistance, o.guiHidden).screen(o.screenOpen)
                 .sight(o.nightVision, o.blindness, o.darkness)
                 .settings(o.particles, o.graphics, o.screenEffects, o.fovEffects);
         return time(o.gameTime, o.dayTime, o.paused, o.tickRate, o.frozen);
@@ -356,7 +367,7 @@ public final class CgHostEnvironment {
     public CgHostEnvironment clear() {
         float n = Float.NaN;
         sun(n, -1, n, n).weather(n, n, n).sky(false, false, false, n, n, n, n).fog(n, n, n, n, n)
-                .camera(-1, -1, n, n, false).sight(n, n, n).settings(-1, -1, n, n);
+                .camera(-1, -1, n, n, false).screen(false).sight(n, n, n).settings(-1, -1, n, n);
         return time(-1L, -1L, false, n, false);
     }
 }

@@ -41,7 +41,7 @@ import net.minecraft.world.phys.Vec3;
  *   <li>From 1.21.11 the sun, moon, stars, sky, clouds, fog and the water-evaporating rule are environment attributes,
  *       sampled at the camera; day time is the default clock on 26.x. Fog is readable 1.17.1 to 1.21.1 and from
  *       1.21.11 (the attributes', without the player's effects), absent between.</li>
- *   <li>The lightning flash has no reader from 1.21.11, nor the hidden HUD from 26.2: both stay absent there. The moon's
+ *   <li>The lightning flash has no reader from 1.21.11: it stays absent there. The moon's
  *       phase starts at 1.16.5; dimension facts too.</li>
  * </ul>
  */
@@ -51,7 +51,7 @@ public final class EnvironmentModern {
     }
 
     public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
-        out.clear();
+        out.clear().screen(screenOpen(mc));
         //? if >=1.15 {
         ClientLevel level = mc.level;
         //?} else {
@@ -146,7 +146,7 @@ public final class EnvironmentModern {
         *///?}
 
         out.camera(cameraFluid(mc), perspective(options), (float) Math.toDegrees(2.0 * Math.atan(1.0 / view.projection().m11())),
-                renderDistance(options), guiHidden(options));
+                renderDistance(options), guiHidden(mc));
 
         LocalPlayer player = mc.player;
         if (player != null) {
@@ -223,11 +223,20 @@ public final class EnvironmentModern {
         *///?}
     }
 
-    private static boolean guiHidden(Options options) {
+    /** 26.2 moved the HUD's hidden flag and the screen onto {@code Minecraft.gui}. */
+    private static boolean guiHidden(Minecraft mc) {
         //? if <26.2 {
-        return options.hideGui;
+        return mc.options.hideGui;
         //?} else {
-        /*return false;
+        /*return mc.gui.hud.isHidden();
+        *///?}
+    }
+
+    private static boolean screenOpen(Minecraft mc) {
+        //? if <26.2 {
+        return mc.screen != null;
+        //?} else {
+        /*return mc.gui.screen() != null;
         *///?}
     }
 
