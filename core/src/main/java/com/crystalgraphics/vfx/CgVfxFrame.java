@@ -25,6 +25,8 @@ import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -46,12 +48,23 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_MESH = CgTrace.name("vfx.draws.particle-mesh"),
             DRAWS_PARTICLE_BATCH = CgTrace.name("vfx.draws.particle-batch"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
-            DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes"),
+            DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
+    /**
+     * GPU particle slots drawn as one draw a pool and layer ({@code Draw.indirectEach}), in one group for the system:
+     * each material's slots blend as one run over the others' rather than effect by effect. False draws a slot a draw,
+     * per effect, as the CPU path.
+     */
+    private static final boolean MERGED = !"false".equals(System.getProperty("crystalgraphics.vfx.mergeParticles"));
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
     private float alpha, particleAlpha;
+    /** Where the merged particle draws sort as one group: the middle of the system's effects. */
+    private double groupX, groupY, groupZ;
+    /** This frame's merged particle slots, a set per pool and layer, the first {@link #setsUsed} in use. */
+    private final List<SlotSet> sets = new ArrayList<>();
+    private int setsUsed;
     /** The CPU path's particles this frame drew: GPU pools are counted by Range. */
     private int cpuDrawn;
 
@@ -59,11 +72,86 @@ public final class CgVfxFrame {
         this.system = system;
     }
 
-    void begin(CgWorldRenderer world, float alpha, float particleAlpha) {
+    void begin(CgWorldRenderer world, float alpha, float particleAlpha, double groupX, double groupY, double groupZ) {
         this.world = world;
         this.alpha = alpha;
         this.particleAlpha = particleAlpha;
+        this.groupX = groupX;
+        this.groupY = groupY;
+        this.groupZ = groupZ;
         cpuDrawn = 0;
+        setsUsed = 0;
+    }
+
+    /** Draws the merged particle slots: one draw a pool and layer, each slot a record of it. After every effect's submit. */
+    void end() {
+        for (int i = 0; i < setsUsed; i++) {
+            SlotSet set = sets.get(i);
+            CgVfxRange range = CgVfxRange.of(set.pool);
+            boolean arcs = set.renderer == CgVfxEmitter.Renderer.ARCS;
+            CgWorldRenderer.Draw draw = world.draw(slotMesh(set.renderer, set.capacity), system.material(set.layer))
+                    .buffer(CgBindingPoints.PARTICLES, range.drawn())
+                    .indirectEach(range.visible(), arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
+                            arcs ? CgVfxRibbons.VERTICES : 6)
+                    .gpuCulled()
+                    .at(groupX, groupY, groupZ);
+            CgVfxSystem.place(draw, set.layer, groupX, groupY, groupZ);
+            draw.group(groupX, groupY, groupZ).batchKey(system.materialKey(set.layer));
+            for (int r = 0; r < set.records; r++) {
+                draw.each(set.at[r * 3], set.at[r * 3 + 1], set.at[r * 3 + 2], set.count[r]);
+                for (int c = 0; c < 4; c++) {
+                    int f = r * 16 + c * 4;
+                    draw.custom(c, set.custom[f], set.custom[f + 1], set.custom[f + 2], set.custom[f + 3]);
+                }
+            }
+            draw.submit();
+            CgVfxTrace.count(DRAWS_PARTICLE_SETS, 1);
+        }
+    }
+
+    /** {@code pool}'s set for {@code layer} this frame, begun empty the first time it is asked for. */
+    private SlotSet set(CgVfxParticlePool pool, CgVfxLayer layer, CgVfxEmitter.Renderer renderer) {
+        for (int i = 0; i < setsUsed; i++) {
+            SlotSet set = sets.get(i);
+            if (set.pool == pool && set.layer == layer && set.renderer == renderer) return set;
+        }
+        if (setsUsed == sets.size()) sets.add(new SlotSet());
+        SlotSet set = sets.get(setsUsed++);
+        set.pool = pool;
+        set.layer = layer;
+        set.renderer = renderer;
+        set.capacity = 0;
+        set.records = 0;
+        return set;
+    }
+
+    /** One pool's slots drawn through one layer: each a record's position, customs and count offset. */
+    private static final class SlotSet {
+        CgVfxParticlePool pool;
+        CgVfxLayer layer;
+        CgVfxEmitter.Renderer renderer;
+        /** The largest slot's: the mesh is sized for it. */
+        int capacity;
+        int records;
+        double[] at = new double[16 * 3];
+        float[] custom = new float[16 * 16];
+        long[] count = new long[16];
+
+        /** A record, its customs zeroed; answers its first custom float. */
+        int add(double x, double y, double z, long countOffset) {
+            if (records == count.length) {
+                int n = records * 2;
+                at = Arrays.copyOf(at, n * 3);
+                custom = Arrays.copyOf(custom, n * 16);
+                count = Arrays.copyOf(count, n);
+            }
+            at[records * 3] = x;
+            at[records * 3 + 1] = y;
+            at[records * 3 + 2] = z;
+            count[records] = countOffset;
+            Arrays.fill(custom, records * 16, records * 16 + 16, 0f);
+            return records++ * 16;
+        }
     }
 
     int cpuDrawn() {
@@ -228,6 +316,24 @@ public final class CgVfxFrame {
                 continue;
             }
             reach = Math.max(reach, Math.max(layer.radius(), 1f) * 4f);
+            if (MERGED) {
+                SlotSet set = set(pool, layer, renderer);
+                set.capacity = Math.max(set.capacity, capacity);
+                int f = set.add(effect.originX + cx, effect.originY + cy, effect.originZ + cz, range.visibleWord(slot) * 4L);
+                float[] c = set.custom;
+                c[f] = range.base(slot);
+                c[f + 1] = capacity;
+                c[f + 2] = layer.radius();
+                c[f + 3] = layer.parameter();
+                c[f + 4] = cx;
+                c[f + 5] = cy;
+                c[f + 6] = cz;
+                c[f + 7] = effect.age;
+                color(c, f + 8, layer.colorA(), values);
+                color(c, f + 12, layer.colorB(), values);
+                CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
+                continue;
+            }
             CgMesh mesh = slotMesh(renderer, capacity);
             CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
@@ -425,6 +531,11 @@ public final class CgVfxFrame {
         color(draw, 2, layer.colorA(), values);
         color(draw, 3, layer.colorB(), values);
         return CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ);
+    }
+
+    private static void color(float[] into, int at, CgVfxParam param, CgVfxValues values) {
+        if (param == null) return;
+        for (int i = 0; i < 4; i++) into[at + i] = values.get(param, i);
     }
 
     private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {
