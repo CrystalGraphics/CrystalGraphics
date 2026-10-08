@@ -114,6 +114,16 @@ public final class CgCameraShake {
         return CgShakeRuntime.MODEL.trauma();
     }
 
+    /** Turns every shake off or back on, for this run only: the player's saved setting is untouched. */
+    public static void enabled(boolean on) {
+        CgShakeRuntime.enabled = on;
+    }
+
+    /** Whether shakes move the camera: {@link #enabled(boolean)}'s switch, on by default. */
+    public static boolean enabled() {
+        return CgShakeRuntime.enabled;
+    }
+
     /** Whether anything has shaken: from then shakes own the host camera's offset, and write it every frame. */
     public static boolean active() {
         return CgShakeRuntime.installed();

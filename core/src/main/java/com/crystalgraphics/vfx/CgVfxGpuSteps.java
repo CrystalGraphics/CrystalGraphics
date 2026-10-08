@@ -159,9 +159,14 @@ final class CgVfxGpuSteps {
         for (int i = 0; i < pools.size(); i++) CgVfxRange.of(pools.get(i)).frame(alpha, aheadSeconds);
     }
 
+    /** Gives every slot back, keeping the pools for whatever plays next. Between steps. */
+    void releaseAll() {
+        for (int i = tenants.size() - 1; i >= 0; i--) release(i);
+    }
+
     /** Gives every slot back and drops its pools: the system is going, and its particles with it. Between steps. */
     void clear() {
-        for (int i = tenants.size() - 1; i >= 0; i--) release(i);
+        releaseAll();
         CgVfxParticlePool.release(this);
     }
 

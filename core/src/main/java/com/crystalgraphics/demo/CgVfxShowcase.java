@@ -290,6 +290,27 @@ public final class CgVfxShowcase {
         world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
     }
 
+    /** Makes the spheres' meshes and materials and warms every program the showcase draws with. On the render thread. */
+    public void prepare() {
+        ensureResources();
+        CgWorldRenderer world = CgWorldRenderer.get();
+        for (CgMaterial material : materials) world.prepare(material);
+        for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
+            world.prepare(material);
+        }
+        for (Lane lane : lanes) vfx.prepare(lane.look);
+        vfx.prepare(CgVfxHeatHaze.standard());
+    }
+
+    /** Ends every wave and the haze at once; the next {@link #submit} starts the loop over. */
+    public void clear() {
+        vfx.clear();
+        Arrays.fill(waves, null);
+        Arrays.fill(shots, -1);
+        haze = null;
+        waveX = Double.NaN;
+    }
+
     /** The system the showcase plays its effects through: register a {@code CgVfxMomentListener} on it to photograph their moments. */
     public CgVfxSystem vfx() {
         return vfx;

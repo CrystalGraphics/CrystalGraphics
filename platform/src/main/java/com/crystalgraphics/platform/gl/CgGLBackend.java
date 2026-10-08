@@ -347,6 +347,13 @@ public abstract class CgGLBackend {
 
     public void cgEndTransfer() {}
 
+    /**
+     * Whether what follows draws into a host depth whose clip range is {@code 0..1}. GL's host sets that with its own
+     * {@code glClipControl}, so GL does nothing here; a device backend picks the vertex stage that leaves clip depth as
+     * the host's projection wrote it, instead of remapping GL's {@code -1..1}.
+     */
+    public void cgClipZeroToOne(boolean zeroToOne) {}
+
     /** {@link #cgBufferBarrier} for a texture. */
     public void cgImageBarrier(int texture, int from, int to) {
         int bits = (from & CgAccess.COMPUTE_WRITE) == 0 ? 0 : glBarrierBits(to, true);
