@@ -93,6 +93,16 @@ public final class CgVfxBlasts {
         vfx.submit(world);
     }
 
+    /** Warms every look's kernels and programs, so the first bursts stall no frame. On the render thread. */
+    public void prepare() {
+        for (CgVfxLook look : LOOKS) vfx.prepare(look);
+    }
+
+    /** Ends every burst at once; the next {@link #submit} fires those due from then. */
+    public void clear() {
+        vfx.clear();
+    }
+
     /** The system the blasts play through. */
     public CgVfxSystem vfx() {
         return vfx;
