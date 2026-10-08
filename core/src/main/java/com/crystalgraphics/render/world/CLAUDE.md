@@ -57,8 +57,9 @@
 - **Glows under the HDR scene** (`CgFrameKeys.SCENE` on the firing): no emission target, merged or not. Opaque and
   half-size draws' Emissive passes add into the scene before the transparent pass (`recordSceneGlows`, reading its
   depth through `sceneDepth(unit)`); a transparent draw's Emissive pass follows its Forward draw in the transparent pass
-  at the same key (`recordPass`), which SORTED keeps in order, so a nearer surface covers glow and colour alike. Bloom
-  reads the scene (`CgBloom`).
+  at the same key (`recordPass`), which SORTED keeps in order, so a nearer surface covers glow and colour alike. Their
+  constants carry `sceneEmission` (0.5) as `CG_SCENE_GLOW`, which every Emissive pass's `CG_EMISSION` multiplies by
+  under the scene alone. Bloom reads the scene (`CgBloom`).
 - **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
   `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
   size, reading the target's depth through `sceneDepth(unit, from)`; then `world_half_upsample.shader` adds it over

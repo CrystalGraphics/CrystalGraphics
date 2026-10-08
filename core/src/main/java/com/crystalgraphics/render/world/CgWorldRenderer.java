@@ -259,6 +259,10 @@ public final class CgWorldRenderer {
     private final int[] overdrawCounts = new int[256];
     private final CgReadback.Sink overdrawSink = this::summariseOverdraw;
 
+    /** A stop down: strengths were set for a glow blurred into bloom, which spreads a core's energy wide. */
+    public static final float SCENE_EMISSION = 0.5f;
+    private volatile float sceneEmission = SCENE_EMISSION;
+
     // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on. Null follows the setting.
     @Nullable
     private volatile Boolean hdrSceneForced = System.getProperty("crystalgraphics.world.hdrScene") == null ? null
@@ -383,6 +387,19 @@ public final class CgWorldRenderer {
      */
     public void hdrScene(boolean on) {
         hdrSceneForced = on;
+    }
+
+    /**
+     * What a glow drawn into the HDR scene is multiplied by ({@code CG_SCENE_GLOW}), {@value #SCENE_EMISSION} by default:
+     * below 1, cores flood less to white, and fewer glows pass white to bloom. The old path's glows are not scaled.
+     */
+    public CgWorldRenderer sceneEmission(float gain) {
+        sceneEmission = Math.max(0f, gain);
+        return this;
+    }
+
+    public float sceneEmission() {
+        return sceneEmission;
     }
 
     /** Drops {@link #hdrScene(boolean)}'s override: the scene follows {@code CgGraphicsSettings.HDR} again. */
@@ -1129,7 +1146,7 @@ public final class CgWorldRenderer {
             }
 
             CgRecording recording = stage.recording();
-            CgPassConstants constants = stage.constants();
+            CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
@@ -1397,7 +1414,8 @@ public final class CgWorldRenderer {
     private void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
         if (markGlows(view, null, EMIT_BEFORE) == 0) return;
         cullSets(stage, recording, view, true);
-        CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants(), EMISSIVE_STATE, CgOrder.SORTED)
+        CgRasterPass glow = recording.raster(stage.target(), CgLoad.load(), stage.constants().sceneGlow(sceneEmission),
+                        EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
