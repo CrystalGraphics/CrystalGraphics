@@ -22,6 +22,8 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgTraceReport;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -35,6 +37,10 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.function.Supplier;
 
@@ -60,7 +66,13 @@ import java.util.function.Supplier;
  * -Dcrystalgraphics.demo.sky=false                    // beams: keep the world's own sky, not the showcase's
  * -Dcrystalgraphics.demo.capture=build/demo.png       // and write the world, with no GUI over it, to a PNG
  * -Dcrystalgraphics.demo.captureAt=300                // this many world frames after the demo was placed
+ * -Dcrystalgraphics.demo.profile=300                  // profile that many frames of the scene, written to
+ *                                                     // crystalgraphics/profile-<scene>-<n>f/ in the game directory
+ * -Dcrystalgraphics.demo.profile.warmup=600           // after this many frames on the ground
  * }</pre>
+ *
+ * <p>A profile records only the channels {@code -Dcrystalgraphics.trace.channels} turns on, and keeps every profiled
+ * frame's zones only with {@code -Dcrystalgraphics.trace.zones} sized for them.</p>
  *
  * <p>Every scene is built and warmed at install (its programs and kernels compiled), and a scene switched away from
  * is cleared, not deleted, so a switch compiles and builds nothing. A scene is placed on the first world frame, some
@@ -80,6 +92,8 @@ public final class CgRenderDemo {
     private static final boolean SKY = !"false".equals(System.getProperty("crystalgraphics.demo.sky"));
     private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
+    private static final int PROFILE = Integer.getInteger("crystalgraphics.demo.profile", 0);
+    private static final int PROFILE_WARMUP = Integer.getInteger("crystalgraphics.demo.profile.warmup", 600);
 
     private static final int ABOVE = 2;       // blocks up the screen the scene floats, until it stands on the ground
     private static final int TELEPORT = 32;   // blocks the camera may move in one frame before the scene follows
@@ -123,6 +137,9 @@ public final class CgRenderDemo {
     private double lastX, lastY, lastZ;
     private int levelEpoch;
     private int worldFrames;
+    /** Frames since the scene stood on the ground, and the trace frame the profile starts at. */
+    private int profiled;
+    private long profileFrom;
 
     /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
     private CgHostFrame captured;
@@ -297,10 +314,32 @@ public final class CgRenderDemo {
             anchor(view);
         }
         if (!grounded) ground();
+        if (PROFILE > 0 && grounded) profile();
         lastX = view.x();
         lastY = view.y();
         lastZ = view.z();
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
+    }
+
+    /** Counts the frames since the scene stood on the ground, and writes the profile once its frames are in. */
+    private void profile() {
+        profiled++;
+        if (profiled == PROFILE_WARMUP) {
+            profileFrom = CgTrace.currentFrameIndex();
+            LOGGER.info("[CgRenderDemo] profiling {} frames of {}", PROFILE, kinds[current].name());
+        } else if (profiled == PROFILE_WARMUP + PROFILE) {
+            CgTraceReport report = CgTraceReport.of(CgTrace.snapshot().between(profileFrom, CgTrace.currentFrameIndex()));
+            Path folder = Paths.get("crystalgraphics", "profile-" + kinds[current].name() + "-" + PROFILE + "f");
+            try {
+                Files.createDirectories(folder);
+                Files.write(folder.resolve("report.txt"), report.breakdown().getBytes(StandardCharsets.UTF_8));
+                Files.write(folder.resolve("report-full.txt"),
+                        report.render(CgTraceReport.Tier.FULL).getBytes(StandardCharsets.UTF_8));
+                LOGGER.info("[CgRenderDemo] profile written to {}", folder.toAbsolutePath());
+            } catch (IOException e) {
+                LOGGER.warn("[CgRenderDemo] could not write the profile to {}", folder.toAbsolutePath(), e);
+            }
+        }
     }
 
     private boolean jumped(CgHostView view) {
