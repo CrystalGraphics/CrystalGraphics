@@ -259,8 +259,10 @@ public final class CgWorldRenderer {
     private final int[] overdrawCounts = new int[256];
     private final CgReadback.Sink overdrawSink = this::summariseOverdraw;
 
-    // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on.
-    private boolean hdrScene = "true".equals(System.getProperty("crystalgraphics.world.hdrScene"));
+    // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on. Null follows the setting.
+    @Nullable
+    private volatile Boolean hdrSceneForced = System.getProperty("crystalgraphics.world.hdrScene") == null ? null
+            : Boolean.getBoolean("crystalgraphics.world.hdrScene");
     private final CgSceneTarget sceneTarget = new CgSceneTarget();
 
     private boolean installed;
@@ -361,14 +363,18 @@ public final class CgWorldRenderer {
 
     /**
      * Whether the transparent stage draws into a linear HDR scene (RGBA16F beside the host's depth) that the post
-     * stack's composite encodes back into the host's target, off by default; {@code -Dcrystalgraphics.world.hdrScene=true}
-     * starts it on. Takes effect at the next firing, so it can be flipped live to compare.
+     * stack's composite encodes back into the host's target: the player's {@code CgGraphicsSettings.HDR}, on by default.
+     * Takes effect at the next firing, so it can be flipped live to compare.
      *
      * <pre>{@code
-     * CgWorldRenderer.get().hdrScene(true);   // blends, glows and edges in linear light
+     * CgGraphicsSettings.HDR.set(false);      // the player's choice, saved: straight into the host's picture
+     * CgWorldRenderer.get().hdrScene(true);   // this session only, whatever the setting says; never saved
+     * CgWorldRenderer.get().followHdrSetting();
+     * // -Dcrystalgraphics.world.hdrScene=false: the same override, from launch
      * }</pre>
      *
      * <ul>
+     *   <li>Off, glows go to the emission target and bloom from it, merged into their draws where the host allows.</li>
      *   <li>On, every renderer on {@code WORLD_TRANSPARENT} between the scene's first pass and the composite draws into
      *       the scene through {@code CgStageFrame.target()}; raw GL into the host's framebuffer there is overwritten.</li>
      *   <li>{@code cg_SceneColor} there reads linear HDR, not the host's encoded 8 bits.</li>
@@ -376,11 +382,17 @@ public final class CgWorldRenderer {
      * </ul>
      */
     public void hdrScene(boolean on) {
-        hdrScene = on;
+        hdrSceneForced = on;
+    }
+
+    /** Drops {@link #hdrScene(boolean)}'s override: the scene follows {@code CgGraphicsSettings.HDR} again. */
+    public void followHdrSetting() {
+        hdrSceneForced = null;
     }
 
     public boolean hdrScene() {
-        return hdrScene;
+        Boolean forced = hdrSceneForced;
+        return forced != null ? forced : CgGraphicsSettings.HDR.get();
     }
 
     /**

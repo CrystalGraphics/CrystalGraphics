@@ -139,7 +139,8 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   every glow on a device without `independentBlend` (`CgCapabilities.independentBlend()`; Minecraft 26.2's device is
   created with it where the GPU has it).
   `world.mergeEmission(false)` draws every Emissive pass on its own again.
-- **The HDR scene** (`world.hdrScene(true)`, off by default, `-Dcrystalgraphics.world.hdrScene=true`; render-hdr-scene):
+- **The HDR scene** (the player's `CgGraphicsSettings.HDR`, on by default; `world.hdrScene(on)` overrides it for the
+  session, unsaved, as `-Dcrystalgraphics.world.hdrScene` does from launch; render-hdr-scene):
   `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
   pass decodes the host's colour into it and makes it the stage's target (`CgStageFrame.retarget`, `CgFrameKeys.SCENE`);
   the post stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL
