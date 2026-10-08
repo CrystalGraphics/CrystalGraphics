@@ -473,6 +473,10 @@ public final class CgRecording {
         CgPass.Callback pass = new CgPass.Callback(name, target, body, request);
         add(pass);
         for (CgGraphTexture read : reads) read(pass, read, CgAccess.SAMPLED_READ);
+        if (target != null && target.drawsBesideCurrentDepth()) {
+            read(pass, CgGraphTexture.current(), CgAccess.SAMPLED_READ);
+            write(pass, CgGraphTexture.current(), CgAccess.COLOR_WRITE);
+        }
         if (target != null) write(pass, target, CgAccess.COLOR_WRITE);
         return request;
     }

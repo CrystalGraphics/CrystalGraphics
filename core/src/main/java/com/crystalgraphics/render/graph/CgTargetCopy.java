@@ -71,6 +71,37 @@ final class CgTargetCopy {
             format = FORMATS.computeIfAbsent(sourceFormat, f -> copyFormat(f.getColorSlot(0), f.getDepthType()));
             depthMask = sourceFormat.hasDepth() ? CgGL.GL_DEPTH_BUFFER_BIT : 0;
         }
+        return copy(source, source, format, depthMask, width, height, bits, rects, at, pool);
+    }
+
+    /**
+     * As {@link #copy}, for a target drawn beside another's depth ({@link CgGraphTexture#besideCurrentDepth}): colour
+     * from {@code colorSource} of {@code colorFormat}, depth from current target {@code depthSource}.
+     */
+    long copyBeside(int colorSource, CgFrameBufferFormat colorFormat, int depthSource, int width, int height, int bits,
+                    int[] rects, int at, CgTexturePool pool) {
+        int probed = probe(depthSource);
+        CgFrameBufferFormat format = BESIDE_FORMATS
+                .computeIfAbsent(colorFormat, f -> new HashMap<>())
+                .computeIfAbsent(probedFormat[probed], d -> copyFormat(colorFormat.getColorSlot(0), d.getDepthType()));
+        return copy(colorSource, depthSource, format, probedDepthMask[probed], width, height, bits, rects, at, pool);
+    }
+
+    /** Copy formats of a target beside another's depth, by its colour format and the depth's probed copy format. */
+    private static final Map<CgFrameBufferFormat, Map<CgFrameBufferFormat, CgFrameBufferFormat>> BESIDE_FORMATS = new HashMap<>();
+
+    /** Copies {@code source}'s colour whole, into colour alone: the current target, as RGBA8, when {@code sourceFormat} is null. */
+    void copyColor(int source, @Nullable CgFrameBufferFormat sourceFormat, int width, int height, CgTexturePool pool) {
+        CgFrameBufferFormat format = sourceFormat == null ? CURRENT_COLOR
+                : COLOR_FORMATS.computeIfAbsent(sourceFormat, f -> copyFormat(f.getColorSlot(0), null));
+        copy(source, source, format, 0, width, height, COLOR, WHOLE, 0, pool);
+    }
+
+    private static final CgFrameBufferFormat CURRENT_COLOR = copyFormat(CgTextureType.RGBA8, null);
+    private static final Map<CgFrameBufferFormat, CgFrameBufferFormat> COLOR_FORMATS = new HashMap<>();
+
+    private long copy(int colorSource, int depthSource, CgFrameBufferFormat format, int depthMask, int width, int height,
+                      int bits, int[] rects, int at, CgTexturePool pool) {
         int colorMask = (bits & COLOR) != 0 && format.colorSlotCount() > 0 ? CgGL.GL_COLOR_BUFFER_BIT : 0;
         if ((bits & DEPTH) == 0) depthMask = 0;
         if ((colorMask | depthMask) == 0 || width <= 0 || height <= 0) return 0L;
@@ -89,11 +120,11 @@ final class CgTargetCopy {
         if (x1 <= x0 || y1 <= y0) colorMask = 0;
         try (CgGlScope scope = CgGlState.save(CgGlSlot.SCISSOR)) {
             CgGL.glDisable(CgGL.GL_SCISSOR_TEST);   // a blit is scissored
-            if (x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
-                blit(source, colorMask | depthMask, 0, 0, width, height);
+            if (colorSource == depthSource && x0 == 0 && y0 == 0 && x1 == width && y1 == height) {
+                blit(colorSource, colorMask | depthMask, 0, 0, width, height);
             } else {
-                blit(source, depthMask, 0, 0, width, height);
-                blit(source, colorMask, x0, y0, x1, y1);
+                blit(depthSource, depthMask, 0, 0, width, height);
+                blit(colorSource, colorMask, x0, y0, x1, y1);
             }
         }
         return colorMask == 0 ? 0L : (long) (x1 - x0) * (y1 - y0);

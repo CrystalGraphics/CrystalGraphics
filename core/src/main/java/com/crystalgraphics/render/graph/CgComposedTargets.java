@@ -10,24 +10,29 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A framebuffer of ours holding a target we do not own, the host's colour and depth, beside a second colour attachment
- * of ours: what a pass with {@link CgRasterPass#attachment} draws through. The host's framebuffer is only read, never
- * changed. Render thread.
+ * A framebuffer of ours holding part of a target we do not own, its depth and stencil and, in the form with the host's
+ * colour, its colour too, beside a colour attachment of ours. With the host's colour, ours is slot 1: what a pass with
+ * {@link CgRasterPass#attachment} draws through. Without it, ours is slot 0: what a pass into a
+ * {@link CgGraphTexture#besideCurrentDepth} texture draws through. The host's framebuffer is only read, never changed.
+ * Render thread.
  */
 final class CgComposedTargets {
 
     private static final int GL_OBJECT_NAME = 0x8CD1, GL_TEXTURE_LEVEL = 0x8CD2, GL_TEXTURE = 0x1702;
 
-    /** Framebuffers that took no second attachment, read by recorders on any thread. */
+    /** Framebuffers that took no attachment of ours, read by recorders on any thread. */
     private static final Set<Integer> REFUSED = ConcurrentHashMap.newKeySet();
 
+    private final boolean hostColor;
     private int fbo;
     /** What was last checked complete: colour name, its level and renderbuffer bit, depth, stencil, ours, width, height. */
     private final int[] checked = new int[7];
     private final int[] key = new int[7];
     private final IntBuffer drawBuffers = ByteBuffer.allocateDirect(8).order(ByteOrder.nativeOrder()).asIntBuffer();
 
-    CgComposedTargets() {
+    /** With {@code hostColor}, the host's colour at slot 0 and ours at 1; without, ours at 0 and no host colour. */
+    CgComposedTargets(boolean hostColor) {
+        this.hostColor = hostColor;
         drawBuffers.put(0, CgGL.GL_COLOR_ATTACHMENT0).put(1, CgGL.GL_COLOR_ATTACHMENT1);
     }
 
@@ -40,22 +45,26 @@ final class CgComposedTargets {
     }
 
     /**
-     * Binds our framebuffer with {@code host}'s colour and depth and {@code texture} as colour attachment 1, and
-     * answers null; or, binding nothing of ours, why {@code host} takes no second attachment. {@code host} must be
-     * bound for drawing when called.
+     * Binds our framebuffer with {@code host}'s depth and stencil, its colour in the form that takes it, and
+     * {@code texture} as colour attachment 1 (or 0), and answers null; or, binding nothing of ours, why {@code host}
+     * takes none. {@code host} must be bound for drawing when called.
      */
     String bind(int host, int width, int height, int texture) {
-        if (host == 0) return "the default framebuffer takes no second attachment";
-        int colorType = query(CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
-        if (colorType != GL_TEXTURE && colorType != CgGL.GL_RENDERBUFFER) {
-            return "framebuffer " + host + " has no colour attachment 0 to draw beside";
+        if (host == 0) return "the default framebuffer lends no attachment to a framebuffer of ours";
+        int colorType = GL_TEXTURE, colorName = texture, colorLevel = 0;
+        if (hostColor) {
+            colorType = query(CgGL.GL_COLOR_ATTACHMENT0, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
+            if (colorType != GL_TEXTURE && colorType != CgGL.GL_RENDERBUFFER) {
+                return "framebuffer " + host + " has no colour attachment 0 to draw beside";
+            }
+            colorName = query(CgGL.GL_COLOR_ATTACHMENT0, GL_OBJECT_NAME);
+            colorLevel = colorType == GL_TEXTURE ? query(CgGL.GL_COLOR_ATTACHMENT0, GL_TEXTURE_LEVEL) : 0;
         }
-        int colorName = query(CgGL.GL_COLOR_ATTACHMENT0, GL_OBJECT_NAME);
-        int colorLevel = colorType == GL_TEXTURE ? query(CgGL.GL_COLOR_ATTACHMENT0, GL_TEXTURE_LEVEL) : 0;
         int depthType = query(CgGL.GL_DEPTH_ATTACHMENT, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
         int depthName = depthType == CgGL.GL_NONE ? 0 : query(CgGL.GL_DEPTH_ATTACHMENT, GL_OBJECT_NAME);
         int stencilType = query(CgGL.GL_STENCIL_ATTACHMENT, CgGL.GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE);
         int stencilName = stencilType == CgGL.GL_NONE ? 0 : query(CgGL.GL_STENCIL_ATTACHMENT, GL_OBJECT_NAME);
+        if (!hostColor && depthName == 0) return "framebuffer " + host + " has no depth to draw beside";
         boolean made = fbo == 0;
         if (made) fbo = CgGL.glGenFramebuffers();
         CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, fbo);
@@ -69,8 +78,10 @@ final class CgComposedTargets {
         boolean depthStencil = depthName != 0 && stencilName == depthName;
         attach(depthStencil ? CgGL.GL_DEPTH_STENCIL_ATTACHMENT : CgGL.GL_DEPTH_ATTACHMENT, depthType, depthName);
         if (!depthStencil) attach(CgGL.GL_STENCIL_ATTACHMENT, stencilType, stencilName);
-        CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT1, CgGL.GL_TEXTURE_2D, texture, 0);
-        if (made) CgGL.glDrawBuffers(drawBuffers);
+        if (hostColor) {
+            CgGL.glFramebufferTexture2D(CgGL.GL_FRAMEBUFFER, CgGL.GL_COLOR_ATTACHMENT1, CgGL.GL_TEXTURE_2D, texture, 0);
+            if (made) CgGL.glDrawBuffers(drawBuffers);
+        }
         key[0] = colorName;
         key[1] = colorLevel << 1 | (colorType == CgGL.GL_RENDERBUFFER ? 1 : 0);
         key[2] = depthName;
@@ -83,8 +94,8 @@ final class CgComposedTargets {
         if (status != CgGL.GL_FRAMEBUFFER_COMPLETE) {
             detach();
             CgGL.glBindFramebuffer(CgGL.GL_FRAMEBUFFER, host);
-            return "framebuffer " + host + "'s colour and depth with a second attachment are incomplete (0x"
-                    + Integer.toHexString(status) + "): a multisampled host target takes none";
+            return "framebuffer " + host + "'s attachments beside ours are incomplete (0x"
+                    + Integer.toHexString(status) + "): a multisampled host target lends none";
         }
         System.arraycopy(key, 0, checked, 0, key.length);
         return null;
