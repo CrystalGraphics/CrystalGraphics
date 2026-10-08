@@ -450,7 +450,18 @@ public final class CgFrameBuilder {
                     packed.counts[b] = chunk.indirectCount(d);
                     packed.countOffsets[b] = chunk.indirectOffset(d);
                     packed.countModes[b] = chunk.indirectMode(d).ordinal() | chunk.indirectFactor(d) << 2;
-                    packed.indirects++;
+                    if (chunk.indirectEach(d)) {
+                        int records = chunk.instances(d);
+                        if (packed.eachCount + records > packed.eachOffsets.length) {
+                            packed.eachOffsets = Arrays.copyOf(packed.eachOffsets,
+                                    Math.max(packed.eachOffsets.length * 2, packed.eachCount + records));
+                        }
+                        packed.eachFrom[b] = packed.eachCount;
+                        for (int r = 0; r < records; r++) packed.eachOffsets[packed.eachCount++] = chunk.recordCount(d, r);
+                        packed.indirects += records;
+                    } else {
+                        packed.indirects++;
+                    }
                 }
             }
         }

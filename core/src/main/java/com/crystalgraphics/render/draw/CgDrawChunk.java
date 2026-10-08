@@ -63,13 +63,18 @@ public final class CgDrawChunk {
 
     /** Instance records per kind ordinal, each trimmed to what the chunk wrote. */
     private final float[][] instances;
+    /** Per draw, whether each record is its own command; per OBJECT record of such a draw, its count's offset. */
+    @Nullable
+    private final boolean[] each;
+    @Nullable
+    private final long[] recordCounts;
 
     CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
                 @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
                 @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys,
-                @Nullable int[] groups, float[][] instances) {
+                @Nullable int[] groups, float[][] instances, @Nullable boolean[] each, @Nullable long[] recordCounts) {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
@@ -92,6 +97,8 @@ public final class CgDrawChunk {
         this.sortKeys = sortKeys;
         this.groups = groups;
         this.instances = instances;
+        this.each = each;
+        this.recordCounts = recordCounts;
     }
 
     /** The spatial node its draws are positioned in; 0 is the root. */
@@ -172,6 +179,16 @@ public final class CgDrawChunk {
         return countOffsets[draw];
     }
 
+    /** Whether each of the draw's records is its own indirect command, its count at {@link #recordCount}. */
+    public boolean indirectEach(int draw) {
+        return each != null && each[draw];
+    }
+
+    /** The byte offset of the count of record {@code k} of a draw of {@code indirectEach}. */
+    public long recordCount(int draw, int k) {
+        return recordCounts[firsts[draw] + k];
+    }
+
     public CgIndirect indirectMode(int draw) {
         return CgIndirect.values()[countModes[draw] & 3];
     }
@@ -235,7 +252,7 @@ public final class CgDrawChunk {
         return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
                 bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
                 countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups,
-                instances != null ? instances : this.instances);
+                instances != null ? instances : this.instances, each, recordCounts);
     }
 
     /** The instance records of {@code kind}, every draw of that kind's in turn. Read only. */
