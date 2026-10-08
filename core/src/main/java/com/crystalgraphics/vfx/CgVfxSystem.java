@@ -556,12 +556,15 @@ public final class CgVfxSystem {
 
     /**
      * Ends every effect at once and gives back the GPU slots they held, keeping meshes, pools and warmed programs: what
-     * plays next starts as quickly as on a system never cleared. Between frames, on the render thread.
+     * plays next starts as quickly as on a system never cleared. Its clock starts again at the next {@link #update}, so
+     * a system left unupdated meanwhile does not fast-forward the time it missed. Between frames, on the render thread.
      */
     public void clear() {
         for (int i = 0; i < effects.size(); i++) effects.get(i).kill();
         effects.clear();
         gpuSteps.releaseAll();
+        clock = Double.NaN;
+        owed = 0f;
     }
 
     /** {@code look}'s kernels and slot meshes; the voxel window's too when {@code useWindow}, which starts it filling. */

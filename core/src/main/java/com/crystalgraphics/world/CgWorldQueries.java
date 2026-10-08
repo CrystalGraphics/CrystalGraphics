@@ -39,6 +39,21 @@ public final class CgWorldQueries {
         return groundBelow(CgPlatform.get(CgWorldQuery.SERVICE), x, y, z, maxDepth);
     }
 
+    /**
+     * As {@link #groundBelow(double, double, double, int)}, starting no higher than the column's surface (the host's
+     * heightmap, {@link CgWorldQuery#HEIGHT_TOP}): from high in the air it finds the terrain however far down, and under
+     * a roof it still starts at {@code y}, finding the floor, not the roof.
+     *
+     * <pre>{@code
+     * double floor = CgWorldQueries.groundUnder(x, eyeY + 16, z, 48);   // 48 blocks under the surface or the point
+     * }</pre>
+     */
+    public static double groundUnder(double x, double y, double z, int maxDepth) {
+        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+        int surface = world.surfaceY(floor(x), floor(z), CgWorldQuery.HEIGHT_TOP);
+        return groundBelow(world, x, surface == Integer.MIN_VALUE ? y : Math.min(y, surface), z, maxDepth);
+    }
+
     /** As {@link #groundBelow(double, double, double, int)}, against {@code world}: for a loop asking many times. */
     public static double groundBelow(CgWorldQuery world, double x, double y, double z, int maxDepth) {
         int bx = floor(x), by = floor(y), bz = floor(z);
