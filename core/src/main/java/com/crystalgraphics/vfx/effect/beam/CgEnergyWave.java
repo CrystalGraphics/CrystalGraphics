@@ -201,7 +201,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.55f, 0f, CgEasings.OUT_CUBIC)
             .build());
     /** Seconds the picture turns negative as the blast bursts, an impact frame over the first pulse; 0 for none. */
-    public static final CgVfxParam BLAST_IMPACT_SECONDS = SCHEMA.scalar("blastImpactSeconds", 0.06f);
+    public static final CgVfxParam BLAST_IMPACT_SECONDS = SCHEMA.scalar("blastImpactSeconds", 0f);
     /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
     public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
     public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
