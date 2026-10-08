@@ -1,8 +1,8 @@
 // The supernova's corona, drawn on a sphere beyond its heart and added over what lies behind it: a skirt of fire
 // hugging the rim with spiky flares licking off it, in the heart's own colours; a thin orange-pink haze; embers flung
-// off; and branching violet lightning leaping from the face out into space. Every fragment works in the plane through
-// the centre facing the camera, so the corona reads the same from any side, inside it or out; vfx_seen dims it by
-// whatever of the scene stands inside it. CG_OBJECT_CUSTOM1: x the heart's radius over this sphere's, y the strength.
+// off; and branching violet lightning leaping from the face out into space. The flames are a picture round the heart,
+// drawn as far out as each view ray passes the centre, so the corona reads the same from any side, inside it or out;
+// what stands in front of where a ray passes hides them, and vfx_seen dims the haze by whatever stands inside it. CG_OBJECT_CUSTOM1: x the heart's radius over this sphere's, y the strength.
 // CgVfxShowcase.
 #type spatial
 #include "crystalgraphics:shaders/demo/vfx_halo.glsl"
@@ -122,12 +122,16 @@ Pass {
         vec3 camera = FX_CAMERA;
         vec3 ray = normalize(i.worldPos - camera);
         vec2 pass = vfx_pass_by(camera, ray, centre);
-        // The plane through the centre facing the camera, in heart radii.
+        // The picture round the heart, in heart radii: as far out as the ray passes the centre, so the skirt hugs the
+        // rim from any distance, and turned as that nearest point lies on the plane through the centre facing the
+        // camera. The point's own projection on that plane is no distance: from inside the shell, looking well away
+        // from the heart, it lies along the line to the centre and drew the heart's face there.
         vec3 offset = camera + ray * pass.x - centre;
         vec3 facing = normalize(centre - camera);
         vec3 right = normalize(cross(facing, vec3(0.0, 1.0, 0.0)));
         vec3 up = cross(right, facing);
-        vec2 q = vec2(dot(offset, right), dot(offset, up)) / heart;
+        vec2 turned = vec2(dot(offset, right), dot(offset, up));
+        vec2 q = turned / max(length(turned), 1.0e-6) * (pass.y / heart);
         float r = length(q);
         float angle = atan(q.y, q.x);
         vec2 around = q / max(r, 1.0e-4);
@@ -147,14 +151,17 @@ Pass {
         float spikeReach = 0.1 + 0.45 * pow(fx_value_noise(vec3(around * 6.0, t * 0.7)), 2.0);
         float spike = streak * (1.0 - smoothstep(0.0, spikeReach, outward)) * 0.9;
         float heat = clamp(max(skirt, max(tongue, spike)), 0.0, 1.0);
-        vec3 color = vfx_fire(heat) * smoothstep(0.03, 0.3, heat) * 1.2;
-        // A thin haze beyond, orange going pink.
-        color += mix(vec3(1.4, 0.55, 0.2), vec3(1.0, 0.35, 0.6), smoothstep(0.2, 1.0, outward)) * exp(-outward * 1.8) * 0.2;
+        vec3 flames = vfx_fire(heat) * smoothstep(0.03, 0.3, heat) * 1.2;
         // Embers flung off, red cooling to dark as they fly.
         float embers = corona_embers(angle, r, t, 52.0, 1.0) + corona_embers(angle + 0.05, r, t * 1.13, 37.0, 2.0);
-        color += vec3(2.4, 0.3, 0.04) * embers * 2.2;
-        // All that is light in the volume: the scene in front hides it, and it thins over the heart's face.
-        color *= vfx_seen(pass.x, sqrt(max(pass.y, heart) * heart), scene) * vfx_limb(pass.y, heart);
+        flames += vec3(2.4, 0.3, 0.04) * embers * 2.2;
+        // A thin haze beyond, orange going pink.
+        vec3 haze = mix(vec3(1.4, 0.55, 0.2), vec3(1.0, 0.35, 0.6), smoothstep(0.2, 1.0, outward)) * exp(-outward * 1.8) * 0.2;
+        // The flames and embers are sharp, where the ray passes the heart: what stands in front of that hides them, over
+        // a thin edge. A wide spread let a sphere a block in front show a tenth of them. The haze is light through the
+        // volume, dimmed by however much of it lies behind. Both thin over the heart's face.
+        vec3 color = (flames * vfx_seen(pass.x, heart * 0.08, scene)
+                + haze * vfx_seen(pass.x, sqrt(max(pass.y, heart) * heart), scene)) * vfx_limb(pass.y, heart);
         // Lightning sits at the heart's front, so it crosses the face as it leaps out.
         float bolts = corona_lightning(q, t, 0.0) + corona_lightning(q, t, 1.0) + corona_lightning(q, t, 2.0);
         bolts *= vfx_seen(pass.x - heart, heart * 0.25, scene);
