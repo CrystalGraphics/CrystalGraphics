@@ -182,6 +182,8 @@ public final class CgVfxSystem {
     private final CgVfxTube tube = new CgVfxTube();
     private final CgVfxFrame frame = new CgVfxFrame(this);
     private final IdentityHashMap<CgVfxLayer, CgMaterial> materials = new IdentityHashMap<>();
+    /** Each layer's material's batch key: the order the materials were made in. */
+    private final IdentityHashMap<CgVfxLayer, Integer> materialKeys = new IdentityHashMap<>();
     private final List<CgMaterial> unbound = new ArrayList<>();
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
@@ -424,7 +426,15 @@ public final class CgVfxSystem {
             }
             float alpha = Math.min(owed / TICK, 1f);
             // Particles hold their last two steps, a step apart: drawn one step behind, as the rest is a tick behind.
-            frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f));
+            double gx = 0, gy = 0, gz = 0;
+            for (int i = 0; i < effects.size(); i++) {
+                CgVfxEffect effect = effects.get(i);
+                gx += effect.originX;
+                gy += effect.originY;
+                gz += effect.originZ;
+            }
+            int n = effects.size();
+            frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f), gx / n, gy / n, gz / n);
             gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
             paths.begin();
             for (int i = 0; i < effects.size(); i++) {
@@ -432,6 +442,7 @@ public final class CgVfxSystem {
                     effects.get(i).submit(frame);
                 }
             }
+            frame.end();
             cpuDrawn += frame.cpuDrawn();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
@@ -700,9 +711,16 @@ public final class CgVfxSystem {
             material = CgMaterial.newInstance(layer.shader());
             if (layer.properties() != null) material.applyProperties(layer.properties());
             materials.put(layer, material);
+            materialKeys.put(layer, materialKeys.size() & 0xFFFF);
             unbound.add(material);
         }
         return material;
+    }
+
+    /** {@code layer}'s material's batch key: draws given one sort together ({@code CgWorldRenderer.Draw.batchKey}). */
+    int materialKey(CgVfxLayer layer) {
+        material(layer);
+        return materialKeys.get(layer);
     }
 
     /** Points every material at the path texture: once each, and again if the texture was made anew. */

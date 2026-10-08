@@ -103,6 +103,8 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # CgVfxSystem.skip live
 -Dcrystalgraphics.vfx.coarseVolumes=true            # measurement: volume layers on a 12x24 sphere, not 48x96
 -Dcrystalgraphics.vfx.sharedDistortion=true         # measurement: distortion layers after every effect, one copy
+-Dcrystalgraphics.vfx.mergeParticles=false          # GPU particles a draw a slot, sorted per effect, not one draw a
+                                                     # pool and layer (indirectEach): the comparison for overlaps
 -Dcrystalgraphics.vfx.particleStep=1                 # ticks a particle step spans: 2 by default (particles at 60 Hz,
                                                      # effects at 120), 1 steps them every tick
 -Dcrystalgraphics.vfx.simBudgetMs=12                 # wall ms an update may spend catching up ticks before it drops
