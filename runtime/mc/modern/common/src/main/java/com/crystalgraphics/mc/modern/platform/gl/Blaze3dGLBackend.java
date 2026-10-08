@@ -13,6 +13,9 @@ import com.crystalgraphics.mc.modern.platform.Blaze3dTextureUnits;
 *///?} elif >=1.15 {
 import com.mojang.blaze3d.platform.GlStateManager;
 //?}
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 //? if >=1.21.11 {
@@ -64,6 +67,31 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
     private final int trackedTextureUnits = Blaze3dTextureUnits.count();
 
     private int activeTextureUnit = 0;
+
+    /** {@code GL_DEBUG_OUTPUT}, from KHR_debug. */
+    private static final int DEBUG_OUTPUT = 0x92E0;
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    // gl.debugStacks and gl.debugPerf turn it on for themselves.
+    private static final boolean KEEP_DEBUG_OUTPUT = Boolean.getBoolean("crystalgraphics.gl.keepHostDebugOutput")
+            || Boolean.getBoolean("crystalgraphics.gl.debugStacks") || Boolean.getBoolean("crystalgraphics.gl.debugPerf");
+
+    private boolean debugOutputChecked;
+
+    // Minecraft turns GL_DEBUG_OUTPUT on at its default glDebugVerbosity of 1; on NVIDIA that made every GL call
+    // several times dearer (the blasts scene 15.4 -> 9.6 ms a frame). Off for the context, once: switching it per
+    // section cost the driver 1.1 ms a switch.
+    @Override
+    public void fromHost() {
+        super.fromHost();
+        if (debugOutputChecked) return;
+        debugOutputChecked = true;
+        if (!KEEP_DEBUG_OUTPUT && GL.getCapabilities().GL_KHR_debug && GL11.glIsEnabled(DEBUG_OUTPUT)) {
+            GL11.glDisable(DEBUG_OUTPUT);
+            LOGGER.info("[cg] Minecraft's GL debug output is off: on some drivers it slows every GL call "
+                    + "(-Dcrystalgraphics.gl.keepHostDebugOutput=true keeps it)");
+        }
+    }
 
     // HostStateModern answers the vertex input as Minecraft's no longer: it binds its own before each draw, but
     // remembers its immediate buffer's array, so that record goes when the frame goes back.
