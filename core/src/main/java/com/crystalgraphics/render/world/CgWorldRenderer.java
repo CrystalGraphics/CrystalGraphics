@@ -193,10 +193,24 @@ public final class CgWorldRenderer {
     private String[] gpuGroups = new String[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
+    private int[] batchKeys = new int[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
     /** Per draw: whether it is in a group, and the group's absolute position (3). */
     private boolean[] grouped = new boolean[64];
     private double[] groupPositions = new double[64 * 3];
+    /** Per draw of {@link Draw#indirectEach}: its first record in the record arrays and how many; 0 for none. */
+    private int[] recordFirsts = new int[64];
+    private int[] recordCounts = new int[64];
+    /** Every such draw's records: absolute position (3), customs (16), its count's byte offset. */
+    private int records;
+    private double[] recordPositions = new double[64 * 3];
+    private float[] recordCustoms = new float[64 * 16];
+    private long[] recordOffsets = new long[64];
+    /** A draw's records far to near this stage: each key its distance's bits over its index. */
+    private long[] recordOrder = new long[64];
+    private final Matrix4f recordModel = new Matrix4f();
+    /** The view {@link #prepare} last took: what records are placed and ordered under. */
+    private CgHostView recordView;
 
     // Per recording, reused: nothing here allocates per frame once warm.
     private final Matrix4f model = new Matrix4f();
@@ -553,7 +567,7 @@ public final class CgWorldRenderer {
         private final Matrix4f transform = new Matrix4f();
         private final float[] custom = new float[16];
         private int queue;
-        private int order;
+        private int order, batchKey;
         private CgSortLayer layer;
         private boolean inGroup;
         private double groupX, groupY, groupZ;
@@ -562,6 +576,12 @@ public final class CgWorldRenderer {
         private boolean boundsSet;
         private float pad;
         private CgBufferHandle indirect;
+        private boolean each;
+        /** Its {@link #each} records: position (3), customs (16), count offset. */
+        private int records;
+        private double[] recordAt = new double[16 * 3];
+        private float[] recordCustom = new float[16 * 16];
+        private long[] recordCount = new long[16];
         private long indirectOffset;
         private CgIndirect indirectMode;
         private int indirectFactor;
@@ -587,7 +607,7 @@ public final class CgWorldRenderer {
             transform.identity();
             Arrays.fill(custom, 0f);
             queue = material.getRenderQueue();
-            order = 0;
+            order = batchKey = 0;
             layer = CgSortLayer.DEFAULT;
             inGroup = false;
             submesh = -1;
@@ -596,6 +616,8 @@ public final class CgWorldRenderer {
             boundsSet = false;
             pad = 0f;
             indirect = null;
+            each = false;
+            records = 0;
             set = null;
             setFirst = 0;
             stated = 0;
@@ -745,6 +767,52 @@ public final class CgWorldRenderer {
         }
 
         /**
+         * One draw of many records, each its own indirect command: record k, added by {@link #each}, draws the
+         * {@code uint} at its own offset in {@code count}, times {@code factor}, of the mesh, at its own position and
+         * with its own customs. Where draws join it is one multi-draw call, and it costs the CPU one draw: many particle
+         * slots of one material. Its records draw far to near.
+         *
+         * <pre>{@code
+         * CgWorldRenderer.Draw draw = world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
+         *         .indirectEach(range.visible(), CgIndirect.INDICES, 6).gpuCulled().at(gx, gy, gz).group(gx, gy, gz);
+         * for (int slot : slots) {
+         *     draw.each(ox, oy, oz, range.visibleWord(slot) * 4L).custom(0, range.base(slot), capacity, radius, 0f);
+         * }
+         * draw.submit();
+         * }</pre>
+         *
+         * <ul>
+         *   <li>{@link #custom} after {@code each} sets that record's; each record starts from the draw's own.</li>
+         *   <li>Its position ({@link #at}) sorts and lights it; its records' positions place them.</li>
+         *   <li>{@code INDICES} or {@code VERTICES}; not with {@link #instances}. A draw of no records draws nothing.</li>
+         * </ul>
+         */
+        public Draw indirectEach(CgBufferHandle count, CgIndirect mode, int factor) {
+            if (mode == CgIndirect.INSTANCES) throw new IllegalArgumentException("indirectEach() counts indices or vertices");
+            indirect(count, 0, mode, factor);
+            each = true;
+            return this;
+        }
+
+        /** Adds a record to a draw of {@link #indirectEach}: at absolute {@code (x, y, z)}, its count at byte {@code countOffset}. */
+        public Draw each(double x, double y, double z, long countOffset) {
+            if (!each) throw new IllegalStateException("each() on a draw that is not indirectEach()");
+            if (records == recordCount.length) {
+                int n = records * 2;
+                recordAt = Arrays.copyOf(recordAt, n * 3);
+                recordCustom = Arrays.copyOf(recordCustom, n * 16);
+                recordCount = Arrays.copyOf(recordCount, n);
+            }
+            recordAt[records * 3] = x;
+            recordAt[records * 3 + 1] = y;
+            recordAt[records * 3 + 2] = z;
+            System.arraycopy(custom, 0, recordCustom, records * 16, 16);
+            recordCount[records] = countOffset;
+            records++;
+            return this;
+        }
+
+        /**
          * Draws the mesh once per object record of {@code records} ({@code CgInstanceKind.OBJECT}'s layout, each in this
          * draw's own space), as many as {@code count} says, culled on the GPU in every stage that draws it: against the
          * view, by screen height for a {@link CgMeshLods}, and against the depth drawn before the world renderer (in
@@ -831,12 +899,13 @@ public final class CgWorldRenderer {
 
         /** {@code CG_OBJECT_CUSTOM<slot>}, slot 0 to 3: of every kept record, for a draw of {@link #instances}. */
         public Draw custom(int slot, float x, float y, float z, float w) {
-            int at = slot * 4;
+            float[] into = records > 0 ? recordCustom : custom;
+            int at = (records > 0 ? (records - 1) * 16 : 0) + slot * 4;
             stated |= 1 << slot;
-            custom[at] = x;
-            custom[at + 1] = y;
-            custom[at + 2] = z;
-            custom[at + 3] = w;
+            into[at] = x;
+            into[at + 1] = y;
+            into[at + 2] = z;
+            into[at + 3] = w;
             return this;
         }
 
@@ -904,6 +973,21 @@ public final class CgWorldRenderer {
         }
 
         /**
+         * 0 to 65,535, 0 unless given: within its group and {@link #order}, transparent draws sort by it before distance,
+         * back to front only among draws of one key. Draws of one material given one key in one group run together, so
+         * the executor joins them into one multi-draw, at the price of blending each material's run over the others'.
+         *
+         * <pre>{@code
+         * world.draw(quads, dust).at(x, y, z).group(gx, gy, gz).batchKey(dustRank).indirect(...).submit();
+         * }</pre>
+         */
+        public Draw batchKey(int key) {
+            if (key < 0 || key > 0xFFFF) throw new IllegalArgumentException("batch key " + key + " is outside 0..65535");
+            this.batchKey = key;
+            return this;
+        }
+
+        /**
          * Sorts it with the group at absolute {@code (x, y, z)} as one, as Niagara sorts a system's emitters: a
          * transparent group draws whole, back to front by its position among the other groups and draws of its
          * {@link #layer}, and its draws by their own {@link #order}, then distance, within it: back to front only among
@@ -923,6 +1007,7 @@ public final class CgWorldRenderer {
         }
 
         public void submit() {
+            if (each && records == 0) return;   // nothing to draw
             if (set != null) {
                 if (indirect != null) throw new IllegalStateException("instances() takes its count from its cull: not indirect() too");
                 if ((lods != null ? lods.finest() : mesh).bounds(meshBox) == null) {
@@ -965,6 +1050,7 @@ public final class CgWorldRenderer {
         gpuGroups[count] = d.gpuGroup;
         queues[count] = d.queue;
         orders[count] = d.order;
+        batchKeys[count] = d.batchKey;
         layers[count] = d.layer;
         grouped[count] = d.inGroup;
         if (d.inGroup) {
@@ -989,6 +1075,21 @@ public final class CgWorldRenderer {
         setCounts[count] = d.setCount;
         buffers[count] = d.buffer;
         bufferAt[count] = d.bufferPoint;
+        recordCounts[count] = d.each ? d.records : 0;
+        if (d.each) {
+            recordFirsts[count] = records;
+            int n = records + d.records;
+            if (n > recordOffsets.length) {
+                int size = Math.max(n, recordOffsets.length * 2);
+                recordPositions = Arrays.copyOf(recordPositions, size * 3);
+                recordCustoms = Arrays.copyOf(recordCustoms, size * 16);
+                recordOffsets = Arrays.copyOf(recordOffsets, size);
+            }
+            System.arraycopy(d.recordAt, 0, recordPositions, records * 3, d.records * 3);
+            System.arraycopy(d.recordCustom, 0, recordCustoms, records * 16, d.records * 16);
+            System.arraycopy(d.recordCount, 0, recordOffsets, records, d.records);
+            records = n;
+        }
         count++;
     }
 
@@ -1006,6 +1107,7 @@ public final class CgWorldRenderer {
         Arrays.fill(culled, 0, count, null);
         Arrays.fill(culledCounts, 0, count, null);
         count = 0;
+        records = 0;
     }
 
     private void grow() {
@@ -1023,6 +1125,9 @@ public final class CgWorldRenderer {
         gpuGroups = Arrays.copyOf(gpuGroups, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
+        batchKeys = Arrays.copyOf(batchKeys, n);
+        recordFirsts = Arrays.copyOf(recordFirsts, n);
+        recordCounts = Arrays.copyOf(recordCounts, n);
         layers = Arrays.copyOf(layers, n);
         grouped = Arrays.copyOf(grouped, n);
         groupPositions = Arrays.copyOf(groupPositions, n * 3);
@@ -1489,6 +1594,7 @@ public final class CgWorldRenderer {
 
     /** The frustum, the eye and its forward, in the view's camera-relative space. */
     private void prepare(CgHostView view) {
+        recordView = view;
         viewProjection.set(view.projection()).mul(view.view());
         frustum.set(viewProjection);
         toWorld.set(view.view()).invert();
@@ -1550,15 +1656,15 @@ public final class CgWorldRenderer {
         return prepass ? FORWARD_AND_PREPASS : FORWARD;
     }
 
-    /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order and distance. */
+    /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order, batch key and distance. */
     private long transparentKey(int i, int queue, float distance, CgHostView view) {
         int layer = layers[i].rank();
-        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, orders[i], distance);
+        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, orders[i], batchKeys[i], distance);
         float gx = (float) (groupPositions[i * 3] - view.x()) - eye.x;
         float gy = (float) (groupPositions[i * 3 + 1] - view.y()) - eye.y;
         float gz = (float) (groupPositions[i * 3 + 2] - view.z()) - eye.z;
         float groupDistance = Math.max(0f, gx * forward.x + gy * forward.y + gz * forward.z);
-        return CgSortKey.transparent(queue, layer, groupDistance, orders[i], distance);
+        return CgSortKey.transparent(queue, layer, groupDistance, orders[i], batchKeys[i], distance);
     }
 
     /**
@@ -1749,6 +1855,10 @@ public final class CgWorldRenderer {
     /** Draw {@code i}'s range, count and object record into the draw just begun, under {@link #model} and {@link #normal}. */
     private void writeInstance(CgChunkBuilder chunks, int i) {
         if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
+        if (recordCounts[i] > 0) {
+            writeRecords(chunks, i);
+            return;
+        }
         if (counts[i] != null) chunks.indirect(counts[i], countOffsets[i], countModes[i], countFactors[i]);
         if (buffers[i] != null) chunks.buffer(bufferAt[i], buffers[i]);
         int at = chunks.instance();
@@ -1759,6 +1869,42 @@ public final class CgWorldRenderer {
         data[at + 29] = lights[i * 2 + 1];
         data[at + 30] = emissions[i] - 1f;   // CG_OBJECT_EMISSION, less 1 so a record left 0 means 1
         System.arraycopy(customs, i * 16, data, at + 32, 16);
+    }
+
+    /**
+     * Draw {@code i}'s records of {@link Draw#indirectEach}, far to near under this stage's view, each under the draw's
+     * transform at its own position, with {@link #normal} the draw's normal matrix.
+     */
+    private void writeRecords(CgChunkBuilder chunks, int i) {
+        chunks.indirectEach(counts[i], countModes[i], countFactors[i]);
+        if (buffers[i] != null) chunks.buffer(bufferAt[i], buffers[i]);
+        int first = recordFirsts[i], n = recordCounts[i];
+        if (recordOrder.length < n) recordOrder = new long[Math.max(n, recordOrder.length * 2)];
+        double vx = recordView.x(), vy = recordView.y(), vz = recordView.z();
+        for (int k = 0; k < n; k++) {
+            int r = (first + k) * 3;
+            float d = Math.max(0f, (float) (recordPositions[r] - vx - eye.x) * forward.x
+                    + (float) (recordPositions[r + 1] - vy - eye.y) * forward.y
+                    + (float) (recordPositions[r + 2] - vz - eye.z) * forward.z);
+            recordOrder[k] = (long) (0x7FFFFFFF - Float.floatToIntBits(d)) << 32 | k;   // far first
+        }
+        Arrays.sort(recordOrder, 0, n);
+        for (int o = 0; o < n; o++) {
+            int r = first + (int) recordOrder[o];
+            recordModel.set(transforms, i * 16);
+            recordModel.m30(recordModel.m30() + (float) (recordPositions[r * 3] - vx))
+                    .m31(recordModel.m31() + (float) (recordPositions[r * 3 + 1] - vy))
+                    .m32(recordModel.m32() + (float) (recordPositions[r * 3 + 2] - vz));
+            int at = chunks.instance();
+            float[] data = chunks.data();
+            recordModel.get(data, at);
+            normal.get(data, at + 16);
+            data[at + 28] = lights[i * 2];
+            data[at + 29] = lights[i * 2 + 1];
+            data[at + 30] = emissions[i] - 1f;
+            System.arraycopy(recordCustoms, r * 16, data, at + 32, 16);
+            chunks.countAt(recordOffsets[r]);
+        }
     }
 
     /** A material's depth pass, or its forward pass writing depth alone. */

@@ -116,7 +116,8 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
   defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a
   `.group(x, y, z)` sorting as one at its position (Niagara's system; every VFX effect is one) and its draws by their
-  `.order(0..15)` within it. Equal neighbours instance.
+  `.order(0..15)` within it, then by `.batchKey(0..65535)` before distance: draws of one material given one key run
+  together and join into one multi-draw (the VFX's GPU particles, a group per system). Equal neighbours instance.
 - `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
   `WORLD_TRANSPARENT` the transparent pass. Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
   for a reader only where one draws.

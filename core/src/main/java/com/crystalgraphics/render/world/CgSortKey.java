@@ -11,7 +11,7 @@ import com.crystalgraphics.api.material.CgRenderQueue;
  * opaque       63    60 59      52 51  48 47          32 31          16 15          0
  *              | slot  | layer    | ord  | material id  | depth bucket | mesh id     |
  * transparent  63    60 59      52 51          36 35  32 31          16 15          0
- *              | slot  | layer    | group bucket | ord  | depth bucket | 0           |
+ *              | slot  | layer    | group bucket | ord  | batch key    | depth bucket |
  * </pre>
  *
  * <ul>
@@ -42,14 +42,15 @@ final class CgSortKey {
     }
 
     /**
-     * A draw in a group at {@code groupDistance}, at {@code order} within it. A draw in no group is its own: its
-     * distance in both places.
+     * A draw in a group at {@code groupDistance}, at {@code order} within it, then by {@code batchKey} (0 for most).
+     * A draw in no group is its own: its distance in both places.
      */
-    static long transparent(int queue, int layer, float groupDistance, int order, float distance) {
+    static long transparent(int queue, int layer, float groupDistance, int order, int batchKey, float distance) {
         return head(queue, layer)
                 | ((long) (0xFFFF - bucket(groupDistance))) << 36
                 | ((long) (order & 0xF)) << 32
-                | ((long) (0xFFFF - bucket(distance))) << 16;
+                | ((long) (batchKey & 0xFFFF)) << 16
+                | (0xFFFF - bucket(distance));
     }
 
     private static long head(int queue, int layer) {

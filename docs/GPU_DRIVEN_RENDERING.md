@@ -60,6 +60,7 @@ CPU, per frame: O(draws)                          GPU, per frame: O(elements)
 |---|---|---|
 | A buffer of object records (transforms and customs) for one mesh or `CgMeshLods` | `world.draw(lods, material).instances(records, count)`, or `instances(records, first, count)` for one range of a buffer several sets share | per stage: a depth pyramid, a GPU cull against view and pyramid, a level per instance, a draw per level, the levels one call |
 | A count a kernel wrote, and a material that pulls its own vertices from your buffers | `world.draw(mesh, material).indirect(count, offset, mode, factor)` | a draw command from the count, joined with its neighbours |
+| Many such counts for one mesh and material, each with its own position and customs (particle slots) | `world.draw(mesh, material).indirectEach(count, mode, factor)`, then `.each(x, y, z, offset)` per record | one recorded draw, a command a record, one multi-draw call |
 | A renderer of your own recording chunks | `chunks.draw(...).objects(records, first, n).indirect(...)`, `CgGpuOps.cull`, `CgGpuOps.depthPyramid` | commands, joining, barriers; the cull and pyramid are yours to record |
 | Work whose size only the GPU knows | `CgGpuOps.dispatchArgs` + `pass.dispatchIndirect` | group counts written on the GPU |
 
