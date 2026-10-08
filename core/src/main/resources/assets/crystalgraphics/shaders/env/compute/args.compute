@@ -3,6 +3,10 @@
 // the frame graph's executor before the draw's raster pass (render/graph/CgIndirectArgs) with ARGS bound to its
 // command alone, so two of them write nothing in common. A map, so a tier below compute captures it in one pass.
 #pragma kernel DrawArgs 8 map
+// Many commands reading one count buffer, in one dispatch: five elements a command, each command's values a row of
+// PARAMS (ARGS_ROW words: count word, mode, factor, first, elements, base, indexed, instances, most, first instance,
+// then the command's first word in ARGS). On compute only; below it the executor writes each command with DrawArgs.
+#pragma kernel DrawArgsMany 64 scatter
 
 Properties {
     _Count     ("The count's uint",          int) = 0
@@ -18,22 +22,35 @@ Properties {
 }
 
 Buffers {
-    COUNT ("Counts",   uint, readonly)
-    ARGS  ("Commands", uint, writeonly)
+    COUNT  ("Counts",   uint, readonly)
+    ARGS   ("Commands", uint, writeonly)
+    PARAMS ("Each command's values, DrawArgsMany", uint, readonly)
 }
 
 // GL's DrawElementsIndirectCommand and DrawArraysIndirectCommand, which are Vulkan's byte for byte: count, instances,
 // first, then the base vertex for indices, then the first instance. That is 0 but in a multi-draw's command:
 // CG_INSTANCE_ID adds cg_InstanceBase on every device, and Vulkan's gl_InstanceIndex would count it twice.
+const uint ARGS_ROW = 11u;
+
+uint args_word(uint element, uint count, uint mode, uint factor, uint first, uint elements, uint base, uint indexed,
+               uint records, uint most, uint firstInstance) {
+    uint n = count * factor;
+    bool instances = mode == 0u;
+    if (element == 0u) return instances ? elements : min(n, elements);
+    if (element == 1u) return instances ? min(n, most) : records;
+    if (element == 2u) return first;
+    if (element == 3u) return indexed != 0u ? base : 0u;
+    return firstInstance;
+}
+
 void DrawArgs() {
-    uint n = COUNT(_Count) * uint(_Factor);
-    uint elements = uint(_Elements);
-    bool instances = _Mode == 0;
-    uint word = 0u;
-    if (CG_ELEMENT == 0) word = instances ? elements : min(n, elements);
-    else if (CG_ELEMENT == 1) word = instances ? min(n, uint(_Most)) : uint(_Instances);
-    else if (CG_ELEMENT == 2) word = uint(_First);
-    else if (CG_ELEMENT == 3) word = _Indexed != 0 ? uint(_Base) : 0u;
-    else word = uint(_FirstInstance);
-    ARGS_WRITE(word);
+    ARGS_WRITE(args_word(uint(CG_ELEMENT), COUNT(_Count), uint(_Mode), uint(_Factor), uint(_First), uint(_Elements),
+            uint(_Base), uint(_Indexed), uint(_Instances), uint(_Most), uint(_FirstInstance)));
+}
+
+void DrawArgsMany() {
+    uint c = uint(CG_ELEMENT) / 5u, element = uint(CG_ELEMENT) - c * 5u, row = c * ARGS_ROW;
+    uint word = args_word(element, COUNT(PARAMS(row)), PARAMS(row + 1u), PARAMS(row + 2u), PARAMS(row + 3u),
+            PARAMS(row + 4u), PARAMS(row + 5u), PARAMS(row + 6u), PARAMS(row + 7u), PARAMS(row + 8u), PARAMS(row + 9u));
+    ARGS_STORE(PARAMS(row + 10u) + element, word);
 }

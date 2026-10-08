@@ -221,7 +221,9 @@ recording.raster(glow, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
 draw's command with an engine kernel (`env/compute/args.compute`, `CgIndirectArgs`) from the count and the range the
-mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. On G40 that kernel runs lowered;
+mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. As compute, a pass's commands
+are one `DrawArgsMany` dispatch per count buffer, each command a row of a frame-local table; on G40 `DrawArgs` runs
+lowered, a dispatch a command;
 on G33 and the CPU tier, where no draw takes a count from a buffer, the batch is drawn with its count read back (a stall,
 `buffer.readbacks`) or, where the CPU tier wrote it, taken from the CPU's copy with no read.
 
@@ -270,6 +272,12 @@ consecutive slots, in the joined form (`joinedRange`) with the batch's instance 
 the run with `drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one
 call however many levels. An `INSTANCES` draw of the frame's records never joins, since every instance reads one
 record and the multi-draw variant has no shared record.
+
+**A command a record** (`CgChunkBuilder.indirectEach`, `CgWorldRenderer.Draw.indirectEach`): one draw whose every
+record is its own command, its count at the offset `countAt` gave it: one batch, the frame's `eachOffsets` holding
+its records' counts. The executor writes a row a record, each with its record as its first instance, and draws them as
+one multi-draw where its mesh joins, else a draw a record under `instanceBase`. What many particle slots of one
+material are: one recorded draw instead of one a slot, so the CPU's sort, pack and batch cost is one draw's.
 
 - Every joined draw is by indices: a mesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an
   array draw's base vertex as 0 where Vulkan gives its first vertex. Meshes with and without indices never share a

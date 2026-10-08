@@ -62,6 +62,12 @@ public final class CgChunkBuilder {
     private long[] countOffsets;
     @Nullable
     private int[] countModes;
+    /** Per draw: whether each of its records is its own command ({@link #indirectEach}). Null until one is drawn. */
+    @Nullable
+    private boolean[] each;
+    /** Per OBJECT record of a draw of {@link #indirectEach}: its count's byte offset. Null until one is drawn. */
+    @Nullable
+    private long[] recordCounts;
     /** Per draw: the buffer its object records are in, null for records written here. Null until one is drawn. */
     @Nullable
     private CgBufferHandle[] objects;
@@ -152,6 +158,7 @@ public final class CgChunkBuilder {
             ranges[d * 3 + 2] = -1;
         }
         if (counts != null) counts[d] = null;
+        if (each != null) each[d] = false;
         if (objects != null) objects[d] = null;
         if (buffers != null) {
             buffers[d] = null;
@@ -177,6 +184,13 @@ public final class CgChunkBuilder {
         } else {
             Arrays.fill(data, at, at + drawingFloats, 0f);
         }
+        if (each != null && each[drawing]) {
+            // Indexed by every record of the kind, other draws' too, so it may be far behind.
+            if (recordCounts.length <= records[drawingKind]) {
+                recordCounts = Arrays.copyOf(recordCounts, Math.max(recordCounts.length * 2, records[drawingKind] + 1));
+            }
+            recordCounts[records[drawingKind]] = -1;
+        }
         records[drawingKind]++;
         instanceCounts[drawing]++;
         return at;
@@ -185,6 +199,7 @@ public final class CgChunkBuilder {
     /** Appends {@code count} whole records of the open draw's kind, read from {@code records} at float {@code from}. */
     public CgChunkBuilder instances(float[] records, int from, int count) {
         if (drawing < 0) throw new IllegalStateException("instances() with no draw open: draw() first");
+        if (each != null && each[drawing]) throw new IllegalStateException("instances() on a draw of indirectEach(): instance() and countAt()");
         if (objects != null && objects[drawing] != null) throw new IllegalStateException("instances() on a draw of objects()");
         int floats = count * drawingFloats;
         float[] data = instances[drawingKind];
@@ -277,6 +292,47 @@ public final class CgChunkBuilder {
         counts[drawing] = count;
         countOffsets[drawing] = offset;
         countModes[drawing] = mode.ordinal() | factor << 2;
+        return this;
+    }
+
+    /**
+     * Makes the open draw one indirect command per record it writes: record k draws the {@code uint} at its own
+     * {@link #countAt} offset in {@code count}, times {@code factor}, of the mesh's range, reading record k alone. One
+     * draw of many counts, one batch and, where draws join, one multi-draw call: particle slots of one material.
+     *
+     * <pre>{@code
+     * chunks.draw(pipeline, bindings, quads).buffer(CgBindingPoints.PARTICLES, drawn).indirectEach(visible, CgIndirect.INDICES, 6);
+     * for (int slot : slots) {
+     *     int at = chunks.instance();          // the slot's record
+     *     // ...write it...
+     *     chunks.countAt(slot * 4L);           // and where its count is
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Every record states its count with {@link #countAt}, right after {@link #instance()}.</li>
+     *   <li>{@code INDICES} or {@code VERTICES} only, on an OBJECT draw writing its own records.</li>
+     * </ul>
+     */
+    public CgChunkBuilder indirectEach(CgBufferHandle count, CgIndirect mode, int factor) {
+        if (mode == CgIndirect.INSTANCES) throw new IllegalArgumentException("indirectEach() counts indices or vertices");
+        if (instanceCounts[drawing] > 0) throw new IllegalStateException("indirectEach() after records were written");
+        indirect(count, 0, mode, factor);
+        if (each == null) {
+            each = new boolean[pipelines.length];
+            recordCounts = new long[64];
+        }
+        each[drawing] = true;
+        return this;
+    }
+
+    /** The byte offset of the count of the record {@link #instance()} just reserved, in a draw of {@link #indirectEach}. */
+    public CgChunkBuilder countAt(long offset) {
+        if (drawing < 0 || each == null || !each[drawing] || instanceCounts[drawing] == 0) {
+            throw new IllegalStateException("countAt() after instance() in a draw of indirectEach()");
+        }
+        if (offset < 0 || (offset & 3) != 0) throw new IllegalArgumentException("a count's offset is a whole uint's: " + offset);
+        recordCounts[records[drawingKind] - 1] = offset;
         return this;
     }
 
@@ -382,7 +438,9 @@ public final class CgChunkBuilder {
                 objects == null ? null : Arrays.copyOf(objects, count),
                 buffers == null ? null : Arrays.copyOf(buffers, count),
                 buffers == null ? null : Arrays.copyOf(bufferAt, count), Arrays.copyOf(bounds, count * 4),
-                Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept);
+                Arrays.copyOf(sortKeys, count), groups == null ? null : Arrays.copyOf(groups, count), kept,
+                each == null ? null : Arrays.copyOf(each, count),
+                each == null ? null : Arrays.copyOf(recordCounts, records[CgInstanceKind.OBJECT.ordinal()]));
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -408,7 +466,7 @@ public final class CgChunkBuilder {
         closeDraw();
         CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
                 firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds,
-                sortKeys, groups, instances);
+                sortKeys, groups, instances, each, recordCounts);
         open = false;
         count = 0;
         Arrays.fill(records, 0);
@@ -441,6 +499,11 @@ public final class CgChunkBuilder {
         if (drawing < 0) return;
         if (instanceCounts[drawing] > 0) {
             if (counts != null && counts[drawing] != null) checkIndirect(drawing);
+            if (each != null && each[drawing]) {
+                for (int r = firsts[drawing], end = r + instanceCounts[drawing]; r < end; r++) {
+                    if (recordCounts[r] < 0) throw new IllegalStateException("a record of an indirectEach() draw has no countAt()");
+                }
+            }
             if (!boundsSet) {
                 int b = drawing * 4;
                 bounds[b] = Float.NEGATIVE_INFINITY;
@@ -481,6 +544,7 @@ public final class CgChunkBuilder {
             countOffsets = Arrays.copyOf(countOffsets, n);
             countModes = Arrays.copyOf(countModes, n);
         }
+        if (each != null) each = Arrays.copyOf(each, n);
         if (objects != null) objects = Arrays.copyOf(objects, n);
         if (buffers != null) {
             buffers = Arrays.copyOf(buffers, n);

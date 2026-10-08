@@ -296,6 +296,13 @@ public final class CgFrame {
         CgBufferHandle[] counts = new CgBufferHandle[16];
         long[] countOffsets = new long[16];
         int[] countModes = new int[16];
+        /**
+         * Per indirect batch whose every record is its own command ({@code CgChunkBuilder.indirectEach}): where its
+         * records' count offsets start in {@link #eachOffsets}, one per instance; -1 for a batch of one command.
+         */
+        int[] eachFrom = new int[16];
+        long[] eachOffsets = new long[64];
+        int eachCount;
         /** Per batch, the buffer a batch of {@code objects()} reads its records from, else null. Such a batch is one draw. */
         CgBufferHandle[] objects = new CgBufferHandle[16];
         /** Per batch, the buffer a batch of {@code buffer()} reads in place of an engine buffer, and where; else null. */
@@ -308,7 +315,7 @@ public final class CgFrame {
          * for the whole target. Depth is always copied whole.
          */
         int[] copyRect = new int[16 * 4];
-        /** Its indirect batches: the commands the executor builds before the pass begins. */
+        /** The indirect commands its batches draw, which the executor builds before the pass begins. */
         int indirects;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
@@ -339,6 +346,7 @@ public final class CgFrame {
                 counts = new CgBufferHandle[n];
                 countOffsets = new long[n];
                 countModes = new int[n];
+                eachFrom = new int[n];
                 objects = new CgBufferHandle[n];
                 buffers = new CgBufferHandle[n];
                 bufferAt = new CgBindingPoints.Binding[n];
@@ -355,6 +363,8 @@ public final class CgFrame {
             kinds = 0;
             tables = false;
             indirects = 0;
+            eachCount = 0;
+            Arrays.fill(eachFrom, 0, batches, -1);
             Arrays.fill(instances, 0, batches, 0);
             Arrays.fill(copyBefore, 0, batches, 0);
         }
