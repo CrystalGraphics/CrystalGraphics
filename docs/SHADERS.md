@@ -123,6 +123,15 @@ void fragment(in v2f i, out vec4 fragColor) {
   hides as much as it did in the encoded picture rather than thinning out in linear light. `"ColorSpace" =
   "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.
   An Emissive pass is linear always.
+- **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
+  program. Light that adds reads hotter in linear light, so a light volume carries an HDR twin of its strength:
+
+  ```glsl
+  _Strength    ("Brightness", float) = 1.6
+  _StrengthHdr ("Brightness under HDR", float) = 0.8
+  ...
+  fragColor = vec4(colour * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
+  ```
 - A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
