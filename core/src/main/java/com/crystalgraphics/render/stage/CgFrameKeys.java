@@ -37,6 +37,13 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<CgGraphTexture> OVERDRAW = CgFrameKey.of("crystalgraphics:overdraw", CgGraphTexture.class);
 
+    /**
+     * The linear HDR scene this firing draws into in place of the host's colour, RGBA16F beside the host's depth: put at
+     * the top of {@code WORLD_TRANSPARENT} while {@code CgWorldRenderer.hdrScene()} is on, and the stage's target until
+     * the post stack's composite encodes it back into the host's.
+     */
+    public static final CgFrameKey<CgGraphTexture> SCENE = CgFrameKey.of("crystalgraphics:scene", CgGraphTexture.class);
+
     private CgFrameKeys() {
     }
 }

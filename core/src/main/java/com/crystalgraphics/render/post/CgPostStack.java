@@ -8,6 +8,7 @@ import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.stage.CgHostView;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -167,6 +168,12 @@ public final class CgPostStack {
             CgPostEffect[] current = effects;
             int i = recordAt(CgPostPoint.AFTER_WORLD, current, 0);
             i = recordAt(CgPostPoint.BEFORE_COMPOSITE, current, i);
+            CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
+            if (scene != null) {
+                // The composite encodes the scene into the host's target, which is every later renderer's again.
+                composite.scene(scene);
+                stage.retarget(null);
+            }
             composite.record(stage.recording(), stage.target(), stage.constants());
             recordAt(CgPostPoint.AFTER_COMPOSITE, current, i);
         }

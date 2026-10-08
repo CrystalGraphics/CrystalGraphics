@@ -29,6 +29,13 @@ CgPostStack     (ORDER 2000)
 Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`; bloom's passes under `shaders/post/bloom/` (`prefilter`, `down`, `up`), their
 filters in `shaders/lib/post/bloom.glsl`.
 
+**The HDR scene** (`CgWorldRenderer.hdrScene`): when the firing carries `CgFrameKeys.SCENE`, the stack hands the
+composite the scene (`composite.scene`) and the stage its host target back (`retarget(null)`) before the composite
+records. The composite then always draws, in the copy form with `SCENE`: it reads the scene rather than a copy of the
+target, clamps, and writes a value within 0.1 of an 8-bit code back exact rather than dithered, so a pixel nothing drew
+over returns byte for byte. `AFTER_WORLD` and `BEFORE_COMPOSITE` effects draw into the scene; `AFTER_COMPOSITE` into the
+host.
+
 ## Rules
 
 - **The world renderer produces, the post stack consumes.** No post pass is recorded from `render/world`, and no
