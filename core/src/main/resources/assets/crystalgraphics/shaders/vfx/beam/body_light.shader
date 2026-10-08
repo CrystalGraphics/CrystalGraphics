@@ -13,7 +13,7 @@ Queue = "Transparent"
 Properties {
     _FxPath   ("Path rings", sampler2D) = "black"
     _Strength    ("Brightness", float) = 1.6
-    _StrengthHdr ("Brightness under HDR", float) = 0.8
+    _StrengthHdr ("Brightness under HDR", float) = 3.0
 }
 
 struct v2f { vec3 world; };
