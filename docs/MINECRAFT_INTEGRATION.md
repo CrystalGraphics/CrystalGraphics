@@ -75,8 +75,8 @@ once per frame at the right moment. Register on them instead (`ENGINE_API.md` §
 > the first's. Nothing errors — a mesh drawing another mesh's attributes at the wrong stride is
 > degenerate geometry, which rasterises nothing.
 >
-> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; the first render stage a host fires
-> initialises lazily, on a frame that genuinely owns the render context. A dev run cannot show the
+> **So `runtime/mc/1710`'s `@Mod` class creates no GL objects at all**; the engine starts at the first
+> game-loop frame's end, the title screen's, which genuinely owns the render context. A dev run cannot show the
 > failure (no splash in the way), so it appears only in an installed client. `CgMeshPool` warns
 > (`[cg-vao]`) when the driver returns a vertex array name this process still owns — the one cheap signal that two
 > contexts are in play. See CrystalGUI's `docs/CGUI_INVARIANTS.md` § *Rendering, GL and shaders*.

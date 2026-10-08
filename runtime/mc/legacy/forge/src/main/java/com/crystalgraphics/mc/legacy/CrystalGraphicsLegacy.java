@@ -11,7 +11,7 @@ import net.minecraftforge.fml.common.ICrashCallable;
 /**
  * CrystalGraphics on Forge 1.8–1.12.2, both sides: the platform bundle, the crash-report line and the
  * connections ({@link NetworkLegacy}). No GL work here — FML's splash screen loads mods on a context of its
- * own, so the render context initialises lazily from the first world pass.
+ * own, so the engine starts at the first frame's end, the title screen's (`CgRenderHook`).
  */
 public final class CrystalGraphicsLegacy implements VariantEntry {
 

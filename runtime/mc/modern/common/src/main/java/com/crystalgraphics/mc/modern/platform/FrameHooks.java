@@ -8,7 +8,7 @@ import net.minecraft.client.Minecraft;
 *///?}
 
 /**
- * End-of-frame lifecycle for the modern tree: the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
+ * End-of-frame lifecycle for the modern tree: the engine's start, the resize check and {@link CgGraphicsLifecycle#tickFrame()}.
  *
  * <p>{@link LifecycleModern#frameEnd()} calls {@link #endFrame()} once per frame, from each loader's
  * post-GUI point, so a title-screen frame ends here as well as a world frame. Without it the
@@ -16,37 +16,26 @@ import net.minecraft.client.Minecraft;
  * size after a resize.</p>
  *
  * <p>Resize is polled rather than subscribed: 1.20.1 Forge has no window-resize event, and polling two
- * ints once a frame is cheaper than a mixin per loader. The first call always reports a resize, which
- * is what sizes the targets initially.</p>
+ * ints once a frame is cheaper than a mixin per loader.</p>
  */
 public final class FrameHooks {
 
     private FrameHooks() {}
-
-    private static int lastWidth = -1;
-    private static int lastHeight = -1;
 
     public static void endFrame() {
         Minecraft mc = Minecraft.getInstance();
         if (mc != null && Windows.of(mc) != null) {
             int width = Windows.of(mc).getWidth();
             int height = Windows.of(mc).getHeight();
-            if (width > 0 && height > 0 && (width != lastWidth || height != lastHeight)) {
-                lastWidth = width;
-                lastHeight = height;
-                CgGraphicsLifecycle.onResize(width, height);
-            }
+            // Starts the engine on the title screen rather than in the first world frame, so its shaders compile
+            // before a world exists; after the first reload, since a material read mid-reload compiles twice.
+            boolean start = LifecycleModern.resourcesLoaded() || CgGraphicsLifecycle.isInitialized();
+            if (width > 0 && height > 0 && start) CgGraphicsLifecycle.ensureContext(width, height);
         }
         CgGraphicsLifecycle.tickFrame();
         // Under Vulkan our frame closes here, after everything drawn in it and before Minecraft's submit.
         //? if >=26.2 {
         /*if (GraphicsApi.vulkan()) Blaze3dVulkanHost.endMinecraftFrame();
         *///?}
-    }
-
-    /** Forgets the last known size, so the next {@link #endFrame()} resizes. For context teardown. */
-    public static void reset() {
-        lastWidth = -1;
-        lastHeight = -1;
     }
 }

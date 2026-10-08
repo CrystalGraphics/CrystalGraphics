@@ -400,6 +400,14 @@ public final class LifecycleModern {
     /** A resource reload landed — drop every cache built from assets. */
     public static void reload() {
         CgPlatform.reload().onReload();
+        resourcesLoaded = true;
+    }
+
+    private static volatile boolean resourcesLoaded;
+
+    /** Whether the client's first resource reload has finished: the engine may start, reading shaders from it. */
+    static boolean resourcesLoaded() {
+        return resourcesLoaded;
     }
 
     /**

@@ -71,8 +71,8 @@ public final class CgGraphicsLifecycle {
     /**
      * Set by {@link #destroyContext()}, cleared only by an EXPLICIT {@link #initContext}.
      *
-     * <p>The lazy init in {@link #ensureContext}, which a stage's first firing calls, exists for a host that never
-     * announced its context.
+     * <p>The lazy init in {@link #ensureContext}, which a host's frame end and a stage's firing call, exists for a
+     * host that never announced its context.
      * After a teardown it is harmful: every registry is gone and stays gone, so re-initialising only
      * flips this back to true and invites the next frame to bind a deleted material.</p>
      */
@@ -340,15 +340,12 @@ public final class CgGraphicsLifecycle {
     }
 
     /**
-     * Makes sure there is a context to draw into, for a caller about to draw OUTSIDE the world pass.
+     * Makes sure there is a context to draw into: initialises once, and resizes when the viewport changed.
      *
-     * <p>The engine initialises lazily on the first world render, which is the right moment for
-     * anything drawn in a world and the wrong one for everything else: on a title screen or a menu
-     * there is no world pass, so nothing here ever ran and {@link #isInitialized()} stayed false. A UI
-     * that politely checks before painting then drew NOTHING, and since Minecraft only clears the
-     * colour buffer when it renders a level, the frame still held the previous screen — so a
-     * screenshot came back showing the main menu and read as a working UI that had simply not been
-     * asked to draw.</p>
+     * <p>Every Minecraft host calls it at each frame's end, the title screen's included, so the engine
+     * starts, and its shaders compile, before a world exists. A caller drawing before that first frame
+     * end calls it too: a UI that checks {@link #isInitialized()} before painting would otherwise draw
+     * nothing.</p>
      *
      * <pre>{@code
      * // in a Screen's render(), before painting:
