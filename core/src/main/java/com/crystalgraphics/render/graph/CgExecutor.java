@@ -1236,6 +1236,7 @@ public final class CgExecutor {
             if (groups) CgGpuTrace.markEnd();
             if (pass.targetCopy() != null) pass.targetCopy().release(POOL);
             if (pass.depthFromCopy() != null) pass.depthFromCopy().release(POOL);
+            if (pass.colorFromCopy() != null) pass.colorFromCopy().release(POOL);
         }
         CgGL.glBindVertexArray(0);
     }
