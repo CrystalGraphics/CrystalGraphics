@@ -36,7 +36,7 @@ public final class EnvironmentLegacy {
     }
 
     public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
-        out.clear();
+        out.clear().screen(mc.currentScreen != null);
         WorldClient world = ClientLegacy.world();
         Entity viewer = mc.getRenderViewEntity();
         if (world == null || viewer == null) return;

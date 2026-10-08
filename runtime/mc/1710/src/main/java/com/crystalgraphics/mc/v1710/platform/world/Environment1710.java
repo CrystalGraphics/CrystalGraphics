@@ -29,7 +29,7 @@ public final class Environment1710 {
     }
 
     public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
-        out.clear();
+        out.clear().screen(mc.currentScreen != null);
         WorldClient world = mc.theWorld;
         EntityLivingBase viewer = mc.renderViewEntity;
         if (world == null || viewer == null) return;
