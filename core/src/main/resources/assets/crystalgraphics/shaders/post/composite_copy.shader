@@ -9,7 +9,10 @@
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   the corners darkened by _Vignette
 //   IMPACT     _Impact.x of the way to an impact frame (_Impact.y: 0 negative, 1 black and white, 2 speed lines)
+//   SCENE      reads the linear HDR scene (_Scene) instead of the target, clamped; a value within 0.1 of an 8-bit code
+//              is what the scene decoded from the host, written back exact rather than dithered
 #type none
+#pragma cg_feature SCENE
 #pragma cg_feature BLOOM
 #pragma cg_feature FLASH
 #pragma cg_feature VIGNETTE
@@ -21,6 +24,7 @@ Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Un
 Queue = "Overlay"
 
 Properties {
+    _Scene     ("The linear HDR scene", sampler2D) = "black"
     _Bloom     ("The bloom chain", sampler2D) = "black"
     _Intensity ("Bloom's strength; its mix share when conserving", float) = 1.0
     _Tint      ("Bloom's tint", color) = (1, 1, 1, 1)
@@ -50,6 +54,15 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
+#ifdef SCENE
+        vec4 scene = texelFetch(_Scene, ivec2(gl_FragCoord.xy), 0);
+#ifdef CHROMATIC
+        vec2 d = (i.uv - _Focus.xy) * (_Chromatic * 0.02);
+        vec3 c = vec3(textureLod(_Scene, i.uv + d, 0.0).r, scene.g, textureLod(_Scene, i.uv - d, 0.0).b);
+#else
+        vec3 c = scene.rgb;
+#endif
+#else
         vec4 scene = CG_SCENE_COLOR(i.uv);
 #ifdef CHROMATIC
         vec2 d = (i.uv - _Focus.xy) * (_Chromatic * 0.02);
@@ -57,6 +70,7 @@ Pass {
                       post_decode_srgb(CG_SCENE_COLOR(i.uv - d).rgb).b);
 #else
         vec3 c = post_decode_srgb(scene.rgb);
+#endif
 #endif
 #ifdef FLASH
         c *= _Exposure;
@@ -71,6 +85,14 @@ Pass {
         vec3 encoded = post_encode_srgb(c);
 #ifdef IMPACT
         encoded = mix(encoded, post_impact(encoded, _Impact.y, i.uv, _Focus.xy, CG_RESOLUTION, CG_TIME), _Impact.x);
+#endif
+#ifdef SCENE
+        vec3 e = clamp(encoded, 0.0, 1.0) * 255.0;
+        vec3 code = floor(e + 0.5);
+        if (all(lessThan(abs(e - code), vec3(0.1)))) {
+            fragColor = vec4(code * (1.0 / 255.0), scene.a);
+            return;
+        }
 #endif
         fragColor = vec4(post_dither8(encoded, gl_FragCoord.xy, floor(CG_TIME * 60.0)), scene.a);
     }

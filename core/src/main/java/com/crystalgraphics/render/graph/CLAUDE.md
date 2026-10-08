@@ -144,6 +144,23 @@ chunks.draw(material.pipeline(CgInstanceKind.OBJECT).emissionTarget(), bindings,
   on the target alone there instead, logs once, and `CgRasterPass.refusesAttachment(fb)` answers true from then on.
 - Draws that leave slot 1 masked need `CgCapabilities.independentBlend()`; a recorder checks it before asking.
 
+**A target beside the current depth** (`CgGraphTexture.besideCurrentDepth`): a transient colour texture whose depth
+and stencil are the current target's, which is what the world's HDR scene is (`render/world/CLAUDE.md`). A pass into it
+draws through a framebuffer of ours holding it at slot 0 and the host's depth (`CgComposedTargets` without the host's
+colour), so it tests and writes the host's depth; `sceneDepth` on it, its own or from it, copies the host's. A pass
+into it reads and writes the current target for ordering, and may not clear depth.
+
+```java
+CgGraphTexture scene = CgGraphTexture.besideCurrentDepth("scene", new CgTextureDesc(w, h, rgba16f));
+recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
+        .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, CgGraphTexture.current());   // the host's colour, copied whole
+```
+
+- Framebuffer 0 and a multisampled host lend no depth: `takesCurrentDepth(fb)` says so, and the recorder gives its
+  texture a depth of its own. A refusal at execution draws that pass without depth, logged once.
+- `sceneColor(unit, from)` is `sceneDepth(unit, from)`'s twin: another target's colour, copied whole when the pass
+  begins, RGBA8 for the current target.
+
 **A pass timed on its own** (`CgRasterPass.timed(zone)`, `CgComputePass.timed(zone)`, the zone a name made once
 with `CgGpuTrace.name`): the executor brackets that pass in a GPU zone, which splits the stage's own (`gpu:<name>`).
 With `crystalgraphics.gpu.groups` on, the executor marks each batch's material inside that zone (or the stage's, for

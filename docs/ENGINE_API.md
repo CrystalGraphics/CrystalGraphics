@@ -55,7 +55,7 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
   executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
   that outlives the frame. The engine's keys are `CgFrameKeys`: `EMISSION`, the world renderer's emission target;
-  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on.
+  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene while it is on.
 
 ```java
 public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);
@@ -139,6 +139,12 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   every glow on a device without `independentBlend` (`CgCapabilities.independentBlend()`; Minecraft 26.2's device is
   created with it where the GPU has it).
   `world.mergeEmission(false)` draws every Emissive pass on its own again.
+- **The HDR scene** (`world.hdrScene(true)`, off by default, `-Dcrystalgraphics.world.hdrScene=true`; render-hdr-scene):
+  `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
+  pass decodes the host's colour into it and makes it the stage's target (`CgStageFrame.retarget`, `CgFrameKeys.SCENE`);
+  the post stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL
+  into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Merged emission stands down while it
+  is on. Flipped live, it takes effect at the next firing: the harness and the demo bind it to G.
 - **Half resolution**: a transparent draw of soft light that adds (`Blend ONE ONE`: a glow, a volume) marked
   `.halfResolution()` draws into a half-size target before the transparent pass and is added over the target by a
   depth-aware upsample, at a quarter of the pixels. Its shader hides itself behind the scene from `cg_DepthBuffer`
