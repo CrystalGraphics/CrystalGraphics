@@ -5,7 +5,7 @@
 // "Joint Bilateral Upsampling" (2007), as GPU Gems 3 ch. 23 composites off-screen particles.
 #type none
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Transparent"
 
 Properties {

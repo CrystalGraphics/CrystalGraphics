@@ -2,7 +2,7 @@
 // green, the split in blue. CgPostDebug draws it (-Dcrystalgraphics.post.debug=distortion); nothing else should.
 #type none
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {

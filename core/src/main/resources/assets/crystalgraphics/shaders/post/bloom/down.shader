@@ -6,7 +6,7 @@
 #pragma cg_feature CHEAP
 #include "crystalgraphics:shaders/lib/post/bloom.glsl"
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {

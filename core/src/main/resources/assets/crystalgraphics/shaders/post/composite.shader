@@ -8,7 +8,7 @@
 #pragma cg_feature BLOOM
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
 
 Properties {
