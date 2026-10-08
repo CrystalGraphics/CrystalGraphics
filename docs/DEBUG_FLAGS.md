@@ -49,6 +49,10 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
                                                      # the stack of the call it came on, and counts: names a
                                                      # CPU stall ("pixel transfer is synchronized"). The
                                                      # harness asks for a debug context under it
+-Dcrystalgraphics.gl.keepHostDebugOutput=true        # keep the GL debug output Minecraft enables at its default
+                                                     # glDebugVerbosity (modern GL nodes turn it off at the first
+                                                     # host section: on NVIDIA it slowed every GL call several
+                                                     # times). debugStacks and debugPerf keep it too
 
 # GL issued where none may be (any host)
 -Dcrystalgraphics.gl.threadCheck=true                # log each CgGL call site inside a GL-free section
