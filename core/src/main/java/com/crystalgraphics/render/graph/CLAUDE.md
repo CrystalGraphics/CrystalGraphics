@@ -354,9 +354,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
   below compute runs inside `CgLoweredKernel.scope()`, so what those draws bind never reaches the next pass. What a
   lowered dispatch writes stays in its target until a step other than a compute pass touches the buffer, or the
   execution ends: ops chained in a frame land only what leaves them.
-- **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device, and Minecraft
-  26.2's through the queue it leaves unused), and in order elsewhere. On Minecraft's device it may not touch
-  Minecraft's own images, which only its graphics queue may use. The
+- **An `async()` compute pass runs on the device's compute queue** where it has one (the owned device), and in order
+  elsewhere: on Minecraft's device only with `-Dcrystalgraphics.vulkan.asyncCompute=true` (`docs/ENGINE_API.md`
+  § *Async compute*), and then it may not touch Minecraft's own images, which only its graphics queue may use. The
   executor waits before the first later step touching any storage it touched (by GL name, so a pooled transient handed
   to another counts), in this execution or a later one of the frame, and before a callback. Storage the host may touch
   (imported, current, requested) is waited for at the end of its execution; the device's frame end waits for the rest.

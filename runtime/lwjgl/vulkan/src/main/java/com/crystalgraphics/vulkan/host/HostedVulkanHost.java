@@ -101,10 +101,12 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  *   <li>{@code verify} checks every hand-over: no pass of ours open, every wrapped image back where it rests.</li>
  *   <li>{@link #submitAndWait()} and {@link #waitRetired} throw: the host submits, so a wait would deadlock.
  *       The host's render thread only.</li>
- *   <li>Async compute runs on {@link #computeQueue()}, a queue the host created and never submits to, else in
- *       order. Its work is submitted at {@code endAsync}, waiting on a timeline value the host's own submit signals
- *       later ({@link #signalInSubmit}); what waits for it waits inside that submit ({@link #waitInSubmit}). An
- *       async pass may not touch the host's images, which only the host's family may use.</li>
+ *   <li>Async compute runs in order unless {@code -Dcrystalgraphics.vulkan.asyncCompute=true}: it can wait only on the
+ *       host's submit, so it overlaps nothing. With it, async work runs on {@link #computeQueue()}, a queue the host
+ *       created and never submits to, submitted at {@code endAsync} and waiting on a timeline value the host's own
+ *       submit signals later ({@link #signalInSubmit}); what waits for it waits inside that submit
+ *       ({@link #waitInSubmit}). An async pass may not touch the host's images, which only the host's family may
+ *       use.</li>
  *   <li>Copies into images only the transfer queue has used run on {@link #transferQueue()} where it copies a texel at
  *       a time, else in order. Each batch is submitted when the device asks, and the host's submit waits for it.</li>
  * </ul>
@@ -260,7 +262,9 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     /** Builds the device over this host and GL's semantics over that, and makes it CgGL's state provider. Once. */
     public final CgTrackedGLBackend openBackend(int width, int height) {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
-        if (!"false".equals(System.getProperty("crystalgraphics.vulkan.asyncCompute"))) {
+        // Opt-in: the host's once-a-frame submit is the only signal async work can wait on, so it starts after the
+        // whole frame and the next submit waits for it -- serial, and in Minecraft 5 ms a frame slower than in order.
+        if ("true".equals(System.getProperty("crystalgraphics.vulkan.asyncCompute"))) {
             asyncQueue = computeQueue();
             asyncQueueFamily = asyncQueue == null ? -1 : computeQueueFamily();
         }
@@ -451,14 +455,13 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
 
     @Override public final boolean ownsSubmission() { return false; }
 
-    /** Minecraft 26.2 enables none of the three, and a hosted device has what it enabled. */
+    /** Off unless the host says its device was created with it, as for the three below. */
     @Override public boolean multiDrawIndirect() { return false; }
 
     @Override public boolean indirectCount() { return false; }
 
     @Override public boolean indirectFirstInstance() { return false; }
 
-    /** Only a multi-draw reads them, and a hosted device has none. */
     @Override public boolean drawParameters() { return false; }
 
     /** Off unless the host says its device was created with it: a host's own features leave it off. */

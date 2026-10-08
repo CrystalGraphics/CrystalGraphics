@@ -122,7 +122,9 @@ Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.
 -Dcrystalgraphics.vulkan.syncValidation=true         # with the validation layer on, its synchronization checks too
 -Dcrystalgraphics.vulkan.asyncCompute=false          # false|graphics: async() compute passes run in order on the
                                                      # frame's queue; graphics puts them on a second queue of its
-                                                     # family rather than a compute-only one
+                                                     # family rather than a compute-only one. On a hosted device
+                                                     # (Minecraft) async is off unless =true: it could wait only on
+                                                     # the host's end-of-frame submit, so it serialised the GPU
 -Dcrystalgraphics.vulkan.transfer=false              # no transfer queue: new textures' copies and the mesh store's
                                                      # run on the frame's queue (ENGINE_API.md, Async)
 
