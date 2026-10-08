@@ -236,6 +236,9 @@ What is easy to get wrong:
   on Java 25 LWJGL 3.4's struct setters write through FFM, and each write C2 does not inline builds a
   `MemorySegment`. The desktop on `vulkan` took 27% less CPU a frame for it. A struct recorded per call does the same;
   one made once may use LWJGL's classes.
+- **A pass into a host's `0..1` depth draws with each program's zero-to-one vertex stage**: `CgGL.setDepthReversed(true, true)`
+  (Minecraft 26.2's world passes) reaches `cgClipZeroToOne`, and the tracker stops remapping GL's `-1..1`. Left on the
+  GL-depth stage, every depth lands in the half nearest the eye and passes the test against everything the host drew.
 - **A program's pipeline is built at its first draw**, where a Vulkan driver compiles it. `buildPipeline(mode)`
   builds it ahead, for the current program and state with nothing it reads bound — what the shader audit
   runs on a device, in both clip conventions.

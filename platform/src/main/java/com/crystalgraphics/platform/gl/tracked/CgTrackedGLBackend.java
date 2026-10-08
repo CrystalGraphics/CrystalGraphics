@@ -949,6 +949,8 @@ public final class CgTrackedGLBackend extends CgGLBackend {
 
     @Override public void cgEndTransfer() { tracker.endTransfer(); }
 
+    @Override public void cgClipZeroToOne(boolean zeroToOne) { tracker.setZeroToOneClip(zeroToOne); }
+
     @Override
     public void cgImageBarrier(int texture, int from, int to) {
         TrackedTextures.GlTexture t = textures.get(texture);
