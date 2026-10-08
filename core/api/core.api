@@ -4920,6 +4920,8 @@ com/crystalgraphics/render/post/volume/CgImpact
 com/crystalgraphics/render/post/volume/CgImpactSequence
   access public,final
   extends java/lang/Object
+  method public fps ()F
+  method public frames ()I
   method public look (F)Lcom/crystalgraphics/render/post/volume/CgImpact;
   method public seconds ()F
   method public,static at (F)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
@@ -7113,6 +7115,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final MOMENT_FLASH Ljava/lang/String;
   field public,static,final MOMENT_HOLDING Ljava/lang/String;
   field public,static,final MOMENT_IMPACT Ljava/lang/String;
+  field public,static,final MOMENT_IMPACT_FRAME Ljava/lang/String;
   field public,static,final MOMENT_LAUNCH Ljava/lang/String;
   field public,static,final MOMENT_RELEASE Ljava/lang/String;
   field public,static,final MOMENT_RING Ljava/lang/String;
