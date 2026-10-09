@@ -353,6 +353,9 @@ its node moves (`graph.again.requested-kept`); with `false` they draw whole (`gr
 - **Order comes from reads and writes, not from creation.** A raster pass reads every `CgGraphTexture` its chunks'
   snapshots bind, as of `add`; it writes its target at `end`. A read sees the last write recorded before it — in its
   recording or one added to the graph earlier. Creation order only breaks ties, after the async placement below.
+- **A pipeline's undeclared state slots are its pass's** (`pass.state`, applied before each pipeline), and what neither
+  declares is inherited from the last draw, but for the colour mask: one neither declares writes every channel, so a
+  depth-only draw never blanks the passes after it.
 - **A pass nobody reads is culled** unless it writes a resource that outlives the frame (an imported, current or
   requested texture; an imported, persistent or history buffer) or carries a request.
 - **Transients live from their first to their last use** in the executed order, from a pool keyed by description

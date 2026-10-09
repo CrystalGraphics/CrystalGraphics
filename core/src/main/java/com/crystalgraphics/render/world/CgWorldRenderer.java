@@ -1265,8 +1265,7 @@ public final class CgWorldRenderer {
             // Under the HDR scene a glow is light added into the scene itself, where what draws in front covers it.
             boolean scene = which == TRANSPARENT && stage.resources().has(CgFrameKeys.SCENE);
             // Before any glow: a label's text then hides the glows behind it from the emission, as from the colour.
-            // Not under the scene, whose bloom reads the finished scene: there it hid every particle (journal: world-text).
-            if (which == TRANSPARENT && !scene) text.recordDepth(stage, view);
+            if (which == TRANSPARENT) text.recordDepth(stage, view);
             CgGraphTexture emission = which == TRANSPARENT && drawn > 0 ? mergedEmission(stage, recording) : null;
             if (scene) recordSceneGlows(stage, recording, view);
             if (drawn > 0) {
