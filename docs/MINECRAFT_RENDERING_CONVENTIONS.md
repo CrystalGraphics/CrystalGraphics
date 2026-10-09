@@ -82,7 +82,7 @@ Found profiling 360,000 particles (`GPU_DRIVEN_RENDERING.md` § *Case study*); e
 |---|---|---|---|---|
 | 47 | **Turns `GL_DEBUG_OUTPUT` on** at its default `glDebugVerbosity` of 1 (`GlDebug.enableDebugCallback`) | On NVIDIA, every GL call of ours and of Minecraft's got several times dearer: the blasts scene 15.37 → 9.61 ms a frame without it, Minecraft's `Entity Model` 1.21 → 0.22 ms | `Blaze3dGLBackend.fromHost` turns it off once for the context; `-Dcrystalgraphics.gl.keepHostDebugOutput=true` keeps it. Switching it per host section cost the driver ~1.1 ms a switch | adapted |
 | 48 | **Submits once a frame**, at its end, and our Vulkan work reaches the GPU only inside that submit | An async compute pass waited for Minecraft's whole frame, and its reader held up the next frame's submit: the GPU ran serially, 5 ms a frame in `vkQueuePresentKHR` | `HostedVulkanHost` runs async passes in order; `-Dcrystalgraphics.vulkan.asyncCompute=true` restores them. What would bring them back: `ENGINE_API.md` § *Async compute* | adapted (26.2, 26.3) |
-| 49 | **Creates its device with `multiDrawIndirect` and `shaderDrawParameters`** (`VulkanBackend.REQUIRED_DEVICE_FEATURES`) but not `drawIndirectFirstInstance` | Our hosted device had assumed none of the three, so no draw of ours joined on Minecraft's Vulkan: 323 draws stayed 323 calls | `MinecraftDeviceFeatures.addTo` records Minecraft's two and asks for `drawIndirectFirstInstance` where the GPU has it; `Blaze3dVulkanHost` answers multi-draw from them | adapted (26.2) · open (26.3: the hook is 26.2's only) |
+| 49 | **Creates its device with `multiDrawIndirect` and `shaderDrawParameters`** (`VulkanBackend.REQUIRED_DEVICE_FEATURES`) but not `drawIndirectFirstInstance` | Our hosted device had assumed none of the three, so no draw of ours joined on Minecraft's Vulkan: 323 draws stayed 323 calls | `MinecraftDeviceFeatures.addTo` records Minecraft's two and asks for `drawIndirectFirstInstance` where the GPU has it; `Blaze3dVulkanHost` answers multi-draw from them. 26.3 requires all three (`VulkanFeatureSets.REQUIRED_FEATURESET`) | adapted (26.2) · open (26.3, §3) |
 
 ### Minecraft 26.1 → 26.1.1 → 26.1.2
 
@@ -154,8 +154,12 @@ fires on every loader, Forge's new `executeOit` hooks included.
   through moment-based OIT, so a pass hooked where 26.2's translucent world ended (NeoForge
   `AfterTranslucentParticles`, Fabric `END_MAIN`) may draw after the composite rather than inside it.
   Answered on a 26.3 client with the option on and a transparent material over water.
-- **Row 49 on 26.3.** `MinecraftDeviceFeatures.addTo` is 26.2's only, so on 26.3's Vulkan our draws do not join.
-  Port the hook to `renderpearl`'s device creation (row 33), then check `mesh.multi-draws` on a 26.3 client.
+- **Row 49 on 26.3, with the 26.3 Vulkan bring-up.** Nothing of ours draws on 26.3's Vulkan device yet
+  (`LifecycleModern` stands it down), so this waits for that. 26.3 requires `multiDrawIndirect`,
+  `drawIndirectFirstInstance` and `shaderDrawParameters` itself, so `MinecraftDeviceFeatures` only has to report them;
+  `independentBlend` still has to be asked for: a `DeviceFeaturesHook` on
+  `renderpearl.backend.vulkan.VulkanBackend.createDevice(FeatureSet, VulkanPhysicalDevice)`, returning a `FeatureSet`
+  (a record: name, extensions, features, condition) with it added. Then check `mesh.multi-draws` on a 26.3 client.
 
 The census hooks are permanent: `opaque`, `transparent` and `frame` in `CgGraphicsLifecycle`, each after
 its stood-down guard (a stood-down host has no GL context to read), and CrystalGUI's `gui` in
