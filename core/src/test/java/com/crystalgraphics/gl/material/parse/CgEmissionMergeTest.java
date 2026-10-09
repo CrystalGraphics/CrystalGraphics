@@ -4,8 +4,13 @@ import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler.EmissionMe
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
-/** Which Emissive passes fold into their Forward draw ({@link CgMaterialShaderCompiler#emissionMerge}). */
+/**
+ * Which Emissive passes fold into their Forward draw ({@link CgMaterialShaderCompiler#emissionMerge}), and into the HDR
+ * scene's ({@link CgMaterialShaderCompiler#sceneFolds}).
+ */
 public class CgEmissionMergeTest {
 
     private static final String BODY = """
@@ -13,12 +18,29 @@ public class CgEmissionMergeTest {
             void fragment(in v2f i, out vec4 c) { c = vec4(1.0, 0.5, 0.2, 0.5); }
             """;
 
-    private static EmissionMerge merge(String forwardState, String emissivePass) {
+    private static CgParsedShader parse(String forwardState, String emissivePass) {
         String source = "#type spatial\nTags { \"RenderType\" = \"Transparent\" }\nQueue = \"Transparent\"\n"
                 + "struct v2f { vec2 uv; };\n"
                 + "Pass {\n Tags { \"LightMode\" = \"Forward\" }\n RenderState { " + forwardState + " }\n" + BODY + "}\n"
                 + emissivePass;
-        return CgMaterialShaderCompiler.emissionMerge(CgShaderParser.parse(source, "test:merge.shader"));
+        return CgShaderParser.parse(source, "test:merge.shader");
+    }
+
+    private static EmissionMerge merge(String forwardState, String emissivePass) {
+        return CgMaterialShaderCompiler.emissionMerge(parse(forwardState, emissivePass));
+    }
+
+    @Test
+    public void whatMergesFoldsIntoTheScene() {
+        String codeless = "Pass { Tags { \"LightMode\" = \"Emissive\" } }";
+        assertTrue(CgMaterialShaderCompiler.sceneFolds(parse("Blend ONE ONE DepthWrite OFF", codeless)));
+        assertTrue(CgMaterialShaderCompiler.sceneFolds(parse("Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA DepthWrite OFF", codeless)));
+        assertTrue(CgMaterialShaderCompiler.sceneFolds(parse("Blend ONE ONE_MINUS_SRC_ALPHA DepthWrite OFF",
+                "Pass { Tags { \"LightMode\" = \"Emissive\" } RenderState { Blend ONE ONE } }")));
+        assertFalse(CgMaterialShaderCompiler.sceneFolds(parse("Blend ONE ONE DepthWrite OFF",
+                "Pass { Tags { \"LightMode\" = \"Emissive\" }\n" + BODY + "}\n")));
+        // A source scaled by the colour behind it is not a colour plus a glow.
+        assertFalse(CgMaterialShaderCompiler.sceneFolds(parse("Blend DST_COLOR ZERO DepthWrite OFF", codeless)));
     }
 
     @Test

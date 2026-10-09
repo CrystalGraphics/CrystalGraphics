@@ -64,6 +64,7 @@ public final class CgPipeline {
     private final boolean overdraw;
     private final boolean emission;
     private final boolean cover;
+    private final boolean fold;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -74,6 +75,8 @@ public final class CgPipeline {
     private CgPipeline emitting;
     @Nullable
     private CgPipeline occluding;
+    @Nullable
+    private CgPipeline folding;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -98,13 +101,15 @@ public final class CgPipeline {
         this.overdraw = (key.flags & OVERDRAW) != 0;
         this.emission = (key.flags & EMISSION) != 0;
         this.cover = (key.flags & COVER) != 0;
+        this.fold = (key.flags & FOLD) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover) {
+        if (multiDraw || overdraw || emission || cover || fold) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
             if (emission) more.add(CgMaterialShaderCompiler.EMISSION_TARGET);
             if (cover) more.add(CgMaterialShaderCompiler.EMISSION_COVER);
+            if (fold) more.add(CgMaterialShaderCompiler.SCENE_FOLD);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -125,10 +130,11 @@ public final class CgPipeline {
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, 0), CgPipeline::register);
     }
 
-    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8;
+    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16;
 
     private int flags() {
-        return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0);
+        return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
+                | (fold ? FOLD : 0);
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
@@ -169,7 +175,7 @@ public final class CgPipeline {
         if (made == null) {
             CgRenderState counting = CgRenderState.builder().blend(ADD).depth(CgDepthState.NONE).cull(state.getCull())
                     .colorMask(CgColorMask.ALL).build();
-            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, (flags() | OVERDRAW) & ~(EMISSION | COVER)),
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, counting, kind, (flags() | OVERDRAW) & ~(EMISSION | COVER | FOLD)),
                     CgPipeline::register);
             overdrawn = made;
         }
@@ -190,12 +196,37 @@ public final class CgPipeline {
     @Nullable
     public CgPipeline emissionTarget() {
         if (emission) return this;
-        if (pass != CgRenderPassVariant.FORWARD || overdraw) return null;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || fold) return null;
         CgPipeline made = emitting;
         if (made == null) {
             if (shader.emissionMerge() == CgMaterialShaderCompiler.EmissionMerge.NONE) return null;
             made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | EMISSION), CgPipeline::register);
             emitting = made;
+        }
+        return made;
+    }
+
+    /**
+     * This Forward pipeline drawing its Emissive pass too, into the HDR scene: its glow added to its colour in the same
+     * draw, under its own blend ({@link CgMaterialShaderCompiler#SCENE_FOLD}). Null where the shader's Emissive pass
+     * stays a draw of its own ({@link CgMaterialShaderCompiler#sceneFolds}). Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline folded = material.pipeline(CgInstanceKind.OBJECT).sceneFold();
+     * if (folded != null) chunks.draw(folded, bindings, mesh);              // colour and glow, into the scene
+     * else { ... the Forward pipeline, then its Emissive pass at the same key ... }
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline sceneFold() {
+        if (fold) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission || cover) return null;
+        CgPipeline made = folding;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            if (parsed == null || !CgMaterialShaderCompiler.sceneFolds(parsed)) return null;
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | FOLD), CgPipeline::register);
+            folding = made;
         }
         return made;
     }

@@ -125,6 +125,13 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String EMISSION_COVER = "CG_EMISSION_COVER";
 
+    /**
+     * The engine's keyword for a Forward pass drawn into the HDR scene with its Emissive pass folded in: the glow, times
+     * {@code CG_SCENE_GLOW}, added to the decoded colour under the pass's own blend, in one draw. Compiled only where
+     * {@link #sceneFolds} holds.
+     */
+    public static final String SCENE_FOLD = "CG_SCENE_FOLD";
+
     /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
@@ -174,6 +181,18 @@ public final class CgMaterialShaderCompiler {
         boolean adds = eb != null && eb.enabled() && eb.srcRgb() == CgGL.GL_ONE && eb.dstRgb() == CgGL.GL_ONE
                 && eb.blendEquationRgb() == CgGL.GL_FUNC_ADD;
         return premultiplied && adds ? EmissionMerge.ADDED : EmissionMerge.NONE;
+    }
+
+    /**
+     * Whether {@code shader}'s Emissive pass folds into its Forward draw under the HDR scene ({@link #SCENE_FOLD}): it
+     * merges, and the Forward blend adds its source scaled by ONE or SRC_ALPHA, so a glow added to the colour lands as
+     * the target-plus-emission picture does.
+     */
+    public static boolean sceneFolds(CgParsedShader shader) {
+        if (emissionMerge(shader) == EmissionMerge.NONE) return false;
+        CgBlendState blend = shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_FORWARD).renderState().getBlend();
+        return blend.blendEquationRgb() == CgGL.GL_FUNC_ADD
+                && (blend.srcRgb() == CgGL.GL_ONE || blend.srcRgb() == CgGL.GL_SRC_ALPHA);
     }
 
     /**
@@ -665,7 +684,9 @@ public final class CgMaterialShaderCompiler {
         // Generated main()
         boolean cover = config.activeKeywords().contains(EMISSION_COVER) && merge == EmissionMerge.NONE
                 && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && !pass.fragOutput().isMrt();
-        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover);
+        boolean fold = config.activeKeywords().contains(SCENE_FOLD) && merge == EmissionMerge.NONE && !cover
+                && CgParsedPass.LIGHT_MODE_FORWARD.equals(pass.lightMode()) && sceneFolds(shader);
+        appendFragmentMain(sb, v2fFields, pass, shader, config.activeKeywords().contains(DEBUG_OVERDRAW), merge, cover, fold);
 
         return sb.toString();
     }
@@ -918,7 +939,7 @@ public final class CgMaterialShaderCompiler {
 
     private static void appendFragmentMain(StringBuilder sb, List<CgShaderParser.V2fField> fields,
                                             CgParsedPass pass, CgParsedShader shader, boolean overdraw,
-                                            EmissionMerge merge, boolean cover) {
+                                            EmissionMerge merge, boolean cover, boolean fold) {
         sb.append("void main() {\n");
         sb.append("  v2f _v2f_local;\n");
         for (CgShaderParser.V2fField f : fields) {
@@ -958,6 +979,13 @@ public final class CgMaterialShaderCompiler {
                 if (shader.fogged()) sb.append("  _cg_emission.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
                 if (merge == EmissionMerge.ADDED) sb.append("  _cg_emission.a = 0.0;\n");
             }
+            if (fold) {
+                // What the Emissive pass would add into the scene: unlit, times the scene's gain, faded by fog.
+                sb.append("  vec4 _cg_glow = _cg_fragColor;\n");
+                if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_glow.rgb *= CG_EMISSION;\n");
+                sb.append("  _cg_glow.rgb *= CG_SCENE_GLOW;\n");
+                if (shader.fogged()) sb.append("  _cg_glow.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
+            }
             // Code that reads CG_EMISSION has applied it already.
             if (emissive && !READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_fragColor.rgb *= CG_EMISSION;\n");
             // A world material is lit and fogged as Minecraft's own things are, unless tagged otherwise. Emitted
@@ -968,6 +996,12 @@ public final class CgMaterialShaderCompiler {
             if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) appendSceneDecode(sb, pass);
+            if (fold && pass.renderState().getBlend().srcRgb() == CgGL.GL_SRC_ALPHA) {
+                // Weighed by the alpha the Emissive pass would blend with, not the coverage the decode remapped it to.
+                sb.append("  if (_cg_fragColor.a > 0.0) _cg_fragColor.rgb += _cg_glow.rgb * (_cg_glow.a / _cg_fragColor.a);\n");
+            } else if (fold) {
+                sb.append("  _cg_fragColor.rgb += _cg_glow.rgb;\n");
+            }
         } else {
             sb.append("  ").append(pass.fragOutput().mrtStructName()).append(" _cg_mrtOut;\n");
             sb.append("  fragment(_v2f_local, _cg_mrtOut);\n");
