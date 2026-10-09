@@ -8,8 +8,12 @@
 //   FLASH      the picture times _Exposure, in linear light; bloom is added after, unscaled
 //   BLOOM      the bloom chain's level 0, tinted, added in linear light; or mixed in, energy-conserving
 //   VIGNETTE   the corners darkened by _Vignette
-//   IMPACT     _Impact.x of the way to an impact frame (_Impact.y: CgImpact's order: negative, black and white, speed
-//              lines, then what glows white on black, inverted, and with white speed lines)
+//   IMPACT     _Impact.x of the way to an impact frame, a CgImpactFrame: _Impact.y its kind (negative, black and white,
+//              lines over the picture, drawn), .z its seed, .w 1 on light paper; _ImpactDraw the subject filled in
+//              ink, focus lines, hatching's length, the star's size; _ImpactMore the cross and the jitter in pixels;
+//              _ImpactLight and _ImpactDark its two tones, linear
+//   SUBJECT    a drawn frame's subject is _Subject (CgFrameKeys.SUBJECT: what the effect glows with); without it, the
+//              scene's light past white
 //   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
 //              hue, then clamped; a value within 0.1 of an 8-bit code
 //              is what the scene decoded from the host, written back exact rather than dithered
@@ -20,7 +24,8 @@
 #pragma cg_feature VIGNETTE
 #pragma cg_feature CHROMATIC
 #pragma cg_feature IMPACT
-#include "crystalgraphics:shaders/lib/post/composite.glsl"
+#pragma cg_feature SUBJECT
+#include "crystalgraphics:shaders/lib/post/impact.glsl"
 
 Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.02" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Overlay"
@@ -34,8 +39,13 @@ Properties {
     _Exposure  ("The flash: what the picture is multiplied by", float) = 1.0
     _Vignette  ("How dark the corners go, 0 to 1", float) = 0.0
     _Chromatic ("Chromatic aberration, 0 to 1", float) = 0.0
-    _Impact    ("x: share of the impact frame; y: its look", vec4) = (0, 0, 0, 0)
-    _Focus     ("xy: where aberration and speed lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
+    _Impact    ("x: share of the impact frame; y: its kind; z: its seed; w: 1 on light paper", vec4) = (0, 0, 0, 0)
+    _ImpactDraw ("x: subject in ink; y: focus lines; z: hatching's length; w: the star's size", vec4) = (0, 0, 0, 0)
+    _ImpactMore ("x: the star's cross; y: jitter in pixels", vec4) = (0, 0, 0, 0)
+    _ImpactLight ("The light tone, linear", color) = (1, 1, 1, 1)
+    _ImpactDark ("The dark tone, linear", color) = (0, 0, 0, 1)
+    _Subject   ("What the effect glows with", sampler2D) = "black"
+    _Focus     ("xy: where aberration and focus lines centre, 0 to 1", vec4) = (0.5, 0.5, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -74,15 +84,6 @@ Pass {
         vec3 c = post_decode_srgb(scene.rgb);
 #endif
 #endif
-#ifdef IMPACT
-        // What glows, taken before the flash brightens everything: the scene's light past white, or the near-white.
-        float hot = max(c.r, max(c.g, c.b));
-#ifdef SCENE
-        float subject = smoothstep(0.9, 1.4, hot);
-#else
-        float subject = smoothstep(0.85, 1.0, hot);
-#endif
-#endif
 #ifdef FLASH
         c *= _Exposure;
 #endif
@@ -101,7 +102,23 @@ Pass {
 #endif
         vec3 encoded = post_encode_srgb(c);
 #ifdef IMPACT
-        encoded = mix(encoded, post_impact(encoded, subject, _Impact.y, i.uv, _Focus.xy, CG_RESOLUTION, CG_TIME), _Impact.x);
+        vec3 impact;
+        if (_Impact.y > 2.5) {
+#if defined(SUBJECT)
+            impact = impact_drawn(_Subject, vec2(0.3, 0.0), i.uv, CG_RESOLUTION, _Focus.xy, _Impact, _ImpactDraw,
+                                  _ImpactMore, _ImpactLight.rgb, _ImpactDark.rgb);
+#elif defined(SCENE)
+            impact = impact_drawn(_Scene, vec2(1.15, 0.0), i.uv, CG_RESOLUTION, _Focus.xy, _Impact, _ImpactDraw,
+                                  _ImpactMore, _ImpactLight.rgb, _ImpactDark.rgb);
+#else
+            impact = impact_drawn(cg_SceneColor, vec2(0.92, 1.0), i.uv, CG_RESOLUTION, _Focus.xy, _Impact, _ImpactDraw,
+                                  _ImpactMore, _ImpactLight.rgb, _ImpactDark.rgb);
+#endif
+        } else {
+            impact = impact_picture(encoded, _Impact.y, (i.uv - _Focus.xy) * vec2(CG_RESOLUTION.x / CG_RESOLUTION.y, 1.0),
+                                    uint(_Impact.z), 1.0 / CG_RESOLUTION.y);
+        }
+        encoded = mix(encoded, impact, _Impact.x);
 #endif
 #ifdef SCENE
         vec3 e = clamp(encoded, 0.0, 1.0) * 255.0;

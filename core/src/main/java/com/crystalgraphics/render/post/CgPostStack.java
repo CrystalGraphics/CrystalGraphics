@@ -88,10 +88,14 @@ public final class CgPostStack {
     /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */
     public static final int DEMAND_ORDER = 0;
 
-    /** Blends the volumes and, while bloom will draw, says the emission will be read ({@link CgFrameKeys#EMISSION_READ}). */
+    /**
+     * Blends the volumes and, while bloom will draw, says the emission will be read ({@link CgFrameKeys#EMISSION_READ});
+     * while a drawn impact frame shows, the subject ({@link CgFrameKeys#SUBJECT_READ}).
+     */
     private void demand(CgStageFrame stage) {
         resolve(stage);
         if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
+        if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, Boolean.TRUE);
     }
 
     /** The built-in bloom, and its settings. */

@@ -44,6 +44,16 @@ public final class CgFrameKeys {
      */
     public static final CgFrameKey<CgGraphTexture> SCENE = CgFrameKey.of("crystalgraphics:scene", CgGraphTexture.class);
 
+    /**
+     * What the hitting effect glows with this firing, for an impact frame to draw: every visible Emissive pass, hidden by
+     * the scene's depth and by the transparent surfaces in front, linear HDR, at a quarter of the target's size or the
+     * emission target itself. Published at the end of {@code WORLD_TRANSPARENT} only while {@link #SUBJECT_READ} was put.
+     */
+    public static final CgFrameKey<CgGraphTexture> SUBJECT = CgFrameKey.of("crystalgraphics:subject", CgGraphTexture.class);
+
+    /** That something will read {@link #SUBJECT} this firing: put before the world renderer records (the post stack's, while an impact frame shows). */
+    public static final CgFrameKey<Boolean> SUBJECT_READ = CgFrameKey.of("crystalgraphics:subject_read", Boolean.class);
+
     private CgFrameKeys() {
     }
 }

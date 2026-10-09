@@ -242,7 +242,7 @@ public final class CgWorldRenderer {
     private boolean[] emits = new boolean[64];
     /** 0 until set: the tier's share then. */
     private float emissionScale;
-    private CgGraphTexture emissionTarget;
+    private CgGraphTexture emissionTarget, subjectTarget;
     private final CgPassConstants emissionConstants = new CgPassConstants();
     /** Whether the transparent passes write glows beside the target ({@link #mergeEmission(boolean)}). */
     private boolean mergeEmission = !"false".equals(System.getProperty("crystalgraphics.world.mergeEmission"));
@@ -1285,6 +1285,7 @@ public final class CgWorldRenderer {
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
             }
             if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
+            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) recordSubject(stage, recording, view);
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT) text.record(stage, view);
         }
@@ -1451,7 +1452,6 @@ public final class CgWorldRenderer {
         int recorded = markGlows(view, merged, part);
         if (merged != null) stage.resources().put(CgFrameKeys.EMISSION, merged);
         if (recorded == 0) return;
-        cullSets(stage, recording, view, true);
 
         CgGraphTexture into = merged;
         if (into == null) {
@@ -1462,17 +1462,47 @@ public final class CgWorldRenderer {
             }
             into = emissionTarget;
         }
+        recordGlows(stage, recording, view, into, merged != null);
+        stage.resources().put(CgFrameKeys.EMISSION, into);
+    }
+
+    /**
+     * What the hitting effect glows with, for an impact frame ({@link CgFrameKeys#SUBJECT}), while the post stack asks
+     * ({@link CgFrameKeys#SUBJECT_READ}): the emission target if one was drawn, else every visible glow drawn as the
+     * emission would be, into a quarter-size target. Under the HDR scene that is the only time glows are drawn apart.
+     */
+    private void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view) {
+        CgGraphTexture emission = stage.resources().get(CgFrameKeys.EMISSION);
+        if (emission != null) {
+            stage.resources().put(CgFrameKeys.SUBJECT, emission);
+            return;
+        }
+        if (markGlows(view, null, EMIT_ALL) == 0) return;
+        int w = Math.max(1, (int) (targetWidth * 0.25f)), h = Math.max(1, (int) (targetHeight * 0.25f));
+        if (subjectTarget == null || subjectTarget.getWidth() != w || subjectTarget.getHeight() != h) {
+            subjectTarget = CgGraphTexture.transientTexture("cg_subject", new CgTextureDesc(w, h, EMISSION_FORMAT));
+        }
+        recordGlows(stage, recording, view, subjectTarget, false);
+        stage.resources().put(CgFrameKeys.SUBJECT, subjectTarget);
+    }
+
+    /**
+     * The glows {@link #emits} marks into {@code into}, hidden by the stage's depth, after clearing it unless
+     * {@code merged} (the transparent passes already wrote into it); drawn apart, each transparent surface covers them too.
+     */
+    private void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into, boolean merged) {
+        cullSets(stage, recording, view, true);
         stage.constants().write(constantsBlock, 0);
         emissionConstants.read(constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
-        CgRasterPass glow = recording.raster(into, merged != null ? CgLoad.load() : CgLoad.clear(0f, 0f, 0f, 0f),
+        CgRasterPass glow = recording.raster(into, merged ? CgLoad.load() : CgLoad.clear(0f, 0f, 0f, 0f),
                 emissionConstants, EMISSIVE_STATE, CgOrder.SORTED)
                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
             // Drawn on its own, the emission takes each transparent surface's cover too, in the glows' order: what
             // the merged emission's surfaces write beside their colour.
-            boolean covers = merged == null && (phase[i] == FORWARD || phase[i] == AFTER)
+            boolean covers = !merged && (phase[i] == FORWARD || phase[i] == AFTER)
                     && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             if (!emits[i] && !covers) continue;
             modelOf(i, view);
@@ -1483,14 +1513,13 @@ public final class CgWorldRenderer {
                     CgPipeline occluder = forward.emissionOccluder();
                     if (occluder != null) emissionDraw(chunks, occluder, link, recording, i);
                 }
-                if (!emits[i] || !link.hasEmissivePass() || merged != null && this.merged[i] && foldsEmission(link)) continue;
+                if (!emits[i] || !link.hasEmissivePass() || merged && this.merged[i] && foldsEmission(link)) continue;
                 CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
             }
         }
         glow.add(chunks.end());
         glow.end();
-        stage.resources().put(CgFrameKeys.EMISSION, into);
     }
 
     /**

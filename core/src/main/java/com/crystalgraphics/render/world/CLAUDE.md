@@ -62,6 +62,11 @@
   at 60 beams is most of what the scene cost the transparent pass. Their
   constants carry `sceneEmission` (0.5) as `CG_SCENE_GLOW`, which every Emissive pass's `CG_EMISSION` multiplies by
   under the scene alone. Bloom reads the scene (`CgBloom`).
+- **The subject** (`recordSubject`, after the transparent pass, only while `CgFrameKeys.SUBJECT_READ` is on the
+  firing: the post stack puts it while a drawn impact frame shows): what the effect glows with, published as
+  `CgFrameKeys.SUBJECT` for the impact frame to fill in ink. The emission target when one was drawn; otherwise every
+  visible Emissive pass drawn into a quarter-size R11G11B10F target with transparent surfaces covering, as the emission
+  pass draws them. Light pools (Forward-only) are not in it.
 - **Half resolution** (`recordHalf`, before the transparent pass): every visible transparent draw marked
   `.halfResolution()` draws into a transient R11G11B10F target half the target's size, its constants' resolution that
   size, reading the target's depth through `sceneDepth(unit, from)`; then `world_half_upsample.shader` adds it over

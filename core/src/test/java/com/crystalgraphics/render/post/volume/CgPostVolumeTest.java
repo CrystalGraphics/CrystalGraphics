@@ -48,6 +48,6 @@ public class CgPostVolumeTest {
         resolved.reset();
         resolved.blend(new CgPostSettings().impact(CgImpact.LINES, 1f), 0.3f, 0.5f, 0.5f);
         resolved.blend(new CgPostSettings().impact(CgImpact.INVERT, 1f), 0.9f, 0.5f, 0.5f);
-        assertSame(CgImpact.INVERT, resolved.impactLook());
+        assertSame(CgImpact.INVERT.frame(), resolved.impactLook());
     }
 }

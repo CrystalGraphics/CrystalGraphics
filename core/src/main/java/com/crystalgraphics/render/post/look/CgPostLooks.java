@@ -1,10 +1,12 @@
 package com.crystalgraphics.render.post.look;
 
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
@@ -14,6 +16,7 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
  * <ul>
  *   <li>Flash and impact frames are scaled by the player's {@code CgGraphicsSettings.FLASHES}: 0 shows neither.</li>
  *   <li>A look at its neutral value records nothing, so a firing with no volume draws as before.</li>
+ *   <li>A drawn impact frame reads the world renderer's subject ({@link CgFrameKeys#SUBJECT}), bent as the scene was.</li>
  * </ul>
  */
 public final class CgPostLooks implements CgPostEffect {
@@ -30,6 +33,11 @@ public final class CgPostLooks implements CgPostEffect {
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f;
     }
 
+    /** Whether {@code s} shows an impact frame that reads the subject: what the stack asks the world renderer for. */
+    public boolean drawsImpact(CgPostSettings s) {
+        return s.impact() * CgGraphicsSettings.FLASHES.get() > 0f && s.impactLook().readsSubject();
+    }
+
     @Override
     public void record(CgPostContext post) {
         CgPostSettings s = post.settings();
@@ -39,6 +47,10 @@ public final class CgPostLooks implements CgPostEffect {
         if (flash != 0f) composite.flash((float) Math.pow(2.0, flash));
         if (s.vignette() > 0f) composite.vignette(s.vignette());
         if (s.chromatic() > 0f) composite.chromatic(s.chromatic(), s.focusX(), s.focusY());
-        if (impact > 0f) composite.impact(s.impactLook(), impact, s.focusX(), s.focusY());
+        if (impact > 0f) {
+            CgGraphTexture subject = s.impactLook().readsSubject() ? post.resources().get(CgFrameKeys.SUBJECT) : null;
+            composite.impact(s.impactLook(), impact, s.impactSeed(), s.focusX(), s.focusY(),
+                    subject != null ? post.distorted(subject) : null);
+        }
     }
 }
