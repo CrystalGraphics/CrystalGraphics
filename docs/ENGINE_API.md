@@ -171,6 +171,12 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
 - A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
   each firing's view.
 
+### Effects — the VFX engine
+
+`CgVfxSystem` plays effects through `CgWorldRenderer`: `vfx.update(seconds)` then `vfx.submit(world)` each frame, from
+an `onFrame` listener. Their particles simulate on the GPU at every compute tier. Writing effects, emitters, events
+and modules: [`VFX.md`](VFX.md).
+
 ### The post stack — what runs after the world
 
 `CgPostStack` (`render/post`, its own guide) records on `WORLD_TRANSPARENT` after the world renderer: every active

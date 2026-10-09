@@ -155,6 +155,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 |---|---|---|
 | Write or load a `.shader` material | [`docs/SHADERS.md`](docs/SHADERS.md) | `api/material/CLAUDE.md` |
 | Write or run a kernel (`.compute`) | [`docs/SHADERS.md`](docs/SHADERS.md) § *Compute* | `compute/CLAUDE.md` |
+| Write an effect, a particle emitter or a particle module | [`docs/VFX.md`](docs/VFX.md) | `vfx/CLAUDE.md` |
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
 | Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
 | Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gl/buffer/shader` |

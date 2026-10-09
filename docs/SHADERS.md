@@ -746,7 +746,9 @@ shipped kernels carry none ([A Java body](#a-java-body)).
 **`crystalgraphics:shaders/example.compute` is the reference**: every part of the format, annotated, compiled by the
 tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Designing one
 that runs well on all of them: [Designing for every tier](#designing-for-every-tier). Plan:
-`plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`.
+`plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`. The VFX particle kernels are
+generated from emitters' module stacks, with no `.compute` file: a particle behaviour is a module
+([`VFX.md`](VFX.md) § *A module of your own*), not a kernel.
 
 ### Start to finish
 
