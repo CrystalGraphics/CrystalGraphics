@@ -46,7 +46,9 @@ import java.util.function.Consumer;
  * replays every {@link #PERIOD} seconds, so a switch of {@link CgVfxSystem#simulation} reaches it within one. The
  * stations span about 60 blocks along x and 30 along z round the origin; each stands on the world's ground under it
  * ({@link CgWorldQueries#groundBelow}), else at the origin's height, and its particles land on the world's ground
- * wherever it stands, else on its floor. The harness's {@code vfx-modules}, and a scene of {@link CgRenderDemo}.
+ * wherever it stands, else on its floor. The boulder's sparks and chips and the block's rain also hit whatever is on screen
+ * through the scene's depth ({@link CgVfxModule.CollideDepth}): a mob or player standing under them. The harness's
+ * {@code vfx-modules}, and a scene of {@link CgRenderDemo}.
  *
  * <pre>{@code
  * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: its textures and materials; the
@@ -62,6 +64,8 @@ public final class CgVfxModules {
     private static final Logger LOG = LogManager.getLogger("CgVfxModules");
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
     private static final float PERIOD = 7f, FOREVER = 1.0e6f;
+    /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
+    private static final float DEPTH_THICKNESS = 0.4f;
     private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
     /** Columns of world ground a play's particles find, each way from its station: past the widest station's spread. */
     private static final int GROUND_REACH = 16;
@@ -450,6 +454,7 @@ public final class CgVfxModules {
                 .launch(0.15f, 0.9f, 1f).speed(2.5f, 6f).life(0.15f, 0.4f).size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(1.2f, 0f))
+                .module(new CgVfxModule.CollideDepth(0.4f, 0.2f, 0.3f, DEPTH_THICKNESS))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1200)
                 .rate(120f, 0f, PERIOD - 3f).shape(1.2f).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
@@ -457,6 +462,8 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(Volume.sphere(1.8f).at(0f, -5.2f, 0f), 0.6f, 0.05f, 0.3f))
                 .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f))
+                // A mob or player under the boulder: what the voxel window does not hold, on screen.
+                .module(new CgVfxModule.CollideDepth(0.35f, 0.4f, 0.4f, DEPTH_THICKNESS))
                 .event(CgVfxEvent.onCollision().spawn(flash, 1))
                 .event(CgVfxEvent.onCollision().spawn(chips, 4))
                 .opacity(FADE).build();
@@ -591,7 +598,8 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Collide(Volume.box(1.5f, 1f, 1.5f).at(0f, 1f - source, 0f), 0f, 0f, 0f))
                 // Just past the block's surface: a drop is killed the step it lands, after its collision fired.
                 .module(new CgVfxModule.Kill(Volume.box(1.52f, 1.03f, 1.52f).at(0f, 1f - source, 0f), true))
-                .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).killing());
+                .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).killing())
+                .module(new CgVfxModule.CollideDepth(0f, 0f, 0f, DEPTH_THICKNESS).killing());
         if (spread > 1.5f) {
             float column = (source - 2f) / 2f;
             rain.module(new CgVfxModule.Kill(Volume.box(1.55f, column, 1.55f).at(0f, -column, 0f), true));
