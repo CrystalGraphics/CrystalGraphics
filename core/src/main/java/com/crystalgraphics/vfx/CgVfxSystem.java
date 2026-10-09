@@ -160,6 +160,11 @@ public final class CgVfxSystem {
             ? new String[0] : System.getProperty("crystalgraphics.vfx.skip").split(",");
     /** Fewer records than this are written on the render thread alone. */
     private static final int PARALLEL_RECORDS = 4096;
+    /**
+     * Fewer CPU-stepped particles than this tick on the render thread alone: a GPU-stepped emitter's tick is a few
+     * stores, and workers woken for it could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
+     */
+    private static final int PARALLEL_PARTICLES = 4096;
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
@@ -293,6 +298,7 @@ public final class CgVfxSystem {
                         particleDt = TICK * step;
                         drawnStep = step;
                     }
+                    int cpuParticles = 0;
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
                         if (effect.state() != CgVfxEffect.State.DEAD) {
@@ -300,11 +306,18 @@ public final class CgVfxSystem {
                                 effect.step(TICK);
                             }
                         }
-                        if (effect.hasEmitterTicks()) emitting.add(effect);
+                        if (effect.hasEmitterTicks()) {
+                            emitting.add(effect);
+                            cpuParticles += effect.dueCpuParticles();
+                        }
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
-                            workers.run(emitting.size(), tickEach);
+                        if (cpuParticles >= PARALLEL_PARTICLES) {
+                            try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
+                                workers.run(emitting.size(), tickEach);
+                            }
+                        } else {
+                            for (int i = 0; i < emitting.size(); i++) tickEach.run(i);
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
