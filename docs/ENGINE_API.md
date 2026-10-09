@@ -196,20 +196,24 @@ burst.close();
 CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
 ```
 
-- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames (`CgImpact`:
-  negative, black and white, speed lines; and `SUBJECT`, `SUBJECT_INVERTED`, `SUBJECT_LINES`, what glows split from
-  the world, masked by the HDR scene's light past white). Flash and impact frames are scaled by the player's `FLASHES`
-  comfort setting.
-- **An impact frame is beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts;
-  an effect sets the look it returns on a volume at full weight, with a hard edge. `CgEnergyWave`'s blast plays one
-  inside a hitstop (`BLAST_BEATS`); `--mode=vfx-blast-flash` shows it.
+- The looks: flash (exposure in stops), vignette, chromatic aberration round the focus, impact frames. Flash and
+  impact frames are scaled by the player's `FLASHES` comfort setting.
+- **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
+  it) or a drawn one: two-tone paper, the subject (what the effect glows with, `CgFrameKeys.SUBJECT`) filled in ink,
+  focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
+  names the presets (`SUBJECT`, `HATCHED`, `FOCUS_LINES`, `WHITE`, ...).
+- **It plays as beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts, and
+  gives each beat a seed; an effect sets the look it returns on a volume at full weight. `CgEnergyWave`'s blast plays
+  one inside a hitstop (`BLAST_BEATS`); `--mode=vfx-blast-flash` shows it.
 
 ```java
+static final CgImpactFrame HIT_FRAME = CgImpactFrame.drawn().paper(CgImpactFrame.Tone.DARK).fillSubject(true)
+        .star(0.045f).cross(true).jitter(3f).build();
 static final CgImpactSequence HIT = CgImpactSequence.at(24f)
-        .beat(CgImpact.SUBJECT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.SUBJECT_LINES, 2).build();
-CgImpact look = HIT.look(sinceHit);                      // each tick; null outside it
+        .beat(HIT_FRAME, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).build();
+CgImpactFrame look = HIT.look(sinceHit);                 // each tick; null outside it
 impact.weight(look != null ? 1f : 0f);
-if (look != null) settings.impact(look, 1f);
+if (look != null) settings.impact(look, 1f, HIT.seed(sinceHit));
 ```
 - A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
 - **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at

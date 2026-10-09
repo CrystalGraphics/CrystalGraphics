@@ -15,8 +15,10 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.post.volume.CgImpact;
+import com.crystalgraphics.render.post.volume.CgImpactFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 
+import javax.annotation.Nullable;
 import java.util.function.Consumer;
 
 /**
@@ -29,7 +31,7 @@ import java.util.function.Consumer;
  * post.composite().bloom(chain, 1.2f, 1f, 0.9f, 0.8f, false);   // a warm additive glow
  * post.composite().linear();                                     // this firing composites in linear light
  * post.composite().flash(2f).vignette(0.4f);                     // twice as bright, darker corners
- * post.composite().impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // speed lines from the centre
+ * post.composite().impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // focus lines from the centre
  * }</pre>
  *
  * <ul>
@@ -46,7 +48,7 @@ public final class CgPostComposite {
     private static final CgCompositeFeature[] FEATURES = CgCompositeFeature.values();
     private static final CgCompositeForm[] FORMS = CgCompositeForm.values();
     /** The keyword set's bit for {@code SCENE}, above every feature's. */
-    private static final int SCENE_KEY = 1 << 30;
+    private static final int SCENE_KEY = 1 << 30, SUBJECT_KEY = 1 << 29;
 
     /** Per form: its material, the features its keywords are set to, and what its properties were last set to. */
     private final CgMaterial[] materials = new CgMaterial[FORMS.length];
@@ -60,28 +62,41 @@ public final class CgPostComposite {
     private final Consumer<CgShaderBindings> properties = b -> {
         if (inputs.scene != null) b.sampler("_Scene", 0, inputs.scene);
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
+        if (inputs.subject != null) b.sampler("_Subject", 0, inputs.subject);
+        CgImpactFrame f = inputs.frame;
         b.set1f("_Intensity", inputs.intensity).vec4("_Tint", inputs.r, inputs.g, inputs.b, 1f)
                 .set1f("_Conserve", inputs.conserve ? 1f : 0f).set1f("_Exposure", inputs.exposure)
                 .set1f("_Vignette", inputs.vignette).set1f("_Chromatic", inputs.chromatic)
-                .vec4("_Impact", inputs.impact, inputs.look, 0f, 0f).vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f);
+                .vec4("_Impact", inputs.impact, f.look(), inputs.seed, f.paper() == CgImpactFrame.Tone.LIGHT ? 1f : 0f)
+                .vec4("_ImpactDraw", f.fillSubject() ? 1f : 0f, f.lines(), f.hatch(), f.star())
+                .vec4("_ImpactMore", f.cross() ? 1f : 0f, f.jitter(), 0f, 0f)
+                .vec4("_ImpactLight", f.lightR(), f.lightG(), f.lightB(), 1f)
+                .vec4("_ImpactDark", f.darkR(), f.darkG(), f.darkB(), 1f)
+                .vec4("_Focus", inputs.focusX, inputs.focusY, 0f, 0f);
     };
 
     /** What the composite's properties hold. */
     private static final class Inputs {
-        CgGraphTexture scene, bloom;
+        CgGraphTexture scene, bloom, subject;
         float intensity = Float.NaN, r, g, b;
         boolean conserve;
-        float exposure = 1f, vignette, chromatic, impact, look, focusX = 0.5f, focusY = 0.5f;
+        float exposure = 1f, vignette, chromatic, impact, focusX = 0.5f, focusY = 0.5f;
+        CgImpactFrame frame = CgImpactFrame.NEGATIVE;
+        int seed;
 
         boolean same(Inputs o) {
-            return scene == o.scene && bloom == o.bloom && intensity == o.intensity && r == o.r && g == o.g && b == o.b && conserve == o.conserve
-                    && exposure == o.exposure && vignette == o.vignette && chromatic == o.chromatic && impact == o.impact
-                    && look == o.look && focusX == o.focusX && focusY == o.focusY;
+            return scene == o.scene && bloom == o.bloom && subject == o.subject && intensity == o.intensity && r == o.r && g == o.g
+                    && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
+                    && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
+                    && focusX == o.focusX && focusY == o.focusY;
         }
 
         void copyFrom(Inputs o) {
             scene = o.scene;
             bloom = o.bloom;
+            subject = o.subject;
+            frame = o.frame;
+            seed = o.seed;
             intensity = o.intensity;
             r = o.r;
             g = o.g;
@@ -91,7 +106,6 @@ public final class CgPostComposite {
             vignette = o.vignette;
             chromatic = o.chromatic;
             impact = o.impact;
-            look = o.look;
             focusX = o.focusX;
             focusY = o.focusY;
         }
@@ -103,6 +117,7 @@ public final class CgPostComposite {
         copy = false;
         inputs.scene = null;
         inputs.bloom = null;
+        inputs.subject = null;
     }
 
     /**
@@ -149,12 +164,23 @@ public final class CgPostComposite {
         return on(CgCompositeFeature.CHROMATIC);
     }
 
-    /** Turns the picture {@code amount} (0 to 1) into {@code look}; speed lines radiate from {@code (x, y)}. */
+    /** Turns the picture {@code amount} (0 to 1) into preset {@code look}; focus lines radiate from {@code (x, y)}. */
     public CgPostComposite impact(CgImpact look, float amount, float x, float y) {
+        return impact(look.frame(), amount, 0, x, y, null);
+    }
+
+    /**
+     * Turns the picture {@code amount} (0 to 1) into {@code look} drawn from {@code seed}, centred on {@code (x, y)};
+     * a drawn frame's subject is {@code subject} ({@code CgFrameKeys.SUBJECT}, bent), or with none the picture's light
+     * past white.
+     */
+    public CgPostComposite impact(CgImpactFrame look, float amount, int seed, float x, float y, @Nullable CgGraphTexture subject) {
         inputs.impact = amount;
-        inputs.look = look.ordinal();
+        inputs.frame = look;
+        inputs.seed = seed;
         inputs.focusX = x;
         inputs.focusY = y;
+        inputs.subject = subject;
         return on(CgCompositeFeature.IMPACT);
     }
 
@@ -188,12 +214,16 @@ public final class CgPostComposite {
         int f = form.ordinal();
         CgMaterial material = materials[f];
         if (material == null) material = materials[f] = CgMaterial.newInstance(form.shader);
-        int keys = active | (fromScene ? SCENE_KEY : 0);
+        boolean subject = active(CgCompositeFeature.IMPACT) && inputs.subject != null;
+        int keys = active | (fromScene ? SCENE_KEY : 0) | (subject ? SUBJECT_KEY : 0);
         if (keys != keyed[f]) {
             for (CgCompositeFeature feature : FEATURES) {
                 if (form == CgCompositeForm.COPY || feature.blend) material.toggleKeyword(feature.keyword, active(feature));
             }
-            if (form == CgCompositeForm.COPY) material.toggleKeyword("SCENE", fromScene);
+            if (form == CgCompositeForm.COPY) {
+                material.toggleKeyword("SCENE", fromScene);
+                material.toggleKeyword("SUBJECT", subject);
+            }
             keyed[f] = keys;
         }
         if (!inputs.same(set[f])) {
@@ -218,6 +248,7 @@ public final class CgPostComposite {
             keyed[f] = -1;
             set[f].scene = null;
             set[f].bloom = null;
+            set[f].subject = null;
             set[f].intensity = Float.NaN;
         }
     }

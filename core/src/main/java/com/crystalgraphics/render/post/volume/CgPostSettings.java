@@ -25,7 +25,8 @@ public final class CgPostSettings {
     // Volatile: written on any thread, read on the render thread.
     volatile int overrides;
     volatile float bloom = 1f, flash, vignette, chromatic, impact;
-    volatile CgImpact impactLook = CgImpact.INVERT;
+    volatile CgImpactFrame impactLook = CgImpactFrame.NEGATIVE;
+    volatile int impactSeed;
     volatile float focusX = 0.5f, focusY = 0.5f;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
     private float focusWeight;
@@ -58,9 +59,18 @@ public final class CgPostSettings {
         return this;
     }
 
-    /** Turns the picture {@code amount} (0 to 1) of the way into {@code look}: an impact frame. */
+    /** Turns the picture {@code amount} (0 to 1) of the way into preset {@code look}: an impact frame. */
     public CgPostSettings impact(CgImpact look, float amount) {
+        return impact(Objects.requireNonNull(look, "look").frame(), amount, 0);
+    }
+
+    /**
+     * Turns the picture {@code amount} (0 to 1) of the way into {@code look}, drawn from {@code seed}: a new seed draws
+     * its lines and strokes anew ({@link CgImpactSequence#seed}).
+     */
+    public CgPostSettings impact(CgImpactFrame look, float amount, int seed) {
         impactLook = Objects.requireNonNull(look, "look");
+        impactSeed = seed;
         impact = clamp(amount);
         overrides |= IMPACT;
         return this;
@@ -99,8 +109,12 @@ public final class CgPostSettings {
         return impact;
     }
 
-    public CgImpact impactLook() {
+    public CgImpactFrame impactLook() {
         return impactLook;
+    }
+
+    public int impactSeed() {
+        return impactSeed;
     }
 
     public float focusX() {
@@ -116,7 +130,8 @@ public final class CgPostSettings {
         overrides = 0;
         bloom = 1f;
         flash = vignette = chromatic = impact = 0f;
-        impactLook = CgImpact.INVERT;
+        impactLook = CgImpactFrame.NEGATIVE;
+        impactSeed = 0;
         focusX = focusY = 0.5f;
         focusWeight = 0f;
     }
@@ -132,7 +147,10 @@ public final class CgPostSettings {
         if ((o & VIGNETTE) != 0) vignette += (from.vignette - vignette) * weight;
         if ((o & CHROMATIC) != 0) chromatic += (from.chromatic - chromatic) * weight;
         if ((o & IMPACT) != 0) {
-            if (weight * from.impact >= impact) impactLook = from.impactLook;
+            if (weight * from.impact >= impact) {
+                impactLook = from.impactLook;
+                impactSeed = from.impactSeed;
+            }
             impact += (from.impact - impact) * weight;
         }
         if ((o & (CHROMATIC | IMPACT | FOCUS)) != 0 && weight > 0f) {
