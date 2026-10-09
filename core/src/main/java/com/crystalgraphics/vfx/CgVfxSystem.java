@@ -165,6 +165,8 @@ public final class CgVfxSystem {
      * stores, and workers woken for it could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
      */
     private static final int PARALLEL_PARTICLES = 4096;
+    /** Or this many effects with emitters due: about a millisecond of GPU-stepped ticks (0.25 us each). */
+    private static final int PARALLEL_EFFECTS = 4096;
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
@@ -312,7 +314,7 @@ public final class CgVfxSystem {
                         }
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        if (cpuParticles >= PARALLEL_PARTICLES) {
+                        if (cpuParticles >= PARALLEL_PARTICLES || emitting.size() >= PARALLEL_EFFECTS) {
                             try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
                                 workers.run(emitting.size(), tickEach);
                             }

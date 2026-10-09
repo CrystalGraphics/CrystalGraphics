@@ -17,7 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <ul>
  *   <li>{@code -Dcrystalgraphics.vfx.threads=N} sets how many threads in all, the render thread one of them; 1 runs
- *       everything on the render thread. The default is one per core.</li>
+ *       everything on the render thread. The default is two fewer than the cores, leaving room for the host's own
+ *       threads and the glyph workers.</li>
  *   <li>Jobs run in any order and on any thread: one job never reads what another writes.</li>
  *   <li>The pool is made on the first run with two jobs or more, so a server starts no thread.</li>
  * </ul>
@@ -25,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 final class CgVfxWorkers {
 
     static final int THREADS = Math.max(1, Integer.getInteger("crystalgraphics.vfx.threads",
-            Runtime.getRuntime().availableProcessors()));
+            Runtime.getRuntime().availableProcessors() - 2));
 
     /** One job of a run, by its index. */
     interface Job {
