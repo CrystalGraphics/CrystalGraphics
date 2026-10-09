@@ -67,6 +67,8 @@ public abstract class CgVfxEffect {
     private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
     private int dueCount;
     private float dueDt;
+    /** Live particles of the queued emitters the CPU steps: what decides whether the system's workers wake. */
+    private int dueCpuParticles;
     /** The emitters {@link #tickEmitters} scheduled for the first time, for the system's GPU queue. */
     private CgVfxEmitterInstance[] admitted = new CgVfxEmitterInstance[0];
     private int admittedCount;
@@ -257,10 +259,15 @@ public abstract class CgVfxEffect {
             return;
         }
         if (!system.particleTick()) return;
+        // The same test as tickEmitters': an instance keeps the path it first stepped on.
+        boolean cpu = !emitter.scheduled() && !(system.stepsOnGpu() && emitter.time() == 0f);
         emitter.share(system.spawnShare(emitter.emitter()));
+        if (cpu) dueCpuParticles += emitter.particles().count();
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
-            if (child != null) child.share(system.spawnShare(child.emitter()));
+            if (child == null) continue;
+            child.share(system.spawnShare(child.emitter()));
+            if (cpu) dueCpuParticles += child.particles().count();
         }
         if (dueCount == due.length) due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
         due[dueCount++] = emitter;
@@ -270,6 +277,11 @@ public abstract class CgVfxEffect {
     /** Whether {@link #tick(CgVfxEmitterInstance, float)} queued emitters this tick. */
     final boolean hasEmitterTicks() {
         return dueCount > 0;
+    }
+
+    /** Live particles of the emitters queued this tick that the CPU steps; read before {@link #tickEmitters}. */
+    final int dueCpuParticles() {
+        return dueCpuParticles;
     }
 
     /**
@@ -298,6 +310,7 @@ public abstract class CgVfxEffect {
             due[i] = null;
         }
         dueCount = 0;
+        dueCpuParticles = 0;
     }
 
     /** Hands the instances {@link #tickEmitters} scheduled for the first time to {@code steps}. Render thread. */
