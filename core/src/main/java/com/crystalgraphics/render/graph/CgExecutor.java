@@ -4,6 +4,7 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgAlphaState;
+import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.CgDispatchBindings;
 import com.crystalgraphics.compute.CgKernelForm;
@@ -1170,6 +1171,11 @@ public final class CgExecutor {
                     pipeline = CgPipeline.byId(id);
                     try (CgTrace.Zone binding = CgTrace.zone(CgChannels.GL_DETAIL, BATCH_PIPELINE)) {
                         if (pass.state != null) pass.state.apply();   // a pipeline's unset slots are the pass's
+                        // A colour mask neither declares writes every channel, never what another pass's draw left.
+                        if ((pass.state == null || pass.state.getColorMasks().isEmpty())
+                                && pipeline.state().getColorMasks().isEmpty()) {
+                            CgColorMask.ALL.apply();
+                        }
                         usable = pipeline.bind();
                         if (slots > 1 && independentMasks) maskSlots(pipeline, slots);
                     }
