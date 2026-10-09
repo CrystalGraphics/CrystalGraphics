@@ -431,6 +431,8 @@ public final class CgWorldRenderer {
      * into a second attachment beside the target ({@code CgPipeline.emissionTarget}), on by default. The emission is
      * then the target's size; what does not fold (opaque, half-size and authored Emissive passes) is drawn into it after.
      * Off, every Emissive pass draws on its own into an emission target of {@link #emissionScale}: the comparison.
+     * Under the HDR scene the same switch folds such a glow into its colour's draw ({@code CgPipeline.sceneFold}), or,
+     * off, draws it after at the same key.
      *
      * <pre>{@code
      * CgWorldRenderer.get().mergeEmission(false);   // every glow its own draw again
@@ -568,6 +570,7 @@ public final class CgWorldRenderer {
             if (link.hasEmissivePass()) {
                 ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
                 if (forward != null) ready &= prepared(forward.emissionTarget(), joins);
+                if (forward != null) ready &= prepared(forward.sceneFold(), joins);
             }
             // What a transparent draw covers the glows behind it with: merged, and in an emission drawn on its own.
             if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
@@ -1803,7 +1806,8 @@ public final class CgWorldRenderer {
 
     /**
      * The opaque, prepass or transparent pass; with {@code after}, the transparent draws drawn after distortion. With
-     * {@code sceneGlows}, each draw's Emissive pass follows it, at its key, adding its glow into the HDR scene.
+     * {@code sceneGlows}, each draw's Emissive pass adds its glow into the HDR scene: folded into its colour's draw
+     * where it merges ({@link CgPipeline#sceneFold}), else as a draw after it at its key.
      */
     private void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                             boolean depthOnlyPass, boolean after, CgHostView view, @Nullable CgGraphTexture emission,
@@ -1823,6 +1827,11 @@ public final class CgWorldRenderer {
             for (CgMaterial link = materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
                 CgPipeline pipeline = depthOnlyPass ? depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
                 if (glows && link.hasEmissivePass()) {
+                    CgPipeline folded = pipeline != null && mergeEmission ? pipeline.sceneFold() : null;
+                    if (folded != null) {
+                        passDraw(chunks, folded, link, recording, i);
+                        continue;
+                    }
                     // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
                     if (pipeline != null && !pipeline.state().writesNothing()) passDraw(chunks, pipeline, link, recording, i);
                     CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);

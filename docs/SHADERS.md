@@ -477,7 +477,8 @@ Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the b
 - It takes the material's keywords, as the Forward pass does.
 - **Under the HDR scene** (`CgWorldRenderer.hdrScene`) there is no emission target: the pass adds into the scene
   itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
-  what is in front covers it, times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
+  what is in front covers it; a codeless one that merges is folded into the colour's own draw instead, the glow added
+  to the decoded colour (`CG_SCENE_FOLD`, `CgPipeline.sceneFold`). Either way times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
   strength set for a blurred bloom floods a sharp core). Bloom then takes the scene's light past `CgBloom.threshold`
   (1), so a glow blooms where it takes the scene past white; the composite rolls what passes white toward white,
   keeping its hue.
