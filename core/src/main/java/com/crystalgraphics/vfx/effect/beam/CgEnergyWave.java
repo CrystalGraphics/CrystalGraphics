@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.effect.beam;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.post.volume.CgImpact;
+import com.crystalgraphics.render.post.volume.CgImpactFrame;
 import com.crystalgraphics.render.post.volume.CgImpactSequence;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
@@ -128,7 +129,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
     public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
     /** The impact frame's frames announced as moments, from bit 18 of {@code momentsFired}. */
-    private static final String[] IMPACT_FRAME_MOMENTS = new String[8];
+    private static final String[] IMPACT_FRAME_MOMENTS = new String[12];
     static {
         for (int k = 0; k < IMPACT_FRAME_MOMENTS.length; k++) IMPACT_FRAME_MOMENTS[k] = MOMENT_IMPACT_FRAME + (k + 1);
     }
@@ -210,12 +211,21 @@ public final class CgEnergyWave extends CgVfxEffect {
             .build());
     /** 1 for the blast's impact frame and the hitstop it plays in ({@link #BLAST_BEATS}); 0 for neither. */
     public static final CgVfxParam BLAST_IMPACT = SCHEMA.scalar("blastImpact", 1f);
-    /** Seconds into the blast its hitstop starts: past the double flash's first pulse, the dome already blazing. */
-    public static final CgVfxParam BLAST_HOLD_AT = SCHEMA.scalar("blastHoldAt", 0.06f);
-    /** The impact frame's beats, played while the blast holds: what glows white on black, inverted, back, then lines. */
+    /**
+     * Seconds into the blast its hitstop starts: at the flash's main pulse ({@link #BLAST_FLASH} at 0.0625 of
+     * {@link #BLAST_TIME}), so the last beat, white, hands off to the flash at its peak and colour returns as it fades.
+     */
+    public static final CgVfxParam BLAST_HOLD_AT = SCHEMA.scalar("blastHoldAt", 0.15f);
+    /** The blast's first beat: what glows white on black, a flash star with its cross at the burst. */
+    public static final CgImpactFrame BLAST_HIT = CgImpactFrame.drawn().paper(CgImpactFrame.Tone.DARK).fillSubject(true)
+            .star(0.045f).cross(true).jitter(3f).build();
+    /**
+     * The impact frame's beats, played while the blast holds, on twos but for the cut: the hit, inverted, the edge
+     * hatched, focus lines held longest, then white into the flash.
+     */
     public static final CgImpactSequence BLAST_BEATS = CgImpactSequence.at(24f)
-            .beat(CgImpact.SUBJECT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.SUBJECT, 1)
-            .beat(CgImpact.SUBJECT_LINES, 1).build();
+            .beat(BLAST_HIT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.HATCHED, 2)
+            .beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).build();
     /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
     public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
     public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
@@ -350,6 +360,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The blast's screen flash and impact frame; opened when it bursts. */
     private CgPostVolume blastFlash, blastImpact;
     private CgPostSettings blastImpactLook;
+    private boolean impactFrameShowing;
     /** The blast's own clock, held through its hitstop; NaN until it bursts. Whether its emitters have started. */
     private float blastSince = Float.NaN;
     private boolean blastReleased;
@@ -447,6 +458,11 @@ public final class CgEnergyWave extends CgVfxEffect {
         return stream.impacting();
     }
 
+    /** Whether the blast's impact frame shows this frame: its hitstop holds while {@link #BLAST_BEATS} play. */
+    public boolean impactFrameShowing() {
+        return impactFrameShowing;
+    }
+
     @Override
     protected void tick(float dt) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
@@ -509,9 +525,10 @@ public final class CgEnergyWave extends CgVfxEffect {
         }
         if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min(blastSince / get(BLAST_TIME), 1f)));
         if (blastImpact != null) {
-            CgImpact look = BLAST_BEATS.look(real - holdAt);
-            if (look != null) blastImpactLook.impact(look, 1f);
+            CgImpactFrame look = BLAST_BEATS.look(real - holdAt);
+            if (look != null) blastImpactLook.impact(look, 1f, BLAST_BEATS.seed(real - holdAt));
             blastImpact.weight(look != null ? 1f : 0f);
+            impactFrameShowing = look != null;
         }
     }
 
