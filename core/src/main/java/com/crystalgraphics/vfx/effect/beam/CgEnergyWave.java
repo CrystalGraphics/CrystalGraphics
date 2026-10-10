@@ -188,6 +188,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Seconds the final blast lasts, and its full radius as a multiple of the body's radius. */
     public static final CgVfxParam BLAST_TIME = SCHEMA.scalar("blastTime", 2.4f);
     public static final CgVfxParam BLAST_RADIUS = SCHEMA.scalar("blastRadius", 12f);
+    /** Seconds the dome takes to cool and erode away; it bursts out over {@link #BLAST_TIME} still. */
+    public static final CgVfxParam DOME_TIME = SCHEMA.scalar("domeTime", 4.5f);
     /** The dome's size over the blast (0..1 of it), a share of {@link #BLAST_RADIUS}: bursting out, then drifting. */
     public static final CgVfxParam BLAST_SIZE = SCHEMA.curve("blastSize", CgKeyframes.start(0f, 0.08f)
             .to(0.35f, 1f, CgEasings.OUT_EXPO)
@@ -526,7 +528,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             emitted &= blast.get(i).finished();
         }
         boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
-                : blastReleased && blastSince > get(BLAST_TIME) && emitted;
+                : blastReleased && blastSince > Math.max(get(BLAST_TIME), get(DOME_TIME)) && emitted;
         if (momentsHeard()) moments(ending);
         if (ending) die();
     }
@@ -741,9 +743,9 @@ public final class CgEnergyWave extends CgVfxEffect {
         }
         if (Float.isNaN(blastAge)) return;
         float since = blastSince, blastTime = get(BLAST_TIME), t = Math.min(since / blastTime, 1f);
-        float dome = radius * get(BLAST_RADIUS) * curve(BLAST_SIZE).at(t);
+        float dome = radius * get(BLAST_RADIUS) * curve(BLAST_SIZE).at(t) * (1f + 0.04f * Math.max(since - blastTime, 0f));
         facing(placed, normalX, normalY, normalZ).scale(dome);
-        drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, t, false);
+        drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, Math.min(since / get(DOME_TIME), 1f), false);
         float glow = curve(BLAST_GLOW).at(t);
         if (glow > 0f) {
             float heart = dome * 0.5f;
