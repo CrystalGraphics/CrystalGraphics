@@ -14,8 +14,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import java.util.List;
 
 /**
- * The parts nearly every explosion and ki attack shares, as Sparking Zero reuses them: a cloud of cel-shaded billows,
- * dark debris specks, glowing embers, and the shock's ink: curved streaks, straight spikes and expanding rings. Each part is an emitter with its own physics
+ * The parts nearly every explosion and ki attack shares, as Sparking Zero reuses them: a cloud of cel-shaded billows in a
+ * surge of dust along the ground, dark debris specks, glowing embers, and the shock's ink: curved streaks, straight spikes and expanding rings. Each part is an emitter with its own physics
  * (plan vfx-particles) and a layer that draws it. An effect makes one on its schema, which declares the parts' colours
  * there, adds it to its looks, and starts the look's emitters where the burst happens.
  *
@@ -92,6 +92,22 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
             .build();
 
     /**
+     * The base surge: dust thrown flat along the ground from under the cloud, braked hard, swelling and thinning, so
+     * the billows stand in a skirt of it rather than on a hard line.
+     */
+    public static final CgVfxEmitter SURGE = CgVfxEmitter.builder("surge").renderer(CgVfxEmitter.Renderer.QUADS)
+            .optional().capacity(100).burst(0f, 96).shape(3f).launch(0f, 0.12f, 1f).speed(9f, 16f)
+            .life(2.2f, 3.4f).size(1.4f, 2.6f, 1.5f).spin(0f, 0.4f)
+            .module(new CgVfxModule.Gravity(2f))
+            .module(new CgVfxModule.Drag(1.6f, 0.05f))
+            .module(new CgVfxModule.Wind(0.4f))
+            .module(new CgVfxModule.Ground(0f, 0.1f, 0.2f, 0.3f))
+            .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_CUBIC).build())
+            .opacity(CgKeyframes.start(0f, 0f).to(0.06f, 1f, CgEasings.OUT_QUAD).to(0.4f, 0.8f, CgEasings.LINEAR)
+                    .to(1f, 0f, CgEasings.IN_OUT_SINE).build())
+            .build();
+
+    /**
      * Embers: thrown out fast past the cloud and braked mostly by quadratic drag, so they clear the billows, then held up
      * by their heat, swirled by turbulence and carried by the wind, sinking to the ground as they cool and dim.
      */
@@ -147,9 +163,9 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
      * This kit's emitters: the defaults above, named for it, so a look can replace any by that name. Its specks raise
      * its {@link #dust} where they land: a look replacing the specks keeps that only by adding the event itself.
      */
-    public final CgVfxEmitter billows, specks, dust, sparkles, ink, rays, rings;
+    public final CgVfxEmitter billows, surge, specks, dust, sparkles, ink, rays, rings;
     /** The layers that draw them, each in its emitter's slot. */
-    public final CgVfxLayer billowLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer, ringLayer;
+    public final CgVfxLayer billowLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer, ringLayer;
 
     /** Declares this kit's colours on {@code schema}, defaulting to a blue blast, and builds its layers. */
     public CgVfxExplosion(CgVfxSchema schema, String name) {
@@ -159,6 +175,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         dustColor = schema.color(name + "Dust", 0.42f, 0.39f, 0.35f, 0.55f);
         sparkCore = schema.color(name + "SparkCore", 1f, 1f, 1f, 1f);
         billows = named(BILLOWS, name);
+        surge = named(SURGE, name);
         dust = named(DUST, name);
         specks = named(SPECKS, name).toBuilder()
                 .event(CgVfxEvent.onLanding().spawn(dust, 1).inherit(0.15f)).build();
@@ -168,6 +185,8 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         rings = named(RINGS, name);
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
                 .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
+        surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
+                .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
                 .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         dustLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(dust.layer())
@@ -184,12 +203,12 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /** Every emitter of this kit an effect starts, in that order; the dust runs inside the specks' instances. */
     public List<CgVfxEmitter> emitters() {
-        return List.of(billows, specks, sparkles, ink, rays, rings);
+        return List.of(billows, surge, specks, sparkles, ink, rays, rings);
     }
 
     @Override
     public void addTo(CgVfxLook.Builder look) {
-        look.layer(billowLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
+        look.layer(billowLayer).layer(surgeLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
         for (CgVfxEmitter emitter : emitters()) look.emitter(emitter);
     }
 
