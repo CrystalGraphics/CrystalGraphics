@@ -58,7 +58,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth;
+    private final boolean readsWorld, usesDistance, usesDepth, floors;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -144,17 +144,19 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
-        boolean reads = false, distance = false, depth = false;
+        boolean reads = false, distance = false, depth = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
             for (CgVfxWorldInput input : inputs) {
                 reads |= input != CgVfxWorldInput.DEPTH;
                 distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
                 depth |= input == CgVfxWorldInput.DEPTH;
+                floor |= input == CgVfxWorldInput.FLOOR_Y;
             }
         }
         readsWorld = reads;
         usesDistance = distance;
         usesDepth = depth;
+        floors = floor;
         kernelKey = key.toString();
         this.key = kernelKey + identity;
     }
@@ -258,6 +260,11 @@ public final class CgVfxShape {
     /** Whether any module takes a voxel window input: its Step kernel reads the window. */
     public boolean readsWorld() {
         return readsWorld;
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#FLOOR_Y}: Range then gives its draws the floor under each particle. */
+    public boolean floors() {
+        return floors;
     }
 
     /** Whether any module takes {@link CgVfxWorldInput#WORLD_DISTANCE}: the window's distance field is kept current. */

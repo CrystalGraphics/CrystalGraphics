@@ -28,6 +28,7 @@ Properties {
     _Alpha  ("How far the frame is from the last step to the next", float) = 1
     _Ahead  ("How far spin is pushed ahead, in seconds",            float) = 0
     _Texels ("Samples a curve row holds",                           int)   = 256
+    _Floors ("1 when the pool's kinds land on a floor: Place writes it", int) = 0
     _DepthBits   ("0, or 16 when a slot sorts by view depth",        int)       = 0
     _ClipX       ("Projection times view: row 0",                    vec4)      = (1, 0, 0, 0)
     _ClipY       ("Row 1",                                           vec4)      = (0, 1, 0, 0)
@@ -159,6 +160,18 @@ vec2 range_light(int slot, vec3 p) {
             ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), b, vec2(15.0));
 }
 
+// The floor under a particle at p from slot's origin (CG_PARTICLE_FLOOR): its height over it, and 1; or (0, 0) for
+// none. The Step's floor: the window's where it knows, else the slot's flat ground.
+vec2 range_floor(int slot, vec3 p, float previousY) {
+    FxOrigin o = ORIGINS(slot);
+    float floorY = o.within.w;
+    if (_WorldLive != 0) {
+        floorY = fx_world_floor(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
+                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), o.block.xyz, o.within.xyz, p, previousY);
+    }
+    return isnan(floorY) ? vec2(0.0) : vec2(p.y - floorY, 1.0);
+}
+
 void Place() {
     int rank;
     int lo = range_slot(CG_ELEMENT, rank);
@@ -175,7 +188,7 @@ void Place() {
         d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
         d.motion = vec4(r.velocitySize.xyz, t);
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
-        d.light = vec4(range_light(lo, d.place.xyz), 0.0, 0.0);
+        d.light = vec4(range_light(lo, d.place.xyz), _Floors != 0 ? range_floor(lo, d.place.xyz, r.previousLife.y) : vec2(0.0));
     }
     DRAWN_WRITE(d);
 }

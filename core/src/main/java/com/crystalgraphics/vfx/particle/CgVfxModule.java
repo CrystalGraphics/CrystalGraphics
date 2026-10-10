@@ -15,8 +15,8 @@ import java.util.Objects;
  * pieces a particle's physics is built from, as Niagara's update modules are. Each is data, a kind and its numbers, so
  * the same stack drives the CPU path ({@link #apply}) and the GPU simulation ({@link CgVfxGpuModule}: each kind's
  * {@code fx_<kind>.glsl} in {@code shaders/lib/vfx/sim/}). Force modules add to the accelerations and drags the solver
- * integrates; {@link Ground}, {@link Collide}, {@link Kill}, {@link Orbit} and {@link LimitSpeed} run after the solver,
- * on the moved particles. Units are blocks and seconds.
+ * integrates; {@link Ground}, {@link Current}, {@link Collide}, {@link Kill}, {@link Orbit} and {@link LimitSpeed} run
+ * after the solver, on the moved particles. Units are blocks and seconds.
  *
  * <p>Ported from Godot Engine (MIT, © 2014-present Godot Engine contributors): {@link Attract}, {@link VectorField},
  * {@link Orbit}, {@link Damping}, {@link LimitSpeed} and {@link Collide}'s shapes and response, from
@@ -363,6 +363,74 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public CgVfxWorldInput[] worldInputs() {
             return WORLD;
+        }
+    }
+
+    /**
+     * Dust in a gravity current along the ground: a base surge, a downburst's outflow, a dust storm's front. The air
+     * under the head rises at {@code roll} a second times its speed, fading to nothing {@code depth} blocks over the
+     * floor, so a fast front rides up into a head; over the head's upper half the return flow brakes it by {@code roll}
+     * a second, so the top lags behind and falls back over, as the head rolls. Once slower than {@code slow} blocks a
+     * second, the warm dust lofts, lifted by up to {@code loft} blocks a second squared. Runs after the solver, on the
+     * floor under each particle; does nothing without one, and nothing to a resting particle.
+     *
+     * <pre>{@code
+     * // a surge two blocks deep that lofts once it has stalled
+     * .module(new CgVfxModule.Gravity(1.5f))
+     * .module(new CgVfxModule.Drag(1f, 0.06f))
+     * .module(new CgVfxModule.Current(2f, 0.3f, 2f, 2.5f))
+     * .module(new CgVfxModule.Ground(0f, 0.02f, 0f, 0.3f))   // rest 0: slides, never freezes, so it can loft
+     * }</pre>
+     */
+    record Current(float depth, float roll, float loft, float slow) implements CgVfxModule {
+        private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+
+        @Override
+        public void apply(CgVfxEmitterInstance emitter, float dt) {
+            if (!emitter.hasGround()) return;
+            CgVfxParticleSet p = emitter.particles();
+            for (int i = 0; i < p.count(); i++) {
+                if (p.resting[i] != 0f) continue;
+                float floor = emitter.floorUnder(i);
+                if (Float.isNaN(floor)) continue;
+                float h = p.y[i] - floor, speed = (float) Math.sqrt(p.vx[i] * p.vx[i] + p.vz[i] * p.vz[i]);
+                float lift = roll * speed * Math.max(1f - h / depth, 0f) + loft * (1f - smooth(0f, slow, speed));
+                float keep = (float) Math.exp(-roll * smooth(0.5f * depth, depth, h) * dt);
+                p.vy[i] += lift * dt;
+                p.vx[i] *= keep;
+                p.vz[i] *= keep;
+            }
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        /** The loft alone: the head's lift ends {@code depth} over the floor. */
+        @Override
+        public float pull(float heat) {
+            return Math.abs(loft);
+        }
+
+        @Override
+        public String gpuKind() {
+            return "current";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(depth, roll, loft, slow);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return WORLD;
+        }
+
+        private static float smooth(float edge0, float edge1, float x) {
+            float t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0f), 1f);
+            return t * t * (3f - 2f * t);
         }
     }
 

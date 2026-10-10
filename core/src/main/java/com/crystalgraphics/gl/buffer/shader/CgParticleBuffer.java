@@ -42,7 +42,8 @@ public final class CgParticleBuffer {
 
     /**
      * place: position and size; motion: velocity and progress through life; state: seed, spin, heat, opacity; light: block
-     * and sky light, 0 to 15, then two unused.
+     * and sky light, 0 to 15, then the floor under it as its height over it and 1 (GPU Range, for kinds that land on a
+     * floor; 0, 0 here).
      */
     public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticle", STD430)
             .vec4("place")
