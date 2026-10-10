@@ -134,10 +134,10 @@ public final class CgRenderDemo {
 
     /** Every scene, in N's order. A new one is a line here. */
     private final Kind[] kinds = {
-            new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
+            new Kind("blast", 22, this::blast),
             new Kind("beams", 12, this::beams),
             new Kind("modules", 34, this::modules),
-            new Kind("blast", 22, this::blast),
+            new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
     };
 
     private boolean installed;
