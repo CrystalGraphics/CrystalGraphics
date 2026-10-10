@@ -60,6 +60,7 @@ matters; that is what makes it debuggable at full speed.
   render-graph owner, and only when per-draw records are measured as the cost.
 - **One property snapshot per material per stage.** Per-effect variation is per-draw data (`custom` slots, the path
   texture) or another layer; never set a property between two submits of one material.
+- **Particles order by depth, never by draw.** Each look is one multi-draw for the whole system, sorted far to near within itself, so two looks order as wholes: whichever draws later covers the other near and far. A solid look writes depth wherever it covers half a pixel (`speck`, `arc`, `ray`, `ring`, at `CgVfxLayer.ORDER_SOLID`); a soft body writes a depth prepass where it is solid (`billow_core`, at `ORDER_DEPTH`); only what is soft throughout (dust, wisps) relies on blending. An additive layer hides nothing behind it: `blast_dome` also veils what is behind its front wall.
 - **Additive layers each take an order of their own** (`CgVfxLayer.ORDER_*`, within the effect's group: nothing
   outside the effect sees it), so their chunks batch.
 - **A chunk's bounds cover everything its shader draws**: radius, cap push and displacement.

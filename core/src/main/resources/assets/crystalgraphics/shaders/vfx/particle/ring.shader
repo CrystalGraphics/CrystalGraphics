@@ -24,7 +24,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite OFF
+        DepthWrite ON
         Cull OFF
     }
 
@@ -60,12 +60,14 @@ Pass {
         float life = CG_OBJECT_CUSTOM1.x, opacity = CG_OBJECT_CUSTOM1.z;
         float edge = abs(i.band.x);
         float aa = fwidth(edge) + 1.0e-3;
-        float alpha = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, edge);
+        float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, edge);
         // Breaking into dashes from half its life, never wholly: the fade takes the last of it.
         float erode = smoothstep(0.5, 1.0, life) * 0.7;
         float dash = i.band.z - erode;
-        alpha *= smoothstep(0.0, fwidth(i.band.z) * 2.0 + 0.01, dash);
-        alpha *= i.band.y * opacity * CG_OBJECT_CUSTOM2.a;
+        cover *= smoothstep(0.0, fwidth(i.band.z) * 2.0 + 0.01, dash);
+        // Solid ink: it writes depth wherever it covers half a pixel (CgVfxLayer.ORDER_SOLID).
+        if (cover < 0.5) discard;
+        float alpha = cover * i.band.y * opacity * CG_OBJECT_CUSTOM2.a;
         fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }
 }

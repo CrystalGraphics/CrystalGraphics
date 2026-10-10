@@ -81,6 +81,9 @@ final class Sparks extends CgVfxEffect {
 - `.optional()` marks detail: halved at the Low tier. Density thins every emitter.
 - `shape(radius)` starts particles anywhere within a ball round the source; `shape(inner, outer)` on a shell, as smoke
   rolling out from the edge of a dome rather than through it.
+- **Each look draws as one multi-draw**, so two looks order as wholes, not particle by particle. A solid look writes
+  depth where it covers and takes `CgVfxLayer.ORDER_SOLID`; a soft one solid in its middle adds a depth prepass
+  at `ORDER_DEPTH` (`billow_core`); only a look soft throughout relies on blending alone.
 - The shared looks in `shaders/vfx/particle/` (`spark`, `speck`, `dust`, `arc`, `sprite`, `sprite_glow`) read the
   particle records; their parameters are `vfx/CLAUDE.md`'s.
 

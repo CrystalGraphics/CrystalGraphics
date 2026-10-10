@@ -196,15 +196,15 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
                 .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
         dustLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(dust.layer())
                 .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).from(CgQuality.MEDIUM).build();
         inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
         rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
         ringLayer = CgVfxLayer.builder(PARTICLE + "ring.shader").slot(rings.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
         sparkLayer = CgVfxLayer.builder(PARTICLE + "spark.shader").slot(sparkles.layer())
                 .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
     }
