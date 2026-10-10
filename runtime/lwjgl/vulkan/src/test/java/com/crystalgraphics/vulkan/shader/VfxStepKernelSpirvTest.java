@@ -43,7 +43,7 @@ public class VfxStepKernelSpirvTest {
     @Test
     public void everyShippedEmittersStepKernelCompiles() {
         CgVfxEmitter[] emitters = {EVERY_KIND, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
-                CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS};
+                CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
         for (CgVfxEmitter emitter : emitters) {
             CgVfxShape shape = CgVfxShape.of(emitter);

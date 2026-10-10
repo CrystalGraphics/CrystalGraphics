@@ -45,10 +45,13 @@ public final class CgVfxBlasts {
 
     private static final CgVfxSchema SCHEMA = new CgVfxSchema();
     private static final CgVfxExplosion KIT = new CgVfxExplosion(SCHEMA, "blast");
-    /** The kit's particles without its meshes, in the Kamehameha's blue, the Final Flash's gold and the Galick Gun's violet. */
+    /**
+     * The kit's particles without its meshes or its ink, in the Kamehameha's blue, the Final Flash's gold and the Galick
+     * Gun's violet.
+     */
     private static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA)
-            .layer(KIT.speckLayer).layer(KIT.dustLayer).layer(KIT.inkLayer).layer(KIT.rayLayer).layer(KIT.sparkLayer)
-            .emitter(KIT.specks).emitter(KIT.sparkles).emitter(KIT.ink).emitter(KIT.rays)
+            .layer(KIT.speckLayer).layer(KIT.dustLayer).layer(KIT.rayLayer).layer(KIT.sparkLayer)
+            .emitter(KIT.specks).emitter(KIT.sparkles).emitter(KIT.rays)
             .build();
     private static final CgVfxLook[] LOOKS = {
             BLUE,
