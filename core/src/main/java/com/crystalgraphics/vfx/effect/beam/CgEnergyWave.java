@@ -23,6 +23,7 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.camera.CgCameraShakes;
 import org.joml.Matrix4f;
 
@@ -252,9 +253,25 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Held at the target while it hits, at the scale of {@link #RADIUS}, its level how hard it is hitting. */
     public static final CgVfxParam HIT_SHAKE = SCHEMA.shake("hitShake",
             CgCameraShakes.RUMBLE.toBuilder().trauma(0.3f).radii(6f, 48f).build());
-    /** Played at the burst, at the scale of the blast's radius, arriving with the blast's shock front. */
+    /**
+     * Played at the burst of a blast with no impact frame, at the scale of the blast's radius, arriving with its shock
+     * front.
+     */
     public static final CgVfxParam BLAST_SHAKE = SCHEMA.shake("blastShake",
             CgCameraShakes.EXPLOSION.toBuilder().arrives(SHOCK_REACH, SHOCK_SECONDS, CgEasings.OUT_CUBIC).build());
+    /**
+     * Played as the impact frame cuts back instead: felt at once, since the front crossed most of its reach beneath the
+     * beats, and without the explosion's widening kick, which would cancel {@link #BLAST_RETURN}.
+     */
+    public static final CgVfxParam BLAST_CUT_SHAKE = SCHEMA.shake("blastCutShake",
+            CgCameraShakes.EXPLOSION.toBuilder().kick(0f, 0f).build());
+    /**
+     * The return shot, played with it: the field of view narrowed at once and easing back, so the picture comes back
+     * closer than it left and pulls away, rather than to the framing the beats cut from, which reads as a jump cut. Felt
+     * fully by whoever saw the impact frame (within {@link #BLAST_FLASH_REACH} blast radii).
+     */
+    public static final CgVfxParam BLAST_RETURN = SCHEMA.shake("blastReturn",
+            CgCameraShake.builder().kick(-0.2f, 0.5f).radii(3f, 4f).build());
 
     public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
     public static final CgVfxParam CORE_RIM = SCHEMA.color("coreRim", 0.7f, 0.95f, 1f, 1f);
@@ -510,7 +527,8 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /**
      * The blast runs from its burst, beneath its impact frame, so the frame's last beat cuts to it grown. The flash
-     * holds at {@link #BLAST_HOLD_AT} while {@link #BLAST_BEATS} play, then fades; the shake waits for the cut.
+     * holds at {@link #BLAST_HOLD_AT} while {@link #BLAST_BEATS} play, then fades; the shake and the return shot wait for
+     * the cut.
      */
     private void tickBlast() {
         float real = age - blastAge, holdAt = get(BLAST_HOLD_AT);
@@ -521,9 +539,16 @@ public final class CgEnergyWave extends CgVfxEffect {
             }
         }
         blastSince = real;
-        if (!blastReleased && (hold == 0f || real >= holdAt + hold)) {
+        // A beat early, under the last beat: the host's camera takes an offset the frame after it is played.
+        if (!blastReleased && (hold == 0f || real >= holdAt + hold - 1f / BLAST_BEATS.fps())) {
             blastReleased = true;
-            playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
+            float x = stream.impactX(), y = stream.impactY(), z = stream.impactZ(), scale = get(RADIUS) * get(BLAST_RADIUS);
+            if (hold == 0f) {
+                playShake(BLAST_SHAKE, x, y, z, scale);
+            } else {
+                playShake(BLAST_CUT_SHAKE, x, y, z, scale);
+                playShake(BLAST_RETURN, x, y, z, scale);
+            }
         }
         float flashSince = real <= holdAt ? real : Math.max(holdAt, real - hold);
         if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min(flashSince / get(BLAST_TIME), 1f)));
