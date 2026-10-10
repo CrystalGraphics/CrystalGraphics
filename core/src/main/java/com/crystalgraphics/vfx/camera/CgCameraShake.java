@@ -32,7 +32,8 @@ import com.crystalgraphics.easing.CgEasings;
  *   <li><b>punch</b>: shoved away from the point (or along the direction played with) on a spring that swings back past
  *       rest. A punch of 1 turns it five degrees and moves it a third of a block at its peak.</li>
  *   <li><b>tremor</b>: trauma held from the start and tapering to none over its seconds, outliving whatever played it.</li>
- *   <li><b>kick</b>: the field of view widened at once (0.1 is 10%), easing back over its seconds.</li>
+ *   <li><b>kick</b>: the field of view widened at once (0.1 is 10%), easing back over its seconds; negative narrows
+ *       it, a punch in that pulls back out.</li>
  * </ul>
  *
  * <ul>
@@ -157,7 +158,10 @@ public final class CgCameraShake {
             return this;
         }
 
-        /** The field of view widened by {@code amount} (0.1 is 10%) at once, easing back over {@code seconds}. */
+        /**
+         * The field of view widened by {@code amount} (0.1 is 10%) at once, easing back over {@code seconds}; a negative
+         * amount narrows it.
+         */
         public Builder kick(float amount, float seconds) {
             this.kick = amount;
             this.kickSeconds = seconds;

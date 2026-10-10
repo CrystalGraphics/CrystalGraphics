@@ -81,8 +81,11 @@ matters; that is what makes it debuggable at full speed.
 - **An impact frame plays over an effect that runs on**: what it emits keeps simulating beneath the beats
   (`CgImpactSequence`), so the last beat cuts to the result already grown, as anime's white frame cuts to the
   explosion. Only the light holds: the flash stays at its peak through the beats and fades after the cut, carrying the
-  picture back. The shake waits for the cut. The impact frame names the effect (`settings.subject(subject)`) so another
-  effect's smoke cannot hide what is inked. `CgEnergyWave`'s blast (`BLAST_HOLD_AT`, `BLAST_BEATS`) is the example.
+  picture back. **Never cut back to the framing the beats cut from**: that is a jump cut, and no brightness ramp hides
+  it. The cut plays a negative FOV kick (`CgCameraShake.kick`), so the picture returns closer and pulls back, with the
+  shake, both a beat early since the host's camera takes an offset a frame late. The impact frame names the effect
+  (`settings.subject(subject)`) so another effect's smoke cannot hide what is inked. `CgEnergyWave`'s blast
+  (`BLAST_HOLD_AT`, `BLAST_BEATS`, `BLAST_RETURN`) is the example.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
 - **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
   thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
