@@ -415,7 +415,7 @@ public final class CgVfxRange {
 
     /**
      * Each slot's origin from the camera and its reach, its list base in its pool, whether it sorts, for this view, and
-     * its origin in whole blocks and within one.
+     * its origin in whole blocks and within one, with its ground.
      */
     private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
         slots = fit(recording, slots, "vfx.range.slots", allSlots * 16L);
@@ -469,6 +469,7 @@ public final class CgVfxRange {
                     staging.putInt(g * 32 + axis * 4, (int) whole);
                     staging.putFloat(g * 32 + 16 + axis * 4, (float) (at - whole));
                 }
+                staging.putFloat(g * 32 + 28, p.isOpen(s) ? p.ground(s) : Float.NaN);
             }
         }
         staging.limit(allSlots * 32);

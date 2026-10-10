@@ -228,7 +228,8 @@ if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit)
   effect* has the rules; `--mode=post-effects` is one at each point.
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
-shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`),
+shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`;
+19, 23, 27 and 31 free for a record's writer, `CG_OBJECT_SPARE`, `(0, 0, 0, 1)` from `CgWorldRenderer`),
 `custom0`–`custom3` 32–47.
 
 **An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
