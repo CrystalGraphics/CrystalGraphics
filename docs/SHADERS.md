@@ -499,6 +499,18 @@ Pass { Tags { "LightMode" = "Emissive" }                         // or authored,
     void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(CG_EMISSION * mask(i.uv), 0.0); } }
 ```
 
+- **A codeless pass glows the whole colour unless the fragment names its glow** with `CG_GLOW(rgb)`, linear as an
+  Emissive pass is. Then that value glows instead, merged, folded into the HDR scene or drawn on its own, and the
+  colour is left as drawn. A saturated layer glowing a copy of itself pales toward white in the HDR scene; glowing only
+  its hot part keeps the colour:
+
+  ```glsl
+  vec3 hot = _White.rgb * core;
+  fragColor = vec4(mix(hot, _Band.rgb, band) * light, _Cover * band);   // premultiplied: the band covers
+  CG_GLOW(hot * (1.0 - band) * light);                                   // only the white glows
+  ```
+
+  Call it in the fragment body, not a helper declared before it. A fragment naming it that never calls it glows nothing.
 - **A glow that draws nothing in the scene** is `crystalgraphics:shaders/emission_only.shader`: its Emissive pass
   blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
 - `-Dcrystalgraphics.post.debug=emission` draws the emission target over the frame; `=level<N>` one level of bloom's

@@ -141,6 +141,9 @@ public final class CgMaterialShaderCompiler {
     /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
+    /** A fragment naming its glow ({@code CG_GLOW(rgb)}), which then replaces the colour in every glow it makes. */
+    private static final Pattern NAMES_GLOW = Pattern.compile("\\bCG_GLOW\\b");
+
     /** Whether, and how, a shader's Emissive pass folds into its Forward draw as a second output. */
     public enum EmissionMerge {
         /** It stays a draw of its own. */
@@ -890,6 +893,9 @@ public final class CgMaterialShaderCompiler {
     }
 
     private static void appendFragmentUserFunction(StringBuilder sb, CgParsedPass pass) {
+        if (NAMES_GLOW.matcher(pass.fragmentBody()).find()) {
+            sb.append("vec3 _cg_glowRgb = vec3(0.0);\n#define CG_GLOW(rgb) _cg_glowRgb = (rgb)\n");
+        }
         if (!pass.fragOutput().isMrt()) {
             sb.append("void fragment(in v2f i, out vec4 ")
               .append(pass.fragOutput().outParamName()).append(") {\n")
@@ -1012,16 +1018,19 @@ public final class CgMaterialShaderCompiler {
             }
         } else if (!pass.fragOutput().isMrt()) {
             sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+            boolean named = NAMES_GLOW.matcher(pass.fragmentBody()).find();
+            String glow = named ? "vec4(_cg_glowRgb, _cg_fragColor.a)" : "_cg_fragColor";
+            if (emissive && named) sb.append("  _cg_fragColor.rgb = _cg_glowRgb;\n");
             if (merge != EmissionMerge.NONE && merge != EmissionMerge.COVER) {
                 // What the Emissive pass would write: unlit, faded by fog as an added colour is.
-                sb.append("  _cg_emission = _cg_fragColor;\n");
+                sb.append("  _cg_emission = ").append(glow).append(";\n");
                 if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_emission.rgb *= CG_EMISSION;\n");
                 if (shader.fogged()) sb.append("  _cg_emission.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
                 if (merge == EmissionMerge.ADDED) sb.append("  _cg_emission.a = 0.0;\n");
             }
             if (fold) {
                 // What the Emissive pass would add into the scene: unlit, times the scene's gain, faded by fog.
-                sb.append("  vec4 _cg_glow = _cg_fragColor;\n");
+                sb.append("  vec4 _cg_glow = ").append(glow).append(";\n");
                 if (!READS_EMISSION.matcher(pass.fragmentBody()).find()) sb.append("  _cg_glow.rgb *= CG_EMISSION;\n");
                 sb.append("  _cg_glow.rgb *= CG_SCENE_GLOW;\n");
                 if (shader.fogged()) sb.append("  _cg_glow.rgb *= 1.0 - cg_FogAmount(cg_FragmentDistance());\n");
