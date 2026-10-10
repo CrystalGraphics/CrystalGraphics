@@ -3,13 +3,12 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.input.CgKeyCodes;
+import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
-import com.crystalgraphics.vfx.look.CgVfxLayer;
-import com.crystalgraphics.vfx.look.CgVfxLook;
 
-import java.util.IdentityHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 /**
  * The VFX showcases' shared switches, one set for every scene so a value stays as scenes change: the blast's flash,
@@ -25,7 +24,7 @@ import java.util.Map;
  * scene.submit(world, x, y, z, t);
  *
  * // each wave a scene fires
- * CgEnergyWave wave = vfx.play(new CgEnergyWave(controls.look(CgEnergyWave.kamehameha()), x, y, z));
+ * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
  * controls.apply(wave);
  *
  * hud.line(controls.hudLines(true));                      // false: a scene with no waves shows the time alone
@@ -33,7 +32,10 @@ import java.util.Map;
  *
  * <ul>
  *   <li>{@link #time} keeps one clock: call it once a frame, from whatever plays the scene.</li>
- *   <li>Flash, impact frame and billows reach waves fired after the press.</li>
+ *   <li>Flash, impact frame and billows reach every wave {@link #apply} set that still plays, at the press. An impact
+ *       frame switched on reaches a blast that has not yet burst; switched off, it hides one playing, whose blast
+ *       still holds for it.</li>
+ *   <li>Press on the thread that updates the scenes' systems, between their updates.</li>
  * </ul>
  */
 public final class CgVfxDemoControls {
@@ -64,8 +66,11 @@ public final class CgVfxDemoControls {
     /** The clock slowed by the time switch, and the host seconds it last advanced to. */
     private float clock;
     private double last = Double.NaN;
-    /** Each look without its billows, made at its first wave. */
-    private final Map<CgVfxLook, CgVfxLook> noBillows = new IdentityHashMap<>();
+    /** Each wave {@link #apply} set and its own flash, the double; pruned once dead. */
+    private record Live(CgEnergyWave wave, CgKeyframes flash) {
+    }
+
+    private final List<Live> live = new ArrayList<>();
 
     private CgVfxDemoControls() {
     }
@@ -77,9 +82,18 @@ public final class CgVfxDemoControls {
     /** Acts on one of {@link #KEYS}, Shift reversing the time switch; false for any other key. */
     public boolean press(int key, boolean shift) {
         switch (key) {
-            case CgKeyCodes.KEY_F -> flash = Flash.values()[(flash.ordinal() + 1) % Flash.values().length];
-            case CgKeyCodes.KEY_I -> impact = !impact;
-            case CgKeyCodes.KEY_B -> billows = !billows;
+            case CgKeyCodes.KEY_F -> {
+                flash = Flash.values()[(flash.ordinal() + 1) % Flash.values().length];
+                reapply();
+            }
+            case CgKeyCodes.KEY_I -> {
+                impact = !impact;
+                reapply();
+            }
+            case CgKeyCodes.KEY_B -> {
+                billows = !billows;
+                reapply();
+            }
             case CgKeyCodes.KEY_Y -> speed = shift ? Math.max(0, speed - 1) : Math.min(SPEEDS.length - 1, speed + 1);
             case CgKeyCodes.KEY_COMMA -> wait = Math.max(MIN_WAIT, wait - 0.5f);
             case CgKeyCodes.KEY_PERIOD -> wait = Math.min(MAX_WAIT, wait + 0.5f);
@@ -88,6 +102,15 @@ public final class CgVfxDemoControls {
             }
         }
         return true;
+    }
+
+    /** The switches onto every wave still playing, so a press shows at once. */
+    private void reapply() {
+        for (int i = live.size() - 1; i >= 0; i--) {
+            Live entry = live.get(i);
+            if (entry.wave.state() == CgVfxEffect.State.DEAD) live.remove(i);
+            else applyTo(entry);
+        }
     }
 
     /** The scene's seconds at host time {@code seconds}: advanced since the last call at the time switch's rate. */
@@ -102,25 +125,24 @@ public final class CgVfxDemoControls {
         return wait;
     }
 
-    /** {@code look}, or the same without its billows (simulated, undrawn) while they are off. */
-    public CgVfxLook look(CgVfxLook look) {
-        return billows ? look : noBillows.computeIfAbsent(look, CgVfxDemoControls::withoutBillows);
-    }
-
-    /** Whether {@code look} is {@code base} or the {@link #look} made from it. */
-    public boolean sameLook(CgVfxLook look, CgVfxLook base) {
-        return look == base || look == noBillows.get(base);
-    }
-
-    /** Sets the wave's flash and impact frame from the switches. */
+    /** Sets the wave's flash, impact frame and billows from the switches, and again at each press while it plays. */
     public void apply(CgEnergyWave wave) {
-        if (flash != Flash.DOUBLE) wave.set(CgEnergyWave.BLAST_FLASH, flash == Flash.SINGLE ? SINGLE : NONE);
-        wave.set(CgEnergyWave.BLAST_IMPACT, impact ? 1f : 0f);
+        for (int i = live.size() - 1; i >= 0; i--) {
+            if (live.get(i).wave.state() == CgVfxEffect.State.DEAD) live.remove(i);
+        }
+        Live entry = new Live(wave, wave.curve(CgEnergyWave.BLAST_FLASH));
+        live.add(entry);
+        applyTo(entry);
     }
 
-    /** Whether waves fired now have an impact frame. */
-    public boolean impact() {
-        return impact;
+    private void applyTo(Live entry) {
+        entry.wave.set(CgEnergyWave.BLAST_FLASH, switch (flash) {
+            case DOUBLE -> entry.flash;
+            case SINGLE -> SINGLE;
+            case OFF -> NONE;
+        });
+        entry.wave.set(CgEnergyWave.BLAST_IMPACT, impact ? 1f : 0f);
+        entry.wave.set(CgEnergyWave.BLAST_BILLOWS, billows ? 1f : 0f);
     }
 
     /**
@@ -130,14 +152,7 @@ public final class CgVfxDemoControls {
     public String hudLines(boolean waves) {
         String time = "Time [Y, Shift+Y]: " + SPEEDS[speed] + "x";
         if (!waves) return time;
-        return String.format(Locale.ROOT, "Billows [B]: %s\nFlash [F]: %s - Impact frame [I]: %s\n\n%s\nNext after [, .]: %.1f s",
+        return String.format(Locale.ROOT, "Smoke Clouds [B]: %s\nFlash [F]: %s - Impact frame [I]: %s\n\n%s\nNext after [, .]: %.1f s",
                 billows ? "on" : "off", flash.name().toLowerCase(Locale.ROOT), impact ? "on" : "off", time, wait);
-    }
-
-    private static CgVfxLook withoutBillows(CgVfxLook look) {
-        String slot = CgEnergyWave.BLAST.billows.layer();
-        CgVfxLook.Builder builder = look.toBuilder().clearLayers();
-        for (CgVfxLayer layer : look.layers()) if (!slot.equals(layer.slot())) builder.layer(layer);
-        return builder.build();
     }
 }
