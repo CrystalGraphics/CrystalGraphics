@@ -41,6 +41,11 @@ public final class CgVfxLayer {
      * {@link #ORDER_CORE} are marked {@code Draw.afterDistortion}, so their own haze never smears a bright body into the
      * air round it (as a fire in Unreal draws after its distortion), while a nearer effect's haze still bends them.</p>
      */
+    /**
+     * Depth alone, before everything else in the effect: where a soft billow is solid ({@code billow_core.shader}), so
+     * its own back lobes, the billows and debris behind it and the blast are hidden there whatever order they draw in.
+     */
+    public static final int ORDER_DEPTH = 0;
     public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2;
     /**
      * Layers that bend the scene behind them (heat haze, a shock front), through a Distortion pass: every haze of the

@@ -53,7 +53,7 @@ public final class CgVfxBlastFlash {
             .build();
     private static final CgKeyframes NONE = CgKeyframes.start(0f, 0f).to(1f, 0f, CgEasings.LINEAR).build();
     /** The look with its billows simulated but undrawn, so the dome shows whole. */
-    private static final CgVfxLook NO_BILLOWS = without(CgEnergyWave.kamehameha(), CgEnergyWave.BLAST.billowLayer);
+    private static final CgVfxLook NO_BILLOWS = without(CgEnergyWave.kamehameha(), CgEnergyWave.BLAST.billows.layer());
     private static final float[] SPEEDS = {0f, 0.01f, 0.1f, 0.25f, 0.5f, 1f, 2f};
     private static final int REAL_TIME = 5;
     private static final float MIN_WAIT = 0.5f, MAX_WAIT = 5f;
@@ -150,9 +150,9 @@ public final class CgVfxBlastFlash {
                 flash.name().toLowerCase(Locale.ROOT), impact ? "on" : "off", billows ? "on" : "off", SPEEDS[speed], wait);
     }
 
-    private static CgVfxLook without(CgVfxLook look, CgVfxLayer dropped) {
+    private static CgVfxLook without(CgVfxLook look, String slot) {
         CgVfxLook.Builder builder = look.toBuilder().clearLayers();
-        for (CgVfxLayer layer : look.layers()) if (layer != dropped) builder.layer(layer);
+        for (CgVfxLayer layer : look.layers()) if (!slot.equals(layer.slot())) builder.layer(layer);
         return builder.build();
     }
 

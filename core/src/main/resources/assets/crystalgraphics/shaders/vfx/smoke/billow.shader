@@ -1,145 +1,154 @@
-// A cel-shaded billow as a real mesh, the way anime-look explosions are built in UE5 Niagara: a sphere whose vertices
-// Voronoi noise pushes out, so every cell is a rounded lobe, with smaller domes on the lobes. Opaque, with a depth
-// prepass, so billows cut into each other and into the ground in three dimensions and hidden ones cost nothing. Styled as
-// Sparking Zero draws its blasts: a saturated body, a darker band only on the undersides, an irregular glowing core on
-// each lobe pushed toward a light that follows the eye while it burns and turns to the sun as it cools, the body taking
-// the world's light as it does, and dark contour strokes wherever the surface turns away from the
-// eye, so every lobe and every bump on it is drawn round its edge. All the noise is per vertex; a pixel only shades. It
-// erodes away at the end of its life, and as the camera comes near it, so a player inside a blast still sees out. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
-// x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
-// Where it meets a floor or a wall (CG_OBJECT_SPARE: the surface's normal and its centre's height over it, Range's) it
-// squashes against it rather than passing through: rounded onto it, spread along it, its contours tracing the base, and
-// its underside's shade climbing the lobes near it.
+// A stylized billow of smoke as a real mesh, soft rather than solid, as Genshin's and Arcane's smoke is: a sphere whose
+// vertices Voronoi noise pushes out into big rounded lobes that slowly boil, opaque in its middle and thinning toward its
+// silhouette into wisps that noise eats away, so what is behind it shows through its edge. Three soft cel tones kept
+// darker than the blast, so the blast stays the brightest thing on screen: pale lit tops, a slate middle, a shade turned
+// toward violet, as an anime shadow is, darkened a little in the creases between lobes, all under a light from above
+// beside the eye, so its form reads from any side. Lit by the blast it rolls away from: its light added over the smoke on
+// the side facing the blast, widest while hot, and backlit round its silhouette on that side; only that light blooms.
+// It fades into the surface it rests on, and dissolves from its edge inward at the end of its life, and as the camera
+// comes near, so a player inside a blast still sees out. Premultiplied, sorted far to near over a prepass:
+// billow_core.shader writes its depth first wherever it is solid, so only its nearest solid surface is shaded there and
+// its own back lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's.
+// Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM0.xyz: its velocity, which points away
+// from the blast it rolls out of. CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is
+// 0..1. Colour A is the body, colour B the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
+// surface's normal and its centre's height over it, Range's) it squashes against it, and its underside's shade climbs
+// the lobes near it.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
 
-Tags { "RenderType" = "Opaque" "CastShadows" = "Off" "Lighting" = "Unlit" }
-Queue = "Geometry"
+Tags { "RenderType" = "Transparent" "CastShadows" = "Off" "Lighting" = "Unlit" }
+Queue = "Transparent"
 
+// The shape and density properties are billow_core.shader's too: change them in both.
 Properties {
     _Cells   ("Lobes around the sphere, cells per unit", float) = 1.5
-    _Bulge   ("Lobe height, share of the radius", float) = 0.42
-    _Fine    ("Small domes on the lobes, share of the bulge", float) = 0.4
-    _Deep    ("Contours and undersides, share of the body colour", float) = 0.2
-    _Contour ("Contour width, as how far the surface may turn from the eye", float) = 0.3
-    _Core    ("How much of each lobe its core covers, lower is more", float) = 0.8
-    _Glow    ("Brightness of the core while hot", float) = 1.7
-    _NearFrom ("Blocks from the eye where it starts eroding away", float) = 8.0
+    _Bulge   ("Lobe height, share of the radius", float) = 0.4
+    _Fine    ("Small domes on the lobes, share of the bulge", float) = 0.3
+    _Boil    ("How far the lobes drift over its life, in cells", float) = 0.5
+    _Edge    ("How far in from the silhouette it thins, as how far the surface turns from the eye", float) = 0.45
+    _Wisp    ("How much noise eats its edge", float) = 0.9
+    _WispScale ("Wisp noise, cycles per unit", float) = 3.2
+    _Fade    ("How far over its rest it fades into the surface it rests on, share of its size", float) = 0.3
+    _NearFrom ("Blocks from the eye where it starts dissolving", float) = 8.0
     _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
     _Rest    ("Height it rests at over a surface, share of its size", float) = 0.08
     _Round   ("How far over that the squash rounds off, share of its size", float) = 0.45
     _Spread  ("How far it spreads along the surface for each block it is pushed off it", float) = 0.3
+    _Lit     ("Value of the lit tone", float) = 0.7
+    _Mid     ("Value of the middle tone", float) = 0.5
+    _Shade   ("Value of the shade", float) = 0.32
+    _Hue     ("How far the shade turns toward violet", float) = 0.25
+    _Blend   ("Width of the step between two tones", float) = 0.07
+    _Crease  ("How much the creases between lobes darken", float) = 0.18
     _Band    ("How high over the surface its shade climbs, share of its size, varied per lobe", float) = 0.35
+    _Glow    ("The blast's light over it while hot", float) = 0.7
+    _Bloom   ("How much of that light blooms", float) = 0.35
+    _Rim     ("Backlight round the silhouette while hot", float) = 0.5
+    _Noise ("Noise", sampler3D) = "cg_noise"
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
     _VoronoiNearest ("Cells", sampler3D) = "cg_voronoi_nearest"
 }
 
-struct v2f { vec3 world; vec3 normal; vec3 lobe; float above; };
+struct v2f { vec3 world; vec3 normal; vec3 local; vec3 lobe; float above; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ZERO
+        Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite ON
+        DepthWrite OFF
         Cull BACK
     }
 
-    // A round dome over a Voronoi cell, from the distance to its centre: 1 at the centre, 0 by the cell's edge.
-    float dome(float f1) {
-        return sqrt(max(1.0 - f1 * f1 * 1.6, 0.0));
-    }
-
-    // One octave of domes at frequency c: the dome under p, and its gradient, through the distance's own gradient, so
-    // the normal stays smooth where a filtered distance would step.
-    float domes(vec3 p, float c, vec3 offset, out vec3 gradient) {
-        vec4 cell = fx_voronoi_nearest(p * c + offset);
-        float height = dome(cell.w);
-        gradient = -c * 1.6 * cell.w * cell.xyz / max(height, 0.08);
-        return height;
-    }
-
     void vertex(out v2f o) {
-        float seed = CG_OBJECT_CUSTOM1.y, opacity = CG_OBJECT_CUSTOM1.z;
+        float life = CG_OBJECT_CUSTOM1.x, seed = CG_OBJECT_CUSTOM1.y, opacity = CG_OBJECT_CUSTOM1.z;
         vec3 p = normalize(cg_Position);
-        vec3 gLarge, gFine;
-        float large = domes(p, _Cells, vec3(seed * 31.0), gLarge);
-        float fine = domes(p, _Cells * 2.6, vec3(seed * 17.0 + 5.0), gFine);
-        float h = 1.0 + _Bulge * (large - 0.5 + _Fine * (fine - 0.5));
-        // The displaced surface's normal: the sphere's, tilted against the height's slope along it.
-        vec3 g = _Bulge * (gLarge + _Fine * gFine);
-        vec3 n = normalize(p - (g - dot(g, p) * p) / h);
-        // Shrinking as it fades, alongside its erosion.
-        vec3 local = p * h * (0.4 + 0.6 * sqrt(opacity));
-        vec4 world = CG_OBJECT_TO_WORLD * vec4(local, 1.0);
+        // Boiling: the lobes drift across it over its life, the small ones faster.
+        vec3 boil = vec3(0.0, life * _Boil, life * _Boil * 0.6), gLarge, gFine, n;
+        float large = fx_billow_dome(fx_voronoi_nearest(p * _Cells + vec3(seed * 31.0) + boil), _Cells, gLarge);
+        float fine = fx_billow_dome(fx_voronoi_nearest(p * _Cells * 2.2 + vec3(seed * 17.0 + 5.0) - boil * 1.8),
+                _Cells * 2.2, gFine);
+        float h = fx_billow_height(p, large, gLarge, fine, gFine, _Bulge, _Fine, n);
+        // Shrinking as it fades, alongside its dissolving.
+        vec3 world = (CG_OBJECT_TO_WORLD * vec4(p * h * (0.25 + 0.75 * sqrt(opacity)), 1.0)).xyz;
         vec3 normal = normalize(mat3(CG_OBJECT_TO_WORLD) * n);
-        o.above = 1.0e4;
-        vec4 contact = CG_OBJECT_SPARE;
-        if (dot(contact.xyz, contact.xyz) > 0.25) {
-            // Its height over the surface lifted to at least _Rest by a smooth maximum, so the base rounds onto it;
-            // pushed out along the surface as far, so it spreads. The normal keeps the squash's slope: flat where it is
-            // pressed, unchanged where it is not, so the contour runs round the base.
-            float size = length(CG_OBJECT_TO_WORLD[0].xyz), soft = max(_Round * size, 1.0e-3);
-            vec3 rel = world.xyz - CG_OBJECT_TO_WORLD[3].xyz;
-            float height = dot(contact.xyz, rel) + contact.w, gap = _Rest * size - height;
-            float k = max(soft - abs(gap), 0.0) / soft;
-            float lifted = max(height, _Rest * size) + k * k * soft * 0.25;
-            float push = lifted - height, slope = gap > 0.0 ? 0.5 * k : 1.0 - 0.5 * k;
-            vec3 along = rel - contact.xyz * dot(contact.xyz, rel);
-            world.xyz += contact.xyz * push + along / max(length(along), 1.0e-4) * push * _Spread;
-            slope = max(slope, 0.05);
-            normal = normalize(slope * normal + (1.0 - slope) * dot(normal, contact.xyz) * contact.xyz);
-            o.above = lifted / size;
-        }
-        o.world = world.xyz;
+        o.above = fx_billow_squash(world, normal, CG_OBJECT_TO_WORLD[3].xyz, length(CG_OBJECT_TO_WORLD[0].xyz),
+                CG_OBJECT_SPARE, _Rest, _Round, _Spread);
+        o.world = world;
         o.normal = normal;
-        // the lobe's dome, the small dome on it, the erosion value
-        o.lobe = vec3(large, fine, fx_value_noise(p * 2.6 + seed * 9.0));
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
+        o.local = p * h;
+        // the lobe's dome, the small dome on it, a broad noise that breaks its dissolving into pieces
+        o.lobe = vec3(large, fine, fx_value_noise(p * 1.6 + seed * 9.0));
+        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        float life = CG_OBJECT_CUSTOM1.x, opacity = CG_OBJECT_CUSTOM1.z, hot = CG_OBJECT_CUSTOM1.w;
-        // Eroding: holes eat through as it fades, and as the eye comes near, the same way.
-        float near = 1.0 - smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
-        if (i.lobe.z < max(1.0 - opacity, near) * 1.05) discard;
+        float life = CG_OBJECT_CUSTOM1.x, seed = CG_OBJECT_CUSTOM1.y, opacity = CG_OBJECT_CUSTOM1.z;
+        float hot = CG_OBJECT_CUSTOM1.w;
         vec3 n = normalize(i.normal);
-        vec3 eye = FX_CAMERA;
-        vec3 toEye = normalize(eye - i.world);
-        // A light that follows the eye, offset up and to the left, while it burns; the sun's once it is smoke.
+        vec3 toEye = normalize(FX_CAMERA - i.world);
+        float facing = max(dot(n, toEye), 0.0);
+        // Its wisps rise as it goes; it dissolves as it fades and as the eye comes near.
+        float wisp = 0.5 + 0.5 * fx_fbm(i.local * _WispScale + vec3(0.0, -life * 2.5, 0.0) + seed * 7.0, 3);
+        float near = 1.0 - smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
+        float alpha = fx_billow_density(facing, wisp, i.lobe.z, i.lobe.x, _Edge, _Wisp, max(1.0 - opacity, near));
+        // Fading into the surface it rests on rather than cut by it: by its height over it, never the scene's depth,
+        // which holds its own core's.
+        alpha *= smoothstep(_Rest, _Rest + _Fade, i.above);
+        if (alpha < 0.004) discard;
+        // A light from above, beside the eye and up to its left: the tops lit and the undersides shaded from any side.
         vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
-        vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
-        vec3 eyeLight = normalize(toEye * 0.75 + up * 0.6 - right * 0.35);
-        vec3 key = normalize(mix(CG_SUN_DIRECTION, eyeLight, hot) + up * 1.0e-3);
-        // Near the surface the light falls off, so the underside's shade climbs each lobe by its own curve, higher on
-        // some lobes than others, rather than cutting every billow at one height.
+        vec3 key = normalize(vec3(0.0, 0.8, 0.0) + toEye * 0.45 - right * 0.35);
+        // Near the surface the light falls off, so the underside's shade climbs each lobe by its own curve.
         float reach = _Band * (0.55 + 0.8 * i.lobe.x + 0.4 * (i.lobe.y - 0.5));
         float lit = (dot(n, key) * 0.5 + 0.5) * smoothstep(_Rest, _Rest + reach, i.above);
-        float core = hot * (0.6 + 0.4 * (1.0 - life));
-        // Each billow a little lighter or darker than the next, and mottled across a few blocks.
-        float seed = CG_OBJECT_CUSTOM1.y, tone = fx_value_noise(i.world * 0.3 + seed * 13.0) - 0.5;
-        vec3 body = CG_OBJECT_CUSTOM2.rgb * (0.92 + 0.16 * fract(seed * 7.13)), coreColour = CG_OBJECT_CUSTOM3.rgb;
-        vec3 deep = body * _Deep;
-        // The undersides' shade: deepest and greyed by settled dust at the surface, lifting as it climbs.
+        float tone = fx_value_noise(i.world * 0.3 + seed * 13.0) - 0.5;
+        // Three tones from the body's hue: the lit one nearly grey, the shade saturated and turned toward violet, each
+        // billow and each patch of it a little lighter or darker.
+        vec3 tint = CG_OBJECT_CUSTOM2.rgb, glow = CG_OBJECT_CUSTOM3.rgb;
+        vec3 hue = tint / max(max(tint.r, tint.g), max(tint.b, 1.0e-3));
+        vec3 violet = clamp(hue + vec3(_Hue, -0.2 * _Hue, 0.0), 0.0, 1.0);
+        float value = 1.0 + 0.1 * (fract(seed * 7.13) - 0.5) + 0.08 * tone;
+        vec3 top = mix(vec3(1.0), hue, 0.22) * _Lit * value;
+        vec3 middle = mix(vec3(1.0), hue, 0.38) * _Mid * value;
+        vec3 shade = mix(vec3(1.0), violet, 0.6) * _Shade * value;
+        // Greyed by settled dust at the surface, its colour returning as it climbs.
         float grade = clamp((i.above - _Rest) / max(reach, 1.0e-3), 0.0, 1.0);
-        vec3 shade = body * (0.5 + 0.14 * grade + 0.2 * tone);
-        shade = mix(shade, vec3(dot(shade, vec3(0.299, 0.587, 0.114))) * vec3(1.06, 1.0, 0.94), 0.35 * (1.0 - grade));
-        float ld = fwidth(lit) + 0.01;
-        vec3 col = mix(shade, body * (0.85 + 0.25 * lit + 0.08 * tone), smoothstep(0.33 - ld, 0.33 + ld, lit));
-        vec3 world = mix(CG_LIGHTMAP(cg_Light), vec3(1.0), hot);
-        col *= world;
-        deep *= world;
-        // An irregular core on each lobe, pushed toward the light; the small domes break its edge.
-        float shape = i.lobe.x * (0.42 + 0.75 * lit) + (i.lobe.y - 0.5) * 0.18 + core * 0.15;
-        float d = fwidth(shape) + 0.01;
-        vec3 glow = coreColour * (0.88 + 0.25 * i.lobe.x) * (1.0 + (_Glow - 1.0) * core);
-        col = mix(col, glow, smoothstep(_Core - d, _Core + d, shape));
-        col *= mix(1.0, 0.65, life * life * (1.0 - hot));
-        // Contours: wherever the surface turns away from the eye, a little wider in shadow.
-        float facing = dot(n, toEye);
-        float width = _Contour * (0.7 + 0.6 * (1.0 - lit));
-        float fd = fwidth(facing) + 1.0e-3;
-        col = mix(col, deep, 1.0 - smoothstep(width - fd, width + fd, facing));
-        fragColor = vec4(col, 1.0);
+        shade = mix(vec3(dot(shade, vec3(0.299, 0.587, 0.114))) * vec3(1.06, 1.0, 0.94), shade, 0.65 + 0.35 * grade);
+        float mid = smoothstep(0.3 - _Blend, 0.3 + _Blend, lit);
+        float high = smoothstep(0.64 - _Blend, 0.64 + _Blend, lit + 0.12 * tone);
+        vec3 col = mix(shade, mix(middle, top, high), mid);
+        // Shadowed a little where lobes meet, which draws them without a line.
+        col *= 1.0 - _Crease * (1.0 - smoothstep(0.0, 0.45, i.lobe.x));
+        col *= mix(CG_LIGHTMAP(cg_Light), vec3(1.0), hot * 0.5);
+        // The blast's light, from behind it along its motion: a band on the side facing the blast, half of it while hot
+        // and narrowing as it cools, and a little everywhere. Standing still, it has no side, and is lit as if facing it.
+        vec2 away = CG_OBJECT_CUSTOM0.xz;
+        float speed = length(away);
+        vec3 toBlast = speed > 1.0e-3 ? vec3(-away.x, 0.0, -away.y) / speed : vec3(0.0);
+        float faces = dot(n, toBlast), toward = faces * 0.5 + 0.5;
+        float edge = 0.78 - 0.3 * hot + 0.08 * tone;
+        float band = smoothstep(edge - 0.08, edge + 0.08, toward), heat = smoothstep(0.03, 0.6, hot);
+        vec3 light = glow * (0.15 + 0.75 * band) * heat * _Glow * value;
+        // Backlit round its silhouette on the blast's side, through its thin edge.
+        vec3 rim = glow * pow(1.0 - facing, 3.0) * hot * _Rim * smoothstep(-0.2, 0.5, faces);
+#ifdef CG_EMISSIVE_PASS
+        fragColor = vec4((glow * band * hot * hot * _Bloom + rim) * alpha, 0.0);
+        return;
+#endif
+        fragColor = vec4((col + light + rim) * alpha, alpha);
+    }
+}
+
+// Its glow alone into the bloom, added.
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    RenderState {
+        Blend ONE ONE
+        DepthTest LEQUAL
+        DepthWrite OFF
+        Cull BACK
     }
 }
