@@ -9,7 +9,7 @@
 // x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
 // Where it meets a floor or a wall (CG_OBJECT_SPARE: the surface's normal and its centre's height over it, Range's) it
 // squashes against it rather than passing through: rounded onto it, spread along it, its contours tracing the base, and
-// darker in a band just over it.
+// its underside's shade climbing the lobes near it.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
@@ -28,8 +28,8 @@ Properties {
     _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
     _Rest    ("Height it rests at over a surface, share of its size", float) = 0.08
     _Round   ("How far over that the squash rounds off, share of its size", float) = 0.45
-    _Spread  ("How far it spreads along the surface for each block it is pushed off it", float) = 0.6
-    _Band    ("Height of the dark band over the surface, share of its size", float) = 0.22
+    _Spread  ("How far it spreads along the surface for each block it is pushed off it", float) = 0.3
+    _Band    ("How high over the surface its shade climbs, share of its size, varied per lobe", float) = 0.35
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
     _VoronoiNearest ("Cells", sampler3D) = "cg_voronoi_nearest"
 }
@@ -111,12 +111,21 @@ Pass {
         vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
         vec3 eyeLight = normalize(toEye * 0.75 + up * 0.6 - right * 0.35);
         vec3 key = normalize(mix(CG_SUN_DIRECTION, eyeLight, hot) + up * 1.0e-3);
-        float lit = dot(n, key) * 0.5 + 0.5;
+        // Near the surface the light falls off, so the underside's shade climbs each lobe by its own curve, higher on
+        // some lobes than others, rather than cutting every billow at one height.
+        float reach = _Band * (0.55 + 0.8 * i.lobe.x + 0.4 * (i.lobe.y - 0.5));
+        float lit = (dot(n, key) * 0.5 + 0.5) * smoothstep(_Rest, _Rest + reach, i.above);
         float core = hot * (0.6 + 0.4 * (1.0 - life));
-        vec3 body = CG_OBJECT_CUSTOM2.rgb, coreColour = CG_OBJECT_CUSTOM3.rgb, deep = body * _Deep;
-        // The body, darker in a band on the undersides only.
+        // Each billow a little lighter or darker than the next, and mottled across a few blocks.
+        float seed = CG_OBJECT_CUSTOM1.y, tone = fx_value_noise(i.world * 0.3 + seed * 13.0) - 0.5;
+        vec3 body = CG_OBJECT_CUSTOM2.rgb * (0.92 + 0.16 * fract(seed * 7.13)), coreColour = CG_OBJECT_CUSTOM3.rgb;
+        vec3 deep = body * _Deep;
+        // The undersides' shade: deepest and greyed by settled dust at the surface, lifting as it climbs.
+        float grade = clamp((i.above - _Rest) / max(reach, 1.0e-3), 0.0, 1.0);
+        vec3 shade = body * (0.5 + 0.14 * grade + 0.2 * tone);
+        shade = mix(shade, vec3(dot(shade, vec3(0.299, 0.587, 0.114))) * vec3(1.06, 1.0, 0.94), 0.35 * (1.0 - grade));
         float ld = fwidth(lit) + 0.01;
-        vec3 col = mix(body * 0.62, body * (0.85 + 0.25 * lit), smoothstep(0.33 - ld, 0.33 + ld, lit));
+        vec3 col = mix(shade, body * (0.85 + 0.25 * lit + 0.08 * tone), smoothstep(0.33 - ld, 0.33 + ld, lit));
         vec3 world = mix(CG_LIGHTMAP(cg_Light), vec3(1.0), hot);
         col *= world;
         deep *= world;
@@ -126,9 +135,6 @@ Pass {
         vec3 glow = coreColour * (0.88 + 0.25 * i.lobe.x) * (1.0 + (_Glow - 1.0) * core);
         col = mix(col, glow, smoothstep(_Core - d, _Core + d, shape));
         col *= mix(1.0, 0.65, life * life * (1.0 - hot));
-        // Where it meets the surface, the underside's shade in a hard band, as a cel shadow lies under a form.
-        float bd = fwidth(i.above) + 1.0e-3;
-        col = mix(col, mix(body * 0.62 * world, deep, 0.35), 1.0 - smoothstep(_Rest + _Band - bd, _Rest + _Band + bd, i.above));
         // Contours: wherever the surface turns away from the eye, a little wider in shadow.
         float facing = dot(n, toEye);
         float width = _Contour * (0.7 + 0.6 * (1.0 - lit));
