@@ -16,8 +16,8 @@ import org.lwjgl.opengl.GLContext;
 public final class Lwjgl2GLContext implements CgGLContext {
 
     private volatile ContextCapabilities caps;
-    /** What LWJGL 2's capabilities predate: GL 4.6, and the subgroup extension. */
-    private volatile boolean openGL46, subgroups;
+    /** What LWJGL 2's capabilities predate: GL 4.6, the subgroup and the parallel compile extensions. */
+    private volatile boolean openGL46, subgroups, parallelCompile;
     
     private ContextCapabilities caps() {
         if(caps == null) probe();
@@ -30,8 +30,11 @@ public final class Lwjgl2GLContext implements CgGLContext {
         int major = GL11.glGetInteger(GL30.GL_MAJOR_VERSION), minor = GL11.glGetInteger(GL30.GL_MINOR_VERSION);
         openGL46 = major > 4 || major == 4 && minor >= 6;
         subgroups = false;
-        for (int i = 0, n = GL11.glGetInteger(GL30.GL_NUM_EXTENSIONS); i < n && !subgroups; i++) {
-            subgroups = "GL_KHR_shader_subgroup".equals(GL30.glGetStringi(GL11.GL_EXTENSIONS, i));
+        parallelCompile = false;
+        for (int i = 0, n = GL11.glGetInteger(GL30.GL_NUM_EXTENSIONS); i < n; i++) {
+            String name = GL30.glGetStringi(GL11.GL_EXTENSIONS, i);
+            subgroups |= "GL_KHR_shader_subgroup".equals(name);
+            parallelCompile |= "GL_KHR_parallel_shader_compile".equals(name) || "GL_ARB_parallel_shader_compile".equals(name);
         }
     }
 
@@ -66,8 +69,8 @@ public final class Lwjgl2GLContext implements CgGLContext {
 
     @Override public boolean mappingIsFree() { return false; }
 
-    // LWJGL 2's capabilities predate the extension, so a compile here finishes a frame later rather than when polled.
-    @Override public boolean parallelShaderCompile() { return false; }
+    // Polling needs only glGetProgrami; the driver's default thread count stands, as on LWJGL 3.
+    @Override public boolean parallelShaderCompile() { caps(); return parallelCompile; }
 
     // ── Compute and GPU-driven draws ──────────────────────────────────────────
 
