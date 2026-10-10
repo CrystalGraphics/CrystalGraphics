@@ -18,9 +18,9 @@ import java.util.List;
  * if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit));
  * }</pre>
  *
- * Out of a white-out, anime fades back to the picture over a few drawings rather than cutting: {@code fadeOut} holds
- * the last beat past the end, its amount stepping down a frame at a time. The hitstop holds for {@link #seconds()} alone,
- * so the picture moves again under the fade.
+ * {@code fadeOut} holds the last beat past the end, its amount stepping down a frame at a time; the picture moves under
+ * it. Anime more often cuts from white to the result already grown, which an effect running on beneath its beats gets
+ * without one.
  *
  * <pre>{@code
  * CgImpactSequence.at(24f).beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).fadeOut(4).build();
@@ -31,7 +31,7 @@ import java.util.List;
  *   <li>The seed changes each beat, and every {@link CgImpactFrame#boil()} frames inside one: a held scene still reads
  *       as drawn anew.</li>
  *   <li>Immutable once built; {@link #look} and {@link #seed} allocate nothing.</li>
- *   <li>Its beats' length, {@link #seconds()}, is what a hitstop round it should hold for; the fade comes after.</li>
+ *   <li>{@link #seconds()} is its beats' length; a fade comes after.</li>
  * </ul>
  */
 public final class CgImpactSequence {

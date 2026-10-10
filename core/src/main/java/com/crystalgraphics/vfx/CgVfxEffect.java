@@ -67,7 +67,7 @@ public abstract class CgVfxEffect {
     /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
     private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
     private int dueCount;
-    /** Each queued emitter's step, in particle steps: an effect may run one slower than another (a hitstop's release). */
+    /** Each queued emitter's step, in particle steps: an effect may tick each at its own dt. */
     private float[] dueDts = new float[0];
     /** Live particles of the queued emitters the CPU steps: what decides whether the system's workers wake. */
     private int dueCpuParticles;
