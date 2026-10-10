@@ -8,12 +8,12 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
-// The bend reaches _Strength times the intensity, at most about 0.05 of the height.
+// The bend reaches _Strength times the intensity, at most about 0.08 of the height.
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
-    _Strength ("Bend at full intensity, share of the screen's height", float) = 0.04
+    _Strength ("Bend at full intensity, share of the screen's height", float) = 0.065
     _Reference ("Within this many blocks the bend is _Strength; farther it shrinks as the front does on screen", float) = 6
     _Band     ("How far in from the silhouette the band reaches, as facing 0..1", float) = 0.45
 }

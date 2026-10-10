@@ -38,7 +38,7 @@ Pass {
         // The circle round the source through the particle, in the eye's plane.
         float radius = length(vec2(dot(offset, right), dot(offset, up)));
         float centreAngle = atan(dot(offset, up), dot(offset, right) + 1.0e-6);
-        float span = _Span * (0.6 + 0.8 * CG_PARTICLE_SEED(i));
+        float span = _Span * (0.4 + 1.2 * CG_PARTICLE_SEED(i));
         float a = centreAngle + span * (along - 0.5);
         vec3 p = source + (right * cos(a) + up * sin(a)) * radius;
         vec3 tangent = right * -sin(a) + up * cos(a);

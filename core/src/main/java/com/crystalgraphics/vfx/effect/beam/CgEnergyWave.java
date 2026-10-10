@@ -58,8 +58,9 @@ import java.util.List;
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
  * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW}, {@link #SLOT_BLAST_LIGHT} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
- * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
- * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts; its
+ * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, dust, debris, embers,
+ * hot streaks and ground shock are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it
+ * bursts, its ink only after an impact frame; its
  * screen flash is a post volume there ({@link #BLAST_FLASH}), fading with the camera's distance.
  * Heat haze shimmers round the charge, the beam, the impact and the blast's heart, and a shock front bends the air as
  * the blast goes off: {@code shaders/vfx/air/}, dropped at the Low quality tier.</p>
@@ -245,7 +246,9 @@ public final class CgEnergyWave extends CgVfxEffect {
      * Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius: what
      * {@link #BLAST_SHAKE} arrives with.
      */
-    private static final float SHOCK_SECONDS = 0.8f, SHOCK_REACH = 2.6f;
+    private static final float SHOCK_SECONDS = 1.2f, SHOCK_REACH = 2.6f;
+    /** Seconds the blast's glowing ring on the ground ({@link #SLOT_IMPACT_RING}) takes to sweep out and fade. */
+    private static final float RING_SECONDS = 0.7f;
     /** The blast's volume priorities, over a scene's mood volumes: the impact frame over the flash. */
     private static final int FLASH_PRIORITY = 10, IMPACT_PRIORITY = 11;
     /** Held over the charge at the muzzle, its level the charge's progress squared. */
@@ -286,7 +289,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam SPIRAL = SCHEMA.color("spiral", 0.5f, 0.85f, 1.6f, 1f);
     public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.18f, 0.45f, 1.4f, 0.9f);
 
-    /** The blast's cloud, debris, embers and shock streaks: the shared explosion parts, coloured per look. */
+    /** The blast's cloud, dust, debris, embers, hot streaks, ground shock and ink: the shared explosion parts, coloured per look. */
     public static final CgVfxExplosion BLAST = new CgVfxExplosion(SCHEMA, "blast");
 
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
@@ -598,12 +601,16 @@ public final class CgEnergyWave extends CgVfxEffect {
         }
     }
 
-    /** Starts every emitter of the look at the target, each from its own seed, over the world's ground there. */
+    /**
+     * Starts every emitter of the look at the target, each from its own seed, over the world's ground there; the blast's
+     * ink only after an impact frame.
+     */
     private void startBlast() {
         CgTrace.marker(CgVfxTrace.CHANNEL, BLAST_MARKER);
         List<CgVfxEmitter> emitters = look().emitters();
         blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
         for (int i = 0; i < emitters.size(); i++) {
+            if (blastImpact == null && BLAST.drawn(emitters.get(i))) continue;
             CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
             emitter.ground(groundHeight()).ground(blastGround);
@@ -768,7 +775,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             float left = 1f - shockTime;
             drawAt(frame, layers, SLOT_BLAST_SHOCK, x, y, z, placed, front, front, (float) Math.sqrt(left), shockTime, false);
         }
-        float ringTime = Math.min(since / 0.7f, 1f);
+        float ringTime = Math.min(since / RING_SECONDS, 1f);
         if (ringTime < 1f) {
             float reach = radius * get(BLAST_RADIUS) * 1.3f;
             facing(placed, normalX, normalY, normalZ).scale(reach, reach, 0.002f);
