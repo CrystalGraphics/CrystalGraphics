@@ -7,7 +7,7 @@
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Depth" = "Clip" }
 Queue = "Transparent"
 
 Properties {
@@ -24,7 +24,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite ON
+        DepthWrite OFF
         Cull OFF
     }
 
@@ -65,8 +65,8 @@ Pass {
         float erode = smoothstep(0.5, 1.0, life) * 0.7;
         float dash = i.band.z - erode;
         cover *= smoothstep(0.0, fwidth(i.band.z) * 2.0 + 0.01, dash);
-        // Solid ink: it writes depth wherever it covers half a pixel (CgVfxLayer.ORDER_SOLID).
-        if (cover < 0.5) discard;
+        // Solid ink: it writes depth wherever it covers half a pixel ("Depth" = "Clip").
+        cg_Clip(cover);
         float alpha = cover * i.band.y * opacity * CG_OBJECT_CUSTOM2.a;
         fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }

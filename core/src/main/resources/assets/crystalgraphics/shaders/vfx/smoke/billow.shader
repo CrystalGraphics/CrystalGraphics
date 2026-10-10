@@ -6,9 +6,9 @@
 // beside the eye, so its form reads from any side. Lit by the blast it rolls away from: its light added over the smoke on
 // the side facing the blast, widest while hot, and backlit round its silhouette on that side; only that light blooms.
 // It fades into the surface it rests on, and dissolves from its edge inward at the end of its life, and as the camera
-// comes near, so a player inside a blast still sees out. Premultiplied, sorted far to near over a prepass:
-// billow_core.shader writes its depth first wherever it is solid, so only its nearest solid surface is shaded there and
-// its own back lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's.
+// comes near, so a player inside a blast still sees out. Premultiplied, sorted far to near over its own depth prepass
+// ("Depth" = "Prepass"): wherever it is solid (_Clip), its fade into the ground included, only its nearest surface is
+// shaded, and its own back lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's.
 // Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM0.xyz: its velocity, which points away
 // from the blast it rolls out of. CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is
 // 0..1. Colour A is the body, colour B the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
@@ -18,10 +18,9 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
 
-Tags { "RenderType" = "Transparent" "CastShadows" = "Off" "Lighting" = "Unlit" }
+Tags { "RenderType" = "Transparent" "CastShadows" = "Off" "Lighting" = "Unlit" "Depth" = "Prepass" }
 Queue = "Transparent"
 
-// The shape and density properties are billow_core.shader's too: change them in both.
 Properties {
     _Cells   ("Lobes around the sphere, cells per unit", float) = 1.5
     _Bulge   ("Lobe height, share of the radius", float) = 0.4
@@ -30,12 +29,13 @@ Properties {
     _Edge    ("How far in from the silhouette it thins, as how far the surface turns from the eye", float) = 0.45
     _Wisp    ("How much noise eats its edge", float) = 0.9
     _WispScale ("Wisp noise, cycles per unit", float) = 3.2
-    _Fade    ("How far over its rest it fades into the surface it rests on, share of its size", float) = 0.3
+    _Fade    ("How far over its rest it fades into the surface it rests on, share of its size", float) = 0.08
     _NearFrom ("Blocks from the eye where it starts dissolving", float) = 8.0
     _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
     _Rest    ("Height it rests at over a surface, share of its size", float) = 0.08
     _Round   ("How far over that the squash rounds off, share of its size", float) = 0.45
     _Spread  ("How far it spreads along the surface for each block it is pushed off it", float) = 0.3
+    _Clip    ("How opaque it must be to hide what is behind it", float) = 0.9
     _Lit     ("Value of the lit tone", float) = 0.7
     _Mid     ("Value of the middle tone", float) = 0.5
     _Shade   ("Value of the shade", float) = 0.32
@@ -94,8 +94,11 @@ Pass {
         float wisp = 0.5 + 0.5 * fx_fbm(i.local * _WispScale + vec3(0.0, -life * 2.5, 0.0) + seed * 7.0, 3);
         float near = 1.0 - smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
         float alpha = fx_billow_density(facing, wisp, i.lobe.z, i.lobe.x, _Edge, _Wisp, max(1.0 - opacity, near));
+        // Solid by its own density, before the fade below: what shows through that fade is the surface alone, drawn
+        // already, while the dome, the light and the smoke behind it stay hidden.
+        cg_Clip(alpha);
         // Fading into the surface it rests on rather than cut by it: by its height over it, never the scene's depth,
-        // which holds its own core's.
+        // which holds its own prepass.
         alpha *= smoothstep(_Rest, _Rest + _Fade, i.above);
         if (alpha < 0.004) discard;
         // A light from above, beside the eye and up to its left: the tops lit and the undersides shaded from any side.

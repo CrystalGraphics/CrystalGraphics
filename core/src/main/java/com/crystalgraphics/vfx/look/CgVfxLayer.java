@@ -40,19 +40,11 @@ public final class CgVfxLayer {
      * sorts before them: smoke and light pools. {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and
      * {@link #ORDER_CORE} are marked {@code Draw.afterDistortion}, so their own haze never smears a bright body into the
      * air round it (as a fire in Unreal draws after its distortion), while a nearer effect's haze still bends them.</p>
+     *
+     * <p>A layer whose shader is {@code "Depth" = "Clip"} draws before the rest of its effect whatever its order, so what
+     * blends over it sees its depth.</p>
      */
-    /**
-     * Depth alone, before everything else in the effect: where a soft billow is solid ({@code billow_core.shader}), so
-     * its own back lobes, the billows and debris behind it and the blast are hidden there whatever order they draw in.
-     */
-    public static final int ORDER_DEPTH = 0;
     public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2;
-    /**
-     * Solid particle looks that write depth where they cover (ink, debris): after the smoke and light pools, so they
-     * blend over the smoke in front of them, and before the glowing layers, which they hide. Each kind is one multi-draw
-     * ordered as a whole, so only depth orders a near stroke against a far billow.
-     */
-    public static final int ORDER_SOLID = 3;
     /**
      * Layers that bend the scene behind them (heat haze, a shock front), through a Distortion pass: every haze of the
      * frame adds into one offset target, applied once. A haze also leaves its own hot body unbent.

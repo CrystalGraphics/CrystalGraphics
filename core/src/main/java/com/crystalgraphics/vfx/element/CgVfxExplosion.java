@@ -169,8 +169,8 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
      * its {@link #dust} where they land: a look replacing the specks keeps that only by adding the event itself.
      */
     public final CgVfxEmitter billows, surge, specks, dust, sparkles, ink, rays, rings;
-    /** The layers that draw them, each in its emitter's slot; the billows' core writes their depth alone. */
-    public final CgVfxLayer billowLayer, billowCoreLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer,
+    /** The layers that draw them, each in its emitter's slot. */
+    public final CgVfxLayer billowLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer,
             ringLayer;
 
     /** Declares this kit's colours on {@code schema}, defaulting to a blue blast, and builds its layers. */
@@ -191,20 +191,18 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         rings = named(RINGS, name);
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
                 .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
-        billowCoreLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow_core.shader").slot(billows.layer())
-                .order(CgVfxLayer.ORDER_DEPTH).build();
         surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
                 .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         dustLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(dust.layer())
                 .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).from(CgQuality.MEDIUM).build();
         inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         ringLayer = CgVfxLayer.builder(PARTICLE + "ring.shader").slot(rings.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SOLID).build();
+                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         sparkLayer = CgVfxLayer.builder(PARTICLE + "spark.shader").slot(sparkles.layer())
                 .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
     }
@@ -216,7 +214,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     @Override
     public void addTo(CgVfxLook.Builder look) {
-        look.layer(billowLayer).layer(billowCoreLayer).layer(surgeLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
+        look.layer(billowLayer).layer(surgeLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
         for (CgVfxEmitter emitter : emitters()) look.emitter(emitter);
     }
 
