@@ -230,7 +230,8 @@ public final class CgVfxFrame {
      * renderer says (plan vfx-particles):
      * <ul>
      *   <li>{@code MESHES}: a {@link #mesh} per particle, turned by its spin and sized by its size over life;
-     *       {@code CG_OBJECT_CUSTOM1} is its life 0..1, its seed, its opacity and its heat.</li>
+     *       {@code CG_OBJECT_CUSTOM0.xyz} is its velocity, {@code CG_OBJECT_CUSTOM1} its life 0..1, its seed, its
+     *       opacity and its heat.</li>
      *   <li>{@code QUADS} and {@code ARCS}: one draw per {@link CgVfxQuads#COUNT} (or {@link CgVfxRibbons#COUNT})
      *       particles, reading the frame's particle records ({@code #pragma cg_use particle}).
      *       {@code CG_OBJECT_CUSTOM0}: the first record, how many, the layer's radius and parameter;
@@ -300,15 +301,15 @@ public final class CgVfxFrame {
             boolean inOrder = blendsInOrder(system.material(layer));
             if (inOrder) range.sorted(slot);
             if (meshes) {
-                // One record set for every layer: the cull stamps each draw's customs and scale onto it.
+                // One record set for every layer: the cull stamps each draw's colours and scale onto it, leaving
+                // custom 0, Range's velocity.
                 reach = Math.max(reach, layer.radius());
                 CgWorldRenderer.Draw draw = world.draw(system.particleSphere(), system.material(layer))
                         .instances(range.objects(), range.base(slot),
                                 CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
                         .instanceScale(layer.radius())
                         .gpuCulled()
-                        .at(effect.originX, effect.originY, effect.originZ)
-                        .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed);
+                        .at(effect.originX, effect.originY, effect.originZ);
                 color(draw, 2, layer.colorA(), values);
                 color(draw, 3, layer.colorB(), values);
                 CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
@@ -395,7 +396,8 @@ public final class CgVfxFrame {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
             dress(world.draw(system.particleSphere(), system.material(layer)), effect, layer, p.x(i, a), p.y(i, a),
-                    p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i]).submit();
+                    p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i])
+                    .custom(0, p.vx[i], p.vy[i], p.vz[i], 0f).submit();
         }
     }
 
