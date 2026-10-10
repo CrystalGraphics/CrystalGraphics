@@ -2,7 +2,7 @@
 
 <img src="docs/images/banner.png" alt="Crystal Graphics: a modern Vulkan-first rendering engine for Java" width="100%">
 
-Materials and shader graphs · GPU compute and particles · Cinematic post-processing · A complete text engine
+Materials and shader graphs · GPU compute kernels · VFX and particle systems · Cinematic post-processing · A complete text engine
 
 [![Vulkan](https://img.shields.io/badge/Vulkan-first-AC162C?style=flat-square&logo=vulkan&logoColor=white)](docs/ENGINE_API.md)
 [![OpenGL](https://img.shields.io/badge/OpenGL-3.3%2B-5586A4?style=flat-square&logo=opengl&logoColor=white)](docs/SHADERS.md)
