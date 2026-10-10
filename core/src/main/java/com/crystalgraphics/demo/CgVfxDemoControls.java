@@ -55,7 +55,7 @@ public final class CgVfxDemoControls {
     private static final CgKeyframes NONE = CgKeyframes.start(0f, 0f).to(1f, 0f, CgEasings.LINEAR).build();
     private static final float[] SPEEDS = {0f, 0.01f, 0.1f, 0.25f, 0.5f, 1f, 2f};
     private static final int REAL_TIME = 5;
-    private static final float MIN_WAIT = 0.5f, MAX_WAIT = 5f;
+    private static final float MIN_WAIT = 0.5f, MAX_WAIT = 8f;
 
     private static final CgVfxDemoControls INSTANCE = new CgVfxDemoControls();
 
