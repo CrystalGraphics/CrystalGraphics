@@ -8,7 +8,7 @@
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
 
-Tags { "RenderType" = "Transparent" }
+Tags { "RenderType" = "Transparent" "Depth" = "Clip" }
 Queue = "Transparent"
 
 Properties {
@@ -23,7 +23,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite ON
+        DepthWrite OFF
         Cull OFF
     }
 
@@ -66,9 +66,9 @@ Pass {
         vec2 around = q / max(r, 1.0e-4);
         float edge = 0.5 + 0.48 * fx_value_noise(vec3(around * i.speck.w, i.speck.z));
         float aa = fwidth(r) + 1.0e-3;
-        // Solid: it writes depth wherever it covers half a pixel (CgVfxLayer.ORDER_SOLID).
+        // Solid: it writes depth wherever it covers half a pixel ("Depth" = "Clip").
         float cover = 1.0 - smoothstep(edge - aa, edge + aa, r);
-        if (cover < 0.5) discard;
+        cg_Clip(cover);
         float alpha = cover * i.opacity * CG_OBJECT_CUSTOM2.a;
 
         // A lumpy dome inside the outline, roughened by noise into facets.

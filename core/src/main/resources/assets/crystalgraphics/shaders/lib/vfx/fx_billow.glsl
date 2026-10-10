@@ -1,6 +1,5 @@
-// A stylized billow's shape and density, shared by billow.shader (what it looks like) and billow_core.shader (its depth
-// where it is opaque), so the two agree to the pixel. Pure functions: the shader samples the noise (fx_common's macros
-// read its own volumes) and passes it in.
+// A stylized billow's shape and density, billow.shader's. Pure functions: the shader samples the noise (fx_common's
+// macros read its own volumes) and passes it in.
 //
 //     vec3 gLarge, gFine;
 //     float large = fx_billow_dome(fx_voronoi_nearest(p * _Cells + offset), _Cells, gLarge);
