@@ -96,9 +96,10 @@ Pass {
 #endif
 #ifdef SCENE
         // Past white, the hue is kept and goes toward white the further past: a hot core with a coloured fringe, where
-        // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact.
+        // a clamp per channel bands. At or below 1 nothing changes, so the host's own pixels come back exact. Halfway
+        // to white at 4x white: a saturated glow at 2x stays three quarters its colour (1 - 1 / peak washed it out).
         float peak = max(c.r, max(c.g, c.b));
-        if (peak > 1.0) c = mix(c / peak, vec3(1.0), 1.0 - 1.0 / peak);
+        if (peak > 1.0) c = mix(c / peak, vec3(1.0), (peak - 1.0) / (peak + 2.0));
 #endif
         vec3 encoded = post_encode_srgb(c);
 #ifdef IMPACT
