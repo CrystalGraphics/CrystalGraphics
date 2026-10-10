@@ -505,7 +505,7 @@ public final class CgVfxFrame {
         scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
         CgVfxValues values = effect.values();
         CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer)).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
-                .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
+                .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled).subject(effect.subject)
                 .custom(0, row, 0f, layer.radius(), layer.parameter())
                 .custom(1, cx, cy, cz, intensity);
         color(draw, 2, layer.colorA(), values);
@@ -525,7 +525,7 @@ public final class CgVfxFrame {
                                        float z, Matrix4fc transform, float ex, float ey, float ez, float ew) {
         CgVfxValues values = effect.values();
         scaled.set(transform).scale(layer.radius());
-        draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled)
+        draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled).subject(effect.subject)
                 .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew);
         color(draw, 2, layer.colorA(), values);

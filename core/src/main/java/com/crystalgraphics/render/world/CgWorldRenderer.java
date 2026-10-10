@@ -191,6 +191,8 @@ public final class CgWorldRenderer {
     private boolean[] culledOnGpu = new boolean[64];
     /** Per draw: the GPU group it is charged to, null for its material's. */
     private String[] gpuGroups = new String[64];
+    /** Per draw: the impact frame subject it belongs to ({@link Draw#subject}), 0 for none. */
+    private int[] subjects = new int[64];
     private int[] queues = new int[64];
     private int[] orders = new int[64];
     private int[] batchKeys = new int[64];
@@ -243,6 +245,9 @@ public final class CgWorldRenderer {
     /** 0 until set: the tier's share then. */
     private float emissionScale;
     private CgGraphTexture emissionTarget, subjectTarget;
+    /** An impact frame's subject drawn at the opaque stage ({@link #recordOwnedSubject}), and the ring frame it holds. */
+    private CgGraphTexture ownedSubject;
+    private long ownedSubjectFrame = -1;
     private final CgPassConstants emissionConstants = new CgPassConstants();
     /** Whether the transparent passes write glows beside the target ({@link #mergeEmission(boolean)}). */
     private boolean mergeEmission = !"false".equals(System.getProperty("crystalgraphics.world.mergeEmission"));
@@ -630,6 +635,7 @@ public final class CgWorldRenderer {
         private float emission;
         private boolean half, onGpu;
         private String gpuGroup;
+        private int subject;
 
         private Draw start(CgMesh mesh, CgMaterial material) {
             this.mesh = mesh;
@@ -662,6 +668,22 @@ public final class CgWorldRenderer {
             half = false;
             onGpu = false;
             gpuGroup = null;
+            subject = 0;
+            return this;
+        }
+
+        /**
+         * Puts its glow in the subject of an impact frame whose settings name {@code key}
+         * ({@code CgPostSettings.subject}): only such draws are filled in ink, drawn before the opaque stage's own draws
+         * so no other effect's smoke hides them. 0, the default, is no key.
+         *
+         * <pre>{@code
+         * world.draw(dome, glow).at(x, y, z).subject(effectKey).submit();
+         * new CgPostSettings().impact(CgImpact.SUBJECT, 1f).subject(effectKey);
+         * }</pre>
+         */
+        public Draw subject(int key) {
+            subject = key;
             return this;
         }
 
@@ -1080,6 +1102,7 @@ public final class CgWorldRenderer {
         halves[count] = d.half;
         culledOnGpu[count] = d.onGpu;
         gpuGroups[count] = d.gpuGroup;
+        subjects[count] = d.subject;
         queues[count] = d.queue;
         orders[count] = d.order;
         batchKeys[count] = d.batchKey;
@@ -1155,6 +1178,7 @@ public final class CgWorldRenderer {
         halves = Arrays.copyOf(halves, n);
         culledOnGpu = Arrays.copyOf(culledOnGpu, n);
         gpuGroups = Arrays.copyOf(gpuGroups, n);
+        subjects = Arrays.copyOf(subjects, n);
         queues = Arrays.copyOf(queues, n);
         orders = Arrays.copyOf(orders, n);
         batchKeys = Arrays.copyOf(batchKeys, n);
@@ -1256,6 +1280,9 @@ public final class CgWorldRenderer {
             CgRecording recording = stage.recording();
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             bindings.clear();
+            // Before the opaque pass: its depth then holds the host's world and none of the draws below.
+            Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
+            if (subjectKey != null && subjectKey != 0) recordOwnedSubject(stage, recording, view, subjectKey);
             int distorting = 0;
             if (drawn > 0 && which == TRANSPARENT) {
                 if (distorts.length < meshes.length) distorts = new boolean[meshes.length];
@@ -1285,7 +1312,9 @@ public final class CgWorldRenderer {
                 if (afterDrawn > 0) recordPass(stage, recording, constants, TRANSPARENT_STATE, false, true, view, emission, scene);
             }
             if (which == TRANSPARENT && !scene) recordEmission(stage, recording, view, emission, emission != null ? EMIT_AFTER : EMIT_ALL);
-            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) recordSubject(stage, recording, view);
+            if (which == TRANSPARENT && stage.resources().has(CgFrameKeys.SUBJECT_READ)) {
+                recordSubject(stage, recording, view, stage.resources().get(CgFrameKeys.SUBJECT_READ));
+            }
             if (which == TRANSPARENT && overdraw && drawn > 0) recordOverdraw(stage, recording, view);
             if (which == TRANSPARENT) text.record(stage, view);
         }
@@ -1468,10 +1497,15 @@ public final class CgWorldRenderer {
 
     /**
      * What the hitting effect glows with, for an impact frame ({@link CgFrameKeys#SUBJECT}), while the post stack asks
-     * ({@link CgFrameKeys#SUBJECT_READ}): the emission target if one was drawn, else every visible glow drawn as the
-     * emission would be, into a quarter-size target. Under the HDR scene that is the only time glows are drawn apart.
+     * ({@link CgFrameKeys#SUBJECT_READ}): with a key, what {@link #recordOwnedSubject} drew; else the emission target if
+     * one was drawn, else every visible glow drawn as the emission would be, into a quarter-size target. Under the HDR
+     * scene that is the only time glows are drawn apart.
      */
-    private void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    private void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
+        if (key != 0) {
+            if (ownedSubjectFrame == frame) stage.resources().put(CgFrameKeys.SUBJECT, ownedSubject);
+            return;
+        }
         CgGraphTexture emission = stage.resources().get(CgFrameKeys.EMISSION);
         if (emission != null) {
             stage.resources().put(CgFrameKeys.SUBJECT, emission);
@@ -1484,6 +1518,49 @@ public final class CgWorldRenderer {
         }
         recordGlows(stage, recording, view, subjectTarget, false);
         stage.resources().put(CgFrameKeys.SUBJECT, subjectTarget);
+    }
+
+    /**
+     * The subject of an impact frame whose settings name {@code key}: the glows of the draws holding it
+     * ({@link Draw#subject}), drawn at the opaque stage before its own draws, so the depth hiding them is the host's
+     * world alone and no other effect's smoke covers them. The transparent stage publishes it as
+     * {@link CgFrameKeys#SUBJECT}; a frame where no such draw shows publishes none.
+     */
+    private void recordOwnedSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
+        if (emits.length < meshes.length) emits = new boolean[meshes.length];
+        int marked = 0;
+        for (int i = 0; i < count; i++) {
+            int queue = queues[i];
+            boolean e = subjects[i] == key && sets[i] == null && queue < CgRenderQueue.OVERLAY_THRESHOLD
+                    && emissions[i] > 0f && emitsLight(materials[i])
+                    && classify(i, queue >= CgRenderQueue.TRANSPARENT_THRESHOLD ? TRANSPARENT : OPAQUE, view) != SKIP;
+            emits[i] = e;
+            if (e) marked++;
+        }
+        ownedSubjectFrame = marked > 0 ? frame : -1;
+        if (marked == 0) return;
+        int w = Math.max(1, (int) (targetWidth * 0.25f)), h = Math.max(1, (int) (targetHeight * 0.25f));
+        if (ownedSubject == null || ownedSubject.getWidth() != w || ownedSubject.getHeight() != h) {
+            if (ownedSubject != null) recording.release(ownedSubject);
+            ownedSubject = CgGraphTexture.requested("cg_subject_owned", new CgTextureDesc(w, h, EMISSION_FORMAT));
+        }
+        stage.constants().write(constantsBlock, 0);
+        emissionConstants.read(constantsBlock, 0).resolution(w, h);
+        CgRasterPass glow = recording.raster(ownedSubject, CgLoad.clear(0f, 0f, 0f, 0f), emissionConstants, EMISSIVE_STATE,
+                CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target()).timed(GPU_EMISSION);
+        CgChunkBuilder chunks = recording.chunks().begin();
+        for (int i = 0; i < count; i++) {
+            if (!emits[i]) continue;
+            modelOf(i, view);
+            model.normal(normal);
+            for (CgMaterial link = materials[i]; link != null; link = link.getNextPass()) {
+                if (!link.hasEmissivePass()) continue;
+                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (pipeline != null) emissionDraw(chunks, pipeline, link, recording, i);
+            }
+        }
+        glow.add(chunks.end());
+        glow.end();
     }
 
     /**

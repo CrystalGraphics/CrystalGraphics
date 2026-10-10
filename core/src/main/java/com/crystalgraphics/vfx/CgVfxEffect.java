@@ -13,6 +13,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * An effect playing in a world: placed at an origin in doubles, simulated in floats relative to it on the
@@ -66,7 +67,8 @@ public abstract class CgVfxEffect {
     /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
     private CgVfxEmitterInstance[] due = new CgVfxEmitterInstance[0];
     private int dueCount;
-    private float dueDt;
+    /** Each queued emitter's step, in particle steps: an effect may run one slower than another (a hitstop's release). */
+    private float[] dueDts = new float[0];
     /** Live particles of the queued emitters the CPU steps: what decides whether the system's workers wake. */
     private int dueCpuParticles;
     /** The emitters {@link #tickEmitters} scheduled for the first time, for the system's GPU queue. */
@@ -79,6 +81,12 @@ public abstract class CgVfxEffect {
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
     protected final float seed;
+    /**
+     * Its draws' impact frame subject key ({@code CgWorldRenderer.Draw.subject}), never 0: an impact frame it opens
+     * names it ({@code CgPostSettings.subject}) to fill this effect alone in ink.
+     */
+    protected final int subject = SUBJECTS.incrementAndGet() & Integer.MAX_VALUE | 1;
+    private static final AtomicInteger SUBJECTS = new AtomicInteger();
 
     protected CgVfxEffect(CgVfxLook look, double x, double y, double z) {
         this.look = look;
@@ -269,9 +277,12 @@ public abstract class CgVfxEffect {
             child.share(system.spawnShare(child.emitter()));
             if (cpu) dueCpuParticles += child.particles().count();
         }
-        if (dueCount == due.length) due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
+        if (dueCount == due.length) {
+            due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
+            dueDts = Arrays.copyOf(dueDts, due.length);
+        }
+        dueDts[dueCount] = dt / CgVfxSystem.TICK * system.particleDt();
         due[dueCount++] = emitter;
-        dueDt = dt / CgVfxSystem.TICK * system.particleDt();
     }
 
     /** Whether {@link #tick(CgVfxEmitterInstance, float)} queued emitters this tick. */
@@ -295,13 +306,13 @@ public abstract class CgVfxEffect {
             CgVfxEmitterInstance emitter = due[i];
             if (emitter.scheduled() || gpu && emitter.time() == 0f) {
                 boolean fresh = !emitter.scheduled();
-                emitter.schedule(dueDt, originX, originY, originZ);
+                emitter.schedule(dueDts[i], originX, originY, originZ);
                 if (fresh) {
                     if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
                     admitted[admittedCount++] = emitter;
                 }
             } else {
-                emitter.tick(dueDt, air, originX, originY, originZ);
+                emitter.tick(dueDts[i], air, originX, originY, originZ);
                 if (emitter.rowsDue()) {
                     if (reporting.length == reportingCount) reporting = Arrays.copyOf(reporting, Math.max(4, reportingCount * 2));
                     reporting[reportingCount++] = emitter;

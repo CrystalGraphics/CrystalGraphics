@@ -77,10 +77,11 @@ public final class CgPostStack {
         return INSTANCE;
     }
 
-    /** Registers on {@code WORLD_TRANSPARENT}, once. The engine calls it when it starts. */
+    /** Registers on {@code WORLD_TRANSPARENT}, and on {@code WORLD_OPAQUE} for a keyed subject, once. The engine calls it when it starts. */
     public void install() {
         if (installed) return;
         installed = true;
+        CgRenderStage.WORLD_OPAQUE.register(DEMAND_ORDER, this::demandSubject);
         CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
     }
@@ -95,7 +96,15 @@ public final class CgPostStack {
     private void demand(CgStageFrame stage) {
         resolve(stage);
         if (bloom.intensity() * settings.bloom() > 0f) stage.resources().put(CgFrameKeys.EMISSION_READ, Boolean.TRUE);
-        if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, Boolean.TRUE);
+        if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
+    }
+
+    /** At the opaque stage, a drawn impact frame's subject key: the world renderer draws a keyed subject there. */
+    private void demandSubject(CgStageFrame stage) {
+        resolve(stage);
+        if (looks.drawsImpact(settings) && settings.impactSubject() != 0) {
+            stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
+        }
     }
 
     /** The built-in bloom, and its settings. */

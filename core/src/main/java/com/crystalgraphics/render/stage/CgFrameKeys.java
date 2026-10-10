@@ -45,14 +45,19 @@ public final class CgFrameKeys {
     public static final CgFrameKey<CgGraphTexture> SCENE = CgFrameKey.of("crystalgraphics:scene", CgGraphTexture.class);
 
     /**
-     * What the hitting effect glows with this firing, for an impact frame to draw: every visible Emissive pass, hidden by
-     * the scene's depth and by the transparent surfaces in front, linear HDR, at a quarter of the target's size or the
-     * emission target itself. Published at the end of {@code WORLD_TRANSPARENT} only while {@link #SUBJECT_READ} was put.
+     * What the hitting effect glows with this firing, for an impact frame to draw, linear HDR at a quarter of the
+     * target's size: with a key, the glows of the draws holding it, hidden by the host's world alone; without one, every
+     * visible Emissive pass, hidden by the scene's depth and the transparent surfaces in front (or the emission target
+     * itself). Published at the end of {@code WORLD_TRANSPARENT} only while {@link #SUBJECT_READ} was put.
      */
     public static final CgFrameKey<CgGraphTexture> SUBJECT = CgFrameKey.of("crystalgraphics:subject", CgGraphTexture.class);
 
-    /** That something will read {@link #SUBJECT} this firing: put before the world renderer records (the post stack's, while an impact frame shows). */
-    public static final CgFrameKey<Boolean> SUBJECT_READ = CgFrameKey.of("crystalgraphics:subject_read", Boolean.class);
+    /**
+     * That something will read {@link #SUBJECT} this firing, and the subject's key ({@code CgWorldRenderer.Draw.subject},
+     * 0 for every glow): put before the world renderer records, on {@code WORLD_OPAQUE} too when keyed, which is where a
+     * keyed subject is drawn. The post stack's, while a drawn impact frame shows.
+     */
+    public static final CgFrameKey<Integer> SUBJECT_READ = CgFrameKey.of("crystalgraphics:subject_read", Integer.class);
 
     private CgFrameKeys() {
     }
