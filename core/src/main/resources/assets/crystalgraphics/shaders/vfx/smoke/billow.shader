@@ -7,6 +7,9 @@
 // eye, so every lobe and every bump on it is drawn round its edge. All the noise is per vertex; a pixel only shades. It
 // erodes away at the end of its life, and as the camera comes near it, so a player inside a blast still sees out. Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM1:
 // x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the body, colour B the core.
+// Where it meets a floor or a wall (CG_OBJECT_SPARE: the surface's normal and its centre's height over it, Range's) it
+// squashes against it rather than passing through: rounded onto it, spread along it, its contours tracing the base, and
+// darker in a band just over it.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
@@ -23,11 +26,15 @@ Properties {
     _Glow    ("Brightness of the core while hot", float) = 1.7
     _NearFrom ("Blocks from the eye where it starts eroding away", float) = 8.0
     _NearTo  ("Blocks from the eye where it is gone", float) = 2.0
+    _Rest    ("Height it rests at over a surface, share of its size", float) = 0.08
+    _Round   ("How far over that the squash rounds off, share of its size", float) = 0.45
+    _Spread  ("How far it spreads along the surface for each block it is pushed off it", float) = 0.6
+    _Band    ("Height of the dark band over the surface, share of its size", float) = 0.22
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
     _VoronoiNearest ("Cells", sampler3D) = "cg_voronoi_nearest"
 }
 
-struct v2f { vec3 world; vec3 normal; vec3 lobe; };
+struct v2f { vec3 world; vec3 normal; vec3 lobe; float above; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
@@ -65,8 +72,27 @@ Pass {
         // Shrinking as it fades, alongside its erosion.
         vec3 local = p * h * (0.4 + 0.6 * sqrt(opacity));
         vec4 world = CG_OBJECT_TO_WORLD * vec4(local, 1.0);
+        vec3 normal = normalize(mat3(CG_OBJECT_TO_WORLD) * n);
+        o.above = 1.0e4;
+        vec4 contact = CG_OBJECT_SPARE;
+        if (dot(contact.xyz, contact.xyz) > 0.25) {
+            // Its height over the surface lifted to at least _Rest by a smooth maximum, so the base rounds onto it;
+            // pushed out along the surface as far, so it spreads. The normal keeps the squash's slope: flat where it is
+            // pressed, unchanged where it is not, so the contour runs round the base.
+            float size = length(CG_OBJECT_TO_WORLD[0].xyz), soft = max(_Round * size, 1.0e-3);
+            vec3 rel = world.xyz - CG_OBJECT_TO_WORLD[3].xyz;
+            float height = dot(contact.xyz, rel) + contact.w, gap = _Rest * size - height;
+            float k = max(soft - abs(gap), 0.0) / soft;
+            float lifted = max(height, _Rest * size) + k * k * soft * 0.25;
+            float push = lifted - height, slope = gap > 0.0 ? 0.5 * k : 1.0 - 0.5 * k;
+            vec3 along = rel - contact.xyz * dot(contact.xyz, rel);
+            world.xyz += contact.xyz * push + along / max(length(along), 1.0e-4) * push * _Spread;
+            slope = max(slope, 0.05);
+            normal = normalize(slope * normal + (1.0 - slope) * dot(normal, contact.xyz) * contact.xyz);
+            o.above = lifted / size;
+        }
         o.world = world.xyz;
-        o.normal = normalize(mat3(CG_OBJECT_TO_WORLD) * n);
+        o.normal = normal;
         // the lobe's dome, the small dome on it, the erosion value
         o.lobe = vec3(large, fine, fx_value_noise(p * 2.6 + seed * 9.0));
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
@@ -100,6 +126,9 @@ Pass {
         vec3 glow = coreColour * (0.88 + 0.25 * i.lobe.x) * (1.0 + (_Glow - 1.0) * core);
         col = mix(col, glow, smoothstep(_Core - d, _Core + d, shape));
         col *= mix(1.0, 0.65, life * life * (1.0 - hot));
+        // Where it meets the surface, the underside's shade in a hard band, as a cel shadow lies under a form.
+        float bd = fwidth(i.above) + 1.0e-3;
+        col = mix(col, mix(body * 0.62 * world, deep, 0.35), 1.0 - smoothstep(_Rest + _Band - bd, _Rest + _Band + bd, i.above));
         // Contours: wherever the surface turns away from the eye, a little wider in shadow.
         float facing = dot(n, toEye);
         float width = _Contour * (0.7 + 0.6 * (1.0 - lit));
