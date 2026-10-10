@@ -209,29 +209,24 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.12f, 0.85f, CgEasings.LINEAR)
             .to(0.55f, 0f, CgEasings.OUT_CUBIC)
             .build());
-    /** 1 for the blast's impact frame and the hitstop it plays in ({@link #BLAST_BEATS}); 0 for neither. */
+    /** 1 for the blast's impact frame ({@link #BLAST_BEATS}); 0 for none. */
     public static final CgVfxParam BLAST_IMPACT = SCHEMA.scalar("blastImpact", 1f);
     /**
-     * Seconds into the blast its hitstop starts: at the flash's main pulse ({@link #BLAST_FLASH} at 0.0625 of
-     * {@link #BLAST_TIME}), so the last beat, white, hands off to the flash at its peak and colour returns as it fades.
+     * Seconds into the blast its impact frame starts: at the flash's main pulse ({@link #BLAST_FLASH} at 0.0625 of
+     * {@link #BLAST_TIME}), where the flash holds while the beats play. The blast runs on beneath them, so their last
+     * beat, white, cuts to it grown, under the flash at its peak, and colour returns as the flash fades.
      */
     public static final CgVfxParam BLAST_HOLD_AT = SCHEMA.scalar("blastHoldAt", 0.15f);
     /** The blast's first beat: what glows white on black, a flash star with its cross at the burst. */
     public static final CgImpactFrame BLAST_HIT = CgImpactFrame.drawn().paper(CgImpactFrame.Tone.DARK).fillSubject(true)
             .star(0.045f).cross(true).jitter(3f).build();
     /**
-     * The impact frame's beats, played while the blast holds, on twos but for the cut: the hit, inverted, the edge
-     * hatched, focus lines held longest, then white, which fades over four frames as the blast moves again.
+     * The impact frame's beats, on twos but for the cut: the hit, inverted, the edge hatched, focus lines held longest,
+     * then white, cutting to the blast.
      */
     public static final CgImpactSequence BLAST_BEATS = CgImpactSequence.at(24f)
             .beat(BLAST_HIT, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.HATCHED, 2)
-            .beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).fadeOut(4).build();
-    /**
-     * Out of its hitstop the blast eases back to full speed over this many seconds, from {@link #BLAST_RELEASE_FROM}
-     * of it, rather than snapping from still to full: its clock, its dome and its emitters alike. 0 snaps.
-     */
-    public static final CgVfxParam BLAST_RELEASE = SCHEMA.scalar("blastRelease", 0.4f);
-    public static final CgVfxParam BLAST_RELEASE_FROM = SCHEMA.scalar("blastReleaseFrom", 0.2f);
+            .beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).build();
     /** The flash's peak: stops of exposure, red and blue split from the burst (0 to 1), and bloom's multiple. */
     public static final CgVfxParam BLAST_FLASH_STOPS = SCHEMA.scalar("blastFlashStops", 2.5f);
     public static final CgVfxParam BLAST_FLASH_CHROMATIC = SCHEMA.scalar("blastFlashChromatic", 0.5f);
@@ -367,11 +362,9 @@ public final class CgEnergyWave extends CgVfxEffect {
     private CgPostVolume blastFlash, blastImpact;
     private CgPostSettings blastImpactLook;
     private boolean impactFrameShowing;
-    /** The blast's own clock, held through its hitstop; NaN until it bursts. Whether its emitters have started. */
+    /** Seconds since the blast burst; NaN until it does. Whether its impact frame has cut back to it. */
     private float blastSince = Float.NaN;
     private boolean blastReleased;
-    /** How fast the blast runs this tick, 1 but while it eases out of its hitstop ({@link #BLAST_RELEASE}). */
-    private float blastSpeed = 1f;
     private float[] points = new float[64 * 3];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
@@ -466,7 +459,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         return stream.impacting();
     }
 
-    /** Whether the blast's impact frame shows this frame: its hitstop holds while {@link #BLAST_BEATS} play. */
+    /** Whether the blast's impact frame ({@link #BLAST_BEATS}) shows this frame. */
     public boolean impactFrameShowing() {
         return impactFrameShowing;
     }
@@ -506,7 +499,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             CgVfxTrace.lap(GROUND_FILL_NS, fill);
         }
         for (int i = 0; i < blast.size(); i++) {
-            tick(blast.get(i), dt * blastSpeed);
+            tick(blast.get(i), dt);
             emitted &= blast.get(i).finished();
         }
         boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
@@ -516,37 +509,24 @@ public final class CgEnergyWave extends CgVfxEffect {
     }
 
     /**
-     * The blast's hitstop: its clock runs to {@link #BLAST_HOLD_AT}, holds there while {@link #BLAST_BEATS} play, then
-     * runs on. Its emitters and shake start as it releases, since a GPU tenant its effect leaves unstepped coasts on
-     * rather than holding.
+     * The blast runs from its burst, beneath its impact frame, so the frame's last beat cuts to it grown. The flash
+     * holds at {@link #BLAST_HOLD_AT} while {@link #BLAST_BEATS} play, then fades; the shake waits for the cut.
      */
     private void tickBlast() {
         float real = age - blastAge, holdAt = get(BLAST_HOLD_AT);
         float hold = blastImpact != null ? BLAST_BEATS.seconds() : 0f;
-        if (real <= holdAt) {
-            blastSince = real;
-        } else if (hold == 0f) {
-            blastSince = real;
-        } else {
-            float out = Math.max(0f, real - holdAt - hold), ramp = get(BLAST_RELEASE), from = get(BLAST_RELEASE_FROM);
-            // Speed from + (1 - from) (t / ramp)^2 up to 1, and its integral for the clock.
-            if (out >= ramp) {
-                blastSince = holdAt + from * ramp + (1f - from) * ramp / 3f + (out - ramp);
-                blastSpeed = 1f;
-            } else {
-                float u = out / ramp;
-                blastSince = holdAt + from * out + (1f - from) * out * u * u / 3f;
-                blastSpeed = from + (1f - from) * u * u;
-            }
-        }
-        if (!blastReleased && (hold == 0f || real >= holdAt + hold)) {
-            blastReleased = true;
+        if (Float.isNaN(blastSince)) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BLAST_ZONE)) {
                 startBlast();
             }
+        }
+        blastSince = real;
+        if (!blastReleased && (hold == 0f || real >= holdAt + hold)) {
+            blastReleased = true;
             playShake(BLAST_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS) * get(BLAST_RADIUS));
         }
-        if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min(blastSince / get(BLAST_TIME), 1f)));
+        float flashSince = real <= holdAt ? real : Math.max(holdAt, real - hold);
+        if (blastFlash != null) blastFlash.weight(curve(BLAST_FLASH).at(Math.min(flashSince / get(BLAST_TIME), 1f)));
         if (blastImpact != null) {
             CgImpactFrame look = BLAST_BEATS.look(real - holdAt);
             if (look != null) blastImpactLook.impact(look, BLAST_BEATS.amount(real - holdAt), BLAST_BEATS.seed(real - holdAt));
