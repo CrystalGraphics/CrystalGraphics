@@ -19,7 +19,7 @@ vfx.submit(CgWorldRenderer.get());
 
 - `vfx.prepare(look)` warms a look's kernels, meshes and programs before it plays; `vfx.warmed()` says when all have
   built. A look played cold compiles on its first frame.
-- `vfx.clear()` ends every effect and gives back its GPU slots, keeping what it built for the next.
+- `vfx.clear()` ends every effect and its particles at once, keeping its meshes and warmed programs for the next.
 - The player's settings reach every effect through the system (density, quality tier, pause, tick rate); an effect
   never reads them.
 
