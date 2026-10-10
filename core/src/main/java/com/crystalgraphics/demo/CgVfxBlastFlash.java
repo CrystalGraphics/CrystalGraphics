@@ -34,9 +34,8 @@ public final class CgVfxBlastFlash {
     private final CgVfxSystem vfx = new CgVfxSystem();
     /** Waves fired and not yet stopped: each stops as it hits. */
     private final List<CgEnergyWave> flying = new ArrayList<>();
-    /** The wave in play; whether it was fired with an impact frame, has hit, and has shown it; when the scene clears. */
+    /** The wave in play, and when the scene clears: NaN until it bursts. */
     private CgEnergyWave current;
-    private boolean currentFramed, currentHit, currentShown;
     private float clock, clearAt = Float.NaN;
     private int fired;
 
@@ -56,7 +55,6 @@ public final class CgVfxBlastFlash {
         for (Iterator<CgEnergyWave> it = flying.iterator(); it.hasNext(); ) {
             CgEnergyWave wave = it.next();
             if (!wave.impacting()) continue;
-            if (wave == current) currentHit = true;
             wave.stop();
             it.remove();
         }
@@ -66,15 +64,12 @@ public final class CgVfxBlastFlash {
 
     private void cycle(double x, double y, double z, double forwardX, double forwardZ) {
         if (current != null) {
-            if (current.impactFrameShowing()) currentShown = true;
-            else if (Float.isNaN(clearAt) && (currentFramed ? currentShown : currentHit)) {
-                clearAt = clock + CgVfxDemoControls.get().waitSeconds();
-            }
+            // From the burst, after the impact frame when it has one, so a frame switched off midway waits on nothing.
+            if (Float.isNaN(clearAt) && current.burst()) clearAt = clock + CgVfxDemoControls.get().waitSeconds();
             if (Float.isNaN(clearAt) || clock < clearAt) return;
             vfx.clear();
             flying.clear();
         }
-        currentHit = currentShown = false;
         clearAt = Float.NaN;
         current = fire(x, y, z, forwardX, forwardZ);
     }
@@ -83,12 +78,10 @@ public final class CgVfxBlastFlash {
         CgVfxDemoControls controls = CgVfxDemoControls.get();
         double length = Math.hypot(forwardX, forwardZ);
         double rightX = length > 1.0e-6 ? -forwardZ / length : 1.0, rightZ = length > 1.0e-6 ? forwardX / length : 0.0;
-        CgEnergyWave wave = new CgEnergyWave(controls.look(CgEnergyWave.kamehameha()),
-                x - rightX * SPAN, y + MUZZLE_UP, z - rightZ * SPAN);
+        CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x - rightX * SPAN, y + MUZZLE_UP, z - rightZ * SPAN);
         wave.aim((float) rightX, -0.2f, (float) rightZ).target(x, y, z).fire();
         wave.ground(y);
         controls.apply(wave);
-        currentFramed = controls.impact();
         flying.add(vfx.play(wave));
         fired++;
         return wave;

@@ -215,8 +215,13 @@ public final class CgEnergyWave extends CgVfxEffect {
             .to(0.12f, 0.85f, CgEasings.LINEAR)
             .to(0.55f, 0f, CgEasings.OUT_CUBIC)
             .build());
-    /** 1 for the blast's impact frame ({@link #BLAST_BEATS}); 0 for none. */
+    /**
+     * 1 for the blast's impact frame ({@link #BLAST_BEATS}); 0 for none. Read when the blast bursts, which then holds
+     * for the frame or not; 0 later hides a frame already playing.
+     */
     public static final CgVfxParam BLAST_IMPACT = SCHEMA.scalar("blastImpact", 1f);
+    /** 1 draws the blast's billows; 0 keeps simulating them, undrawn, so the dome shows whole. Read every frame. */
+    public static final CgVfxParam BLAST_BILLOWS = SCHEMA.scalar("blastBillows", 1f);
     /**
      * Seconds into the blast its impact frame starts: its ignition, a small ball blazing, which the beats ink and the
      * blast holds at while they play, so the explosion first expands out of their last beat. The flash runs on beneath
@@ -493,6 +498,11 @@ public final class CgEnergyWave extends CgVfxEffect {
         return stream.impacting();
     }
 
+    /** Whether the blast has burst: its explosion started, after its impact frame when it has one. */
+    public boolean burst() {
+        return blastStarted;
+    }
+
     /** Whether the blast's impact frame ({@link #BLAST_BEATS}) shows this frame. */
     public boolean impactFrameShowing() {
         return impactFrameShowing;
@@ -576,8 +586,9 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (blastImpact != null) {
             CgImpactFrame look = BLAST_BEATS.look(real - holdAt);
             if (look != null) blastImpactLook.impact(look, BLAST_BEATS.amount(real - holdAt), BLAST_BEATS.seed(real - holdAt));
-            blastImpact.weight(look != null ? 1f : 0f);
-            impactFrameShowing = look != null;
+            boolean showing = look != null && get(BLAST_IMPACT) > 0f;
+            blastImpact.weight(showing ? 1f : 0f);
+            impactFrameShowing = showing;
         }
     }
 
@@ -789,7 +800,11 @@ public final class CgEnergyWave extends CgVfxEffect {
         float reach = radius * get(BLAST_RADIUS) * 2f;
         facing(placed, normalX, normalY, normalZ).scale(reach);
         drawAt(frame, layers, SLOT_DEBRIS, x, y, z, placed, reach, 0f, 1f, since, true);
-        for (int i = 0; i < blast.size(); i++) frame.particles(this, blast.get(i));
+        boolean billows = get(BLAST_BILLOWS) > 0f;
+        for (int i = 0; i < blast.size(); i++) {
+            if (!billows && blast.get(i).emitter().name().equals(BLAST.billows.name())) continue;
+            frame.particles(this, blast.get(i));
+        }
     }
 
     /** Every layer in {@code slot}, at {@code (x, y, z)} from the origin, as spheres or as ribbons. */

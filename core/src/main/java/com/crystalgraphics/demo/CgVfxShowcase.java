@@ -352,7 +352,7 @@ public final class CgVfxShowcase {
     /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
     public String laneOf(CgVfxEffect effect) {
         for (Lane lane : lanes) {
-            if (CgVfxDemoControls.get().sameLook(effect.look(), lane.look)) return lane.name;
+            if (effect.look() == lane.look) return lane.name;
         }
         return null;
     }
@@ -389,8 +389,7 @@ public final class CgVfxShowcase {
                 nextShot[k] = seconds + WAVE_HOLD + controls.waitSeconds();
                 if (waves[k] != null) waves[k].stop();
                 float[] target = lane.targets[shots[k] & 1];
-                CgEnergyWave wave = vfx.play(new CgEnergyWave(controls.look(lane.look),
-                        x + lane.from[0], y + lane.from[1], z + lane.from[2]));
+                CgEnergyWave wave = vfx.play(new CgEnergyWave(lane.look, x + lane.from[0], y + lane.from[1], z + lane.from[2]));
                 controls.apply(wave);
                 wave.aim(lane.aim[0], lane.aim[1], lane.aim[2])
                         .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
