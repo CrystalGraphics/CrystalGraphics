@@ -197,6 +197,9 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
   (`sceneFolds`), the Forward pass compiled with `SCENE_FOLD` keeps one output and adds the glow (times `CG_EMISSION`,
   `CG_SCENE_GLOW`, faded by fog) to the colour after the scene decode; under SRC_ALPHA it is weighed by the original
   alpha over the decoded coverage, so it adds what the Emissive pass's own draw would have.
+- **A named glow**: a fragment body naming `CG_GLOW` gets `_cg_glowRgb` and the macro before `fragment()`
+  (`appendFragmentUserFunction`), and every glow its `main` makes (merge, fold, its own Emissive draw) takes
+  `_cg_glowRgb` with the colour's alpha in place of the colour.
 - **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
   `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT`.
 
