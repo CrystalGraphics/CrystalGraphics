@@ -572,6 +572,7 @@ public final class CgWorldRenderer {
             ready &= prepared(link.pipeline(CgInstanceKind.OBJECT), joins);
             if (link.hasDepthPass()) ready &= prepared(link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT), joins);
             CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+            if (forward != null) ready &= prepared(forward.depthPrepass(), joins);
             if (link.hasEmissivePass()) {
                 ready &= prepared(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), joins);
                 if (forward != null) ready &= prepared(forward.emissionTarget(), joins);
@@ -1275,6 +1276,7 @@ public final class CgWorldRenderer {
                     phase[i] = AFTER;
                     afterDrawn++;
                 }
+                for (int i = 0; i < count; i++) prepass |= prepassed(i);
             }
 
             CgRecording recording = stage.recording();
@@ -1836,12 +1838,13 @@ public final class CgWorldRenderer {
     /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order, batch key and distance. */
     private long transparentKey(int i, int queue, float distance, CgHostView view) {
         int layer = layers[i].rank();
-        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, orders[i], batchKeys[i], distance);
+        boolean solid = materials[i].writesDepth();
+        if (!grouped[i]) return CgSortKey.transparent(queue, layer, distance, solid, orders[i], batchKeys[i], distance);
         float gx = (float) (groupPositions[i * 3] - view.x()) - eye.x;
         float gy = (float) (groupPositions[i * 3 + 1] - view.y()) - eye.y;
         float gz = (float) (groupPositions[i * 3 + 2] - view.z()) - eye.z;
         float groupDistance = Math.max(0f, gx * forward.x + gy * forward.y + gz * forward.z);
-        return CgSortKey.transparent(queue, layer, groupDistance, orders[i], batchKeys[i], distance);
+        return CgSortKey.transparent(queue, layer, groupDistance, solid, orders[i], batchKeys[i], distance);
     }
 
     /**
@@ -1925,8 +1928,8 @@ public final class CgWorldRenderer {
         if (emission != null) pass.attachmentIfTaken(emission);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < count; i++) {
-            if (phase[i] == SKIP || phase[i] == HALF || (depthOnlyPass && phase[i] != FORWARD_AND_PREPASS)
-                    || (phase[i] == AFTER) != after) continue;
+            if (phase[i] == SKIP || phase[i] == HALF) continue;
+            if (depthOnlyPass ? phase[i] != FORWARD_AND_PREPASS && !prepassed(i) : (phase[i] == AFTER) != after) continue;
             modelOf(i, view);
             model.normal(normal);
             boolean glows = sceneGlows && emissions[i] > 0f && queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
@@ -2107,11 +2110,18 @@ public final class CgWorldRenderer {
         }
     }
 
-    /** A material's depth pass, or its forward pass writing depth alone. */
+    /** Whether transparent draw {@code i} draws into the prepass: its material's {@code "Depth" = "Prepass"}. */
+    private boolean prepassed(int i) {
+        return (phase[i] == FORWARD || phase[i] == AFTER) && queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD
+                && materials[i].hasDepthPrepass();
+    }
+
+    /** A material's depth pass, its depth prepass, or its forward pass writing depth alone. */
     private CgPipeline depthPipeline(CgMaterial material) {
         if (material.hasDepthPass()) return material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
         CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
         if (forward == null) return null;
+        if (material.hasDepthPrepass()) return forward.depthPrepass();
         CgRenderState own = material.getPassRenderState(CgRenderPassVariant.FORWARD);
         CgRenderState colourless = depthOnly.get(own);
         if (colourless == null) depthOnly.put(own, colourless = own.withColorMask(CgColorMask.NONE));

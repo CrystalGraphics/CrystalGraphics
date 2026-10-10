@@ -23,7 +23,8 @@ Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — pos3/uv2/normal3), `pos3
 #pragma cg_feature FOG_ON
 #pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
 
-Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out
+Tags { "RenderType" = "Opaque" }      // controls shadow auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out;
+                                      // "Depth" = "Clip" | "Prepass": a transparent material writing depth (below)
 Queue = "Geometry"                    // Background|Geometry|AlphaTest|Transparent|Overlay
 
 Properties {
@@ -553,6 +554,49 @@ offset = CG_DISTORTION(bend * fade, 0.3 * fade, FX_EYE_DEPTH(ray, enter));
 - `CG_DISTORTION_PASS` is defined in both stages; the pass takes the material's keywords. Unlit, unfogged, one output.
 - `-Dcrystalgraphics.post.debug=distortion` shows the target (|offset| x 50 in red and green, the split in blue);
   `--mode=distortion` is the gate.
+
+#### Depth from a transparent material
+
+A transparent material writes no depth, so whatever blends over it later, including its own back faces and the draws
+behind it in one multi-draw, shows through. The `"Depth"` tag makes it write depth where it is solid, and the
+fragment's `cg_Clip(value)` says where that is. The two modes are Godot's Alpha Scissor and Depth Pre-Pass:
+
+```glsl
+// Clip: one pass. Below the threshold the fragment is discarded; above it, drawn and its depth written. Ink, debris.
+Tags { "RenderType" = "Transparent" "Depth" = "Clip" }
+void fragment(in v2f i, out vec4 fragColor) {
+    float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
+    cg_Clip(cover);                                   // discarded below 0.5
+    fragColor = vec4(colour * cover, cover);
+}
+
+// Prepass: soft throughout, opaque in its middle. The depth of where it is solid first, then the blend over it,
+// so only its nearest solid surface is shaded and what is behind it is hidden there. Smoke.
+Tags { "RenderType" = "Transparent" "Depth" = "Prepass" }
+Properties { _Clip ("How opaque it must be to hide what is behind it", float) = 0.9 }
+void fragment(in v2f i, out vec4 fragColor) {
+    float alpha = density(i);
+    cg_Clip(alpha);                                   // the prepass ends here; the blend goes on
+    fragColor = vec4(shade(i) * alpha, alpha);
+}
+```
+
+- **The threshold** is `CG_CLIP_THRESHOLD`: the material's `_Clip` (a `float` property) where it declares one, else 0.5.
+- **Clip** discards below it in every pass and writes depth in the Forward pass, whatever its `DepthWrite`.
+- **Prepass** is for a transparent queue only, and fails to parse on another. The world renderer draws a depth pass
+  of every such draw (`CgPipeline.depthPrepass()`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
+  blend) before the transparent pass, where `cg_Clip` discards below the threshold and returns above it: compute
+  only what decides it before the call. The Forward pass then blends with depth write off, and `cg_Clip` does nothing
+  there. Every vertex stage of the material is `invariant gl_Position`, so the two passes agree on depth exactly.
+- **A Clip material draws first in its group** (`CgSortKey`'s solid bit), before the rest of its effect whatever its
+  `order`: what blends over it then sees its depth. A Prepass material keeps its order: its depth is drawn before every
+  transparent draw already, and drawing its blend first would let what is behind its thin edge blend over it.
+- **A Prepass material should not fade against the scene's depth** (`cg_DepthBuffer`, soft particles): from the
+  transparent pass on, that holds its own prepass, and it would fade into itself. Fade by something else, as
+  `billow.shader` fades by its height over the surface it rests on. Godot's proximity fade makes the same rule.
+- **Clip before a fade into an opaque surface.** Where it thins only to meet the ground, call `cg_Clip` on the density
+  before that fade: the ground, drawn already, shows through it, and what draws later behind it stays hidden. Clipped
+  after it, that band has no depth, and every later draw behind it (a glow, a dome, its own back lobes) paints over it.
 
 #### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
 

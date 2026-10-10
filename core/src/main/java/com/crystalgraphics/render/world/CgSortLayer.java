@@ -23,8 +23,8 @@ import java.util.Objects;
  */
 public final class CgSortLayer {
 
-    /** Layers there may be: the rank is 8 bits of the sort key. */
-    public static final int MAX = 256;
+    /** Layers there may be: the rank is 7 bits of the sort key. */
+    public static final int MAX = 128;
 
     private static final List<CgSortLayer> ORDER = new ArrayList<>();
 

@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.material.parse;
 
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -205,6 +206,7 @@ public final class CgShaderParser {
             throw new CgShaderParseException("[" + resourcePath + "] ColorSpace is \"sRGB\" or \"Linear\", not \""
                     + colorSpace + "\"");
         }
+        CgParsedShader.DepthMode depthMode = depthMode(topTags.get("Depth"), renderQueue, resourcePath);
 
         // ── Step 4: extract Pass blocks (at least one required) ───────────
         List<String> passBlocks = CgStructureParser.extractPassBlocks(source, resourcePath);
@@ -378,6 +380,12 @@ public final class CgShaderParser {
             // 7k. Structural pass-body validations
             CgStructureParser.validatePassBody(passBody, passName, resourcePath);
 
+            if (CgParsedPass.LIGHT_MODE_FORWARD.equals(lightMode) && depthMode != CgParsedShader.DepthMode.NONE) {
+                CgDepthState depth = renderState.getDepth() != null ? renderState.getDepth() : CgDepthState.TEST_WRITE;
+                renderState = renderState.withDepth(new CgDepthState(depth.test(), depthMode == CgParsedShader.DepthMode.CLIP,
+                        depth.compareFunc()));
+            }
+
             passes.add(new CgParsedPass(lightMode, passName, renderState,
                     v2fBody, globalDecls, vertexBody, fragmentBody, fragOutput));
         }
@@ -385,7 +393,22 @@ public final class CgShaderParser {
         // ── Step 8: return assembled parsed shader ─────────────────────────
         return new CgParsedShader(shaderType, props, featureNames, engineBuffers, renderQueue,
                 renderType, castShadows, sceneColorMargin, "Unlit".equals(lighting), "Off".equals(fog),
-                "Linear".equals(colorSpace), Collections.unmodifiableList(passes), buffers.buffers(), buffers.structs());
+                "Linear".equals(colorSpace), depthMode, Collections.unmodifiableList(passes), buffers.buffers(),
+                buffers.structs());
+    }
+
+    /** The {@code "Depth"} tag: {@code "Clip"}, or {@code "Prepass"} for a transparent material; NONE when absent. */
+    private static CgParsedShader.DepthMode depthMode(String tag, int renderQueue, String resourcePath) {
+        if (tag == null) return CgParsedShader.DepthMode.NONE;
+        if ("Clip".equals(tag)) return CgParsedShader.DepthMode.CLIP;
+        if (!"Prepass".equals(tag)) {
+            throw new CgShaderParseException("[" + resourcePath + "] Depth is \"Clip\" or \"Prepass\", not \"" + tag + "\"");
+        }
+        if (renderQueue < CgRenderQueue.TRANSPARENT_THRESHOLD) {
+            throw new CgShaderParseException("[" + resourcePath + "] Depth \"Prepass\" is for a transparent material: "
+                    + "an opaque one's depth is drawn first already. Give it Queue = \"Transparent\", or Depth \"Clip\"");
+        }
+        return CgParsedShader.DepthMode.PREPASS;
     }
 
     /** The {@code "SceneColorMargin"} tag: a share of the target's height, above 0; NaN when absent. */

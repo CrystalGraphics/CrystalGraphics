@@ -8,15 +8,17 @@ import com.crystalgraphics.api.material.CgRenderQueue;
  * sorts in Niagara's levels: its group (an effect) back to front, then within it by its own order and distance.
  *
  * <pre>
- * opaque       63    60 59      52 51  48 47          32 31          16 15          0
- *              | slot  | layer    | ord  | material id  | depth bucket | mesh id     |
- * transparent  63    60 59      52 51          36 35  32 31          16 15          0
- *              | slot  | layer    | group bucket | ord  | batch key    | depth bucket |
+ * opaque       63    60 59    53 52 51  48 47          32 31          16 15          0
+ *              | slot  | layer  | 0 | ord  | material id  | depth bucket | mesh id     |
+ * transparent  63    60 59    53 52          37 36 35  32 31          16 15          0
+ *              | slot  | layer  | group bucket | s | ord  | batch key    | depth bucket |
  * </pre>
  *
  * <ul>
  *   <li>Slot: opaque 0, alpha test 1, transparent 2, from {@link CgRenderQueue}'s thresholds. Layer: a
  *       {@link CgSortLayer}'s rank. Order: 0 to 15, higher later, within the layer or the group.</li>
+ *   <li>s: 0 for a transparent draw writing depth, which draws before the rest of its group whatever its order: what
+ *       blends over it then sees its depth, and what is behind it is hidden by it.</li>
  *   <li>Opaque groups by material, then front to back, then by mesh, so neighbours that can instance are adjacent.
  *       Transparent is back to front alone: blending needs the order more than the batching. A group draws whole,
  *       back to front among the other groups and draws of its layer, so a haze nearer than an effect bends all of it,
@@ -43,18 +45,20 @@ final class CgSortKey {
 
     /**
      * A draw in a group at {@code groupDistance}, at {@code order} within it, then by {@code batchKey} (0 for most).
-     * A draw in no group is its own: its distance in both places.
+     * A draw in no group is its own: its distance in both places. One that writes depth goes first in its group.
      */
-    static long transparent(int queue, int layer, float groupDistance, int order, int batchKey, float distance) {
+    static long transparent(int queue, int layer, float groupDistance, boolean writesDepth, int order, int batchKey,
+                            float distance) {
         return head(queue, layer)
-                | ((long) (0xFFFF - bucket(groupDistance))) << 36
+                | ((long) (0xFFFF - bucket(groupDistance))) << 37
+                | (writesDepth ? 0L : 1L << 36)
                 | ((long) (order & 0xF)) << 32
                 | ((long) (batchKey & 0xFFFF)) << 16
                 | (0xFFFF - bucket(distance));
     }
 
     private static long head(int queue, int layer) {
-        return ((long) (slot(queue) & 0xF)) << 60 | ((long) (layer & 0xFF)) << 52;
+        return ((long) (slot(queue) & 0xF)) << 60 | ((long) (layer & 0x7F)) << 53;
     }
 
     /** At most 3: a slot of 8 or more would set the sign bit, and the keys compare as signed longs. */
