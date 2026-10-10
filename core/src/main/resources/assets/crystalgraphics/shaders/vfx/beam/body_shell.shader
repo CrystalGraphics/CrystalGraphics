@@ -67,7 +67,8 @@ Pass {
         float ridge = fx_ridged(vec3((s - age * _Flow * 2.2) * 0.35, around * 3.0) * _Scale + seed * 3.0, 3);
         float filament = pow(ridge, 10.0);
         float e = turbulence * 0.85 + filament * 0.3;
-        float threshold = mix(_Erosion, _Erosion - 0.25, rim);
+        // Filled in where a surge passes.
+        float threshold = mix(_Erosion, _Erosion - 0.25, rim) - 0.2 * clamp(i.pulse - 1.0, 0.0, 1.0);
         float aa = fwidth(e) + 0.002;
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
         float hot = smoothstep(threshold + 0.05, threshold + 0.3, e);

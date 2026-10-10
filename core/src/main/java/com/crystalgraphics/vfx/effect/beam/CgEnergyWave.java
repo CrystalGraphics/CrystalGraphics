@@ -21,6 +21,7 @@ import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
+import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
@@ -122,6 +123,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST_SHOCK = "blastShock";
     /** The shock ring at the release: a disc at the muzzle facing along the aim. */
     public static final String SLOT_SHOCK = "shock";
+    /** Dust torn off the ground under the body where it runs low: {@link #WAKE}'s particles. */
+    public static final String SLOT_WAKE = "wake";
 
     /** Its moments, in the order they come; each fires once. The charge's three are skipped when it fires at once. */
     public static final String MOMENT_CHARGE_START = "charge-start", MOMENT_CHARGE_MID = "charge-mid",
@@ -159,7 +162,16 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** How much pulses running down the body swell it, as a share of the radius. */
     public static final CgVfxParam THROB = SCHEMA.scalar("throb", 0.07f);
     /** How much brighter the pulses racing down the body flash, as a share of its brightness. */
-    public static final CgVfxParam PULSE = SCHEMA.scalar("pulse", 0.45f);
+    public static final CgVfxParam PULSE = SCHEMA.scalar("pulse", 0.25f);
+    /**
+     * Seconds between the surges of energy that leave the muzzle while it fires, on average and jittered: each a bulge
+     * outrunning the body to its head; 0 for none.
+     */
+    public static final CgVfxParam SURGE_GAP = SCHEMA.scalar("surgeGap", 0.6f);
+    /** How much a surge swells the body, as a share of the radius. */
+    public static final CgVfxParam SURGE = SCHEMA.scalar("surge", 0.6f);
+    /** How much brighter a surge flares, as a share of the body's brightness. */
+    public static final CgVfxParam SURGE_FLASH = SCHEMA.scalar("surgeFlash", 1.8f);
 
     /** Seconds the ball charges before the wave fires on its own; 0 fires at once. */
     public static final CgVfxParam CHARGE_TIME = SCHEMA.scalar("chargeTime", 1.6f);
@@ -299,6 +311,26 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The blast's cloud, dust, debris, embers, hot streaks, ground shock and ink: the shared explosion parts, coloured per look. */
     public static final CgVfxExplosion BLAST = new CgVfxExplosion(SCHEMA, "blast");
 
+    /**
+     * Dust the body tears off the ground where it runs low, from its release until it stops: thrown out flat from under
+     * it, braked by the air, rolling into a low skirt along its track and settling. Its rate is per block of the body
+     * within {@link #WAKE_REACH} radii of the ground, and its source moves to a spot under that stretch each tick.
+     */
+    public static final CgVfxEmitter WAKE = CgVfxEmitter.builder("waveWake").renderer(CgVfxEmitter.Renderer.QUADS)
+            .optional().capacity(1200).rate(36f, 0f, Float.POSITIVE_INFINITY).shape(0.4f, 1.4f)
+            .launch(0.05f, 0.45f, 1.4f).speed(4f, 11f).life(0.9f, 1.8f).size(0.3f, 0.7f, 1.4f)
+            .module(new CgVfxModule.Gravity(1.5f))
+            .module(new CgVfxModule.Drag(1.3f, 0.05f))
+            .module(new CgVfxModule.Turbulence(1.2f, 0.15f, 0.4f))
+            .module(new CgVfxModule.Wind(0.4f))
+            .module(new CgVfxModule.Ground(0f, 0.02f, 0f, 0.3f))
+            .size(CgKeyframes.start(0f, 0.4f).to(0.3f, 1f, CgEasings.OUT_CUBIC).to(1f, 1.8f, CgEasings.OUT_QUAD).build())
+            .opacity(CgKeyframes.start(0f, 0f).to(0.06f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_OUT_SINE).build())
+            .layer(SLOT_WAKE)
+            .build();
+    /** How close to the ground the body tears up {@link #WAKE}, in its radii, and the most blocks of it that count. */
+    private static final float WAKE_REACH = 3f, WAKE_BLOCKS = 16f;
+
     /** A band per block, sectors around and the frame's normal as a line: add it to a look to check the path. */
     public static final CgVfxLayer DEBUG = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/debug.shader")
             .colors(SHELL, CORE).order(CgVfxLayer.ORDER_BANDS).build();
@@ -318,9 +350,9 @@ public final class CgEnergyWave extends CgVfxEffect {
             .layer(CgVfxLayer.builder(BEAM + "body_light.shader").volume()
                     .radius(10f).colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
-                    .radius(1f).colors(SHELL, SHELL_HOT).order(CgVfxLayer.ORDER_SURFACE).build())
+                    .radius(1.15f).colors(SHELL, SHELL_HOT).order(CgVfxLayer.ORDER_SURFACE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
-                    .radius(0.52f).colors(CORE, CORE_RIM).order(CgVfxLayer.ORDER_CORE).build())
+                    .radius(1.25f).colors(CORE, SHELL).order(CgVfxLayer.ORDER_CORE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
                     .radius(1.2f).colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "body_arcs.shader").slot(SLOT_BODY_ARCS)
@@ -354,6 +386,10 @@ public final class CgEnergyWave extends CgVfxEffect {
             .add(BLAST)
             .layer(CgVfxLayer.builder(BEAM + "disc_shock.shader").slot(SLOT_SHOCK)
                     .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
+            .emitter(WAKE)
+            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/particle/dust.shader").slot(SLOT_WAKE)
+                    .colors(BLAST.dustColor, SHELL_HOT).order(CgVfxLayer.ORDER_SMOKE)
+                    .properties(b -> b.set1f("_Aspect", 0.55f).set1f("_Boil", 1.8f)).build())
             .build();
 
     private static final CgVfxLook FINAL_FLASH = KAMEHAMEHA.toBuilder()
@@ -371,13 +407,14 @@ public final class CgEnergyWave extends CgVfxEffect {
             // its billows roll out from its bigger dome's edge
             .emitter(BLAST.billows.toBuilder().shape(11.5f, 13.5f).build())
             .build();
+    // Sparking! Zero's, in linear: the core #fafef5, the band #9675fc, the head #eb98f7, the rim #383be3 (the glow).
     private static final CgVfxLook GALICK_GUN = KAMEHAMEHA.toBuilder()
-            .set(CORE, 1f, 0.95f, 1f, 1f)
-            .set(CORE_RIM, 0.95f, 0.72f, 1f, 1f)
-            .set(SHELL, 0.85f, 0.2f, 1.6f, 1f)
-            .set(SHELL_HOT, 1.3f, 0.75f, 1.6f, 1f)
-            .set(SPIRAL, 1.2f, 0.45f, 1.6f, 1f)
-            .set(GLOW, 0.75f, 0.18f, 1.4f, 0.9f)
+            .set(CORE, 0.96f, 0.99f, 0.91f, 1f)
+            .set(CORE_RIM, 0.83f, 0.31f, 0.93f, 1f)
+            .set(SHELL, 0.3f, 0.18f, 0.97f, 1f)
+            .set(SHELL_HOT, 0.83f, 0.31f, 0.93f, 1f)
+            .set(SPIRAL, 0.45f, 0.3f, 1f, 1f)
+            .set(GLOW, 0.06f, 0.066f, 1.15f, 0.9f)
             .set(BLAST.body, 0.42f, 0.08f, 0.85f, 1f)
             .set(BLAST.hot, 0.98f, 0.65f, 1f, 1f)
             .set(BLAST.debris, 0.06f, 0.01f, 0.1f, 1f)
@@ -385,12 +422,18 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** Seconds the root takes to settle after the release, and to fade after a stop. */
     private static final float SETTLE = 0.25f, FADE = 0.35f;
+    /** Surges in flight at most, and how much faster than the body they run. */
+    private static final int MAX_SURGES = 16;
+    private static final float SURGE_RUN = 1.6f;
 
     private final CgVfxStream stream = new CgVfxStream();
     private final CgVfxPath path = new CgVfxPath();
     private final Matrix4f placed = new Matrix4f();
     /** The blast's emitters, one per emitter of the look, started when it bursts. */
     private final List<CgVfxEmitterInstance> blast = new ArrayList<>();
+    /** The dust torn up under the body ({@link #WAKE}), made at the release where there is ground; and spots it has had. */
+    private CgVfxEmitterInstance wake;
+    private int wakeSpots;
     /** The world's surfaces round the burst, which its debris lands on; made when it bursts. */
     private CgVfxGround blastGround;
     /** The blast's screen flash and impact frame; opened when it bursts. */
@@ -405,6 +448,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     private boolean blastStarted;
     private boolean blastReleased;
     private float[] points = new float[64 * 3];
+    /** The surges in flight this frame ({@link #surges}): arc length along the body, and size. */
+    private final float[] surgeAt = new float[MAX_SURGES], surgeSize = new float[MAX_SURGES];
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
     private float aimX = 1f, aimY, aimZ;
@@ -547,6 +592,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             tick(blast.get(i), dt);
             emitted &= blast.get(i).finished();
         }
+        tickWake(dt);
         boolean ending = Float.isNaN(blastAge) ? drained && age > stopAge + FADE
                 : blastReleased && blastSince > Math.max(get(BLAST_TIME), get(DOME_TIME)) && emitted;
         if (momentsHeard()) moments(ending);
@@ -616,6 +662,43 @@ public final class CgEnergyWave extends CgVfxEffect {
     }
 
     /**
+     * The wake: made at the release over ground the host gave, then each tick spawning at a spot under the stretch of
+     * the body running low (last frame's rings, which {@link #submit} builds), as much as that stretch is long; stopped
+     * with the beam, its dust left to settle.
+     */
+    private void tickWake(float dt) {
+        float ground = groundHeight();
+        if (wake == null) {
+            CgVfxEmitter definition = look().emitter(WAKE.name());
+            if (definition == null || Float.isNaN(ground) || state() != State.PLAYING || age < releaseAge) return;
+            wake = new CgVfxEmitterInstance(definition, seed + 0.731f);
+            wake.start(0f, ground, 0f);
+            wake.ground(ground);
+        }
+        if (state() != State.PLAYING) {
+            wake.stop();
+        } else {
+            float total = 0f;
+            for (int i = 0; i < path.count(); i++) total += wakeWeight(i, ground);
+            wake.rateScale(Math.min(total * get(RING_SPACING), WAKE_BLOCKS));
+            float pick = total * CgVfxEmitterInstance.rand(Float.floatToIntBits(seed), wakeSpots++, 2);
+            for (int i = 0; i < path.count() && total > 0f; i++) {
+                pick -= wakeWeight(i, ground);
+                if (pick > 0f) continue;
+                wake.moveTo(path.x(i), ground, path.z(i));
+                break;
+            }
+        }
+        tick(wake, dt);
+    }
+
+    /** How much ring {@code i} tears up the ground: 1 within its radius of it, nothing past {@link #WAKE_REACH} radii. */
+    private float wakeWeight(int i, float ground) {
+        float r = path.radius(i);
+        return 1f - smooth(r, WAKE_REACH * r, path.y(i) - ground);
+    }
+
+    /**
      * Starts every emitter of the look at the target, each from its own seed, over the world's ground there; the blast's
      * ink only after an impact frame.
      */
@@ -625,6 +708,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
         for (int i = 0; i < emitters.size(); i++) {
             if (blastImpact == null && BLAST.drawn(emitters.get(i))) continue;
+            if (emitters.get(i).name().equals(WAKE.name())) continue;
             CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
             emitter.ground(groundHeight()).ground(blastGround);
@@ -711,6 +795,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, IMPACT_ZONE)) {
             submitImpact(frame, layers);
         }
+        if (wake != null) frame.particles(this, wake);
         boolean firing = state() == State.PLAYING && age >= releaseAge;
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, PATH_ZONE)) {
             int needed = (stream.size() + 2) * 3;
@@ -926,6 +1011,10 @@ public final class CgEnergyWave extends CgVfxEffect {
         float radius = get(RADIUS) * (launch > 0f ? 0.3f + 0.7f * smooth(0f, launch, sinceRelease) : 1f);
         bodyRadius = radius;
         float throb = get(THROB), pulse = get(PULSE), length = path.length();
+        int surges = surges(radius, length);
+        float surgeSwell = get(SURGE), surgeFlash = get(SURGE_FLASH);
+        // A surge's steep front and long wake, in blocks.
+        float front = 1.1f * radius, wake = 4.5f * radius;
         for (int i = 0; i < path.count(); i++) {
             float s = path.arc(i);
             float muzzle = firing ? 0.55f + 0.45f * smooth(0f, 2.5f * radius, s) : smooth(0f, radius, s);
@@ -933,13 +1022,45 @@ public final class CgEnergyWave extends CgVfxEffect {
             float tip = (float) Math.sqrt(smooth(0f, 0.8f * radius, length - s));
             float swell = 1f + throb * (float) Math.sin(s * 1.3f - age * 16f)
                     + 0.5f * throb * (float) Math.sin(s * 3.1f - age * 29f + seed * 6.28f);
-            path.radius(i, radius * muzzle * head * tip * swell);
+            float surge = 0f;
+            for (int k = 0; k < surges; k++) {
+                float d = s - surgeAt[k];
+                if (d > 3f * front || d < -3f * wake) continue;
+                float w = d > 0f ? d / front : d / wake;
+                surge += surgeSize[k] * (float) Math.exp(-w * w);
+            }
+            path.radius(i, radius * muzzle * head * tip * swell * (1f + surgeSwell * surge));
             // Sharp bright pulses racing down the body, faster than it flows.
             float flash = 0.5f + 0.5f * (float) Math.sin(s * 0.9f - age * 22f);
             flash *= flash;
             flash *= flash;
-            path.intensity(i, 1f + pulse * flash * flash);
+            path.intensity(i, 1f + pulse * flash * flash + surgeFlash * surge);
         }
+    }
+
+    /**
+     * Fills {@link #surgeAt} with each surge in flight, as arc length along the body, and {@link #surgeSize}; answers how
+     * many. Surge {@code k} leaves the muzzle near {@code k} gaps after the release, only while it fires, and grows to its
+     * size over its first few radii.
+     */
+    private int surges(float radius, float length) {
+        float gap = get(SURGE_GAP), since = age - releaseAge;
+        if (gap <= 0f || since <= 0f) return 0;
+        float speed = get(SPEED), run = speed * SURGE_RUN;
+        // Arc length is measured from the tail, which flies off from the muzzle once stopped.
+        float drift = Float.isNaN(stopAge) ? 0f : (age - stopAge) * speed;
+        float last = Float.isNaN(stopAge) ? since : stopAge - releaseAge;
+        int bits = Float.floatToIntBits(seed), n = 0;
+        int first = Math.max(0, (int) Math.floor((since - (length + drift + 12f * radius) / run) / gap) - 1);
+        for (int k = first; n < MAX_SURGES && gap * (k - 0.4f) <= last; k++) {
+            float born = gap * (k + 0.8f * (CgVfxEmitterInstance.rand(bits, k, 0) - 0.5f));
+            if (born < 0f || born > last) continue;
+            float fromMuzzle = (since - born) * run;
+            surgeAt[n] = fromMuzzle - drift;
+            surgeSize[n] = (0.6f + 0.4f * CgVfxEmitterInstance.rand(bits, k, 1)) * smooth(0f, 4f * radius, fromMuzzle);
+            n++;
+        }
+        return n;
     }
 
     private static float smooth(float edge0, float edge1, float x) {
