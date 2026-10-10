@@ -98,8 +98,8 @@ public final class CgVfxShowcase {
     private static final int SPHERES_ZONE = CgTrace.name("showcase.spheres");
     /** A stress lane's first shot lands this many seconds after the one before, so every beam holds at once. */
     private static final float STRESS_STAGGER = 0.1f;
-    /** Seconds per shot, and how long into it a wave stops firing, so its tail runs out and its blast clears before the next. */
-    private static final float WAVE_CYCLE = 10f, WAVE_HOLD = 5.4f;
+    /** Seconds a wave fires before it stops; its lane's next follows CgVfxDemoControls' wait after that. */
+    private static final float WAVE_HOLD = 5.4f;
     /** Heat haze on its own, at the spheres' height just in front of the front row, two spheres behind it. */
     private static final float HAZE_RADIUS = 4f;
     private static final float[] HAZE_AT = {0f, HEIGHT, 1.5f * SPACING + HAZE_RADIUS};
@@ -142,9 +142,10 @@ public final class CgVfxShowcase {
     private final float[] impacts = new float[12];
     private final CgVfxSystem vfx = new CgVfxSystem();
     private final Lane[] lanes;
-    /** Each lane's wave and the shot it is on. */
+    /** Each lane's wave, the shot it is on, when it fired and when the next fires (NaN: not yet scheduled). */
     private final CgEnergyWave[] waves;
     private final int[] shots;
+    private final float[] firedAt, nextShot;
     private CgVfxHeatHaze haze;
     private double waveX = Double.NaN, waveY, waveZ;
 
@@ -157,6 +158,9 @@ public final class CgVfxShowcase {
         this.lanes = lanes;
         this.waves = new CgEnergyWave[lanes.length];
         this.shots = filled(lanes.length, -1);
+        this.firedAt = new float[lanes.length];
+        this.nextShot = new float[lanes.length];
+        Arrays.fill(nextShot, Float.NaN);
     }
 
     /**
@@ -318,6 +322,7 @@ public final class CgVfxShowcase {
         vfx.clear();
         Arrays.fill(waves, null);
         Arrays.fill(shots, -1);
+        Arrays.fill(nextShot, Float.NaN);
         haze = null;
         waveX = Double.NaN;
     }
@@ -347,13 +352,14 @@ public final class CgVfxShowcase {
     /** Which lane's wave {@code effect} is, or null: what a capture names its moments by. */
     public String laneOf(CgVfxEffect effect) {
         for (Lane lane : lanes) {
-            if (effect.look() == lane.look) return lane.name;
+            if (CgVfxDemoControls.get().sameLook(effect.look(), lane.look)) return lane.name;
         }
         return null;
     }
 
     /**
-     * Each lane's loop around the grid at {@code (x, y, z)}: a shot every {@link #WAVE_CYCLE} seconds from its offset on,
+     * Each lane's loop around the grid at {@code (x, y, z)}: a shot from its offset on, then each {@link #WAVE_HOLD} plus
+     * the demo's wait after the last,
      * alternating between its two targets, each charging, growing out, bending at the waypoint, holding, running out and
      * bursting. Starts over when the grid moves.
      */
@@ -363,6 +369,7 @@ public final class CgVfxShowcase {
                 if (waves[k] != null) waves[k].kill();
                 waves[k] = null;
                 shots[k] = -1;
+                nextShot[k] = Float.NaN;
             }
             if (haze != null) haze.kill();
             haze = vfx.play(new CgVfxHeatHaze(CgVfxHeatHaze.standard(), x + HAZE_AT[0], y + HAZE_AT[1], z + HAZE_AT[2]));
@@ -372,16 +379,19 @@ public final class CgVfxShowcase {
             waveY = y;
             waveZ = z;
         }
+        CgVfxDemoControls controls = CgVfxDemoControls.get();
         for (int k = 0; k < lanes.length; k++) {
             Lane lane = lanes[k];
-            float t = seconds - lane.offset;
-            if (t < 0f) continue;
-            int shot = (int) Math.floor(t / WAVE_CYCLE);
-            if (shot != shots[k]) {
-                shots[k] = shot;
+            if (Float.isNaN(nextShot[k])) nextShot[k] = seconds + lane.offset;
+            if (seconds >= nextShot[k]) {
+                shots[k]++;
+                firedAt[k] = seconds;
+                nextShot[k] = seconds + WAVE_HOLD + controls.waitSeconds();
                 if (waves[k] != null) waves[k].stop();
-                float[] target = lane.targets[shot & 1];
-                CgEnergyWave wave = vfx.play(new CgEnergyWave(lane.look, x + lane.from[0], y + lane.from[1], z + lane.from[2]));
+                float[] target = lane.targets[shots[k] & 1];
+                CgEnergyWave wave = vfx.play(new CgEnergyWave(controls.look(lane.look),
+                        x + lane.from[0], y + lane.from[1], z + lane.from[2]));
+                controls.apply(wave);
                 wave.aim(lane.aim[0], lane.aim[1], lane.aim[2])
                         .via(x + lane.via[0], y + lane.via[1], z + lane.via[2])
                         .target(x + target[0], y + target[1], z + target[2]);
@@ -389,7 +399,7 @@ public final class CgVfxShowcase {
                 wave.ground(y);
                 waves[k] = wave;
             }
-            if (t - shot * WAVE_CYCLE > WAVE_HOLD) waves[k].stop();
+            if (waves[k] != null && seconds - firedAt[k] > WAVE_HOLD) waves[k].stop();
         }
         vfx.update(seconds);
         vfx.submit(world);

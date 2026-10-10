@@ -42,6 +42,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.function.Supplier;
 
 /**
@@ -52,14 +53,16 @@ import java.util.function.Supplier;
  * blasts    CgVfxBlasts: about 360,000 GPU particles bursting over the ground
  * beams     CgVfxShowcase: sixteen effect spheres and three beams, under its sky
  * modules   CgVfxModules: X6's particle modules, a station each
- * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame; its own keys
- *           (F, I, Y, comma, period) and HUD line
+ * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame
  *
- * H  the HUD on or off
- * N  the next scene, placed ahead of the camera; Shift+N the previous one
- * C  camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
- * L  bloom in the target's encoding, in linear light, then off
- * V  the VFX simulation on the CPU or the GPU; the scene starts over on it
+ * H    the HUD on or off
+ * N    the next scene, placed ahead of the camera; Shift+N the previous one
+ * C    camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
+ * L    bloom in the target's encoding, in linear light, then off
+ * V    the VFX simulation on the CPU or the GPU; the scene starts over on it
+ * G    the HDR scene on or off
+ * [ ]  the HDR scene's glow gain down or up a quarter;  - =  bloom's intensity
+ * F I B Y , .  CgVfxDemoControls, shared by every scene: flash, impact frame, billows, time (Shift+Y slower), the wait
  * </pre>
  *
  * <pre>{@code
@@ -118,14 +121,9 @@ public final class CgRenderDemo {
 
         void delete();
 
-        /** Acts on a key of its own, one of {@link #KEYS}, with Shift held or not; false for any other. */
-        default boolean press(int key, boolean shift) {
+        /** Whether it fires energy waves, so the HUD shows {@link CgVfxDemoControls}' wave switches as well as time. */
+        default boolean waves() {
             return false;
-        }
-
-        /** Its own line under the HUD's, or null. */
-        default String hudLine() {
-            return null;
         }
     }
 
@@ -164,13 +162,14 @@ public final class CgRenderDemo {
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.mainFramebuffer(), captured.width(), captured.height());
 
-    // The HUD: HUDRenderer's lines and look, 16 px at a 600-pixel-high window and in proportion above.
-    private static final int HUD_COLOR = 0xFFFF0000, HUD_PX = 16;
-    private static final float HUD_HEIGHT = 600f;
+    // The HUD: HUDRenderer's lines and look, 14 px where the window's shorter side is 600 pixels, in proportion above.
+    private static final int HUD_COLOR = 0xFFFF0000, HUD_OUTLINE = 0xFF000000, HUD_PX = 14;
+    private static final float HUD_SIDE = 600f, HUD_OUTLINE_EM = 0f;
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
     /** The demo's keys, then the scenes' own. */
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
-            CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G}, CgVfxBlastFlash.KEYS);
+            CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
+            CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS}, CgVfxDemoControls.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
     private boolean hudShown = true;
@@ -179,7 +178,7 @@ public final class CgRenderDemo {
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
     private CgTextRenderer hud;
     private CgFont hudFont, labelFont;
-    private int hudPx, hudHeight;
+    private int hudPx, hudSide;
     private boolean hudFailed, hudDirty = true;
     private CgTextLayout hudLayout;
     private int[] particleSamples = new int[256];
@@ -204,7 +203,7 @@ public final class CgRenderDemo {
             CgHostEnvironment world = frame.host().environment();
             keys(world.screenOpen());
             if (world.guiHidden() || !hudShown) return;
-            hudHeight = frame.host().height();
+            hudSide = Math.min(frame.host().width(), frame.host().height());
             frame.callback("demo.hud", drawHud);
         });
         if (CAPTURE != null) {
@@ -299,6 +298,11 @@ public final class CgRenderDemo {
             public void delete() {
                 showcase.delete();
             }
+
+            @Override
+            public boolean waves() {
+                return true;
+            }
         };
     }
 
@@ -362,13 +366,8 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public boolean press(int key, boolean shift) {
-                return blast.press(key, shift);
-            }
-
-            @Override
-            public String hudLine() {
-                return blast.hudLine();
+            public boolean waves() {
+                return true;
             }
         };
     }
@@ -406,7 +405,9 @@ public final class CgRenderDemo {
             LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[current].name(), warmFrames[current]);
             warmFrames[current] = -1;
         }
-        scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, CgFrameClock.seconds());
+        // Through the time switch, whichever scene shows, so its value carries across N.
+        float seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
+        scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
     }
 
     /** Counts the frames since the scene stood on the ground, and writes the profile once its frames are in. */
@@ -502,11 +503,20 @@ public final class CgRenderDemo {
                 restart = true;
             }
             case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
-            default -> {
-                if (current >= 0) scenes[current].press(key, shift);
-            }
+            // A quarter down or up, as the harness's.
+            case CgKeyCodes.KEY_LBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() / 1.25f);
+            case CgKeyCodes.KEY_RBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() * 1.25f);
+            case CgKeyCodes.KEY_MINUS -> scaleBloom(1f / 1.25f);
+            case CgKeyCodes.KEY_EQUALS -> scaleBloom(1.25f);
+            default -> CgVfxDemoControls.get().press(key, shift);
         }
         hudDirty = true;
+    }
+
+    /** Bloom's intensity times {@code by}, while it is on. */
+    private static void scaleBloom(float by) {
+        CgBloom bloom = CgPostStack.get().bloom();
+        if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
     }
 
     /** Blend, then linear, then off, then back at the intensity it had. */
@@ -544,7 +554,7 @@ public final class CgRenderDemo {
             hudDirty = true;
         }
         try {
-            int px = Math.round(HUD_PX * Math.max(1f, hudHeight / HUD_HEIGHT));
+            int px = Math.round(HUD_PX * Math.max(1f, hudSide / HUD_SIDE));
             if (px != hudPx) {
                 hudFont = sansSerif(px);
                 hudPx = px;
@@ -565,7 +575,7 @@ public final class CgRenderDemo {
             // rebuilds the ortho.
             hud.context().projection().m22(-1.0e-4f).m32(CgGL.isDepthReversed() ? 1f : -1f);
             hud.beginBatch();
-            hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).submit();
+            hud.draw().layout(hudLayout).font(hudFont).at(4f, 4f).color(HUD_COLOR).stroke(HUD_OUTLINE_EM, HUD_OUTLINE).submit();
             hud.endBatch();
         } catch (RuntimeException e) {
             hudFailed = true;
@@ -575,17 +585,18 @@ public final class CgRenderDemo {
 
     private String hudText() {
         CgBloom bloom = CgPostStack.get().bloom();
-        String sceneLine = scenes[wanted] != null ? scenes[wanted].hudLine() : null;
-        return "Hide [H]"
-                + "\nScene [N]: " + kinds[wanted].name()
-                + "\n" + String.format("FPS: %.1f", fps)
-                + (CgCameraShake.enabled() ? "\n" + String.format("Shake [C]: on, trauma %.2f", CgCameraShake.trauma())
-                : "\nShake [C]: off")
-                + (bloom.intensity() == 0f ? "\nBloom [L]: off" : bloom.linear() ? "\nBloom [L]: linear" : "\nBloom [L]: blend")
-                + "\nVFX sim [V]: " + (CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU ? "cpu" : "gpu")
-                + "\nHDR scene [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
-                + "\n" + String.format("Particles: %,d", particles)
-                + (sceneLine != null ? "\n" + sceneLine : "");
+        boolean waves = scenes[wanted] != null && scenes[wanted].waves();
+        return String.format(Locale.ROOT, "FPS: %.1f", fps)
+                + "\nScene [N]: " + kinds[wanted].name() + " - Hide [H]"
+                + String.format(Locale.ROOT, "\nParticles: %,d", particles)
+                + "\n\nVFX sim [V]: " + (CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU ? "cpu" : "gpu")
+                + (CgCameraShake.enabled() ? String.format(Locale.ROOT, " - Shake [C]: on, trauma %.2f", CgCameraShake.trauma())
+                : " - Shake [C]: off")
+                + "\nHDR [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
+                + String.format(Locale.ROOT, " | Glow [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
+                + "\nBloom [L]: " + (bloom.intensity() == 0f ? "off" : bloom.linear() ? "linear" : "blend")
+                + String.format(Locale.ROOT, " | Intensity [- =]: %.2f", bloom.intensity())
+                + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }
 
     /** The installed sans-serif at {@code px}, or null, logged, when there is none. */
