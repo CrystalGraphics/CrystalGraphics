@@ -54,12 +54,12 @@ import java.util.Map;
  * }</pre>
  *
  * <p>A mesh per particle ({@code MESHES}) draws the same particles as object records, culled and given levels again on
- * the GPU; each layer scales them and states its own customs:</p>
+ * the GPU; each layer scales them and states its own colours, leaving custom 0 each particle's velocity:</p>
  *
  * <pre>{@code
  * world.draw(billow, smoke)
  *      .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
- *      .instanceScale(layer.radius()).custom(0, radius, parameter, age, seed)
+ *      .instanceScale(layer.radius()).custom(2, r, g, b, a)
  *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
  * }</pre>
  *

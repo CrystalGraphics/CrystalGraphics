@@ -228,6 +228,7 @@ void Objects() {
         o.normal1 = vec4(turned[1] * inverse, contact.y);
         o.normal2 = vec4(turned[2] * inverse, contact.z);
         o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, contact.w);
+        o.custom0 = vec4(r.velocitySize.xyz, 0.0);
         o.custom1 = vec4(t, r.seedSpin.x, curve.y, r.seedSpin.w);
     }
     OBJECTS_WRITE(o);
