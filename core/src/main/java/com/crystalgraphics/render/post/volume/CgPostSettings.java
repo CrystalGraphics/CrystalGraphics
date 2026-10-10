@@ -26,7 +26,7 @@ public final class CgPostSettings {
     volatile int overrides;
     volatile float bloom = 1f, flash, vignette, chromatic, impact;
     volatile CgImpactFrame impactLook = CgImpactFrame.NEGATIVE;
-    volatile int impactSeed;
+    volatile int impactSeed, impactSubject;
     volatile float focusX = 0.5f, focusY = 0.5f;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
     private float focusWeight;
@@ -76,6 +76,21 @@ public final class CgPostSettings {
         return this;
     }
 
+    /**
+     * What a drawn impact frame fills in ink: the glows of the world draws tagged {@code key}
+     * ({@code CgWorldRenderer.Draw.subject}), which nothing else in the scene hides. 0, the default, is every visible
+     * glow, which another effect's smoke may cover.
+     *
+     * <pre>{@code
+     * settings.impact(look, 1f, seed).subject(key);
+     * world.draw(dome, glow).at(x, y, z).subject(key).submit();
+     * }</pre>
+     */
+    public CgPostSettings subject(int key) {
+        impactSubject = key;
+        return this;
+    }
+
     /** Where on screen, 0 to 1 from the bottom left, aberration and speed lines centre; else the volume's position. */
     public CgPostSettings focus(float x, float y) {
         focusX = x;
@@ -117,6 +132,10 @@ public final class CgPostSettings {
         return impactSeed;
     }
 
+    public int impactSubject() {
+        return impactSubject;
+    }
+
     public float focusX() {
         return focusX;
     }
@@ -131,7 +150,7 @@ public final class CgPostSettings {
         bloom = 1f;
         flash = vignette = chromatic = impact = 0f;
         impactLook = CgImpactFrame.NEGATIVE;
-        impactSeed = 0;
+        impactSeed = impactSubject = 0;
         focusX = focusY = 0.5f;
         focusWeight = 0f;
     }
@@ -150,6 +169,7 @@ public final class CgPostSettings {
             if (weight * from.impact >= impact) {
                 impactLook = from.impactLook;
                 impactSeed = from.impactSeed;
+                impactSubject = from.impactSubject;
             }
             impact += (from.impact - impact) * weight;
         }
