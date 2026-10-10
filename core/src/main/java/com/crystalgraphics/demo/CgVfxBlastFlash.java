@@ -7,6 +7,8 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfxMomentListener;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.look.CgVfxLayer;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -37,9 +39,9 @@ import java.util.Locale;
  */
 public final class CgVfxBlastFlash {
 
-    /** The keys {@link #press} takes: flash, impact frame, time, a shorter and a longer wait. */
-    public static final int[] KEYS = {CgKeyCodes.KEY_F, CgKeyCodes.KEY_I, CgKeyCodes.KEY_Y, CgKeyCodes.KEY_COMMA,
-            CgKeyCodes.KEY_PERIOD};
+    /** The keys {@link #press} takes: flash, impact frame, billows, time, a shorter and a longer wait. */
+    public static final int[] KEYS = {CgKeyCodes.KEY_F, CgKeyCodes.KEY_I, CgKeyCodes.KEY_B, CgKeyCodes.KEY_Y,
+            CgKeyCodes.KEY_COMMA, CgKeyCodes.KEY_PERIOD};
 
     private enum Flash { DOUBLE, SINGLE, OFF }
 
@@ -50,6 +52,8 @@ public final class CgVfxBlastFlash {
             .to(0.5f, 0f, CgEasings.OUT_CUBIC)
             .build();
     private static final CgKeyframes NONE = CgKeyframes.start(0f, 0f).to(1f, 0f, CgEasings.LINEAR).build();
+    /** The look with its billows simulated but undrawn, so the dome shows whole. */
+    private static final CgVfxLook NO_BILLOWS = without(CgEnergyWave.kamehameha(), CgEnergyWave.BLAST.billowLayer);
     private static final float[] SPEEDS = {1f, 0.25f, 0.1f};
     private static final float MIN_WAIT = 0.5f, MAX_WAIT = 5f;
     /** Blocks from the muzzle to the target, across the view, and the muzzle's height over the target. */
@@ -59,7 +63,7 @@ public final class CgVfxBlastFlash {
     /** Waves fired and not yet stopped: each stops as it hits. */
     private final List<CgEnergyWave> flying = new ArrayList<>();
     private Flash flash = Flash.DOUBLE;
-    private boolean impact = true;
+    private boolean impact = true, billows = true;
     private int speed;
     private float wait = 2f;
     /** The scene's own clock, slowed by the time switch, and the host seconds it last advanced to. */
@@ -112,7 +116,7 @@ public final class CgVfxBlastFlash {
     private CgEnergyWave fire(double x, double y, double z, double forwardX, double forwardZ) {
         double length = Math.hypot(forwardX, forwardZ);
         double rightX = length > 1.0e-6 ? -forwardZ / length : 1.0, rightZ = length > 1.0e-6 ? forwardX / length : 0.0;
-        CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x - rightX * SPAN, y + MUZZLE_UP, z - rightZ * SPAN);
+        CgEnergyWave wave = new CgEnergyWave(billows ? CgEnergyWave.kamehameha() : NO_BILLOWS, x - rightX * SPAN, y + MUZZLE_UP, z - rightZ * SPAN);
         wave.aim((float) rightX, -0.2f, (float) rightZ).target(x, y, z).fire();
         wave.ground(y);
         if (flash != Flash.DOUBLE) wave.set(CgEnergyWave.BLAST_FLASH, flash == Flash.SINGLE ? SINGLE : NONE);
@@ -128,6 +132,7 @@ public final class CgVfxBlastFlash {
         switch (key) {
             case CgKeyCodes.KEY_F -> flash = Flash.values()[(flash.ordinal() + 1) % Flash.values().length];
             case CgKeyCodes.KEY_I -> impact = !impact;
+            case CgKeyCodes.KEY_B -> billows = !billows;
             case CgKeyCodes.KEY_Y -> speed = (speed + 1) % SPEEDS.length;
             case CgKeyCodes.KEY_COMMA -> wait = Math.max(MIN_WAIT, wait - 0.5f);
             case CgKeyCodes.KEY_PERIOD -> wait = Math.min(MAX_WAIT, wait + 0.5f);
@@ -139,8 +144,15 @@ public final class CgVfxBlastFlash {
     }
 
     public String hudLine() {
-        return String.format(Locale.ROOT, "Flash [F]: %s   Impact frame [I]: %s   Time [Y]: %sx   Next after [, .]: %.1f s",
-                flash.name().toLowerCase(Locale.ROOT), impact ? "on" : "off", SPEEDS[speed], wait);
+        return String.format(Locale.ROOT,
+                "Flash [F]: %s   Impact frame [I]: %s   Billows [B]: %s   Time [Y]: %sx   Next after [, .]: %.1f s",
+                flash.name().toLowerCase(Locale.ROOT), impact ? "on" : "off", billows ? "on" : "off", SPEEDS[speed], wait);
+    }
+
+    private static CgVfxLook without(CgVfxLook look, CgVfxLayer dropped) {
+        CgVfxLook.Builder builder = look.toBuilder().clearLayers();
+        for (CgVfxLayer layer : look.layers()) if (layer != dropped) builder.layer(layer);
+        return builder.build();
     }
 
     /** Hears every moment its waves cross, as {@link CgVfxSystem#onMoment}. */
