@@ -48,19 +48,24 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
 
     /**
-     * The cloud: billows burst out mostly sideways, braked hard by the air, then rise a little on their heat as it cools
-     * and drift with the turbulence, swelling as they go. Each erodes away within a few blocks of the camera, so a
-     * player standing in the blast still sees out (the billow shader's {@code _NearFrom} and {@code _NearTo}).
+     * The cloud, rolling out from the foot of the blast's dome: puffs stream from a ring at its edge as it reaches it,
+     * low and flat along the ground, small at first and swelling, braked by the air; rising a little as they cool and
+     * swirling together in the turbulence. Nothing grows inside the dome, which stays the blast's to show. The ring
+     * suits a dome about ten blocks in radius; a bigger dome replaces this with {@code shape} at its own edge. Each erodes
+     * away within a few blocks of the camera, so a player standing in the blast still sees out (the billow shader's
+     * {@code _NearFrom} and {@code _NearTo}).
      */
     public static final CgVfxEmitter BILLOWS = CgVfxEmitter.builder("billows").renderer(CgVfxEmitter.Renderer.MESHES)
-            .capacity(64).burst(0f, 64).shape(2.4f).launch(-0.1f, 0.75f, 1.5f).speed(8f, 14f)
-            .life(5f, 6.5f).size(1.1f, 2f, 1f).spin(0.05f, 0.25f).heat(1f)
-            .module(new CgVfxModule.Drag(0.3f, 0.15f))
+            .capacity(130).rate(300f, 0.15f, 0.55f).shape(9f, 11f).launch(-0.05f, 0.3f, 2.2f).speed(5f, 12f)
+            .life(3.5f, 5.5f).size(0.6f, 1.4f, 1.6f).spin(0.1f, 0.6f).heat(1f)
+            .module(new CgVfxModule.Drag(0.8f, 0.08f))
             .module(new CgVfxModule.Buoyancy(1.2f, 2.5f))
-            .module(new CgVfxModule.Turbulence(1f, 0.06f, 0.15f))
+            .module(new CgVfxModule.Turbulence(1.5f, 0.08f, 0.2f))
             .module(new CgVfxModule.Wind(0.2f))
-            .size(CgKeyframes.start(0f, 1f).to(1f, 1.8f, CgEasings.OUT_CUBIC).build())
-            .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(0.5f, 0.92f, CgEasings.LINEAR)
+            .module(new CgVfxModule.Spin(0.4f))
+            .module(new CgVfxModule.Ground(0f, 0.3f, 0.3f, 0.4f))
+            .size(CgKeyframes.start(0f, 0.35f).to(0.2f, 1f, CgEasings.OUT_CUBIC).to(1f, 2f, CgEasings.OUT_QUAD).build())
+            .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.55f, 0.92f, CgEasings.LINEAR)
                     .to(1f, 0f, CgEasings.OUT_QUAD).build())
             .build();
 
