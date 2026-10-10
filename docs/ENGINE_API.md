@@ -204,8 +204,9 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   names the presets (`SUBJECT`, `HATCHED`, `FOCUS_LINES`, `WHITE`, ...).
 - **It plays as beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts, and
   gives each beat a seed; an effect sets the look it returns on a volume at full weight. `fadeOut(n)` holds the last
-  beat n frames past the end, stepping its amount down. `CgEnergyWave`'s blast (`BLAST_BEATS`) runs on beneath its
-  beats and cuts from white to the blast grown, under its flash held at the peak; `--mode=vfx-blast-flash` shows it.
+  beat n frames past the end, stepping its amount down. `CgEnergyWave`'s blast (`BLAST_BEATS`) holds at its ignition
+  while its beats play and bursts out of the white at full rate, under its flash held at the peak, on a punched-in shot
+  that pulls back (`BLAST_RETURN`); `--mode=vfx-blast-flash` shows it.
 - **The subject is the effect's own** when the settings name a key (`subject(key)`) and its draws carry it
   (`Draw.subject(key)`; a VFX effect tags its own): no other effect's smoke can hide it. One impact frame shows at a
   time, the heaviest volume's, so one subject does.
