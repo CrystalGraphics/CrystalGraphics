@@ -56,7 +56,7 @@ import java.util.List;
  * ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} its progress, 0..1); {@link #SLOT_STREAKS} and
  * {@link #SLOT_ARCS} as stateless ribbons ({@link CgVfxFrame#ribbons}, {@code CG_OBJECT_CUSTOM1} the ball's radius in
  * blocks, the ball's share of the streaks' sphere, and the intensity). At the target, facing back along the beam:
- * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
+ * {@link #SLOT_IMPACT}, {@link #SLOT_BLAST_GLOW}, {@link #SLOT_BLAST_LIGHT} and {@link #SLOT_BLAST_SHOCK} on spheres, {@link #SLOT_IMPACT_RING} on a disc, {@link #SLOT_SPLASH}
  * and {@link #SLOT_DEBRIS} as ribbons ({@code CG_OBJECT_CUSTOM1.z} the intensity, {@code .w} the burst's age); and
  * {@link #SLOT_BLAST} on a sphere ({@code .w} the blast's progress, 0..1). The blast's cloud, debris, embers and
  * shock streaks are {@link #BLAST}, the shared {@link CgVfxExplosion} kit, its emitters started where it bursts; its
@@ -111,6 +111,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final String SLOT_BLAST = "blast";
     /** The blast's flash and its heart: spheres at the target. */
     public static final String SLOT_BLAST_GLOW = "blastGlow";
+    /** The dome's light on what is round it: a sphere the dome's size, burning down as it cools. */
+    public static final String SLOT_BLAST_LIGHT = "blastLight";
     /** The blast's debris, one burst of ribbons. */
     public static final String SLOT_DEBRIS = "debris";
     /** Heat haze round the charge ball and round the contact orb, at their steady size: spheres, without the pulse. */
@@ -332,7 +334,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .colors(CORE_RIM, SHELL).order(CgVfxLayer.ORDER_BANDS).build())
             .layer(CgVfxLayer.builder(BEAM + "blast_dome.shader").slot(SLOT_BLAST)
                     .colors(CORE, SHELL).order(CgVfxLayer.ORDER_SURFACE).build())
-            .layer(orb("orb_light", SLOT_BLAST_GLOW, 6f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
+            .layer(orb("orb_light", SLOT_BLAST_LIGHT, 2.2f, 0f, GLOW, null, CgVfxLayer.ORDER_LIGHT))
             .layer(orb("orb_plasma", SLOT_BLAST_GLOW, 1f, 0f, CORE, SHELL, CgVfxLayer.ORDER_CORE))
             .layer(CgVfxLayer.builder(BEAM + "impact_splash.shader").slot(SLOT_DEBRIS)
                     .colors(SHELL_HOT, CORE).order(CgVfxLayer.ORDER_BANDS)
@@ -356,6 +358,8 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(BLAST.debris, 0.1f, 0.03f, 0.01f, 1f)
             .set(RADIUS, 1f)
             .set(SPEED, 50f)
+            // its billows roll out from its bigger dome's edge
+            .emitter(BLAST.billows.toBuilder().shape(11.5f, 13.5f).build())
             .build();
     private static final CgVfxLook GALICK_GUN = KAMEHAMEHA.toBuilder()
             .set(CORE, 1f, 0.95f, 1f, 1f)
@@ -745,8 +749,12 @@ public final class CgEnergyWave extends CgVfxEffect {
         float since = blastSince, blastTime = get(BLAST_TIME), t = Math.min(since / blastTime, 1f);
         float dome = radius * get(BLAST_RADIUS) * curve(BLAST_SIZE).at(t) * (1f + 0.04f * Math.max(since - blastTime, 0f));
         facing(placed, normalX, normalY, normalZ).scale(dome);
-        drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, Math.min(since / get(DOME_TIME), 1f), false);
+        float cooled = Math.min(since / get(DOME_TIME), 1f);
+        drawAt(frame, layers, SLOT_BLAST, x, y, z, placed, dome, dome, 1f, cooled, false);
         float glow = curve(BLAST_GLOW).at(t);
+        // Its light fits it: a source the dome's size reaching past it, burning down as it cools.
+        float lit = 0.35f * glow + 0.9f * (float) Math.pow(1f - cooled, 1.5);
+        if (lit > 0f) drawAt(frame, layers, SLOT_BLAST_LIGHT, x, y, z, placed, dome, dome, lit, 0f, false);
         if (glow > 0f) {
             float heart = dome * 0.5f;
             facing(placed, normalX, normalY, normalZ).rotateZ(age).scale(heart);
