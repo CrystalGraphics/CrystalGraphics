@@ -8,8 +8,12 @@ import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.buffer.CgReadback;
+import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.platform.gl.state.CgGlScope;
+import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -145,8 +149,9 @@ public final class CgRenderDemo {
     /** Frames each scene has waited for its programs since it was built; -1 once warmed. */
     private final int[] warmFrames = new int[kinds.length];
     private int current = -1, wanted;
-    /** The scene {@link #prewarm} built and is waiting on, or -1. */
+    /** The scene {@link #prewarm} built and is waiting on, or -1; {@code allWarm} once every scene is warmed. */
     private int prewarming = -1;
+    private boolean allWarm;
     /** V switched the simulation: the scene is cleared at the next frame, so all of it plays on the new one. */
     private boolean restart;
     private boolean anchored, grounded;
@@ -218,8 +223,14 @@ public final class CgRenderDemo {
             });
         }
         // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
-        // are prewarmed a frame each, after it.
+        // are prewarmed a frame each, after it, from every frame's end: the title screen's too, so a world finds them warm.
         build(wanted);
+        CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
+            @Override
+            public void onFrame(long frame) {
+                warmAhead();
+            }
+        });
     }
 
     /** Builds scene {@code i} and starts warming it: its textures, meshes, programs and kernels. */
@@ -239,6 +250,7 @@ public final class CgRenderDemo {
         }
         current = -1;
         prewarming = -1;
+        allWarm = false;
         if (hud != null && !hud.isDeleted()) hud.delete();
         hud = null;
     }
@@ -402,35 +414,44 @@ public final class CgRenderDemo {
         lastY = view.y();
         lastZ = view.z();
         // Nothing drawn until its programs are built, so no frame waits on a compile at its first draw.
-        if (warmFrames[current] >= 0) {
-            if (!scenes[current].warmed()) {
-                warmFrames[current]++;
-                return;
-            }
-            LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[current].name(), warmFrames[current]);
-            warmFrames[current] = -1;
-        }
-        prewarm();
+        if (!warm(current)) return;
         // Through the time switch, whichever scene shows, so its value carries across N.
         float seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
     }
 
-    /**
-     * Builds the scenes not yet shown, one at a time once the shown one is warmed, each after the last has warmed, so
-     * a first switch to one waits on nothing and no frame builds more than one.
-     */
-    private void prewarm() {
-        if (prewarming >= 0) {
-            if (!scenes[prewarming].warmed()) return;
-            LOGGER.info("[CgRenderDemo] {} prewarmed", kinds[prewarming].name());
-            prewarming = -1;
+    /** Whether scene {@code i}'s programs are built, polling them and counting the frames it waits. */
+    private boolean warm(int i) {
+        if (warmFrames[i] < 0) return true;
+        if (!scenes[i].warmed()) {
+            warmFrames[i]++;
+            return false;
         }
-        for (int i = 0; i < kinds.length; i++) {
-            if (scenes[i] != null) continue;
-            build(i);
-            prewarming = i;
-            return;
+        LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[i].name(), warmFrames[i]);
+        warmFrames[i] = -1;
+        return true;
+    }
+
+    /**
+     * At each frame's end: warms the scene to show, then builds the others one at a time, each after the last has
+     * warmed, so a first switch to one waits on nothing and no frame builds more than one.
+     */
+    private void warmAhead() {
+        if (allWarm || scenes[wanted] == null) return;
+        // The tick leaves state to the host; a compile commit may bind.
+        try (CgGlScope ignored = CgGlState.saveAll()) {
+            if (!warm(wanted)) return;
+            if (prewarming >= 0) {
+                if (!warm(prewarming)) return;
+                prewarming = -1;
+            }
+            for (int i = 0; i < kinds.length; i++) {
+                if (scenes[i] != null) continue;
+                build(i);
+                prewarming = i;
+                return;
+            }
+            allWarm = true;
         }
     }
 
