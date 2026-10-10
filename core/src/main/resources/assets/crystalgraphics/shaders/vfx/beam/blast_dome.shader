@@ -1,7 +1,9 @@
 // The final blast's dome: a shell of plasma bursting outward, nearly clear face-on so the core burns through it, its body
 // and a crisp bright rim in cel bands whose width the flow breaks up, threads of white heat wandering up it from the
 // ground, and faint wisps of plasma inside. Where it meets the ground it burns a band of light and fades into it rather than being cut. As it cools to
-// blue it erodes into dimming shreds until nothing is left. Drawn on CgVfxFrame.mesh's sphere, both faces.
+// blue it erodes into dimming shreds until nothing is left. Its front wall veils what is behind it, a little face-on and
+// more toward the rim, so smoke and ink on its far side read as behind it; what is in front hides it by depth. Drawn on
+// CgVfxFrame.mesh's sphere, both faces, premultiplied.
 // CG_OBJECT_CUSTOM1.z is an intensity, .w the blast's progress 0..1. Colour A is the hot burst, colour B the cool shell,
 // A's alpha a strength. CgEnergyWave.
 #type spatial
@@ -15,6 +17,7 @@ Properties {
     _Scale   ("Break-up frequency", float) = 3.0
     _Billow  ("Billows out of the sphere, share of its radius", float) = 0.16
     _Contact ("Width of the band of light where it meets the ground, share of its radius", float) = 0.12
+    _Veil    ("How much its front wall dims what is behind it", float) = 1.0
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -23,7 +26,7 @@ struct v2f { vec3 world; vec3 local; };
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ONE
+        Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
         DepthWrite OFF
         Cull OFF
@@ -93,9 +96,20 @@ Pass {
         float fade = smoothstep(0.0, 0.3, meet), band = fade * (1.0 - smoothstep(0.3, 1.0, meet));
         col = col * fade + mix(shell, hot, 0.5) * band * (0.8 + filament) * (0.3 + 0.7 * heat);
         col *= fx_flicker(age, seed);
-        fragColor = vec4(col * left * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.35), 1.0);
+        float veil = gl_FrontFacing ? min(_Veil * (0.2 + 0.35 * body + 0.25 * bright), 0.85) * left * fade : 0.0;
+        fragColor = vec4(col * left * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.35),
+                veil * CG_OBJECT_CUSTOM1.z);
     }
 }
 
-// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
-Pass { Tags { "LightMode" = "Emissive" } }
+// Its light again, into the world's bloom: the Forward pass's code, added, so its veil never darkens the glows behind
+// it there; on one draw with the Forward pass all the same.
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    RenderState {
+        Blend ONE ONE
+        DepthTest LEQUAL
+        DepthWrite OFF
+        Cull OFF
+    }
+}

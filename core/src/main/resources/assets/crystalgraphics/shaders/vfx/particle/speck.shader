@@ -23,7 +23,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite OFF
+        DepthWrite ON
         Cull OFF
     }
 
@@ -66,7 +66,10 @@ Pass {
         vec2 around = q / max(r, 1.0e-4);
         float edge = 0.5 + 0.48 * fx_value_noise(vec3(around * i.speck.w, i.speck.z));
         float aa = fwidth(r) + 1.0e-3;
-        float alpha = (1.0 - smoothstep(edge - aa, edge + aa, r)) * i.opacity * CG_OBJECT_CUSTOM2.a;
+        // Solid: it writes depth wherever it covers half a pixel (CgVfxLayer.ORDER_SOLID).
+        float cover = 1.0 - smoothstep(edge - aa, edge + aa, r);
+        if (cover < 0.5) discard;
+        float alpha = cover * i.opacity * CG_OBJECT_CUSTOM2.a;
 
         // A lumpy dome inside the outline, roughened by noise into facets.
         float inside = clamp(r / max(edge, 1.0e-3), 0.0, 1.0);

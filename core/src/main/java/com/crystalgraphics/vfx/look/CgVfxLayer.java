@@ -48,6 +48,12 @@ public final class CgVfxLayer {
     public static final int ORDER_DEPTH = 0;
     public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2;
     /**
+     * Solid particle looks that write depth where they cover (ink, debris): after the smoke and light pools, so they
+     * blend over the smoke in front of them, and before the glowing layers, which they hide. Each kind is one multi-draw
+     * ordered as a whole, so only depth orders a near stroke against a far billow.
+     */
+    public static final int ORDER_SOLID = 3;
+    /**
      * Layers that bend the scene behind them (heat haze, a shock front), through a Distortion pass: every haze of the
      * frame adds into one offset target, applied once. A haze also leaves its own hot body unbent.
      */

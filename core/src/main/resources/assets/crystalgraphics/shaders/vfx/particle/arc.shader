@@ -22,7 +22,7 @@ Pass {
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
-        DepthWrite OFF
+        DepthWrite ON
         Cull OFF
     }
 
@@ -53,7 +53,11 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float across = abs(i.stroke.x);
         float aa = fwidth(across) + 1.0e-3;
-        float alpha = (1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across)) * i.stroke.y * CG_OBJECT_CUSTOM2.a;
+        // Solid ink: it writes depth wherever it covers half a pixel, so what is behind it is hidden whatever order the
+        // draws run in (CgVfxLayer.ORDER_SOLID).
+        float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
+        if (cover < 0.5) discard;
+        float alpha = cover * i.stroke.y * CG_OBJECT_CUSTOM2.a;
         fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
     }
 }
