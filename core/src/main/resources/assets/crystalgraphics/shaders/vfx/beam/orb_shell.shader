@@ -1,8 +1,9 @@
 // An energy orb's skin (a wave's head, its charge ball): violently churning, its folds rolling back along -z, its trailing
 // half torn into comet tongues flung backward, eroded into crisp streaks with white-hot filaments, brightest where it
-// leads, flickering. Drawn on CgVfxFrame.mesh's sphere, +z forward. The layer's parameter is how much
-// its back fades out, 1 for a head blending into the body; CG_OBJECT_CUSTOM1.z an intensity. Colour A is the skin,
-// colour B its hottest streaks, A's alpha a strength. CgEnergyWave.
+// leads, flickering. Drawn on CgVfxFrame.mesh's sphere, +z forward. Premultiplied: the skin covers part of what is
+// behind it (_Cover), so it shows its colour over a bright scene. The layer's parameter is how much its back fades out,
+// 1 for a head blending into the body; CG_OBJECT_CUSTOM1.z an intensity. Colour A is the skin, colour B its hottest
+// streaks, A's alpha a strength. CgEnergyWave.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 
@@ -14,6 +15,7 @@ Properties {
     _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.56
     _Displace ("Churn, share of the size", float) = 0.24
     _Tongue   ("Comet tongues flung back, share of the size", float) = 0.7
+    _Cover    ("How much of what is behind the skin hides", float) = 0.7
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -22,7 +24,7 @@ struct v2f { vec3 world; vec3 local; vec3 centre; };
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ONE
+        Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
         DepthWrite OFF
         Cull OFF
@@ -60,12 +62,21 @@ Pass {
         float hot = smoothstep(threshold, threshold + 0.2, e);
         float lead = 0.55 + 0.45 * smoothstep(-0.2, 0.9, lp.z);
         float fade = mix(1.0, smoothstep(-0.95, -0.25, lp.z), CG_OBJECT_CUSTOM0.y);
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.4 + 1.3 * rim) * lead
-                + CG_OBJECT_CUSTOM3.rgb * filament * 2.0;
-        col *= fx_flicker(age, seed);
-        fragColor = vec4(col * alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
+        // The skin covers in its colour, so folds piled up settle on it rather than past white; filaments add light.
+        vec3 skin = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
+        vec3 glow = CG_OBJECT_CUSTOM3.rgb * filament * 2.0;
+        float strength = alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.55);
+        fragColor = vec4((skin + glow) * fx_flicker(age, seed) * strength, _Cover * strength);
     }
 }
 
-// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
-Pass { Tags { "LightMode" = "Emissive" } }
+// Its light again, into the world's bloom: the Forward pass's code, added, since covering would darken the glows behind.
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    RenderState {
+        Blend ONE ONE
+        DepthTest LEQUAL
+        DepthWrite OFF
+        Cull OFF
+    }
+}

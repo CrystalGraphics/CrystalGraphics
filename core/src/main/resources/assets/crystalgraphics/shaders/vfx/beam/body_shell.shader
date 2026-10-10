@@ -1,7 +1,9 @@
 // An energy wave's shell: a roaring skin of roiling, folding turbulence streaming forward, torn by white-hot filaments
 // racing along it, its silhouette lashed by flame tongues that burst out and fall back. Eroded by a noise threshold into
 // crisp edges, sparse where it faces the eye so the core shows through and filled at the silhouette; it flickers
-// violently. Colour A is the skin, colour B its hottest streaks and filaments, A's alpha a strength. CgEnergyWave.
+// violently. Premultiplied: its skin covers part of what is behind it (_Cover), so it shows its colour over a bright
+// scene rather than paling it. Colour A is the skin, colour B its hottest streaks and filaments, A's alpha a strength.
+// CgEnergyWave.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
@@ -16,6 +18,7 @@ Properties {
     _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.55
     _Displace ("Rolling bulges, share of the radius", float) = 0.16
     _Tongue   ("Flame tongues, share of the radius", float) = 0.5
+    _Cover    ("How much of what is behind the skin hides", float) = 0.7
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -24,7 +27,7 @@ struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 surface; float pulse; };
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
-        Blend ONE ONE
+        Blend ONE ONE_MINUS_SRC_ALPHA
         DepthTest LEQUAL
         DepthWrite OFF
         Cull OFF
@@ -72,12 +75,23 @@ Pass {
         float aa = fwidth(e) + 0.002;
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
         float hot = smoothstep(threshold + 0.05, threshold + 0.3, e);
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot * hot) * (0.35 + 1.1 * rim)
-                + CG_OBJECT_CUSTOM3.rgb * filament * 1.8;
+        // The skin covers in its own colour, so folds piled up settle on it rather than past white; only the hot
+        // streaks and filaments add light over it.
+        vec3 skin = CG_OBJECT_CUSTOM2.rgb * (0.6 + 0.5 * rim) * _Cover;
+        vec3 glow = CG_OBJECT_CUSTOM3.rgb * (0.6 * hot * hot + 1.8 * filament);
         float flicker = fx_flicker(age + s * 0.015, seed);
-        fragColor = vec4(col * alpha * i.pulse * flicker * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55), 1.0);
+        float strength = alpha * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55);
+        fragColor = vec4((skin + glow) * strength * i.pulse * flicker, _Cover * strength);
     }
 }
 
-// Its light again, into the world's bloom: the Forward pass's code and state, blurred over the scene.
-Pass { Tags { "LightMode" = "Emissive" } }
+// Its light again, into the world's bloom: the Forward pass's code, added, since covering would darken the glows behind.
+Pass {
+    Tags { "LightMode" = "Emissive" }
+    RenderState {
+        Blend ONE ONE
+        DepthTest LEQUAL
+        DepthWrite OFF
+        Cull OFF
+    }
+}
