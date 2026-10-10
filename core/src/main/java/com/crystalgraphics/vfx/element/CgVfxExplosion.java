@@ -84,7 +84,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     /**
      * Dust a speck kicks up where it comes to rest: a puff thrown up off the ground with a little of the speck's slide,
-     * braked hard, swelling and thinning as it settles. Spawned only by the specks' landings.
+     * braked hard, swelling and thinning as it settles on the ground under it. Spawned only by the specks' landings.
      */
     public static final CgVfxEmitter DUST = CgVfxEmitter.builder("dust").renderer(CgVfxEmitter.Renderer.QUADS)
             .optional().shape(0.05f).launch(0.3f, 1f, 1.5f).speed(0.4f, 1.4f)
@@ -92,23 +92,30 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
             .module(new CgVfxModule.Gravity(0.6f))
             .module(new CgVfxModule.Drag(2.5f, 0f))
             .module(new CgVfxModule.Wind(0.3f))
+            .module(new CgVfxModule.Ground(0f, 0.3f, 0f, 0.3f))
             .size(CgKeyframes.start(0f, 0.45f).to(1f, 1.7f, CgEasings.OUT_CUBIC).build())
             .opacity(CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_OUT_SINE).build())
             .build();
 
     /**
-     * The base surge: dust thrown flat along the ground from under the cloud, braked hard, swelling and thinning, so
-     * the billows stand in a skirt of it rather than on a hard line.
+     * The base surge: a ring of dust the shock front kicks up off the ground as it passes the dome's foot, spreading as a
+     * gravity current does. Thrown flat along the ground, it slides on it braked by the air; its fast front rides up into
+     * a head that rolls, its top lagging and falling back over ({@link CgVfxModule.Current}); small and dense at first, it
+     * swells and thins as it takes in air, and once it stalls its warm dust lofts and breaks up, so the billows stand in a
+     * skirt of it rather than on a hard line. None starts inside the dome, where it would brown the blast seen through its
+     * wall; like {@link #BILLOWS}, the ring suits a dome about ten blocks in radius.
      */
     public static final CgVfxEmitter SURGE = CgVfxEmitter.builder("surge").renderer(CgVfxEmitter.Renderer.QUADS)
-            .optional().capacity(100).burst(0f, 96).shape(3f).launch(0f, 0.12f, 1f).speed(9f, 16f)
-            .life(2.2f, 3.4f).size(1.4f, 2.6f, 1.5f).spin(0f, 0.4f)
-            .module(new CgVfxModule.Gravity(2f))
-            .module(new CgVfxModule.Drag(1.6f, 0.05f))
-            .module(new CgVfxModule.Wind(0.4f))
-            .module(new CgVfxModule.Ground(0f, 0.1f, 0.2f, 0.3f))
-            .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_CUBIC).build())
-            .opacity(CgKeyframes.start(0f, 0f).to(0.06f, 1f, CgEasings.OUT_QUAD).to(0.4f, 0.8f, CgEasings.LINEAR)
+            .optional().capacity(360).rate(980f, 0.08f, 0.42f).shape(9f, 11f).launch(0f, 0.04f, 1f).speed(9f, 19f)
+            .life(2.6f, 4f).size(0.25f, 0.55f, 1.4f)
+            .module(new CgVfxModule.Gravity(1.5f))
+            .module(new CgVfxModule.Drag(0.9f, 0.05f))
+            .module(new CgVfxModule.Turbulence(1.4f, 0.12f, 0.35f))
+            .module(new CgVfxModule.Wind(0.5f))
+            .module(new CgVfxModule.Current(2.2f, 0.3f, 2.2f, 2.5f))
+            .module(new CgVfxModule.Ground(0f, 0.02f, 0f, 0.3f))
+            .size(CgKeyframes.start(0f, 0.35f).to(0.25f, 1f, CgEasings.OUT_CUBIC).to(1f, 2f, CgEasings.OUT_QUAD).build())
+            .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.45f, 0.85f, CgEasings.LINEAR)
                     .to(1f, 0f, CgEasings.IN_OUT_SINE).build())
             .build();
 
@@ -178,7 +185,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         body = schema.color(name + "Body", 0.06f, 0.3f, 0.95f, 1f);
         hot = schema.color(name + "Hot", 0.42f, 0.7f, 1f, 1f);
         debris = schema.color(name + "Debris", 0.02f, 0.04f, 0.12f, 1f);
-        dustColor = schema.color(name + "Dust", 0.42f, 0.39f, 0.35f, 0.55f);
+        dustColor = schema.color(name + "Dust", 0.6f, 0.57f, 0.53f, 0.6f);
         sparkCore = schema.color(name + "SparkCore", 1f, 1f, 1f, 1f);
         billows = named(BILLOWS, name);
         surge = named(SURGE, name);
@@ -192,11 +199,13 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
                 .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
         surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
-                .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).build();
+                .colors(dustColor, hot).order(CgVfxLayer.ORDER_SMOKE)
+                .properties(b -> b.set1f("_Aspect", 0.6f).set1f("_Boil", 1.6f)).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
                 .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         dustLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(dust.layer())
-                .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).from(CgQuality.MEDIUM).build();
+                .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).from(CgQuality.MEDIUM)
+                .properties(b -> b.set1f("_Glow", 0f)).build();
         inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
                 .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
         rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
