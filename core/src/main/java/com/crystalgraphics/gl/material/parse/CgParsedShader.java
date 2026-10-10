@@ -58,6 +58,9 @@ import java.util.List;
  * @param linearColor
  *     {@code true} for {@code "ColorSpace" = "Linear"}: its Forward colour is linear already (a post pass, a copy of
  *     the scene), so it is not decoded from sRGB when drawn into the HDR scene ({@code CG_LINEAR_SCENE}).
+ * @param depthMode
+ *     The material-level {@code "Depth"} tag: how a transparent material writes depth, {@link DepthMode#NONE} when
+ *     absent.
  * @param passes
  *     Ordered, unmodifiable list of parsed {@link CgParsedPass} records.
  *     Contains at least one entry — the parser throws
@@ -73,8 +76,38 @@ import java.util.List;
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
                               List<String> featureNames, List<String> engineBuffers, int renderQueue,
                               String renderType, boolean castShadows, float sceneColorMargin, boolean unlit,
-                              boolean unfogged, boolean linearColor,
+                              boolean unfogged, boolean linearColor, DepthMode depthMode,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs) {
+
+    /**
+     * How a material writes depth where it is solid, by its {@code "Depth"} tag (Godot's alpha scissor and depth
+     * pre-pass, HDRP's transparent depth prepass). Its fragment says where it is solid with {@code cg_Clip(value)},
+     * solid at or above {@code _Clip} (0.5 where the shader declares none).
+     *
+     * <pre>{@code
+     * Tags { "RenderType" = "Transparent" "Depth" = "Clip" }      // a stroke: blended, writing depth where solid
+     * Tags { "RenderType" = "Transparent" "Depth" = "Prepass" }   // a billow: its solid core's depth drawn first
+     * ...
+     * float cover = shape(i.uv);
+     * cg_Clip(cover);                                            // in fragment(), never in a function it calls
+     * fragColor = vec4(colour * cover * fade, cover * fade);
+     * }</pre>
+     */
+    public enum DepthMode {
+        /** What its passes' render states say; {@code cg_Clip} discards below the threshold. */
+        NONE,
+        /**
+         * One pass, writing depth: its Forward passes write depth, and {@code cg_Clip} discards below the threshold in
+         * every pass. For what is solid wherever it draws much at all: ink, debris.
+         */
+        CLIP,
+        /**
+         * A transparent material whose depth is drawn first where {@code cg_Clip} passes, before every transparent draw
+         * of the firing; then its Forward passes blend with depth unwritten, and {@code cg_Clip} does nothing. For what
+         * is solid in its middle and soft at its edge: smoke. One more draw for each of its draws.
+         */
+        PREPASS
+    }
 
     /** The declared buffer of that name, or null. */
     public CgBufferDecl buffer(String name) {

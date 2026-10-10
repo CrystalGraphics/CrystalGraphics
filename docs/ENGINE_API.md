@@ -120,7 +120,9 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   `.order(0..15)` within it, then by `.batchKey(0..65535)` before distance: draws of one material given one key run
   together and join into one multi-draw (the VFX's GPU particles, a group per system). Equal neighbours instance.
 - `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
-  `WORLD_TRANSPARENT` the transparent pass. Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
+  `WORLD_TRANSPARENT` a prepass of the transparent materials marked `"Depth" = "Prepass"`, then the transparent pass.
+  A transparent draw writing depth in its own draw (`"Depth" = "Clip"`) sorts first in its group
+  (`docs/SHADERS.md` § *Depth from a transparent material*). Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
   for a reader only where one draws.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.

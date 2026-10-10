@@ -65,6 +65,7 @@ public final class CgPipeline {
     private final boolean emission;
     private final boolean cover;
     private final boolean fold;
+    private final boolean depth;
     /** What the program is compiled with: the pass's keywords, and the multi-draw's. */
     private final Set<String> compiled;
     @Nullable
@@ -77,6 +78,8 @@ public final class CgPipeline {
     private CgPipeline occluding;
     @Nullable
     private CgPipeline folding;
+    @Nullable
+    private CgPipeline depthOnly;
     /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
     private int slots, slotsRevision = -1;
 
@@ -102,14 +105,16 @@ public final class CgPipeline {
         this.emission = (key.flags & EMISSION) != 0;
         this.cover = (key.flags & COVER) != 0;
         this.fold = (key.flags & FOLD) != 0;
+        this.depth = (key.flags & DEPTH) != 0;
         Set<String> passKeywords = takesKeywords(pass) ? keywords : Collections.emptySet();
-        if (multiDraw || overdraw || emission || cover || fold) {
+        if (multiDraw || overdraw || emission || cover || fold || depth) {
             Set<String> more = new TreeSet<>(passKeywords);
             if (multiDraw) more.add(CgMaterialShaderCompiler.MULTI_DRAW);
             if (overdraw) more.add(CgMaterialShaderCompiler.DEBUG_OVERDRAW);
             if (emission) more.add(CgMaterialShaderCompiler.EMISSION_TARGET);
             if (cover) more.add(CgMaterialShaderCompiler.EMISSION_COVER);
             if (fold) more.add(CgMaterialShaderCompiler.SCENE_FOLD);
+            if (depth) more.add(CgMaterialShaderCompiler.DEPTH_PREPASS);
             passKeywords = Collections.unmodifiableSet(more);
         }
         this.compiled = passKeywords;
@@ -130,11 +135,11 @@ public final class CgPipeline {
         return INTERNED.computeIfAbsent(new Key(shader, pass, variant, state, kind, 0), CgPipeline::register);
     }
 
-    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16;
+    private static final int MULTI = 1, OVERDRAW = 2, EMISSION = 4, COVER = 8, FOLD = 16, DEPTH = 32;
 
     private int flags() {
         return (multiDraw ? MULTI : 0) | (overdraw ? OVERDRAW : 0) | (emission ? EMISSION : 0) | (cover ? COVER : 0)
-                | (fold ? FOLD : 0);
+                | (fold ? FOLD : 0) | (depth ? DEPTH : 0);
     }
 
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
@@ -227,6 +232,36 @@ public final class CgPipeline {
             if (parsed == null || !CgMaterialShaderCompiler.sceneFolds(parsed)) return null;
             made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, state, kind, flags() | FOLD), CgPipeline::register);
             folding = made;
+        }
+        return made;
+    }
+
+    /**
+     * This Forward pipeline drawing depth alone where it is solid: a {@code "Depth" = "Prepass"} material's prepass
+     * ({@link CgMaterialShaderCompiler#DEPTH_PREPASS}), its fragment run up to {@code cg_Clip}, colour off and depth
+     * written under its own test and cull. Both programs declare {@code invariant gl_Position}, so its colour draw
+     * passes its depth test exactly where this wrote. Null for any other material. Any thread.
+     *
+     * <pre>{@code
+     * CgPipeline prepass = material.pipeline(CgInstanceKind.OBJECT).depthPrepass();
+     * if (prepass != null) chunks.draw(prepass, bindings, mesh);    // before the transparent draws of the firing
+     * }</pre>
+     */
+    @Nullable
+    public CgPipeline depthPrepass() {
+        if (depth) return this;
+        if (pass != CgRenderPassVariant.FORWARD || overdraw || emission || cover || fold) return null;
+        CgPipeline made = depthOnly;
+        if (made == null) {
+            CgParsedShader parsed = shader.ensureParsed();
+            if (parsed == null || parsed.depthMode() != CgParsedShader.DepthMode.PREPASS) return null;
+            CgDepthState own = state.getDepth();
+            CgRenderState writing = CgRenderState.builder().blend(CgBlendState.DISABLED)
+                    .depth(new CgDepthState(true, true, own != null && own.test() ? own.compareFunc() : CgGL.GL_LEQUAL))
+                    .cull(state.getCull()).colorMask(CgColorMask.NONE).build();
+            made = INTERNED.computeIfAbsent(new Key(shader, pass, keywords, writing, kind, flags() | DEPTH),
+                    CgPipeline::register);
+            depthOnly = made;
         }
         return made;
     }
@@ -483,7 +518,7 @@ public final class CgPipeline {
     @Override
     public String toString() {
         return "CgPipeline#" + id + "(" + pass + " " + keywords + " " + kind + (multiDraw ? " multi-draw" : "")
-                + (overdraw ? " overdraw" : "") + (emission ? " emission" : "") + ")";
+                + (overdraw ? " overdraw" : "") + (emission ? " emission" : "") + (depth ? " depth prepass" : "") + ")";
     }
 
     /** A shader and a render state by identity, since neither has value equality worth trusting. */

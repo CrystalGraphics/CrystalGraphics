@@ -8,6 +8,7 @@ import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.shader.CgShader;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.compute.lower.CgLoweredEmitter;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -1202,6 +1203,31 @@ public final class CgMaterial {
         if (cgMaterialShader == null) return false;
         CgParsedShader parsed = cgMaterialShader.ensureParsed();
         return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
+    }
+
+    /**
+     * Whether its shader says {@code "Depth" = "Prepass"}: the world renderer draws its depth where {@code cg_Clip}
+     * passes ({@code CgPipeline.depthPrepass}) before every transparent draw of the firing. A parse, never a compile.
+     */
+    public boolean hasDepthPrepass() {
+        if (cgMaterialShader == null) return false;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.depthMode() == CgParsedShader.DepthMode.PREPASS;
+    }
+
+    /**
+     * Whether its Forward draw writes depth ({@code "Depth" = "Clip"}, or {@code DepthWrite ON}). A transparent one then
+     * draws first in its group, before what blends over it. A prepass is not this: its depth is drawn before every
+     * transparent draw, and its blend keeps its order, so what is behind its thin edge never blends over it. A parse,
+     * never a compile.
+     */
+    public boolean writesDepth() {
+        if (cgMaterialShader == null) return false;
+        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        if (parsed == null) return false;
+        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        CgDepthState depth = forward == null ? null : forward.renderState().getDepth();
+        return depth != null && depth.write();
     }
 
     /**

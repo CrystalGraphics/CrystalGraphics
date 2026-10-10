@@ -132,6 +132,12 @@ public final class CgMaterialShaderCompiler {
      */
     public static final String SCENE_FOLD = "CG_SCENE_FOLD";
 
+    /**
+     * The engine's keyword for a {@code "Depth" = "Prepass"} material's Forward pass drawn into depth alone: its
+     * fragment runs until {@code cg_Clip}, which discards below the threshold and otherwise returns there.
+     */
+    public static final String DEPTH_PREPASS = "CG_DEPTH_PREPASS";
+
     /** Code applying {@code CG_EMISSION} itself; not {@code CG_EMISSION_TARGET}. */
     private static final Pattern READS_EMISSION = Pattern.compile("\\bCG_EMISSION\\b");
 
@@ -432,7 +438,8 @@ public final class CgMaterialShaderCompiler {
                                                       CgUniformBuffer matPropsUbo,
                                                       CompileConfig config) {
         final String depthVertexBody;
-        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)) {
+        if (isSimpleVertex(forwardPass) && !readsBuffers(shader, forwardPass)
+                && shader.depthMode() != CgParsedShader.DepthMode.PREPASS) {
             depthVertexBody =
                     "    // Auto-generated depth prepass -- minimal position transform\n"
                     + "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n";
@@ -443,7 +450,7 @@ public final class CgMaterialShaderCompiler {
         }
 
         final String depthFragmentBody;
-        if (forwardPass.fragmentBody().contains("discard")) {
+        if (clips(forwardPass)) {
             depthFragmentBody = forwardPass.fragmentBody();
         } else {
             depthFragmentBody = "    // Depth-only prepass -- rasterizer writes depth automatically.\n";
@@ -487,6 +494,16 @@ public final class CgMaterialShaderCompiler {
      * @param pass the pass to evaluate; must not be null
      * @return {@code true} if a minimal position-only shadow vertex can be used
      */
+    /** Whether its fragment cuts pixels away: a {@code discard} or a {@code cg_Clip}. */
+    /** Whether the pass's fragment body or declarations name {@code symbol}. */
+    private static boolean names(CgParsedPass pass, String symbol) {
+        return pass.fragmentBody().contains(symbol) || pass.globalDecls().contains(symbol);
+    }
+
+    private static boolean clips(CgParsedPass pass) {
+        return pass.fragmentBody().contains("discard") || pass.fragmentBody().contains("cg_Clip");
+    }
+
     public static boolean isSimpleVertex(CgParsedPass pass) {
         String vertexBody = pass.vertexBody();
         // Check 1: vertex body has no user property references (_UpperCaseName pattern)
@@ -498,7 +515,7 @@ public final class CgMaterialShaderCompiler {
                 && !vertexBody.contains("CG_OBJECT_CUSTOM2")
                 && !vertexBody.contains("CG_OBJECT_CUSTOM3");
         // Check 3: fragment body has no discard (no alpha-clip)
-        boolean noDiscard = !pass.fragmentBody().contains("discard");
+        boolean noDiscard = !clips(pass);
         // Check 4: culling is not OFF (NONE means double-sided — shadow pass must cull correctly)
         CgCullState cull = pass.renderState().getCull();
         boolean cullingIsOff = (cull != null && cull == CgCullState.NONE);
@@ -595,6 +612,9 @@ public final class CgMaterialShaderCompiler {
         // Global declarations (code lines only — directives emitted above)
         appendGlobalDecls(sb, codeLines);
 
+        // Its prepass and its colour are two programs over one vertex body: invariance lands them on the same depth.
+        if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS) sb.append("invariant gl_Position;\n");
+
         // User vertex function
         sb.append("// User vertex function\n");
         sb.append("void vertex(out v2f o) {\n")
@@ -631,6 +651,7 @@ public final class CgMaterialShaderCompiler {
         // the user directive block so a guard inside an included lib can actually see it.
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
         appendPassDefine(sb, shader, pass);
+        appendClip(sb, shader, pass, config);
         sb.append("#define CG_FOG_MODE ").append(fogMode(pass)).append('\n');
 
         String[] gd = partitionGlobalDecls(pass.globalDecls());
@@ -737,6 +758,7 @@ public final class CgMaterialShaderCompiler {
         }
         if (activeKeywords.contains(MULTI_DRAW)) sb.append("#define ").append(MULTI_DRAW).append(" 1\n");
         if (activeKeywords.contains(DEBUG_OVERDRAW)) sb.append("#define ").append(DEBUG_OVERDRAW).append(" 1\n");
+        if (activeKeywords.contains(DEPTH_PREPASS)) sb.append("#define ").append(DEPTH_PREPASS).append(" 1\n");
     }
 
     /**
@@ -896,6 +918,24 @@ public final class CgMaterialShaderCompiler {
         if (shader.readsObjectRecord()) sb.append(" * CG_OBJECT_EMISSION");
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append(" * CG_SCENE_GLOW");
         sb.append(")\n");
+    }
+
+    /**
+     * {@code CG_CLIP_THRESHOLD}, the threshold ({@code _Clip} where the shader declares it, else 0.5), and {@code cg_Clip(v)}
+     * for this pass: in a depth pass (a Depth pass, or {@link #DEPTH_PREPASS}) a discard below it and a return at it,
+     * so nothing after it runs; in a {@code "Depth" = "Prepass"} material's other passes nothing; else the discard.
+     * Only where it can be called: a material with a {@code "Depth"} tag, or a pass naming it.
+     */
+    private static void appendClip(StringBuilder sb, CgParsedShader shader, CgParsedPass pass, CompileConfig config) {
+        if (shader.depthMode() == CgParsedShader.DepthMode.NONE && !names(pass, "cg_Clip")) return;
+        sb.append("#define CG_CLIP_THRESHOLD ").append(hasProperty(shader, "_Clip", 1) ? "_Clip" : "0.5").append('\n');
+        if (CgParsedPass.LIGHT_MODE_DEPTH.equals(pass.lightMode()) || config.activeKeywords().contains(DEPTH_PREPASS)) {
+            sb.append("#define cg_Clip(v) { if ((v) < CG_CLIP_THRESHOLD) discard; return; }\n");
+        } else if (shader.depthMode() == CgParsedShader.DepthMode.PREPASS) {
+            sb.append("#define cg_Clip(v)\n");
+        } else {
+            sb.append("#define cg_Clip(v) { if ((v) < CG_CLIP_THRESHOLD) discard; }\n");
+        }
     }
 
     private static boolean hasProperty(CgParsedShader shader, String name, int components) {

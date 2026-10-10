@@ -44,7 +44,8 @@ if (p.bind()) { table.bind(bindings); p.instanceBase(first); /* draw */ }
   1 (`CG_EMISSION_TARGET`); null where the shader's Emissive pass stays a draw of its own. `emissionCover()` is the
   same variant for a draw that glows nothing: black at its colour's alpha at location 1, so its blend covers the glow
   behind it; null where it adds. `sceneFold()` is the HDR scene's: one output, the glow added to the colour
-  (`CG_SCENE_FOLD`). `slotWrites()` is the colour
+  (`CG_SCENE_FOLD`). `depthPrepass()` is a `"Depth" = "Prepass"` material's depth pass: the Forward pass compiled with
+  `CG_DEPTH_PREPASS`, blend off, depth written, no colour. `slotWrites()` is the colour
   attachments a pipeline's program writes, which a pass with more than one masks the rest off by.
 - A pipeline lives for the session, and is keyed by the *identity* of its render state: the first compile reuses the
   parse of unchanged source, so a key named before it is the one that draws after it.
