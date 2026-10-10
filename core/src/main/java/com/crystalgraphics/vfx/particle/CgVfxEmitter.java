@@ -60,7 +60,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float[] burstTimes;
     final int[] burstCounts;
     final float rate, rateFrom, rateUntil;
-    final float shapeRadius, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    final float shapeInner, shapeRadius, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
     final List<CgVfxEvent> events;
@@ -83,6 +83,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         rate = b.rate;
         rateFrom = b.rateFrom;
         rateUntil = b.rateUntil;
+        shapeInner = b.shapeInner;
         shapeRadius = b.shapeRadius;
         upMin = b.upMin;
         upMax = b.upMax;
@@ -153,7 +154,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         out.vec4(shapeRadius, upMin, upMax, upBias)
            .vec4(speedMin, speedMax, lifeMin, lifeMax)
            .vec4(sizeMin, sizeMax, sizeSkew, heat)
-           .vec4(spinMin, spinMax, 0f, 0f);
+           .vec4(spinMin, spinMax, shapeInner, 0f);
     }
 
     @Override
@@ -272,7 +273,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<Float> burstTimes = new ArrayList<>();
         private final List<Integer> burstCounts = new ArrayList<>();
         private float rate, rateFrom, rateUntil;
-        private float shapeRadius;
+        private float shapeInner, shapeRadius;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
@@ -303,6 +304,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             rate = e.rate;
             rateFrom = e.rateFrom;
             rateUntil = e.rateUntil;
+            shapeInner = e.shapeInner;
             shapeRadius = e.shapeRadius;
             upMin = e.upMin;
             upMax = e.upMax;
@@ -369,7 +371,16 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         /** Particles start within this many blocks of the source, along their launch direction. */
         public Builder shape(float radius) {
-            shapeRadius = radius;
+            return shape(0f, radius);
+        }
+
+        /**
+         * Particles start between {@code inner} and {@code outer} blocks from the source, along their launch direction:
+         * a shell, as a cloud rolling out from the edge of something already there.
+         */
+        public Builder shape(float inner, float outer) {
+            shapeInner = inner;
+            shapeRadius = outer;
             return this;
         }
 

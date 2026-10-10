@@ -218,7 +218,7 @@ public final class CgVfxEmitterCompiler {
                     float heading = fx_rand(seed, k, 1u) * 6.2831853;
                     float across = sqrt(max(1.0 - up * up, 0.0));
                     vec3 dir = step_orient(vec3(across * cos(heading), up, across * sin(heading)), n);
-                    float start = s0.x * pow(fx_rand(seed, k, 2u), 1.0 / 3.0);
+                    float start = s3.z + (s0.x - s3.z) * pow(fx_rand(seed, k, 2u), 1.0 / 3.0);
                     float speed = s1.x + (s1.y - s1.x) * fx_rand(seed, k, 3u);
                     p.position = at + dir * start;
                     p.previous = p.position;
