@@ -71,7 +71,9 @@ matters; that is what makes it debuggable at full speed.
 - **A glowing layer is `"Lighting" = "Unlit"` and ends with a codeless Emissive pass**,
   `Pass { Tags { "LightMode" = "Emissive" } }`, so it blooms (`docs/SHADERS.md` § *The Emissive pass*). Not ink strokes,
   debris, smoke, the air shaders or the light pools (`*_light`). A premultiplied glow authors
-  `RenderState { Blend ONE ONE ... }` in that pass, or it darkens the glows behind it in the bloom target. Kept
+  `RenderState { Blend ONE ONE ... }` in that pass, or it darkens the glows behind it in the bloom target. A
+  saturated layer names its glow (`CG_GLOW(rgb)`: the hot core, the filaments), or its glowing copy pales it in the
+  HDR scene; `body_core`, `body_shell` and `orb_shell` do. Kept
   codeless and on the Forward pass's blend, the world renderer draws the glow in the layer's own draw, at no draw of its
   own; a body that branches on `CG_EMISSIVE_PASS` gives that up.
 - **A glow is bloom's, never a halo volume drawn round a layer**: bloom spreads what a layer emits, bent with the scene;

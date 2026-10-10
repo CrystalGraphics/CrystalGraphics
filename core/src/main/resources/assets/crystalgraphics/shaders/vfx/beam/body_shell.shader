@@ -82,10 +82,11 @@ Pass {
         float flicker = fx_flicker(age + s * 0.015, seed);
         float strength = alpha * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55);
         fragColor = vec4((skin + glow) * strength * i.pulse * flicker, _Cover * strength);
+        CG_GLOW(glow * strength * i.pulse * flicker);
     }
 }
 
-// Its light again, into the world's bloom: the Forward pass's code, added, since covering would darken the glows behind.
+// Its glow (CG_GLOW) into the world's bloom: added, since covering would darken the glows behind.
 Pass {
     Tags { "LightMode" = "Emissive" }
     RenderState {

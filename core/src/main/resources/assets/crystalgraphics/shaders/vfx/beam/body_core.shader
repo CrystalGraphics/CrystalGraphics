@@ -72,15 +72,18 @@ Pass {
         vec3 b = CG_OBJECT_CUSTOM3.rgb;
         vec3 deep = b * b / max(max(b.r, b.g), max(b.b, 1.0e-3));
         vec3 bandCol = mix(b, deep, smoothstep(0.7, 1.0, d)) * _BandLight;
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb * white * _Bright, bandCol, band);
+        vec3 hot = CG_OBJECT_CUSTOM2.rgb * white * _Bright;
+        vec3 col = mix(hot, bandCol, band);
         float edge = 1.0 - smoothstep(0.9, 1.0, d);
         float surge = fx_flicker(i.ring.z - q.w * 0.02, 0.37);
-        float strength = edge * CG_OBJECT_CUSTOM2.a * seen;
-        fragColor = vec4(col * strength * i.pulse * surge, _Cover * band * strength);
+        float light = edge * CG_OBJECT_CUSTOM2.a * seen * i.pulse * surge;
+        fragColor = vec4(col * light, _Cover * band * edge * CG_OBJECT_CUSTOM2.a * seen);
+        // Only the white glows: a glowing band would pale toward white.
+        CG_GLOW(hot * (1.0 - band) * light);
     }
 }
 
-// Its light again, into the world's bloom: the Forward pass's code, added, since covering would darken the glows behind.
+// Its glow (CG_GLOW) into the world's bloom: added, since covering would darken the glows behind.
 Pass {
     Tags { "LightMode" = "Emissive" }
     RenderState {
