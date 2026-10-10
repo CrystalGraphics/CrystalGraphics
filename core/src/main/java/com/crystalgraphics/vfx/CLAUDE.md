@@ -78,7 +78,8 @@ matters; that is what makes it debuggable at full speed.
 - **A screen-wide moment is a post volume, never a layer drawn round the camera**: `openVolume` at the effect's
   point (a flash, an aberration), weighed each tick and closed when it dies, so distance fades it and the player's
   `FLASHES` setting scales it. A sky sphere tinting everything for a blast read as a fog and was deleted.
-- **An impact frame comes before the explosion, never over it**: the effect holds at its ignition while the beats
+- **An impact frame comes before the explosion, never over it.** The user judged this ordering the whole visual
+  (2026-10-10): every impact sequence an effect plays follows it. The effect holds at its ignition while the beats
   (`CgImpactSequence`) play, inking that small blazing core, and bursts out at full rate from the cut, its emitters
   starting there, as anime's white frame precedes the explosion. Run beneath the beats, the smoke has filled the screen
   by the cut and nothing new arrives; eased up from slow motion, the burst deflates. Only the light runs on: the flash
