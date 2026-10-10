@@ -79,6 +79,8 @@ final class Sparks extends CgVfxEffect {
   is still alive.
 - **One instance an emitter an effect**; a variant of a definition is `SPARKS.toBuilder()...build()`.
 - `.optional()` marks detail: halved at the Low tier. Density thins every emitter.
+- `shape(radius)` starts particles anywhere within a ball round the source; `shape(inner, outer)` on a shell, as smoke
+  rolling out from the edge of a dome rather than through it.
 - The shared looks in `shaders/vfx/particle/` (`spark`, `speck`, `dust`, `arc`, `sprite`, `sprite_glow`) read the
   particle records; their parameters are `vfx/CLAUDE.md`'s.
 
