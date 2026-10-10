@@ -237,6 +237,24 @@ public class CgMaterialShaderCompilerTest {
     }
 
     @Test
+    public void aGlowingMaterialsColour_isHeldAtWhiteInTheLinearScene_beforeItsGlowAdds() {
+        String held = "if (CG_LINEAR_SCENE) _cg_fragColor.rgb = min(_cg_fragColor.rgb, vec3(1.0));";
+        String src = MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA DepthWrite OFF }\n")
+                + "Pass { Tags { \"LightMode\" = \"Emissive\" } RenderState { Blend ONE ONE DepthWrite OFF } }\n";
+        CgParsedShader shader = parse(src);
+        String folded = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,
+                new CgMaterialShaderCompiler.CompileConfig(Collections.singleton(CgMaterialShaderCompiler.SCENE_FOLD)))
+                .fragmentSource();
+        int at = folded.indexOf(held);
+        assertTrue("after the decode", at > folded.indexOf("_cg_fragColor.a = _cg_cover;"));
+        assertTrue("before the glow adds", at < folded.indexOf("_cg_fragColor.rgb += _cg_glow.rgb;"));
+        String plain = CgMaterialShaderCompiler.compile(
+                parse(MINIMAL.replace("Pass {\n", "Pass {\n    RenderState { Blend ONE ONE_MINUS_SRC_ALPHA }\n")), NO_BUFFERS)
+                .fragmentSource();
+        assertFalse("with no glow, the colour keeps its excess", plain.contains(held));
+    }
+
+    @Test
     public void overdrawVariant_countsOnceAfterTheFragmentRuns() {
         CgParsedShader shader = parse(DISTORTION);
         String frag = CgMaterialShaderCompiler.compile(shader, shader.passes().get(0), NO_BUFFERS, null,

@@ -1044,7 +1044,13 @@ public final class CgMaterialShaderCompiler {
             if ((forward || emissive) && shader.fogged()) sb.append("  _cg_fragColor = cg_Fog(_cg_fragColor);\n");
             if (merge == EmissionMerge.COVER) sb.append("  _cg_emission = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
             if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
-            if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) appendSceneDecode(sb, pass);
+            if (forward && !shader.linearColor() && merge == EmissionMerge.NONE && !cover) {
+                appendSceneDecode(sb, pass);
+                // Held at white, as the 8-bit target holds it: its glow carries the light past, or it counts twice.
+                if (shader.getPassByLightMode(CgParsedPass.LIGHT_MODE_EMISSIVE) != null) {
+                    sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = min(_cg_fragColor.rgb, vec3(1.0));\n");
+                }
+            }
             if (fold && pass.renderState().getBlend().srcRgb() == CgGL.GL_SRC_ALPHA) {
                 // Weighed by the alpha the Emissive pass would blend with, not the coverage the decode remapped it to.
                 sb.append("  if (_cg_fragColor.a > 0.0) _cg_fragColor.rgb += _cg_glow.rgb * (_cg_glow.a / _cg_fragColor.a);\n");

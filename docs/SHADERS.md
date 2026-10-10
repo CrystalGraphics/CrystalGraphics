@@ -119,7 +119,9 @@ void fragment(in v2f i, out vec4 fragColor) {
 - The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
 - **Colour is authored in sRGB**, as Minecraft's is. Where a pass draws into the HDR scene (`CG_LINEAR_SCENE`), the
   generated `main` decodes a Forward pass's colour after light and fog (`cg_SceneDecode`): a premultiplied blend
-  (`ONE ONE_MINUS_SRC_ALPHA`) is decoded unpremultiplied, and a value above 1 keeps its excess. A blend over what is
+  (`ONE ONE_MINUS_SRC_ALPHA`) is decoded unpremultiplied, and a value above 1 keeps its excess, unless the material
+  has an Emissive pass: then it is held at white, as the 8-bit target holds it, and its glow carries the light past
+  white rather than adding to an excess that already blooms. A blend over what is
   behind (`... ONE_MINUS_SRC_ALPHA`) also has its alpha remapped (`cg_SceneCoverage`: `1 - decode(1 - a)`), so smoke
   hides as much as it did in the encoded picture rather than thinning out in linear light. `"ColorSpace" =
   "Linear"` (default `"sRGB"`) opts out, for a shader whose colour is linear already: a post pass, a copy of the scene.

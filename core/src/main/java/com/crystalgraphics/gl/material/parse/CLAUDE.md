@@ -216,7 +216,9 @@ material's other passes. A Prepass material's vertex stages are `invariant gl_Po
 
 A single-output Forward pass, not overdraw, cover or merged, ends its generated `main` with
 `if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(...)`, after light and fog: unpremultiplied under
-`ONE ONE_MINUS_SRC_ALPHA`. `"ColorSpace" = "Linear"` (`CgParsedShader.linearColor`) leaves it out.
+`ONE ONE_MINUS_SRC_ALPHA`. In a material with an Emissive pass it then clamps the colour to 1, so a fold or its own
+Emissive draw adds the glow over white, not over an excess. `"ColorSpace" = "Linear"` (`CgParsedShader.linearColor`)
+leaves it out.
 
 ## The Distortion pass
 
