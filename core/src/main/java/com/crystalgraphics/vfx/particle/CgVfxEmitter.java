@@ -263,7 +263,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             pull += modules.get(i).pull(heat);
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
-        float swept = 0.5f * Math.abs(sweep) * (rateUntil - rateFrom);
+        float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * (rateUntil - rateFrom) : 0f;
         return shapeRadius + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
@@ -378,7 +378,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** {@code perSecond} particles a second, from {@code from} to {@code until} seconds after the start. */
+        /**
+         * {@code perSecond} particles a second, from {@code from} to {@code until} seconds after the start. An
+         * {@code until} of {@code Float.POSITIVE_INFINITY} spawns until the instance is
+         * {@link CgVfxEmitterInstance#stop stopped}, and give it a {@link #capacity}.
+         */
         public Builder rate(float perSecond, float from, float until) {
             rate = perSecond;
             rateFrom = from;

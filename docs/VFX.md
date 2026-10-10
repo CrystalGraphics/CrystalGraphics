@@ -78,6 +78,9 @@ final class Sparks extends CgVfxEffect {
 - **Capacity bounds the live particles**; a spawn into a full instance is dropped. Size it to the burst plus what
   is still alive.
 - **One instance an emitter an effect**; a variant of a definition is `SPARKS.toBuilder()...build()`.
+- A source that travels or a rate that follows the effect: `moveTo(x, y, z)` moves the source without restarting,
+  `rateScale(s)` multiplies the rate, and `stop()` ends a rate open until then (`rate(n, 0f, Float.POSITIVE_INFINITY)`),
+  which never finishes otherwise. `CgEnergyWave`'s `WAKE` uses all three.
 - `.optional()` marks detail: halved at the Low tier. Density thins every emitter.
 - `shape(radius)` starts particles anywhere within a ball round the source; `shape(inner, outer)` on a shell, as smoke
   rolling out from the edge of a dome rather than through it. `sweep(speed)` runs that shell outward over the rate's
