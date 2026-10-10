@@ -1,9 +1,6 @@
 <div align="center">
 
-<h1>
-  <img src="docs/images/logo.png" alt="" width="80"><br>
-  Crystal Graphics
-</h1>
+<img src="docs/images/banner.png" alt="Crystal Graphics" width="100%">
 
 **A modern Vulkan-first rendering engine for Java.**
 
