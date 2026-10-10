@@ -169,13 +169,14 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
      * its {@link #dust} where they land: a look replacing the specks keeps that only by adding the event itself.
      */
     public final CgVfxEmitter billows, surge, specks, dust, sparkles, ink, rays, rings;
-    /** The layers that draw them, each in its emitter's slot. */
-    public final CgVfxLayer billowLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer, ringLayer;
+    /** The layers that draw them, each in its emitter's slot; the billows' core writes their depth alone. */
+    public final CgVfxLayer billowLayer, billowCoreLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer,
+            ringLayer;
 
     /** Declares this kit's colours on {@code schema}, defaulting to a blue blast, and builds its layers. */
     public CgVfxExplosion(CgVfxSchema schema, String name) {
         body = schema.color(name + "Body", 0.06f, 0.3f, 0.95f, 1f);
-        hot = schema.color(name + "Hot", 0.3f, 0.88f, 1f, 1f);
+        hot = schema.color(name + "Hot", 0.42f, 0.7f, 1f, 1f);
         debris = schema.color(name + "Debris", 0.02f, 0.04f, 0.12f, 1f);
         dustColor = schema.color(name + "Dust", 0.42f, 0.39f, 0.35f, 0.55f);
         sparkCore = schema.color(name + "SparkCore", 1f, 1f, 1f, 1f);
@@ -190,6 +191,8 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
         rings = named(RINGS, name);
         billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
                 .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
+        billowCoreLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow_core.shader").slot(billows.layer())
+                .order(CgVfxLayer.ORDER_DEPTH).build();
         surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
                 .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).build();
         speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
@@ -213,7 +216,7 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
 
     @Override
     public void addTo(CgVfxLook.Builder look) {
-        look.layer(billowLayer).layer(surgeLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
+        look.layer(billowLayer).layer(billowCoreLayer).layer(surgeLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer).layer(rayLayer).layer(ringLayer).layer(sparkLayer);
         for (CgVfxEmitter emitter : emitters()) look.emitter(emitter);
     }
 
