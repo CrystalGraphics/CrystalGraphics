@@ -7,6 +7,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -34,6 +35,45 @@ public class CgVfxEmitterScheduleTest {
     public void groundedParticlesStillDieOfAge() {
         check(CgVfxEmitter.builder("debris").capacity(4000).burst(0f, 400).life(2f, 3.5f).speed(4f, 12f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.6f)).build(), 1f);
+    }
+
+    @Test
+    public void anOpenRateFinishesOnceStoppedOrCoasting() {
+        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(400).rate(60f, 0f, Float.POSITIVE_INFINITY)
+                .life(0.5f, 1f).build();
+        CgVfxEmitterInstance stopped = new CgVfxEmitterInstance(wake, 0.3f), coasting = new CgVfxEmitterInstance(wake, 0.3f);
+        stopped.start(0f, 0f, 0f);
+        coasting.start(0f, 0f, 0f);
+        for (int i = 0; i < 120; i++) {
+            stopped.schedule(DT, 0.0, 0.0, 0.0);
+            coasting.schedule(DT, 0.0, 0.0, 0.0);
+        }
+        assertFalse(stopped.finished());
+        stopped.stop();
+        for (int i = 0; i < 90; i++) {
+            stopped.schedule(DT, 0.0, 0.0, 0.0);
+            coasting.coast(DT);
+            assertEquals(0, stopped.stepCandidates());
+        }
+        assertTrue(stopped.finished());
+        assertTrue(coasting.finished());
+    }
+
+    @Test
+    public void rateScaleScalesTheRateAlone() {
+        CgVfxEmitter definition = CgVfxEmitter.builder("scaled").capacity(4000).rate(120f, 0f, Float.POSITIVE_INFINITY)
+                .burst(0f, 10).life(1f, 1f).build();
+        CgVfxEmitterInstance instance = new CgVfxEmitterInstance(definition, 0.3f).rateScale(0f);
+        instance.start(0f, 0f, 0f);
+        instance.schedule(DT, 0.0, 0.0, 0.0);
+        assertEquals(10, instance.stepCandidates());
+        int spawned = 0;
+        instance.rateScale(3f);
+        for (int i = 0; i < 60; i++) {
+            instance.schedule(DT, 0.0, 0.0, 0.0);
+            spawned += instance.stepCandidates();
+        }
+        assertEquals(360, spawned, 1);
     }
 
     @Test

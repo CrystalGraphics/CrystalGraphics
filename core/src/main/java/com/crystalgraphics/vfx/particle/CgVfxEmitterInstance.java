@@ -59,6 +59,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private double originX, originY, originZ;
     private int spawned, burstsDone;
     private float rateOwed, share = 1f;
+    /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
+    private float stoppedAt = Float.POSITIVE_INFINITY, rateScale = 1f;
     /** Stepped by {@link #schedule}: its particles live in a GPU pool, not in {@link #particles}. */
     private boolean scheduled;
     private int stepFirst, stepCandidates;
@@ -121,11 +123,51 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         burstsDone = 0;
         rateOwed = 0f;
         lastDeath = -1f;
+        stoppedAt = Float.POSITIVE_INFINITY;
         particles.clear();
         fireCount = 0;
         for (CgVfxEmitterInstance child : children) {
             if (child != null) child.start(x, y, z);
         }
+    }
+
+    /**
+     * Spawns at {@code (x, y, z)}, relative to the effect's origin, from the next step on, without restarting: what it
+     * has spawned stays where it is. For a source that travels, as dust kicked up along a beam.
+     *
+     * <pre>{@code
+     * wake.moveTo(groundX, groundY, groundZ);   // each tick, before tick(wake, dt)
+     * tick(wake, dt);
+     * }</pre>
+     *
+     * Modules placed round the source ({@code Attract}, {@code Orbit}, a {@code Collide} volume) move with it.
+     */
+    public void moveTo(float x, float y, float z) {
+        sourceX = x;
+        sourceY = y;
+        sourceZ = z;
+    }
+
+    /**
+     * Ends its spawning now, bursts and rate alike, leaving what it spawned to live out: for a rate that runs until
+     * something stops it ({@code rate(n, 0f, Float.POSITIVE_INFINITY)}), which never {@link #finished finishes} until
+     * then. {@link #start} spawns again.
+     */
+    public void stop() {
+        if (time >= 0f) stoppedAt = Math.min(stoppedAt, time);
+    }
+
+    /**
+     * Multiplies its rate from the next step on, bursts untouched: 0 spawns nothing while it lasts, without ending
+     * anything. Niagara's spawn rate scale, for a rate that follows the effect.
+     *
+     * <pre>{@code
+     * wake.rateScale(blocksRunningLow);   // the emitter's rate is then per block
+     * }</pre>
+     */
+    public CgVfxEmitterInstance rateScale(float scale) {
+        rateScale = Math.max(scale, 0f);
+        return this;
     }
 
     /**
@@ -360,12 +402,12 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         stepTime = time;
         stepFirst = spawned;
         CgVfxEmitter e = emitter;
-        while (burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
+        while (time < stoppedAt && burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
             for (int n = 0; n < e.burstCounts[burstsDone]; n++) scheduleOne(dt);
             burstsDone++;
         }
-        if (e.rate > 0f && time >= e.rateFrom && time < e.rateUntil) {
-            rateOwed += e.rate * dt;
+        if (e.rate > 0f && time >= e.rateFrom && time < Math.min(e.rateUntil, stoppedAt)) {
+            rateOwed += e.rate * rateScale * dt;
             while (rateOwed >= 1f) {
                 scheduleOne(dt);
                 rateOwed -= 1f;
@@ -391,6 +433,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
      */
     public void coast(float dt) {
         if (time < 0f) return;
+        // Spawning nothing from here on: an open rate finishes too.
+        stoppedAt = Math.min(stoppedAt, time);
         scheduled = true;
         stepDt = dt;
         stepTime = time;
@@ -454,8 +498,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             if (child != null && !child.finished()) return false;
         }
         // A child spawns from its parent alone, which waits for it: its own schedule never runs.
-        boolean spawnedAll = feed != null
-                || time >= 0f && time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length;
+        boolean spawnedAll = feed != null || time >= 0f && (time > stoppedAt
+                || time > emitter.lastSpawn() && burstsDone == emitter.burstTimes.length);
         if (scheduled) return spawnedAll && time >= lastDeath + stepDt;
         return spawnedAll && particles.count() == 0 && fireCount == 0;
     }
@@ -518,12 +562,12 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
 
     private void spawn(float dt) {
         CgVfxEmitter e = emitter;
-        while (burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
+        while (time < stoppedAt && burstsDone < e.burstTimes.length && e.burstTimes[burstsDone] <= time) {
             for (int n = 0; n < e.burstCounts[burstsDone]; n++) spawnOne();
             burstsDone++;
         }
-        if (e.rate > 0f && time >= e.rateFrom && time < e.rateUntil) {
-            rateOwed += e.rate * dt;
+        if (e.rate > 0f && time >= e.rateFrom && time < Math.min(e.rateUntil, stoppedAt)) {
+            rateOwed += e.rate * rateScale * dt;
             while (rateOwed >= 1f) {
                 spawnOne();
                 rateOwed -= 1f;
