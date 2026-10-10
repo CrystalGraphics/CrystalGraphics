@@ -80,9 +80,10 @@ import java.util.function.Supplier;
  * <p>A profile records only the channels {@code -Dcrystalgraphics.trace.channels} turns on, and keeps every profiled
  * frame's zones only with {@code -Dcrystalgraphics.trace.zones} sized for them.</p>
  *
- * <p>The scene shown is built at install and the others at their first switch, each drawing nothing until its programs
- * and kernels are built, so no frame waits on a compile; a scene switched away from is cleared, not deleted, so a later
- * switch to it builds and compiles nothing. A scene is placed on the first world frame, some
+ * <p>The scene shown is built at install and the others in the background once it is warmed, one at a time, each
+ * drawing nothing until its programs and kernels are built, so no frame waits on a compile and a switch to any of them
+ * waits on nothing; a scene switched away from is cleared, not deleted, so a later switch to it builds and compiles
+ * nothing. A scene is placed on the first world frame, some
  * blocks ahead of the camera, standing on the world's ground there ({@link CgWorldQueries#groundBelow}); until the ground
  * answers (no world, or its chunk still loading) it floats a little above the eye, and settles onto the ground once it
  * does. It stays there however far the player walks or flies, and moves only when the scene changes, the level changes
@@ -144,6 +145,8 @@ public final class CgRenderDemo {
     /** Frames each scene has waited for its programs since it was built; -1 once warmed. */
     private final int[] warmFrames = new int[kinds.length];
     private int current = -1, wanted;
+    /** The scene {@link #prewarm} built and is waiting on, or -1. */
+    private int prewarming = -1;
     /** V switched the simulation: the scene is cleared at the next frame, so all of it plays on the new one. */
     private boolean restart;
     private boolean anchored, grounded;
@@ -214,7 +217,8 @@ public final class CgRenderDemo {
                 frame.callback("demo.capture", capture);
             });
         }
-        // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan).
+        // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). The rest
+        // are prewarmed a frame each, after it.
         build(wanted);
     }
 
@@ -234,6 +238,7 @@ public final class CgRenderDemo {
             scenes[i] = null;
         }
         current = -1;
+        prewarming = -1;
         if (hud != null && !hud.isDeleted()) hud.delete();
         hud = null;
     }
@@ -405,9 +410,28 @@ public final class CgRenderDemo {
             LOGGER.info("[CgRenderDemo] {} warmed after {} frames", kinds[current].name(), warmFrames[current]);
             warmFrames[current] = -1;
         }
+        prewarm();
         // Through the time switch, whichever scene shows, so its value carries across N.
         float seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
+    }
+
+    /**
+     * Builds the scenes not yet shown, one at a time once the shown one is warmed, each after the last has warmed, so
+     * a first switch to one waits on nothing and no frame builds more than one.
+     */
+    private void prewarm() {
+        if (prewarming >= 0) {
+            if (!scenes[prewarming].warmed()) return;
+            LOGGER.info("[CgRenderDemo] {} prewarmed", kinds[prewarming].name());
+            prewarming = -1;
+        }
+        for (int i = 0; i < kinds.length; i++) {
+            if (scenes[i] != null) continue;
+            build(i);
+            prewarming = i;
+            return;
+        }
     }
 
     /** Counts the frames since the scene stood on the ground, and writes the profile once its frames are in. */
