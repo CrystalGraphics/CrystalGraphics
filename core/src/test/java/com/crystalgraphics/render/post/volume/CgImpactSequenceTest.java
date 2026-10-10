@@ -34,6 +34,19 @@ public class CgImpactSequenceTest {
     }
 
     @Test
+    public void aFade_holdsTheLastBeatPastTheEnd_steppingDownAFrameAtATime() {
+        CgImpactSequence faded = CgImpactSequence.at(24f).beat(CgImpact.SUBJECT, 2).beat(CgImpact.WHITE, 1).fadeOut(3).build();
+        assertEquals(3f / 24f, faded.seconds(), 1e-6f);                    // the hitstop holds for the beats alone
+        assertEquals(1f, faded.amount(2.5f * FRAME), 0f);
+        assertSame(CgImpact.WHITE.frame(), faded.look(3.5f * FRAME));
+        assertEquals(0.75f, faded.amount(3.5f * FRAME), 1e-6f);
+        assertEquals(0.25f, faded.amount(5.5f * FRAME), 1e-6f);
+        assertEquals(faded.seed(2.5f * FRAME), faded.seed(5.5f * FRAME));   // the same drawing, fading
+        assertNull(faded.look(6.1f * FRAME));
+        assertEquals(0f, faded.amount(6.1f * FRAME), 0f);
+    }
+
+    @Test
     public void nothingBeforeItStarts_andItsLengthIsItsFrames() {
         assertNull(HIT.look(-0.01f));
         assertNull(HIT.look(Float.NaN));
