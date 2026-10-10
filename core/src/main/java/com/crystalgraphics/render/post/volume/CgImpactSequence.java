@@ -18,9 +18,20 @@ import java.util.List;
  * if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit));
  * }</pre>
  *
+ * <p><b>The beats come before what they announce, never over it.</b> Hold the effect at its ignition while they play
+ * and set it off on the cut out of the last beat, so the payoff starts growing on screen the moment the picture returns.
+ * An effect left running beneath its beats returns to a screen it has already filled, and no transition hides that cut.
+ * This ordering is most of what makes the sequence land.</p>
+ *
+ * <pre>{@code
+ * float real = age - hitAge, cut = HOLD_AT + HIT.seconds();
+ * effectTime = real <= HOLD_AT ? real : Math.max(HOLD_AT, real - HIT.seconds());   // frozen at ignition under the beats
+ * if (!started && real >= cut) { started = true; startExplosion(); }                // goes off out of the last beat
+ * CgImpactFrame look = HIT.look(real - HOLD_AT);
+ * }</pre>
+ *
  * {@code fadeOut} holds the last beat past the end, its amount stepping down a frame at a time; the picture moves under
- * it. Anime more often cuts from white to the result already grown, which an effect running on beneath its beats gets
- * without one.
+ * it. A hard cut out of the last beat usually reads better.
  *
  * <pre>{@code
  * CgImpactSequence.at(24f).beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).fadeOut(4).build();
