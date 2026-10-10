@@ -211,14 +211,23 @@ public final class CgVfxEmitterCompiler {
                     return t * v.x + n * v.y + u * v.z;
                 }
 
-                // CgVfxEmitterInstance.spawnOne's launch of spawn k from seed with row's numbers, at `at`, about n.
-                void step_launch(uint seed, uint k, int row, vec3 at, vec3 n, out FxParticle p) {
+                // CgVfxEmitter.front: how far out spawn k's swept front is, from row's fifth vector; 0 for none.
+                float step_front(uint k, int row) {
+                    vec4 s4 = step_param(row + 4);
+                    if (s4.y == 0.0) return 0.0;
+                    float held = min(float(k), s4.x / (2.0 * s4.y));
+                    return s4.x * held - s4.y * held * held;
+                }
+
+                // CgVfxEmitterInstance.spawnOne's launch of spawn k from seed with row's numbers, at `at`, about n,
+                // front blocks further out.
+                void step_launch(uint seed, uint k, int row, vec3 at, vec3 n, float front, out FxParticle p) {
                     vec4 s0 = step_param(row), s1 = step_param(row + 1), s2 = step_param(row + 2), s3 = step_param(row + 3);
                     float up = s0.y + (s0.z - s0.y) * pow(fx_rand(seed, k, 0u), s0.w);
                     float heading = fx_rand(seed, k, 1u) * 6.2831853;
                     float across = sqrt(max(1.0 - up * up, 0.0));
                     vec3 dir = step_orient(vec3(across * cos(heading), up, across * sin(heading)), n);
-                    float start = s3.z + (s0.x - s3.z) * pow(fx_rand(seed, k, 2u), 1.0 / 3.0);
+                    float start = s3.z + (s0.x - s3.z) * pow(fx_rand(seed, k, 2u), 1.0 / 3.0) + front;
                     float speed = s1.x + (s1.y - s1.x) * fx_rand(seed, k, 3u);
                     p.position = at + dir * start;
                     p.previous = p.position;
@@ -243,7 +252,8 @@ public final class CgVfxEmitterCompiler {
                     float share = step_instance(inst + 2).x;
                     uint seed = head.y;
                     if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
-                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, step_instance(inst + 1).xyz, vec3(0.0, 1.0, 0.0), p);
+                    int row = int(head.x) * STEP_PARAM_ROW;
+                    step_launch(seed, k, row, step_instance(inst + 1).xyz, vec3(0.0, 1.0, 0.0), step_front(k, row), p);
                     p.id = k;
                     p.slot = slot;
                     return true;
@@ -276,7 +286,7 @@ public final class CgVfxEmitterCompiler {
                     if (share < 1.0 && fx_rand(seed, k, 10u) >= share) return false;
                     // From the parent's block and the place within it to this slot's origin.
                     vec3 at = vec3(ev.block.xyz - ivec3(INSTANCES(inst + 3).xyz)) + ev.position.xyz - step_instance(inst + 4).xyz;
-                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, at, ev.normal.xyz, p);
+                    step_launch(seed, k, int(head.x) * STEP_PARAM_ROW, at, ev.normal.xyz, 0.0, p);
                     p.velocity += uintBitsToFloat(feed.w) * ev.velocityAge.xyz;
                     p.id = k;
                     p.slot = slot;

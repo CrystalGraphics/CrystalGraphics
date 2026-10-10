@@ -541,7 +541,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         float up = e.upMin + (e.upMax - e.upMin) * (float) Math.pow(rand(k, 0), e.upBias);
         float heading = rand(k, 1) * 6.2831853f, across = (float) Math.sqrt(Math.max(1f - up * up, 0f));
         float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);
-        float start = e.shapeInner + (e.shapeRadius - e.shapeInner) * (float) Math.cbrt(rand(k, 2));
+        float start = e.shapeInner + (e.shapeRadius - e.shapeInner) * (float) Math.cbrt(rand(k, 2)) + e.front(k);
         float speed = e.speedMin + (e.speedMax - e.speedMin) * rand(k, 3);
         p.x[i] = p.px[i] = sourceX + dx * start;
         p.y[i] = p.py[i] = sourceY + up * start;

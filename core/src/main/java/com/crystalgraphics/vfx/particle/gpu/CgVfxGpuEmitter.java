@@ -15,7 +15,8 @@ import java.util.List;
  *     out.vec4(shapeRadius, upMin, upMax, upBias)
  *        .vec4(speedMin, speedMax, lifeMin, lifeMax)
  *        .vec4(sizeMin, sizeMax, sizeSkew, heat)
- *        .vec4(spinMin, spinMax, 0f, 0f);
+ *        .vec4(spinMin, spinMax, shapeInner, 0f)
+ *        .vec4(frontA, frontB, 0f, 0f);
  * }
  * }</pre>
  *
@@ -28,7 +29,7 @@ import java.util.List;
 public interface CgVfxGpuEmitter {
 
     /** The vec4s {@link #writeSpawn} writes. */
-    int SPAWN_VECTORS = 4;
+    int SPAWN_VECTORS = 5;
 
     /** For messages. */
     String name();
@@ -40,7 +41,9 @@ public interface CgVfxGpuEmitter {
 
     /**
      * Writes its spawn numbers, {@link #SPAWN_VECTORS} vec4s in this order: (shape radius, up min, up max, up bias),
-     * (speed min, speed max, life min, life max), (size min, size max, size skew, heat), (spin min, spin max, 0, 0).
+     * (speed min, speed max, life min, life max), (size min, size max, size skew, heat), (spin min, spin max, shape
+     * inner, 0), (front a, front b, 0, 0): spawn k of the instance starts {@code a k - b k^2} blocks further out, its k
+     * held where that peaks ({@code a / 2b}); 0, 0 for a shell that stays put.
      */
     void writeSpawn(CgVfxWords out);
 
