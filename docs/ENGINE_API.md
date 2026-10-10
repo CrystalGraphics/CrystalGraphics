@@ -203,17 +203,24 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
   names the presets (`SUBJECT`, `HATCHED`, `FOCUS_LINES`, `WHITE`, ...).
 - **It plays as beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts, and
-  gives each beat a seed; an effect sets the look it returns on a volume at full weight. `CgEnergyWave`'s blast plays
-  one inside a hitstop (`BLAST_BEATS`); `--mode=vfx-blast-flash` shows it.
+  gives each beat a seed; an effect sets the look it returns on a volume at full weight. Only the way out fades:
+  `fadeOut(n)` holds the last beat n frames past the hitstop, stepping its amount down. `CgEnergyWave`'s blast plays
+  one inside a hitstop (`BLAST_BEATS`) and eases back to speed after it (`BLAST_RELEASE`); `--mode=vfx-blast-flash`
+  shows it.
+- **The subject is the effect's own** when the settings name a key (`subject(key)`) and its draws carry it
+  (`Draw.subject(key)`; a VFX effect tags its own): no other effect's smoke can hide it. One impact frame shows at a
+  time, the heaviest volume's, so one subject does.
 
 ```java
 static final CgImpactFrame HIT_FRAME = CgImpactFrame.drawn().paper(CgImpactFrame.Tone.DARK).fillSubject(true)
         .star(0.045f).cross(true).jitter(3f).build();
 static final CgImpactSequence HIT = CgImpactSequence.at(24f)
-        .beat(HIT_FRAME, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1).build();
+        .beat(HIT_FRAME, 2).beat(CgImpact.SUBJECT_INVERTED, 1).beat(CgImpact.FOCUS_LINES, 4).beat(CgImpact.WHITE, 1)
+        .fadeOut(4).build();
+settings.subject(key);                                   // once: fill this effect's draws alone
 CgImpactFrame look = HIT.look(sinceHit);                 // each tick; null outside it
 impact.weight(look != null ? 1f : 0f);
-if (look != null) settings.impact(look, 1f, HIT.seed(sinceHit));
+if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit));
 ```
 - A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
 - **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at

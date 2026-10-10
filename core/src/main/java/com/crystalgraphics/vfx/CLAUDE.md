@@ -80,7 +80,10 @@ matters; that is what makes it debuggable at full speed.
   `FLASHES` setting scales it. A sky sphere tinting everything for a blast read as a fog and was deleted.
 - **An impact frame plays in a hitstop the effect holds itself**: its own clock stops while the beats
   (`CgImpactSequence`) play, and what it emits starts at the release. Never by leaving emitters unstepped: a GPU tenant
-  its effect does not step coasts on. `CgEnergyWave`'s blast (`BLAST_HOLD_AT`, `BLAST_BEATS`) is the example.
+  its effect does not step coasts on. It eases back to speed rather than snapping, its emitters ticked at a share of
+  `dt` (`tick(emitter, dt * speed)`), and its impact frame names the effect (`settings.subject(subject)`) so another
+  effect's smoke cannot hide what is inked. `CgEnergyWave`'s blast (`BLAST_HOLD_AT`, `BLAST_BEATS`, `BLAST_RELEASE`) is
+  the example.
 - **Meshes are made in `CgVfxSystem` only**, so a change to how meshes are made is one edit.
 - **An effect never reads a player's setting.** `CgVfxSystem` applies `CgGraphicsSettings` to every effect: density
   thins each emitter, the quality tier skips layers in `CgVfxFrame`, the clock follows pause, freeze and tick rate. An
