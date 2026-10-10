@@ -241,6 +241,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam BLAST_FLASH_BLOOM = SCHEMA.scalar("blastFlashBloom", 2f);
     /** Full within this many blast radii of the burst, fading out over twice that beyond. */
     public static final CgVfxParam BLAST_FLASH_REACH = SCHEMA.scalar("blastFlashReach", 3f);
+    /** The impact frame plays for a camera within this many blast radii of the burst: by default as far as the flash shows. */
+    public static final CgVfxParam BLAST_IMPACT_REACH = SCHEMA.scalar("blastImpactReach", 9f);
 
     /**
      * Seconds the blast's shock front lives, and how far it reaches, as a multiple of the blast's radius: what
@@ -520,7 +522,8 @@ public final class CgEnergyWave extends CgVfxEffect {
                 // A hard edge: an impact frame is whole or absent, since part of one is a muddy grey.
                 blastImpactLook = new CgPostSettings().impact(CgImpact.SUBJECT, 1f).subject(subject);
                 blastImpact = openVolume(IMPACT_PRIORITY, blastImpactLook,
-                        stream.impactX(), stream.impactY(), stream.impactZ()).radius(reach);
+                        stream.impactX(), stream.impactY(), stream.impactZ())
+                        .radius(get(RADIUS) * get(BLAST_RADIUS) * get(BLAST_IMPACT_REACH));
             }
         }
         if (!Float.isNaN(blastAge)) tickBlast();
