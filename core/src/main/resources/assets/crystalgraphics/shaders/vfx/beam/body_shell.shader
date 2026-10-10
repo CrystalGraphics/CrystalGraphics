@@ -19,6 +19,7 @@ Properties {
     _Displace ("Rolling bulges, share of the radius", float) = 0.16
     _Tongue   ("Flame tongues, share of the radius", float) = 0.5
     _Cover    ("How much of what is behind the skin hides", float) = 0.7
+    _GlowHdr  ("Streak glow under HDR: past white by itself, since the scene blooms only what passes it", float) = 3.0
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -82,7 +83,7 @@ Pass {
         float flicker = fx_flicker(age + s * 0.015, seed);
         float strength = alpha * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55);
         fragColor = vec4((skin + glow) * strength * i.pulse * flicker, _Cover * strength);
-        CG_GLOW(glow * strength * i.pulse * flicker);
+        CG_GLOW(glow * strength * i.pulse * flicker * CG_HDR(1.0, _GlowHdr));
     }
 }
 

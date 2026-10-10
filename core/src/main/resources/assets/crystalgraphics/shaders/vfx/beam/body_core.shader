@@ -16,13 +16,14 @@ Properties {
     _FxPath  ("Path rings", sampler2D) = "black"
     _Flow    ("Flow, blocks a second", float) = 24.0
     _Density ("How fast it turns white", float) = 3.2
-    _Core    ("The core at rest, share of the hull", float) = 0.62
+    _Core    ("The core at rest, share of the hull", float) = 0.72
     _Heave   ("Slow swell along the beam, share of the core", float) = 0.2
     _Surge   ("Extra swell where a surge passes, share of the core", float) = 0.3
-    _Band    ("Where the white gives way to the band, share of the core radius", float) = 0.38
+    _Band    ("Where the white gives way to the band, share of the core radius", float) = 0.44
     _Bright  ("Brightness of the white: just past white, so its bloom stays near it and a surge flares", float) = 1.4
-    _BandLight ("Brightness of the band: a little past white, so it blooms in its own colour", float) = 1.15
+    _BandLight ("Brightness of the band: a little past white, its strongest channel held there", float) = 1.15
     _Cover   ("How much of what is behind the band hides", float) = 0.9
+    _GlowCore ("How far out the white glows, share of the core radius: a streak down its middle", float) = 0.22
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -78,8 +79,10 @@ Pass {
         float surge = fx_flicker(i.ring.z - q.w * 0.02, 0.37);
         float light = edge * CG_OBJECT_CUSTOM2.a * seen * i.pulse * surge;
         fragColor = vec4(col * light, _Cover * band * edge * CG_OBJECT_CUSTOM2.a * seen);
-        // Only the white glows: a glowing band would pale toward white.
-        CG_GLOW(hot * (1.0 - band) * light);
+        // Only a streak down the white's middle glows: a glowing band would pale toward white, and the whole white
+        // blooms out over the band.
+        float streak = 1.0 - smoothstep(0.0, _GlowCore, d);
+        CG_GLOW(hot * streak * (1.0 - band) * light);
     }
 }
 

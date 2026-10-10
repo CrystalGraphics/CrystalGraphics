@@ -16,6 +16,7 @@ Properties {
     _Displace ("Churn, share of the size", float) = 0.24
     _Tongue   ("Comet tongues flung back, share of the size", float) = 0.7
     _Cover    ("How much of what is behind the skin hides", float) = 0.7
+    _GlowHdr  ("Filament glow under HDR: past white by itself, since the scene blooms only what passes it", float) = 3.0
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -67,7 +68,7 @@ Pass {
         vec3 glow = CG_OBJECT_CUSTOM3.rgb * filament * 2.0;
         float strength = alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.55);
         fragColor = vec4((skin + glow) * fx_flicker(age, seed) * strength, _Cover * strength);
-        CG_GLOW(glow * fx_flicker(age, seed) * strength);
+        CG_GLOW(glow * fx_flicker(age, seed) * strength * CG_HDR(1.0, _GlowHdr));
     }
 }
 
