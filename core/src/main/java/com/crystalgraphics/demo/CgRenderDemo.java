@@ -118,8 +118,8 @@ public final class CgRenderDemo {
 
         void delete();
 
-        /** Acts on a key of its own, one of {@link #KEYS}; false for any other. */
-        default boolean press(int key) {
+        /** Acts on a key of its own, one of {@link #KEYS}, with Shift held or not; false for any other. */
+        default boolean press(int key, boolean shift) {
             return false;
         }
 
@@ -362,8 +362,8 @@ public final class CgRenderDemo {
             }
 
             @Override
-            public boolean press(int key) {
-                return blast.press(key);
+            public boolean press(int key, boolean shift) {
+                return blast.press(key, shift);
             }
 
             @Override
@@ -503,7 +503,7 @@ public final class CgRenderDemo {
             }
             case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
             default -> {
-                if (current >= 0) scenes[current].press(key);
+                if (current >= 0) scenes[current].press(key, shift);
             }
         }
         hudDirty = true;

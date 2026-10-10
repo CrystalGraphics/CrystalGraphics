@@ -29,12 +29,12 @@ import java.util.Locale;
  * blast.submit(CgWorldRenderer.get(), x, y, z, forwardX, forwardZ, seconds);
  * hud.line(blast.hudLine());
  *
- * if (blast.press(key)) hudChanged();              // one of KEYS: a switch, from the next wave fired
+ * if (blast.press(key, shift)) hudChanged();       // one of KEYS: a switch, from the next wave fired
  * }</pre>
  *
  * <ul>
  *   <li>{@link #clear} ends what plays and keeps what it built; the next submit starts a new wave.</li>
- *   <li>The time switch slows the scene's own clock, so moments and shakes slow with it.</li>
+ *   <li>The time switch sets the scene's own clock, 0x to 2x and at once, so moments and shakes follow it.</li>
  * </ul>
  */
 public final class CgVfxBlastFlash {
@@ -54,7 +54,8 @@ public final class CgVfxBlastFlash {
     private static final CgKeyframes NONE = CgKeyframes.start(0f, 0f).to(1f, 0f, CgEasings.LINEAR).build();
     /** The look with its billows simulated but undrawn, so the dome shows whole. */
     private static final CgVfxLook NO_BILLOWS = without(CgEnergyWave.kamehameha(), CgEnergyWave.BLAST.billowLayer);
-    private static final float[] SPEEDS = {1f, 0.25f, 0.1f};
+    private static final float[] SPEEDS = {0f, 0.01f, 0.1f, 0.25f, 0.5f, 1f, 2f};
+    private static final int REAL_TIME = 5;
     private static final float MIN_WAIT = 0.5f, MAX_WAIT = 5f;
     /** Blocks from the muzzle to the target, across the view, and the muzzle's height over the target. */
     private static final double SPAN = 12.0, MUZZLE_UP = 2.5;
@@ -64,7 +65,7 @@ public final class CgVfxBlastFlash {
     private final List<CgEnergyWave> flying = new ArrayList<>();
     private Flash flash = Flash.DOUBLE;
     private boolean impact = true, billows = true;
-    private int speed;
+    private int speed = REAL_TIME;
     private float wait = 2f;
     /** The scene's own clock, slowed by the time switch, and the host seconds it last advanced to. */
     private float clock;
@@ -127,13 +128,13 @@ public final class CgVfxBlastFlash {
         return wave;
     }
 
-    /** Acts on one of {@link #KEYS}; false for any other key. */
-    public boolean press(int key) {
+    /** Acts on one of {@link #KEYS}, Shift reversing the time switch; false for any other key. */
+    public boolean press(int key, boolean shift) {
         switch (key) {
             case CgKeyCodes.KEY_F -> flash = Flash.values()[(flash.ordinal() + 1) % Flash.values().length];
             case CgKeyCodes.KEY_I -> impact = !impact;
             case CgKeyCodes.KEY_B -> billows = !billows;
-            case CgKeyCodes.KEY_Y -> speed = (speed + 1) % SPEEDS.length;
+            case CgKeyCodes.KEY_Y -> speed = shift ? Math.max(0, speed - 1) : Math.min(SPEEDS.length - 1, speed + 1);
             case CgKeyCodes.KEY_COMMA -> wait = Math.max(MIN_WAIT, wait - 0.5f);
             case CgKeyCodes.KEY_PERIOD -> wait = Math.min(MAX_WAIT, wait + 0.5f);
             default -> {
@@ -145,7 +146,7 @@ public final class CgVfxBlastFlash {
 
     public String hudLine() {
         return String.format(Locale.ROOT,
-                "Flash [F]: %s   Impact frame [I]: %s   Billows [B]: %s   Time [Y]: %sx   Next after [, .]: %.1f s",
+                "Flash [F]: %s   Impact frame [I]: %s   Billows [B]: %s   Time [Y, Shift+Y]: %sx   Next after [, .]: %.1f s",
                 flash.name().toLowerCase(Locale.ROOT), impact ? "on" : "off", billows ? "on" : "off", SPEEDS[speed], wait);
     }
 
