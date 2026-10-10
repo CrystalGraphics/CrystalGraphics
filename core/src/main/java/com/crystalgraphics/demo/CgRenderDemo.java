@@ -52,7 +52,10 @@ import java.util.function.Supplier;
  * blasts    CgVfxBlasts: about 360,000 GPU particles bursting over the ground
  * beams     CgVfxShowcase: sixteen effect spheres and three beams, under its sky
  * modules   CgVfxModules: X6's particle modules, a station each
+ * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame; its own keys
+ *           (F, I, Y, comma, period) and HUD line
  *
+ * H  the HUD on or off
  * N  the next scene, placed ahead of the camera; Shift+N the previous one
  * C  camera shake on or off (CgCameraShake.enabled: the saved setting is untouched)
  * L  bloom in the target's encoding, in linear light, then off
@@ -114,6 +117,16 @@ public final class CgRenderDemo {
         void clear();
 
         void delete();
+
+        /** Acts on a key of its own, one of {@link #KEYS}; false for any other. */
+        default boolean press(int key) {
+            return false;
+        }
+
+        /** Its own line under the HUD's, or null. */
+        default String hudLine() {
+            return null;
+        }
     }
 
     /** A scene by name: {@code ahead} blocks from the eye to its anchor, along the view. */
@@ -125,6 +138,7 @@ public final class CgRenderDemo {
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("beams", 12, this::beams),
             new Kind("modules", 34, this::modules),
+            new Kind("blast", 22, this::blast),
     };
 
     private boolean installed;
@@ -137,6 +151,8 @@ public final class CgRenderDemo {
     private boolean anchored, grounded;
     private long anchorX, anchorZ;
     private double anchorY, eyeY;
+    /** The view's horizontal direction when the scene was placed. */
+    private double aheadX, aheadZ;
     private double lastX, lastY, lastZ;
     private int levelEpoch;
     private int worldFrames;
@@ -152,9 +168,12 @@ public final class CgRenderDemo {
     private static final int HUD_COLOR = 0xFFFF0000, HUD_PX = 16;
     private static final float HUD_HEIGHT = 600f;
     private static final long SAMPLE_WINDOW_NANOS = 500_000_000L;
-    private static final int[] KEYS = {CgKeyCodes.KEY_N, CgKeyCodes.KEY_C, CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G};
+    /** The demo's keys, then the scenes' own. */
+    private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
+            CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G}, CgVfxBlastFlash.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
+    private boolean hudShown = true;
 
     /** After every other static: the constructor reads {@code MODE} and {@code KEYS}. */
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
@@ -184,7 +203,7 @@ public final class CgRenderDemo {
         CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1000, frame -> {
             CgHostEnvironment world = frame.host().environment();
             keys(world.screenOpen());
-            if (world.guiHidden()) return;
+            if (world.guiHidden() || !hudShown) return;
             hudHeight = frame.host().height();
             frame.callback("demo.hud", drawHud);
         });
@@ -314,6 +333,46 @@ public final class CgRenderDemo {
         };
     }
 
+    private Scene blast() {
+        CgVfxBlastFlash blast = new CgVfxBlastFlash();
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+                blast.submit(world, x, y, z, aheadX, aheadZ, seconds);
+            }
+
+            @Override
+            public void prepare() {
+                blast.prepare();
+            }
+
+            @Override
+            public boolean warmed() {
+                return blast.warmed();
+            }
+
+            @Override
+            public void clear() {
+                blast.clear();
+            }
+
+            @Override
+            public void delete() {
+                blast.delete();
+            }
+
+            @Override
+            public boolean press(int key) {
+                return blast.press(key);
+            }
+
+            @Override
+            public String hudLine() {
+                return blast.hudLine();
+            }
+        };
+    }
+
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgHostView view) {
@@ -387,7 +446,8 @@ public final class CgRenderDemo {
         Vector3f forward = toWorld.transformDirection(new Vector3f(0f, 0f, -1f)).normalize();
         Vector3f up = toWorld.transformDirection(new Vector3f(0f, 1f, 0f)).normalize();
         double level = Math.hypot(forward.x, forward.z);
-        double aheadX = level > 1.0e-3 ? forward.x / level : forward.x, aheadZ = level > 1.0e-3 ? forward.z / level : forward.z;
+        aheadX = level > 1.0e-3 ? forward.x / level : forward.x;
+        aheadZ = level > 1.0e-3 ? forward.z / level : forward.z;
         anchorX = (long) Math.floor(view.x() + eye.x + aheadX * ahead);
         anchorZ = (long) Math.floor(view.z() + eye.z + aheadZ * ahead);
         eyeY = view.y() + eye.y;
@@ -422,8 +482,15 @@ public final class CgRenderDemo {
         }
     }
 
+    private static int[] keys(int[] own, int[] scenes) {
+        int[] all = Arrays.copyOf(own, own.length + scenes.length);
+        System.arraycopy(scenes, 0, all, own.length, scenes.length);
+        return all;
+    }
+
     private void press(int key, boolean shift) {
         switch (key) {
+            case CgKeyCodes.KEY_H -> hudShown = !hudShown;
             case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> cycleBloom();
@@ -436,6 +503,7 @@ public final class CgRenderDemo {
             }
             case CgKeyCodes.KEY_G -> CgWorldRenderer.get().hdrScene(!CgWorldRenderer.get().hdrScene());
             default -> {
+                if (current >= 0) scenes[current].press(key);
             }
         }
         hudDirty = true;
@@ -507,14 +575,17 @@ public final class CgRenderDemo {
 
     private String hudText() {
         CgBloom bloom = CgPostStack.get().bloom();
-        return "Scene [N]: " + kinds[wanted].name()
+        String sceneLine = scenes[wanted] != null ? scenes[wanted].hudLine() : null;
+        return "Hide [H]"
+                + "\nScene [N]: " + kinds[wanted].name()
                 + "\n" + String.format("FPS: %.1f", fps)
                 + (CgCameraShake.enabled() ? "\n" + String.format("Shake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\nShake [C]: off")
                 + (bloom.intensity() == 0f ? "\nBloom [L]: off" : bloom.linear() ? "\nBloom [L]: linear" : "\nBloom [L]: blend")
                 + "\nVFX sim [V]: " + (CgVfxSystem.simulation() == CgVfxSystem.Simulation.CPU ? "cpu" : "gpu")
                 + "\nHDR scene [G]: " + (CgWorldRenderer.get().hdrScene() ? "on" : "off")
-                + "\n" + String.format("Particles: %,d", particles);
+                + "\n" + String.format("Particles: %,d", particles)
+                + (sceneLine != null ? "\n" + sceneLine : "");
     }
 
     /** The installed sans-serif at {@code px}, or null, logged, when there is none. */
