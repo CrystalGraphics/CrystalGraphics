@@ -1,10 +1,8 @@
 <div align="center">
 
-<img src="docs/images/banner.png" alt="Crystal Graphics" width="100%">
+<img src="docs/images/banner.png" alt="Crystal Graphics: a modern Vulkan-first rendering engine for Java" width="100%">
 
-**A modern Vulkan-first rendering engine for Java.**
-
-Render graph · Materials and compute kernels · GPU-driven drawing · HDR post · GPU particles
+Materials and shader graphs · GPU compute and particles · Cinematic post-processing · A complete text engine
 
 [![Vulkan](https://img.shields.io/badge/Vulkan-first-AC162C?style=flat-square&logo=vulkan&logoColor=white)](docs/ENGINE_API.md)
 [![OpenGL](https://img.shields.io/badge/OpenGL-3.3%2B-5586A4?style=flat-square&logo=opengl&logoColor=white)](docs/SHADERS.md)
@@ -16,9 +14,14 @@ Render graph · Materials and compute kernels · GPU-driven drawing · HDR post 
 
 ---
 
-Crystal Graphics records each frame on any thread, builds it into a graph and executes it once: on Vulkan, or on
-OpenGL 3.3 and up wherever Vulkan is not the backend, every feature reaching the same result there.
-Its core names no Minecraft, loader or LWJGL type, and it ships for Minecraft as **one jar** for every loader and version.
+Crystal Graphics brings modern GPU and graphics programming pipelines to Java: the render graph, compute-driven particles and HDR post
+processing stacks and other advanced rendering pipelines that modern AAA engines are built on, in a library for your own LWJGL application or your Minecraft mod.
+Write a material, play an effect or draw meshes into the world, and it runs on Vulkan where it can and on OpenGL 3.3
+and up everywhere else.
+
+Under the hood, each frame is recorded on any thread, built into a graph and executed once, and every feature reaches
+the same result on either backend. The core names no Minecraft, loader or LWJGL type, and it ships for Minecraft as
+**one jar** for every loader and version.
 
 ## Built for scale
 
@@ -30,30 +33,30 @@ Its core names no Minecraft, loader or LWJGL type, and it ships for Minecraft as
   <sub>366,588 GPU particles at 312 fps, simulated, sorted, culled and drawn via GPU compute kernels in Minecraft 26.2 on Vulkan.</sub>
 </p>
 
-Crystal Graphics is built on the same rendering techniques at the core of modern AAA engines: the CPU describes the frame, and the GPU
-does the work.
+The CPU describes the frame, and the GPU does the work.
 
-- **GPU-driven pipeline** — simulation, frustum and Hi-Z occlusion culling, compaction and radix sorting run in
-  compute; draws are issued indirectly from counts the GPU wrote.
+<details>
+<summary><b>How it gets there</b></summary>
+
+- **Particles that never leave the GPU** — spawned, moved, collided, sorted, culled and drawn by compute kernels, and
+  an event's children spawned there too; the CPU only schedules each emitter and hears back only what it asks for.
 - **Multi-draw indirect and vertex pulling** — a whole particle system draws in one call per look, its quads built
   from the vertex index with no vertex buffers.
-- **A real render graph** — barriers placed automatically, transients pooled, async compute and a dedicated transfer
-  queue on Vulkan.
 - **Zero-stall streaming** — persistently mapped upload memory, readbacks behind fences, one fence wait a frame and no
   allocation on hot paths.
-- **Wave-level compute** — subgroup reductions and scans, emulated in shared memory where the hardware lacks them, and
-  a counter-based RNG that gives the same bits on every GPU.
-- **Spatial acceleration** — the world round the camera as a toroidal voxel window with a jump-flood distance field,
-  updated only where it changed.
 - **Energy-conserving bloom** — a 13-tap downsample with Karis averaging and a tent upsample, its glow written in the
   same draw as the colour.
+
+</details>
 
 ## Features
 
 ### Rendering
 
-- **Render graph** — passes ordered by what they read and write, culled, batched into multi-draws; async compute on Vulkan.
-- **GPU-driven drawing** — indirect and multi-draw calls, GPU culling against a depth pyramid, LODs picked per draw.
+- **Render graph** — passes ordered by what they read and write, culled and batched into multi-draws, with barriers
+  placed and transients pooled for you; async compute and a dedicated transfer queue on Vulkan.
+- **GPU-driven drawing** — frustum and Hi-Z occlusion culling, compaction and radix sorting in compute; draws issued
+  indirectly from counts the GPU wrote, LODs picked per draw.
 - **World renderer** — meshes, labels and effects drawn into Minecraft's world, lit and fogged as its own blocks.
 - **GL on Vulkan** — the engine's GL-shaped calls answered on a Vulkan device, so one code path drives both.
 
@@ -66,15 +69,16 @@ does the work.
 ### Effects
 
 - **HDR and post** — a linear HDR scene with physically based bloom, heat-haze distortion, flashes and anime impact frames.
-- **VFX** — Niagara-style GPU particles: module stacks, events, collisions with the world and the scene's depth.
-- **The world on the GPU** — the blocks round the camera as voxels with a distance field: particles land, bounce and take their light from them.
+- **VFX** — GPU particles built from module stacks, with events and collisions against the world and the scene's depth.
+- **The world on the GPU** — the blocks round the camera as a voxel window with a jump-flood distance field, updated
+  only where it changed: particles land, bounce and take their light from them.
 - **Camera shake** — trauma, punches and FOV kicks an effect declares, summed into the host's camera.
 - **Text** — MSDF glyphs generated off-thread, system font fallback, labels placed in the world.
 
 ### Platform
 
 - **Every loader** — Forge 1.7.10–26.3, NeoForge 1.20.2–26.3 and Fabric 1.14.4–26.3, from one jar.
-- **Off the render thread** — meshes, textures, glyphs and shaders built on workers; uploads that never stall a frame.
+- **Off the render thread** — meshes, textures, glyphs and shaders built on workers, never on the frame.
 - **Player settings** — quality tiers, particle density, HDR and a comfort setting for flashes, applied to every effect.
 - **Networking** — typed messages, requests and replicated state between client and server.
 
@@ -84,6 +88,22 @@ does the work.
 - **Warm starts** — shaders prewarmed off the frame; on Vulkan, compiled shaders and the pipeline cache kept across launches.
 - **Profiling** — CPU zones, GPU timestamps per pass and per material, an overdraw view.
 - **Inspection** — a checked mode bounding every kernel access, and buffers decoded field by field from the GPU.
+
+## Getting started
+
+Add the repository and the API to your mod's `build.gradle.kts`:
+
+```kotlin
+repositories {
+    maven("https://dl.cloudsmith.io/public/crystalgraphics/crystalgraphics/maven/")
+}
+dependencies {
+    compileOnly("com.crystalgraphics:core:0.0.1")
+}
+```
+
+Players install Crystal Graphics as a mod of its own, and yours depends on it. The dev run, your mod's descriptor and
+one jar for several loaders are all in [Setup](docs/SETUP.md).
 
 ## At a glance
 
@@ -97,11 +117,11 @@ glass.applyProperties(p -> p.vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f));   // pink g
 world.onFrame(view -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
 ```
 
-The material it draws with, one file for every backend:
+The material it draws with:
 
 ```glsl
-// Meshes with an XYZ position, UV and normal per vertex
-#type spatial
+// A transparent glass material with a tint
+#type spatial                                   // Meshes with an XYZ position, UV and normal per vertex
 Tags { "RenderType" = "Transparent" }           // see-through, so it casts no shadow
 Queue = "Transparent"                           // drawn after solid things, back to front
 
@@ -150,13 +170,20 @@ Compute kernels, GPU culling and indirect drawing are a step further:
 [GPU-driven rendering](docs/GPU_DRIVEN_RENDERING.md) · [VFX](docs/VFX.md) · [Profiling](docs/PROFILING.md) ·
 [Building](docs/BUILD.md)
 
-Contributing starts at [`AGENTS.md`](AGENTS.md).
+Want to contribute? [`AGENTS.md`](AGENTS.md) is the map of the codebase and its rules.
+
+## License
+
+Crystal Graphics is free and open source, every line of it. You're free to use it in your own mods and applications,
+commercial or not, to modify it, and to redistribute it; modpacks can include it as they like.
+
+It is licensed under the [LGPL-3.0-or-later](COPYING.LESSER), building on the [GPL-3.0](COPYING). Projects that use
+Crystal Graphics can carry any license of their own; changes to Crystal Graphics itself are shared under the same
+license.
 
 ---
 
 <div align="center">
-
-Licensed under the [LGPL-3.0-or-later](COPYING.LESSER), building on the [GPL-3.0](COPYING).
 
 [![OSS hosting by Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith&style=flat-square)](https://cloudsmith.com)
 
