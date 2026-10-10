@@ -337,7 +337,8 @@ Pass {
   at most four buffers, bound with `material.buffer(name, buffer)`
   ([`SHADERS.md` § *Reading a kernel's buffers*](SHADERS.md#reading-a-kernels-buffers)).
 - A record's light is `CG_OBJECT_LIGHT`, its emission scale `CG_OBJECT_EMISSION`: `.light()` on the draw, or the
-  world's at its position.
+  world's at its position. A kernel writing records has four more lanes for its material, the normal matrix's w row
+  (`CG_OBJECT_SPARE`); `CgVfxRange` puts the surface a particle rests against there.
 
 ## 10. Designing the pipeline
 

@@ -152,6 +152,8 @@ public final class CgVfxParticlePool {
     /** Per slot: its origin as its last step gave it (3), and how far past its particles' size a look reaches. */
     private double[] slotOrigin = new double[0];
     private float[] slotScale = new float[0];
+    /** Per slot: its ground as its last step gave it, relative to its origin; NaN for none. */
+    private float[] slotGround = new float[0];
     /** Per slot: the radius it is culled as one sphere of about its origin, or 0 to cull each particle by its size. */
     private float[] slotSourceReach = new float[0];
     /** Per slot: the parent slot and event it is fed by, and the parent's definition then; null pool for none. */
@@ -767,6 +769,7 @@ public final class CgVfxParticlePool {
         slotOrigin[slot * 3] = view.originX();
         slotOrigin[slot * 3 + 1] = view.originY();
         slotOrigin[slot * 3 + 2] = view.originZ();
+        slotGround[slot] = groundY;
         int at = stepInstanceAt[s] + slot * instanceWords;
         String who = emitter.name();
         words.target(instances, at, INSTANCE_HEADER, who);
@@ -864,6 +867,12 @@ public final class CgVfxParticlePool {
     public double origin(int slot, int axis) {
         openSlot(slot, "origin");
         return slotOrigin[slot * 3 + axis];
+    }
+
+    /** {@code slot}'s ground as its last step gave it, relative to its origin; NaN for none. */
+    public float ground(int slot) {
+        openSlot(slot, "ground");
+        return slotGround[slot];
     }
 
     /**
@@ -1129,6 +1138,7 @@ public final class CgVfxParticlePool {
         written = Arrays.copyOf(written, size);
         slotOrigin = Arrays.copyOf(slotOrigin, size * 3);
         slotScale = Arrays.copyOf(slotScale, size);
+        slotGround = Arrays.copyOf(slotGround, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
         feedPool = Arrays.copyOf(feedPool, size);
         feedParent = Arrays.copyOf(feedParent, size);

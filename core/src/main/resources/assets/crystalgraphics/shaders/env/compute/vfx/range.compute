@@ -60,7 +60,7 @@ struct FxDrawn {
     vec4 light;
 };
 
-// A slot's origin, absolute: its whole blocks, and where in that block.
+// A slot's origin, absolute: its whole blocks, and where in that block; within.w its ground from there, NaN for none.
 struct FxOrigin { ivec4 block; vec4 within; };
 
 // A particle as a mesh draws it: CgInstanceKind.OBJECT's record.
@@ -180,6 +180,19 @@ void Place() {
     DRAWN_WRITE(d);
 }
 
+// What a mesh particle at p from slot's origin rests against (CG_OBJECT_SPARE): the nearest solid's surface in the
+// voxel window, as its normal and how far p is above it; else the slot's flat ground; else none, a zero normal.
+vec4 range_contact(int slot, vec3 p) {
+    FxOrigin o = ORIGINS(slot);
+    if (_WorldLive != 0) {
+        vec4 field = fx_world_field(_WorldDistance, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
+                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), o.block.xyz, o.within.xyz, p);
+        float slope = length(field.xyz);
+        if (field.w < FX_WORLD_FAR - 0.5 && slope > 1.0e-3) return vec4(field.xyz / slope, field.w);
+    }
+    return isnan(o.within.w) ? vec4(0.0) : vec4(0.0, 1.0, 0.0, p.y - o.within.w);
+}
+
 // JOML's rotationXYZ(ax, ay, az), term for term: its three columns.
 mat3 range_turn(float ax, float ay, float az) {
     float sx = sin(ax), cx = cos(ax), sy = sin(ay), cy = cos(ay), sz = sin(az), cz = cos(az);
@@ -209,11 +222,12 @@ void Objects() {
         o.model1 = vec4(turned[1] * size, 0.0);
         o.model2 = vec4(turned[2] * size, 0.0);
         o.model3 = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, 1.0);
-        // Matrix4f.normal: the inverse transpose, a rotation over its size
-        o.normal0 = vec4(turned[0] * inverse, 0.0);
-        o.normal1 = vec4(turned[1] * inverse, 0.0);
-        o.normal2 = vec4(turned[2] * inverse, 0.0);
-        o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, 1.0);
+        // Matrix4f.normal: the inverse transpose, a rotation over its size; its spare lanes what the particle rests on
+        vec4 contact = range_contact(lo, o.model3.xyz);
+        o.normal0 = vec4(turned[0] * inverse, contact.x);
+        o.normal1 = vec4(turned[1] * inverse, contact.y);
+        o.normal2 = vec4(turned[2] * inverse, contact.z);
+        o.normal3 = vec4(range_light(lo, o.model3.xyz), 0.0, contact.w);
         o.custom1 = vec4(t, r.seedSpin.x, curve.y, r.seedSpin.w);
     }
     OBJECTS_WRITE(o);

@@ -120,6 +120,9 @@ flat in int cg_InstanceId;
 // The draw's emission scale (CgWorldRenderer's .emission), stored less 1 in the same column so a writer leaving the
 // slot 0 means 1. Read through CG_EMISSION.
 #define CG_OBJECT_EMISSION (1.0 + CG_OBJECT_DATA.normalMatrix[3].z)
+// Four lanes the engine never reads, the normal matrix's w row, for a record's writer to hand its material:
+// (0, 0, 0, 1) from CgWorldRenderer. A VFX mesh particle's is what it rests against (CgVfxRange).
+#define CG_OBJECT_SPARE vec4(CG_OBJECT_DATA.normalMatrix[0].w, CG_OBJECT_DATA.normalMatrix[1].w, CG_OBJECT_DATA.normalMatrix[2].w, CG_OBJECT_DATA.normalMatrix[3].w)
 
 // -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
 // cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that
