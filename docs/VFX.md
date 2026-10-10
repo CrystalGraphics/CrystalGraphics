@@ -80,7 +80,8 @@ final class Sparks extends CgVfxEffect {
 - **One instance an emitter an effect**; a variant of a definition is `SPARKS.toBuilder()...build()`.
 - `.optional()` marks detail: halved at the Low tier. Density thins every emitter.
 - `shape(radius)` starts particles anywhere within a ball round the source; `shape(inner, outer)` on a shell, as smoke
-  rolling out from the edge of a dome rather than through it.
+  rolling out from the edge of a dome rather than through it. `sweep(speed)` runs that shell outward over the rate's
+  span, easing to a stop, so particles are born on a moving front, as dust a shock front lifts (a rate and no bursts).
 - **Each look draws as one multi-draw**, so two looks order as wholes, not particle by particle. A solid look's shader
   writes depth where it covers (`"Depth" = "Clip"`); a soft one solid in its middle writes a depth prepass there
   (`"Depth" = "Prepass"`, `billow`); only a look soft throughout relies on blending alone. A Clip look draws first in

@@ -60,7 +60,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float[] burstTimes;
     final int[] burstCounts;
     final float rate, rateFrom, rateUntil;
-    final float shapeInner, shapeRadius, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    final float shapeInner, shapeRadius, sweep, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    /** The sweep as spawn k's front, {@code frontA k - frontB k^2} blocks, k held at its peak: what both paths read. */
+    final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
     final List<CgVfxModule> modules;
     final List<CgVfxEvent> events;
@@ -85,6 +87,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         rateUntil = b.rateUntil;
         shapeInner = b.shapeInner;
         shapeRadius = b.shapeRadius;
+        sweep = b.sweep;
+        // Spawn k is born k / rate into the rate's span T: the front, sweep (t - t^2 / 2T), in k.
+        float span = b.rateUntil - b.rateFrom;
+        frontA = sweep != 0f ? sweep / b.rate : 0f;
+        frontB = sweep != 0f ? sweep / (2f * span * b.rate * b.rate) : 0f;
         upMin = b.upMin;
         upMax = b.upMax;
         upBias = b.upBias;
@@ -154,7 +161,15 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         out.vec4(shapeRadius, upMin, upMax, upBias)
            .vec4(speedMin, speedMax, lifeMin, lifeMax)
            .vec4(sizeMin, sizeMax, sizeSkew, heat)
-           .vec4(spinMin, spinMax, shapeInner, 0f);
+           .vec4(spinMin, spinMax, shapeInner, 0f)
+           .vec4(frontA, frontB, 0f, 0f);
+    }
+
+    /** How far out spawn {@code k}'s front has swept, in blocks: 0 without {@link Builder#sweep}. */
+    float front(int k) {
+        if (frontB == 0f) return 0f;
+        float held = Math.min(k, frontA / (2f * frontB));
+        return frontA * held - frontB * held * held;
     }
 
     @Override
@@ -248,7 +263,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             pull += modules.get(i).pull(heat);
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
-        return shapeRadius + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
+        float swept = 0.5f * Math.abs(sweep) * (rateUntil - rateFrom);
+        return shapeRadius + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
     /** The largest a particle draws, before a look's own scale: its largest size times its size curve's peak. */
@@ -273,7 +289,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<Float> burstTimes = new ArrayList<>();
         private final List<Integer> burstCounts = new ArrayList<>();
         private float rate, rateFrom, rateUntil;
-        private float shapeInner, shapeRadius;
+        private float shapeInner, shapeRadius, sweep;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
@@ -306,6 +322,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             rateUntil = e.rateUntil;
             shapeInner = e.shapeInner;
             shapeRadius = e.shapeRadius;
+            sweep = e.sweep;
             upMin = e.upMin;
             upMax = e.upMax;
             upBias = e.upBias;
@@ -381,6 +398,27 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         public Builder shape(float inner, float outer) {
             shapeInner = inner;
             shapeRadius = outer;
+            return this;
+        }
+
+        /**
+         * The shape runs outward at {@code speed} blocks a second from the rate's start, easing to a stop at its end, so
+         * particles are born on a front sweeping out: a shock front lifting dust off the ground as it passes. It covers
+         * {@code speed} times the rate's span, halved; a size curve of {@code OUT_QUAD} over that span follows it.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("skirt").rate(400f, 0f, 1.6f).shape(9f, 9.5f).launch(0f, 0.15f, 1f)
+         *         .sweep(46f)                                    // 9 blocks out at the start, 46 at 1.6 s
+         *         ...
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Rate spawns only, so a sweeping emitter takes no burst: {@link #build} throws.</li>
+         *   <li>An event's children spawn where the event fired, never on the front.</li>
+         * </ul>
+         */
+        public Builder sweep(float speed) {
+            sweep = speed;
             return this;
         }
 
@@ -478,6 +516,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         }
 
         public CgVfxEmitter build() {
+            if (sweep != 0f && (!burstTimes.isEmpty() || rate <= 0f || rateUntil <= rateFrom)) {
+                throw new IllegalStateException(name + " sweeps its shape, which needs a rate span and no bursts");
+            }
             return new CgVfxEmitter(this);
         }
     }
