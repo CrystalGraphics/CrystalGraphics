@@ -102,6 +102,7 @@ a kind marked after the solver (collisions, kills) sees where the particle went.
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
 | `Ground` | Landing on the effect's ground: restitution, friction, rest |
+| `Current` | Dust in a gravity current along the ground: a fast front rides up into a rolling head, stalled dust lofts |
 | `Collide` | A sphere, box, plane or container (`Volume`): bounce, friction, kill on contact |
 | `CollideWorld` | The world's blocks, from the voxel window round the camera |
 | `CollideDepth` | The scene's depth: mobs and players on screen, what the voxel window does not hold |

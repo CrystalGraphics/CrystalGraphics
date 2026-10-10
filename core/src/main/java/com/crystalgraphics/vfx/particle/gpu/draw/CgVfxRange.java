@@ -387,7 +387,8 @@ public final class CgVfxRange {
                         .bind("CURVES", p.curves())
                         .bind("DRAWN", drawn, (long) drawnFirst * DRAWN_BYTES, (long) capacity * DRAWN_BYTES)
                         .set("_Slots", p.slotCount()).set("_SlotFirst", slotFirst).set("_Alpha", range.alpha)
-                        .set("_Ahead", range.ahead).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS));
+                        .set("_Ahead", range.ahead).set("_Texels", CgVfxGpuEmitter.CURVE_TEXELS)
+                        .set("_Floors", p.shape().floors() ? 1 : 0));
                 if (objects != null) {
                     long bytes = CgGpuOps.cullRecordBytes();
                     window.bind(pass.dispatch(objected, capacity).bind("RECORDS", p.records()).bind("INDICES", indices)
