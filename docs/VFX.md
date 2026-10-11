@@ -21,6 +21,7 @@ VFX.play(new Storm(Storm.LOOK, x, y, z).startAt(12f));           // joins 12 s i
 
 VFX.stop();     // this mod's effects, gracefully: emission ends, what is in flight plays out
 VFX.clear();    // this mod's effects at once, particles and all
+VFX.enabled(false);   // a dev key: ends them and plays nothing until enabled again
 ```
 
 Registered by id, an effect can be played by the spawn command, the network and tools:

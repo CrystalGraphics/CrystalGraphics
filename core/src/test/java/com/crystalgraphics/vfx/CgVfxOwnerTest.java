@@ -102,6 +102,26 @@ public class CgVfxOwnerTest {
     }
 
     @Test
+    public void aDisabledOwnerEndsItsEffectsAndPlaysNothingUntilEnabled() {
+        CgVfxSystem vfx = new CgVfxSystem();
+        CgVfxOwner mine = CgVfx.owner("owner_switch", vfx), theirs = CgVfx.owner("owner_switch_others", vfx);
+        Quiet a = mine.play(new Quiet(1)), b = theirs.play(new Quiet(2));
+        mine.enabled(false);
+        assertEquals(CgVfxEffect.State.DEAD, a.state());
+        Quiet muted = mine.play(new Quiet(3));
+        assertEquals("returned dead", CgVfxEffect.State.DEAD, muted.state());
+        muted.stop();
+        vfx.update(0.0);
+        vfx.update(1 / 60.0);
+        assertEquals(Arrays.asList(b), vfx.effects());
+        mine.enabled(true);
+        Quiet back = mine.play(new Quiet(4));
+        vfx.update(2 / 60.0);
+        assertEquals(CgVfxEffect.State.PLAYING, back.state());
+        assertEquals(Arrays.asList(b, back), vfx.effects());
+    }
+
+    @Test
     public void aKilledEffectsGpuParticlesGoWithIt() {
         CgVfxSystem vfx = new CgVfxSystem();
         CgVfxOwner owner = CgVfx.owner("owner_slots", vfx);

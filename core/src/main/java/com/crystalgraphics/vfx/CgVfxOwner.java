@@ -31,6 +31,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * // ending this mod's effects, and no other's
  * VFX.stop();                                               // gracefully: emission ends, what is in flight plays out
  * VFX.clear();                                              // at once: effects and particles gone
+ *
+ * // a dev key hiding this mod's effects: game code keeps calling play, which plays nothing while off
+ * VFX.enabled(!VFX.enabled());
  * }</pre>
  *
  * <ul>
@@ -58,6 +61,9 @@ public final class CgVfxOwner {
     private final ConcurrentLinkedQueue<CgVfxEffect> pending = new ConcurrentLinkedQueue<>();
     private final AtomicInteger pendingCount = new AtomicInteger();
     private volatile boolean warnedFull;
+    private volatile boolean enabled = true;
+    /** Turned off: clear at the next drain, on the render thread. */
+    private volatile boolean clearRequested;
     /** Its effects in its system, each at its {@code ownerSlot}, until the system removes it. Render thread. */
     private final List<CgVfxEffect> effects = new ArrayList<>();
     /** The system whose owner list holds it. */
@@ -83,11 +89,16 @@ public final class CgVfxOwner {
         return fixed != null ? fixed : CgVfx.world();
     }
 
-    /** Plays {@code effect} as this owner's. Into the world system it starts at the next world frame. */
+    /**
+     * Plays {@code effect} as this owner's. Into the world system it starts at the next world frame. While the owner is
+     * {@linkplain #enabled(boolean) disabled} it is returned dead instead, so later calls on it do nothing.
+     */
     public <E extends CgVfxEffect> E play(E effect) {
         if (effect.system != null || effect.owner != null) throw new IllegalStateException("already played: " + effect);
         effect.owner = this;
-        if (fixed != null) {
+        if (!enabled) {
+            effect.kill();
+        } else if (fixed != null) {
             fixed.play(effect);
         } else if (CgVfx.mayPlay()) {
             if (pendingCount.incrementAndGet() > MAX_PENDING && pending.poll() != null) {
@@ -102,9 +113,17 @@ public final class CgVfxOwner {
 
     /** Plays what waits into {@code system}. */
     void drain(CgVfxSystem system) {
+        if (clearRequested) {
+            clearRequested = false;
+            clear();
+        }
         for (CgVfxEffect effect; (effect = pending.poll()) != null; ) {
             pendingCount.decrementAndGet();
-            system.play(effect);
+            if (enabled) {
+                system.play(effect);
+            } else {
+                effect.kill();
+            }
         }
     }
 
@@ -192,6 +211,28 @@ public final class CgVfxOwner {
     public void stop() {
         dropPending();
         for (int i = 0; i < effects.size(); i++) effects.get(i).stop();
+    }
+
+    /**
+     * Turns this owner's effects on or off, from any thread. Off, what it plays ends as {@link #clear} ends it, at the
+     * next world frame, and every {@link #play} until it is turned on again plays nothing; effects ended by turning it
+     * off do not come back. Another owner's effects play on.
+     */
+    public void enabled(boolean on) {
+        enabled = on;
+        if (!on) {
+            dropPending();
+            if (fixed != null) {
+                clear();
+            } else {
+                clearRequested = true;
+            }
+        }
+    }
+
+    /** Whether it plays: true unless {@link #enabled(boolean)} turned it off. */
+    public boolean enabled() {
+        return enabled;
     }
 
     /** How many of its effects its system holds: playing, or ended since its last update. Render thread. */
