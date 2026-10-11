@@ -58,7 +58,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, floors;
+    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, floors;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -144,18 +144,20 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         instanceRow = lane;
-        boolean reads = false, distance = false, depth = false, floor = false;
+        boolean reads = false, distance = false, depth = false, entities = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
             for (CgVfxWorldInput input : inputs) {
-                reads |= input != CgVfxWorldInput.DEPTH;
+                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES;
                 distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
                 depth |= input == CgVfxWorldInput.DEPTH;
+                entities |= input == CgVfxWorldInput.ENTITIES;
                 floor |= input == CgVfxWorldInput.FLOOR_Y;
             }
         }
         readsWorld = reads;
         usesDistance = distance;
         usesDepth = depth;
+        usesEntities = entities;
         floors = floor;
         kernelKey = key.toString();
         this.key = kernelKey + identity;
@@ -255,6 +257,11 @@ public final class CgVfxShape {
     /** Whether any module takes {@link CgVfxWorldInput#DEPTH}: its Step kernel reads the scene's depth. */
     public boolean usesDepth() {
         return usesDepth;
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#ENTITIES}: its Step kernel reads the entity boxes. */
+    public boolean usesEntities() {
+        return usesEntities;
     }
 
     /** Whether any module takes a voxel window input: its Step kernel reads the window. */

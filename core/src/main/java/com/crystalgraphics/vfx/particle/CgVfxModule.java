@@ -1249,6 +1249,66 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
+     * The entities round the camera (mobs, players; not items or projectiles), with {@link Collide}'s response at the
+     * face of the box a particle entered, on screen or not. A particle strikes a box only on entering it, so one born
+     * inside its caster flies out; its collision events carry the entity ({@code CgVfxCollision.entity}). The CPU path
+     * skips it. Runs after the solver.
+     *
+     * <pre>{@code
+     * new CgVfxModule.CollideEntities(0.4f, 0.3f, 0.3f, 0.5f)            // debris bouncing off mobs
+     * new CgVfxModule.CollideEntities(0f, 0f, 0f, 1f).killing()          // a spray that stops on whoever it meets
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Each particle tests every box, at most {@code CgVfxEntityBoxes.MAX} of the nearest the camera: keep it to
+     *       emitters of thousands, not millions.</li>
+     *   <li>An entity walking into resting or slow particles engulfs them: they began the step inside.</li>
+     * </ul>
+     *
+     * @param size the share of a particle's size that collides: its box is grown by that
+     */
+    record CollideEntities(float bounce, float friction, float rest, float size, boolean kill) implements CgVfxModule {
+        private static final CgVfxWorldInput[] ENTITIES = {CgVfxWorldInput.ENTITIES};
+
+        public CollideEntities(float bounce, float friction, float rest, float size) {
+            this(bounce, friction, rest, size, false);
+        }
+
+        public CollideEntities killing() {
+            return new CollideEntities(bounce, friction, rest, size, true);
+        }
+
+        @Override
+        public void apply(CgVfxEmitterInstance emitter, float dt) {
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public String gpuKind() {
+            return "collide_entities";
+        }
+
+        @Override
+        public int paramVectors() {
+            return 2;
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(size, 0f, 0f, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return ENTITIES;
+        }
+    }
+
+    /**
      * Kills the particles inside a volume, or with {@code inside} false those outside it (bevy_hanabi's kill sphere and
      * kill box; a plane kills behind it). They die, and their death events fire, at the end of the step. Runs after the
      * solver.

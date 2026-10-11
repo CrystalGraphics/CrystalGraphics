@@ -179,6 +179,7 @@ a kind marked after the solver (collisions, kills) sees where the particle went.
 | `Collide` | A sphere, box, plane or container (`Volume`): bounce, friction, kill on contact |
 | `CollideWorld` | The world's blocks, from the voxel window round the camera |
 | `CollideDepth` | The scene's depth: mobs and players on screen, what the voxel window does not hold |
+| `CollideEntities` | The boxes of the 64 living entities nearest the camera, on screen or not; struck only on entering, so a particle born in its caster flies out |
 | `Kill` | Dies inside (or outside) a `Volume` |
 
 ```java
@@ -229,6 +230,7 @@ CgVfxCollision.Registration scorch = VFX.onCollide(c -> {
 // Particles report only from emitters that ask to
 static final CgVfxEmitter DEBRIS = CgVfxEmitter.builder("debris")
         .module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
+        .module(new CgVfxModule.CollideEntities(0.3f, 0.4f, 0.4f, 0.5f))
         .reportCollisions(32)                      // onCollision().readback(32)
         ...
 ```
@@ -273,7 +275,8 @@ The variations, each with an example in `CgVfxGpuModule`'s javadoc:
 | a value per instance each step (a moving centre, in doubles) | `instanceLanes()`, `writeInstance` | one argument per lane, after the numbers |
 | the world after the solver (floor, blocks, light) | `afterSolve()` true, `worldInputs()` | the world values, after the lanes; `FxWorld` for the window |
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
-| an impact that fires `onCollision` | after the solver; calls `fx_hit(p, n, FX_HIT_BLOCK)` (what was struck: `fx_types.glsl`'s `FX_HIT_*`) on a punctual impact | — |
+| an impact that fires `onCollision` | after the solver; calls `fx_hit(p, n, FX_HIT_BLOCK)` (what was struck: `fx_types.glsl`'s `FX_HIT_*`; an entity's sets `p.hitEntity` too) on a punctual impact | — |
+| the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities`: `fx_entities_at.glsl`'s `fx_entities_enter` |
 
 - `fx_types.glsl` has the structs (`FxParticle`, `FxForces`, `FxStep`). A kind kills a particle with `p.life = p.age`.
 - **Prefix a kind with the mod's name**: two kinds of one name with different source throw.

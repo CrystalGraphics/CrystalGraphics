@@ -285,6 +285,7 @@ public final class CgVfxParticlePool {
             for (int i = 0; i < ALL.size(); i++) ALL.get(i).forgetStorage();
             RELEASED.clear();
             unfed = spawnStream = spawnCount = reportStream = reportCounts = null;
+            CgVfxEntityBoxes.forget();
         }
     };
 
@@ -320,15 +321,27 @@ public final class CgVfxParticlePool {
         depthPyramid = pyramid;
     }
 
-    /** The stage's recording: the depth asked for only when a stepping shape reads it. */
+    /**
+     * What the next {@link #record} gathers the entity boxes round, for kinds taking {@link CgVfxWorldInput#ENTITIES}:
+     * the camera, and the partial tick to pose them at. The stage does this itself; a check scene recording its pools by
+     * hand calls it first, or its kinds see no entities. Render thread.
+     */
+    public static void entities(double x, double y, double z, float partialTick) {
+        CgVfxEntityBoxes.around(x, y, z, partialTick);
+    }
+
+    /** The stage's recording: the depth and the entities asked for only when a stepping shape reads them. */
     private static void recordStage(CgStageFrame frame) {
+        boolean depth = false, entities = false;
         for (int i = 0; i < ALL.size(); i++) {
             CgVfxParticlePool pool = ALL.get(i);
-            if (pool.steps > 0 && pool.shape.usesDepth()) {
-                depth(frame.host().view(), frame.depthPyramid());
-                break;
-            }
+            if (pool.steps == 0) continue;
+            depth |= pool.shape.usesDepth();
+            entities |= pool.shape.usesEntities();
         }
+        CgHostView view = frame.host().view();
+        if (depth) depth(view, frame.depthPyramid());
+        if (entities) entities(view.x(), view.y(), view.z(), frame.host().partialTick());
         recordAll(frame.recording());
     }
 
@@ -376,6 +389,12 @@ public final class CgVfxParticlePool {
             reportCounts = fit(recording, reportCounts, "vfx.pool.report-counts", maxSteps);
         }
         for (int i = 0; i < STEPPING.size(); i++) STEPPING.get(i).uploadFeeds(recording, spawnRows);
+        for (int i = 0; i < STEPPING.size(); i++) {
+            if (STEPPING.get(i).shape.usesEntities()) {
+                CgVfxEntityBoxes.upload(recording);
+                break;
+            }
+        }
         CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
         if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
         for (int s = 0; s < maxSteps; s++) {
@@ -493,6 +512,7 @@ public final class CgVfxParticlePool {
             window.bind(stepping);
         }
         if (shape.usesDepth()) bindDepth(stepping);
+        if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }

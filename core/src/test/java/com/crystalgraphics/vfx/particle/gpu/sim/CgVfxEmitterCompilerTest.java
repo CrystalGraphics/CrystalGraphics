@@ -130,6 +130,7 @@ public class CgVfxEmitterCompilerTest {
                 .module(new CgVfxModule.Collide(CgVfxModule.Volume.plane(0f, 1f, 0f), 0f, 0f, 0f).killing())
                 .module(new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f))
                 .module(new CgVfxModule.CollideDepth(0.4f, 0.3f, 0.3f, 0.5f))
+                .module(new CgVfxModule.CollideEntities(0.4f, 0.3f, 0.3f, 0.5f))
                 .module(new CgVfxModule.Kill(CgVfxModule.Volume.box(20f, 20f, 20f), false))
                 .event(CgVfxEvent.onCollision().readback(8))
                 .build();
@@ -137,6 +138,9 @@ public class CgVfxEmitterCompilerTest {
         String glsl = CgVfxEmitterCompiler.source(shape);
         assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/lib/vfx/sim/fx_collide.glsl\""));
         assertTrue(shape.readsWorld());
+        assertTrue(shape.usesEntities());
+        assertTrue("a row carries what was struck and its entity", glsl.contains("ev.normal = vec4(n, hit)")
+                && glsl.contains("int(p.hitEntity)") && glsl.contains(", step_entities(inst));"));
         CgVfxEmitterCompiler.compile(shape).kernel("Step").check();
     }
 

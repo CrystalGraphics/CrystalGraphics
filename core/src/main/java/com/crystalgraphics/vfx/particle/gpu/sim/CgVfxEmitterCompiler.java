@@ -74,6 +74,7 @@ public final class CgVfxEmitterCompiler {
         s.append("#include \"crystalgraphics:shaders/lib/vfx/fx_event.glsl\"\n");
         if (shape.readsWorld()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl\"\n");
         if (shape.usesDepth()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_depth_at.glsl\"\n");
+        if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
@@ -95,6 +96,7 @@ public final class CgVfxEmitterCompiler {
                 """);
         if (shape.readsWorld()) s.append(CgVfxVoxelWindow.PROPERTIES);
         if (shape.usesDepth()) s.append(DEPTH_PROPERTIES);
+        if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
                 s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
@@ -115,6 +117,7 @@ public final class CgVfxEmitterCompiler {
                 """);
         if (shape.spawns()) s.append("    SPAWN_EVENTS  (\"Events that spawn children\", FxEvent, append)\n");
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
+        if (shape.usesEntities()) s.append("    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n");
         if (!shape.spawns()) {
             s.append("    PARENT_EVENTS (\"This step's parents' events\", FxEvent, readonly)\n");
             s.append("    PARENT_COUNT  (\"How many\",                    uint,    readonly)\n");
@@ -169,6 +172,26 @@ public final class CgVfxEmitterCompiler {
                     }
                     """);
         }
+        if (shape.usesEntities()) {
+            s.append("""
+
+                    // The entity boxes as a kind taking ENTITIES reads them: this instance's origin in their frame.
+                    FxEntities step_entities(int inst) {
+                        FxEntities e;
+                        e.origin = vec3(ivec3(INSTANCES(inst + 3).xyz) - ivec3(_EntityAnchorX, _EntityAnchorY, _EntityAnchorZ))
+                                + step_instance(inst + 4).xyz;
+                        e.count = _Entities;
+                        return e;
+                    }
+
+                    void step_entity(int i, out vec3 lo, out vec3 hi, out uint id) {
+                        uvec4 a = ENTITIES(i * 2), b = ENTITIES(i * 2 + 1);
+                        lo = uintBitsToFloat(a.xyz);
+                        hi = uintBitsToFloat(b.xyz);
+                        id = a.w;
+                    }
+                    """);
+        }
         s.append("""
 
                 FxParticle step_unpack(FxRecord r) {
@@ -188,6 +211,7 @@ public final class CgVfxEmitterCompiler {
                     p.id = r.idSlot.x;
                     p.slot = r.idSlot.y;
                     p.hit = vec4(0.0);
+                    p.hitEntity = 0u;
                     return p;
                 }
 
@@ -243,6 +267,7 @@ public final class CgVfxEmitterCompiler {
                     p.resting = false;
                     p.collisions = 0u;
                     p.hit = vec4(0.0);
+                    p.hitEntity = 0u;
                 }
 
                 // CgVfxEmitterInstance.spawnOne: spawn k of the instance in slot, unless its share thins it out.
@@ -307,7 +332,7 @@ public final class CgVfxEmitterCompiler {
                     ev.position = vec4(step_instance(inst + 4).xyz + p.position, 0.0);
                     ev.velocityAge = vec4(v, p.age);
                     ev.normal = vec4(n, hit);
-                    ev.block = ivec4(INSTANCES(inst + 3));
+                    ev.block = ivec4(ivec3(INSTANCES(inst + 3).xyz), int(p.hitEntity));
                     ev.ids = uvec4(p.id, uint(_PoolId) << 16u | p.slot, e, firing);
                     return ev;
                 }
@@ -366,6 +391,7 @@ public final class CgVfxEmitterCompiler {
                     // What it struck with: a landing's and a collision's velocity.
                     vec3 impact = p.velocity;
                     p.hit = vec4(0.0);
+                    p.hitEntity = 0u;
                 """);
         for (int i = 0; i < shape.modules(); i++) if (shape.afterSolve(i)) call(s, shape, i);
         s.append("""
@@ -435,6 +461,7 @@ public final class CgVfxEmitterCompiler {
                 case FLOOR_Y -> s.append(", step_floor(p, inst)");
                 case WORLD, WORLD_DISTANCE -> s.append(", step_world(inst)");
                 case DEPTH -> s.append(", step_depth(inst)");
+                case ENTITIES -> s.append(", step_entities(inst)");
             }
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));

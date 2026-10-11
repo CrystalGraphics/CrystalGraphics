@@ -11,13 +11,14 @@
 
 // A particle, unpacked from its pool record. Positions are relative to its instance's origin, in blocks; times in
 // seconds. previous is where it was a step ago, what a frame interpolates from. collisions counts its impacts so far
-// (16 bits, saturating); hit is this step's, set by fx_hit and never stored. A kind kills a particle by setting life
-// to its age: it dies, and its death events fire, at the end of this step.
+// (16 bits, saturating); hit is this step's, set by fx_hit and never stored, and hitEntity the entity it struck when
+// hit.w is FX_HIT_ENTITY. A kind kills a particle by setting life to its age: it dies, and its death events fire, at the
+// end of this step.
 struct FxParticle {
     vec3 position, previous, velocity;
     float age, life, size, seed, spin, spinRate, heat;
     bool resting;
-    uint id, slot, collisions;
+    uint id, slot, collisions, hitEntity;
     vec4 hit;
 };
 

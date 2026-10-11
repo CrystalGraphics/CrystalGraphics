@@ -37,7 +37,13 @@ public enum CgVfxWorldInput {
      * take: Niagara's and Unity's depth buffer collision. Blind off screen and behind the first surface; the voxel
      * window is the primary collider, this one for what it does not hold (entities, a mod's meshes).
      */
-    DEPTH("FxDepth", "depth");
+    DEPTH("FxDepth", "depth"),
+    /**
+     * The entities round the camera this frame, as boxes in an {@code FxEntities} that {@code fx_entities_at.glsl}'s
+     * readers take ({@code fx_entities_enter}): mobs and players a particle can strike from any side, on screen or not.
+     * At most {@code CgVfxEntityBoxes.MAX} of them, the living nearest the camera.
+     */
+    ENTITIES("FxEntities", "entities");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};
