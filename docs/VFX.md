@@ -210,6 +210,41 @@ vfx.onEvents((definition, event, rows) -> {
   `COLLISION_FIRINGS` times a particle.
 - Rows come a frame or two after their step: steer by what arrived, never wait for it.
 
+## Collisions
+
+What an effect or its particles strike reaches one listener type, `CgVfxCollisionListener`, at whichever scope fits:
+the effect's, its owner's, or every effect's. Each hears a `CgVfxCollision`: its source (`EFFECT`, `PARTICLE`), what was
+struck (`BLOCK`, `ENTITY`, `GROUND`, `SCENE`, `SHAPE`, `TARGET`, `OTHER`), the entity, where, the normal and the velocity.
+
+```java
+// One effect's: a wave that finds its own target reports what it strikes
+CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(player, HANDS_FORWARD).collide());
+wave.onCollide(c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) damage(c.entity()); });
+
+// A mod's effects', particles included: scorch marks wherever anything lands on a block
+CgVfxCollision.Registration scorch = VFX.onCollide(c -> {
+    if (c.hit() == CgVfxCollision.Hit.BLOCK) decals.scorch(c.x(), c.y(), c.z(), c.nx(), c.ny(), c.nz());
+});
+
+// Particles report only from emitters that ask to
+static final CgVfxEmitter DEBRIS = CgVfxEmitter.builder("debris")
+        .module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
+        .reportCollisions(32)                      // onCollision().readback(32)
+        ...
+```
+
+- Heard on the render thread: the effect's listeners, then its owner's, then `CgVfx.onCollide`'s. The collision is
+  valid only during the call.
+- An effect reports a contact as it starts and again when what it strikes changes, never every tick it holds. An effect
+  of your own reports through `collided(...)` from its collision test.
+- An effect with more than one part that strikes names each (`part()`), and an area one says how far it reaches
+  (`radius()`). `CgEnergyWave` reports `PART_BEAM` as its head reaches what it hits, then `PART_BLAST` once as the
+  explosion bursts, on what the beam last struck, with the blast's radius: damage the contact, the blast, or both.
+- A particle's collisions arrive a few frames after the GPU step, and may arrive after its effect has died. The
+  `reportCollisions` cap is per step and shared by every effect playing that emitter. A landing an emitter reports
+  (`onLanding().readback(n)`) is heard as `GROUND`.
+- The CPU path reports nothing; it will be deleted.
+
 ## A module of your own
 
 A module is a record implementing `CgVfxModule` and a GLSL function, `fx_<kind>`, which the generated Step kernel
@@ -238,7 +273,7 @@ The variations, each with an example in `CgVfxGpuModule`'s javadoc:
 | a value per instance each step (a moving centre, in doubles) | `instanceLanes()`, `writeInstance` | one argument per lane, after the numbers |
 | the world after the solver (floor, blocks, light) | `afterSolve()` true, `worldInputs()` | the world values, after the lanes; `FxWorld` for the window |
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
-| an impact that fires `onCollision` | after the solver; calls `fx_hit(p, n)` on a punctual impact | — |
+| an impact that fires `onCollision` | after the solver; calls `fx_hit(p, n, FX_HIT_BLOCK)` (what was struck: `fx_types.glsl`'s `FX_HIT_*`) on a punctual impact | — |
 
 - `fx_types.glsl` has the structs (`FxParticle`, `FxForces`, `FxStep`). A kind kills a particle with `p.life = p.age`.
 - **Prefix a kind with the mod's name**: two kinds of one name with different source throw.

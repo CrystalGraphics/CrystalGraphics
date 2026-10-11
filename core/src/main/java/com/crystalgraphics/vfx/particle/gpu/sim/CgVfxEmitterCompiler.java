@@ -300,13 +300,13 @@ public final class CgVfxEmitterCompiler {
                     return d > 1e-12 ? v / sqrt(d) : vec3(0.0, 1.0, 0.0);
                 }
 
-                // Event e of p, its velocity v and normal n, and for a repeating trigger which firing: where it fired, as
-                // its slot's origin's block and the place within it.
-                FxEvent step_event(FxParticle p, int inst, uint e, vec3 v, vec3 n, uint firing) {
+                // Event e of p, its velocity v and normal n, what it met (an FX_HIT_ code) and for a repeating trigger which
+                // firing: where it fired, as its slot's origin's block and the place within it.
+                FxEvent step_event(FxParticle p, int inst, uint e, vec3 v, vec3 n, float hit, uint firing) {
                     FxEvent ev;
                     ev.position = vec4(step_instance(inst + 4).xyz + p.position, 0.0);
                     ev.velocityAge = vec4(v, p.age);
-                    ev.normal = vec4(n, 0.0);
+                    ev.normal = vec4(n, hit);
                     ev.block = ivec4(INSTANCES(inst + 3));
                     ev.ids = uvec4(p.id, uint(_PoolId) << 16u | p.slot, e, firing);
                     return ev;
@@ -373,20 +373,20 @@ public final class CgVfxEmitterCompiler {
                 """);
         for (int e = 0; e < shape.events(); e++) {
             switch (shape.trigger(e)) {
-                case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "0u");
+                case LANDING -> event(s, shape, e, "p.resting && !wasResting", "impact", "vec3(0.0, 1.0, 0.0)", "FX_HIT_GROUND", "0u");
                 case AGE -> event(s, shape, e, "p.age - s.dt < " + eventValue(shape, e) + " && " + eventValue(shape, e)
-                        + " <= p.age", "p.velocity", "step_normal(p.velocity)", "0u");
+                        + " <= p.age", "p.velocity", "step_normal(p.velocity)", "0.0", "0u");
                 case COLLISION -> event(s, shape, e, "p.hit.w > 0.0 && float(p.collisions) <= " + eventLimit(shape, e),
-                        "impact", "p.hit.xyz", "p.collisions");
+                        "impact", "p.hit.xyz", "p.hit.w", "p.collisions");
                 case RATE -> event(s, shape, e, "floor((p.age - s.dt) / " + eventValue(shape, e) + ") < floor(p.age / "
                         + eventValue(shape, e) + ") && floor(p.age / " + eventValue(shape, e) + ") <= " + eventLimit(shape, e),
-                        "p.velocity", "step_normal(p.velocity)", "uint(floor(p.age / " + eventValue(shape, e) + "))");
+                        "p.velocity", "step_normal(p.velocity)", "0.0", "uint(floor(p.age / " + eventValue(shape, e) + "))");
                 case DEATH -> { }
             }
         }
         s.append("    if (p.age >= p.life) {\n");
         for (int e = 0; e < shape.events(); e++) {
-            if (shape.trigger(e) == CgVfxEvent.Trigger.DEATH) event(s, shape, e, "true", "p.velocity", "step_normal(p.velocity)", "0u");
+            if (shape.trigger(e) == CgVfxEvent.Trigger.DEATH) event(s, shape, e, "true", "p.velocity", "step_normal(p.velocity)", "0.0", "0u");
         }
         s.append("""
                         return;
@@ -409,10 +409,10 @@ public final class CgVfxEmitterCompiler {
 
     /** Event {@code e}'s row, appended to each stream it goes to when {@code when} holds. */
     private static void event(StringBuilder s, CgVfxShape shape, int e, String when, String velocity, String normal,
-                              String firing) {
+                              String hit, String firing) {
         s.append("    if (").append(when).append(") {\n");
         s.append("        FxEvent ev = step_event(p, inst, ").append(e).append("u, ").append(velocity).append(", ").append(normal)
-                .append(", ").append(firing).append(");\n");
+                .append(", ").append(hit).append(", ").append(firing).append(");\n");
         if (shape.eventSpawns(e)) s.append("        SPAWN_EVENTS_APPEND(ev);\n");
         if (shape.eventReports(e)) s.append("        REPORT_EVENTS_APPEND(ev);\n");
         s.append("    }\n");

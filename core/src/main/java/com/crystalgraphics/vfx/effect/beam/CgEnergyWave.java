@@ -9,6 +9,7 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.CgVfxCollision;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -145,6 +146,19 @@ public final class CgEnergyWave extends CgVfxEffect {
             MOMENT_SPLASH = "splash", MOMENT_HOLDING = "holding", MOMENT_STOP = "stop", MOMENT_TAIL = "tail",
             MOMENT_BLAST_START = "blast-start", MOMENT_BLAST_PEAK = "blast-peak", MOMENT_BLAST_FADE = "blast-fade",
             MOMENT_END = "end";
+    /**
+     * The parts of it that strike ({@code CgVfxCollision.part}): the beam, as its head reaches what it hits and as that
+     * changes, a point contact; and the blast, once, as the explosion bursts after its impact frame, reaching
+     * {@link #RADIUS} times {@link #BLAST_RADIUS} round the point (its {@code radius}).
+     *
+     * <pre>{@code
+     * wave.onCollide(c -> {
+     *     if (CgEnergyWave.PART_BEAM.equals(c.part()) && c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity());
+     *     if (CgEnergyWave.PART_BLAST.equals(c.part())) explode(c.x(), c.y(), c.z(), c.radius());
+     * });
+     * }</pre>
+     */
+    public static final String PART_BEAM = "beam", PART_BLAST = "blast";
     /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
     public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
     /** The impact frame's frames, its fade's too, announced as moments: bits 18 to 31 of {@code momentsFired}. */
@@ -483,6 +497,15 @@ public final class CgEnergyWave extends CgVfxEffect {
     private boolean collides;
     private int hitEntity = -1;
     private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
+    /** Whether the aim met something at the last test: then {@link #hit} holds it. */
+    private boolean aimMet;
+    /** The contact last reported and its entity, null while none: a new one reports ({@link #reportContact}). */
+    private CgVfxCollision.Hit struck;
+    private int struckEntity = -1;
+    /** The last contact reported, and its normal: what the blast reports it burst on. */
+    private CgVfxCollision.Hit lastStruck;
+    private int lastStruckEntity = -1;
+    private float lastNormalX, lastNormalY = 1f, lastNormalZ;
     /** The age it releases at, and the ages it was stopped at, first hit and burst; NaN until each happens. */
     private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN, blastAge = Float.NaN;
     /** How hard the beam is hitting, eased toward 1 while it hits and 0 when it does not. */
@@ -559,7 +582,11 @@ public final class CgEnergyWave extends CgVfxEffect {
      * wave = owner.play(new CgEnergyWave(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD).collide());
      * wave.aim(look.x, look.y, look.z);                        // each tick
      * if (wave.hitEntity() >= 0) ...                           // what it strikes, -1 for none or a block
+     * wave.onCollide(c -> damage(c.entity()));                 // or heard as the head reaches it, and as it changes
      * }</pre>
+     *
+     * Without it, {@code onCollide} hears {@code TARGET} as the head reaches its target. Either way the blast reports
+     * too ({@link #PART_BLAST}).
      */
     public CgEnergyWave collide() {
         collides = true;
@@ -641,6 +668,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             CgVfxTrace.lap(STREAM_NS, t);
         }
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;
+        reportContact();
         impactLevel += ((stream.impacting() ? 1f : 0f) - impactLevel) * Math.min(1f, dt * 10f);
         shake();
         boolean drained = state() == State.STOPPING && stream.size() == 0;
@@ -693,6 +721,11 @@ public final class CgEnergyWave extends CgVfxEffect {
             try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, BLAST_ZONE)) {
                 startBlast();
             }
+            // On what the beam last struck; where it struck nothing, at the point it was going.
+            CgVfxCollision.Hit on = lastStruck != null ? lastStruck : CgVfxCollision.Hit.TARGET;
+            collided(PART_BLAST, on, lastStruckEntity, originX + stream.impactX(), originY + stream.impactY(),
+                    originZ + stream.impactZ(), lastNormalX, lastNormalY, lastNormalZ, 0f, 0f, 0f,
+                    get(RADIUS) * get(BLAST_RADIUS));
         }
         // A beat early, under the last beat: the host's camera takes an offset the frame after it is played.
         if (!blastReleased && (hold == 0f || real >= cut - 1f / BLAST_BEATS.fps())) {
@@ -801,13 +834,41 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (length == 0.0) return;
         double x = originX + muzzleX, y = originY + muzzleY, z = originZ + muzzleZ;
         float reach = get(MAX_LENGTH);
-        if (CgWorldQueries.raycastAll(x, y, z, aimX, aimY, aimZ, reach, get(RADIUS), following(), hit)) {
+        aimMet = CgWorldQueries.raycastAll(x, y, z, aimX, aimY, aimZ, reach, get(RADIUS), following(), hit);
+        if (aimMet) {
             hitEntity = hit.entity;
             target(hit.x, hit.y, hit.z);
         } else {
             hitEntity = -1;
             target(x + aimX / length * reach, y + aimY / length * reach, z + aimZ / length * reach);
         }
+    }
+
+    /**
+     * Reports a contact to the collision listeners as the head reaches what it strikes, and again when that changes:
+     * another entity, or a block for an entity. Colliding, what the aim met (air at full reach is no contact); else the
+     * target, as {@code TARGET}.
+     */
+    private void reportContact() {
+        CgVfxCollision.Hit now = !stream.impacting() ? null
+                : !collides ? CgVfxCollision.Hit.TARGET
+                : !aimMet ? null
+                : hitEntity >= 0 ? CgVfxCollision.Hit.ENTITY : CgVfxCollision.Hit.BLOCK;
+        int entity = now == CgVfxCollision.Hit.ENTITY ? hitEntity : -1;
+        if (now != null && (now != struck || entity != struckEntity)) {
+            float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ), speed = get(SPEED);
+            float dx = length > 0f ? aimX / length : 0f, dy = length > 0f ? aimY / length : 0f, dz = length > 0f ? aimZ / length : 0f;
+            boolean tested = now != CgVfxCollision.Hit.TARGET;
+            lastStruck = now;
+            lastStruckEntity = entity;
+            lastNormalX = tested ? hit.normalX : -dx;
+            lastNormalY = tested ? hit.normalY : -dy;
+            lastNormalZ = tested ? hit.normalZ : -dz;
+            collided(PART_BEAM, now, entity, originX + stream.impactX(), originY + stream.impactY(),
+                    originZ + stream.impactZ(), lastNormalX, lastNormalY, lastNormalZ, dx * speed, dy * speed, dz * speed, 0f);
+        }
+        struck = now;
+        struckEntity = entity;
     }
 
     /** What the look's emitters scale by: {@link #RADIUS} over {@link #AUTHORED_RADIUS}. */

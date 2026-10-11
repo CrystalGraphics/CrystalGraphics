@@ -9,5 +9,5 @@ void fx_collide_depth(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, FxDepth de
     vec3 n;
     if (p.resting || !fx_depth_behind(depth, p.position, m1.x, n)) return;
     p.position = p.previous;
-    fx_contact_respond(p, n, 0.0, m0);
+    fx_contact_respond(p, n, 0.0, m0, FX_HIT_SCENE);
 }

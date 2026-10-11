@@ -24,10 +24,21 @@ struct FxParticle {
 // An impact this step against a surface whose normal is n: what a COLLISION event fires on, and what collisions
 // counts. Unity VFX Graph's punctual contact: call it when the speed into the surface reaches the kind's bounce
 // threshold, never for a particle resting or sliding along it, or a resting particle fires every step. The last call
-// in a step gives the normal; each call counts.
-void fx_hit(inout FxParticle p, vec3 n) {
-    p.hit = vec4(n, 1.0);
+// in a step gives the normal and what was met (hit.w, an FX_HIT_ code: CgVfxEventRows.HIT_*); each call counts.
+#define FX_HIT_OTHER 1.0
+#define FX_HIT_SHAPE 2.0
+#define FX_HIT_SCENE 3.0
+#define FX_HIT_BLOCK 4.0
+#define FX_HIT_GROUND 5.0
+#define FX_HIT_ENTITY 6.0
+
+void fx_hit(inout FxParticle p, vec3 n, float what) {
+    p.hit = vec4(n, what);
     p.collisions = min(p.collisions + 1u, 65535u);
+}
+
+void fx_hit(inout FxParticle p, vec3 n) {
+    fx_hit(p, n, FX_HIT_OTHER);
 }
 
 // What modules before the solver add to: acceleration in blocks a second squared, linear drag a second, quadratic

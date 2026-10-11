@@ -14,6 +14,6 @@ void fx_collide(inout FxParticle p, FxStep s, vec4 m0, vec4 m1, vec4 m2, vec4 ce
     vec3 n;
     float depth;
     if (fx_volume_contact(m0, m2.y > 0.0, r, m2.x * p.size, n, depth)) {
-        fx_contact_respond(p, n, depth, m1);
+        fx_contact_respond(p, n, depth, m1, FX_HIT_SHAPE);
     }
 }

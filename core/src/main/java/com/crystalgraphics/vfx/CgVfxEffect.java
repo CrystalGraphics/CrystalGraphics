@@ -83,6 +83,8 @@ public abstract class CgVfxEffect {
     /** The shakes it holds, by parameter; made when first held. */
     private CgVfxParam[] heldParams;
     private CgCameraShake.Held[] held;
+    /** What hears its collisions; null for none. */
+    private CgVfxCollisionListener[] collideListeners;
     /** The post volumes it opened, closed when it dies. */
     private CgPostVolume[] volumes;
     /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
@@ -187,6 +189,67 @@ public abstract class CgVfxEffect {
     /** Who played it; null when played into a system directly. */
     public final CgVfxOwner owner() {
         return owner;
+    }
+
+    /**
+     * Hears what it and its particles strike, before its owner's listeners and the global ones. Its particles report
+     * only from emitters that ask to ({@code reportCollisions}).
+     *
+     * <pre>{@code
+     * owner.play(new CgEnergyWave(look, x, y, z).collide())
+     *         .onCollide(c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) damage(c.entity()); });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Render thread, or before it plays. Its listeners go with it.</li>
+     *   <li>Its particles' rows arrive a few frames after their step, so they may still come after it has died.</li>
+     * </ul>
+     */
+    public final CgVfxEffect onCollide(CgVfxCollisionListener listener) {
+        if (listener == null) throw new IllegalArgumentException("listener");
+        int n = collideListeners == null ? 0 : collideListeners.length;
+        collideListeners = collideListeners == null ? new CgVfxCollisionListener[1] : Arrays.copyOf(collideListeners, n + 1);
+        collideListeners[n] = listener;
+        return this;
+    }
+
+    /** As {@link #onCollide(CgVfxCollisionListener)}, for a listener that needs nothing of the collision. */
+    public final CgVfxEffect onCollide(Runnable listener) {
+        if (listener == null) throw new IllegalArgumentException("listener");
+        return onCollide(c -> listener.run());
+    }
+
+    /** Its collision listeners, or null for none. */
+    final CgVfxCollisionListener[] collideListeners() {
+        return collideListeners;
+    }
+
+    /**
+     * Reports something it struck, at {@code (x, y, z)} in world coordinates: an effect's own collision test calls it as a
+     * contact starts. Its normal {@code n} and velocity {@code v}; {@code entity} for {@link CgVfxCollision.Hit#ENTITY},
+     * else -1. Nothing when no one listens.
+     *
+     * <pre>{@code
+     * if (struck != wasStruck) collided(CgVfxCollision.Hit.ENTITY, struck, hx, hy, hz, nx, ny, nz, vx, vy, vz);
+     * }</pre>
+     */
+    protected final void collided(CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx, float ny,
+                                  float nz, float vx, float vy, float vz) {
+        collided(null, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, 0f);
+    }
+
+    /**
+     * As {@link #collided(CgVfxCollision.Hit, int, double, double, double, float, float, float, float, float, float)}, for
+     * an effect with more than one part that strikes: which one, named by a constant on the effect, and how far it
+     * reaches round the point (a blast's radius; 0 for a point contact).
+     *
+     * <pre>{@code
+     * collided(PART_BLAST, hit, entity, bx, by, bz, nx, ny, nz, 0f, 0f, 0f, blastRadius);
+     * }</pre>
+     */
+    protected final void collided(String part, CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx,
+                                  float ny, float nz, float vx, float vy, float vz, float radius) {
+        if (!seeking) CgVfxCollisions.effect(this, part, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, radius);
     }
 
     protected final void die() {
@@ -413,7 +476,7 @@ public abstract class CgVfxEffect {
     /** Hands the instances {@link #tickEmitters} scheduled for the first time to {@code steps}. Render thread. */
     final void admitScheduled(CgVfxGpuSteps steps) {
         for (int i = 0; i < admittedCount; i++) {
-            steps.admit(admitted[i]);
+            steps.admit(admitted[i], this);
             admitted[i] = null;
         }
         admittedCount = 0;

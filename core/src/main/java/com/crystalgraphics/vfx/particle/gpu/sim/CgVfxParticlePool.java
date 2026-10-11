@@ -148,6 +148,8 @@ public final class CgVfxParticlePool {
     private final float[] curveScratch = new float[CURVE_WORDS];
 
     private CgVfxGpuEmitter[] slotEmitter = new CgVfxGpuEmitter[0];
+    /** Per slot: what played it ({@link #open(CgVfxGpuEmitter, int, Object)}), handed back with its event rows. */
+    private Object[] slotOwner = new Object[0];
     private int[] slotCapacity = new int[0], slotRow = new int[0], slotBase = new int[0];
     /** Per slot: its origin as its last step gave it (3), and how far past its particles' size a look reaches. */
     private double[] slotOrigin = new double[0];
@@ -539,6 +541,7 @@ public final class CgVfxParticlePool {
      */
     private static final class Report implements CgGpuOps.Rows {
         private final IdentityHashMap<CgVfxParticlePool, CgVfxGpuEmitter[]> slots = new IdentityHashMap<>();
+        private final IdentityHashMap<CgVfxParticlePool, Object[]> owners = new IdentityHashMap<>();
         private final IdentityHashMap<CgVfxGpuEmitter, CgVfxEventRows[]> groups = new IdentityHashMap<>();
         private CgVfxParticlePool[] byId = new CgVfxParticlePool[0];
 
@@ -550,6 +553,10 @@ public final class CgVfxParticlePool {
                 if (held == null || held.length < pool.slotCount) slots.put(pool, held = new CgVfxGpuEmitter[pool.slotEmitter.length]);
                 System.arraycopy(pool.slotEmitter, 0, held, 0, pool.slotCount);
                 Arrays.fill(held, pool.slotCount, held.length, null);
+                Object[] by = owners.get(pool);
+                if (by == null || by.length < held.length) owners.put(pool, by = new Object[held.length]);
+                System.arraycopy(pool.slotOwner, 0, by, 0, pool.slotCount);
+                Arrays.fill(by, pool.slotCount, by.length, null);
                 if (byId.length <= pool.id) byId = Arrays.copyOf(byId, Math.max(pool.id + 1, byId.length * 2));
                 byId[pool.id] = pool;
             }
@@ -578,6 +585,9 @@ public final class CgVfxParticlePool {
                         rows.getInt(at + 56) + (double) rows.getFloat(at + 8), rows.getFloat(at + 16), rows.getFloat(at + 20),
                         rows.getFloat(at + 24), rows.getFloat(at + 32), rows.getFloat(at + 36), rows.getFloat(at + 40),
                         rows.getInt(at + 76));
+                // The normal's w is what a collision met (fx_hit's code); the block's w its entity, for an entity's.
+                Object[] by = owners.get(pool);
+                into.tag(by == null || slot >= by.length ? null : by[slot], (int) rows.getFloat(at + 44), rows.getInt(at + 60));
             }
             for (Map.Entry<CgVfxGpuEmitter, CgVfxEventRows[]> e : groups.entrySet()) {
                 CgVfxEventRows[] group = e.getValue();
@@ -600,6 +610,7 @@ public final class CgVfxParticlePool {
 
         private void done() {
             slots.clear();
+            owners.clear();
             Arrays.fill(byId, null);
             REPORTS.add(this);
         }
@@ -627,6 +638,11 @@ public final class CgVfxParticlePool {
      * @throws IllegalArgumentException if {@code emitter}'s shape is not this pool's
      */
     public int open(CgVfxGpuEmitter emitter, int capacity) {
+        return open(emitter, capacity, null);
+    }
+
+    /** As {@link #open(CgVfxGpuEmitter, int)}, for {@code owner}: its event rows carry it ({@link CgVfxEventRows#owner}). */
+    public int open(CgVfxGpuEmitter emitter, int capacity, @Nullable Object owner) {
         betweenSteps("open");
         if (capacity < 0) throw new IllegalArgumentException("capacity " + capacity);
         String key = CgVfxShape.of(emitter).key();
@@ -637,6 +653,7 @@ public final class CgVfxParticlePool {
         while (slot < slotCount && slotEmitter[slot] != null) slot++;
         if (slot == slotCount) growSlots(slotCount + 1);
         slotEmitter[slot] = emitter;
+        slotOwner[slot] = owner;
         slotCapacity[slot] = capacity;
         slotRow[slot] = useRow(emitter);
         slotScale[slot] = 1f;
@@ -660,6 +677,7 @@ public final class CgVfxParticlePool {
         }
         capacity -= slotCapacity[slot];
         slotEmitter[slot] = null;
+        slotOwner[slot] = null;
         slotCapacity[slot] = 0;
         feedPool[slot] = null;
         openSlots--;
@@ -1142,6 +1160,7 @@ public final class CgVfxParticlePool {
         if (n <= slotEmitter.length) return;
         int size = Math.max(n, Math.max(4, slotEmitter.length * 2));
         slotEmitter = Arrays.copyOf(slotEmitter, size);
+        slotOwner = Arrays.copyOf(slotOwner, size);
         slotCapacity = Arrays.copyOf(slotCapacity, size);
         slotRow = Arrays.copyOf(slotRow, size);
         slotBase = Arrays.copyOf(slotBase, size);

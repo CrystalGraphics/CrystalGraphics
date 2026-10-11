@@ -59,6 +59,20 @@ public final class CgVfx {
         return new CgVfxOwner(namespace, system);
     }
 
+    /**
+     * Hears what every effect, in any system, and its particles strike: after the effect's and its owner's listeners. For
+     * what the engine owns (a debug overlay, a tool); a mod listens on its owner. From any thread; heard on the render
+     * thread.
+     *
+     * <pre>{@code
+     * CgVfxCollision.Registration overlay = CgVfx.onCollide(c -> marks.add(c.x(), c.y(), c.z(), c.hit()));
+     * overlay.close();
+     * }</pre>
+     */
+    public static CgVfxCollision.Registration onCollide(CgVfxCollisionListener listener) {
+        return CgVfxCollisions.add(CgVfxCollisions.GLOBAL, listener);
+    }
+
     /** The client world's system, made on first ask. Render thread. */
     public static CgVfxSystem world() {
         if (world == null) world = new CgVfxSystem();

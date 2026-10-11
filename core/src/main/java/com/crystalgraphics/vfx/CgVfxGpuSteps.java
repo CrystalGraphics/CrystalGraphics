@@ -87,22 +87,27 @@ final class CgVfxGpuSteps {
      * fed by its slot. Between steps.
      */
     void admit(CgVfxEmitterInstance instance) {
+        admit(instance, null);
+    }
+
+    /** As {@link #admit(CgVfxEmitterInstance)}, its slots and its children's reporting rows as {@code owner}'s. */
+    void admit(CgVfxEmitterInstance instance, Object owner) {
         if (byInstance.containsKey(instance)) return;
         CgVfxEmitter definition = instance.emitter();
-        Tenant tenant = add(instance, definition.peakAlive(), null);
+        Tenant tenant = add(instance, definition.peakAlive(), null, owner);
         for (int e = 0; e < definition.events().size(); e++) {
             CgVfxEmitterInstance child = instance.child(e);
             if (child == null) continue;
-            Tenant fed = add(child, definition.peakChildren(e), tenant);
+            Tenant fed = add(child, definition.peakChildren(e), tenant, owner);
             fed.pool.feed(fed.slot, tenant.pool, tenant.slot, e);
         }
     }
 
-    private Tenant add(CgVfxEmitterInstance instance, int capacity, Tenant parent) {
+    private Tenant add(CgVfxEmitterInstance instance, int capacity, Tenant parent, Object owner) {
         CgVfxEmitter definition = instance.emitter();
         CgVfxParticlePool pool = CgVfxParticlePool.of(this, definition);
         if (!pools.contains(pool)) pools.add(pool);
-        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity), parent);
+        Tenant tenant = new Tenant(instance, pool, pool.open(definition, capacity, owner), parent);
         tenant.warm = warming;
         tenants.add(tenant);
         byInstance.put(instance, tenant);

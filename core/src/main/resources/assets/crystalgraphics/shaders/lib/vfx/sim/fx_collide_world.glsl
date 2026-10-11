@@ -9,7 +9,8 @@ void fx_collide_world(inout FxParticle p, FxStep s, vec4 m, FxWorld world) {
     if (p.resting) return;
     if (!world.live) {
         if (isnan(world.floorY) || p.position.y >= world.floorY) return;
-        fx_contact_respond(p, vec3(0.0, 1.0, 0.0), world.floorY - p.position.y + FX_CONTACT_EPSILON, m);
+        fx_contact_respond(p, vec3(0.0, 1.0, 0.0), world.floorY - p.position.y + FX_CONTACT_EPSILON, m,
+                FX_HIT_GROUND);
         return;
     }
     if (!fx_world_solid(world, p.position)) return;
@@ -23,5 +24,5 @@ void fx_collide_world(inout FxParticle p, FxStep s, vec4 m, FxWorld world) {
     float halves = (world.originFrac[axis] + p.position[axis]) * 2.0;
     float cell = floor(halves);
     float depth = (n[axis] > 0.0 ? cell + 1.0 - halves : halves - cell) * 0.5 + FX_CONTACT_EPSILON;
-    fx_contact_respond(p, n, depth, m);
+    fx_contact_respond(p, n, depth, m, FX_HIT_BLOCK);
 }
