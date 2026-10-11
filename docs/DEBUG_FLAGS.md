@@ -1,166 +1,243 @@
 # Debug and JVM flags
 
-Every `-Dcrystalgraphics.*` switch, by area. Moved from [`AGENTS.md`](../AGENTS.md).
+Every engine switch is a variable (`com.crystalgraphics.variable.CgVar`): typed, ranged, described, and listed in
+`CgVars`. Each is set by any of these, the highest that holds a value winning:
 
-## Debug / JVM Flags
+| Source | How |
+|---|---|
+| code | `VAR.set(value)`: a mod's own default, a screen previewing a value |
+| settings file | a player's setting (`CgSettings`); player settings are variables too, `<file>.<section>.<key>`, and are not listed below |
+| `-D` | `-Dcrystalgraphics.vfx.sim=cpu` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
+| console | a person, live: the in-game console, a dev tool's key (the harness's V, P, H, L, G) |
+| remote | a remote tool |
 
 ```bash
-# Hotswap (dev only) — re-applies the LaunchWrapper transformer chain, Mixins included,
-# to classes HotswapAgent redefines. The redirector.* flags are gone with the coremod.
--Dcrystalgraphics.hotswap.verbose=true               # log each class transformed
-
-# GL state manager (see gl/state/CLAUDE.md)
--Dcrystalgraphics.state.verify=true                  # verify the shadow against the driver before
-                                                     # eliminating any call; logs the offending domain
-                                                     # with tracked-vs-actual. Very slow — diagnosis only.
--Dcrystalgraphics.state.noDedup=true                 # never eliminate a call; distinguishes "the shadow
-                                                     # is lying" from a semantic regression in one run
--Dcrystalgraphics.state.rereadEachScope=true         # every outermost scope re-reads what it declares,
-                                                     # inside a host section too -- the rule before section
-                                                     # trust; glState.adopt (zone, crystalgraphics.gl) times
-                                                     # the reads either way
--Dcrystalgraphics.state.roundTrip=true               # read every scope's domains on open and after it
-                                                     # restores, name any that differ; on 1.7.10 with
-                                                     # Angelica also against the raw driver; and report
-                                                     # every write no open scope declares (a leak, with its
-                                                     # stack; CgGlState.handOver declares one meant to
-                                                     # stay). Totals every 1000 scopes, via log4j; any
-                                                     # count but 0 is a bug. Fits prodSmoke's 120 s run
-                                                     # alone; four at a time, a client can miss it
-
-# The GL state a host hands us, per entry point, once (every host)
--Dcrystalgraphics.host.census=true                   # opaque, transparent, gui, frame: ~90 values each on
-                                                     # the 120th visit (.at=N); singlejar-logic/census_diff.py
-                                                     # lays two clients side by side where they differ
-
-# Minecraft's own GL state cache (modern nodes)
--Dcrystalgraphics.host.verify=true                   # after each pass, compare the driver against the host's
-                                                     # GlStateManager and name the domain that disagrees
--Dcrystalgraphics.host.stateCache=false              # scopes read the host's state with glGet, not from
-                                                     # GlStateManager (HostStateModern 1.13-26.2 on GL, HostStateLegacy)
--Dcrystalgraphics.host.stateCache.byShape=true       # find GlStateManager's fields by shape, as production
-                                                     # Forge (SRG) and Fabric (intermediary) do: a dev run
-                                                     # checks that path; the install line names what missed
-
-# GL errors (LWJGL3 hosts, needs a debug context -- every dev client has one)
--Dcrystalgraphics.gl.debugStacks=true                # log the Java stack of the first 5 GL errors, so a
-                                                     # debug message names the call; .limit=N for more
--Dcrystalgraphics.gl.debugPerf=true                  # each distinct driver performance message once, with
-                                                     # the stack of the call it came on, and counts: names a
-                                                     # CPU stall ("pixel transfer is synchronized"). The
-                                                     # harness asks for a debug context under it
--Dcrystalgraphics.gl.keepHostDebugOutput=true        # keep the GL debug output Minecraft enables at its default
-                                                     # glDebugVerbosity (modern GL nodes turn it off at the first
-                                                     # host section: on NVIDIA it slowed every GL call several
-                                                     # times). debugStacks and debugPerf keep it too
-
-# GL issued where none may be (any host)
--Dcrystalgraphics.gl.threadCheck=true                # log each CgGL call site inside a GL-free section
-                                                     # (CgGL.enterGlFree -- a UI paint context recording) or
-                                                     # off the context's thread, once, with its stack; every
-                                                     # site and its count to stderr at exit
-
-# Meshes
--Dcrystalgraphics.mesh.frameRing=false               # FRAME meshes take slab ranges like the others, not the
-                                                     # frame ring: one build, both paths, for comparing them
--Dcrystalgraphics.mesh.editStacks=true               # each mesh edit records its stack, which the [cg-mesh]
-                                                     # report of a mesh edited every frame prints
--Dcrystalgraphics.mesh.multiDraw=false               # a call a draw: no run of draws sharing pipeline, bindings and a
-                                                     # slab joined into one multi-draw (render/graph/CLAUDE.md,
-                                                     # Multi-draw); the picture must not change
-
-# Frame graph
--Dcrystalgraphics.graph.barriers=false               # keep every access, issue no barrier: what synchronization
-                                                     # validation must catch on --mode=compute-graph
--Dcrystalgraphics.graph.asyncAll=true                # every compute pass that can go async does, as if marked
-                                                     # async(): a check of the waits, which the compute scenes must
-                                                     # pass under synchronization validation
-
-# Post stack (render/post/CLAUDE.md)
--Dcrystalgraphics.post.bloom.linear=true             # bloom composited in linear light (the copy form) from the start,
-                                                     # to compare with the default blend form; L cycles blend,
-                                                     # linear and off in any harness scene with a 3D camera
--Dcrystalgraphics.post.debug=emission               # the emission target over the frame; =level<N> a level of
-                                                     # bloom's chain, 0 the glow the composite reads; =overdraw
-                                                     # transparent fragments per pixel as a heat ramp (blue 1,
-                                                     # green 4, red 16, white 32), CgWorldRenderer.overdraw;
-                                                     # =distortion the distortion target, |offset| x 50 in red
-                                                     # and green, the split in blue
-
--Dcrystalgraphics.world.halfResolution=false        # draws marked halfResolution() at full size, in the transparent
-                                                     # pass (H in the harness)
--Dcrystalgraphics.text.retainedLabels=false          # world.text labels drawn every frame as any text, not captured
-                                                     # and kept: the comparison for the retained path
-
-# VFX (vfx/CLAUDE.md)
--Dcrystalgraphics.vfx.sim=cpu                        # cpu|gpu: where effects' particles simulate, gpu by default; V
-                                                     # switches it in any harness scene with a 3D camera. cpu is the
-                                                     # Java path, kept as the comparison until it is removed
--Dcrystalgraphics.vfx.threads=1                      # threads the CPU path runs emitters on, the render thread one of
-                                                     # them; one per core by default, 1 for all on the render thread
--Dcrystalgraphics.vfx.skip=body_light,haze           # layers whose shader path contains any of these draw nothing:
-                                                     # what a frame's GPU time is spent on, one profile per group;
-                                                     # CgVfxSystem.skip live
--Dcrystalgraphics.vfx.coarseVolumes=true            # measurement: volume layers on a 12x24 sphere, not 48x96
--Dcrystalgraphics.vfx.sharedDistortion=true         # measurement: distortion layers after every effect, one copy
--Dcrystalgraphics.vfx.mergeParticles=false          # GPU particles a draw a slot, sorted per effect, not one draw a
-                                                     # pool and layer (indirectEach): the comparison for overlaps
--Dcrystalgraphics.vfx.particleStep=1                 # ticks a particle step spans: 2 by default (particles at 60 Hz,
-                                                     # effects at 120), 1 steps them every tick
--Dcrystalgraphics.vfx.simBudgetMs=12                 # wall ms an update may spend catching up ticks before it drops
-                                                     # the rest and effects slow down
-
-# Compute tiers (compute/CLAUDE.md § Three forms)
--Dcrystalgraphics.compute.tier=G40                   # V|G43|G40|G33|CPU: run kernels as that tier would, where the
-                                                     # context has what it needs; refused, naming it, where not
--Dcrystalgraphics.shaderBuffer.tier=TBO              # SSBO_GL43|SSBO_ARB|TBO: engine buffers read as buffer textures,
-                                                     # GLSL 3.30, as a 3.3 context runs them; with G33, that context
--Dcrystalgraphics.compute.selfTest=true              # at the first frame, run a kernel of every shape on this context
-                                                     # and check each result against Java; logs `[crystalgraphics]
-                                                     # compute self-test <tier>: PASS|FAIL`, which prodSmoke gathers
-                                                     # (-PcgSmokeProps=crystalgraphics.compute.selfTest=true)
--Dcrystalgraphics.compute.checked=true               # kernels run as compute bounds-check every buffer and image
-                                                     # access: one out of range is skipped, and the first of each
-                                                     # dispatch logged once with its .compute line (SHADERS.md,
-                                                     # Debugging and testing). Every access tests its index
-
-# The Vulkan device (--device=vulkan)
--Dcrystalgraphics.vulkan.syncValidation=true         # with the validation layer on, its synchronization checks too
--Dcrystalgraphics.vulkan.asyncCompute=false          # false|graphics: async() compute passes run in order on the
-                                                     # frame's queue; graphics puts them on a second queue of its
-                                                     # family rather than a compute-only one. On a hosted device
-                                                     # (Minecraft) async is off unless =true: it could wait only on
-                                                     # the host's end-of-frame submit, so it serialised the GPU
--Dcrystalgraphics.vulkan.transfer=false              # no transfer queue: new textures' copies and the mesh store's
-                                                     # run on the frame's queue (ENGINE_API.md, Async)
-
-# Uploads (gpu/CgUploads)
--Dcrystalgraphics.uploads.tier=direct                # leases from direct memory, the driver copying at the call, as
-                                                     # a context without persistent mapping does (macOS 4.1, 3.3)
--Dcrystalgraphics.uploads.block=<bytes>              # a block's size, 8 MB by default; a lease over half a block
-                                                     # gets one of its own
--Dcrystalgraphics.uploads.cap=<bytes>                # 128 MB by default: the unpack pool grows no further, a lease
-                                                     # finding no room takes direct memory, and direct blocks past
-                                                     # it are not pooled
-
-# Caches kept across launches (CgCacheDirectory)
--Dcrystalgraphics.cache=false                        # keep nothing: SPIR-V and the Vulkan pipeline cache rebuilt
-                                                     # each launch
--Dcrystalgraphics.cache.dir=path                     # the cache root, a folder per kind (spirv, vulkan); by default
-                                                     # <game directory>/crystalgraphics/cache
-
-# Extensions
--Dcrystalgraphics.gl.disableExtensions=GL_ARB_buffer_storage,GL_ARB_compute_shader
-                                                     # treat these as absent (CgDisabledExtensions): a driver whose
-                                                     # implementation misbehaves, and the harness's downlevel contexts.
-                                                     # A feature core in the context's version stays; a forced tier
-                                                     # turns that off
-
-# Batching
--Dcrystalgraphics.recorder.lookback=false            # a recorder's passes join neighbouring draws only, in
-                                                     # submission order: rules lookback out of a wrong picture
-
-# Shader
--Dcrystalgraphics.shader.devmode=true                # emit #line directives in preprocessed output
--Dcrystalgraphics.shader.resourceOverrideDir=path    # filesystem override dir for shader sources
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-spheres" -Dcrystalgraphics.vfx.particleStep=1
+./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.state.roundTrip=true
 ```
+
+- **A value it cannot take is logged and ignored** (`[vars] -D... is not a value it takes`); a number out of range is
+  clamped.
+- **"Read at launch"** variables take their first value for the run: a later change is logged and waits for the next
+  launch.
+- Declaring a new switch: a `static final CgVar` beside what reads it, in the package that owns it, with a description.
+  `RawPropertyReadsTest` fails on a `System.getProperty("crystalgraphics...")` anywhere else, and this file's table
+  is regenerated from the registry by `DebugFlagsDocTest` (`./gradlew :core:test --tests
+  "com.crystalgraphics.variable.DebugFlagsDocTest"`): it rewrites the file and fails, and you commit the diff.
+
+## Read before the engine loads
+
+The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' classes do, so these stay plain properties:
+
+| Property | Does |
+|---|---|
+| `crystalgraphics.hotswap.verbose` | log each class the hotswap plugin re-transforms (dev only: re-applies the LaunchWrapper transformer chain, Mixins included, to classes HotswapAgent redefines) |
+| `crystalgraphics.hotswap.disable` | the plugin does nothing |
+| `crystalgraphics.hotswap.fullChain` | re-apply every transformer, not only CrystalGraphics' |
+| `crystalgraphics.integration.runSelfChecks` | the 1.7.10 integration test's self-checks |
+| `crystalgraphics.integration.fontDemo` | its font demo overlay |
+
+<!-- Generated by DebugFlagsDocTest from the variable registry: edit the declarations, not below. -->
+
+## `crystalgraphics.cache`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.cache` | true, false | `true` | Keep what can be rebuilt across launches; false rebuilds SPIR-V and the Vulkan pipeline cache each launch. |
+| `crystalgraphics.cache.dir` | text | empty | The cache root, a folder per kind (spirv, vulkan); empty for <game directory>/crystalgraphics/cache. |
+
+## `crystalgraphics.compute`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.compute.checked` | true, false | `false` | Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first of each dispatch logged once with its .compute line. Every access tests its index. Read at launch. |
+| `crystalgraphics.compute.selfTest` | true, false | `false` | At the first frames, run a kernel of every shape and every GPU op on this context and check each result against Java; logs [crystalgraphics] compute self-test <tier>: PASS\|FAIL, which prodSmoke gathers. |
+| `crystalgraphics.compute.tier` | text | empty | V, G43, G40, G33 or CPU: kernels run as that tier would, where the context has what it needs, refused naming what is missing where not; empty for the best. Taken at each context's capability probe. |
+
+## `crystalgraphics.demo`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, blast) starts on it; empty on blasts. Read at launch. |
+| `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
+| `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
+| `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |
+| `crystalgraphics.demo.profile` | 0 to 2147483647 | `0` | Frames of the demo's scene to profile, written to crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none. Read at launch. |
+| `crystalgraphics.demo.profile.warmup` | 0 to 2147483647 | `600` | Frames on the ground before the demo's profile starts. Read at launch. |
+| `crystalgraphics.demo.sky` | true, false | `true` | The demo's beams scene under the showcase's sky; false keeps the world's own. Read at launch. |
+
+## `crystalgraphics.gl`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.gl.debugPerf` | true, false | `false` | Each distinct driver performance message once, with the stack of the call it came on, and counts: names a CPU stall (pixel transfer is synchronized). The harness asks for a debug context under it. Read at launch. |
+| `crystalgraphics.gl.debugStacks` | true, false | `false` | Log the Java stack of the first GL errors, so a debug message names the call (LWJGL 3 hosts on a debug context: every dev client has one). Read at launch. |
+| `crystalgraphics.gl.debugStacks.limit` | 1 to 1048576 | `5` | GL errors debugStacks logs a stack for. Read at launch. |
+| `crystalgraphics.gl.disableExtensions` | text | empty | Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves, and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that. Read at launch. |
+| `crystalgraphics.gl.keepHostDebugOutput` | true, false | `false` | Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times). debugStacks and debugPerf keep it too. Read at launch. |
+| `crystalgraphics.gl.threadCheck` | true, false | `false` | Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once, with its stack; every site and its count to stderr at exit. Read at launch. |
+
+## `crystalgraphics.graph`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.graph.asyncAll` | true, false | `false` | Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute scenes must pass under synchronization validation. Read at launch. |
+| `crystalgraphics.graph.barriers` | true, false | `true` | Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation must catch on --mode=compute-graph. |
+
+## `crystalgraphics.host`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.host.census` | true, false | `false` | The GL state a host hands us per entry point (opaque, transparent, gui, frame), about 90 values each, once; singlejar-logic/census_diff.py lays two clients side by side where they differ. Read at launch. |
+| `crystalgraphics.host.census.at` | 1 to 1048576 | `120` | The visit to each entry point the census reads. Read at launch. |
+| `crystalgraphics.host.stateCache` | true, false | `true` | Scopes read the host's state from its GlStateManager; false reads it with glGet (HostStateModern 1.13-26.2 on GL, HostStateLegacy). Taken when the host installs its provider. |
+| `crystalgraphics.host.stateCache.byShape` | true, false | `false` | Find GlStateManager's fields by shape, as production Forge (SRG) and Fabric (intermediary) do: a dev run checks that path, and the install line names what missed. Read at launch. |
+| `crystalgraphics.host.verify` | true, false | `false` | After each pass, compare the driver against the host's GlStateManager and name the domain that disagrees (modern nodes; also CRYSTALGRAPHICS_HOST_VERIFY=true). Read at launch. |
+
+## `crystalgraphics.material`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.material.dumpGlsl` | true, false | `false` | Log every material pass's generated vertex and fragment GLSL as it compiles. |
+
+## `crystalgraphics.mesh`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.mesh.editStacks` | true, false | `false` | Each mesh edit records its stack, which the [cg-mesh] report of a mesh edited every frame prints. |
+| `crystalgraphics.mesh.frameRing` | true, false | `true` | FRAME meshes written into the frame ring; false places them in slab ranges as any other: one build, both paths, for comparing them. Read at launch. |
+| `crystalgraphics.mesh.multiDraw` | true, false | `true` | Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for a picture that must not change. Taken at each context's capability probe. |
+
+## `crystalgraphics.net`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.net.trace` | true, false | `false` | Log the first few frames each way through the host's network channel (1.7.10 and legacy Forge). Read at launch. |
+
+## `crystalgraphics.noise`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.noise.size` | 16 to 256 | `64` | Texels a side of each engine noise volume: 64 (2 MB a volume) or 128. Read at launch. |
+
+## `crystalgraphics.post`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.post.bloom.linear` | true, false | `false` | Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles blend, linear and off in any harness scene with a 3D camera. |
+| `crystalgraphics.post.debug` | text | empty | emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32). distortion: the distortion target, \|offset\| x 50 in red and green, the split in blue. |
+
+## `crystalgraphics.recorder`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.recorder.lookback` | true, false | `true` | A recorder's passes move a draw back past draws it does not overlap; false joins neighbouring draws only, in submission order: rules lookback out of a wrong picture. |
+
+## `crystalgraphics.recording`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.recording.debugScopes` | true, false | `false` | A scope a GL recording leaves open at end() names where it was opened. |
+
+## `crystalgraphics.resourceOverrideDirs`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing. Read at launch. |
+
+## `crystalgraphics.shader`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.shader.devmode` | true, false | `false` | #line directives around each include in preprocessed shader source, so a compiler's line numbers name the file. Read at launch. |
+| `crystalgraphics.shader.parallelCompile` | true, false | `true` | Materials compile ahead of their first bind where the driver links on its own threads; false compiles at the first bind: for a driver that misreports completion. Read at launch. |
+
+## `crystalgraphics.shaderBuffer`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.shaderBuffer.tier` | text | empty | SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context); empty for the best. Taken at each context's capability probe. |
+
+## `crystalgraphics.state`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.state.noDedup` | true, false | `false` | Never eliminate a GL call: tells "the shadow is lying" from a semantic regression in one run. Read at launch. |
+| `crystalgraphics.state.rereadEachScope` | true, false | `false` | Every outermost scope re-reads what it declares, inside a host section too: the rule before section trust. glState.adopt times the reads either way. Read at launch. |
+| `crystalgraphics.state.roundTrip` | true, false | `false` | Read every scope's domains on open and after it restores and name any that differ (on 1.7.10 with Angelica, against the raw driver too), and report every write no open scope declares, with its stack. Totals every 1000 scopes; any count but 0 is a bug. Taken by each state manager as it is made. |
+| `crystalgraphics.state.verify` | true, false | `false` | Verify the shadow against the driver before eliminating any call, logging the domain with tracked against actual. Very slow: diagnosis only. Taken by each state manager as it is made. |
+
+## `crystalgraphics.stream`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.stream.tier` | text | empty | persistent, ring, orphan or subdata: how streamed vertex buffers upload, refused where the context lacks it; empty for the best. Taken at each context's capability probe. |
+
+## `crystalgraphics.text`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.text.deterministicGlyphs` | true, false | `false` | Every glyph job runs on the thread that asks for it, in the order asked, so the atlas fills the same way every run: for pixel comparisons of text, never for play. Read at launch. |
+| `crystalgraphics.text.gamma` | true, false | `true` | What a new text renderer starts with: Skia's text gamma and contrast; false draws coverage exactly as rasterised, for comparing. |
+| `crystalgraphics.text.retainedLabels` | true, false | `true` | World labels captured once and kept on the GPU; false draws every label every frame as any text: the comparison for the retained path. Read at launch. |
+| `crystalgraphics.text.traceQuadLoop` | true, false | `false` | Time every iteration of text's quad-submission loop and report the slowest: tells a blocking call inside the loop from the render thread being descheduled. Costs a fifth of the loop. Read at launch. |
+
+## `crystalgraphics.trace`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.trace.channels` | text | empty | Comma-separated channel prefixes recorded from the first frame, as enable takes them; a later value adds its channels, never removes one. |
+| `crystalgraphics.trace.countersPerFrame` | 32 to 1048576 | `1024` | Counter values a frame may hold: a ceiling, the store growing as it is written. Read at launch. |
+| `crystalgraphics.trace.firstFrames` | 0 to 1048576 | `0` | Frames kept from the start of a recording, never overwritten: startup and first opens. Read at launch. |
+| `crystalgraphics.trace.frames` | 0 to 1048576 | `600` | Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full. Read at launch. |
+| `crystalgraphics.trace.zones` | 1 to 268435456 | `65536` | Zones a thread keeps at most, for each of the newest and the first frames; raise it when a report warns of dropped zones. Read at launch. |
+
+## `crystalgraphics.uploads`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.uploads.block` | 65536 to 1073741824 | `8388608` | Bytes in an upload block; a lease over half a block gets one of its own. Read at launch. |
+| `crystalgraphics.uploads.cap` | 0 to 2147483647 | `134217728` | Bytes the unpack pool grows to: past it a lease finding no room takes direct memory, and direct blocks are not pooled. Read at launch. |
+| `crystalgraphics.uploads.tier` | unpack, direct | `unpack` | unpack: leases from a persistently mapped unpack buffer where the context has persistent mapping. direct: from direct memory, the driver copying at the call, as a context without it does (macOS 4.1, 3.3). Read at launch. |
+
+## `crystalgraphics.vfx`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.vfx.coarseVolumes` | true, false | `false` | Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96. Read at launch. |
+| `crystalgraphics.vfx.mergeParticles` | true, false | `true` | GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the comparison for overlaps. |
+| `crystalgraphics.vfx.particleStep` | 1 to 64 | `2` | Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick. |
+| `crystalgraphics.vfx.sharedDistortion` | true, false | `false` | Measurement: distortion layers after every effect's draws, so they share one copy of the target. |
+| `crystalgraphics.vfx.sim` | cpu, gpu | `gpu` | Where effects' particles simulate; V switches it in any harness scene with a 3D camera. cpu is the Java path, kept as the comparison until it is removed. |
+| `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
+| `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
+| `crystalgraphics.vfx.threads` | 0 to 256 | `0` | Threads effects' emitters tick on, the render thread one of them; 0 for two fewer than the cores, 1 for all on the render thread. Read at launch. |
+
+## `crystalgraphics.vulkan`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.vulkan.asyncCompute` | text | empty | Empty: async() compute passes on a compute-only queue family where there is one (an owned device), in order on a hosted one. false: in order everywhere. graphics: a second queue of the frame's family. true: a hosted device (Minecraft) runs async on its host's compute queue, waiting only on the host's end-of-frame submit, which serialised the GPU. Read at launch. |
+| `crystalgraphics.vulkan.presentMode` | text | empty | immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose. Read at launch. |
+| `crystalgraphics.vulkan.syncValidation` | true, false | `false` | With the validation layer on, its synchronization checks too. Read at launch. |
+| `crystalgraphics.vulkan.transfer` | true, false | `true` | New textures' copies and the mesh store's run on a transfer queue where there is one; false keeps them on the frame's queue (ENGINE_API.md, Async). Read at launch. |
+
+## `crystalgraphics.world`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.world.halfResolution` | true, false | `true` | What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the transparent pass (H in the harness, halfResolution(boolean) live). |
+| `crystalgraphics.world.hdrScene` | text | empty | true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the setting (G in the harness, hdrScene(boolean) live). |
+| `crystalgraphics.world.mergeEmission` | true, false | `true` | What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live). |
+
+## `crystalgraphics.worldevents`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.worldevents.trace` | true, false | `false` | Log every bolt and every hurt or dying entity a host's world-event scan meets (modern nodes). Read at launch. |
+
+## `crystalgraphics.worldprobe`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.worldprobe` | true, false | `false` | Prove in a running game that the host answers every world seam and that the answers agree, logging a verdict per check for prodSmoke and a dev client's autotest. Read at launch. |
