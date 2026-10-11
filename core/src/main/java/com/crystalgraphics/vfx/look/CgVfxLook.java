@@ -151,6 +151,9 @@ public final class CgVfxLook {
         }
 
         public CgVfxLook build() {
+            if (!values.coversSchema()) {
+                throw new IllegalStateException("The schema gained parameters after builder(schema): declare them first");
+            }
             return new CgVfxLook(values.copy(), layers, emitters);
         }
     }

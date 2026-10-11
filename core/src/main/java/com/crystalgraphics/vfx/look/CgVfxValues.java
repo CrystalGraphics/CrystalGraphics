@@ -100,6 +100,11 @@ public final class CgVfxValues {
         if (!param.isShake()) throw new IllegalArgumentException("'" + param.name + "' is not a shake");
     }
 
+    /** Whether these values hold every parameter the schema declares now. */
+    boolean coversSchema() {
+        return values.length == schema.defaults().length && objects.length == schema.defaultObjects().length;
+    }
+
     public CgVfxValues copy() {
         return new CgVfxValues(schema, values.clone(), objects.clone());
     }
