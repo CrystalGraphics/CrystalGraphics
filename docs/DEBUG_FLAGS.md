@@ -94,6 +94,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.host.stateCache.byShape` | true, false | `false` | Find GlStateManager's fields by shape, as production Forge (SRG) and Fabric (intermediary) do: a dev run checks that path, and the install line names what missed. Read at launch. |
 | `crystalgraphics.host.verify` | true, false | `false` | After each pass, compare the driver against the host's GlStateManager and name the domain that disagrees (modern nodes; also CRYSTALGRAPHICS_HOST_VERIFY=true). Read at launch. |
 
+## `crystalgraphics.hotReload`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.hotReload` | true, false | `true` | Watch each resource override root's assets/ and reload what an edited file reaches at the next frame. Read at launch. |
+
 ## `crystalgraphics.material`
 
 | Variable | Takes | Default | |
@@ -143,7 +149,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing. Read at launch. |
+| `crystalgraphics.resourceOverrideDirs` | text | empty | Source roots searched before the classpath, separated by the platform's path separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read from its source tree; set, the shader preprocessor caches nothing unless hot reload watches. Read at launch. |
+| `crystalgraphics.resourceOverrideDirs.auto` | true, false | `true` | A dev run's own source resource folders as override roots, found from what its launcher passed (CgDevResourceRoots); a production client has none. Read at launch. |
 
 ## `crystalgraphics.shader`
 

@@ -4,6 +4,8 @@ import com.crystalgraphics.api.shader.*;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.util.io.CgIO;
@@ -12,8 +14,10 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -57,7 +61,7 @@ import java.util.function.Consumer;
  * @see CgShaderManager
  * @see CgShaderFactory
  */
- public class CgShaderImpl implements CgShader {
+ public class CgShaderImpl implements CgShader, CgReloadable {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
@@ -333,6 +337,7 @@ import java.util.function.Consumer;
 
     @Override
     public void delete() {
+        CgAssetReloader.untrack(this);
         if (program != null && !program.isDeleted()) 
             program.delete();
         
@@ -400,6 +405,26 @@ import java.util.function.Consumer;
 
     @Override
     public void recompile() {
+        // Recorded even when it fails: fixing the include that broke it must find this shader again.
+        CgIO.Reads recorded = CgIO.recordReads();
+        try {
+            compile();
+        } finally {
+            recorded.close();
+            Set<String> reads = new HashSet<>(recorded.paths());
+            if (vertexPath != null) reads.add(vertexPath);   // a file that failed to load is not recorded
+            if (fragmentPath != null) reads.add(fragmentPath);
+            CgAssetReloader.track(this, reads);
+        }
+    }
+
+    /** Marks it dirty: {@link CgAssetReloader} calls this when a file its last compile read changes. */
+    @Override
+    public void refresh() {
+        markDirty();
+    }
+
+    private void compile() {
         this.dirty = false;
         pending = false;
 

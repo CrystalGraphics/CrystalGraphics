@@ -7,32 +7,53 @@ import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.texture.CgTextureManager;
 import com.crystalgraphics.text.layout.CgTextLayoutCache;
+import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
- * Unified asset reload hook that triggers texture and shader recompilation
- * whenever a resource reload is requested by the platform (e.g. F3+T, resource pack change).
+ * Reloads the engine's assets: all of them at once ({@link #reload()}, on F3+T or a resource pack change), or only
+ * what one edited file reaches ({@link #changed}, hot reload).
  *
- * <p>Handles:</p>
+ * <pre>{@code
+ * CgAssetReloader.reload();                                         // everything
+ * CgAssetReloader.changed("crystalgraphics:shaders/lib/noise.glsl");  // any thread: applied at the next frame
+ * }</pre>
+ *
+ * <p>Every loaded asset tracks the files it read ({@link #track}): a material shader, kernel or raw shader its own file
+ * and every {@code #include}, a cached texture its images. A change refreshes the assets that read that file and no
+ * others, then calls each listener's {@link CgReloadListener#onChanged}. What fails to compile or load keeps its last
+ * good version, and the log names the file and the error. {@link CgHotReload} calls it for each file edited in an
+ * override root.</p>
+ *
+ * <pre>{@code
+ * // a mod's own asset, found again by what it read
+ * try (CgIO.Reads reads = CgIO.recordReads()) {
+ *     palette = parse(CgIO.loadSource("mymod:palettes/fire.json"));
+ *     CgAssetReloader.track(this, reads.paths());                     // this: a CgReloadable
+ * }
+ * }</pre>
+ *
  * <ul>
- *   <li>Shaders — via {@link CgShaderManager}</li>
- *   <li>Textures — via {@link CgTextureManager}</li>
- *   <li>Materials — via {@link CgMaterialRegistry} and {@link CgMaterialShaderRegistry}</li>
+ *   <li>A host's {@code CgReloadService.onReload()} calls {@link #reload()}: textures, shaders, materials and kernels
+ *       in that order, each isolated, then the listeners.</li>
+ *   <li>An asset that never loaded is not tracked, so a change to its file does nothing until it loads.</li>
+ *   <li>Only cached textures ({@link CgTextureManager}) are tracked; one made with {@code createDirect} is not.</li>
  * </ul>
- *
- * <p>This is a plain static utility. The platform side ({@code ReloadService1710}) implements
- * {@code CgReloadService} and delegates its {@code onReload()} to {@link #reload()} here.
- * On reload, textures, shaders, and materials are all reloaded in order.
- * Failures are isolated per-type.</p>
- *
- * <p>Previously this class had a {@code register()} method and a Minecraft
- * {@code IResourceManagerReloadListener LISTENER} field. Those were MC-specific
- * registration artifacts and have been replaced by the platform SPI.</p>
  */
 public final class CgAssetReloader {
 
@@ -151,6 +172,103 @@ public final class CgAssetReloader {
             LOGGER.error("Failed to reload materials", e);
         }
         CgCompute.reloadAll();
+    }
+
+    /** Paths {@link #changed} queued, normalized, for the next {@link #applyChanges}. */
+    private static final Queue<String> CHANGED = new ConcurrentLinkedQueue<>();
+
+    /** Normalized path to the assets that read it, and each asset to its paths; both weak, both under {@code INDEX}. */
+    private static final Map<String, Set<CgReloadable>> READERS = new HashMap<>();
+    private static final Map<CgReloadable, Set<String>> READS = new WeakHashMap<>();
+    private static final Object INDEX = new Object();
+
+    /**
+     * Records that {@code asset} was loaded from {@code paths} (any form {@link CgIO#normalizePath} takes), replacing
+     * what it was tracked with before: an edit to any of them refreshes it. Any thread. @see CgReloadable
+     */
+    public static void track(CgReloadable asset, Collection<String> paths) {
+        Set<String> normalized = new HashSet<>();
+        for (String path : paths) normalized.add(CgIO.normalizePath(path));
+        synchronized (INDEX) {
+            unlink(asset);
+            READS.put(asset, normalized);
+            for (String path : normalized) {
+                READERS.computeIfAbsent(path, k -> Collections.newSetFromMap(new WeakHashMap<>())).add(asset);
+            }
+        }
+    }
+
+    /** Forgets {@code asset}: it was deleted. Any thread. */
+    public static void untrack(CgReloadable asset) {
+        synchronized (INDEX) {
+            unlink(asset);
+        }
+    }
+
+    private static void unlink(CgReloadable asset) {
+        Set<String> previous = READS.remove(asset);
+        if (previous == null) return;
+        for (String path : previous) {
+            Set<CgReloadable> readers = READERS.get(path);
+            if (readers == null) continue;
+            readers.remove(asset);
+            if (readers.isEmpty()) READERS.remove(path);
+        }
+    }
+
+    /**
+     * Queues the asset at {@code path} as edited, in any form {@link CgIO#normalizePath} takes; the next frame
+     * refreshes what read it. Any thread. A path nothing read does nothing.
+     */
+    public static void changed(String path) {
+        CHANGED.add(CgIO.normalizePath(path));
+    }
+
+    /** Refreshes what each queued change reaches. Render thread, once a frame: {@code CgGraphicsLifecycle.tickFrame}. */
+    public static void applyChanges() {
+        if (CHANGED.isEmpty()) return;
+        Set<String> paths = new LinkedHashSet<>();
+        for (String path; (path = CHANGED.poll()) != null; ) paths.add(path);
+        for (String path : paths) CgShaderPreprocessor.forget(path);
+        for (String path : paths) apply(path);
+    }
+
+    private static void apply(String path) {
+        List<CgReloadable> readers;
+        synchronized (INDEX) {
+            Set<CgReloadable> held = READERS.get(path);
+            readers = held != null ? new ArrayList<>(held) : Collections.emptyList();
+        }
+        int refreshed = 0;
+        for (CgReloadable asset : readers) {
+            try {
+                asset.refresh();
+                refreshed++;
+            } catch (RuntimeException e) {
+                LOGGER.error("[hot reload] kept the last good {}: {}", asset, e.getMessage());
+            }
+        }
+        String id = toId(path);
+        Set<CgReloadListener> snapshot;
+        synchronized (listeners) {
+            snapshot = Collections.newSetFromMap(new IdentityHashMap<>());
+            snapshot.addAll(listeners);
+        }
+        for (CgReloadListener listener : snapshot) {
+            try {
+                listener.onChanged(id);
+            } catch (Exception e) {
+                LOGGER.error("Reload listener {} failed on {}", listener.getClass().getName(), id, e);
+            }
+        }
+        LOGGER.info("[hot reload] {}: {} of {} asset(s) refreshed", id, refreshed, readers.size());
+    }
+
+    /** {@code /assets/ns/rest} as {@code ns:rest}. */
+    private static String toId(String normalized) {
+        String rest = normalized.startsWith("/assets/") ? normalized.substring("/assets/".length()) : normalized;
+        int slash = rest.indexOf('/');
+        return slash > 0 ? rest.substring(0, slash) + ":" + rest.substring(slash + 1) : rest;
     }
 
     public static void trackShaderManager(CgShaderManager manager) {

@@ -635,7 +635,7 @@ Do not rely on older font/text notes outside the `docs/font/` set — that is th
 | Priority | Strategy | Condition |
 |---|---|---|
 | 0 | Absolute filesystem path | Path is an absolute file |
-| 1 | Filesystem override roots, in order | `crystalgraphics.resourceOverrideDirs` is set (`CgIO.OVERRIDE_DIRS`) |
+| 1 | Filesystem override roots, in order | `crystalgraphics.resourceOverrideDirs`, then a dev run's own source resource folders (`CgDevResourceRoots`); none in production |
 | 2 | Minecraft resource manager | `IResourceManager` available (in-game) |
 | 3 | Classpath | Final fallback (always works in harness + tests) |
 
@@ -653,6 +653,67 @@ Key methods:
 - `CgIO.openStream(path)` — returns raw `InputStream` or `null`
 - `CgIO.normalizePath(path)` — path normalization only, no I/O
 - `CgIO.toResourceLocation(path)` — converts any supported format to MC `ResourceLocation`
+- `CgIO.recordReads()` — a scope recording every asset path the thread reads, for a loader to know what it compiled from
+
+#### Hot reload
+
+In every dev run, with nothing to set up, an asset edited in its source folder is drawn with at the next frame.
+`CgIO`'s override roots default to the run's own source resource folders: `CgDevResourceRoots` reads the folders the
+launcher passed (ModDevGradle's `fml.modFolders`, Forge's `MOD_CLASSES`, Loom's `fabric.classPathGroups`, the
+classpath) and maps each `build/resources/<set>` to `src/<set>/resources`. A production client loads mods from jars,
+so it has none. `CgHotReload` watches each root's `assets/` and hands each saved file to `CgAssetReloader.changed`.
+Every loaded asset tracks the files it read (`CgAssetReloader.track`), and a change refreshes the assets that read
+that file and no others.
+
+```bash
+./gradlew runClient                                         # any consumer's dev run, unchanged
+./gradlew :gl-debug-harness:runHarness --args="--mode=vfx-lab"
+# edit src/main/resources/assets/<ns>/shaders/..., save: the next frame draws with it
+```
+
+```java
+CgAssetReloader.changed("mymod:shaders/lib/noise.glsl");   // any thread, from any source of changes: applied next frame
+
+// An asset of your own, found again by what it read
+final class Palette implements CgReloadable {
+    public void refresh() {                                  // render thread; throw to keep the last good version
+        try (CgIO.Reads reads = CgIO.recordReads()) {
+            colours = parse(CgIO.loadSource(path));
+            CgAssetReloader.track(this, reads.paths());       // replaces what it was tracked with
+        }
+    }
+}
+
+CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed by id
+    public void onReload() { cache.clear(); }
+    public void onChanged(String id) { cache.remove(id); }
+});
+```
+
+| Tracked | By | Refreshed |
+|---|---|---|
+| a material shader | its `.shader` and everything its last compile `#include`d | recompiled at its next bind |
+| a kernel file, loaded or generated | its `.compute`, its includes, the engine env files its programs read | its compiled programs rebuilt before any is replaced |
+| a raw `CgShader` | its `.vert`/`.frag` and their includes | recompiled at its next bind |
+| a cached texture (`CgTextureManager`) | its images | reloaded in place |
+
+- **A shader or kernel that no longer compiles keeps its last good version**; the log names the file and the error.
+  Fix it and save again.
+- **Only what has loaded is tracked**: a change to a file nothing loaded yet does nothing, and the asset reads the new
+  file when it loads.
+- **What a loader read is recorded** (`CgIO.Reads`), so editing `lib/noise.glsl` reaches exactly the shaders including
+  it. A cache answering without reading calls `CgIO.noteRead`, or its files go unrecorded.
+- The index holds assets weakly; `untrack` one that is deleted while still held.
+- **A file counts once its writes are quiet for 120 ms**: a save is several events. Editors' scratch files are ignored.
+- While it watches, the shader preprocessor caches includes again, evicting each edited one.
+- A texture made with `createDirect` is not cached, so no change finds it.
+- Per frame, with nothing edited, it allocates nothing and makes no system call. On macOS the JDK's watcher polls and
+  can miss a change faster than its interval; Ctrl+R (harness) or F3+T reloads everything.
+- `-Dcrystalgraphics.hotReload=false` keeps the override roots without watching them;
+  `-Dcrystalgraphics.resourceOverrideDirs=<dirs>` adds roots ahead of the found ones (a folder the run does not
+  load from), and
+  `-Dcrystalgraphics.resourceOverrideDirs.auto=false` finds none. `CgDirectoryWatcher` is the
+  watcher, reusable for any tree.
 
 #### `CgTextureIO` — Image Loader
 

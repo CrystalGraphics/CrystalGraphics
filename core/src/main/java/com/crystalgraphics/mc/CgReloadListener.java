@@ -18,4 +18,17 @@ public interface CgReloadListener {
 
     /** Drop whatever was read from disk. Called on F3+T and on a resource pack change. */
     void onReload();
+
+    /**
+     * One asset changed ({@link CgAssetReloader#changed}): drop what was read from it. {@code id} is
+     * {@code "namespace:path"}. Render thread, after the engine's own assets were refreshed. Nothing by default.
+     *
+     * <pre>{@code
+     * CgAssetReloader.addListener(new CgReloadListener() {
+     *     public void onReload() { sheets.clear(); }
+     *     public void onChanged(String id) { if (id.endsWith(".css")) sheets.remove(id); }
+     * });
+     * }</pre>
+     */
+    default void onChanged(String id) {}
 }

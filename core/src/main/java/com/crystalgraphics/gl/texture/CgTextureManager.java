@@ -2,11 +2,14 @@ package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgTextureIO;
 import com.crystalgraphics.util.trace.CgChannels;
 
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -101,6 +104,7 @@ public final class CgTextureManager {
         }
 
         cache.put(key, texture);
+        track(key, texture);
         return texture;
     }
 
@@ -147,6 +151,14 @@ public final class CgTextureManager {
      */
     public synchronized void register(String key, CgTexture texture) {
         cache.put(key, texture);
+        track(key, texture);
+    }
+
+    /** Found again by the images its key names when one of them changes ({@link CgAssetReloader}). */
+    private static void track(String key, CgTexture texture) {
+        if (texture instanceof CgReloadable) {
+            CgAssetReloader.track((CgReloadable) texture, Arrays.asList(key.split(PATH_SEPARATOR)));
+        }
     }
 
     /** @return {@code true} if a valid (non-deleted) texture is cached under {@code key} */
@@ -193,6 +205,7 @@ public final class CgTextureManager {
     public synchronized void freeAll() {
         LOGGER.log(Level.INFO, "[CgTextureManager] Freeing {0} texture(s)", cache.size());
         for (CgTexture texture : cache.values()) {
+            if (texture instanceof CgReloadable) CgAssetReloader.untrack((CgReloadable) texture);
             if (!texture.isDeleted()) texture.delete();
         }
         cache.clear();

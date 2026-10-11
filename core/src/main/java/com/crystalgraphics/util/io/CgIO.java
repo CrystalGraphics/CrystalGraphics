@@ -15,8 +15,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -37,32 +40,100 @@ public class CgIO {
      * {@code processResources} made at build time. Editing that project's sources then changes nothing
      * the running process can see, and a reload faithfully re-reads the stale copy and looks broken.</p>
      *
-     * <p>A {@link File#pathSeparator}-separated list; the roots are tried in order.</p>
+     * <p>A {@link File#pathSeparator}-separated list, tried in order and ahead of the roots a dev run finds itself
+     * ({@link CgDevResourceRoots}): what to add, never what to repeat.</p>
      */
     public static final CgVar.Text OVERRIDE_DIRS = CgVar.text("crystalgraphics.resourceOverrideDirs", "",
             CgVar.DEV | CgVar.RESTART, "Source roots searched before the classpath, separated by the platform's path"
-                    + " separator and tried in order, so an edited asset is read from its source tree; set, the shader"
-                    + " preprocessor caches nothing.");
+                    + " separator and tried in order ahead of the ones a dev run finds itself, so an edited asset is read"
+                    + " from its source tree; set, the shader preprocessor caches nothing unless hot reload watches.");
+    private static final CgVar.Bool AUTO_OVERRIDE_DIRS = CgVar.bool("crystalgraphics.resourceOverrideDirs.auto", true,
+            CgVar.DEV | CgVar.RESTART, "A dev run's own source resource folders as override roots, found from what its"
+                    + " launcher passed (CgDevResourceRoots); a production client has none.");
     private static final java.util.List<File> RESOURCE_OVERRIDE_DIRS = parseOverrideDirs();
 
     private static java.util.List<File> parseOverrideDirs() {
-        String raw = OVERRIDE_DIRS.get();
-        if (raw.trim().isEmpty()) return java.util.Collections.emptyList();
-
-        java.util.List<File> roots = new java.util.ArrayList<>();
-        // File.pathSeparator, so a Windows "C:\a;C:\b" splits on ';' and leaves the drive colons alone.
-        for (String part : raw.split(java.util.regex.Pattern.quote(File.pathSeparator))) {
+        java.util.Set<File> roots = new LinkedHashSet<>();
+        // File.pathSeparator, so a Windows "C:/a;C:/b" splits on ';' and leaves the drive colons alone.
+        for (String part : OVERRIDE_DIRS.get().split(java.util.regex.Pattern.quote(File.pathSeparator))) {
             String trimmed = part.trim();
             if (trimmed.isEmpty()) continue;
             try {
                 File dir = new File(trimmed);
                 // Dropped rather than kept and probed per lookup: a root that does not exist is a typo or
                 // a stale path, and silently missing every file is the confusing version of that.
-                if (dir.isDirectory()) roots.add(dir);
+                if (dir.isDirectory()) roots.add(dir.getCanonicalFile());
                 else System.err.println("[CgIO] resource override root is not a directory, ignoring: " + dir);
             } catch (Throwable ignored) {}
         }
-        return roots;
+        if (AUTO_OVERRIDE_DIRS.get()) roots.addAll(CgDevResourceRoots.discover(System::getProperty, System::getenv));
+        return new java.util.ArrayList<>(roots);
+    }
+
+    /**
+     * The override roots that exist, in the order they are searched: {@code crystalgraphics.resourceOverrideDirs}, then
+     * a dev run's own source resource folders ({@link CgDevResourceRoots}); empty in production.
+     */
+    public static List<File> overrideRoots() {
+        return Collections.unmodifiableList(RESOURCE_OVERRIDE_DIRS);
+    }
+
+    /**
+     * What one thread read while it was open: every asset path asked of {@link #openStream}, found or not, as
+     * {@link #normalizePath} gives it. A loader records what it compiled from, so a change to any of those files can
+     * find it again ({@code CgAssetReloader.changed}).
+     *
+     * <pre>{@code
+     * try (CgIO.Reads reads = CgIO.recordReads()) {
+     *     source = CgIO.loadSource(path);          // and every #include the compile pulls in
+     *     compile(source);
+     *     dependencies = reads.paths();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Scopes nest: an inner scope's paths are also its parent's once it closes.</li>
+     *   <li>A cache that answers without reading calls {@link #noteRead} for the path it answered, or the file is
+     *       missing from what was recorded.</li>
+     *   <li>An absolute filesystem path is not recorded: it names no asset.</li>
+     * </ul>
+     */
+    public static final class Reads implements AutoCloseable {
+        private final Set<String> paths = new LinkedHashSet<>();
+        private final Reads parent;
+        private boolean closed;
+
+        private Reads(Reads parent) {
+            this.parent = parent;
+        }
+
+        /** The paths read so far, normalized. */
+        public Set<String> paths() {
+            return Collections.unmodifiableSet(paths);
+        }
+
+        @Override
+        public void close() {
+            if (closed) return;
+            closed = true;
+            READS.set(parent);
+            if (parent != null) parent.paths.addAll(paths);
+        }
+    }
+
+    private static final ThreadLocal<Reads> READS = new ThreadLocal<>();
+
+    /** Starts recording what this thread reads, until the scope closes. @see Reads */
+    public static Reads recordReads() {
+        Reads reads = new Reads(READS.get());
+        READS.set(reads);
+        return reads;
+    }
+
+    /** Records {@code path} as read on this thread, for a cache that answered it without {@link #openStream}. */
+    public static void noteRead(String path) {
+        Reads reads = READS.get();
+        if (reads != null) reads.paths.add(normalizePath(path));
     }
 
     /** For instant hotswap from filesystem in harness*/
@@ -126,13 +197,15 @@ public class CgIO {
             }
         } catch (Throwable ignored) {}
 
+        String normalized = normalizePath(path);
+        Reads reads = READS.get();
+        if (reads != null) reads.paths.add(normalized);
+
         // 0.1 Harness shortcut
         try {
             if (path.contains(ASSETS_HARNESS))
                 return new FileInputStream("src/main/resources/" + path);
         } catch (Throwable ignored) {}
-
-        String normalized = normalizePath(path);
 
         // 1. Filesystem override — every configured source root, in order.
         if (!RESOURCE_OVERRIDE_DIRS.isEmpty()) {

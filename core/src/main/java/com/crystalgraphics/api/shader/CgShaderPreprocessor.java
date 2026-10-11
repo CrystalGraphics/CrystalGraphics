@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.shader;
 
+import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.util.io.CgIO;
 
@@ -47,7 +48,8 @@ import java.util.regex.Pattern;
  * <h3>Source Cache</h3>
  * <p>Loaded source text is cached for the process, across instances. The cache
  * is disabled while {@code crystalgraphics.resourceOverrideDirs} names roots
- * (hotswap dev mode). {@link #clearCache()} empties it, which a
+ * (hotswap dev mode), unless {@code CgHotReload} watches them and evicts each
+ * file edited there ({@link #forget}). {@link #clearCache()} empties it, which a
  * resource reload does.</p>
  *
  * <h3>Thread Safety</h3>
@@ -92,7 +94,7 @@ public final class CgShaderPreprocessor {
         if (defines != null) {
             this.defines.putAll(defines);
         }
-        this.cachingEnabled = !CgIO.OVERRIDE_DIRS.isSet();
+        this.cachingEnabled = !CgIO.OVERRIDE_DIRS.isSet() || CgHotReload.watching();
     }
 
     public CgShaderPreprocessor(Map<String, String> defines) {
@@ -134,6 +136,11 @@ public final class CgShaderPreprocessor {
     /** Forgets every include read so far, so the next compile reads files afresh: on a resource reload. */
     public static void clearCache() {
         SOURCE_CACHE.clear();
+    }
+
+    /** Forgets one file, in any path form {@link CgIO#normalizePath} takes: it was edited. */
+    public static void forget(String path) {
+        SOURCE_CACHE.remove(CgIO.normalizePath(path));
     }
 
     /**
@@ -374,6 +381,7 @@ public final class CgShaderPreprocessor {
         if (cachingEnabled) {
             String cached = SOURCE_CACHE.get(normalizedPath);
             if (cached != null) {
+                CgIO.noteRead(normalizedPath);
                 return cached;
             }
         }

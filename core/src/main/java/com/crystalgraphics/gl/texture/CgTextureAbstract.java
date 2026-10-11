@@ -3,6 +3,7 @@ package com.crystalgraphics.gl.texture;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
+import com.crystalgraphics.mc.CgReloadable;
 
 import lombok.Getter;
 
@@ -30,7 +31,7 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
  * <p>Not part of the public API surface; lives in {@code gl/texture/} alongside
  * the concrete implementations.</p>
  */
-public abstract class CgTextureAbstract implements CgTexture {
+public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     // ── Upload-format GL constants (shared by all subclass factories) ─
     private static final int GL_RED = 0x1903;
@@ -94,6 +95,12 @@ public abstract class CgTextureAbstract implements CgTexture {
 
     @Override
     public boolean isDeleted() {return deleted;}
+
+    /** Reloads it in place from its source images: what a cached texture does when one of them changes. */
+    @Override
+    public void refresh() {
+        if (!deleted) reload();
+    }
 
     // ── CgTexture — lifecycle ───────────────────────────────────────
 

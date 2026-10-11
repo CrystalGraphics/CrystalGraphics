@@ -28,6 +28,8 @@ import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.gl.material.parse.CgShaderParseException;
 import com.crystalgraphics.gl.material.parse.CgShaderParser;
 import com.crystalgraphics.gl.shader.CgShaderFactory;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -77,7 +79,7 @@ import java.util.Set;
  * {@link CgMaterialShaderRegistry#deleteAll()} on context destruction. Do not call
  * {@link #delete()} directly — the registry owns the lifecycle.</p>
  */
-public final class CgMaterialShader {
+public final class CgMaterialShader implements CgReloadable {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterialShader");
     private static final CgVar.Bool DUMP_GLSL = CgVar.bool("crystalgraphics.material.dumpGlsl", false, CgVar.DEV,
@@ -380,6 +382,26 @@ public final class CgMaterialShader {
      * engine depth shader fallback is used instead.</p>
      */
     public void recompile() {
+        // Recorded even when the compile fails: fixing the include that broke it must find this shader again.
+        CgIO.Reads recorded = CgIO.recordReads();
+        try {
+            compile();
+        } finally {
+            recorded.close();
+            // Its own file too: ensureParsed may have read it before this compile.
+            Set<String> reads = new HashSet<>(recorded.paths());
+            if (!isGenerated() && resourcePath != null) reads.add(resourcePath);
+            if (!deleted) CgAssetReloader.track(this, reads);
+        }
+    }
+
+    /** Marks it dirty: {@link CgAssetReloader} calls this when a file its last compile read changes. */
+    @Override
+    public void refresh() {
+        markDirty();
+    }
+
+    private void compile() {
         dirty = false;
         discardPending();
         if (resourcePath == null) return;
@@ -1020,6 +1042,7 @@ public final class CgMaterialShader {
     public void delete() {
         if (!deleted) {
             deleted = true;
+            CgAssetReloader.untrack(this);
             discardPending();
             dropVariants();
             for (CgShader s : programCache.values()) s.delete();

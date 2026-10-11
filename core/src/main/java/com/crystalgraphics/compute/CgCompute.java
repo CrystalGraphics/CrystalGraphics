@@ -13,6 +13,8 @@ import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.gl.buffer.CgBufferReadback;
+import com.crystalgraphics.mc.CgAssetReloader;
+import com.crystalgraphics.mc.CgReloadable;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -20,7 +22,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -54,7 +58,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   <li>{@link #load} and {@link #fromSource} may run on any thread; programs are the render thread's.</li>
  * </ul>
  */
-public final class CgCompute {
+public final class CgCompute implements CgReloadable {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final Map<String, CgCompute> LOADED = new ConcurrentHashMap<>();
@@ -90,12 +94,20 @@ public final class CgCompute {
     private final Map<CgKernel, CgKernel> variants = new ConcurrentHashMap<>();
     /** Counts every body given: a kernel's form chosen before one may change. */
     private volatile int bodiesGiven;
+    /** Every file its parse and its programs read, normalized: what an edit to one of them refreshes it for. */
+    private volatile Set<String> reads = Collections.emptySet();
 
     private CgCompute(String path, String text, boolean generated) {
         this.path = path;
         this.generated = generated;
         this.text = text;
-        this.source = CgComputeParser.parse(text, path);
+        CgIO.Reads recorded = CgIO.recordReads();
+        try {
+            this.source = CgComputeParser.parse(text, path);
+        } finally {
+            recorded.close();
+            addReads(recorded.paths());
+        }
         this.properties = CgPropertyBlock.of(source.properties());
     }
 
@@ -115,7 +127,10 @@ public final class CgCompute {
         if (existing != null && existing.text.equals(text)) return existing;
         CgCompute created = new CgCompute(key, text, true);
         CgCompute previous = GENERATED.put(key, created);
-        if (previous != null) RETIRED.add(previous);
+        if (previous != null) {
+            CgAssetReloader.untrack(previous);
+            RETIRED.add(previous);
+        }
         return created;
     }
 
@@ -167,7 +182,7 @@ public final class CgCompute {
                 CgTrace.add(CgChannels.GL, COMPILE_WAITS, 1);
             } else {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
-                    program = CgKernelProgram.build(source, decl(kernel), kernel.keywords());
+                    program = build(source, decl(kernel), kernel);
                 }
                 CgTrace.add(CgChannels.GL, COMPILES, 1);
             }
@@ -182,8 +197,12 @@ public final class CgCompute {
         String key = kernel.name() + kernel.keywords();
         CgKernelProgram program = programs.get(key);
         if (program != null && !program.isDeleted() || preparing.containsKey(key)) return;
+        CgIO.Reads recorded = CgIO.recordReads();
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE)) {
             preparing.put(key, CgKernelProgram.submit(source, decl(kernel), kernel.keywords(), CgKernelTarget.current()));
+        } finally {
+            recorded.close();
+            addReads(recorded.paths());
         }
         PREPARING.add(this);
         CgTrace.add(CgChannels.GL, COMPILES, 1);
@@ -200,8 +219,12 @@ public final class CgCompute {
         String key = runs.name() + kernel.keywords();
         CgLoweredKernel built = lowered.get(key);
         if (built == null || built.isDeleted()) {
+            CgIO.Reads recorded = CgIO.recordReads();
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE_LOWERED)) {
                 built = CgLoweredKernel.build(source, runs, kernel.keywords());
+            } finally {
+                recorded.close();
+                addReads(recorded.paths());
             }
             CgTrace.add(CgChannels.GL, COMPILES, 1);
             lowered.put(key, built);
@@ -232,6 +255,74 @@ public final class CgCompute {
         text = latest;
         source = parsed;
         properties = CgPropertyBlock.of(parsed.properties());
+    }
+
+    /**
+     * Parses its text again (read again from its file, unless generated) and rebuilds each program it had compiled
+     * before taking any of it: a file that no longer parses or a program that no longer compiles throws, and it keeps
+     * everything it had. Lowered forms and programs being prepared are dropped, and built again at their next use.
+     * Render thread: what {@link CgAssetReloader} calls when a file it read changes.
+     */
+    @Override
+    public synchronized void refresh() {
+        String latest = generated ? text : read(path);
+        CgIO.Reads recorded = CgIO.recordReads();
+        CgComputeSource parsed;
+        Map<String, CgKernelProgram> built = new HashMap<>();
+        try {
+            parsed = CgComputeParser.parse(latest, path);
+            List<CgKernel> compiled = new ArrayList<>(kernels.values());
+            compiled.addAll(variants.keySet());
+            for (CgKernel kernel : compiled) {
+                String key = kernel.name() + kernel.keywords();
+                CgKernelProgram old = programs.get(key);
+                CgKernelDecl decl = parsed.kernel(kernel.name());
+                if (old == null || old.isDeleted() || decl == null || built.containsKey(key)) continue;
+                built.put(key, CgKernelProgram.build(parsed, decl, kernel.keywords()));
+            }
+        } catch (RuntimeException e) {
+            for (CgKernelProgram program : built.values()) program.delete();
+            throw e;
+        } finally {
+            recorded.close();
+        }
+        release();
+        programs.putAll(built);
+        text = latest;
+        source = parsed;
+        properties = CgPropertyBlock.of(parsed.properties());
+        reads = new HashSet<>(recorded.paths());
+        track();
+    }
+
+    private CgKernelProgram build(CgComputeSource from, CgKernelDecl decl, CgKernel kernel) {
+        CgIO.Reads recorded = CgIO.recordReads();
+        try {
+            return CgKernelProgram.build(from, decl, kernel.keywords());
+        } finally {
+            recorded.close();
+            addReads(recorded.paths());
+        }
+    }
+
+    private synchronized void addReads(Set<String> paths) {
+        if (reads.containsAll(paths)) return;
+        Set<String> union = new HashSet<>(reads);
+        union.addAll(paths);
+        reads = union;
+        track();
+    }
+
+    /** Its own file too: {@link #load} reads it before the constructor records anything. */
+    private void track() {
+        Set<String> tracked = new HashSet<>(reads);
+        if (!generated) tracked.add(path);
+        CgAssetReloader.track(this, tracked);
+    }
+
+    @Override
+    public String toString() {
+        return path;
     }
 
     /** Deletes every program; the parsed source stays, and the next use compiles again. Render thread. */

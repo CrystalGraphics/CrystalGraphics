@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
@@ -101,7 +102,7 @@ public final class CgGraphicsLifecycle {
     private static long frameCounter = 0;
     private static final int SETTINGS = CgTrace.name("lifecycle.settings"), CHECK = CgTrace.name("lifecycle.computeCheck"),
             READBACK = CgTrace.name("lifecycle.readback"), UPLOADS = CgTrace.name("lifecycle.uploads"),
-            BUDGET = CgTrace.name("lifecycle.budget"), LISTENERS = CgTrace.name("lifecycle.listeners"),
+            BUDGET = CgTrace.name("lifecycle.budget"), HOT_RELOAD = CgTrace.name("lifecycle.hotReload"), LISTENERS = CgTrace.name("lifecycle.listeners"),
             SELF_TESTS = CgTrace.name("lifecycle.selfTests"), RING = CgTrace.name("lifecycle.frameRing");
 
     // ── External lifecycle listeners ────────────────────────────────────────
@@ -417,6 +418,9 @@ public final class CgGraphicsLifecycle {
                 }
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, BUDGET)) {
                     CgGpuBudget.tick();
+                }
+                try (CgTrace.Zone z = CgTrace.zone(CgChannels.MISC, HOT_RELOAD)) {
+                    CgHotReload.tick();   // before the dispatches and binds that take what it refreshed
                 }
                 CgCompute.finishPrepared();   // ahead of the dispatches that take them
             }
