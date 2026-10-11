@@ -37,9 +37,10 @@ Pass {
         float churn = fx_fbm(vec3(p.xy * 1.7, p.z * 1.7 + age * _Flow * 0.25) + seed * 17.0, 3);
         p *= 1.0 + _Displace * (0.6 + 0.4 * p.z) * churn;
         // Crests from the shoulder back flung along -z, streaming like a comet's.
-        float crest = fx_ridged(vec3(p.xy * 2.4, p.z * 1.2 + age * _Flow * 0.4) + seed * 5.0, 3);
+        // Smooth lobes, as body_shell's: the vertices sample a ridged crease as spikes.
+        float lobe = fx_noise(vec3(p.xy * 2.4, p.z * 1.2 + age * _Flow * 0.4) + seed * 5.0);
         float back = smoothstep(0.55, -0.2, cg_Position.z);
-        p.z -= _Tongue * back * pow(crest, 3.0);
+        p.z -= _Tongue * back * smoothstep(-0.1, 0.7, lobe);
         vec4 world = CG_OBJECT_TO_WORLD * vec4(p, 1.0);
         o.world = world.xyz;
         o.local = cg_Position;
@@ -66,7 +67,9 @@ Pass {
         // The skin covers in its colour, so folds piled up settle on it rather than past white; filaments add light.
         vec3 skin = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
         vec3 glow = CG_OBJECT_CUSTOM3.rgb * filament * 2.0;
-        float strength = alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.55);
+        // Faded by the sphere's normal, as body_shell's: gl_FrontFacing stripes the edge-on, displaced skin with teeth.
+        float far = smoothstep(-0.3, 0.3, dot(n, ray));
+        float strength = alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * mix(1.0, 0.55, far);
         fragColor = vec4((skin + glow) * fx_flicker(age, seed) * strength, _Cover * strength);
         CG_GLOW(glow * fx_flicker(age, seed) * strength * CG_HDR(1.0, _GlowHdr));
     }

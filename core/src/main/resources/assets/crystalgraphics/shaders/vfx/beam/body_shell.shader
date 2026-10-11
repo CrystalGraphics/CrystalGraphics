@@ -41,9 +41,10 @@ Pass {
         float age = v.header.w, seed = v.header.z, s = v.ring.arc;
         vec2 around = vec2(cos(a), sin(a));
         float roll = fx_noise(vec3((s - age * _Flow) * 0.35, around * 1.2) + seed * 17.0);
-        // Ridged crests flung outward: tongues bursting from the skin and falling back as the flow carries them.
-        float crest = fx_ridged(vec3((s - age * _Flow * 1.4) * 0.3, around * 1.6) + seed * 5.0, 2);
-        float tongue = smoothstep(0.5, 0.95, crest);
+        // Lobes flung outward: tongues bursting from the skin and falling back as the flow carries them. Each rises
+        // across several of the tube's sides (CgVfxTube.SIDES): steeper, one vertex stands out alone as a spike.
+        float lobe = fx_noise(vec3((s - age * _Flow * 1.4) * 0.3, around * 0.8) + seed * 5.0);
+        float tongue = smoothstep(-0.1, 0.7, lobe);
         v.position += (v.position - v.ring.position) * (_Displace * roll + _Tongue * tongue);
         vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
         o.world = origin + v.position;
@@ -81,7 +82,10 @@ Pass {
         vec3 skin = CG_OBJECT_CUSTOM2.rgb * (0.6 + 0.5 * rim) * _Cover;
         vec3 glow = CG_OBJECT_CUSTOM3.rgb * (0.6 * hot * hot + 1.8 * filament);
         float flicker = fx_flicker(age + s * 0.015, seed);
-        float strength = alpha * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.55);
+        // The far side dimmer, faded across the silhouette by the axis normal: gl_FrontFacing flips triangle by
+        // triangle where the displaced skin turns edge-on, striping the rim with teeth.
+        float far = smoothstep(-0.3, 0.3, dot(n, ray));
+        float strength = alpha * CG_OBJECT_CUSTOM2.a * mix(1.0, 0.55, far);
         fragColor = vec4((skin + glow) * strength * i.pulse * flicker, _Cover * strength);
         CG_GLOW(glow * strength * i.pulse * flicker * CG_HDR(1.0, _GlowHdr));
     }

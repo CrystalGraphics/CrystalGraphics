@@ -32,7 +32,8 @@ import org.joml.Matrix4f;
  */
 public final class CgVfxTube {
 
-    public static final int SPANS = 16, SIDES = 24;
+    // A shell displaced per vertex shows a tooth wherever its displacement rises within one side: keep it across several.
+    public static final int SPANS = 16, SIDES = 48;
     private static final int DRAWS_TUBE = CgTrace.name("vfx.draws.tube"), DRAWS_TUBE_VOLUME = CgTrace.name("vfx.draws.tube-volume");
     /** How far a chunk's bounds reach past its rings, in radii: displacement, and the end caps' push. */
     private static final float BOUNDS_MARGIN = 1.6f;
