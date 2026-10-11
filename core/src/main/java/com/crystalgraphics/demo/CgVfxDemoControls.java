@@ -28,6 +28,10 @@ import java.util.Locale;
  * controls.apply(wave);
  *
  * hud.line(controls.hudLines(true));                      // false: a scene with no waves shows the time alone
+ *
+ * // or from a tool's panel, without keys
+ * controls.flash(CgVfxDemoControls.Flash.DOUBLE);
+ * controls.impact(true);
  * }</pre>
  *
  * <ul>
@@ -44,7 +48,8 @@ public final class CgVfxDemoControls {
     public static final int[] KEYS = {CgKeyCodes.KEY_F, CgKeyCodes.KEY_I, CgKeyCodes.KEY_B, CgKeyCodes.KEY_Y,
             CgKeyCodes.KEY_COMMA, CgKeyCodes.KEY_PERIOD};
 
-    private enum Flash { DOUBLE, SINGLE, OFF }
+    /** The blast's flash: the wave's own double pulse, one pulse, or none. */
+    public enum Flash { DOUBLE, SINGLE, OFF }
 
     /** The flash before the double: one pulse, held, gone. */
     private static final CgKeyframes SINGLE = CgKeyframes.start(0f, 0f)
@@ -59,8 +64,8 @@ public final class CgVfxDemoControls {
 
     private static final CgVfxDemoControls INSTANCE = new CgVfxDemoControls();
 
-    private Flash flash = Flash.DOUBLE;
-    private boolean impact = true, billows = true;
+    private Flash flash = Flash.OFF;
+    private boolean impact = false, billows = true;
     private int speed = REAL_TIME;
     private float wait = 4f;
     /** The clock slowed by the time switch, and the host seconds it last advanced to. */
@@ -102,6 +107,36 @@ public final class CgVfxDemoControls {
             }
         }
         return true;
+    }
+
+    public Flash flash() {
+        return flash;
+    }
+
+    /** Sets the flash, reaching every wave still playing, as F does. */
+    public void flash(Flash flash) {
+        this.flash = flash;
+        reapply();
+    }
+
+    public boolean impact() {
+        return impact;
+    }
+
+    /** Sets the impact frame and its hitstop, as I does. */
+    public void impact(boolean on) {
+        impact = on;
+        reapply();
+    }
+
+    public boolean billows() {
+        return billows;
+    }
+
+    /** Draws the blast's billows or keeps them undrawn, as B does. */
+    public void billows(boolean on) {
+        billows = on;
+        reapply();
     }
 
     /** The switches onto every wave still playing, so a press shows at once. */

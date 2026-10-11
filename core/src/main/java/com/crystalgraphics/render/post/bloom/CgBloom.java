@@ -65,8 +65,11 @@ public final class CgBloom implements CgPostEffect {
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_EXCESS = CgGpuTrace.name("post.bloom.excess");
 
+    /** {@link #intensity(float)}'s default. */
+    public static final float INTENSITY = 1f;
+
     private final CgBloomChain chain = new CgBloomChain();
-    private float intensity = 1f, tintR = 1f, tintG = 1f, tintB = 1f, threshold = 1f;
+    private float intensity = INTENSITY, tintR = 1f, tintG = 1f, tintB = 1f, threshold = 1f;
     private CgMaterial excessMaterial;
     private CgGraphTexture excess, boundScene;
     private float boundThreshold = Float.NaN;
@@ -76,7 +79,7 @@ public final class CgBloom implements CgPostEffect {
     /** {@code -Dcrystalgraphics.post.bloom.linear=true} starts it in linear light: the two forms side by side. */
     private boolean linear = Boolean.getBoolean("crystalgraphics.post.bloom.linear");
 
-    /** How strongly what emits blooms: 1 by default, 0 for none. */
+    /** How strongly what emits blooms: {@value #INTENSITY} by default, 0 for none. */
     public CgBloom intensity(float intensity) {
         this.intensity = Math.max(0f, intensity);
         return this;
