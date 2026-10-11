@@ -2,6 +2,8 @@ package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfxMomentListener;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 
@@ -31,13 +33,26 @@ public final class CgVfxBlastFlash {
     /** Blocks from the muzzle to the target, across the view, and the muzzle's height over the target. */
     private static final double SPAN = 12.0, MUZZLE_UP = 2.5;
 
-    private final CgVfxSystem vfx = new CgVfxSystem();
+    private final CgVfxOwner vfx;
+    /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
+    private final boolean drives;
     /** Waves fired and not yet stopped: each stops as it hits. */
     private final List<CgEnergyWave> flying = new ArrayList<>();
     /** The wave in play, and when the scene clears: NaN until it bursts. */
     private CgEnergyWave current;
     private float clock, clearAt = Float.NaN;
     private int fired;
+
+    /** On a system of its own. */
+    public CgVfxBlastFlash() {
+        this(null);
+    }
+
+    /** Played by {@code owner}: the world's system, which the engine updates and draws. */
+    public CgVfxBlastFlash(CgVfxOwner owner) {
+        drives = owner == null;
+        vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
+    }
 
     public void prepare() {
         vfx.prepare(CgEnergyWave.kamehameha());
@@ -58,8 +73,10 @@ public final class CgVfxBlastFlash {
             wave.stop();
             it.remove();
         }
-        vfx.update(clock);
-        vfx.submit(world);
+        if (drives) {
+            vfx.system().update(clock);
+            vfx.system().submit(world);
+        }
     }
 
     private void cycle(double x, double y, double z, double forwardX, double forwardZ) {
@@ -67,7 +84,7 @@ public final class CgVfxBlastFlash {
             // From the burst, after the impact frame when it has one, so a frame switched off midway waits on nothing.
             if (Float.isNaN(clearAt) && current.burst()) clearAt = clock + CgVfxDemoControls.get().waitSeconds();
             if (Float.isNaN(clearAt) || clock < clearAt) return;
-            vfx.clear();
+            clearPlays();
             flying.clear();
         }
         clearAt = Float.NaN;
@@ -89,7 +106,7 @@ public final class CgVfxBlastFlash {
 
     /** Hears every moment its waves cross, as {@link CgVfxSystem#onMoment}. */
     public void onMoment(CgVfxMomentListener listener) {
-        vfx.onMoment(listener);
+        vfx.system().onMoment(listener);
     }
 
     /** The wave in play, or null before the first. */
@@ -103,14 +120,27 @@ public final class CgVfxBlastFlash {
     }
 
     public void clear() {
-        vfx.clear();
+        clearPlays();
         flying.clear();
         current = null;
     }
 
     public void delete() {
-        vfx.delete();
+        if (drives) {
+            vfx.system().delete();
+        } else {
+            vfx.clear();
+        }
         flying.clear();
         current = null;
+    }
+
+    /** Its own system cleared whole, its clock with it; on the world's, its waves alone. */
+    private void clearPlays() {
+        if (drives) {
+            vfx.system().clear();
+        } else {
+            vfx.clear();
+        }
     }
 }

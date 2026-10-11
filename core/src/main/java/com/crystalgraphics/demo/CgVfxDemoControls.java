@@ -155,6 +155,11 @@ public final class CgVfxDemoControls {
         return clock;
     }
 
+    /** The time switch's rate: 1 in real time, 0 held. What a system's {@code timeScale} takes. */
+    public float speed() {
+        return SPEEDS[speed];
+    }
+
     /** Seconds before the next wave: after the blast's impact frame, or after a beam stops firing. */
     public float waitSeconds() {
         return wait;

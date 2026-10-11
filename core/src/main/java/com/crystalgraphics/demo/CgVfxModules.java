@@ -15,6 +15,8 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -111,7 +113,9 @@ public final class CgVfxModules {
         void label(float x, float y, float z, float height, String text, int color);
     }
 
-    private final CgVfxSystem vfx = new CgVfxSystem();
+    private final CgVfxOwner vfx;
+    /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
+    private final boolean drives;
     private final List<Station> stations = new ArrayList<>();
     private final List<CgTexture> sheets = new ArrayList<>();
     /** Each sheet's texels, waiting for {@link #fillSheets()}'s worker; and whether {@link #delete()} has run. */
@@ -163,8 +167,15 @@ public final class CgVfxModules {
         }
     }
 
-    /** Builds every station, its textures and materials: on the render thread. */
+    /** Builds every station, its textures and materials, on a system of its own: on the render thread. */
     public CgVfxModules(CgFont font) {
+        this(font, null);
+    }
+
+    /** As {@link #CgVfxModules(CgFont)}, played by {@code owner}: the world's system, which the engine updates and draws. */
+    public CgVfxModules(CgFont font, CgVfxOwner owner) {
+        drives = owner == null;
+        vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.font = font;
         sphere = CgMeshShapes.sphere(40, 80);
         cube = CgMeshShapes.cube();
@@ -1143,8 +1154,10 @@ public final class CgVfxModules {
             }
             nextPlay = seconds + PERIOD;
         }
-        vfx.update(seconds);
-        vfx.submit(world);
+        if (drives) {
+            vfx.system().update(seconds);
+            vfx.system().submit(world);
+        }
         for (int i = 0; i < stations.size(); i++) {
             Station s = stations.get(i);
             currentX = x + s.x();
@@ -1181,18 +1194,31 @@ public final class CgVfxModules {
 
     /** Ends every station's play at once; the next {@link #submit} plays them all again. */
     public void clear() {
-        vfx.clear();
+        clearPlays();
         nextPlay = 0f;
     }
 
     /** The system the stations play in. */
     public CgVfxSystem vfx() {
-        return vfx;
+        return vfx.system();
     }
 
-    /** Stops every station and frees what it made. The font is the caller's. */
+    /** Its own system cleared whole, its clock with it; on the world's, its plays alone. */
+    private void clearPlays() {
+        if (drives) {
+            vfx.system().clear();
+        } else {
+            vfx.clear();
+        }
+    }
+
+    /** Stops every station and frees what it made: its own system, or its plays on the world's. The font is the caller's. */
     public void delete() {
-        vfx.delete();
+        if (drives) {
+            vfx.system().delete();
+        } else {
+            vfx.clear();
+        }
         synchronized (sheets) {
             deleted = true;
             for (CgTexture sheet : sheets) sheet.delete();

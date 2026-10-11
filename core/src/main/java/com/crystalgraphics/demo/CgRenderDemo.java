@@ -28,6 +28,8 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -106,6 +108,9 @@ public final class CgRenderDemo {
     private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
     private static final int PROFILE = Integer.getInteger("crystalgraphics.demo.profile", 0);
     private static final int PROFILE_WARMUP = Integer.getInteger("crystalgraphics.demo.profile.warmup", 600);
+
+    /** Every scene plays on the world's system, as a mod's effects do. */
+    private static final CgVfxOwner VFX = CgVfx.owner("crystalgraphics");
 
     private static final int ABOVE = 2;       // blocks up the screen the scene floats, until it stands on the ground
     private static final int TELEPORT = 32;   // blocks the camera may move in one frame before the scene follows
@@ -258,7 +263,7 @@ public final class CgRenderDemo {
     // ── scenes ────────────────────────────────────────────────────────────────
 
     private Scene blasts() {
-        CgVfxBlasts blasts = new CgVfxBlasts(Integer.getInteger("crystalgraphics.demo.blasts", 120));
+        CgVfxBlasts blasts = new CgVfxBlasts(Integer.getInteger("crystalgraphics.demo.blasts", 120), VFX);
         return new Scene() {
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
@@ -288,7 +293,7 @@ public final class CgRenderDemo {
     }
 
     private Scene beams() {
-        CgVfxShowcase showcase = new CgVfxShowcase();
+        CgVfxShowcase showcase = new CgVfxShowcase(VFX);
         return new Scene() {
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
@@ -325,7 +330,7 @@ public final class CgRenderDemo {
 
     private Scene modules() {
         if (labelFont == null) labelFont = sansSerif(48);
-        CgVfxModules modules = new CgVfxModules(labelFont);
+        CgVfxModules modules = new CgVfxModules(labelFont, VFX);
         return new Scene() {
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
@@ -355,7 +360,7 @@ public final class CgRenderDemo {
     }
 
     private Scene blast() {
-        CgVfxBlastFlash blast = new CgVfxBlastFlash();
+        CgVfxBlastFlash blast = new CgVfxBlastFlash(VFX);
         return new Scene() {
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
@@ -417,6 +422,8 @@ public final class CgRenderDemo {
         if (!warm(current)) return;
         // Through the time switch, whichever scene shows, so its value carries across N.
         float seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
+        // The scenes play on the world's system, which keeps the host's clock: the time switch reaches it as a scale.
+        CgVfx.world().timeScale(CgVfxDemoControls.get().speed());
         scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
     }
 

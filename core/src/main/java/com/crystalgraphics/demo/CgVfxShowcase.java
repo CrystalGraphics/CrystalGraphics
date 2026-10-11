@@ -10,6 +10,8 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.air.CgVfxHeatHaze;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
@@ -140,7 +142,9 @@ public final class CgVfxShowcase {
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
     private final float[] impacts = new float[12];
-    private final CgVfxSystem vfx = new CgVfxSystem();
+    private final CgVfxOwner vfx;
+    /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
+    private final boolean drives;
     private final Lane[] lanes;
     /** Each lane's wave, the shot it is on, when it fired and when the next fires (NaN: not yet scheduled). */
     private final CgEnergyWave[] waves;
@@ -149,12 +153,19 @@ public final class CgVfxShowcase {
     private CgVfxHeatHaze haze;
     private double waveX = Double.NaN, waveY, waveZ;
 
-    /** The showcase with its three lanes. */
+    /** The showcase with its three lanes, on a system of its own. */
     public CgVfxShowcase() {
-        this(LANES);
+        this(LANES, null);
     }
 
-    private CgVfxShowcase(Lane[] lanes) {
+    /** The showcase with its three lanes, played by {@code owner}: the world's system, which the engine updates and draws. */
+    public CgVfxShowcase(CgVfxOwner owner) {
+        this(LANES, owner);
+    }
+
+    private CgVfxShowcase(Lane[] lanes, CgVfxOwner owner) {
+        drives = owner == null;
+        vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.lanes = lanes;
         this.waves = new CgEnergyWave[lanes.length];
         this.shots = filled(lanes.length, -1);
@@ -198,7 +209,7 @@ public final class CgVfxShowcase {
             }
             lanes[i] = new Lane(String.format("beam%02d", i), bases[i % 3], i * STRESS_STAGGER, from, aim, via, targets);
         }
-        return new CgVfxShowcase(lanes);
+        return new CgVfxShowcase(lanes, null);
     }
 
     private static float[] normalized(float x, float y, float z) {
@@ -319,7 +330,7 @@ public final class CgVfxShowcase {
 
     /** Ends every wave and the haze at once; the next {@link #submit} starts the loop over. */
     public void clear() {
-        vfx.clear();
+        clearPlays();
         Arrays.fill(waves, null);
         Arrays.fill(shots, -1);
         Arrays.fill(nextShot, Float.NaN);
@@ -329,12 +340,25 @@ public final class CgVfxShowcase {
 
     /** The system the showcase plays its effects through: register a {@code CgVfxMomentListener} on it to photograph their moments. */
     public CgVfxSystem vfx() {
-        return vfx;
+        return vfx.system();
     }
 
-    /** Releases the floor and the effects' meshes. Call on context teardown. */
+    /** Its own system cleared whole, its clock with it; on the world's, its effects alone. */
+    private void clearPlays() {
+        if (drives) {
+            vfx.system().clear();
+        } else {
+            vfx.clear();
+        }
+    }
+
+    /** Releases the floor and its own system's meshes; on the world's, ends its effects. Call on context teardown. */
     public void delete() {
-        vfx.delete();
+        if (drives) {
+            vfx.system().delete();
+        } else {
+            vfx.clear();
+        }
         Arrays.fill(waves, null);
         haze = null;
         waveX = Double.NaN;
@@ -400,8 +424,10 @@ public final class CgVfxShowcase {
             }
             if (waves[k] != null && seconds - firedAt[k] > WAVE_HOLD) waves[k].stop();
         }
-        vfx.update(seconds);
-        vfx.submit(world);
+        if (drives) {
+            vfx.system().update(seconds);
+            vfx.system().submit(world);
+        }
     }
 
     /** Sphere {@code k}'s turn at {@code seconds}, into {@link #transform}: each at its own pace, two of them tilted. */

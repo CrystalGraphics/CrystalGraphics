@@ -3,6 +3,8 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -59,16 +61,25 @@ public final class CgVfxBlasts {
             BLUE.toBuilder().set(KIT.hot, 0.98f, 0.65f, 1f, 1f).set(KIT.debris, 0.06f, 0.01f, 0.1f, 1f).build(),
     };
 
-    private final CgVfxSystem vfx = new CgVfxSystem();
+    private final CgVfxOwner vfx;
+    /** A system of its own, updated and drawn by {@link #submit}; false on the world's. */
+    private final boolean drives;
     /** Per spot, the burst it last fired. */
     private final int[] shots;
     /** Whether {@link #shots} follow the clock; false until the first submit, and again after a clear. */
     private boolean started;
 
-    /** {@code count} spots, each bursting once a {@link #CYCLE}, staggered evenly over it. */
+    /** {@code count} spots, each bursting once a {@link #CYCLE}, staggered evenly over it, on a system of its own. */
     public CgVfxBlasts(int count) {
+        this(count, null);
+    }
+
+    /** As {@link #CgVfxBlasts(int)}, played by {@code owner}: the world's system, which the engine updates and draws. */
+    public CgVfxBlasts(int count, CgVfxOwner owner) {
         shots = new int[count];
         Arrays.fill(shots, -1);
+        drives = owner == null;
+        vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
     }
 
     /** How many spots burst. */
@@ -103,8 +114,10 @@ public final class CgVfxBlasts {
             double by = floor + LOW + (HIGH - LOW) * hash(i, shot, 3);
             vfx.play(new Burst(LOOKS[i % LOOKS.length], bx, by, bz, floor));
         }
-        vfx.update(seconds);
-        vfx.submit(world);
+        if (drives) {
+            vfx.system().update(seconds);
+            vfx.system().submit(world);
+        }
     }
 
     /** Warms every look's kernels and programs, so the first bursts stall no frame. On the render thread. */
@@ -119,18 +132,31 @@ public final class CgVfxBlasts {
 
     /** Ends every burst at once; from the next {@link #submit} each spot fires at its next turn. */
     public void clear() {
-        vfx.clear();
+        clearPlays();
         started = false;
     }
 
     /** The system the blasts play through. */
     public CgVfxSystem vfx() {
-        return vfx;
+        return vfx.system();
     }
 
-    /** Releases the effects' meshes. Call on context teardown. */
+    /** Releases its own system's meshes; on the world's, ends its bursts. Call on context teardown. */
     public void delete() {
-        vfx.delete();
+        if (drives) {
+            vfx.system().delete();
+        } else {
+            vfx.clear();
+        }
+    }
+
+    /** Its own system cleared whole, its clock with it; on the world's, its bursts alone. */
+    private void clearPlays() {
+        if (drives) {
+            vfx.system().clear();
+        } else {
+            vfx.clear();
+        }
     }
 
     /** One burst of a look's emitters at its origin, landing on a floor at {@code floorY}; dies when they all have. */
