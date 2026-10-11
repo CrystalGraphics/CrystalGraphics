@@ -1,6 +1,7 @@
 package com.crystalgraphics.settings;
 
-import java.util.Locale;
+import com.crystalgraphics.variable.CgVar;
+
 import java.util.Objects;
 
 /**
@@ -17,10 +18,16 @@ import java.util.Objects;
  * DENSITY.set(0.5f);                // clamped to the range, saved within a second
  * }</pre>
  *
+ * <p>Each is a {@link CgVar} too, {@code <file>.<section>.<key>} ({@link #var()}): the file is its
+ * {@link CgVar.Source#FILE} value, so {@code -Dmymod.vfx.density=0.2}, the console or a tool outrank it for the run
+ * without being saved over the player's choice.</p>
+ *
  * <ul>
  *   <li>A value is read from the file the first time any setting of that file is read, and again whenever the file
  *       changes on disk.</li>
  *   <li>Setting a value saves the file on the next frame; it is never written mid-frame.</li>
+ *   <li>{@link #get} is the value in force, whoever set it; a screen editing the player's choice shows
+ *       {@code saved()}.</li>
  * </ul>
  */
 public abstract class CgSetting {
@@ -61,65 +68,94 @@ public abstract class CgSetting {
         return description;
     }
 
-    /** Puts it back to its default. */
+    /** The variable it is: {@code <file>.<section>.<key>}. */
+    public abstract CgVar<?> var();
+
+    /** Puts the player's choice back to its default. */
     public abstract void reset();
 
-    /** The value as the file writes it. */
+    /** The player's choice as the file writes it. */
     abstract String write();
 
     /** Reads {@code text} from the file; false leaves the value as it was. */
-    abstract boolean read(String text);
+    final boolean read(String text) {
+        return var().setText(CgVar.Source.FILE, text);
+    }
 
     /** The file comment's second line: its range or choices and its default. */
-    abstract String hint();
+    final String hint() {
+        CgVar<?> v = var();
+        if (v instanceof CgVar.Bool) return "true or false, default " + v.defaultText();
+        return v.range() + (v instanceof CgVar.Choice ? "; default " : ", default ") + v.defaultText();
+    }
+
+    static String varId(CgSettings file, String section, String key) {
+        return file.name() + "." + section + "." + key;
+    }
+
+    /** Sets the file's value to {@code value} and marks the file to save, if that changed it. */
+    <T> void setSaved(CgVar<T> v, T value) {
+        file.ensureLoaded();
+        T before = v.valueAt(CgVar.Source.FILE);
+        v.set(CgVar.Source.FILE, value);
+        if (!v.valueAt(CgVar.Source.FILE).equals(before == null ? v.defaultValue() : before)) file.changed();
+    }
+
+    static <T> T saved(CgVar<T> v) {
+        T at = v.valueAt(CgVar.Source.FILE);
+        return at != null ? at : v.defaultValue();
+    }
 
     /** A number in a range, shown as a slider. */
     public static final class Number extends CgSetting {
 
-        private final float fallback, min, max, step;
-        private volatile float value;
+        private final CgVar.Num var;
+        private final float step;
 
         Number(CgSettings file, String section, String key, String label, String description,
                float fallback, float min, float max, float step) {
             super(file, section, key, label, description);
-            if (!(min <= fallback && fallback <= max)) throw new IllegalArgumentException(id() + ": default outside its range");
-            this.fallback = fallback;
-            this.min = min;
-            this.max = max;
+            this.var = CgVar.number(varId(file, section, key), fallback, min, max, CgVar.SAVED, description);
             this.step = step;
-            this.value = fallback;
         }
 
         public float get() {
             file.ensureLoaded();
-            return value;
+            return var.get();
+        }
+
+        /** The player's choice, whatever outranks it for the run. */
+        public float saved() {
+            file.ensureLoaded();
+            return saved(var);
         }
 
         /** Clamped to the range; NaN is ignored. */
         public void set(float value) {
             if (Float.isNaN(value)) return;
-            file.ensureLoaded();
-            float clamped = Math.max(min, Math.min(max, value));
-            if (clamped == this.value) return;
-            this.value = clamped;
-            file.changed();
+            setSaved(var, value);
+        }
+
+        @Override
+        public CgVar.Num var() {
+            return var;
         }
 
         @Override
         public void reset() {
-            set(fallback);
+            set(var.defaultValue());
         }
 
         public float defaultValue() {
-            return fallback;
+            return var.defaultValue();
         }
 
         public float min() {
-            return min;
+            return var.min();
         }
 
         public float max() {
-            return max;
+            return var.max();
         }
 
         /** The slider's step; 0 for none. */
@@ -129,145 +165,102 @@ public abstract class CgSetting {
 
         @Override
         String write() {
-            return Float.toString(value);
-        }
-
-        @Override
-        boolean read(String text) {
-            try {
-                float v = Float.parseFloat(text);
-                if (Float.isNaN(v)) return false;
-                value = Math.max(min, Math.min(max, v));
-                return true;
-            } catch (NumberFormatException bad) {
-                return false;
-            }
-        }
-
-        @Override
-        String hint() {
-            return min + " to " + max + ", default " + fallback;
+            return Float.toString(saved(var));
         }
     }
 
     /** On or off. */
     public static final class Toggle extends CgSetting {
 
-        private final boolean fallback;
-        private volatile boolean value;
+        private final CgVar.Bool var;
 
         Toggle(CgSettings file, String section, String key, String label, String description, boolean fallback) {
             super(file, section, key, label, description);
-            this.fallback = fallback;
-            this.value = fallback;
+            this.var = CgVar.bool(varId(file, section, key), fallback, CgVar.SAVED, description);
         }
 
         public boolean get() {
             file.ensureLoaded();
-            return value;
+            return var.get();
+        }
+
+        /** The player's choice, whatever outranks it for the run. */
+        public boolean saved() {
+            file.ensureLoaded();
+            return saved(var);
         }
 
         public void set(boolean value) {
-            file.ensureLoaded();
-            if (value == this.value) return;
-            this.value = value;
-            file.changed();
+            setSaved(var, value);
+        }
+
+        @Override
+        public CgVar.Bool var() {
+            return var;
         }
 
         @Override
         public void reset() {
-            set(fallback);
+            set(var.defaultValue());
         }
 
         public boolean defaultValue() {
-            return fallback;
+            return var.defaultValue();
         }
 
         @Override
         String write() {
-            return Boolean.toString(value);
-        }
-
-        @Override
-        boolean read(String text) {
-            if (text.equals("true")) value = true;
-            else if (text.equals("false")) value = false;
-            else return false;
-            return true;
-        }
-
-        @Override
-        String hint() {
-            return "true or false, default " + fallback;
+            return Boolean.toString(saved(var));
         }
     }
 
     /** One of an enum's constants, written as its name in lower case. */
     public static final class Choice<E extends Enum<E>> extends CgSetting {
 
-        private final E fallback;
-        private final E[] options;
-        private volatile E value;
+        private final CgVar.Choice<E> var;
 
         Choice(CgSettings file, String section, String key, String label, String description, E fallback) {
             super(file, section, key, label, description);
-            this.fallback = Objects.requireNonNull(fallback, "default");
-            this.options = fallback.getDeclaringClass().getEnumConstants();
-            this.value = fallback;
+            this.var = CgVar.choice(varId(file, section, key), fallback, CgVar.SAVED, description);
         }
 
         public E get() {
             file.ensureLoaded();
-            return value;
+            return var.get();
+        }
+
+        /** The player's choice, whatever outranks it for the run. */
+        public E saved() {
+            file.ensureLoaded();
+            return saved(var);
         }
 
         public void set(E value) {
-            Objects.requireNonNull(value, "value");
-            file.ensureLoaded();
-            if (value == this.value) return;
-            this.value = value;
-            file.changed();
+            setSaved(var, Objects.requireNonNull(value, "value"));
+        }
+
+        @Override
+        public CgVar.Choice<E> var() {
+            return var;
         }
 
         @Override
         public void reset() {
-            set(fallback);
+            set(var.defaultValue());
         }
 
         public E defaultValue() {
-            return fallback;
+            return var.defaultValue();
         }
 
         /** Every option, in declaration order. */
         public E[] options() {
-            return options.clone();
+            return var.options();
         }
 
         @Override
         String write() {
-            return "\"" + nameOf(value) + "\"";
-        }
-
-        @Override
-        boolean read(String text) {
-            for (E option : options) {
-                if (nameOf(option).equals(text)) {
-                    value = option;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        @Override
-        String hint() {
-            StringBuilder s = new StringBuilder();
-            for (E option : options) s.append(s.length() == 0 ? "" : ", ").append(nameOf(option));
-            return s.append("; default ").append(nameOf(fallback)).toString();
-        }
-
-        private static String nameOf(Enum<?> option) {
-            return option.name().toLowerCase(Locale.ROOT);
+            return "\"" + var.format(saved(var)) + "\"";
         }
     }
 }

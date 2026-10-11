@@ -1,5 +1,6 @@
 package com.crystalgraphics.settings;
 
+import com.crystalgraphics.variable.CgVar;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -73,6 +74,20 @@ public class CgSettingsTest {
         Map<String, String> written = CgSettings.parse(Files.readAllLines(path));
         assertEquals("0.25", written.get("fx.density"));
         assertEquals("\"low\"", written.get("look.tier"));
+    }
+
+    @Test
+    public void anOverrideOutranksTheFileAndIsNeverSaved() throws Exception {
+        declare();
+        density.set(0.25f);
+        assertEquals(file.name() + ".fx.density", density.var().id());
+        density.var().set(CgVar.Source.CONSOLE, 0.5f);
+        assertEquals(0.5f, density.get(), 0f);
+        assertEquals(0.25f, density.saved(), 0f);
+        frame();
+        assertEquals("0.25", CgSettings.parse(Files.readAllLines(path)).get("fx.density"));
+        density.var().clear(CgVar.Source.CONSOLE);
+        assertEquals(0.25f, density.get(), 0f);
     }
 
     @Test
