@@ -1,12 +1,17 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.render.stage.CgRenderStage;
+
+import java.util.function.IntConsumer;
 
 /**
  * Where the host's world is solid, asked in world coordinates: the ground under a point, the ceiling over it, and where
- * a ray first meets a block. Composed once from the per-block answers of {@link CgWorldQuery}, so every host gets the
- * same scans; NaN or false wherever there is no level or the chunk is not loaded.
+ * a ray first meets a block or an entity. Composed once from the per-block answers of {@link CgWorldQuery} and the
+ * entity boxes of {@link CgEntityQuery}, so every host gets the same scans; NaN or false wherever there is no level or
+ * the chunk is not loaded.
  *
  * <pre>{@code
  * double floor = CgWorldQueries.groundBelow(x, y, z, 64);     // NaN: nothing solid within 64 blocks down
@@ -15,6 +20,11 @@ import com.crystalgraphics.platform.service.CgWorldQuery;
  * CgWorldQueries.Hit hit = new CgWorldQueries.Hit();          // once, and reused
  * if (CgWorldQueries.raycast(eyeX, eyeY, eyeZ, dirX, dirY, dirZ, 100, hit)) {
  *     impactAt(hit.x, hit.y, hit.z, hit.normalX, hit.normalY, hit.normalZ);
+ * }
+ *
+ * // a beam 0.6 thick, from a caster's hands: blocks and entities, the caster passed through
+ * if (CgWorldQueries.raycastAll(handX, handY, handZ, dirX, dirY, dirZ, 100, 0.3, casterId, hit)) {
+ *     if (hit.entity >= 0) struck(hit.entity);
  * }
  * }</pre>
  *
@@ -171,11 +181,135 @@ public final class CgWorldQueries {
         return false;
     }
 
+    /**
+     * Where the ray from {@code (x, y, z)} along {@code (dx, dy, dz)} first meets an entity, within {@code maxDistance}
+     * blocks, into {@code hit} ({@link Hit#entity} the entity): each entity's box as drawn this frame, grown by
+     * {@code radius} on every side, so a thick beam meets what its edge touches. Passes through {@code ignore} (a
+     * caster; -1 for none), the dead, dropped items and projectiles. False, with {@code hit} untouched, when it meets
+     * none. A ray starting inside a box hits it at once, its normal against the ray.
+     */
+    public static boolean raycastEntities(double x, double y, double z, double dx, double dy, double dz, double maxDistance,
+                                          double radius, int ignore, Hit hit) {
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (length == 0.0) return false;
+        CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+        EntityRay ray = ENTITY_RAY;
+        ray.begin(entities, x, y, z, dx / length, dy / length, dz / length, radius, ignore, maxDistance);
+        // A short box at a time: a host lists the entities of every chunk section a box covers.
+        for (double from = 0.0; from < maxDistance; from += ENTITY_SEGMENT) {
+            double to = Math.min(from + ENTITY_SEGMENT, maxDistance);
+            double ax = x + ray.dx * from, ay = y + ray.dy * from, az = z + ray.dz * from;
+            double bx = x + ray.dx * to, by = y + ray.dy * to, bz = z + ray.dz * to;
+            entities.within(Math.min(ax, bx) - radius, Math.min(ay, by) - radius, Math.min(az, bz) - radius,
+                    Math.max(ax, bx) + radius, Math.max(ay, by) + radius, Math.max(az, bz) + radius, ray);
+            // A box is entered within the segment holding its entry point, so nothing in a later one is nearer.
+            if (ray.best <= to) {
+                ray.fill(hit);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The nearer of {@link #raycast} and {@link #raycastEntities}: where a beam {@code radius} thick first meets a block
+     * or an entity; {@link Hit#entity} is -1 for a block.
+     */
+    public static boolean raycastAll(double x, double y, double z, double dx, double dy, double dz, double maxDistance,
+                                     double radius, int ignore, Hit hit) {
+        boolean block = raycast(x, y, z, dx, dy, dz, maxDistance, hit);
+        return raycastEntities(x, y, z, dx, dy, dz, block ? hit.distance : maxDistance, radius, ignore, hit) || block;
+    }
+
     private static int floor(double v) {
         return (int) Math.floor(v);
     }
 
-    /** Where a ray met a block: filled by {@link #raycast}; keep one and reuse it. */
+    /** How long a stretch of ray each entity box query covers, in blocks. */
+    private static final double ENTITY_SEGMENT = 8.0;
+    private static final EntityRay ENTITY_RAY = new EntityRay();
+
+    /** The entity test {@link #raycastEntities} hands the host's box walk; render thread, so one is shared. */
+    private static final class EntityRay implements IntConsumer {
+        private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+        private CgEntityQuery entities;
+        private double x, y, z, dx, dy, dz, radius, maxDistance;
+        private int ignore, bestEntity, bestAxis;
+        private float partialTick;
+        double best;
+
+        void begin(CgEntityQuery entities, double x, double y, double z, double dx, double dy, double dz, double radius,
+                   int ignore, double maxDistance) {
+            this.entities = entities;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.dx = dx;
+            this.dy = dy;
+            this.dz = dz;
+            this.radius = radius;
+            this.ignore = ignore;
+            this.maxDistance = maxDistance;
+            partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+            best = Double.POSITIVE_INFINITY;
+            bestEntity = -1;
+        }
+
+        @Override
+        public void accept(int id) {
+            if (id == ignore || (entities.flags(id) & CgEntityQuery.ALIVE) == 0) return;
+            int kind = entities.kind(id);
+            if (kind == CgEntityQuery.KIND_ITEM || kind == CgEntityQuery.KIND_PROJECTILE) return;
+            if (!entities.pose(id, partialTick, pose)) return;
+            // The box grown by the radius, met by slabs: where the ray is inside all three.
+            double half = pose[CgEntityQuery.WIDTH] * 0.5 + radius;
+            double near = Double.NEGATIVE_INFINITY, far = Double.POSITIVE_INFINITY;
+            int axis = -1;
+            for (int a = 0; a < 3; a++) {
+                double o = a == 0 ? x : a == 1 ? y : z, d = a == 0 ? dx : a == 1 ? dy : dz;
+                double at = pose[a == 0 ? CgEntityQuery.X : a == 1 ? CgEntityQuery.Y : CgEntityQuery.Z];
+                double min = a == 1 ? at - radius : at - half;
+                double max = a == 1 ? at + pose[CgEntityQuery.HEIGHT] + radius : at + half;
+                if (d == 0.0) {
+                    if (o < min || o > max) return;
+                    continue;
+                }
+                double t0 = (min - o) / d, t1 = (max - o) / d;
+                if (t0 > t1) {
+                    double swap = t0;
+                    t0 = t1;
+                    t1 = swap;
+                }
+                if (t0 > near) {
+                    near = t0;
+                    axis = a;
+                }
+                far = Math.min(far, t1);
+            }
+            if (far < 0.0 || near > far) return;
+            double t = Math.max(near, 0.0);
+            if (t > maxDistance || t >= best) return;
+            best = t;
+            bestEntity = id;
+            bestAxis = near < 0.0 ? -1 : axis;
+        }
+
+        void fill(Hit hit) {
+            double hx = x + dx * best, hy = y + dy * best, hz = z + dz * best;
+            hit.set(hx, hy, hz, floor(hx), floor(hy), floor(hz), best);
+            hit.entity = bestEntity;
+            hit.normalX = bestAxis == 0 ? (dx > 0 ? -1 : 1) : 0;
+            hit.normalY = bestAxis == 1 ? (dy > 0 ? -1 : 1) : 0;
+            hit.normalZ = bestAxis == 2 ? (dz > 0 ? -1 : 1) : 0;
+            if (bestAxis < 0) {
+                hit.normalX = (float) -dx;
+                hit.normalY = (float) -dy;
+                hit.normalZ = (float) -dz;
+            }
+        }
+    }
+
+    /** Where a ray met a block or an entity: filled by {@link #raycast} and its kin; keep one and reuse it. */
     public static final class Hit {
         /** The point where the ray entered the block's span, in world coordinates. */
         public double x, y, z;
@@ -185,6 +319,8 @@ public final class CgWorldQueries {
         public float normalX, normalY, normalZ;
         /** How far along the ray, in blocks. */
         public double distance;
+        /** The entity it met ({@link #raycastEntities}, {@link #raycastAll}); -1 for a block. */
+        public int entity = -1;
 
         void set(double x, double y, double z, int blockX, int blockY, int blockZ, double distance) {
             this.x = x;
@@ -194,6 +330,7 @@ public final class CgWorldQueries {
             this.blockY = blockY;
             this.blockZ = blockZ;
             this.distance = distance;
+            entity = -1;
         }
     }
 }

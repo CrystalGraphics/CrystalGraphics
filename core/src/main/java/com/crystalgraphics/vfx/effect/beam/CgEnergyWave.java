@@ -11,6 +11,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.world.CgWorldQueries;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -82,6 +83,8 @@ import java.util.List;
  * wave.set(CgEnergyWave.STEER, 3f);                       // or on the look
  * wave.aim(look.x, look.y, look.z).target(hit.x, hit.y, hit.z);   // each tick
  *       }</pre></li>
+ *   <li>It flies to the target it is given; {@link #collide} has it find its own, stopping on the first block or entity
+ *       its aim meets.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once, unless it {@link #hold() holds}.</li>
  *   <li>It shakes the camera through five shakes a look may change ({@link #CHARGE_SHAKE} to {@link #BLAST_SHAKE}):
  *       a tremor growing over the charge, a recoil at the release, a hum while it fires, a rumble while it hits, and
@@ -476,6 +479,10 @@ public final class CgEnergyWave extends CgVfxEffect {
     private float aimX = 1f, aimY, aimZ;
     /** Where the muzzle is from the origin: {@link #follow} moves it, and leaves what it fired where it is. */
     private float muzzleX, muzzleY, muzzleZ;
+    /** {@link #collide}: whether it targets what its aim meets, and the entity it met this tick. */
+    private boolean collides;
+    private int hitEntity = -1;
+    private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
     /** The age it releases at, and the ages it was stopped at, first hit and burst; NaN until each happens. */
     private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN, blastAge = Float.NaN;
     /** How hard the beam is hitting, eased toward 1 while it hits and 0 when it does not. */
@@ -542,6 +549,28 @@ public final class CgEnergyWave extends CgVfxEffect {
         return this;
     }
 
+    /**
+     * Finds its own target each tick while it plays: where the ray from the muzzle along the aim first meets a block or
+     * an entity, the beam's {@link #RADIUS} thick and passing through the entity it follows, else {@link #MAX_LENGTH}
+     * ahead. Once stopped it keeps the last, so the blast lands where it was hitting. A {@link #target} call is
+     * overridden; aim it each tick and nothing else.
+     *
+     * <pre>{@code
+     * wave = owner.play(new CgEnergyWave(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD).collide());
+     * wave.aim(look.x, look.y, look.z);                        // each tick
+     * if (wave.hitEntity() >= 0) ...                           // what it strikes, -1 for none or a block
+     * }</pre>
+     */
+    public CgEnergyWave collide() {
+        collides = true;
+        return this;
+    }
+
+    /** The entity the beam meets this tick, while it {@link #collide collides}; -1 for none, or a block. */
+    public int hitEntity() {
+        return hitEntity;
+    }
+
     /** A point the body passes on its way to the target; NaN for none. */
     public CgEnergyWave via(double x, double y, double z) {
         stream.via((float) (x - originX), (float) (y - originY), (float) (z - originZ));
@@ -602,6 +631,7 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     @Override
     protected void tick(float dt) {
+        if (collides && state() == State.PLAYING) targetAlongAim();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
             long t = CgVfxTrace.start();
             if (state() == State.PLAYING && age >= releaseAge) stream.emit(muzzleX, muzzleY, muzzleZ, aimX, aimY, aimZ, get(SPEED));
@@ -762,6 +792,21 @@ public final class CgEnergyWave extends CgVfxEffect {
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
             emitter.ground(groundHeight()).ground(blastGround);
             blast.add(emitter);
+        }
+    }
+
+    /** {@link #collide}'s target: the first block or entity the aim meets from the muzzle, else the beam's reach. */
+    private void targetAlongAim() {
+        double length = Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
+        if (length == 0.0) return;
+        double x = originX + muzzleX, y = originY + muzzleY, z = originZ + muzzleZ;
+        float reach = get(MAX_LENGTH);
+        if (CgWorldQueries.raycastAll(x, y, z, aimX, aimY, aimZ, reach, get(RADIUS), following(), hit)) {
+            hitEntity = hit.entity;
+            target(hit.x, hit.y, hit.z);
+        } else {
+            hitEntity = -1;
+            target(x + aimX / length * reach, y + aimY / length * reach, z + aimZ / length * reach);
         }
     }
 
