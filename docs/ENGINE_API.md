@@ -175,9 +175,11 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
 
 ### Effects — the VFX engine
 
-`CgVfxSystem` plays effects through `CgWorldRenderer`: `vfx.update(seconds)` then `vfx.submit(world)` each frame, from
-an `onFrame` listener. Their particles simulate on the GPU at every compute tier. Writing effects, emitters, events
-and modules: [`VFX.md`](VFX.md).
+A mod plays effects through its owner on the client world's system, which the engine updates and draws each world
+frame and clears with the level: `CgVfx.owner("mymod").play(effect)`. A system of the caller's own
+(`new CgVfxSystem()`, a preview or a test) is driven by its caller: `vfx.update(seconds)` then `vfx.submit(world)` each
+frame, from an `onFrame` listener. Particles simulate on the GPU at every compute tier. Writing effects, emitters,
+events and modules: [`VFX.md`](VFX.md).
 
 ### The post stack — what runs after the world
 

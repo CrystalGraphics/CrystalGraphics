@@ -7,19 +7,57 @@ VFX file; plan `vfx-gpu` holds the design and its measurements.
 
 ## Playing an effect
 
+A mod plays through its **owner**, a handle on the client world's system, which the engine updates, draws and clears
+when the world goes (logout, disconnect, a dimension change):
+
 ```java
-CgVfxSystem vfx = new CgVfxSystem();
-CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
+static final CgVfxOwner VFX = CgVfx.owner("mymod");
+
+CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
 wave.aim(dx, dy, dz).target(tx, ty, tz);
 
+VFX.play(new Aura(Aura.LOOK, x, y, z).follow(entityId));         // rides an entity; stops when it goes
+VFX.play(new Storm(Storm.LOOK, x, y, z).startAt(12f));           // joins 12 s into its life, particles prewarmed
+
+VFX.stop();     // this mod's effects, gracefully: emission ends, what is in flight plays out
+VFX.clear();    // this mod's effects at once, particles and all
+```
+
+Registered by id, an effect can be played by the spawn command, the network and tools:
+
+```java
+VFX.register("hit_spark", "Hit spark", "Impacts", HitSpark.LOOK,
+        (look, x, y, z, tx, ty, tz) -> new HitSpark(look, x, y, z));   // as "mymod:hit_spark"
+VFX.play("hit_spark", x, y, z, tx, ty, tz);
+```
+
+A preview viewport, a test or a harness scene keeps a system of its own, and updates and draws it itself:
+
+```java
+CgVfxSystem vfx = new CgVfxSystem();
+CgVfxOwner lab = CgVfx.owner("mymod", vfx);
+lab.play(effect);
 // every frame, before the world stages record (a CgWorldRenderer.onFrame listener):
 vfx.update(seconds);
 vfx.submit(CgWorldRenderer.get());
 ```
 
-- `vfx.prepare(look)` warms a look's kernels, meshes and programs before it plays; `vfx.warmed()` says when all have
-  built. A look played cold compiles on its first frame.
-- `vfx.clear()` ends every effect and its particles at once, keeping its meshes and warmed programs for the next.
+- **Play from any thread.** Into the world system an effect starts at the next world frame; on a dedicated server,
+  or before a client's first world, nothing plays.
+- **An effect plays once**: playing it again, or into a second system, throws.
+- **An effect that throws is killed and logged under its owner**; the rest play on. Its owner's ticks and draws are
+  timed as `vfx.effect.tick/<namespace>` and `vfx.effect.submit/<namespace>` and counted as `vfx.effects/<namespace>`.
+- **`follow(entity, point)`** places the effect at an attachment point (`CgEntityAttachments`) each frame, at the
+  frame's partial tick; when the entity goes, the effect stops.
+- **`startAt(seconds)`** before its first tick: the effect ticks exactly up to there (at most `MAX_START_SECONDS`;
+  beyond, its age jumps). Its GPU particles simulate the last `PREWARM_SECONDS` in at most 16 coarse steps, while
+  the other effects hold still. Shakes and moments are silent until it reaches its age.
+- **Ending**: an effect's `stop()` ends its emission and it dies once what is in flight has played out; `kill()` ends
+  it and its particles at once. An owner's `stop()` and `clear()` do each to all its own effects; a system's `stop()`
+  to all of them, and `clear()` drops everything, its clock included, keeping its meshes and warmed programs.
+- `prepare(look)` warms a look's kernels, meshes and programs before it plays; `warmed()` says when all have built.
+  A look played cold compiles on its first frame.
+- `timeScale(s)` on a system slows or speeds every effect in it (the demo's time switch); 1 by default.
 - The player's settings reach every effect through the system (density, quality tier, pause, tick rate); an effect
   never reads them.
 
@@ -200,6 +238,7 @@ under `CollideWorld` and the floor, and Range's lighting from the window.
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes
 to look at: `vfx-modules` (a station per module), `vfx-blasts` (360,000 particles), `vfx-spheres-stress`.
 
-Trace channel `crystalgraphics.vfx`: `vfx.tick`, `vfx.emitters.workers`, `vfx.effect.submit`, and the GPU zones
-`vfx.pool.step` and `vfx.pool.range`; counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`
+Trace channel `crystalgraphics.vfx`: `vfx.tick`, `vfx.emitters.workers`, `vfx.effect.submit` (per owner,
+`vfx.effect.tick/<namespace>` and `vfx.effect.submit/<namespace>`), and the GPU zones `vfx.pool.step` and
+`vfx.pool.range`; counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`, `vfx.effects/<namespace>`
 (`docs/PROFILING.md`).

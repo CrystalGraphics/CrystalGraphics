@@ -8,6 +8,7 @@ import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -34,8 +35,12 @@ import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
+import com.crystalgraphics.world.CgEntityAttachments;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 
@@ -155,6 +160,13 @@ public final class CgVfxSystem {
 
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
+    /** The most of an effect's life {@link CgVfxEffect#startAt} steps through; past it the age jumps. */
+    public static final float MAX_START_SECONDS = 30f;
+    /** The most of an effect's last seconds before its start age whose particles a prewarm makes. */
+    public static final float PREWARM_SECONDS = 2f;
+    /** GPU steps a prewarm takes at most, each a dispatch per pool: the window is stepped this coarsely. */
+    private static final int PREWARM_STEPS = 16;
+    private static final Logger LOGGER = LogManager.getLogger("CgVfxSystem");
     private static int particleStep = Math.max(1, Integer.getInteger("crystalgraphics.vfx.particleStep", 2));
     private static volatile String[] skipped = System.getProperty("crystalgraphics.vfx.skip", "").isEmpty()
             ? new String[0] : System.getProperty("crystalgraphics.vfx.skip").split(",");
@@ -182,6 +194,8 @@ public final class CgVfxSystem {
     private static final boolean SHARED_DISTORTION = Boolean.getBoolean("crystalgraphics.vfx.sharedDistortion");
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
 
+    private static final List<CgVfxEventListener> NO_LISTENERS = Collections.emptyList();
+
     private final List<CgVfxEffect> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
@@ -205,10 +219,17 @@ public final class CgVfxSystem {
     /** The effects that queued emitter ticks this tick: what the workers run. */
     private final List<CgVfxEffect> emitting = new ArrayList<>();
     private final CgVfxWorkers.Job tickEach = i -> {
+        CgVfxEffect effect = emitting.get(i);
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
-            emitting.get(i).tickEmitters();
+            effect.tickEmitters();
+        } catch (RuntimeException e) {
+            effect.failure = e;
         }
     };
+    /** The owners whose effects it has played, for their counters. */
+    private final List<CgVfxOwner> owners = new ArrayList<>();
+    private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
+    private float timeScale = 1f;
     private final CgVfxWorkers.Job writeEach = this::writeRecords;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean stepsOnGpu, rangePrepared;
@@ -228,9 +249,35 @@ public final class CgVfxSystem {
     private CgQuality quality = CgQuality.HIGH;
 
     public <E extends CgVfxEffect> E play(E effect) {
+        if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
+        CgVfxOwner owner = effect.owner;
+        if (owner != null) {
+            if (owner.listedIn != this) {
+                owner.listedIn = this;
+                owners.add(owner);
+            }
+            owner.adopt(effect);
+        }
         return effect;
+    }
+
+    /**
+     * Multiplies the pace of everything this system plays: 0.25 is slow motion, 0 holds it. For tools and showcases; the
+     * world's pause and tick rate apply on top.
+     *
+     * <pre>{@code
+     * CgVfx.world().timeScale(0.25f);
+     * }</pre>
+     */
+    public CgVfxSystem timeScale(float scale) {
+        timeScale = Math.max(0f, scale);
+        return this;
+    }
+
+    public float timeScale() {
+        return timeScale;
     }
 
     /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
@@ -274,11 +321,12 @@ public final class CgVfxSystem {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
         stepsOnGpu = simulation == Simulation.GPU;
+        follow();
         if (Double.isNaN(clock)) {
             clock = seconds;
             return;
         }
-        owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world));
+        owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world) * timeScale);
         clock = seconds;
         // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, the CPU's included, as
         // Niagara and VFX Graph pause what is not drawn: dropped steps would leave particles alive in a slot the CPU
@@ -288,6 +336,7 @@ public final class CgVfxSystem {
             CgVfxTrace.count(HELD, 1);
             return;
         }
+        startLate();
         int ticks = 0, step = particleStep;
         long start = System.nanoTime();
         boolean overBudget = false;
@@ -304,8 +353,11 @@ public final class CgVfxSystem {
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
                         if (effect.state() != CgVfxEffect.State.DEAD) {
-                            try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_TICK_ZONE)) {
+                            int zone = effect.owner != null ? effect.owner.tickZone : EFFECT_TICK_ZONE;
+                            try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
                                 effect.step(TICK);
+                            } catch (RuntimeException e) {
+                                fail(effect, e);
                             }
                         }
                         if (effect.hasEmitterTicks()) {
@@ -323,8 +375,14 @@ public final class CgVfxSystem {
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
-                                emitting.get(i).admitScheduled(gpuSteps);
-                                emitting.get(i).deliverRows(eventListeners);
+                                CgVfxEffect effect = emitting.get(i);
+                                if (effect.failure != null) {
+                                    fail(effect, effect.failure);
+                                    effect.failure = null;
+                                }
+                                // A failed effect's instances already scheduled still take their slots, and coast.
+                                effect.admitScheduled(gpuSteps);
+                                effect.deliverRows(eventListeners);
                             }
                         }
                     } finally {
@@ -351,9 +409,120 @@ public final class CgVfxSystem {
             CgVfxTrace.count(CAPPED, 1);
             owed = Math.min(owed, TICK);
         }
-        for (int i = effects.size() - 1; i >= 0; i--) {
-            if (effects.get(i).state() == CgVfxEffect.State.DEAD) effects.remove(i);
+        removeDead();
+        for (int i = 0; i < owners.size(); i++) {
+            CgTrace.counter(CgVfxTrace.CHANNEL, owners.get(i).effectsCounter, owners.get(i).playing());
         }
+    }
+
+    /** One pass, keeping the survivors' order: many die in one tick when a volley ends. */
+    private void removeDead() {
+        int kept = 0;
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect effect = effects.get(i);
+            if (effect.state() == CgVfxEffect.State.DEAD) {
+                // Killed, its particles go with it; one that died on its own lets them finish.
+                if (effect.killed) effect.killSlots(gpuSteps);
+                if (effect.owner != null) effect.owner.release(effect);
+                continue;
+            }
+            if (kept != i) effects.set(kept, effect);
+            kept++;
+        }
+        for (int i = effects.size() - 1; i >= kept; i--) effects.remove(i);
+    }
+
+    /** Every owner it lists lets go of its effects at once. */
+    private void releaseOwners() {
+        for (int i = 0; i < owners.size(); i++) owners.get(i).releaseAll();
+    }
+
+    /** Kills {@code effect} over what it threw, logged under its owner; the rest play on. */
+    private static void fail(CgVfxEffect effect, RuntimeException e) {
+        LOGGER.error("[CgVfxSystem] {} played by {} threw, and is killed", effect.getClass().getName(),
+                effect.owner != null ? effect.owner : "its system", e);
+        effect.kill();
+    }
+
+    /**
+     * Moves each effect following an entity to the entity's attachment point as drawn this frame; stops one whose entity
+     * is gone, where it was last.
+     */
+    private void follow() {
+        CgEntityQuery entities = null;
+        float partialTick = 0f;
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect effect = effects.get(i);
+            if (effect.followEntity < 0 || effect.state() == CgVfxEffect.State.DEAD) continue;
+            if (entities == null) {
+                entities = CgPlatform.get(CgEntityQuery.SERVICE);
+                partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+            }
+            if (entities.pose(effect.followEntity, partialTick, pose)) {
+                CgEntityAttachments.point(effect.followPoint, pose, point);
+                effect.moveTo(point[0], point[1], point[2]);
+            } else {
+                effect.followEntity = -1;
+                effect.stop();
+            }
+        }
+    }
+
+    /** Steps each effect played with a start age to it, ahead of this update's ticks. */
+    private void startLate() {
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect effect = effects.get(i);
+            if (effect.startAge <= 0f) continue;
+            float target = effect.startAge;
+            effect.startAge = 0f;
+            if (effect.state() == CgVfxEffect.State.DEAD) continue;
+            boolean wasTick = particleTick;
+            float wasDt = particleDt;
+            effect.seeking = true;
+            try {
+                fastForward(effect, target);
+            } catch (RuntimeException e) {
+                fail(effect, e);
+            } finally {
+                effect.seeking = false;
+                gpuSteps.endPrewarm();
+                particleTick = wasTick;
+                particleDt = wasDt;
+            }
+        }
+    }
+
+    /**
+     * Steps {@code effect} alone through {@code target} seconds on its fixed tick. On the GPU its emitters keep their
+     * books throughout and take slots only for the last {@link #PREWARM_SECONDS}, stepped in at most
+     * {@link #PREWARM_STEPS} steps while every other slot holds still: older particles would be dead by now.
+     */
+    private void fastForward(CgVfxEffect effect, float target) {
+        float stepped = Math.min(target, MAX_START_SECONDS);
+        int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
+        int windowFrom = ticks - windowTicks;
+        boolean gpu = stepsOnGpu;
+        int coarse = gpu ? Math.max(particleStep, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS) : particleStep;
+        for (int t = 0; t < ticks && effect.state() != CgVfxEffect.State.DEAD; t++) {
+            boolean inWindow = t >= windowFrom;
+            if (gpu && t == windowFrom) {
+                gpuSteps.beginPrewarm();
+                effect.admitScheduled(gpuSteps);
+            }
+            int step = inWindow ? coarse : particleStep;
+            particleTick = (inWindow ? t - windowFrom : t) % step == 0;
+            if (particleTick) particleDt = TICK * step;
+            effect.step(TICK);
+            if (effect.hasEmitterTicks()) {
+                effect.tickEmitters();
+                if (effect.failure != null) throw effect.failure;
+                // Before the window its instances keep their books alone: admitted at its start.
+                if (inWindow || !gpu) effect.admitScheduled(gpuSteps);
+                effect.deliverRows(NO_LISTENERS);
+            }
+            if (gpu && inWindow && particleTick) gpuSteps.prewarmStep(particleDt, air);
+        }
+        if (target > stepped) effect.age = target;
     }
 
     /**
@@ -362,6 +531,11 @@ public final class CgVfxSystem {
      */
     boolean stepsOnGpu() {
         return stepsOnGpu;
+    }
+
+    /** Its GPU queue: the pools' owner. */
+    CgVfxGpuSteps gpuSteps() {
+        return gpuSteps;
     }
 
     /** {@code emitter}'s slot in a GPU pool, or null when it holds none: stepped on the CPU, or every particle dead. */
@@ -462,8 +636,14 @@ public final class CgVfxSystem {
             gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
             paths.begin();
             for (int i = 0; i < effects.size(); i++) {
-                try (CgTrace.Zone effect = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_ZONE)) {
-                    effects.get(i).submit(frame);
+                CgVfxEffect effect = effects.get(i);
+                // Killed since the update: cleared by its owner, or failed.
+                if (effect.state() == CgVfxEffect.State.DEAD) continue;
+                int zone = effect.owner != null ? effect.owner.submitZone : EFFECT_ZONE;
+                try (CgTrace.Zone submitting = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
+                    effect.submit(frame);
+                } catch (RuntimeException e) {
+                    fail(effect, e);
                 }
             }
             frame.end();
@@ -604,6 +784,11 @@ public final class CgVfxSystem {
         return warming.isEmpty();
     }
 
+    /** Stops every effect: none emits again, and what is in flight plays out before each dies. */
+    public void stop() {
+        for (int i = 0; i < effects.size(); i++) effects.get(i).stop();
+    }
+
     /**
      * Ends every effect at once, its particles with it, keeping meshes and warmed programs: what plays next starts as
      * quickly as on a system never cleared. Its clock starts again at the next {@link #update}, so a system left
@@ -612,6 +797,7 @@ public final class CgVfxSystem {
     public void clear() {
         for (int i = 0; i < effects.size(); i++) effects.get(i).kill();
         effects.clear();
+        releaseOwners();
         // Drops the pools, not just their slots: a slot reopened over live particles hands them to its next owner.
         gpuSteps.clear();
         clock = Double.NaN;
@@ -677,6 +863,7 @@ public final class CgVfxSystem {
     /** Releases its meshes and frees the path texture; materials belong to the material registry. */
     public void delete() {
         effects.clear();
+        releaseOwners();
         for (int i = 0; i < eventListeners.size(); i++) CgVfxParticlePool.stopListening(eventListeners.get(i));
         eventListeners.clear();
         gpuSteps.clear();

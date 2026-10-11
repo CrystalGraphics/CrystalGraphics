@@ -19,6 +19,7 @@ import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gl.buffer.CgBufferTextures;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
@@ -223,6 +224,8 @@ public final class CgGraphicsLifecycle {
                 CgWorldRenderer.get().install();
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
+                // After the demo's onFrame listener: what it plays starts the same frame.
+                CgVfx.install();
                 CgWorldProbe.installIfEnabled();
 
                 initialized = true;
@@ -549,6 +552,7 @@ public final class CgGraphicsLifecycle {
         // Step 8: the world renderer's draws and depth snapshot (whose framebuffer step 9 frees), and the demo's mesh,
         // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
+        CgVfx.release();
         CgWorldRenderer.get().release();
         CgPostStack.get().release();
 

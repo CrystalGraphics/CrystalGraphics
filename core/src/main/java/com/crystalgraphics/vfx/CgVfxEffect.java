@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * }
  * CgVfxEffect effect = vfx.play(new MyEffect(look, x, y, z));
  * effect.stop();                                                // finishes what is in flight, then dies
+ *
+ * // Bound to an entity, and joined late: its origin follows the entity's hands, and it starts 2.5 s into its life
+ * owner.play(new MyEffect(look, x, y, z).follow(entityId, CgEntityAttachments.HANDS_FORWARD).startAt(2.5f));
  * }</pre>
  *
  * <ul>
@@ -46,9 +49,27 @@ public abstract class CgVfxEffect {
 
     public enum State { PLAYING, STOPPING, DEAD }
 
-    protected final double originX, originY, originZ;
+    /** Where it is: fixed, or moved each frame by {@link #follow}. An effect reads it and never writes it. */
+    protected double originX, originY, originZ;
     /** The system playing it, set by {@link CgVfxSystem#play}. */
     CgVfxSystem system;
+    /** Who played it, or null for a system played into directly. */
+    CgVfxOwner owner;
+    /** Its index in its owner's list; -1 out of it. */
+    int ownerSlot = -1;
+    /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
+    int followEntity = -1, followPoint;
+    /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
+    float startAge;
+    /** Fast-forwarding to its start age: shakes and moments are not played. */
+    boolean seeking;
+    /** What its emitters threw on a worker, for the render thread to kill it over. */
+    volatile RuntimeException failure;
+    /** Ended by {@link #kill}, not by {@link #die} alone: its GPU particles go too. */
+    boolean killed;
+    /** Every instance it has scheduled for the GPU: the slots a kill closes. */
+    private CgVfxEmitterInstance[] scheduled = new CgVfxEmitterInstance[0];
+    private int scheduledCount;
     /** Its look's materials have been handed to the system to compile ahead of use. */
     boolean warmed;
     /** Its emitters' GPU programs have been started, for {@code vfx.sim=gpu}. */
@@ -106,9 +127,64 @@ public abstract class CgVfxEffect {
         if (state == State.PLAYING) state = State.STOPPING;
     }
 
-    /** Removes it at once. */
+    /** Removes it at once, its particles with it: gone by its system's next particle step. */
     public void kill() {
+        killed = true;
         die();
+    }
+
+    /**
+     * Follows entity {@code entity} ({@code CgEntityQuery}'s id): each frame, before it ticks, its origin moves to the
+     * attachment point {@code point} ({@code CgEntityAttachments.FEET}, {@code HANDS_FORWARD}, ...) of the entity's pose
+     * as drawn. Particles in flight move with it. When the entity is gone it stops, and what is in flight plays out
+     * where the entity was last.
+     *
+     * <pre>{@code
+     * owner.play(new Aura(look, x, y, z).follow(playerId, CgEntityAttachments.CENTRE));
+     * }</pre>
+     */
+    public final CgVfxEffect follow(int entity, int point) {
+        followEntity = entity;
+        followPoint = point;
+        return this;
+    }
+
+    /** As {@link #follow(int, int)}, at the entity's feet. */
+    public final CgVfxEffect follow(int entity) {
+        return follow(entity, 0);
+    }
+
+    /** The entity it follows, or -1. */
+    public final int following() {
+        return followEntity;
+    }
+
+    /**
+     * Starts it {@code seconds} into its life: its system's next update steps it there at once, on its fixed tick, so its
+     * phase is what it would be had it played from zero. Its particles are prewarmed over the last
+     * {@link CgVfxSystem#PREWARM_SECONDS} at most, in coarse steps; older ones are not made. Call before its first tick:
+     * before playing it, or just after.
+     *
+     * <pre>{@code
+     * owner.play(new Beam(look, x, y, z).startAt(serverAge));   // a viewer joining while it fires
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its phase is stepped for {@link CgVfxSystem#MAX_START_SECONDS} at most; past that its age jumps, which suits an
+     *       effect that works its phase out from {@link #age} and not one that accumulates it.</li>
+     *   <li>While it steps there it plays no camera shake and announces no moment: those happened before the viewer
+     *       saw it.</li>
+     * </ul>
+     */
+    public final CgVfxEffect startAt(float seconds) {
+        if (age > 0f) throw new IllegalStateException("startAt after its first tick: it has started");
+        startAge = Math.max(0f, seconds);
+        return this;
+    }
+
+    /** Who played it; null when played into a system directly. */
+    public final CgVfxOwner owner() {
+        return owner;
     }
 
     protected final void die() {
@@ -191,12 +267,12 @@ public abstract class CgVfxEffect {
 
     /** Plays the shake {@code param} at a point relative to its origin, its radii in units of {@code scale} blocks. */
     protected final void playShake(CgVfxParam param, float x, float y, float z, float scale) {
-        values.shake(param).play(originX + x, originY + y, originZ + z, scale);
+        if (!seeking) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
     }
 
     /** As {@link #playShake(CgVfxParam, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
     protected final void playShake(CgVfxParam param, float x, float y, float z, float dx, float dy, float dz, float scale) {
-        values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
+        if (!seeking) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
     }
 
     /**
@@ -204,6 +280,7 @@ public abstract class CgVfxEffect {
      * while it lasts. Left unset for a quarter second, it lapses.
      */
     protected final void holdShake(CgVfxParam param, float x, float y, float z, float scale, float level) {
+        if (seeking) return;
         CgCameraShake shake = values.shake(param);
         int slot = 0;
         if (heldParams == null) {
@@ -310,6 +387,8 @@ public abstract class CgVfxEffect {
                 if (fresh) {
                     if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
                     admitted[admittedCount++] = emitter;
+                    if (scheduled.length == scheduledCount) scheduled = Arrays.copyOf(scheduled, Math.max(4, scheduledCount * 2));
+                    scheduled[scheduledCount++] = emitter;
                 }
             } else {
                 emitter.tick(dueDts[i], air, originX, originY, originZ);
@@ -322,6 +401,11 @@ public abstract class CgVfxEffect {
         }
         dueCount = 0;
         dueCpuParticles = 0;
+    }
+
+    /** Ends the slots of every instance it scheduled, particles and all, at {@code steps}' next step. Render thread. */
+    final void killSlots(CgVfxGpuSteps steps) {
+        for (int i = 0; i < scheduledCount; i++) steps.kill(scheduled[i]);
     }
 
     /** Hands the instances {@link #tickEmitters} scheduled for the first time to {@code steps}. Render thread. */
@@ -344,7 +428,7 @@ public abstract class CgVfxEffect {
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */
     protected final boolean momentsHeard() {
-        return system != null && system.hasMomentListeners();
+        return system != null && !seeking && system.hasMomentListeners();
     }
 
     /**
@@ -358,6 +442,13 @@ public abstract class CgVfxEffect {
     final void step(float dt) {
         age += dt;
         tick(dt);
+    }
+
+    /** Moves the origin, between ticks: {@link #follow}'s. */
+    final void moveTo(double x, double y, double z) {
+        originX = x;
+        originY = y;
+        originZ = z;
     }
 
     /** Its own values, live: what its layers read each draw. */
