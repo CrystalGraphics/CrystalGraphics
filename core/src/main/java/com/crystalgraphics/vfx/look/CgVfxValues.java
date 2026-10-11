@@ -25,11 +25,22 @@ public final class CgVfxValues {
     private final float[] values;
     // Curves and shakes.
     private final Object[] objects;
+    // A look's values copied for an effect: what takeTuning follows.
+    private final CgVfxValues look;
+    private int tuningsTaken;
+    // On a look's values: the floats a CgVfxTuning set, and how many times it has.
+    private boolean[] tuned;
+    private volatile int tunings;
 
     CgVfxValues(CgVfxSchema schema, float[] values, Object[] objects) {
+        this(schema, values, objects, null);
+    }
+
+    private CgVfxValues(CgVfxSchema schema, float[] values, Object[] objects, CgVfxValues look) {
         this.schema = schema;
         this.values = values;
         this.objects = objects;
+        this.look = look;
     }
 
     public CgVfxSchema schema() {
@@ -107,5 +118,37 @@ public final class CgVfxValues {
 
     public CgVfxValues copy() {
         return new CgVfxValues(schema, values.clone(), objects.clone());
+    }
+
+    /**
+     * Takes what a {@link CgVfxTuning} set on the look these were copied from since the last call, over any value set
+     * here. A playing effect's values take it before each tick; a copy made with {@link #copy()} follows nothing.
+     */
+    public void takeTuning() {
+        CgVfxValues from = look;
+        if (from == null) return;
+        int count = from.tunings;
+        if (count == tuningsTaken) return;
+        tuningsTaken = count;
+        boolean[] set = from.tuned;
+        for (int i = 0; i < set.length; i++) {
+            if (set[i]) values[i] = from.values[i];
+        }
+    }
+
+    /** A copy that {@link #takeTuning} keeps up with these: a look's values handed to an effect. */
+    CgVfxValues follower() {
+        return new CgVfxValues(schema, values.clone(), objects.clone(), this);
+    }
+
+    synchronized void tune(int offset, float value) {
+        if (tuned == null) tuned = new boolean[values.length];
+        values[offset] = value;
+        tuned[offset] = true;
+        tunings++;
+    }
+
+    float raw(int offset) {
+        return values[offset];
     }
 }

@@ -61,6 +61,21 @@ vfx.submit(CgWorldRenderer.get());
 - The player's settings reach every effect through the system (density, quality tier, pause, tick rate); an effect
   never reads them.
 
+## Tuning a look live
+
+A tool shows a look's numbers and colours as variables (`docs/DEBUG_FLAGS.md`) while it holds a `CgVfxTuning` open.
+A change reaches the look, every effect playing it at its next tick, and every effect played after:
+
+```java
+CgVfxTuning tuning = CgVfxTuning.open("vfx.crystalgraphics:kamehameha", CgEnergyWave.kamehameha());
+CgVars.get("vfx.crystalgraphics:kamehameha.radius").setText(CgVar.Source.CONSOLE, "0.9");
+CgVars.get("vfx.crystalgraphics:kamehameha.core.g").setText(CgVar.Source.CONSOLE, "0.8");   // colours: r, g, b, a
+tuning.close();   // the variables go; the look keeps what was set for the run
+```
+
+- Curves and shakes are not variables. A tuned value wins over one an effect set for itself.
+- One tuning a prefix at a time; clearing a variable puts back the value it was opened with.
+
 ## Particles: an emitter, an effect, a layer
 
 An **emitter** is what one kind of particle is: when and how many spawn, how each starts, its modules, and its size

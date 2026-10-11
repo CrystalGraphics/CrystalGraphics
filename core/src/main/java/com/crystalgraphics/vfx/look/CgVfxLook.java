@@ -9,8 +9,8 @@ import java.util.List;
 
 /**
  * How an effect appears and behaves: a value for every parameter of its {@link CgVfxSchema}, and the
- * {@link CgVfxLayer}s it draws. Immutable and shared by every effect playing it; vary one from another with
- * {@link #toBuilder()}.
+ * {@link CgVfxLayer}s it draws. Immutable and shared by every effect playing it, but for the numbers a
+ * {@link CgVfxTuning} a tool holds open sets; vary one from another with {@link #toBuilder()}.
  *
  * <pre>{@code
  * CgVfxLook finalFlash = CgEnergyWave.kamehameha().toBuilder()
@@ -84,9 +84,13 @@ public final class CgVfxLook {
         return values.get(param);
     }
 
-    /** A copy of every value, as a playing effect starts from. */
+    /** A copy of every value, as a playing effect starts from; it takes what a {@link CgVfxTuning} sets after. */
     public CgVfxValues copyValues() {
-        return values.copy();
+        return values.follower();
+    }
+
+    CgVfxValues values() {
+        return values;
     }
 
     public static final class Builder {

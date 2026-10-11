@@ -440,6 +440,7 @@ public abstract class CgVfxEffect {
     }
 
     final void step(float dt) {
+        values.takeTuning();
         age += dt;
         tick(dt);
     }
