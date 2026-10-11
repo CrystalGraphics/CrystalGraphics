@@ -7,6 +7,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,6 +47,8 @@ public final class CgVfxOwner {
     /** Plays one owner may have waiting for a world frame: past this, a client that never draws a world drops its oldest. */
     static final int MAX_PENDING = 4096;
     private static final Logger LOGGER = LogManager.getLogger("CgVfx");
+    /** Ids a play missed, warned once each. */
+    private static final Set<String> MISSED = ConcurrentHashMap.newKeySet();
 
     private final String namespace;
     /** The system it plays into; null for the world's, which is made again with each context. */
@@ -134,11 +138,17 @@ public final class CgVfxOwner {
 
     /**
      * Plays the registered effect {@code id} at a point, aimed at a target: {@code "path"} under this namespace, or a full
-     * {@code "namespace:path"} for another's. Null, playing nothing, when no such effect is registered.
+     * {@code "namespace:path"} for another's, the engine's included ({@code "crystalgraphics:explosion"}). Null, playing
+     * nothing and warning once, when no such effect is registered.
      */
     public CgVfxEffect play(String id, double x, double y, double z, double tx, double ty, double tz) {
-        CgVfxRegistry.Entry entry = CgVfxRegistry.get(id(id));
-        return entry == null ? null : play(entry.spawn(entry.look(), x, y, z, tx, ty, tz));
+        String full = id(id);
+        CgVfxRegistry.Entry entry = CgVfxRegistry.get(full);
+        if (entry == null) {
+            if (MISSED.add(full)) LOGGER.warn("[CgVfx] {}: no effect is registered as '{}'", namespace, full);
+            return null;
+        }
+        return play(entry.spawn(entry.look(), x, y, z, tx, ty, tz));
     }
 
     /**

@@ -73,7 +73,7 @@ import java.util.List;
  *   <li>Positions are absolute; the wave simulates relative to where it was made.</li>
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
- *   <li>A {@link #CHARGE_TIME} of 0 fires at once.</li>
+ *   <li>A {@link #CHARGE_TIME} of 0 fires at once, unless it {@link #hold() holds}.</li>
  *   <li>It shakes the camera through five shakes a look may change ({@link #CHARGE_SHAKE} to {@link #BLAST_SHAKE}):
  *       a tremor growing over the charge, a recoil at the release, a hum while it fires, a rumble while it hits, and
  *       the blast when its shock front reaches the camera.</li>
@@ -518,6 +518,23 @@ public final class CgEnergyWave extends CgVfxEffect {
         return this;
     }
 
+    /**
+     * Charges until {@link #fire()}, however long that takes: the ball grows over {@link #CHARGE_TIME} and stays full,
+     * its streaks, arcs and tremor running on. Call it before the first tick, like {@link #startAt}.
+     *
+     * <pre>{@code
+     * wave = owner.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z).hold());   // key down
+     * wave.fire();                                                                       // key up
+     * }</pre>
+     *
+     * A held wave that is never fired charges until it is stopped.
+     */
+    public CgEnergyWave hold() {
+        if (age > 0f) throw new IllegalStateException("hold after its first tick: it has started");
+        releaseAge = Float.POSITIVE_INFINITY;
+        return this;
+    }
+
     /** Releases the charge now, if it has not yet released. */
     public CgEnergyWave fire() {
         releaseAge = Math.min(releaseAge, age);
@@ -647,7 +664,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The charge's tremor, the release's recoil, the hum while firing and the rumble at the target while it hits. */
     private void shake() {
         if (state() == State.PLAYING && age < releaseAge) {
-            float progress = age / Math.max(releaseAge, 1.0e-3f);
+            float progress = Math.min(age / Math.max(get(CHARGE_TIME), 1.0e-3f), 1f);
             holdShake(CHARGE_SHAKE, 0f, 0f, 0f, 1f, progress * progress);
         } else if (state() == State.PLAYING) {
             if (!released) {
