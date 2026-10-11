@@ -21,7 +21,11 @@ import java.util.TreeMap;
 import javax.annotation.Nullable;
 import lombok.Getter;
 
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.COLOR_MASK;
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.DEPTH;
 import static com.crystalgraphics.platform.gl.state.CgGlSlot.FBO;
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.SCISSOR;
+import static com.crystalgraphics.platform.gl.state.CgGlSlot.STENCIL;
 
 /**
  * Abstract base for all CrystalGraphics framebuffer implementations.
@@ -848,15 +852,27 @@ public class CgFrameBuffer {
     /**
      * Full-parameter clear. Sets each clear value only when the corresponding bit
      * is present in {@code mask}, then issues {@code glClear}.
-     * Restores the previously bound framebuffer on exit.
+     * Clears the whole framebuffer whatever write masks and scissor the last pass left, and restores them, and the
+     * previously bound framebuffer, on exit.
      */
     public void clear(int mask, float r, float g, float b, float a, double depthValue, int stencilValue) {
         requireFramebuffer("clear");
-        try (CgGlScope scope = CgGlState.save(FBO)) {
+        try (CgGlScope scope = CgGlState.save(FBO, COLOR_MASK, DEPTH, STENCIL, SCISSOR)) {
             bind();
-            if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) CgGL.glClearColor(r, g, b, a);
-            if ((mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0) CgGL.glClearDepth(depthValue);
-            if ((mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0) CgGL.glClearStencil(stencilValue);
+            // A clear obeys the masks and the scissor: after a UI pass, depth writes off made a depth clear a no-op.
+            CgGL.glDisable(CgGL.GL_SCISSOR_TEST);
+            if ((mask & CgGL.GL_COLOR_BUFFER_BIT) != 0) {
+                CgGL.glColorMask(true, true, true, true);
+                CgGL.glClearColor(r, g, b, a);
+            }
+            if ((mask & CgGL.GL_DEPTH_BUFFER_BIT) != 0) {
+                CgGL.glDepthMask(true);
+                CgGL.glClearDepth(depthValue);
+            }
+            if ((mask & CgGL.GL_STENCIL_BUFFER_BIT) != 0) {
+                CgGL.glStencilMask(0xFF);
+                CgGL.glClearStencil(stencilValue);
+            }
             CgGL.glClear(mask);
         }
     }
