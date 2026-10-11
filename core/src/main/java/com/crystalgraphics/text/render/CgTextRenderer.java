@@ -1552,7 +1552,8 @@ public class CgTextRenderer {
         // full glyph resolution and quad building before anything notices. See CgTextCuller.
         if (capturing != null) {
             capturing.layout(resolvedLayout);
-        } else if (culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
+        } else if (spatialNode == 0 && culler.isCulled(resolvedLayout, draw.x, draw.y, context.projection(), pose.pose(), draw.shadows.reach())) {
+            // Not under a spatial node: the pose is the node's space and the projection the target's.
             CgTrace.add(CgChannels.TEXT, "text.drawsCulled", 1);
             return;
         }
