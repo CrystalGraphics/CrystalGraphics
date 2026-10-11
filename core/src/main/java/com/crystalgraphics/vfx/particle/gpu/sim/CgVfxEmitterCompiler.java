@@ -338,10 +338,13 @@ public final class CgVfxEmitterCompiler {
                     }
                     bool wasResting = p.resting;
                     int inst = _InstanceAt + int(p.slot) * STEP_INSTANCE_ROW;
+                    // A killed slot: its particles end here, firing nothing.
+                    if (step_instance(inst + 2).w > 0.0) return;
                     uint paramRow = INSTANCES(inst).x;
                     int row = int(paramRow) * STEP_PARAM_ROW;
                     FxStep s;
-                    s.dt = _Step.x;
+                    // A slot held still while another effect prewarms steps by 0: unmoved, unaged.
+                    s.dt = _Step.x * step_instance(inst + 2).z;
                     s.wind = _Step.yzw;
                     FxForces f;
                     f.accel = vec3(0.0);
@@ -351,7 +354,8 @@ public final class CgVfxEmitterCompiler {
         for (int i = 0; i < shape.modules(); i++) if (!shape.afterSolve(i)) call(s, shape, i);
         s.append("""
                     // CgVfxEmitterInstance.solve: forces into velocity, drag implicit, then position
-                    p.previous = p.position;
+                    // Held still, it keeps the step it is drawn between.
+                    if (s.dt > 0.0) p.previous = p.position;
                     if (!p.resting) {
                         vec3 v = p.velocity + f.accel * s.dt;
                         float keep = 1.0 / (1.0 + (f.drag + f.dragQuad * length(v)) * s.dt);

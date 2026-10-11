@@ -228,6 +228,7 @@ public class CgVfxParticlePoolTest {
         assertEquals(3.5f, Float.intBitsToFloat(w[at + 7]), 0f);         // time
         assertEquals(0.5f, Float.intBitsToFloat(w[at + 8]), 0f);         // share
         assertEquals(-2f, Float.intBitsToFloat(w[at + 9]), 0f);          // ground
+        assertEquals(1f, Float.intBitsToFloat(w[at + 10]), 0f);          // step scale
         int lanes = at + shape.lanesAt(1) * 4;
         assertEquals(500, w[lanes]);                                    // 1001.25 * 0.5: the cell in doubles
         assertEquals(0.625f, Float.intBitsToFloat(w[lanes + 4]), 0f);    // and its fraction

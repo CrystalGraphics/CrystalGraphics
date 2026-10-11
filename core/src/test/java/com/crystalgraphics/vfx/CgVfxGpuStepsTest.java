@@ -80,6 +80,28 @@ public class CgVfxGpuStepsTest {
     }
 
     @Test
+    public void aKilledTenantEndsInOneStepAndTheOthersStepOn() {
+        CgVfxGpuSteps steps = new CgVfxGpuSteps();
+        CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);
+        CgVfxEmitterInstance killed = new CgVfxEmitterInstance(EMBERS, 0.1f), kept = new CgVfxEmitterInstance(EMBERS, 0.2f);
+        killed.start(0f, 0f, 0f);
+        kept.start(0f, 0f, 0f);
+        killed.schedule(DT, 0.0, 0.0, 0.0);
+        kept.schedule(DT, 0.0, 0.0, 0.0);
+        steps.admit(killed);
+        steps.admit(kept);
+        steps.step(DT, air);
+        CgVfxParticlePool pool = CgVfxParticlePool.of(steps, EMBERS);
+        assertEquals(2, pool.openSlots());
+        steps.kill(killed);
+        kept.schedule(DT, 0.0, 0.0, 0.0);
+        steps.step(DT, air);
+        assertNull(steps.of(killed));
+        assertNotNull(steps.of(kept));
+        assertEquals(1, pool.openSlots());
+    }
+
+    @Test
     public void aTenantItsEffectStopsSteppingCoastsToItsEnd() {
         CgVfxGpuSteps steps = new CgVfxGpuSteps();
         CgVfxAir air = new CgVfxAir().wind(0f, 0f, 0f);

@@ -86,7 +86,7 @@ public final class CgVfxParticlePool {
 
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
-     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, 0, 0)}, {@code ivec4(origin's whole
+     * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
      * blocks, 0)}, {@code vec4(origin within its block, 0)}: the last two place a particle in the world's blocks.
      */
     public static final int INSTANCE_HEADER = 5;
@@ -761,6 +761,16 @@ public final class CgVfxParticlePool {
      * module with lanes writes its own.
      */
     public void instance(int slot, int seedBits, float share, float groundY, CgVfxInstanceView view) {
+        instance(slot, seedBits, share, groundY, view, 1f, false);
+    }
+
+    /**
+     * As {@link #instance(int, int, float, float, CgVfxInstanceView)}, its particles stepping by {@code stepScale} of the
+     * step's time (0 holds them still, unaged, while another slot of the pool prewarms), or with {@code kill} all ending
+     * in this step, firing no event: then close the slot after the step. Give a held or killed slot no spawns.
+     */
+    public void instance(int slot, int seedBits, float share, float groundY, CgVfxInstanceView view, float stepScale,
+                         boolean kill) {
         inStep("instance");
         CgVfxGpuEmitter emitter = openSlot(slot, "instance");
         int s = steps;
@@ -777,7 +787,7 @@ public final class CgVfxParticlePool {
         double bx = Math.floor(ox), by = Math.floor(oy), bz = Math.floor(oz);
         words.uvec4(slotRow[slot], seedBits, slot, 0)
                 .vec4(view.sourceX(), view.sourceY(), view.sourceZ(), view.time())
-                .vec4(share, groundY, 0f, 0f)
+                .vec4(share, groundY, stepScale, kill ? 1f : 0f)
                 .ivec4((int) bx, (int) by, (int) bz, 0)
                 .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f);
         words.finish("its instance row's header");
