@@ -4,6 +4,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
+import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
@@ -102,12 +103,75 @@ public final class CgVfxRange {
     /** Whether each frame's visible counts are read back: from the first {@link #visibleCount()}. */
     private static boolean counting;
     private static int visibleCount;
+    /**
+     * The frame and target of each count in flight, oldest first: readbacks land in the order recorded. A frame fires
+     * Range once a view (a second viewport culls what the first draws), so its count is its largest, not the last to
+     * land, and a target's is its own views'.
+     */
+    private static final long[] COUNT_FRAMES = new long[64];
+    private static final int[] COUNT_TARGETS = new int[64];
+    private static int countHead, countTail, countedTarget;
+    private static long countFrame = -1;
+    private static int countMax;
+    /** Each target's count: its framebuffer, the frame being summed, that frame's largest so far, the last whole one. */
+    private static final int[] TARGETS = new int[8], TARGET_MAX = new int[8], TARGET_COUNT = new int[8];
+    private static final long[] TARGET_FRAME = {-1, -1, -1, -1, -1, -1, -1, -1};
     /** Sums every slot's visible count read back; the hidden bin past them is not read. */
-    private static final CgReadback.Sink COUNT = data -> {
-        int sum = 0;
-        for (int at = data.position(); at + 4 <= data.limit(); at += 4) sum += data.getInt(at);
-        visibleCount = sum;
+    private static final CgReadback.Sink COUNT = new CgReadback.Sink() {
+        @Override
+        public void accept(ByteBuffer data) {
+            int sum = 0;
+            for (int at = data.position(); at + 4 <= data.limit(); at += 4) sum += data.getInt(at);
+            long frame = nextCountFrame();
+            if (frame != countFrame) {
+                if (countFrame >= 0) visibleCount = countMax;
+                countFrame = frame;
+                countMax = sum;
+            } else {
+                countMax = Math.max(countMax, sum);
+            }
+            int t = targetSlot(countedTarget, true);
+            if (frame != TARGET_FRAME[t]) {
+                if (TARGET_FRAME[t] >= 0) TARGET_COUNT[t] = TARGET_MAX[t];
+                TARGET_FRAME[t] = frame;
+                TARGET_MAX[t] = sum;
+            } else {
+                TARGET_MAX[t] = Math.max(TARGET_MAX[t], sum);
+            }
+        }
+
+        @Override
+        public void failed(String reason) {
+            nextCountFrame();
+        }
     };
+
+    /** Pops the next count's frame, and its target into {@link #countedTarget}. */
+    private static long nextCountFrame() {
+        synchronized (COUNT_FRAMES) {
+            if (countHead == countTail) {
+                countedTarget = -1;
+                return -1;
+            }
+            int at = countHead++ & (COUNT_FRAMES.length - 1);
+            countedTarget = COUNT_TARGETS[at];
+            return COUNT_FRAMES[at];
+        }
+    }
+
+    /** {@code target}'s row, or -1; claiming takes a free row or the one summed longest ago. */
+    private static int targetSlot(int target, boolean claim) {
+        int oldest = 0;
+        for (int i = 0; i < TARGETS.length; i++) {
+            if (TARGET_FRAME[i] >= 0 && TARGETS[i] == target) return i;
+            if (TARGET_FRAME[i] < TARGET_FRAME[oldest]) oldest = i;
+        }
+        if (!claim) return -1;
+        TARGETS[oldest] = target;
+        TARGET_FRAME[oldest] = -1;
+        TARGET_COUNT[oldest] = 0;
+        return oldest;
+    }
 
     private static final Matrix4f VIEW_PROJECTION = new Matrix4f();
     private static final Vector4f PLANE = new Vector4f();
@@ -241,12 +305,26 @@ public final class CgVfxRange {
     }
 
     /**
-     * Every pool's particles Range kept to draw, as last read back: a frame or two behind. The first ask starts a small
+     * Every pool's particles Range kept to draw in one view, the largest of a frame's views: a frame or two behind. The first ask starts a small
      * readback each frame, so it answers 0 until one lands. Render thread.
      */
     public static int visibleCount() {
         counting = true;
         return visibleCount;
+    }
+
+    /**
+     * As {@link #visibleCount()}, for the views drawn into {@code framebuffer} alone: a second viewport's own count, not
+     * the world's. 0 for a target nothing has drawn into lately. Render thread.
+     *
+     * <pre>{@code
+     * stats.setText(CgVfxRange.visibleCount(viewport.getId()) + " particles");
+     * }</pre>
+     */
+    public static int visibleCount(int framebuffer) {
+        counting = true;
+        int t = targetSlot(framebuffer, false);
+        return t < 0 ? 0 : TARGET_COUNT[t];
     }
 
     /** Which word of {@link #visible()} counts {@code slot}'s visible particles: its byte offset over 4. */
@@ -405,7 +483,16 @@ public final class CgVfxRange {
         objectsAsked = false;
         clearSorted();
         pass.end();
-        if (counting && allSlots > 0) recording.readback(visible, 0, allSlots * 4L, COUNT);
+        if (counting && allSlots > 0) {
+            synchronized (COUNT_FRAMES) {
+                // Full means sinks stopped arriving: drop the oldest rather than misfile the next.
+                if (countTail - countHead == COUNT_FRAMES.length) countHead++;
+                int at = countTail++ & (COUNT_FRAMES.length - 1);
+                COUNT_FRAMES[at] = CgFrameRing.frame();
+                COUNT_TARGETS[at] = CgRenderStage.WORLD_OPAQUE.host().mainFramebuffer();
+            }
+            recording.readback(visible, 0, allSlots * 4L, COUNT);
+        }
     }
 
     private static void clearSorted() {

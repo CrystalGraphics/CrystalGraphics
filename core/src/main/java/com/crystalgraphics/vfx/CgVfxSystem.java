@@ -415,6 +415,14 @@ public final class CgVfxSystem {
         return cpuDrawn + CgVfxRange.visibleCount();
     }
 
+    /**
+     * The GPU pools' particles drawn into {@code framebuffer} in the latest frame: a viewport's own, not the world's. For a
+     * readout, never a decision; a frame or two late, as {@link #particlesDrawn()}. Render thread.
+     */
+    public static int particlesDrawn(int framebuffer) {
+        return CgVfxRange.visibleCount(framebuffer);
+    }
+
     /** The CPU path's particles drawn in {@link #drawnFrame}, every system's; reset by its first submit. */
     private static int cpuDrawn;
     private static long drawnFrame = -1;
