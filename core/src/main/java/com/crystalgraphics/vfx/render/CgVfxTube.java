@@ -27,8 +27,8 @@ import org.joml.Matrix4f;
  *       rings from the first the chunk owns, each ring owned by one chunk.</li>
  *   <li>{@code CG_OBJECT_CUSTOM2}, {@code CG_OBJECT_CUSTOM3}: the layer's two colours, from the effect's values.</li>
  * </ul>
- * <p>The mesh's uv is (ring within the chunk, angle as 0..1), its seam column doubled; its positions span the unit cube
- * only so its bounds are right.</p>
+ * <p>The mesh's uv is (ring within the chunk, angle as 0..1), its seam column doubled, and a closed mesh's end centres
+ * have angle -1; its positions span the unit cube only so its bounds are right.</p>
  */
 public final class CgVfxTube {
 
@@ -39,12 +39,12 @@ public final class CgVfxTube {
 
     private final Matrix4f scale = new Matrix4f();
 
-    /** A new chunk mesh, for {@code CgVfxSystem}, which releases it. */
-    public static CgMesh mesh() {
-        return CgMesh.build(CgVertexFormat.SPATIAL, CgVfxTube::write);
+    /** A new chunk mesh, for {@code CgVfxSystem}, which releases it; closed by a disc at each end for a closed layer. */
+    public static CgMesh mesh(boolean closed) {
+        return CgMesh.build(CgVertexFormat.SPATIAL, m -> write(m, closed));
     }
 
-    private static void write(CgMeshWriter m) {
+    private static void write(CgMeshWriter m, boolean closed) {
         int columns = SIDES + 1;
         for (int r = 0; r <= SPANS; r++) {
             for (int s = 0; s < columns; s++) {
@@ -61,6 +61,15 @@ public final class CgVfxTube {
                 m.triangle(a, b, c);
                 m.triangle(b, d, c);
             }
+        }
+        if (!closed) return;
+        // A centre per end, its uv's angle -1 (fx_tube_vertex), fanned counter-clockwise seen from outside: from -z first.
+        int start = (SPANS + 1) * columns, end = start + 1;
+        m.vertex().position(0f, 0f, -0.5f).uv(0f, -1f).normal(0f, 0f, -1f).end();
+        m.vertex().position(0f, 0f, 0.5f).uv(SPANS, -1f).normal(0f, 0f, 1f).end();
+        for (int s = 0; s < SIDES; s++) {
+            m.triangle(start, s + 1, s);
+            m.triangle(end, SPANS * columns + s, SPANS * columns + s + 1);
         }
     }
 

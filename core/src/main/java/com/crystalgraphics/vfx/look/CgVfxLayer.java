@@ -61,7 +61,7 @@ public final class CgVfxLayer {
     final CgVfxParam colorA, colorB;
     final float parameter;
     final int order;
-    final boolean volume;
+    final boolean volume, closed;
     final CgQuality from;
     final Consumer<CgShaderBindings> properties;
 
@@ -74,6 +74,7 @@ public final class CgVfxLayer {
         this.parameter = b.parameter;
         this.order = b.order;
         this.volume = b.volume;
+        this.closed = b.closed;
         this.from = b.from;
         this.properties = b.properties;
     }
@@ -119,6 +120,11 @@ public final class CgVfxLayer {
         return volume;
     }
 
+    /** Whether each chunk of a tube is closed at both ends ({@link Builder#closed()}). */
+    public boolean isClosed() {
+        return closed;
+    }
+
     /** The lowest quality tier that draws it. */
     public CgQuality from() {
         return from;
@@ -137,7 +143,7 @@ public final class CgVfxLayer {
         private CgVfxParam colorA, colorB;
         private float parameter;
         private int order = ORDER_SURFACE;
-        private boolean volume;
+        private boolean volume, closed;
         private CgQuality from = CgQuality.LOW;
         private Consumer<CgShaderBindings> properties;
 
@@ -184,6 +190,22 @@ public final class CgVfxLayer {
          */
         public Builder volume() {
             this.volume = true;
+            return this;
+        }
+
+        /**
+         * Closes each chunk of a tube layer with a disc at both ends, for a shader that traces the view ray through its
+         * own chunk's rings ({@code vfx/beam/body_core.shader}): every ray through the chunk then leaves by one of its
+         * back faces, the open ends included.
+         *
+         * <pre>{@code
+         * CgVfxLayer.builder(BEAM + "body_core.shader").closed().radius(1.25f).order(CgVfxLayer.ORDER_CORE).build()
+         * }</pre>
+         *
+         * A shader drawing the tube's surface wants it open: the discs would show.
+         */
+        public Builder closed() {
+            this.closed = true;
             return this;
         }
 

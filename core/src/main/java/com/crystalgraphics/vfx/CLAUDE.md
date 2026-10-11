@@ -65,7 +65,12 @@ matters; that is what makes it debuggable at full speed.
   outside the effect sees it), so their chunks batch.
 - **A chunk's bounds cover everything its shader draws**: radius, cap push and displacement.
 - **A volume that integrates along the view ray must cover each pixel once**: a bent tube's far wall does not, so such a
-  tube layer is `volume()` and sums only its own chunk's rings on a sphere.
+  tube layer is `volume()` and sums only its own chunk's rings on a sphere; or, solid (`body_core`), `closed()`,
+  traced from the pixel's ray (`FX_PIXEL_RAY`) through its own chunk's rings and a margin past them, drawn only where
+  the ray passes nearest one of its own segments (else each chunk stops flat at its ends: a disc per chunk), writing
+  where it enters as
+  `gl_FragDepth` under `DepthTest LESS`, so a pixel its hull covers twice is shaded once and what draws after it
+  behind it stays hidden. Never trace from one ring's straight extension: past a bend it is somewhere else.
 - **Libraries name no `cg_*` or `CG_*`**: an include compiles ahead of the frame block, so it takes values as
   arguments, and what must name them is a macro.
 - **A glowing layer is `"Lighting" = "Unlit"` and ends with a codeless Emissive pass**,

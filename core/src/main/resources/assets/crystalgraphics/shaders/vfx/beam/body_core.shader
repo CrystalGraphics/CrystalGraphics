@@ -1,13 +1,14 @@
 // An energy wave's core: a hard-edged volume, white where the ray crosses most of it, with hot knots streaming forward,
-// inside a saturated band deepening to its rim. Analytic against the view ray, on the hull's far wall, so it is right
-// from any side, inside and end-on; the opaque scene hides it by depth. It heaves along the beam and swells where a
-// surge passes (the ring's intensity), so it surges harder than the shell. Premultiplied: the white only adds light,
-// the band covers what is behind it (_Cover), so its colour shows as authored over a bright scene, which added light
-// cannot. Colour A is the white, colour B the band (_Band on), A's alpha a strength. The layer's radius is the hull's;
-// the core is _Core of it at rest, never past the hull. CgEnergyWave.
+// inside a saturated band deepening to its rim. Traced from the pixel through its chunk's own rings (fx_volume), on the
+// chunk's closed hull, so it is right from any side, inside, end-on and round a bend. It writes the depth where the ray
+// enters it and tests against it, so the hull drawn twice over a pixel shades it once, what is behind it stays hidden
+// whenever it is drawn, and the opaque scene hides it. It heaves along the beam and swells where a surge passes (the
+// rings' intensity), so it surges harder than the shell. Premultiplied: the white only adds light, the band covers what
+// is behind it (_Cover), so its colour shows as authored over a bright scene, which added light cannot. Colour A is the
+// white, colour B the band (_Band on), A's alpha a strength. The layer's radius is the hull's; the core is _Core of it
+// at rest, never past the hull. CgEnergyWave.
 #type spatial
 #include "crystalgraphics:shaders/lib/vfx/fx_volume.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
@@ -22,50 +23,59 @@ Properties {
     _Band    ("Where the white gives way to the band, share of the core radius", float) = 0.44
     _Bright  ("Brightness of the white: just past white, so its bloom stays near it and a surge flares", float) = 1.4
     _BandLight ("Brightness of the band: a little past white, its strongest channel held there", float) = 1.15
-    _Cover   ("How much of what is behind the band hides", float) = 0.9
+    _Cover   ("How much of what is behind the band hides", float) = 1.0
     _GlowCore ("How far out the white glows, share of the core radius: a streak down its middle", float) = 0.22
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
-struct v2f { vec3 world; vec3 axis; vec3 tangent; vec4 ring; float pulse; };
+struct v2f { vec3 world; };
 
 Pass {
     Tags { "LightMode" = "Forward" }
     RenderState {
         Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthTest ALWAYS
-        DepthWrite OFF
+        DepthTest LESS
+        DepthWrite ON
         Cull FRONT
     }
 
     void vertex(out v2f o) {
         FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
                                         cg_TexCoord0, CG_OBJECT_CUSTOM0.z, 1.0);
-        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        o.world = origin + v.position;
-        o.axis = origin + v.ring.position;
-        o.tangent = v.ring.tangent;
-        // arc, the hull's radius, the effect's age, the path's length
-        o.ring = vec4(v.ring.arc, v.ring.radius * CG_OBJECT_CUSTOM0.z, v.header.w, v.header.y);
-        o.pulse = v.ring.intensity;
+        o.world = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz + v.position;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec3 eye = FX_CAMERA;
-        vec3 ray = normalize(i.world - eye);
-        vec4 q = fx_capsule(eye, ray, i.axis, normalize(i.tangent), i.ring.x, i.ring.w);
+        vec3 ray = FX_PIXEL_RAY;
+        int row = int(CG_OBJECT_CUSTOM0.x + 0.5), first = int(CG_OBJECT_CUSTOM0.y + 0.5);
+        vec4 header = fx_path_header(_FxPath, row);
+        int count = max(int(header.x + 0.5), 2);
+        int end = min(first + int(CG_OBJECT_CUSTOM1.w + 0.5), count - 1);
+        // Traced past its own segments, so it agrees with its neighbour where they meet; drawn only where the ray
+        // passes nearest one of its own, so the neighbour draws the rest.
+        int lo = max(first - FX_CORE_MARGIN, 0), hi = min(end + FX_CORE_MARGIN, count - 1);
+        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
+        float age = header.w, hull = CG_OBJECT_CUSTOM0.z;
+        vec4 near;
+        int segment;
+        float r = fx_core_nearest(_FxPath, row, lo, hi, origin, eye, ray, hull * _Core, near, segment);
+        if (segment < first || segment >= end) discard;
+        float arc = near.z, pulse = near.w;
         // A boiling edge faster than the flow, a slow heave riding it, and a surge's extra swell.
-        float boil = fx_noise(vec3((q.w - i.ring.z * _Flow * 1.6) * 0.7, 2.5, 0.0) + cg_noise_time(i.ring.z * 3.0));
-        float heave = fx_noise(vec3((q.w - i.ring.z * _Flow) * 0.15, 6.5, i.ring.z * 0.4));
-        float swell = 1.0 + 0.15 * boil + _Heave * heave + _Surge * clamp(i.pulse - 1.0, 0.0, 1.0);
-        float r = clamp(i.ring.y * _Core * swell, 1.0e-4, i.ring.y * 0.97);
-        float thickness = fx_core_thickness(q.y, r, q.z);
-        if (thickness <= 0.0) discard;
-        float scene = FX_SCENE_DISTANCE(ray);
-        float seen = smoothstep(-0.5 * r, 0.5 * r, scene - q.x);
-        float d = q.y / r;
-        float knots = fx_noise(vec3((q.w - i.ring.z * _Flow) * 0.45, d * 0.8, i.ring.z * 0.7));
+        float boil = fx_noise(vec3((arc - age * _Flow * 1.6) * 0.7, 2.5, 0.0) + cg_noise_time(age * 3.0));
+        float heave = fx_noise(vec3((arc - age * _Flow) * 0.15, 6.5, age * 0.4));
+        float swell = 1.0 + 0.15 * boil + _Heave * heave + _Surge * clamp(pulse - 1.0, 0.0, 1.0);
+        float share = clamp(_Core * swell, 1.0e-4, 0.97);
+        vec2 span = fx_core_span(_FxPath, row, lo, hi, count, origin, eye, ray, hull * share);
+        if (span.x <= 0.0) discard;
+        // Every fragment of this pixel answers the same depth, so LESS keeps the first.
+        gl_FragDepth = FX_WINDOW_DEPTH(eye + ray * max(span.y, 0.05));
+        r *= share / _Core;
+        float d = near.y * _Core / share;
+        float thickness = min(span.x / (2.0 * r), 4.0);
+        float knots = fx_noise(vec3((arc - age * _Flow) * 0.45, d * 0.8, age * 0.7));
         float white = 1.0 - exp(-thickness * _Density * (0.8 + 0.35 * knots));
         // A saturated band across the outer part, its inner edge wavering with the knots, deepening toward the rim:
         // squared over its strongest channel, so the hue's own channel holds and the others fall away.
@@ -76,9 +86,9 @@ Pass {
         vec3 hot = CG_OBJECT_CUSTOM2.rgb * white * _Bright;
         vec3 col = mix(hot, bandCol, band);
         float edge = 1.0 - smoothstep(0.9, 1.0, d);
-        float surge = fx_flicker(i.ring.z - q.w * 0.02, 0.37);
-        float light = edge * CG_OBJECT_CUSTOM2.a * seen * i.pulse * surge;
-        fragColor = vec4(col * light, _Cover * band * edge * CG_OBJECT_CUSTOM2.a * seen);
+        float surge = fx_flicker(age - arc * 0.02, 0.37);
+        float light = edge * CG_OBJECT_CUSTOM2.a * pulse * surge;
+        fragColor = vec4(col * light, _Cover * band * edge * CG_OBJECT_CUSTOM2.a);
         // Only a streak down the white's middle glows: a glowing band would pale toward white, and the whole white
         // blooms out over the band.
         float streak = 1.0 - smoothstep(0.0, _GlowCore, d);
@@ -86,12 +96,13 @@ Pass {
     }
 }
 
-// Its glow (CG_GLOW) into the world's bloom: added, since covering would darken the glows behind.
+// Its glow (CG_GLOW) into the world's bloom: added, since covering would darken the glows behind. Tested as the
+// Forward pass is, so it merges into the Forward draw.
 Pass {
     Tags { "LightMode" = "Emissive" }
     RenderState {
         Blend ONE ONE
-        DepthTest ALWAYS
+        DepthTest LESS
         DepthWrite OFF
         Cull FRONT
     }

@@ -351,7 +351,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                     .radius(10f).colors(GLOW, null).order(CgVfxLayer.ORDER_LIGHT).build())
             .layer(CgVfxLayer.builder(BEAM + "body_shell.shader")
                     .radius(1.15f).colors(SHELL, SHELL_HOT).order(CgVfxLayer.ORDER_SURFACE).build())
-            .layer(CgVfxLayer.builder(BEAM + "body_core.shader")
+            .layer(CgVfxLayer.builder(BEAM + "body_core.shader").closed()
                     .radius(1.25f).colors(CORE, SHELL).order(CgVfxLayer.ORDER_CORE).build())
             .layer(CgVfxLayer.builder(BEAM + "body_spiral.shader")
                     .radius(1.2f).colors(SPIRAL, CORE).order(CgVfxLayer.ORDER_BANDS).build())

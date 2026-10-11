@@ -196,7 +196,7 @@ public final class CgVfxSystem {
     private final List<CgMaterial> warming = new ArrayList<>();
     private CgTexture2D boundTexture;
     // The tube is this system's own; the ribbons, sphere and quads are shared.
-    private CgMesh tubeMesh, ribbonMesh, sphereMesh, quadMesh, volumeMesh;
+    private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, quadMesh, volumeMesh;
     /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
     private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
     private int particleRecords;
@@ -427,7 +427,8 @@ public final class CgVfxSystem {
         }
         if (effects.isEmpty()) return;
         if (tubeMesh == null) {
-            tubeMesh = CgVfxTube.mesh();
+            tubeMesh = CgVfxTube.mesh(false);
+            closedTubeMesh = CgVfxTube.mesh(true);
             ribbonMesh = CgVfxRibbons.mesh();
             sphereMesh = CgMeshShapes.sphere(48, 96);
             // 12 x 24 faces come within cos(15°) cos(7.5°) of the centre: at radius 1.05 they still enclose the unit sphere.
@@ -673,8 +674,10 @@ public final class CgVfxSystem {
         gpuSteps.clear();
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
+        if (closedTubeMesh != null) closedTubeMesh.release();
         if (volumeMesh != null && volumeMesh != sphereMesh) volumeMesh.release();
         tubeMesh = null;
+        closedTubeMesh = null;
         ribbonMesh = null;
         sphereMesh = null;
         volumeMesh = null;
@@ -694,6 +697,11 @@ public final class CgVfxSystem {
 
     CgMesh tubeMesh() {
         return tubeMesh;
+    }
+
+    /** A {@link CgVfxLayer#isClosed() closed} layer's chunk mesh. */
+    CgMesh closedTubeMesh() {
+        return closedTubeMesh;
     }
 
     /** What a particle mesh is drawn on: the sphere at levels, each kept until a coarser one strays half a pixel. */

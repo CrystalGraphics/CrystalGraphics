@@ -10,6 +10,18 @@
 // macro, since a material's own #includes come before cg_env.glsl declares the frame block: it may only be expanded
 // inside vertex() or fragment().
 #define FX_CAMERA (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// fragment() only: the view ray through this pixel's centre, from its window position alone, so bit for bit the same
+// in every fragment of the pixel, as one from an interpolated position is not.
+#define FX_PIXEL_RAY normalize(transpose(mat3(cg_ViewMatrix)) * vec3((gl_FragCoord.x / CG_RESOLUTION.x * 2.0 - 1.0 + cg_ProjMatrix[2][0]) / cg_ProjMatrix[0][0], (gl_FragCoord.y / CG_RESOLUTION.y * 2.0 - 1.0 + cg_ProjMatrix[2][1]) / cg_ProjMatrix[1][1], -1.0))
+#endif
+// The window depth of point p in the pass's convention, reversed or not: what gl_FragDepth takes.
+#define FX_WINDOW_DEPTH(p) fx_window_depth(cg_ProjMatrix * (cg_ViewMatrix * vec4((p), 1.0)), cg_DepthParams.y > 0.5)
+
+float fx_window_depth(vec4 clip, bool zeroToOne) {
+    float z = clip.z / clip.w;
+    return clamp(zeroToOne ? z : z * 0.5 + 0.5, 0.0, 1.0);
+}
 
 // Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only, like FX_CAMERA.
 // CgVfxQuads (CgMesh.quads): the vertex's quad, and its corner -1..1 on each axis.

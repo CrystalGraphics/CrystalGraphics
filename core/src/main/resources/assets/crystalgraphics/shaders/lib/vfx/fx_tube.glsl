@@ -47,7 +47,8 @@ struct FxTubeVertex {
     vec4 header;
 };
 
-// One vertex of a CgVfxTube chunk. uv is the chunk mesh's (ring within the chunk, angle 0..1); radiusScale multiplies
+// One vertex of a CgVfxTube chunk. uv is the chunk mesh's (ring within the chunk, angle 0..1, -1 at a closed mesh's
+// end centres); radiusScale multiplies
 // the ring's radius; capPush moves the first and last rings out along the axis by that many radii, so a volume's hull
 // covers rounded ends.
 FxTubeVertex fx_tube_vertex(sampler2D path, int row, int first, vec2 uv, float radiusScale, float capPush) {
@@ -61,7 +62,9 @@ FxTubeVertex fx_tube_vertex(sampler2D path, int row, int first, vec2 uv, float r
     float a = uv.y * 6.28318531;
     vec3 binormal = cross(v.ring.tangent, v.ring.normal);
     float radius = v.ring.radius * radiusScale;
-    v.position = v.ring.position + radius * (cos(a) * v.ring.normal + sin(a) * binormal)
+    // A closed chunk's end centre (angle -1) sits on the axis.
+    float across = uv.y < 0.0 ? 0.0 : radius;
+    v.position = v.ring.position + across * (cos(a) * v.ring.normal + sin(a) * binormal)
             + v.ring.tangent * (v.cap * capPush * radius);
     return v;
 }

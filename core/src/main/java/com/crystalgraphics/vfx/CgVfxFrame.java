@@ -192,7 +192,8 @@ public final class CgVfxFrame {
     /** Draws {@code layer} as a tube along {@code path}, at {@code row}, around {@code effect}'s origin. */
     public void tube(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer) {
         if (skips(layer)) return;
-        system.tube().submit(world, layer.isVolume() ? system.volumeMesh() : system.tubeMesh(), system.material(layer), path, row,
+        CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
+        system.tube().submit(world, mesh, system.material(layer), path, row,
                 effect.originX, effect.originY, effect.originZ, layer, effect.values());
     }
 
