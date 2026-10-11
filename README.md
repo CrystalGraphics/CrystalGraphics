@@ -15,7 +15,7 @@ Materials and shader graphs · GPU compute kernels · VFX and particle systems �
 ---
 
 Crystal Graphics brings modern GPU and graphics programming pipelines to Java: the render graph, compute-driven particles and HDR post
-processing stacks and other advanced rendering pipelines that modern AAA engines are built on, in a library for your own LWJGL application or your Minecraft mod.
+processing stacks and other advanced rendering pipelines found at the core of modern AAA rendering engines, in a library for your own LWJGL application or your Minecraft mod.
 Write a material, play an effect or draw meshes into the world, and it runs on Vulkan where it can and on OpenGL 3.3
 and up everywhere else.
 
