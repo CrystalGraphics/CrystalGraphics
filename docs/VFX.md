@@ -54,6 +54,12 @@ vfx.submit(CgWorldRenderer.get());
   - **What the effect draws itself** moves with it, as an aura's mesh should. An effect that throws drawn parts into
     the world (a beam, a projectile) overrides `followed(x, y, z)` to move only its source: `CgEnergyWave`'s muzzle
     rides the hands while its beam, impact and blast stay put.
+  - **Any point on a model, whatever animates it**: a mod declares its own
+    (`CgEntityAttachments.declare("mymod:right_palm", RIGHT_HAND)`) and marks it where the model is drawn, one call a
+    frame: `mark(id, PALM, poseStack.last().pose(), x, y, z)` from a render layer over a vanilla model (playerAnimator,
+    Emotecraft), `mark(id, PALM, bone.getWorldPosition())` from GeckoLib. Or it registers a `Provider` that answers
+    when asked. A mark beats a provider, which beats the declared fallback's proportions; built-in points can be
+    marked too, which moves every effect already following them.
 - **`startAt(seconds)`** before its first tick: the effect ticks exactly up to there (at most `MAX_START_SECONDS`;
   beyond, its age jumps). Its GPU particles simulate the last `PREWARM_SECONDS` in at most 16 coarse steps, while
   the other effects hold still. Shakes and moments are silent until it reaches its age.

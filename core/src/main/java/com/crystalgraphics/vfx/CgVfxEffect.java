@@ -135,12 +135,14 @@ public abstract class CgVfxEffect {
 
     /**
      * Follows entity {@code entity} ({@code CgEntityQuery}'s id): each frame, before it ticks, its origin moves to the
-     * attachment point {@code point} ({@code CgEntityAttachments.FEET}, {@code HANDS_FORWARD}, ...) of the entity's pose
-     * as drawn. Particles in flight move with it. When the entity is gone it stops, and what is in flight plays out
-     * where the entity was last.
+     * attachment point {@code point} of the entity as drawn: a built-in one ({@code CgEntityAttachments.FEET},
+     * {@code HANDS_FORWARD}, ...) or one a mod declared and answers from its model ({@code CgEntityAttachments.declare},
+     * {@code provide}). Particles already spawned stay in the world unless their emitter is {@code local()}. When the
+     * entity is gone it stops, and what is in flight plays out where the entity was last.
      *
      * <pre>{@code
      * owner.play(new Aura(look, x, y, z).follow(playerId, CgEntityAttachments.CENTRE));
+     * owner.play(new Spark(look, x, y, z).follow(playerId, MyMod.RIGHT_PALM));   // a point of the mod's own
      * }</pre>
      */
     public final CgVfxEffect follow(int entity, int point) {

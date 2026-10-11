@@ -38,6 +38,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgCursorService` | Interface + slot | Presenting a cursor image; `CgCursorService.SERVICE` |
 | `service/CgWorldQuery` | Interface + slot | The world at a block or column, client only: collision and its boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation, the particle sprite. Primitives; core composes scans and the raycast (`com.crystalgraphics.world.CgWorldQueries`) |
 | `service/CgEntityQuery` | Interface + slot | Entities by int id, client only: interpolated pose, flags, kind, and a box walk handing ids to a visitor. Core computes hands, head and feet (`CgEntityAttachments`) |
+| `service/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
 | `service/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
 | `service/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
 | `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |

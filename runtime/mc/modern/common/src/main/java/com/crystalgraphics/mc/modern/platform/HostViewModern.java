@@ -55,6 +55,7 @@ final class HostViewModern {
     /** Where a matrix Minecraft keeps in no JOML form is built or read into. */
     private static final Matrix4f VIEW = new Matrix4f();
     private static final Matrix4f PROJECTION = new Matrix4f();
+    private static final Matrix4f MODEL_BASE = new Matrix4f();
 
     //? if <1.19.3 {
     /*private static final FloatBuffer MATRIX = BufferUtils.createFloatBuffer(16);
@@ -134,6 +135,56 @@ final class HostViewModern {
         projection = glMatrix(GL11.GL_PROJECTION_MATRIX, PROJECTION);
         *///?}
         out.set(x, y, z, view, projection);
+    }
+
+    /**
+     * {@code CgModelSpace} for the modern hosts: the camera, and what the entity pose stack starts from. 1.15–1.20.4
+     * hand {@code renderLevel} a stack turned by the camera; from 1.20.6 entities draw from a fresh one, unturned, the
+     * rotation moved into the model-view matrix. 1.13–1.14 have no pose stack.
+     */
+    static boolean modelSpace(double[] camera, float[] base) {
+        Minecraft mc = Minecraft.getInstance();
+        //? if >=26.2 {
+        /*CameraRenderState state = mc.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
+        camera[0] = state.pos.x;
+        camera[1] = state.pos.y;
+        camera[2] = state.pos.z;
+        MODEL_BASE.identity().get(base);
+        return true;
+        *///?} elif >=26.1 {
+        /*CameraRenderState state = mc.gameRenderer.getGameRenderState().levelRenderState.cameraRenderState;
+        camera[0] = state.pos.x;
+        camera[1] = state.pos.y;
+        camera[2] = state.pos.z;
+        MODEL_BASE.identity().get(base);
+        return true;
+        *///?} elif >=1.21.6 {
+        /*Vec3 at = mc.gameRenderer.getMainCamera().position();
+        camera[0] = at.x;
+        camera[1] = at.y;
+        camera[2] = at.z;
+        MODEL_BASE.identity().get(base);
+        return true;
+        *///?} elif >=1.20.6 {
+        /*Vec3 at = mc.gameRenderer.getMainCamera().getPosition();
+        camera[0] = at.x;
+        camera[1] = at.y;
+        camera[2] = at.z;
+        MODEL_BASE.identity().get(base);
+        return true;
+        *///?} elif >=1.15 {
+        Camera view = mc.gameRenderer.getMainCamera();
+        Vec3 at = view.getPosition();
+        camera[0] = at.x;
+        camera[1] = at.y;
+        camera[2] = at.z;
+        MODEL_BASE.rotationZ((float) Math.toRadians(HostCameraModern.eventRoll()))
+                .rotateX((float) Math.toRadians(view.getXRot())).rotateY((float) Math.toRadians(view.getYRot() + 180f))
+                .get(base);
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
     }
 
     /**

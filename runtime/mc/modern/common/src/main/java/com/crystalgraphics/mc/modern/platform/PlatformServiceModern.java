@@ -24,6 +24,7 @@ import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgModelSpace;
 import com.crystalgraphics.platform.service.CgWorldSound;
 import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.platform.service.CgWorldStimulus;
@@ -122,6 +123,7 @@ public final class PlatformServiceModern implements CgPlatformService {
             CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryModern());
             CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
+            CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSoundModern());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusModern());
             CgPlatform.provide(CgGameDirectory.SERVICE, () -> Minecraft.getInstance().gameDirectory.toPath());
