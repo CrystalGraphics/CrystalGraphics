@@ -136,6 +136,10 @@ final class Sparks extends CgVfxEffect {
 - **Capacity bounds the live particles**; a spawn into a full instance is dropped. Size it to the burst plus what
   is still alive.
 - **One instance an emitter an effect**; a variant of a definition is `SPARKS.toBuilder()...build()`.
+- **The same burst at another size** is `SPARKS.scaled(s)`: shape, speed, size and each module's lengths and forces
+  times `s`, timing unchanged, children too. `CgEnergyWave` scales its blast and wake by `RADIUS` over
+  `AUTHORED_RADIUS`, so a thinner wave bursts smaller. A module kind scales only if it overrides `scaled`; so far only
+  the kinds the explosion kit uses do.
 - A source that travels or a rate that follows the effect: `moveTo(x, y, z)` moves the source without restarting,
   `rateScale(s)` multiplies the rate, and `stop()` ends a rate open until then (`rate(n, 0f, Float.POSITIVE_INFINITY)`),
   which never finishes otherwise. `CgEnergyWave`'s `WAKE` uses all three.

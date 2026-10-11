@@ -9,6 +9,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * What one kind of particle is and how it behaves: when and how many spawn, how each starts, the {@link CgVfxModule}
@@ -71,6 +73,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgKeyframes sizeOverLife, opacityOverLife;
     /** The size curve's peak at the curve row's samples: what the GPU path draws at most. */
     private final float sizePeak;
+    /** {@link #scaled} copies, one per scale asked for. */
+    private final Map<Float, CgVfxEmitter> scaledCopies = new ConcurrentHashMap<>();
 
     private CgVfxEmitter(Builder b) {
         name = b.name;
@@ -125,6 +129,35 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     public Builder toBuilder() {
         return new Builder(this);
+    }
+
+    /**
+     * This emitter at {@code scale} times its size, on the same clock: where particles start, how fast they fly, how big
+     * they are, and each module's lengths and forces ({@link CgVfxModule#scaled}), so the same burst plays smaller or
+     * larger. Event children scale with it. One copy per scale, kept: an effect may ask at every start.
+     *
+     * <pre>{@code
+     * // a kit authored for a 9.6-block blast, at 3.6 blocks
+     * CgVfxEmitterInstance billows = new CgVfxEmitterInstance(CgVfxExplosion.BILLOWS.scaled(3.6f / 9.6f), seed);
+     * }</pre>
+     *
+     * The copy keeps the name, so a look still finds it by name.
+     */
+    public CgVfxEmitter scaled(float scale) {
+        if (scale == 1f) return this;
+        return scaledCopies.computeIfAbsent(scale, s -> {
+            Builder b = toBuilder();
+            b.shapeInner *= s;
+            b.shapeRadius *= s;
+            b.sweep *= s;
+            b.speedMin *= s;
+            b.speedMax *= s;
+            b.sizeMin *= s;
+            b.sizeMax *= s;
+            b.modules.replaceAll(m -> m.scaled(s));
+            b.events.replaceAll(e -> e.child() == null ? e : e.spawn(((CgVfxEmitter) e.child()).scaled(s), e.count()));
+            return b.build();
+        });
     }
 
     public String name() {

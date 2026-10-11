@@ -152,6 +152,11 @@ public final class CgEnergyWave extends CgVfxEffect {
 
     /** The body's radius, in blocks. */
     public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.8f);
+    /**
+     * The {@link #RADIUS} the look's emitters (the blast's {@link #BLAST} kit, the {@link #WAKE}) are authored at: they
+     * scale by {@code RADIUS} over it ({@code CgVfxEmitter.scaled}), so a thinner wave bursts into a smaller blast.
+     */
+    public static final CgVfxParam AUTHORED_RADIUS = SCHEMA.scalar("authoredRadius", 0.8f);
     /** How fast energy leaves the muzzle, in blocks a second. */
     public static final CgVfxParam SPEED = SCHEMA.scalar("speed", 40f);
     /** The most the body turns toward its target, in radians a second; it homes by proportional navigation under it. */
@@ -418,6 +423,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             .set(BLAST.hot, 1f, 0.88f, 0.3f, 1f)
             .set(BLAST.debris, 0.1f, 0.03f, 0.01f, 1f)
             .set(RADIUS, 1f)
+            .set(AUTHORED_RADIUS, 1f)   // its emitters below are drawn at this radius
             .set(SPEED, 50f)
             // its billows roll out from its bigger dome's edge
             .emitter(BLAST.billows.toBuilder().shape(11.5f, 13.5f).build())
@@ -714,7 +720,7 @@ public final class CgEnergyWave extends CgVfxEffect {
         if (wake == null) {
             CgVfxEmitter definition = look().emitter(WAKE.name());
             if (definition == null || Float.isNaN(ground) || state() != State.PLAYING || age < releaseAge) return;
-            wake = new CgVfxEmitterInstance(definition, seed + 0.731f);
+            wake = new CgVfxEmitterInstance(definition.scaled(emitterScale()), seed + 0.731f);
             wake.start(0f, ground, 0f);
             wake.ground(ground);
         }
@@ -752,11 +758,16 @@ public final class CgEnergyWave extends CgVfxEffect {
         for (int i = 0; i < emitters.size(); i++) {
             if (blastImpact == null && BLAST.drawn(emitters.get(i))) continue;
             if (emitters.get(i).name().equals(WAKE.name())) continue;
-            CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i), seed + i * 0.137f);
+            CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(emitters.get(i).scaled(emitterScale()), seed + i * 0.137f);
             emitter.start(stream.impactX(), stream.impactY(), stream.impactZ());
             emitter.ground(groundHeight()).ground(blastGround);
             blast.add(emitter);
         }
+    }
+
+    /** What the look's emitters scale by: {@link #RADIUS} over {@link #AUTHORED_RADIUS}. */
+    private float emitterScale() {
+        return get(RADIUS) / Math.max(get(AUTHORED_RADIUS), 1.0e-3f);
     }
 
     /** Announces each moment as it is crossed, framed on the muzzle or on the flight. */

@@ -72,8 +72,22 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         return 0f;
     }
 
+    /**
+     * This module for particles {@code scale} times the size, on the same clock ({@link CgVfxEmitter#scaled}): lengths,
+     * speeds and accelerations times {@code scale}, what is per block divided by it, rates and times as they are. A kind
+     * that does not override it plays unscaled: so far only the kinds the explosion kit uses do.
+     */
+    default CgVfxModule scaled(float scale) {
+        return this;
+    }
+
     /** A constant pull down, in blocks a second squared: 9.8 is Earth's. */
     record Gravity(float strength) implements CgVfxModule {
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Gravity(strength * scale);
+        }
+
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
@@ -101,6 +115,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * burst hard. A falling particle settles at gravity / linear when the quadratic term is 0.
      */
     record Drag(float linear, float quadratic) implements CgVfxModule {
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Drag(linear, quadratic / scale);
+        }
+
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
@@ -161,6 +180,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * for every emitter at a point, so neighbouring particles swirl together.
      */
     record Turbulence(float strength, float frequency, float evolve) implements CgVfxModule {
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Turbulence(strength * scale, frequency / scale, evolve);
+        }
+
         /** Each octave's lattice cell and fraction of where the instance's origin samples (fx_curl.glsl). */
         private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4, CgVfxLane.IVEC4, CgVfxLane.VEC4};
         /** CgVfxCurlNoise's second octave: x * 2.03 + offset. */
@@ -224,6 +248,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      */
     record Buoyancy(float lift, float cooling) implements CgVfxModule {
         @Override
+        public CgVfxModule scaled(float scale) {
+            return new Buoyancy(lift * scale, cooling);
+        }
+
+        @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             float keep = (float) Math.exp(-dt / Math.max(cooling, 1.0e-3f));
@@ -255,6 +284,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * seconds. What carries light particles up over a fire.
      */
     record Updraft(float strength, float radius, float height, float duration) implements CgVfxModule {
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Updraft(strength * scale, radius * scale, height * scale, duration);
+        }
+
         /** Its fade at the step's start, then the source. */
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
@@ -323,6 +357,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public CgVfxModule scaled(float scale) {
+            return new Ground(restitution, friction, rest * scale, radius);
+        }
+
+        @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             if (!emitter.hasGround()) return;
             CgVfxParticleSet p = emitter.particles();
@@ -384,6 +423,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      */
     record Current(float depth, float roll, float loft, float slow) implements CgVfxModule {
         private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
+
+        @Override
+        public CgVfxModule scaled(float scale) {
+            return new Current(depth * scale, roll, loft * scale, slow * scale);
+        }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
