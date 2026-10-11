@@ -30,6 +30,9 @@ import java.util.Locale;
  *   <li>Nothing spawns before {@link #start}; a second {@code start} restarts it.</li>
  *   <li>Positions are relative to the effect's origin; the origin passed to {@link #tick} is only where turbulence is
  *       sampled, so effects at different places see different eddies.</li>
+ *   <li>Particles live in the world: if the origin passed in moves, the instance keeps the one it was first stepped at
+ *       ({@link #originX}) and spawns from its source carried along, so what it spawned stays put. An emitter marked
+ *       {@code local()} takes each origin as it comes, and its particles ride the effect.</li>
  *   <li>{@link #share} thins what spawns by particle index, so a sparser burst keeps the same particles where it keeps
  *       any: the effect's shape, only fewer. A playing effect's share is its system's, set every tick.</li>
  *   <li>An emitter's events ({@link CgVfxEmitter.Builder#event}) run inside it: each event's children are an instance
@@ -57,6 +60,13 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private float time = -1f, sourceX, sourceY, sourceZ, groundY = Float.NaN;
     private CgVfxGround field;
     private double originX, originY, originZ;
+    /**
+     * In the world, not riding the effect ({@link CgVfxEmitter#local}): the origin it was first stepped at, which it
+     * keeps, and how far the effect has moved from it since, which carries its source along.
+     */
+    private final boolean local;
+    private double anchorX = Double.NaN, anchorY, anchorZ;
+    private float driftX, driftY, driftZ;
     private int spawned, burstsDone;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -80,15 +90,17 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     private int fireCount;
 
     public CgVfxEmitterInstance(CgVfxEmitter emitter, float seed) {
-        this(emitter, Float.floatToIntBits(seed), emitter.capacity, null, -1);
+        this(emitter, Float.floatToIntBits(seed), emitter.capacity, null, -1, emitter.local);
     }
 
-    private CgVfxEmitterInstance(CgVfxEmitter emitter, int seedBits, int capacity, CgVfxEvent feed, int feedEvent) {
+    private CgVfxEmitterInstance(CgVfxEmitter emitter, int seedBits, int capacity, CgVfxEvent feed, int feedEvent,
+                                 boolean local) {
         this.emitter = emitter;
         this.particles = new CgVfxParticleSet(capacity);
         this.seed = seedBits;
         this.feed = feed;
         this.feedEvent = feedEvent;
+        this.local = local;
         if (feed != null) {
             fires = new float[9 * 16];
             fireIds = new int[16];
@@ -102,7 +114,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
             CgVfxEvent event = events.get(e);
             if (event.child() != null) {
                 // Seeded as its parent, so a child is the same particle on both paths.
-                children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, emitter.peakChildren(e), event, e);
+                children[e] = new CgVfxEmitterInstance((CgVfxEmitter) event.child(), seedBits, emitter.peakChildren(e), event, e,
+                        local);
             }
             if (event.readback() > 0) rows[e] = new CgVfxEventRows();
             landings |= event.trigger() == CgVfxEvent.Trigger.LANDING || event.trigger() == CgVfxEvent.Trigger.COLLISION;
@@ -118,6 +131,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         sourceX = x;
         sourceY = y;
         sourceZ = z;
+        anchorX = Double.NaN;
+        driftX = driftY = driftZ = 0f;
         time = 0f;
         spawned = 0;
         burstsDone = 0;
@@ -171,11 +186,11 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     }
 
     /**
-     * The height of the ground, relative to the effect's origin, for {@link CgVfxModule.Ground}; NaN for none. With a
-     * {@link CgVfxGround} as well, only where the host has no level.
+     * The height of the ground, relative to the effect's origin now, for {@link CgVfxModule.Ground}; NaN for none. With a
+     * {@link CgVfxGround} as well, only where the host has no level. It is the world's: it stays put if the effect moves.
      */
     public CgVfxEmitterInstance ground(float y) {
-        groundY = y;
+        groundY = y + driftY;
         for (CgVfxEmitterInstance child : children) {
             if (child != null) child.ground(y);
         }
@@ -212,9 +227,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     public void tick(float dt, CgVfxAir air, double originX, double originY, double originZ) {
         if (time < 0f) return;
         this.air = air;
-        this.originX = originX;
-        this.originY = originY;
-        this.originZ = originZ;
+        if (feed == null) place(originX, originY, originZ);   // a child is placed by its parent
         CgVfxParticleSet p = particles;
         long t = CgVfxTrace.start();
         int before = p.count();
@@ -395,9 +408,7 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
     public void schedule(float dt, double originX, double originY, double originZ) {
         if (time < 0f) return;
         scheduled = true;
-        this.originX = originX;
-        this.originY = originY;
-        this.originZ = originZ;
+        place(originX, originY, originZ);
         stepDt = dt;
         stepTime = time;
         stepFirst = spawned;
@@ -416,6 +427,39 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         stepCandidates = spawned - stepFirst;
         time += dt;
         coastChildren(dt);
+    }
+
+    /**
+     * Takes the effect's origin for a step. One in the world keeps the origin it was first stepped at, so what it spawned
+     * stays put, and its source is carried along by how far the effect has moved since. Its children take the same.
+     */
+    private void place(double x, double y, double z) {
+        if (local) {
+            originX = x;
+            originY = y;
+            originZ = z;
+        } else {
+            if (Double.isNaN(anchorX)) {
+                anchorX = x;
+                anchorY = y;
+                anchorZ = z;
+            }
+            originX = anchorX;
+            originY = anchorY;
+            originZ = anchorZ;
+            driftX = (float) (x - anchorX);
+            driftY = (float) (y - anchorY);
+            driftZ = (float) (z - anchorZ);
+        }
+        for (CgVfxEmitterInstance child : children) {
+            if (child == null) continue;
+            child.originX = originX;
+            child.originY = originY;
+            child.originZ = originZ;
+            child.driftX = driftX;
+            child.driftY = driftY;
+            child.driftZ = driftZ;
+        }
     }
 
     /** A spawn candidate: thinned by the share as {@code spawnOne} is, its death kept if it spawns. */
@@ -538,17 +582,17 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         return originZ;
     }
 
-    /** Where it spawns from, relative to the effect's origin. */
+    /** Where it spawns from, relative to its {@link #originX origin}: the source carried along with the effect. */
     public float sourceX() {
-        return sourceX;
+        return sourceX + driftX;
     }
 
     public float sourceY() {
-        return sourceY;
+        return sourceY + driftY;
     }
 
     public float sourceZ() {
-        return sourceZ;
+        return sourceZ + driftZ;
     }
 
     public float groundY() {
@@ -587,9 +631,9 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         float dx = across * (float) Math.cos(heading), dz = across * (float) Math.sin(heading);
         float start = e.shapeInner + (e.shapeRadius - e.shapeInner) * (float) Math.cbrt(rand(k, 2)) + e.front(k);
         float speed = e.speedMin + (e.speedMax - e.speedMin) * rand(k, 3);
-        p.x[i] = p.px[i] = sourceX + dx * start;
-        p.y[i] = p.py[i] = sourceY + up * start;
-        p.z[i] = p.pz[i] = sourceZ + dz * start;
+        p.x[i] = p.px[i] = sourceX() + dx * start;
+        p.y[i] = p.py[i] = sourceY() + up * start;
+        p.z[i] = p.pz[i] = sourceZ() + dz * start;
         p.vx[i] = dx * speed;
         p.vy[i] = up * speed;
         p.vz[i] = dz * speed;

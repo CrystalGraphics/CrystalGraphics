@@ -48,7 +48,12 @@ vfx.submit(CgWorldRenderer.get());
 - **An effect that throws is killed and logged under its owner**; the rest play on. Its owner's ticks and draws are
   timed as `vfx.effect.tick/<namespace>` and `vfx.effect.submit/<namespace>` and counted as `vfx.effects/<namespace>`.
 - **`follow(entity, point)`** places the effect at an attachment point (`CgEntityAttachments`) each frame, at the
-  frame's partial tick; when the entity goes, the effect stops.
+  frame's partial tick; when the entity goes, the effect stops. What it launches stays in the world:
+  - **Particles** spawn where the effect is now and stay where they spawned. An emitter marked `.local()` rides the
+    effect instead, as an aura's sparkles orbit the player (Unity's simulation space, Niagara's Local Space).
+  - **What the effect draws itself** moves with it, as an aura's mesh should. An effect that throws drawn parts into
+    the world (a beam, a projectile) overrides `followed(x, y, z)` to move only its source: `CgEnergyWave`'s muzzle
+    rides the hands while its beam, impact and blast stay put.
 - **`startAt(seconds)`** before its first tick: the effect ticks exactly up to there (at most `MAX_START_SECONDS`;
   beyond, its age jumps). Its GPU particles simulate the last `PREWARM_SECONDS` in at most 16 coarse steps, while
   the other effects hold still. Shakes and moments are silent until it reaches its age.

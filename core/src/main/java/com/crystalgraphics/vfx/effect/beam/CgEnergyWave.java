@@ -70,7 +70,8 @@ import java.util.List;
  * {@code CgVfxSystem.onMoment}, framed on the muzzle or on the whole flight: what a capture tool photographs.</p>
  *
  * <ul>
- *   <li>Positions are absolute; the wave simulates relative to where it was made.</li>
+ *   <li>Positions are absolute; the wave simulates relative to where it was made. {@code follow} moves only its
+ *       muzzle: the beam, the impact and the blast stay where they are in the world.</li>
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once, unless it {@link #hold() holds}.</li>
@@ -453,6 +454,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The body's radius this frame, before the shape along it: what the head is sized from. */
     private float bodyRadius;
     private float aimX = 1f, aimY, aimZ;
+    /** Where the muzzle is from the origin: {@link #follow} moves it, and leaves what it fired where it is. */
+    private float muzzleX, muzzleY, muzzleZ;
     /** The age it releases at, and the ages it was stopped at, first hit and burst; NaN until each happens. */
     private float releaseAge, stopAge = Float.NaN, impactAge = Float.NaN, blastAge = Float.NaN;
     /** How hard the beam is hitting, eased toward 1 while it hits and 0 when it does not. */
@@ -496,6 +499,13 @@ public final class CgEnergyWave extends CgVfxEffect {
                                   CgVfxParam b, int order) {
         return CgVfxLayer.builder(BEAM + shader + ".shader").slot(slot).radius(radius).parameter(parameter)
                 .colors(a, b).order(order).build();
+    }
+
+    @Override
+    protected void followed(double x, double y, double z) {
+        muzzleX = (float) (x - originX);
+        muzzleY = (float) (y - originY);
+        muzzleZ = (float) (z - originZ);
     }
 
     /** Where the source points, any length. */
@@ -574,7 +584,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     protected void tick(float dt) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
             long t = CgVfxTrace.start();
-            if (state() == State.PLAYING && age >= releaseAge) stream.emit(0f, 0f, 0f, aimX, aimY, aimZ, get(SPEED));
+            if (state() == State.PLAYING && age >= releaseAge) stream.emit(muzzleX, muzzleY, muzzleZ, aimX, aimY, aimZ, get(SPEED));
             stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
             CgVfxTrace.lap(STREAM_NS, t);
         }
@@ -665,13 +675,13 @@ public final class CgEnergyWave extends CgVfxEffect {
     private void shake() {
         if (state() == State.PLAYING && age < releaseAge) {
             float progress = Math.min(age / Math.max(get(CHARGE_TIME), 1.0e-3f), 1f);
-            holdShake(CHARGE_SHAKE, 0f, 0f, 0f, 1f, progress * progress);
+            holdShake(CHARGE_SHAKE, muzzleX, muzzleY, muzzleZ, 1f, progress * progress);
         } else if (state() == State.PLAYING) {
             if (!released) {
                 released = true;
-                playShake(RELEASE_SHAKE, 0f, 0f, 0f, -aimX, -aimY, -aimZ, 1f);
+                playShake(RELEASE_SHAKE, muzzleX, muzzleY, muzzleZ, -aimX, -aimY, -aimZ, 1f);
             }
-            holdShake(FIRING_SHAKE, 0f, 0f, 0f, 1f, 1f);
+            holdShake(FIRING_SHAKE, muzzleX, muzzleY, muzzleZ, 1f, 1f);
         }
         if (impactLevel > 0.01f) {
             holdShake(HIT_SHAKE, stream.impactX(), stream.impactY(), stream.impactZ(), get(RADIUS), impactLevel);
@@ -770,7 +780,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     }
 
     private void atMuzzle(int bit, String name, float frame) {
-        if (fire(bit)) moment(name, 0f, 0f, 0f, frame);
+        if (fire(bit)) moment(name, muzzleX, muzzleY, muzzleZ, frame);
     }
 
     private void atImpact(int bit, String name, float frame) {
@@ -780,7 +790,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** Framed on the box holding the muzzle, the head and, while it hits, the impact. */
     private void onFlight(int bit, String name) {
         if (!fire(bit)) return;
-        float minX = 0f, minY = 0f, minZ = 0f, maxX = 0f, maxY = 0f, maxZ = 0f;
+        float minX = muzzleX, minY = muzzleY, minZ = muzzleZ, maxX = muzzleX, maxY = muzzleY, maxZ = muzzleZ;
         if (stream.size() > 0) {
             minX = Math.min(minX, stream.headX()); maxX = Math.max(maxX, stream.headX());
             minY = Math.min(minY, stream.headY()); maxY = Math.max(maxY, stream.headY());
@@ -818,7 +828,7 @@ public final class CgEnergyWave extends CgVfxEffect {
             int needed = (stream.size() + 2) * 3;
             if (points.length < needed) points = new float[needed * 2];
             long t = CgVfxTrace.start();
-            int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, 0f, 0f, 0f, firing);
+            int n = stream.points(points, frame.alpha() * CgVfxSystem.TICK, muzzleX, muzzleY, muzzleZ, firing);
             path.build(points, n, get(RING_SPACING));
             CgVfxTrace.lap(PATH_NS, t);
             CgVfxTrace.count(PATH_RINGS, path.count());
@@ -998,7 +1008,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                       float width, float length, float intensity, float progress) {
         for (int i = 0; i < layers.size(); i++) {
             CgVfxLayer layer = layers.get(i);
-            if (slot.equals(layer.slot())) frame.mesh(this, layer, 0f, 0f, 0f, transform, width, length, intensity, progress);
+            if (slot.equals(layer.slot())) frame.mesh(this, layer, muzzleX, muzzleY, muzzleZ, transform, width, length, intensity, progress);
         }
     }
 
@@ -1007,7 +1017,7 @@ public final class CgEnergyWave extends CgVfxEffect {
                          float ball, float share, float intensity) {
         for (int i = 0; i < layers.size(); i++) {
             CgVfxLayer layer = layers.get(i);
-            if (slot.equals(layer.slot())) frame.ribbons(this, layer, 0f, 0f, 0f, transform, ball, share, intensity, 0f);
+            if (slot.equals(layer.slot())) frame.ribbons(this, layer, muzzleX, muzzleY, muzzleZ, transform, ball, share, intensity, 0f);
         }
     }
 

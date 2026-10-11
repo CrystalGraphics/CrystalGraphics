@@ -39,6 +39,8 @@ import java.util.List;
  *       {@code upMax} by a bias under 1, at any heading.</li>
  *   <li>The player's density setting thins every emitter; one marked {@link Builder#optional} spawns half again at the
  *       Low quality tier.</li>
+ *   <li>Particles live in the world: an effect that moves ({@code follow}) spawns them where it is now, and those already
+ *       spawned stay where they are. One marked {@link Builder#local} rides the effect instead, particles and all.</li>
  * </ul>
  */
 public final class CgVfxEmitter implements CgVfxGpuEmitter {
@@ -55,7 +57,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     final String name, layer;
     final Renderer renderer;
-    final boolean optional;
+    final boolean optional, local;
     final int capacity;
     final float[] burstTimes;
     final int[] burstCounts;
@@ -75,6 +77,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         layer = b.layer;
         renderer = b.renderer;
         optional = b.optional;
+        local = b.local;
         capacity = b.capacity;
         burstTimes = new float[b.burstTimes.size()];
         burstCounts = new int[b.burstCounts.size()];
@@ -144,6 +147,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     /** Whether the Low quality tier halves it ({@link Builder#optional}). */
     public boolean optional() {
         return optional;
+    }
+
+    /** Whether its particles ride the effect rather than stay in the world ({@link Builder#local}). */
+    public boolean local() {
+        return local;
     }
 
     @Override
@@ -284,7 +292,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private String name;
         private String layer;
         private Renderer renderer = Renderer.QUADS;
-        private boolean optional;
+        private boolean optional, local;
         private int capacity = 256;
         private final List<Float> burstTimes = new ArrayList<>();
         private final List<Integer> burstCounts = new ArrayList<>();
@@ -312,6 +320,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             layer = e.layer;
             renderer = e.renderer;
             optional = e.optional;
+            local = e.local;
             capacity = e.capacity;
             for (int i = 0; i < e.burstTimes.length; i++) {
                 burstTimes.add(e.burstTimes[i]);
@@ -362,6 +371,20 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Detail the effect reads as whole without: the Low quality tier spawns half of it. */
         public Builder optional() {
             this.optional = true;
+            return this;
+        }
+
+        /**
+         * Rides the effect: when it moves ({@code follow}), its particles move with it, as an aura's sparkles orbit the
+         * player. Unmarked, they stay in the world where they spawned, as sparks a moving hand throws off. Unity's
+         * simulation space and Niagara's Local Space; an event's children take their parent's.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("auraSparkles").local().rate(40f, 0f, Float.POSITIVE_INFINITY).shape(0.6f, 0.9f)...
+         * }</pre>
+         */
+        public Builder local() {
+            this.local = true;
             return this;
         }
 

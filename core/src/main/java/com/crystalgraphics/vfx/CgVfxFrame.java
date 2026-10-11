@@ -294,6 +294,8 @@ public final class CgVfxFrame {
         CgVfxEmitter.Renderer renderer = emitter.emitter().renderer();
         boolean arcs = renderer == CgVfxEmitter.Renderer.ARCS, meshes = renderer == CgVfxEmitter.Renderer.MESHES;
         float cx = arcs ? emitter.sourceX() : 0f, cy = arcs ? emitter.sourceY() : 0f, cz = arcs ? emitter.sourceZ() : 0f;
+        // The instance's origin, not the effect's: a world-space instance stays where it was first stepped.
+        double ox = emitter.originX(), oy = emitter.originY(), oz = emitter.originZ();
         String name = emitter.emitter().layer();
         List<CgVfxLayer> layers = effect.look().layers();
         CgVfxValues values = effect.values();
@@ -313,7 +315,7 @@ public final class CgVfxFrame {
                                 CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
                         .instanceScale(layer.radius())
                         .gpuCulled()
-                        .at(effect.originX, effect.originY, effect.originZ);
+                        .at(ox, oy, oz);
                 color(draw, 2, layer.colorA(), values);
                 color(draw, 3, layer.colorB(), values);
                 CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
@@ -324,7 +326,7 @@ public final class CgVfxFrame {
             if (MERGED.get()) {
                 SlotSet set = set(pool, layer, renderer);
                 set.capacity = Math.max(set.capacity, capacity);
-                int f = set.add(effect.originX + cx, effect.originY + cy, effect.originZ + cz, range.visibleWord(slot) * 4L);
+                int f = set.add(ox + cx, oy + cy, oz + cz, range.visibleWord(slot) * 4L);
                 float[] c = set.custom;
                 c[f] = range.base(slot);
                 c[f + 1] = capacity;
@@ -345,7 +347,7 @@ public final class CgVfxFrame {
                     .indirect(range.visible(), range.visibleWord(slot) * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                             arcs ? CgVfxRibbons.VERTICES : 6)
                     .gpuCulled()
-                    .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz)
+                    .at(ox + cx, oy + cy, oz + cz)
                     .custom(0, range.base(slot), capacity, layer.radius(), layer.parameter())
                     .custom(1, cx, cy, cz, effect.age);
             color(draw, 2, layer.colorA(), values);
@@ -396,11 +398,13 @@ public final class CgVfxFrame {
         CgVfxParticleSet p = emitter.particles();
         CgVfxTrace.count(DRAWS_PARTICLE_MESH, p.count());
         float a = particleAlpha;
+        float dx = (float) (emitter.originX() - effect.originX), dy = (float) (emitter.originY() - effect.originY),
+                dz = (float) (emitter.originZ() - effect.originZ);
         for (int i = 0; i < p.count(); i++) {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
-            dress(world.draw(system.particleSphere(), system.material(layer)), effect, layer, p.x(i, a), p.y(i, a),
-                    p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i])
+            dress(world.draw(system.particleSphere(), system.material(layer)), effect, layer, dx + p.x(i, a),
+                    dy + p.y(i, a), dz + p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i])
                     .custom(0, p.vx[i], p.vy[i], p.vz[i], 0f).submit();
         }
     }
@@ -450,7 +454,7 @@ public final class CgVfxFrame {
             scaled.scaling(Math.max(hx, 1.0e-3f), Math.max(hy, 1.0e-3f), Math.max(hz, 1.0e-3f));
             CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer)).indices(0, n * indicesEach)
                     .bounds(-1f, -1f, -1f, 1f, 1f, 1f)
-                    .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
+                    .at(emitter.originX() + cx, emitter.originY() + cy, emitter.originZ() + cz).transform(scaled)
                     .custom(0, base + start, n, layer.radius(), layer.parameter())
                     .custom(1, cx, cy, cz, effect.age);
             color(draw, 2, layer.colorA(), values);

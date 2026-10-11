@@ -447,6 +447,24 @@ public abstract class CgVfxEffect {
 
     /** Moves the origin, between ticks: {@link #follow}'s. */
     final void moveTo(double x, double y, double z) {
+        followed(x, y, z);
+    }
+
+    /**
+     * Where {@link #follow} puts the effect this frame, in world coordinates. By default it moves the origin, and with it
+     * everything the effect draws and every particle it launched: an aura riding its entity. An effect whose launched
+     * parts belong to the world moves only its source here.
+     *
+     * <pre>{@code
+     * @Override
+     * protected void followed(double x, double y, double z) {
+     *     muzzleX = (float) (x - originX);   // the muzzle rides the hands; what it fired stays where it is
+     *     muzzleY = (float) (y - originY);
+     *     muzzleZ = (float) (z - originZ);
+     * }
+     * }</pre>
+     */
+    protected void followed(double x, double y, double z) {
         originX = x;
         originY = y;
         originZ = z;
