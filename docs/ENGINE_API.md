@@ -635,7 +635,7 @@ Do not rely on older font/text notes outside the `docs/font/` set — that is th
 | Priority | Strategy | Condition |
 |---|---|---|
 | 0 | Absolute filesystem path | Path is an absolute file |
-| 1 | Filesystem override dir | `-Dcrystalgraphics.shader.resourceOverrideDir` is set |
+| 1 | Filesystem override roots, in order | `crystalgraphics.resourceOverrideDirs` is set (`CgIO.OVERRIDE_DIRS`) |
 | 2 | Minecraft resource manager | `IResourceManager` available (in-game) |
 | 3 | Classpath | Final fallback (always works in harness + tests) |
 

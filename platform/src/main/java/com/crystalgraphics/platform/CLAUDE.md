@@ -15,6 +15,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `CgPlatform` | Final class | The registry, both halves: `register(CgPlatformService)` and the `CgService` slots |
 | `CgPlatformService` | Interface | The CLOSED bundle a platform registers — eight methods, no defaults |
 | `CgService` | Class | An OPEN slot: a consumer declares it, a platform fills it, it carries its own absent-value |
+| `com.crystalgraphics.variable.CgVar`, `CgVars` | Classes | Every engine switch and setting as a typed variable: sources code < file < `-D` < console < remote, listed for a console and `docs/DEBUG_FLAGS.md`. A flag a runtime reads is declared on a platform class here, never read raw |
 | `gl/CgGLBackend` | Abstract class | Every raw GL call — the seam an implementation answers |
 | `gl/CgGL` | Final class | The static facade `core/` calls; normalises names and forwards to the backend |
 | `gl/CgGLContext` | Interface | Capability detection, probed once on the GL thread |
