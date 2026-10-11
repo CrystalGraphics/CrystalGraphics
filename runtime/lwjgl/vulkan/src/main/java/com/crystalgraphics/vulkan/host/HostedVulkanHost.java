@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.host;
 
+import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -58,7 +59,7 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  * <pre>{@code
  * final class GameVulkanHost extends HostedVulkanHost<GameTexture> {
  *     GameVulkanHost(GameDevice game) {
- *         super("the game", Boolean.getBoolean("crystalgraphics.host.verify"));
+ *         super("the game", CgHostStateCache.VERIFY.get());
  *         this.game = game;
  *     }
  *
@@ -264,7 +265,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
         if (device != null) throw new IllegalStateException("openBackend already ran on this host");
         // Opt-in: the host's once-a-frame submit is the only signal async work can wait on, so it starts after the
         // whole frame and the next submit waits for it -- serial, and in Minecraft 5 ms a frame slower than in order.
-        if ("true".equals(System.getProperty("crystalgraphics.vulkan.asyncCompute"))) {
+        if ("true".equals(CgDevice.ASYNC_COMPUTE.get())) {
             asyncQueue = computeQueue();
             asyncQueueFamily = asyncQueue == null ? -1 : computeQueueFamily();
         }
@@ -273,7 +274,7 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
             asyncTimeline = timeline();
             LOG.info("[cg] async compute runs on {}'s compute queue, family {}", hostName, asyncQueueFamily);
         }
-        if (!"false".equals(System.getProperty("crystalgraphics.vulkan.transfer"))) {
+        if (CgDevice.TRANSFER.get()) {
             VkQueue q = transferQueue();
             if (q != null && texelGranular(transferQueueFamily())) {
                 transferQueue = q;

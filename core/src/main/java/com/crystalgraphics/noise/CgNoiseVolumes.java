@@ -1,5 +1,6 @@
 package com.crystalgraphics.noise;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gl.texture.CgEngineTextures;
@@ -45,7 +46,8 @@ public final class CgNoiseVolumes {
     /** Lattice cells across a volume; {@code CG_NOISE_PERIOD} in {@code lib/noise_volume.glsl}. */
     public static final int PERIOD = 16;
 
-    public static final int SIZE = Integer.getInteger("crystalgraphics.noise.size", 64);
+    public static final int SIZE = CgVar.integer("crystalgraphics.noise.size", 64, 16, 256, CgVar.DEV | CgVar.RESTART,
+            "Texels a side of each engine noise volume: 64 (2 MB a volume) or 128.").get();
 
     private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT};
     private static final CgTextureSpec SPEC = CgTextureSpec.builder().type(CgTextureType.RGBA16F)

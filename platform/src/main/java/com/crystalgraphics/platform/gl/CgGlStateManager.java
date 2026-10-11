@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.state.CgGlGetProvider;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
@@ -167,7 +168,12 @@ public final class CgGlStateManager {
      * removes the decision without removing the manager, so one run answers "is the shadow lying?" instead
      * of requiring a bisect. Also the support answer for a user with a broken modpack.</p>
      */
-    private static final boolean NO_DEDUP = Boolean.getBoolean("crystalgraphics.state.noDedup");
+    private static final CgVar.Bool VERIFY = CgVar.bool("crystalgraphics.state.verify", false, CgVar.DEV,
+            "Verify the shadow against the driver before eliminating any call, logging the domain with tracked against"
+                    + " actual. Very slow: diagnosis only. Taken by each state manager as it is made.");
+
+    private static final boolean NO_DEDUP = CgVar.bool("crystalgraphics.state.noDedup", false, CgVar.DEV | CgVar.RESTART,
+            "Never eliminate a GL call: tells \"the shadow is lying\" from a semantic regression in one run.").get();
 
     /**
      * Diagnostic switch: every outermost scope re-reads what it declares, inside a host section too.
@@ -176,7 +182,9 @@ public final class CgGlStateManager {
      * <p>Rules out the trust a section gives, for a host that runs foreign GL inside one without
      * {@code hostForeign}, and measures what that trust saves.</p>
      */
-    private static final boolean REREAD_EACH_SCOPE = Boolean.getBoolean("crystalgraphics.state.rereadEachScope");
+    private static final boolean REREAD_EACH_SCOPE = CgVar.bool("crystalgraphics.state.rereadEachScope", false,
+            CgVar.DEV | CgVar.RESTART, "Every outermost scope re-reads what it declares, inside a host section too: the rule"
+                    + " before section trust. glState.adopt times the reads either way.").get();
 
     private static final CgTraceChannel GL = CgTrace.channel("crystalgraphics.gl");
     private static final int ADOPT = CgTrace.name("glState.adopt");
@@ -188,8 +196,14 @@ public final class CgGlStateManager {
     private static final int SCOPES = CgTrace.name("glState.scopes"), SCOPES_ALL = CgTrace.name("glState.scopes.all");
     private static final int ALL_SLOTS_MASK = (1 << SLOTS.length) - 1;
 
-    /** {@code -Dcrystalgraphics.state.roundTrip=true}; null when off. @see RoundTrip */
-    private final RoundTrip roundTrip = Boolean.getBoolean("crystalgraphics.state.roundTrip") ? new RoundTrip() : null;
+    /** Each scope's domains read on open and after it restores; a manager made while it is on checks. @see RoundTrip */
+    public static final CgVar.Bool ROUND_TRIP = CgVar.bool("crystalgraphics.state.roundTrip", false, CgVar.DEV,
+            "Read every scope's domains on open and after it restores and name any that differ (on 1.7.10 with Angelica,"
+                    + " against the raw driver too), and report every write no open scope declares, with its stack. Totals every"
+                    + " 1000 scopes; any count but 0 is a bug. Taken by each state manager as it is made.");
+
+    /** Null when off. */
+    private final RoundTrip roundTrip = ROUND_TRIP.get() ? new RoundTrip() : null;
 
     /** Set by {@link #verifyAgainst}; null when verification is off, which is the normal case. */
     private CgGlStateProvider truth;
@@ -227,7 +241,7 @@ public final class CgGlStateManager {
         if (provider == null) throw new IllegalArgumentException("provider must not be null");
         this.provider = provider;
         for (int i = 0; i < MAX_DEPTH; i++) frames[i] = new Frame();
-        if (Boolean.getBoolean("crystalgraphics.state.verify")) truth = CgGlStateProvider.glGet();
+        if (VERIFY.get()) truth = CgGlStateProvider.glGet();
     }
 
     /**

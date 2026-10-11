@@ -155,7 +155,7 @@ public final class PlatformService1710 implements CgPlatformService {
             // Angelica also answers glGet, so only a reader past it can check its cache against the driver.
             // It binds programs of its own behind glUseProgram(0) (fixed-function emulation, shader packs),
             // so the driver's program is not expected to match.
-            if (Boolean.getBoolean("crystalgraphics.state.roundTrip")) {
+            if (CgGlStateManager.ROUND_TRIP.get()) {
                 RawDriverProvider1710 raw = RawDriverProvider1710.create();
                 if (raw != null) CgGlState.setDriverReader(raw, CgGlSlot.PROGRAM);
             }

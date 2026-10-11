@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.CgGL;
 
 import java.lang.reflect.Array;
@@ -36,7 +37,14 @@ import static com.crystalgraphics.platform.gl.state.CgCheckedProvider.bit;
  */
 public final class CgHostStateCache {
 
-    private static final boolean BY_SHAPE = Boolean.getBoolean("crystalgraphics.host.stateCache.byShape");
+    private static final boolean BY_SHAPE = CgVar.bool("crystalgraphics.host.stateCache.byShape", false,
+            CgVar.DEV | CgVar.RESTART, "Find GlStateManager's fields by shape, as production Forge (SRG) and Fabric"
+                    + " (intermediary) do: a dev run checks that path, and the install line names what missed.").get();
+
+    /** After each pass, the driver against the host's own state cache; a host reads it when it installs. */
+    public static final CgVar.Bool VERIFY = CgVar.bool("crystalgraphics.host.verify", false, CgVar.DEV | CgVar.RESTART,
+            "After each pass, compare the driver against the host's GlStateManager and name the domain that disagrees"
+                    + " (modern nodes; also CRYSTALGRAPHICS_HOST_VERIFY=true).");
 
     private static final int GL_BLEND = 3042, GL_DEPTH_TEST = 2929, GL_CULL_FACE = 2884, GL_POLYGON_OFFSET_FILL = 32823,
             GL_POLYGON_OFFSET_LINE = 10754, GL_SCISSOR_TEST = 3089, GL_ALPHA_TEST = 3008;

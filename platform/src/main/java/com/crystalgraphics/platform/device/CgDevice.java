@@ -14,6 +14,7 @@ import com.crystalgraphics.platform.device.resource.CgGpuTexture;
 import com.crystalgraphics.platform.device.resource.CgTimerQuery;
 import com.crystalgraphics.platform.device.shader.CgGlslCompiler;
 import com.crystalgraphics.platform.device.shader.CgShaderModule;
+import com.crystalgraphics.variable.CgVar;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -42,6 +43,20 @@ import java.util.function.BiConsumer;
  * call; using it after the release is a bug the device may not catch.</p>
  */
 public interface CgDevice {
+
+    /** How a Vulkan device runs async() compute, read when its host makes its queues. */
+    CgVar.Text ASYNC_COMPUTE = CgVar.text("crystalgraphics.vulkan.asyncCompute", "", CgVar.DEV | CgVar.RESTART,
+            "Empty: async() compute passes on a compute-only queue family where there is one (an owned device), in order"
+                    + " on a hosted one. false: in order everywhere. graphics: a second queue of the frame's family. true:"
+                    + " a hosted device (Minecraft) runs async on its host's compute queue, waiting only on the host's"
+                    + " end-of-frame submit, which serialised the GPU.");
+    CgVar.Bool TRANSFER = CgVar.bool("crystalgraphics.vulkan.transfer", true, CgVar.DEV | CgVar.RESTART,
+            "New textures' copies and the mesh store's run on a transfer queue where there is one; false keeps them on the"
+                    + " frame's queue (ENGINE_API.md, Async).");
+    CgVar.Bool SYNC_VALIDATION = CgVar.bool("crystalgraphics.vulkan.syncValidation", false, CgVar.DEV | CgVar.RESTART,
+            "With the validation layer on, its synchronization checks too.");
+    CgVar.Text PRESENT_MODE = CgVar.text("crystalgraphics.vulkan.presentMode", "", CgVar.DEV | CgVar.RESTART,
+            "immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose.");
 
     CgDeviceInfo info();
 

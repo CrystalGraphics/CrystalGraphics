@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.cpu.CgCpuBuffer;
@@ -78,13 +79,18 @@ public final class CgComputeSelfTest {
 
     private CgComputeSelfTest() {}
 
+    /** Asked: the compute self-test and the ops check run once, a frame or two after the first. */
+    public static final CgVar.Bool SELF_TEST = CgVar.bool("crystalgraphics.compute.selfTest", false, CgVar.DEV,
+            "At the first frames, run a kernel of every shape and every GPU op on this context and check each result against"
+                    + " Java; logs [crystalgraphics] compute self-test <tier>: PASS|FAIL, which prodSmoke gathers.");
+
     /**
      * With {@code -Dcrystalgraphics.compute.selfTest=true}, once per process: run with every read requested, then run
      * again once they have arrived, a frame or two later, and log the verdict. No frame waits on the GPU, so it runs
      * where the host submits too. Render thread, once a frame.
      */
     public static void runIfAsked() {
-        if (!Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (!SELF_TEST.get()) return;
         if (requested != null) {
             if (requested.waiting()) return;
             CgReplayedReads reads = requested;

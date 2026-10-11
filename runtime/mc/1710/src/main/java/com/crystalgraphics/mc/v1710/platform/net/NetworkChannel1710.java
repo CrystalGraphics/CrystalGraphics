@@ -70,7 +70,7 @@ public final class NetworkChannel1710 implements CgNetworkChannel {
     private static final int MAX_FRAME_BYTES = 32_766;
 
     /** Logs the first few hops each way. */
-    private static final boolean TRACE = Boolean.getBoolean("crystalgraphics.net.trace");
+    private static final boolean TRACE = CgNetworkChannel.TRACE.get();
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 

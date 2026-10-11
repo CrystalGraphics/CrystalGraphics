@@ -73,8 +73,7 @@ public final class Blaze3dGLBackend extends Lwjgl3GLBackend {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     // gl.debugStacks and gl.debugPerf turn it on for themselves.
-    private static final boolean KEEP_DEBUG_OUTPUT = Boolean.getBoolean("crystalgraphics.gl.keepHostDebugOutput")
-            || Boolean.getBoolean("crystalgraphics.gl.debugStacks") || Boolean.getBoolean("crystalgraphics.gl.debugPerf");
+    private static final boolean KEEP_DEBUG_OUTPUT = KEEP_HOST_DEBUG_OUTPUT.get() || DEBUG_STACKS.get() || DEBUG_PERF.get();
 
     private boolean debugOutputChecked;
 

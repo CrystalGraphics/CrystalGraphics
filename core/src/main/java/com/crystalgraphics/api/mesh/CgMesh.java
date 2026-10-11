@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -88,8 +89,8 @@ public final class CgMesh {
 
     private static final Map<Long, CgMesh> GENERATED = new ConcurrentHashMap<>();
 
-    /** {@code -Dcrystalgraphics.mesh.editStacks=true}: each edit records where it was made ({@link #editSite}). */
-    private static final boolean EDIT_STACKS = Boolean.getBoolean("crystalgraphics.mesh.editStacks");
+    private static final CgVar.Bool EDIT_STACKS = CgVar.bool("crystalgraphics.mesh.editStacks", false, CgVar.DEV,
+            "Each mesh edit records its stack, which the [cg-mesh] report of a mesh edited every frame prints.");
 
     /** Changes remembered for {@link #changesSince}; a reader further behind reads everything. */
     private static final int LOG = 16;
@@ -399,7 +400,7 @@ public final class CgMesh {
         logRanges[slot * 4 + 1] = vertexTo;
         logRanges[slot * 4 + 2] = indexFrom;
         logRanges[slot * 4 + 3] = indexTo;
-        if (EDIT_STACKS && (all || vertexTo > vertexFrom || indexTo > indexFrom)) editSite = new Throwable("the edit");
+        if (EDIT_STACKS.get() && (all || vertexTo > vertexFrom || indexTo > indexFrom)) editSite = new Throwable("the edit");
     }
 
     // ── Reading ────────────────────────────────────────────────────────────────

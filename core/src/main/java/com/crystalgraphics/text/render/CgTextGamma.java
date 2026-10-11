@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.variable.CgVar;
+
 /**
  * How a text renderer corrects glyph coverage for blending in the target's encoded colour space: Skia's text gamma
  * and contrast ({@code SkMaskGamma}), which give light text on a dark background back the weight blending takes
@@ -69,9 +71,13 @@ public record CgTextGamma(Level small, Level large, float smallPx, float largePx
         return new CgTextGamma(level, level, 0f, 0f);
     }
 
+    private static final CgVar.Bool GAMMA = CgVar.bool("crystalgraphics.text.gamma", true, CgVar.DEV,
+            "What a new text renderer starts with: Skia's text gamma and contrast; false draws coverage exactly as"
+                    + " rasterised, for comparing.");
+
     /** What a new renderer starts with: {@link #DEFAULT}, or {@link #NONE} under {@code crystalgraphics.text.gamma=false}. */
     public static CgTextGamma initial() {
-        return "false".equals(System.getProperty("crystalgraphics.text.gamma")) ? NONE : DEFAULT;
+        return GAMMA.get() ? DEFAULT : NONE;
     }
 
     public boolean isIdentity() {

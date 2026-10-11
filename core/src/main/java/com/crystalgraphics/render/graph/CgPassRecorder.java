@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkSink;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -53,9 +54,9 @@ public final class CgPassRecorder implements CgChunkSink {
     /** How deep a scissor chain goes. */
     public static final int MAX_SCISSORS = 16;
 
-    /** {@code -Dcrystalgraphics.recorder.lookback=false}: passes join neighbouring draws only, as recorded. */
-    private static final CgOrder ORDER =
-            "false".equals(System.getProperty("crystalgraphics.recorder.lookback")) ? CgOrder.SORTED : CgOrder.LOOKBACK;
+    private static final CgVar.Bool LOOKBACK = CgVar.bool("crystalgraphics.recorder.lookback", true, CgVar.DEV,
+            "A recorder's passes move a draw back past draws it does not overlap; false joins neighbouring draws only, in"
+                    + " submission order: rules lookback out of a wrong picture.");
 
     private final float[] passBlock = new float[CgPassConstants.FLOATS];
     private final float[] pendingBlock = new float[CgPassConstants.FLOATS];
@@ -268,7 +269,8 @@ public final class CgPassRecorder implements CgChunkSink {
 
     private void openPass() {
         System.arraycopy(pendingBlock, 0, passBlock, 0, CgPassConstants.FLOATS);
-        pass = recording.raster(target, load, passConstants.read(passBlock, 0), null, ORDER);
+        pass = recording.raster(target, load, passConstants.read(passBlock, 0), null,
+                LOOKBACK.get() ? CgOrder.LOOKBACK : CgOrder.SORTED);
         viewOwner = pendingOwner;
         viewX = pendingX;
         viewY = pendingY;

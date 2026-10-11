@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
@@ -101,13 +102,22 @@ public final class CgRenderDemo {
 
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
-    private static final String MODE = System.getProperty("crystalgraphics.demo");
+    private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
+            "false draws no world demo; a scene's name (blasts, beams, modules, blast) starts on it; empty on blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
-    private static final boolean SKY = !"false".equals(System.getProperty("crystalgraphics.demo.sky"));
-    private static final String CAPTURE = System.getProperty("crystalgraphics.demo.capture");
-    private static final int CAPTURE_AT = Integer.getInteger("crystalgraphics.demo.captureAt", 300);
-    private static final int PROFILE = Integer.getInteger("crystalgraphics.demo.profile", 0);
-    private static final int PROFILE_WARMUP = Integer.getInteger("crystalgraphics.demo.profile.warmup", 600);
+    private static final boolean SKY = CgVar.bool("crystalgraphics.demo.sky", true, CgVar.DEV | CgVar.RESTART,
+            "The demo's beams scene under the showcase's sky; false keeps the world's own.").get();
+    private static final String CAPTURE = CgVar.text("crystalgraphics.demo.capture", "", CgVar.DEV | CgVar.RESTART,
+            "A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed.").get();
+    private static final int CAPTURE_AT = CgVar.integer("crystalgraphics.demo.captureAt", 300, 1, Integer.MAX_VALUE,
+            CgVar.DEV | CgVar.RESTART, "World frames after the demo was placed that its capture is written.").get();
+    private static final int PROFILE = CgVar.integer("crystalgraphics.demo.profile", 0, 0, Integer.MAX_VALUE,
+            CgVar.DEV | CgVar.RESTART, "Frames of the demo's scene to profile, written to"
+                    + " crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none.").get();
+    private static final int PROFILE_WARMUP = CgVar.integer("crystalgraphics.demo.profile.warmup", 600, 0, Integer.MAX_VALUE,
+            CgVar.DEV | CgVar.RESTART, "Frames on the ground before the demo's profile starts.").get();
+    private static final int BLASTS = CgVar.integer("crystalgraphics.demo.blasts", 120, 1, 100_000, CgVar.DEV | CgVar.RESTART,
+            "Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive.").get();
 
     /** Every scene plays on the world's system, as a mod's effects do. */
     private static final CgVfxOwner VFX = CgVfx.owner("crystalgraphics");
@@ -219,7 +229,7 @@ public final class CgRenderDemo {
             hudSide = Math.min(frame.host().width(), frame.host().height());
             frame.callback("demo.hud", drawHud);
         });
-        if (CAPTURE != null) {
+        if (!CAPTURE.isEmpty()) {
             // After the composite: with the HDR scene on, the host's target holds the world only from then.
             CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1, frame -> {
                 if (++worldFrames != CAPTURE_AT) return;
@@ -263,7 +273,7 @@ public final class CgRenderDemo {
     // ── scenes ────────────────────────────────────────────────────────────────
 
     private Scene blasts() {
-        CgVfxBlasts blasts = new CgVfxBlasts(Integer.getInteger("crystalgraphics.demo.blasts", 120), VFX);
+        CgVfxBlasts blasts = new CgVfxBlasts(BLASTS, VFX);
         return new Scene() {
             @Override
             public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {

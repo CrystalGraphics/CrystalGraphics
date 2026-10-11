@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.service;
 
+import com.crystalgraphics.variable.CgVar;
+
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -26,6 +28,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * </ul>
  */
 public final class CgWorldEvents {
+
+    /** A host's scan logs what it meets. */
+    public static final CgVar.Bool TRACE = CgVar.bool("crystalgraphics.worldevents.trace", false, CgVar.DEV | CgVar.RESTART,
+            "Log every bolt and every hurt or dying entity a host's world-event scan meets (modern nodes).");
 
     /** The kinds of event, as bits of {@link #declared()}. */
     public static final int EXPLOSION = 1, BLOCK_BROKEN = 2, ENTITY_HURT = 4, ENTITY_DIED = 8, LIGHTNING = 16;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.compute.CgComputeSelfTest;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureType;
@@ -87,7 +88,7 @@ public final class CgGpuOpsCheck {
      * again once they have arrived, and log the verdict, as the compute self-test does. Render thread, once a frame.
      */
     public static void runIfAsked() {
-        if (!Boolean.getBoolean("crystalgraphics.compute.selfTest")) return;
+        if (!CgComputeSelfTest.SELF_TEST.get()) return;
         if (requested != null) {
             if (requested.waiting()) return;
             CgReplayedReads reads = requested;

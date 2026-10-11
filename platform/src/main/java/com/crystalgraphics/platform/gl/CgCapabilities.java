@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.device.CgDeviceInfo;
 import com.crystalgraphics.platform.gl.state.CgGlStateShadow;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLBackend;
+import com.crystalgraphics.variable.CgVar;
 
 import java.util.Arrays;
 import java.util.Locale;
@@ -41,6 +42,19 @@ import java.util.Locale;
  */
 @Getter
 public final class CgCapabilities {
+
+    public static final CgVar.Text COMPUTE_TIER = CgVar.text("crystalgraphics.compute.tier", "", CgVar.DEV,
+            "V, G43, G40, G33 or CPU: kernels run as that tier would, where the context has what it needs, refused naming"
+                    + " what is missing where not; empty for the best. Taken at each context's capability probe.");
+    public static final CgVar.Text SHADER_BUFFER_TIER = CgVar.text("crystalgraphics.shaderBuffer.tier", "", CgVar.DEV,
+            "SSBO_GL43, SSBO_ARB or TBO: engine buffers read that way (TBO: buffer textures, GLSL 3.30, as a 3.3 context);"
+                    + " empty for the best. Taken at each context's capability probe.");
+    public static final CgVar.Text STREAM_TIER = CgVar.text("crystalgraphics.stream.tier", "", CgVar.DEV,
+            "persistent, ring, orphan or subdata: how streamed vertex buffers upload, refused where the context lacks it;"
+                    + " empty for the best. Taken at each context's capability probe.");
+    public static final CgVar.Bool MULTI_DRAW = CgVar.bool("crystalgraphics.mesh.multiDraw", true, CgVar.DEV,
+            "Runs of draws sharing pipeline, bindings and a slab joined into one multi-draw; false draws a call a draw, for"
+                    + " a picture that must not change. Taken at each context's capability probe.");
     
     @Getter private static CgGLContext context;
     public static void init(CgGLContext ctx) {  context = ctx; }
@@ -351,7 +365,7 @@ public final class CgCapabilities {
         caps.drawParameters    = device != null ? device.drawParameters() : gl.OpenGL46() || gl.GL_ARB_shader_draw_parameters();
         boolean firstInstance  = device != null ? device.indirectFirstInstance() : gl.OpenGL42() || gl.GL_ARB_base_instance();
         caps.multiDraw         = caps.multiDrawIndirect && caps.drawParameters && firstInstance
-                && !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.multiDraw"));
+                && MULTI_DRAW.get();
         caps.feedbackCount     = device == null && (gl.OpenGL40() || gl.GL_ARB_transform_feedback2());
         caps.asyncCompute      = device != null && device.asyncCompute();
         caps.bindless          = device == null && gl.GL_ARB_bindless_texture();
@@ -383,8 +397,8 @@ public final class CgCapabilities {
                 : caps.shaderStorageBufferArb ? ShaderBufferPath.SSBO_ARB
                 : caps.textureBufferMaterialPath ? ShaderBufferPath.TBO
                 : ShaderBufferPath.NONE;
-        String property = System.getProperty("crystalgraphics.shaderBuffer.tier");
-        if (property == null) return best;
+        String property = SHADER_BUFFER_TIER.get();
+        if (property.isBlank()) return best;
         ShaderBufferPath forced = ShaderBufferPath.valueOf(property.trim().toUpperCase(Locale.ROOT));
         boolean has = switch (forced) {
             case SSBO_GL43 -> caps.shaderStorageBufferCore;
@@ -402,8 +416,8 @@ public final class CgCapabilities {
     private static ComputeTier computeTier(CgCapabilities caps, boolean device) {
         ComputeTier best = Arrays.stream(ComputeTier.values()).filter(t -> t.missing(caps, device) == null)
                 .findFirst().orElseThrow();
-        String property = System.getProperty("crystalgraphics.compute.tier");
-        if (property == null) return best;
+        String property = COMPUTE_TIER.get();
+        if (property.isBlank()) return best;
         ComputeTier forced = ComputeTier.valueOf(property.trim().toUpperCase(Locale.ROOT));
         String missing = forced.missing(caps, device);
         if (missing != null) {
@@ -418,8 +432,8 @@ public final class CgCapabilities {
                 : caps.arbSync && caps.hasMapBufferRange ? StreamBufferTier.RING
                 : caps.hasMapBufferRange ? StreamBufferTier.ORPHAN
                 : StreamBufferTier.SUBDATA;
-        String property = System.getProperty("crystalgraphics.stream.tier");
-        if (property == null) return best;
+        String property = STREAM_TIER.get();
+        if (property.isBlank()) return best;
         StreamBufferTier forced = StreamBufferTier.valueOf(property.trim().toUpperCase(Locale.ROOT));
         if (forced.ordinal() < best.ordinal()) {
             throw new IllegalStateException("-Dcrystalgraphics.stream.tier=" + forced.name().toLowerCase(Locale.ROOT)

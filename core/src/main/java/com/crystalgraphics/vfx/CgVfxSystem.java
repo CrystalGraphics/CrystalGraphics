@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -94,17 +95,30 @@ public final class CgVfxSystem {
         CPU, GPU
     }
 
-    private static Simulation simulation =
-            "cpu".equalsIgnoreCase(System.getProperty("crystalgraphics.vfx.sim")) ? Simulation.CPU : Simulation.GPU;
+    private static final CgVar.Choice<Simulation> SIMULATION = CgVar.choice("crystalgraphics.vfx.sim", Simulation.GPU,
+            CgVar.DEV, "Where effects' particles simulate; V switches it in any harness scene with a 3D camera. cpu is the"
+                    + " Java path, kept as the comparison until it is removed.");
+    private static final CgVar.Int PARTICLE_STEP = CgVar.integer("crystalgraphics.vfx.particleStep", 2, 1, 64, CgVar.DEV,
+            "Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick.");
+    private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
+            "Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU"
+                    + " time is spent on, one profile per group (body_light,haze).");
+    private static final CgVar.Num SIM_BUDGET_MS = CgVar.number("crystalgraphics.vfx.simBudgetMs", 12f, 0f, 1000f, CgVar.DEV,
+            "Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down.");
+    // Measurement switches: each is what one saving on the beams' GPU time would be worth.
+    private static final CgVar.Bool COARSE_VOLUMES = CgVar.bool("crystalgraphics.vfx.coarseVolumes", false,
+            CgVar.DEV | CgVar.RESTART, "Measurement: volume layers on a 12 x 24 sphere instead of 48 x 96.");
+    private static final CgVar.Bool SHARED_DISTORTION = CgVar.bool("crystalgraphics.vfx.sharedDistortion", false, CgVar.DEV,
+            "Measurement: distortion layers after every effect's draws, so they share one copy of the target.");
 
     /** The simulation chosen for every system: what a HUD shows, built or not. */
     public static Simulation simulation() {
-        return simulation;
+        return SIMULATION.get();
     }
 
-    /** Chooses where every system simulates, from its next update. */
+    /** Chooses where every system simulates, from its next update: a person's switch, outranking {@code -D}. */
     public static void simulation(Simulation chosen) {
-        simulation = chosen;
+        SIMULATION.set(CgVar.Source.CONSOLE, chosen);
     }
 
     /**
@@ -117,12 +131,12 @@ public final class CgVfxSystem {
      * }</pre>
      */
     public static int particleStep() {
-        return particleStep;
+        return PARTICLE_STEP.get();
     }
 
-    /** Sets {@link #particleStep()} for every system, from its next update; at least 1. */
+    /** Sets {@link #particleStep()} for every system, from its next update; at least 1. A person's switch, outranking {@code -D}. */
     public static void particleStep(int ticks) {
-        particleStep = Math.max(1, ticks);
+        PARTICLE_STEP.set(CgVar.Source.CONSOLE, ticks);
     }
 
     /**
@@ -138,9 +152,13 @@ public final class CgVfxSystem {
         return skipped.clone();
     }
 
-    /** Sets {@link #skipped()} for every system, from its next submit. */
+    /** Sets {@link #skipped()} for every system, from its next submit. A person's switch, outranking {@code -D}. */
     public static void skip(String... parts) {
-        skipped = parts.clone();
+        SKIP.set(CgVar.Source.CONSOLE, String.join(",", parts));
+    }
+
+    private static String[] parts(String list) {
+        return list.isEmpty() ? new String[0] : list.split(",");
     }
 
     static String[] skippedParts() {
@@ -167,9 +185,11 @@ public final class CgVfxSystem {
     /** GPU steps a prewarm takes at most, each a dispatch per pool: the window is stepped this coarsely. */
     private static final int PREWARM_STEPS = 16;
     private static final Logger LOGGER = LogManager.getLogger("CgVfxSystem");
-    private static int particleStep = Math.max(1, Integer.getInteger("crystalgraphics.vfx.particleStep", 2));
-    private static volatile String[] skipped = System.getProperty("crystalgraphics.vfx.skip", "").isEmpty()
-            ? new String[0] : System.getProperty("crystalgraphics.vfx.skip").split(",");
+    private static volatile String[] skipped = parts(SKIP.get());
+
+    static {
+        SKIP.onChange(list -> skipped = parts(list));
+    }
     /** Fewer records than this are written on the render thread alone. */
     private static final int PARALLEL_RECORDS = 4096;
     /**
@@ -182,16 +202,8 @@ public final class CgVfxSystem {
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
     private static final int MAX_QUEUED_STEPS = 30;
-    /** Wall time an update may spend catching up before it drops what it still owes. */
-    private static final long SIM_BUDGET_NANOS =
-            (long) (Double.parseDouble(System.getProperty("crystalgraphics.vfx.simBudgetMs", "12")) * 1_000_000L);
     private static final String PATH_SAMPLER = "_FxPath";
 
-    // Measurement switches (docs/DEBUG_FLAGS.md): each is what one saving on the beams' GPU time would be worth.
-    /** Volume layers on a 12 x 24 sphere instead of 48 x 96. */
-    private static final boolean COARSE_VOLUMES = Boolean.getBoolean("crystalgraphics.vfx.coarseVolumes");
-    /** Distortion layers after every effect's draws, so they share one copy of the target. */
-    private static final boolean SHARED_DISTORTION = Boolean.getBoolean("crystalgraphics.vfx.sharedDistortion");
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
 
     private static final List<CgVfxEventListener> NO_LISTENERS = Collections.emptyList();
@@ -320,7 +332,7 @@ public final class CgVfxSystem {
     public void update(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
-        stepsOnGpu = simulation == Simulation.GPU;
+        stepsOnGpu = SIMULATION.get() == Simulation.GPU;
         follow();
         if (Double.isNaN(clock)) {
             clock = seconds;
@@ -337,8 +349,8 @@ public final class CgVfxSystem {
             return;
         }
         startLate();
-        int ticks = 0, step = particleStep;
-        long start = System.nanoTime();
+        int ticks = 0, step = PARTICLE_STEP.get();
+        long budget = (long) (SIM_BUDGET_MS.get() * 1_000_000L), start = System.nanoTime();
         boolean overBudget = false;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim")) {
             while (owed >= TICK && ticks < MAX_TICKS && !overBudget) {
@@ -398,7 +410,7 @@ public final class CgVfxSystem {
                 simulated += TICK;
                 owed -= TICK;
                 ticks++;
-                overBudget = System.nanoTime() - start >= SIM_BUDGET_NANOS;
+                overBudget = System.nanoTime() - start >= budget;
             }
         }
         CgVfxTrace.count(TICKS, ticks);
@@ -502,6 +514,7 @@ public final class CgVfxSystem {
         int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
         int windowFrom = ticks - windowTicks;
         boolean gpu = stepsOnGpu;
+        int particleStep = PARTICLE_STEP.get();
         int coarse = gpu ? Math.max(particleStep, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS) : particleStep;
         for (int t = 0; t < ticks && effect.state() != CgVfxEffect.State.DEAD; t++) {
             boolean inWindow = t >= windowFrom;
@@ -614,7 +627,7 @@ public final class CgVfxSystem {
             ribbonMesh = CgVfxRibbons.mesh();
             sphereMesh = CgMeshShapes.sphere(48, 96);
             // 12 x 24 faces come within cos(15°) cos(7.5°) of the centre: at radius 1.05 they still enclose the unit sphere.
-            volumeMesh = COARSE_VOLUMES
+            volumeMesh = COARSE_VOLUMES.get()
                     ? CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.sphere(m, 12, 24, 1.05f)) : sphereMesh;
             quadMesh = CgVfxQuads.mesh();
         }
@@ -918,7 +931,7 @@ public final class CgVfxSystem {
      * {@code -Dcrystalgraphics.vfx.sharedDistortion=true} every distortion layer after all of them.
      */
     public static CgSortLayer sortLayer(CgVfxLayer layer) {
-        return SHARED_DISTORTION && layer.order() == CgVfxLayer.ORDER_DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
+        return SHARED_DISTORTION.get() && layer.order() == CgVfxLayer.ORDER_DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
     }
 
     /**

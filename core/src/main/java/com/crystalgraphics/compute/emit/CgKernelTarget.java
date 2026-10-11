@@ -1,5 +1,6 @@
 package com.crystalgraphics.compute.emit;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
 /**
@@ -28,7 +29,9 @@ public record CgKernelTarget(boolean arb, int subgroupOperations, boolean floatA
      * Checked mode, {@code -Dcrystalgraphics.compute.checked=true}: every kernel run as compute bounds-checks its
      * buffer and image accesses ({@code CgComputeCheck}).
      */
-    public static final boolean CHECKED = Boolean.getBoolean("crystalgraphics.compute.checked");
+    public static final boolean CHECKED = CgVar.bool("crystalgraphics.compute.checked", false, CgVar.DEV | CgVar.RESTART,
+            "Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first"
+                    + " of each dispatch logged once with its .compute line. Every access tests its index.").get();
 
     /** GL 4.3's guaranteed limits, with every subgroup operation and no float atomics. */
     public static final CgKernelTarget GL43 = new CgKernelTarget(false, NATIVE_SUBGROUPS, false, 32768, 1024, 1024, 1024, 64,

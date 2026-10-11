@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
@@ -47,8 +48,8 @@ final class CgGlRecordingBackend extends CgGLBackend {
             FRAMEBUFFER_TEXTURE = 124;
 
     private static final int MAX_SCOPES = 32;
-    /** {@code -Dcrystalgraphics.recording.debugScopes=true}: an open scope at {@code end()} names where it opened. */
-    private static final boolean DEBUG_SCOPES = Boolean.getBoolean("crystalgraphics.recording.debugScopes");
+    private static final CgVar.Bool DEBUG_SCOPES = CgVar.bool("crystalgraphics.recording.debugScopes", false, CgVar.DEV,
+            "A scope a GL recording leaves open at end() names where it was opened.");
 
     private final CgGLBackend live;
     private final CgGlStateManager manager;
@@ -128,7 +129,7 @@ final class CgGlRecordingBackend extends CgGLBackend {
             this.foreign = foreign;
             this.slots = slots;
             this.closed = false;
-            this.openedAt = DEBUG_SCOPES ? new Throwable("recorded scope opened here") : null;
+            this.openedAt = DEBUG_SCOPES.get() ? new Throwable("recorded scope opened here") : null;
         }
 
         @Override public void restore() {

@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.material;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.github.bsideup.jabel.Desugar;
@@ -79,6 +80,8 @@ import java.util.Set;
 public final class CgMaterialShader {
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterialShader");
+    private static final CgVar.Bool DUMP_GLSL = CgVar.bool("crystalgraphics.material.dumpGlsl", false, CgVar.DEV,
+            "Log every material pass's generated vertex and fragment GLSL as it compiles.");
 
     // ── Nested key type ───────────────────────────────────────────────────────
 
@@ -517,7 +520,7 @@ public final class CgMaterialShader {
                 return;
             }
 
-            if (System.getProperty("crystalgraphics.material.dumpGlsl") != null) {
+            if (DUMP_GLSL.get()) {
                 LOGGER.info("=== CgMaterialShader GLSL dump for '" + resourcePath + "' pass '" + pass.name() + "' ===");
                 LOGGER.info("--- VERTEX ---\n{}", compiled.vertexSource());
                 LOGGER.info("--- FRAGMENT ---\n{}", compiled.fragmentSource());

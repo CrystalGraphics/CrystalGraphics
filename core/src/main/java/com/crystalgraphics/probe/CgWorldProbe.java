@@ -1,5 +1,6 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -61,8 +62,9 @@ import java.nio.file.Path;
  */
 public final class CgWorldProbe {
 
-    /** {@code -Dcrystalgraphics.worldprobe=true}. */
-    public static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.worldprobe");
+    public static final boolean ENABLED = CgVar.bool("crystalgraphics.worldprobe", false, CgVar.DEV | CgVar.RESTART,
+            "Prove in a running game that the host answers every world seam and that the answers agree, logging a verdict"
+                    + " per check for prodSmoke and a dev client's autotest.").get();
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldProbe");
     private static final int SETTLE_SECONDS = 3, MIN_EVENT_SECONDS = 4, EVENT_SECONDS = 12, PAUSED_SECONDS = 15;

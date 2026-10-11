@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.device.command.CgAccess;
+import com.crystalgraphics.variable.CgVar;
 
 import java.nio.*;
 
@@ -26,7 +27,21 @@ import java.nio.*;
  * <p>Every backend meets a GL 3.3 floor, so there is one spelling per call and no ARB or EXT fallback.</p>
  */
 public abstract class CgGLBackend {
-    
+
+    /** A backend on a debug context logs the Java stack of its first GL errors. */
+    public static final CgVar.Bool DEBUG_STACKS = CgVar.bool("crystalgraphics.gl.debugStacks", false, CgVar.DEV | CgVar.RESTART,
+            "Log the Java stack of the first GL errors, so a debug message names the call (LWJGL 3 hosts on a debug"
+                    + " context: every dev client has one).");
+    public static final CgVar.Int DEBUG_STACKS_LIMIT = CgVar.integer("crystalgraphics.gl.debugStacks.limit", 5, 1, 1 << 20,
+            CgVar.DEV | CgVar.RESTART, "GL errors debugStacks logs a stack for.");
+    public static final CgVar.Bool DEBUG_PERF = CgVar.bool("crystalgraphics.gl.debugPerf", false, CgVar.DEV | CgVar.RESTART,
+            "Each distinct driver performance message once, with the stack of the call it came on, and counts: names a CPU"
+                    + " stall (pixel transfer is synchronized). The harness asks for a debug context under it.");
+    public static final CgVar.Bool KEEP_HOST_DEBUG_OUTPUT = CgVar.bool("crystalgraphics.gl.keepHostDebugOutput", false,
+            CgVar.DEV | CgVar.RESTART, "Keep the GL debug output Minecraft enables at its default glDebugVerbosity; modern"
+                    + " GL nodes turn it off at the first host section (on NVIDIA it slowed every call several times)."
+                    + " debugStacks and debugPerf keep it too.");
+
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
@@ -72,9 +73,13 @@ public abstract class CgCheckedProvider extends CgGlGetProvider {
         this.fallback = missing | CAPTURED;
     }
 
+    private static final CgVar.Bool STATE_CACHE = CgVar.bool("crystalgraphics.host.stateCache", true, CgVar.DEV,
+            "Scopes read the host's state from its GlStateManager; false reads it with glGet (HostStateModern 1.13-26.2"
+                    + " on GL, HostStateLegacy). Taken when the host installs its provider.");
+
     /** Makes the provider {@code build} answers the shadow's, or leaves {@code glGet} where it throws. */
     public static void install(String host, Callable<? extends CgCheckedProvider> build) {
-        if ("false".equals(System.getProperty("crystalgraphics.host.stateCache"))) return;
+        if (!STATE_CACHE.get()) return;
         try {
             CgCheckedProvider provider = build.call();
             CgGlState.setProvider(provider);

@@ -1,5 +1,7 @@
 package com.crystalgraphics.trace;
 
+import com.crystalgraphics.variable.CgVar;
+
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.util.ArrayList;
@@ -62,6 +64,20 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * @see CgTraceSnapshot
  */
 public final class CgTrace {
+
+    /** What records from the first frame, on any host and with no code: {@code crystalgraphics,crystalgui,gpu}. */
+    public static final CgVar.Text RECORDED_CHANNELS = CgVar.text("crystalgraphics.trace.channels", "", CgVar.DEV,
+            "Comma-separated channel prefixes recorded from the first frame, as enable takes them; a later value adds"
+                    + " its channels, never removes one.");
+    private static final CgVar.Int KEPT_FRAMES = CgVar.integer("crystalgraphics.trace.frames", 600, 0, 1 << 20,
+            CgVar.DEV | CgVar.RESTART, "Newest frames the trace keeps, overwriting the oldest; 0 stops once the first are full.");
+    private static final CgVar.Int KEPT_FIRST_FRAMES = CgVar.integer("crystalgraphics.trace.firstFrames", 0, 0, 1 << 20,
+            CgVar.DEV | CgVar.RESTART, "Frames kept from the start of a recording, never overwritten: startup and first opens.");
+    private static final CgVar.Int ZONE_CAPACITY = CgVar.integer("crystalgraphics.trace.zones", 1 << 16, 1, 1 << 28,
+            CgVar.DEV | CgVar.RESTART, "Zones a thread keeps at most, for each of the newest and the first frames;"
+                    + " raise it when a report warns of dropped zones.");
+    private static final CgVar.Int COUNTER_CAPACITY = CgVar.integer("crystalgraphics.trace.countersPerFrame", 1024, 32, 1 << 20,
+            CgVar.DEV | CgVar.RESTART, "Counter values a frame may hold: a ceiling, the store growing as it is written.");
 
     private CgTrace() {
     }
@@ -326,14 +342,13 @@ public final class CgTrace {
      * <p>A ring of the newest frames loses the first ones a few seconds in, and the first ones are often
      * the ones worth having: startup, the first open of a window, the first time a cache is cold.</p>
      */
-    private static volatile int firstFrames = Math.max(0, Integer.getInteger("crystalgraphics.trace.firstFrames", 0));
+    private static volatile int firstFrames = KEPT_FIRST_FRAMES.get();
 
     /** Newest frames kept after the first ones, overwriting the oldest. 0 stops once the first are full. */
-    private static volatile int newestFrames = Math.max(0, Integer.getInteger("crystalgraphics.trace.frames", 600));
+    private static volatile int newestFrames = KEPT_FRAMES.get();
 
     /** Zones per thread at most, for the newest frames and for the first ones separately. */
-    private static volatile int zoneCapacity =
-            roundUpPowerOfTwo(Integer.getInteger("crystalgraphics.trace.zones", 1 << 16));
+    private static volatile int zoneCapacity = roundUpPowerOfTwo(ZONE_CAPACITY.get());
     /** The first frames' ceiling follows the newest frames' when first frames are asked for at launch. */
     private static volatile int headZoneCapacity = firstFrames == 0 ? 1 << 12 : zoneCapacity;
 
@@ -359,12 +374,10 @@ public final class CgTrace {
     private static volatile CgTraceEvents headEvents = newEvents(firstFrames);
 
     /**
-     * Counter values a frame may hold ({@code -Dcrystalgraphics.trace.countersPerFrame}, 1024) — a ceiling,
-     * not an allocation: the store starts small and doubles as it is written. A busy UI frame writes
-     * several hundred.
+     * Counter values a frame may hold — a ceiling, not an allocation: the store starts small and doubles as it
+     * is written. A busy UI frame writes several hundred.
      */
-    private static final int COUNTERS_PER_FRAME =
-            Math.max(32, Integer.getInteger("crystalgraphics.trace.countersPerFrame", 1024));
+    private static final int COUNTERS_PER_FRAME = COUNTER_CAPACITY.get();
 
     /** Counters are written per frame, so a ring is sized from its frames. */
     private static CgTraceEvents newEvents(int frames) {
@@ -1215,19 +1228,11 @@ public final class CgTrace {
 
     // ── Recording from launch ───────────────────────────────────────────────────────────────
 
-    /**
-     * {@code -Dcrystalgraphics.trace.channels=<prefix>,<prefix>} — what records from the first frame, on
-     * any host and with no code: a dev client, an installed one, the harness, a test JVM.
-     *
-     * <pre>
-     * -Dcrystalgraphics.trace.channels=crystalgraphics,crystalgui,gpu
-     * </pre>
-     */
-    public static final String CHANNELS_PROPERTY = "crystalgraphics.trace.channels";
-
-    // LAST IN THE CLASS: it enables, and enabling reads the events and the mask declared above.
+    // LAST IN THE CLASS: it enables, and enabling reads the events and the mask declared above. Later values add
+    // channels as enableAll does.
     static {
-        enableAll(System.getProperty(CHANNELS_PROPERTY));
+        enableAll(RECORDED_CHANNELS.get());
+        RECORDED_CHANNELS.onChange(CgTrace::enableAll);
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl.state;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.CgGLBackend;
@@ -37,8 +38,11 @@ import java.util.Map;
 public final class CgGlCensus {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
-    private static final boolean ENABLED = Boolean.getBoolean("crystalgraphics.host.census");
-    private static final int AT = Integer.getInteger("crystalgraphics.host.census.at", 120);
+    private static final boolean ENABLED = CgVar.bool("crystalgraphics.host.census", false, CgVar.DEV | CgVar.RESTART,
+            "The GL state a host hands us per entry point (opaque, transparent, gui, frame), about 90 values each, once;"
+                    + " singlejar-logic/census_diff.py lays two clients side by side where they differ.").get();
+    private static final int AT = CgVar.integer("crystalgraphics.host.census.at", 120, 1, 1 << 20, CgVar.DEV | CgVar.RESTART,
+            "The visit to each entry point the census reads.").get();
     private static final int UNITS = 8;
 
     private static final Map<String, Integer> VISITS = new HashMap<>();

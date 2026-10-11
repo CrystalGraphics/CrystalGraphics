@@ -1,5 +1,6 @@
 package com.crystalgraphics.util.io;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgResourceService;
 
@@ -36,23 +37,17 @@ public class CgIO {
      * {@code processResources} made at build time. Editing that project's sources then changes nothing
      * the running process can see, and a reload faithfully re-reads the stale copy and looks broken.</p>
      *
-     * <p>Set either property to a {@link File#pathSeparator}-separated list; the roots are tried in order.
-     * A single path is still a valid list, so the original spelling keeps working unchanged.</p>
-     *
-     * <ul>
-     *   <li>{@code crystalgraphics.resourceOverrideDirs} — the generic name, preferred</li>
-     *   <li>{@code crystalgraphics.shader.resourceOverrideDir} — the original, kept for compatibility.
-     *       Never shader-specific despite the name; it has always been consulted for every resource.</li>
-     * </ul>
+     * <p>A {@link File#pathSeparator}-separated list; the roots are tried in order.</p>
      */
+    public static final CgVar.Text OVERRIDE_DIRS = CgVar.text("crystalgraphics.resourceOverrideDirs", "",
+            CgVar.DEV | CgVar.RESTART, "Source roots searched before the classpath, separated by the platform's path"
+                    + " separator and tried in order, so an edited asset is read from its source tree; set, the shader"
+                    + " preprocessor caches nothing.");
     private static final java.util.List<File> RESOURCE_OVERRIDE_DIRS = parseOverrideDirs();
 
     private static java.util.List<File> parseOverrideDirs() {
-        String raw = System.getProperty("crystalgraphics.resourceOverrideDirs");
-        if (raw == null || raw.trim().isEmpty()) {
-            raw = System.getProperty("crystalgraphics.shader.resourceOverrideDir");
-        }
-        if (raw == null || raw.trim().isEmpty()) return java.util.Collections.emptyList();
+        String raw = OVERRIDE_DIRS.get();
+        if (raw.trim().isEmpty()) return java.util.Collections.emptyList();
 
         java.util.List<File> roots = new java.util.ArrayList<>();
         // File.pathSeparator, so a Windows "C:\a;C:\b" splits on ';' and leaves the drive colons alone.

@@ -39,8 +39,7 @@ public final class WorldEventsModern {
 
     private static final int LEVEL_EVENT_BLOCK_BROKEN = 2001;
     private static final int PRUNE_EVERY = 600;
-    /** {@code -Dcrystalgraphics.worldevents.trace=true}: every bolt and every hurt or dying entity a scan meets. */
-    private static final boolean TRACE = Boolean.getBoolean("crystalgraphics.worldevents.trace");
+    private static final boolean TRACE = CgWorldEvents.TRACE.get();
     private static final Logger LOGGER = LogManager.getLogger("WorldEventsModern");
 
     private static final Int2IntOpenHashMap HURT = new Int2IntOpenHashMap();

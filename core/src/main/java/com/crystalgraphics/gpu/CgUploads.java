@@ -1,5 +1,6 @@
 package com.crystalgraphics.gpu;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgGL;
@@ -44,9 +45,15 @@ public final class CgUploads {
     public enum Tier { UNPACK, DIRECT }
 
     private static final int ALIGN = 256;
-    private static final int BLOCK = Integer.getInteger("crystalgraphics.uploads.block", 8 << 20);
-    private static final long CAP = Long.getLong("crystalgraphics.uploads.cap", 128L << 20);
-    private static final boolean FORCE_DIRECT = "direct".equals(System.getProperty("crystalgraphics.uploads.tier"));
+    private static final int BLOCK = CgVar.integer("crystalgraphics.uploads.block", 8 << 20, 64 << 10, 1 << 30,
+            CgVar.DEV | CgVar.RESTART, "Bytes in an upload block; a lease over half a block gets one of its own.").get();
+    private static final long CAP = CgVar.integer("crystalgraphics.uploads.cap", 128 << 20, 0, Integer.MAX_VALUE,
+            CgVar.DEV | CgVar.RESTART, "Bytes the unpack pool grows to: past it a lease finding no room takes direct memory,"
+                    + " and direct blocks are not pooled.").get();
+    private static final boolean FORCE_DIRECT = CgVar.choice("crystalgraphics.uploads.tier", Tier.UNPACK,
+            CgVar.DEV | CgVar.RESTART, "unpack: leases from a persistently mapped unpack buffer where the context has"
+                    + " persistent mapping. direct: from direct memory, the driver copying at the call, as a context without"
+                    + " it does (macOS 4.1, 3.3).").get() == Tier.DIRECT;
     private static final int FLAGS = CgGL.GL_MAP_WRITE_BIT | CgGL.GL_MAP_PERSISTENT_BIT | CgGL.GL_MAP_COHERENT_BIT;
 
     private static final int LEASES = CgTrace.name("upload.leases");

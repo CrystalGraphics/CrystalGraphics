@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.mesh;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshChanges;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -84,8 +85,9 @@ public final class CgMeshStore {
     /** Consecutive frames of edits after which a mesh that is not FRAME is reported. */
     private static final int EVERY_FRAME = 60;
 
-    /** {@code -Dcrystalgraphics.mesh.frameRing=false}: FRAME meshes take slab ranges, as before the ring path. */
-    private static final boolean FRAME_RING = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.mesh.frameRing"));
+    private static final boolean FRAME_RING = CgVar.bool("crystalgraphics.mesh.frameRing", true, CgVar.DEV | CgVar.RESTART,
+            "FRAME meshes written into the frame ring; false places them in slab ranges as any other: one build, both"
+                    + " paths, for comparing them.").get();
 
     private long drawing, drawn, calls;
     private boolean multiDraw = true;

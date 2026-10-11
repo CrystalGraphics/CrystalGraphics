@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -111,7 +112,9 @@ public final class CgExecutor {
     private static final IntConsumer FORGET_BUFFER = CgExecutor::forget;
     /** Persistent and history buffers whose storage this executor made, freed at teardown if never released. */
     private static final List<CgGraphBuffer> KEPT = new ArrayList<>();
-    private static final boolean BARRIERS = !"false".equalsIgnoreCase(System.getProperty("crystalgraphics.graph.barriers"));
+    private static final CgVar.Bool BARRIERS = CgVar.bool("crystalgraphics.graph.barriers", true, CgVar.DEV,
+            "Barriers where a kernel takes part; false keeps the bookkeeping and issues none: what synchronization validation"
+                    + " must catch on --mode=compute-graph.");
     private static final int BARRIER_COUNT = CgTrace.name("graph.barriers");
     private static final int DISPATCH_COUNT = CgTrace.name("graph.dispatches");
     private static final int LOWERED_COUNT = CgTrace.name("graph.dispatches.lowered");
@@ -125,7 +128,9 @@ public final class CgExecutor {
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
     /** Every compute pass that can go async does, as if marked: a correctness check of the waits. */
-    static final boolean ASYNC_ALL = Boolean.getBoolean("crystalgraphics.graph.asyncAll");
+    static final boolean ASYNC_ALL = CgVar.bool("crystalgraphics.graph.asyncAll", false, CgVar.DEV | CgVar.RESTART,
+            "Every compute pass that can go async does, as if marked async(): a check of the waits, which the compute"
+                    + " scenes must pass under synchronization validation.").get();
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
     /** The GPU's copies before a frame's first pass: what other threads asked of GPU objects, and the meshes' bytes. */
     private static final int GPU_DEFERRED = CgGpuTrace.name("upload.deferred"), GPU_MESHES = CgGpuTrace.name("upload.meshes");
@@ -295,7 +300,7 @@ public final class CgExecutor {
         kernelsSeen |= frame.kernels;
         ComputeTier tier = CgCapabilities.detect().computeTier();
         boolean compute = tier == ComputeTier.V || tier == ComputeTier.G43;
-        computeBarriers = BARRIERS && compute;
+        computeBarriers = BARRIERS.get() && compute;
         gpuCounts = compute || tier == ComputeTier.G40 && CgCapabilities.detect().drawIndirect();
         asyncCompute = tier == ComputeTier.V && CgCapabilities.detect().asyncCompute();
         independentMasks = CgCapabilities.detect().independentBlend();

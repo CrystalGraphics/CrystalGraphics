@@ -1,6 +1,7 @@
 package com.crystalgraphics.text.cache;
 
 import com.crystalgraphics.api.font.CgFontKey;
+import com.crystalgraphics.variable.CgVar;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,7 +76,9 @@ final class CgGlyphGenerationExecutor {
      * {@code -Dcrystalgraphics.text.deterministicGlyphs=true}: every job runs on the thread that asks for it, in the
      * order asked, so the atlas fills the same way every run. For pixel comparisons of text; never for play.
      */
-    static final boolean DETERMINISTIC = Boolean.getBoolean("crystalgraphics.text.deterministicGlyphs");
+    static final boolean DETERMINISTIC = CgVar.bool("crystalgraphics.text.deterministicGlyphs", false,
+            CgVar.DEV | CgVar.RESTART, "Every glyph job runs on the thread that asks for it, in the order asked, so the atlas"
+                    + " fills the same way every run: for pixel comparisons of text, never for play.").get();
 
     /** See {@link #bitmapExecutor} — these exist to beat a queue, not to add throughput. */
     private static final int BITMAP_WORKER_COUNT = 4;

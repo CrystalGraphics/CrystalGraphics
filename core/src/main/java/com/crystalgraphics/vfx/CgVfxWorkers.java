@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.variable.CgVar;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinWorkerThread;
 import java.util.concurrent.RecursiveAction;
@@ -25,8 +26,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class CgVfxWorkers {
 
-    static final int THREADS = Math.max(1, Integer.getInteger("crystalgraphics.vfx.threads",
-            Runtime.getRuntime().availableProcessors() - 2));
+    private static final CgVar.Int THREADS_VAR = CgVar.integer("crystalgraphics.vfx.threads", 0, 0, 256, CgVar.DEV | CgVar.RESTART,
+            "Threads effects' emitters tick on, the render thread one of them; 0 for two fewer than the cores, 1 for all"
+                    + " on the render thread.");
+    static final int THREADS = THREADS_VAR.get() > 0 ? THREADS_VAR.get()
+            : Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
 
     /** One job of a run, by its index. */
     interface Job {

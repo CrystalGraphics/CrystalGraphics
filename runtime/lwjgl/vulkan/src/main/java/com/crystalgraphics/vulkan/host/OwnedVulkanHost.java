@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.host;
 
+import com.crystalgraphics.platform.device.CgDevice;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 import com.crystalgraphics.vulkan.CgVulkanDevice;
@@ -119,7 +120,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
             PRESENT = CgTrace.waitName("vulkan.present"), FENCE = CgTrace.waitName("vulkan.frameFence"),
             RETIRE = CgTrace.name("vulkan.retire"), RESET = CgTrace.name("vulkan.resetPools");
     private static final String VALIDATION = "VK_LAYER_KHRONOS_validation";
-    private static final boolean SYNC_VALIDATION = Boolean.getBoolean("crystalgraphics.vulkan.syncValidation");
+    private static final boolean SYNC_VALIDATION = CgDevice.SYNC_VALIDATION.get();
 
     private final long window;
     private final VkInstance instance;
@@ -763,9 +764,8 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
         check(vkGetPhysicalDeviceSurfacePresentModesKHR(physical, surface, n, modes), "present modes");
         Set<Integer> offered = new HashSet<>();
         for (int i = 0; i < modes.limit(); i++) offered.add(modes.get(i));
-        // -Dcrystalgraphics.vulkan.presentMode=immediate|mailbox|fifo forces one the surface offers.
-        String forced = System.getProperty("crystalgraphics.vulkan.presentMode");
-        if (forced != null) {
+        String forced = CgDevice.PRESENT_MODE.get();
+        if (!forced.isEmpty()) {
             int m = switch (forced) {
                 case "immediate" -> VK_PRESENT_MODE_IMMEDIATE_KHR;
                 case "mailbox" -> VK_PRESENT_MODE_MAILBOX_KHR;
@@ -904,7 +904,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
      * it off, {@code =graphics} takes the frame's family.
      */
     private int chooseAsyncFamily(MemoryStack stack) {
-        String mode = System.getProperty("crystalgraphics.vulkan.asyncCompute", "");
+        String mode = CgDevice.ASYNC_COMPUTE.get();
         if (mode.equals("false")) return -1;
         IntBuffer n = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(physical, n, null);
@@ -925,7 +925,7 @@ public final class OwnedVulkanHost implements CgVulkanHost, AutoCloseable {
      * {@code -Dcrystalgraphics.vulkan.transfer=false} turns it off.
      */
     private int chooseTransferFamily(MemoryStack stack) {
-        if ("false".equals(System.getProperty("crystalgraphics.vulkan.transfer"))) return -1;
+        if (!CgDevice.TRANSFER.get()) return -1;
         IntBuffer n = stack.mallocInt(1);
         vkGetPhysicalDeviceQueueFamilyProperties(physical, n, null);
         VkQueueFamilyProperties.Buffer families = VkQueueFamilyProperties.malloc(n.get(0), stack);

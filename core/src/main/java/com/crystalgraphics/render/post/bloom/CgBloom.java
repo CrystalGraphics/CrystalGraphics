@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.bloom;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -76,8 +77,10 @@ public final class CgBloom implements CgPostEffect {
     private final CgPassConstants excessConstants = new CgPassConstants();
     private final float[] block = new float[CgPassConstants.FLOATS];
     private Mode mode = Mode.ADDITIVE;
-    /** {@code -Dcrystalgraphics.post.bloom.linear=true} starts it in linear light: the two forms side by side. */
-    private boolean linear = Boolean.getBoolean("crystalgraphics.post.bloom.linear");
+    private static final CgVar.Bool LINEAR = CgVar.bool("crystalgraphics.post.bloom.linear", false, CgVar.DEV,
+            "Bloom starts composited in linear light (the copy form), to compare with the default blend form; L cycles"
+                    + " blend, linear and off in any harness scene with a 3D camera.");
+    private boolean linear = LINEAR.get();
 
     /** How strongly what emits blooms: {@value #INTENSITY} by default, 0 for none. */
     public CgBloom intensity(float intensity) {

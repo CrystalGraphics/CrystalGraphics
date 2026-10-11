@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.shader;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.util.io.CgIO;
 
 import java.util.ArrayDeque;
@@ -39,14 +40,14 @@ import java.util.regex.Pattern;
  * own ancestor include chain.</p>
  *
  * <h3>{@code #line} Directives</h3>
- * <p>When the system property {@code crystalgraphics.shader.devmode} is set,
+ * <p>Under {@code -Dcrystalgraphics.shader.devmode=true},
  * {@code #line} directives are emitted around each include expansion to aid
  * GLSL compiler error messages.</p>
  *
  * <h3>Source Cache</h3>
  * <p>Loaded source text is cached for the process, across instances. The cache
- * is disabled when the {@code crystalgraphics.shader.resourceOverrideDir}
- * property is set (hotswap dev mode). {@link #clearCache()} empties it, which a
+ * is disabled while {@code crystalgraphics.resourceOverrideDirs} names roots
+ * (hotswap dev mode). {@link #clearCache()} empties it, which a
  * resource reload does.</p>
  *
  * <h3>Thread Safety</h3>
@@ -56,8 +57,8 @@ public final class CgShaderPreprocessor {
 
     // ── Constants ──────────────────────────────────────────────────────────────
 
-    private static final boolean DEV_MODE =
-            System.getProperty("crystalgraphics.shader.devmode") != null;
+    private static final boolean DEV_MODE = CgVar.bool("crystalgraphics.shader.devmode", false, CgVar.DEV | CgVar.RESTART,
+            "#line directives around each include in preprocessed shader source, so a compiler's line numbers name the file.").get();
 
     /** Pattern matching: #include "path" or #include <path> */
     private static final Pattern INCLUDE_PATTERN = Pattern.compile(
@@ -91,8 +92,7 @@ public final class CgShaderPreprocessor {
         if (defines != null) {
             this.defines.putAll(defines);
         }
-        this.cachingEnabled =
-                System.getProperty("crystalgraphics.shader.resourceOverrideDir") == null;
+        this.cachingEnabled = !CgIO.OVERRIDE_DIRS.isSet();
     }
 
     public CgShaderPreprocessor(Map<String, String> defines) {

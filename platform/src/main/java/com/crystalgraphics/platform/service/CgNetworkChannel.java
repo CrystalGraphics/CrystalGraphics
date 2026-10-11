@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.platform.CgService;
+import com.crystalgraphics.variable.CgVar;
 
 import java.util.function.BiConsumer;
 
@@ -75,6 +76,10 @@ import java.util.function.BiConsumer;
  * anywhere in {@code core}.</p>
  */
 public interface CgNetworkChannel {
+
+    /** Each host's channel logs its first few frames each way. */
+    CgVar.Bool TRACE = CgVar.bool("crystalgraphics.net.trace", false, CgVar.DEV | CgVar.RESTART,
+            "Log the first few frames each way through the host's network channel (1.7.10 and legacy Forge).");
 
     /**
      * The smallest ceiling any supported platform imposes, and therefore one that is safe everywhere.

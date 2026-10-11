@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.render.post.debug.CgPostDebug;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -117,6 +119,16 @@ public final class CgWorldRenderer {
     private static final int FRAME_ORDER = Integer.MIN_VALUE + 1;
 
     private static final Logger LOGGER = LogManager.getLogger("CgWorldRenderer");
+    // Above INSTANCE: its constructor reads them.
+    private static final CgVar.Bool MERGE_EMISSION = CgVar.bool("crystalgraphics.world.mergeEmission", true, CgVar.DEV,
+            "What a new world renderer starts with: a transparent draw's codeless Emissive pass written by its Forward draw"
+                    + " beside the target; false draws every Emissive pass on its own (mergeEmission(boolean) live).");
+    private static final CgVar.Bool HALF_RESOLUTION = CgVar.bool("crystalgraphics.world.halfResolution", true, CgVar.DEV,
+            "What a new world renderer starts with: draws marked halfResolution() at half size; false at full size, in the"
+                    + " transparent pass (H in the harness, halfResolution(boolean) live).");
+    private static final CgVar.Text HDR_SCENE = CgVar.text("crystalgraphics.world.hdrScene", "", CgVar.DEV,
+            "true or false forces the HDR scene for the run over the player's HDR setting, unsaved; empty follows the"
+                    + " setting (G in the harness, hdrScene(boolean) live).");
     private static final CgWorldRenderer INSTANCE = new CgWorldRenderer();
 
     private static final CgRenderState OPAQUE_STATE = CgRenderState.builder()
@@ -245,12 +257,13 @@ public final class CgWorldRenderer {
     /** 0 until set: the tier's share then. */
     private float emissionScale;
     private CgGraphTexture emissionTarget, subjectTarget;
+
     /** An impact frame's subject drawn at the opaque stage ({@link #recordOwnedSubject}), and the ring frame it holds. */
     private CgGraphTexture ownedSubject;
     private long ownedSubjectFrame = -1;
     private final CgPassConstants emissionConstants = new CgPassConstants();
     /** Whether the transparent passes write glows beside the target ({@link #mergeEmission(boolean)}). */
-    private boolean mergeEmission = !"false".equals(System.getProperty("crystalgraphics.world.mergeEmission"));
+    private boolean mergeEmission = MERGE_EMISSION.get();
     /** The target-sized emission those passes write into, and per draw whether its glows were drawn there. */
     private CgGraphTexture emissionFull;
     private boolean[] merged = new boolean[64];
@@ -259,7 +272,7 @@ public final class CgWorldRenderer {
     private final float[] constantsBlock = new float[CgPassConstants.FLOATS];
 
     // Half resolution: the target half-size draws go into, its constants, and what adds it over the stage's target.
-    private boolean halfResolution = !"false".equals(System.getProperty("crystalgraphics.world.halfResolution"));
+    private boolean halfResolution = HALF_RESOLUTION.get();
     private CgGraphTexture halfTarget;
     private final CgPassConstants halfConstants = new CgPassConstants();
     private CgMaterial upsample;
@@ -272,7 +285,7 @@ public final class CgWorldRenderer {
     private boolean[] distorts = new boolean[64];
 
     // The overdraw view: the transparent draws counted again into this target.
-    private boolean overdraw = "overdraw".equals(System.getProperty("crystalgraphics.post.debug"));
+    private boolean overdraw = "overdraw".equals(CgPostDebug.VIEW.get());
     private CgGraphTexture overdrawTarget;
     /** Pixels per overdraw count, the last bin everything from it up: {@link #summariseOverdraw}'s. */
     private final int[] overdrawCounts = new int[256];
@@ -284,8 +297,7 @@ public final class CgWorldRenderer {
 
     // The HDR scene: what WORLD_TRANSPARENT draws into in place of the host's colour, while on. Null follows the setting.
     @Nullable
-    private volatile Boolean hdrSceneForced = System.getProperty("crystalgraphics.world.hdrScene") == null ? null
-            : Boolean.getBoolean("crystalgraphics.world.hdrScene");
+    private volatile Boolean hdrSceneForced = HDR_SCENE.get().isEmpty() ? null : Boolean.valueOf(HDR_SCENE.get());
     private final CgSceneTarget sceneTarget = new CgSceneTarget();
 
     private boolean installed;

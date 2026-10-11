@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
@@ -696,8 +697,9 @@ public final class CgMaterial {
      * {@code -Dcrystalgraphics.shader.parallelCompile=false} makes {@link #prepare} answer ready at once, so the
      * first bind compiles on the spot: the escape hatch for a driver that misreports completion.
      */
-    private static final boolean PARALLEL_COMPILE =
-            !"false".equals(System.getProperty("crystalgraphics.shader.parallelCompile"));
+    private static final boolean PARALLEL_COMPILE = CgVar.bool("crystalgraphics.shader.parallelCompile", true,
+            CgVar.DEV | CgVar.RESTART, "Materials compile ahead of their first bind where the driver links on its own"
+                    + " threads; false compiles at the first bind: for a driver that misreports completion.").get();
 
     /**
      * Starts this material's compile without waiting for it, and says whether {@link #bind} would now return

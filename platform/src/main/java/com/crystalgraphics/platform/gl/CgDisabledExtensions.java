@@ -1,5 +1,7 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.variable.CgVar;
+
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -24,7 +26,11 @@ import java.util.Set;
  */
 public final class CgDisabledExtensions {
 
-    private static final Set<String> NAMES = parse(System.getProperty("crystalgraphics.gl.disableExtensions"));
+    public static final CgVar.Text DISABLED = CgVar.text("crystalgraphics.gl.disableExtensions", "", CgVar.DEV | CgVar.RESTART,
+            "Extensions treated as absent, by name, separated by commas or spaces: a driver whose implementation misbehaves,"
+                    + " and the harness's downlevel contexts. A feature core in the context's version stays; force a tier for that.");
+
+    private static final Set<String> NAMES = parse(DISABLED.get());
 
     private CgDisabledExtensions() {}
 
@@ -44,7 +50,7 @@ public final class CgDisabledExtensions {
     }
 
     private static Set<String> parse(String property) {
-        if (property == null || property.isBlank()) return Set.of();
+        if (property.isBlank()) return Set.of();
         Set<String> names = new LinkedHashSet<>();
         for (String name : property.split("[,\\s]+")) if (!name.isEmpty()) names.add(name);
         return Collections.unmodifiableSet(names);

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
@@ -46,8 +47,9 @@ public final class CgWorldText {
 
     /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
     private static final float CENTRE = 0.5f;
-    /** Off draws every label every frame, as any text: the comparison for the retained path. */
-    private static final boolean RETAINED = !"false".equals(System.getProperty("crystalgraphics.text.retainedLabels"));
+    private static final boolean RETAINED = CgVar.bool("crystalgraphics.text.retainedLabels", true, CgVar.DEV | CgVar.RESTART,
+            "World labels captured once and kept on the GPU; false draws every label every frame as any text: the"
+                    + " comparison for the retained path.").get();
 
     private static final int RECORD = CgQuadRenderer.Record.FLOATS;
     private static final int NODE = CgQuadRenderer.Record.NODE;

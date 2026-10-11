@@ -1,5 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
+import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,7 +16,10 @@ import java.util.Map;
  */
 final class CgGLAudit {
 
-    static final boolean ON = Boolean.getBoolean("crystalgraphics.gl.threadCheck");
+    private static final CgVar.Bool THREAD_CHECK = CgVar.bool("crystalgraphics.gl.threadCheck", false, CgVar.DEV | CgVar.RESTART,
+            "Log each CgGL call site inside a GL-free section (a UI paint recording) or off the context's thread, once,"
+                    + " with its stack; every site and its count to stderr at exit.");
+    static final boolean ON = THREAD_CHECK.get();
     /** Frames outside {@code platform.gl} that make a site: enough to tell callers apart, few enough to merge. */
     private static final int SITE_DEPTH = 4;
     private static final int LOGGED_DEPTH = 14;

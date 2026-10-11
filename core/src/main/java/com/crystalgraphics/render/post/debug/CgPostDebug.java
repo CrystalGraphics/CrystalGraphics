@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.debug;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -44,10 +45,16 @@ public final class CgPostDebug implements CgPostEffect {
         this.level = level;
     }
 
-    /** The view {@code -Dcrystalgraphics.post.debug} asks for; null when it is unset. Throws on a value it cannot read. */
+    /** What the frame shows for debugging; empty for nothing. */
+    public static final CgVar.Text VIEW = CgVar.text("crystalgraphics.post.debug", "", CgVar.DEV,
+            "emission: the emission target over the frame. level<N>: a level of bloom's chain, 0 the glow the composite"
+                    + " reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32)."
+                    + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue.");
+
+    /** The view {@link #VIEW} asks for; null when it is unset. Throws on a value it cannot read. */
     public static CgPostDebug fromProperty() {
-        String view = System.getProperty("crystalgraphics.post.debug");
-        if (view == null || view.isEmpty()) return null;
+        String view = VIEW.get();
+        if (view.isEmpty()) return null;
         if (view.equals("emission")) return new CgPostDebug(EMISSION);
         if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
         if (view.equals("distortion")) return new CgPostDebug(DISTORTION);

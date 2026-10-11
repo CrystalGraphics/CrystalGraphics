@@ -1,5 +1,6 @@
 package com.crystalgraphics.lwjgl3;
 
+import com.crystalgraphics.platform.gl.CgGLBackend;
 import org.lwjgl.opengl.GL;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL43;
@@ -27,8 +28,8 @@ import java.util.Map;
  */
 final class GlDebugStacks {
 
-    private static final int LIMIT = Integer.getInteger("crystalgraphics.gl.debugStacks.limit", 5);
-    private static final boolean PERF = Boolean.getBoolean("crystalgraphics.gl.debugPerf");
+    private static final int LIMIT = CgGLBackend.DEBUG_STACKS_LIMIT.get();
+    private static final boolean PERF = CgGLBackend.DEBUG_PERF.get();
 
     /** Held: the driver keeps only a native pointer, and a collected callback crashes the next error. */
     private static GLDebugMessageCallback callback;
@@ -40,7 +41,7 @@ final class GlDebugStacks {
     }
 
     static void installIfAsked() {
-        if ((!Boolean.getBoolean("crystalgraphics.gl.debugStacks") && !PERF) || callback != null) return;
+        if ((!CgGLBackend.DEBUG_STACKS.get() && !PERF) || callback != null) return;
         GLCapabilities caps = GL.getCapabilities();
         if (!caps.OpenGL43 && !caps.GL_KHR_debug) {
             System.err.println("[crystalgraphics] gl.debugStacks: this context has no debug output");

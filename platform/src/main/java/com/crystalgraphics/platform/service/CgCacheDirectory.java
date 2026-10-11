@@ -1,6 +1,7 @@
 package com.crystalgraphics.platform.service;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,15 +29,19 @@ import java.nio.file.Paths;
  */
 public final class CgCacheDirectory {
 
+    public static final CgVar.Bool ENABLED = CgVar.bool("crystalgraphics.cache", true, CgVar.DEV,
+            "Keep what can be rebuilt across launches; false rebuilds SPIR-V and the Vulkan pipeline cache each launch.");
+    public static final CgVar.Text DIR = CgVar.text("crystalgraphics.cache.dir", "", CgVar.DEV,
+            "The cache root, a folder per kind (spirv, vulkan); empty for <game directory>/crystalgraphics/cache.");
+
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
 
     private CgCacheDirectory() {}
 
     /** {@code name}'s folder under the cache root, made if missing; null where caching is off or it cannot be made. */
     public static Path of(String name) {
-        if (!Boolean.parseBoolean(System.getProperty("crystalgraphics.cache", "true"))) return null;
-        String configured = System.getProperty("crystalgraphics.cache.dir");
-        Path root = configured != null ? Paths.get(configured)
+        if (!ENABLED.get()) return null;
+        Path root = DIR.isSet() ? Paths.get(DIR.get())
                 : CgPlatform.get(CgGameDirectory.SERVICE).get().resolve("crystalgraphics").resolve("cache");
         Path dir = root.resolve(name);
         try {

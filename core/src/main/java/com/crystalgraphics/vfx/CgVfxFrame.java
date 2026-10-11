@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -55,7 +56,9 @@ public final class CgVfxFrame {
      * each material's slots blend as one run over the others' rather than effect by effect. False draws a slot a draw,
      * per effect, as the CPU path.
      */
-    private static final boolean MERGED = !"false".equals(System.getProperty("crystalgraphics.vfx.mergeParticles"));
+    private static final CgVar.Bool MERGED = CgVar.bool("crystalgraphics.vfx.mergeParticles", true, CgVar.DEV,
+            "GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the"
+                    + " comparison for overlaps.");
     private final CgVfxSystem system;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
@@ -318,7 +321,7 @@ public final class CgVfxFrame {
                 continue;
             }
             reach = Math.max(reach, Math.max(layer.radius(), 1f) * 4f);
-            if (MERGED) {
+            if (MERGED.get()) {
                 SlotSet set = set(pool, layer, renderer);
                 set.capacity = Math.max(set.capacity, capacity);
                 int f = set.add(effect.originX + cx, effect.originY + cy, effect.originZ + cz, range.visibleWord(slot) * 4L);
