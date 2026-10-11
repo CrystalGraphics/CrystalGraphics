@@ -74,6 +74,14 @@ import java.util.List;
  *       muzzle: the beam, the impact and the blast stay where they are in the world.</li>
  *   <li>Every sample of the body homes on the target, turning at most {@link #TURN_RATE}, so the body curves smoothly
  *       into it, and a wave runs down it when the aim moves.</li>
+ *   <li>A beam a player aims is {@link #STEER steered} instead: it leaves the hands along the aim and bends into an
+ *       end that chases the target, so a flick bows it and it straightens as the end catches up. Aim and target each
+ *       tick, at where the camera looks:
+ *       <pre>{@code
+ * wave = owner.play(new CgEnergyWave(look, x, y, z).follow(playerId, CgEntityAttachments.HANDS_FORWARD));
+ * wave.set(CgEnergyWave.STEER, 3f);                       // or on the look
+ * wave.aim(look.x, look.y, look.z).target(hit.x, hit.y, hit.z);   // each tick
+ *       }</pre></li>
  *   <li>A {@link #CHARGE_TIME} of 0 fires at once, unless it {@link #hold() holds}.</li>
  *   <li>It shakes the camera through five shakes a look may change ({@link #CHARGE_SHAKE} to {@link #BLAST_SHAKE}):
  *       a tremor growing over the charge, a recoil at the release, a hum while it fires, a rumble while it hits, and
@@ -150,6 +158,12 @@ public final class CgEnergyWave extends CgVfxEffect {
     public static final CgVfxParam TURN_RATE = SCHEMA.scalar("turnRate", 4f);
     /** How hard the body homes: 3 curves smoothly into the target, more bends harder early and runs straighter after. */
     public static final CgVfxParam NAVIGATION = SCHEMA.scalar("navigation", 3f);
+    /**
+     * 0 flies the body as a homing stream ({@link #TURN_RATE}, {@link #NAVIGATION}, a waypoint). Above 0 it is steered,
+     * for a beam a player aims: a curve leaving the muzzle along the aim into an end that chases the target, turning
+     * at most this many radians a second about the muzzle.
+     */
+    public static final CgVfxParam STEER = SCHEMA.scalar("steer", 0f);
     /** Seconds the body takes to swell from thin to its full radius after the release. */
     public static final CgVfxParam LAUNCH = SCHEMA.scalar("launch", 0.6f);
     /** The head's half-width, as a multiple of the body's radius. */
@@ -585,7 +599,9 @@ public final class CgEnergyWave extends CgVfxEffect {
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, STREAM_ZONE)) {
             long t = CgVfxTrace.start();
             if (state() == State.PLAYING && age >= releaseAge) stream.emit(muzzleX, muzzleY, muzzleZ, aimX, aimY, aimZ, get(SPEED));
-            stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
+            float steer = get(STEER);
+            if (steer > 0f) stream.steer(dt, muzzleX, muzzleY, muzzleZ, aimX, aimY, aimZ, steer, get(MAX_LENGTH));
+            else stream.tick(dt, get(TURN_RATE), get(NAVIGATION), get(MAX_LENGTH));
             CgVfxTrace.lap(STREAM_NS, t);
         }
         if (Float.isNaN(impactAge) && stream.impacting()) impactAge = age;

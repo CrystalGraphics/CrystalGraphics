@@ -53,6 +53,34 @@ public class CgVfxStreamTest {
         }
     }
 
+    /**
+     * A player's beam: fired straight, then flicked 90 degrees. The body leaves along the new aim at once, bows without
+     * kinking while its end catches up, and the head never parts from the end.
+     */
+    @Test
+    public void steeredFlickBowsAndStaysJoined() {
+        CgVfxStream stream = new CgVfxStream();
+        float distance = 50f;
+        Bends bends = new Bends();
+        float[] points = new float[4096 * 3];
+        for (int t = 0; t < 120 * 6; t++) {
+            float seconds = t * TICK;
+            boolean turned = seconds >= 3f;
+            float ax = turned ? 0f : 1f, az = turned ? -1f : 0f;
+            stream.target(ax * distance, 0f, az * distance);
+            stream.emit(0f, 0f, 0f, ax, 0f, az, 40f);
+            stream.steer(TICK, 0f, 0f, 0f, ax, 0f, az, 3f, MAX_LENGTH);
+            if (seconds >= 2f) bends.measure(stream, seconds);
+            if (t == 120 * 3) {
+                stream.points(points, 0f, 0f, 0f, 0f, true);
+                float dx = points[3], dz = points[5], length = (float) Math.sqrt(dx * dx + dz * dz);
+                assertTrue("leaves along the new aim: " + dx / length + ", " + dz / length, -dz / length > 0.99f);
+            }
+        }
+        bends.check();
+        assertTrue("lands on the new target", Math.abs(stream.impactZ() + distance) < 0.5f && Math.abs(stream.impactX()) < 0.5f);
+    }
+
     /** The sharpest bend between neighbouring rings, and how often the head is at the target. */
     private static final class Bends {
         private final CgVfxPath path = new CgVfxPath();
