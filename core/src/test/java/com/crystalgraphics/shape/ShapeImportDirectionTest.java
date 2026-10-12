@@ -16,8 +16,9 @@ import java.util.stream.Stream;
 import static org.junit.Assert.assertTrue;
 
 /**
- * The shape layer sits under rendering and VFX: {@code shape} names nothing else of CrystalGraphics, and
- * {@code collision} names no renderer, GL or VFX type, so a dedicated server and any consumer can take them alone.
+ * The shape layer sits under rendering and VFX: {@code shape} names nothing else of CrystalGraphics but the platform
+ * SPI (its host-shape conversions), and {@code collision} names no renderer, GL or VFX type, so a dedicated server and
+ * any consumer can take them alone.
  */
 public class ShapeImportDirectionTest {
 
@@ -26,8 +27,12 @@ public class ShapeImportDirectionTest {
 
     @Test
     public void shapeImportsNothingElseOfTheEngine() throws IOException {
-        List<String> bad = scan("shape", "com.crystalgraphics.shape.");
-        assertTrue("shape must stay pure math over JOML:\n  " + String.join("\n  ", bad), bad.isEmpty());
+        List<String> bad = new ArrayList<>();
+        for (String hit : scan("shape", "com.crystalgraphics.shape.")) {
+            if (!hit.contains(": com.crystalgraphics.platform.")) bad.add(hit);
+        }
+        assertTrue("shape must stay math over JOML and the platform SPI:\n  " + String.join("\n  ", bad),
+                bad.isEmpty());
     }
 
     @Test

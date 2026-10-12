@@ -1,8 +1,16 @@
 package com.crystalgraphics.shape;
 
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgHostShapes;
 import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.primitive.CgBox;
+import com.crystalgraphics.shape.primitive.CgCompound;
 import com.crystalgraphics.shape.primitive.CgConvex;
 import org.joml.Vector3d;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * A region of space defined about its own origin, placed by a {@link CgPose} where it is used: what a world query, a
@@ -19,6 +27,13 @@ import org.joml.Vector3d;
  * Every shape answers its {@link #support support point}, which is what an exact test between any two of them is built
  * from. A mod's own convex shape is easiest as a {@link CgConvex} over its support function.
  *
+ * A Minecraft block shape on any version, placed at the block's corner:
+ *
+ * <pre>{@code
+ * CgShape stair = CgShape.of(state.getCollisionShape(level, pos));      // null for air, flowers, open gates
+ * if (stair != null && CgShapes.overlaps(BLAST, blastPose, stair, pose.at(pos.getX(), pos.getY(), pos.getZ()))) ...
+ * }</pre>
+ *
  * <ul>
  *   <li>A shape that is not {@link #isConvex() convex} (a shell, a ring, a cone wider than 90 degrees, a compound)
  *       answers the support of its convex hull; tests against it are its own, not the hull's.</li>
@@ -26,6 +41,44 @@ import org.joml.Vector3d;
  * </ul>
  */
 public abstract class CgShape {
+
+    /** Conversions of host shapes that never change, so Minecraft's shared block shapes convert once each. */
+    private static final Map<Object, Object> HOST_SHAPES = Collections.synchronizedMap(new WeakHashMap<>());
+    /** An empty host shape's entry. */
+    private static final Object NOTHING = new Object();
+    private static CgHostShapes host = CgHostShapes.NONE;
+
+    /**
+     * A host block shape (modern's {@code VoxelShape}), host box, or {@code List} of host boxes, as a compound of boxes
+     * in the block's own space, 0 to 1; null when it has no boxes. A block's shared shape converts once.
+     *
+     * @throws IllegalArgumentException for an object the host does not know, and anywhere with no host
+     */
+    public static CgShape of(Object hostShape) {
+        CgHostShapes h = host;
+        if (h == CgHostShapes.NONE) host = h = CgPlatform.get(CgHostShapes.SERVICE);
+        boolean keep = h.immutable(hostShape);
+        Object known = keep ? HOST_SHAPES.get(hostShape) : null;
+        if (known != null) return known == NOTHING ? null : (CgShape) known;
+        double[] boxes = new double[6 * 8];
+        int n = h.boxes(hostShape, boxes);
+        if (n * 6 > boxes.length) {
+            boxes = new double[n * 6];
+            h.boxes(hostShape, boxes);
+        }
+        CgShape shape = null;
+        if (n > 0) {
+            CgCompound.Builder b = CgCompound.builder();
+            for (int i = 0; i < n * 6; i += 6) {
+                b.add(CgBox.of((boxes[i + 3] - boxes[i]) / 2, (boxes[i + 4] - boxes[i + 1]) / 2,
+                        (boxes[i + 5] - boxes[i + 2]) / 2), (boxes[i] + boxes[i + 3]) / 2,
+                        (boxes[i + 1] + boxes[i + 4]) / 2, (boxes[i + 2] + boxes[i + 5]) / 2);
+            }
+            shape = b.build();
+        }
+        if (keep) HOST_SHAPES.put(hostShape, shape == null ? NOTHING : shape);
+        return shape;
+    }
 
     /** A subclass is tested through its support, so it must be convex, or say it is not: a test treats it as its hull. */
     protected CgShape() {

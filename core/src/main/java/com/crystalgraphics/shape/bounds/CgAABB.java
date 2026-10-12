@@ -1,5 +1,9 @@
 package com.crystalgraphics.shape.bounds;
 
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgBoxSink;
+import com.crystalgraphics.platform.service.CgHostShapes;
+
 /**
  * An axis-aligned box, mutable and reused: the one bounds type for drawing, shapes and world queries. Hand out
  * {@link CgAABBc} where nobody should change it.
@@ -18,12 +22,26 @@ package com.crystalgraphics.shape.bounds;
  * for (int i = 0; i < n; i++) box.union(xs[i], ys[i], zs[i]);
  * }</pre>
  *
+ * Minecraft's boxes in and out, on any version (an {@code AABB}, an {@code AxisAlignedBB}, or an entity for its box):
+ *
+ * <pre>{@code
+ * box.set(entity.getBoundingBox());                               // into a held box: allocates nothing
+ * box.set(entity);                                                // an entity's box as it is now
+ * CgAABB copy = CgAABB.of(entity.getBoundingBox());               // a new one, for setup
+ * AABB mc = box.toHost();                                         // back, for Minecraft's own calls
+ * }</pre>
+ *
  * <ul>
  *   <li>{@code new CgAABB()} is empty, not a point at the origin: a union over nothing stays empty.</li>
  *   <li>Every setter returns this box, and none checks that min is below max: an inverted box is simply empty.</li>
+ *   <li>The host conversions throw {@link IllegalArgumentException} for an object the host does not know, and
+ *       everywhere in the harness and tests, which have no host.</li>
  * </ul>
  */
-public final class CgAABB implements CgAABBc {
+public final class CgAABB implements CgAABBc, CgBoxSink {
+
+    /** Resolved once a host provides it; read again only while absent, so a host registering late is seen. */
+    private static CgHostShapes host = CgHostShapes.NONE;
 
     public double minX, minY, minZ, maxX, maxY, maxZ;
 
@@ -49,6 +67,30 @@ public final class CgAABB implements CgAABBc {
         return new CgAABB().setCenterHalf(cx, cy, cz, hx, hy, hz);
     }
 
+    /** A host box, or an entity's box as it is now, as a new box. Per-frame code holds one and {@link #set(Object)}s it. */
+    public static CgAABB of(Object hostBoxOrEntity) {
+        return new CgAABB().set(hostBoxOrEntity);
+    }
+
+    /** A host box, or an entity's box as it is now; allocates nothing. */
+    public CgAABB set(Object hostBoxOrEntity) {
+        host().box(hostBoxOrEntity, this);
+        return this;
+    }
+
+    /** This box as a new host box: {@code AABB mc = box.toHost();} fails at the assignment for the wrong type. */
+    @SuppressWarnings("unchecked")
+    public <T> T toHost() {
+        return (T) host().toHost(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private static CgHostShapes host() {
+        CgHostShapes h = host;
+        if (h == CgHostShapes.NONE) host = h = CgPlatform.get(CgHostShapes.SERVICE);
+        return h;
+    }
+
+    @Override
     public CgAABB set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
         this.minX = minX;
         this.minY = minY;
