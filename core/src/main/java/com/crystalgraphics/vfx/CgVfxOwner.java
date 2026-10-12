@@ -1,7 +1,10 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.net.CgVfxCue;
+import com.crystalgraphics.vfx.net.CgVfxParams;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -180,6 +183,54 @@ public final class CgVfxOwner {
                                         CgVfxRegistry.Factory factory) {
         if (path.indexOf(':') >= 0) throw new IllegalArgumentException("a path, not an id: '" + path + "'");
         return CgVfxRegistry.register(namespace + ":" + path, name, category, look, factory);
+    }
+
+    /**
+     * Declares a cue as {@code namespace:path}, carrying {@link CgVfxParams}, and what it plays: what the server sends and
+     * the clients build. On both sides, at init, as a constant.
+     *
+     * <pre>{@code
+     * public static final CgVfxCue<CgVfxParams> EXPLOSION = VFX.cue("explosion", Blast.LOOK,
+     *         (look, cue) -> new Blast(look, cue.x(), cue.y(), cue.z()));
+     * EXPLOSION.at(level, x, y, z).params(CgVfxParams.of().set("radius", 6f)).send();   // server
+     *
+     * // the server runs it too, deciding what it strikes: one factory for both sides
+     * public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
+     *         CgEnergyWave::fromCue).range(96).authoritative();
+     * }</pre>
+     *
+     * A cue's parameters reach the effect's look parameters of the same name without the factory reading them.
+     */
+    public CgVfxCue<CgVfxParams> cue(String path, CgVfxLook look, CgVfxRegistry.CueFactory<CgVfxParams> factory) {
+        CgVfxCue<CgVfxParams> cue = cue(path);
+        CgVfxRegistry.register(cue, look, factory);
+        return cue;
+    }
+
+    /**
+     * Declares a cue alone, for {@link #register(CgVfxCue, CgVfxLook, CgVfxRegistry.CueFactory)} to say on the client
+     * what it plays: where what it plays names client-only classes.
+     */
+    public CgVfxCue<CgVfxParams> cue(String path) {
+        return cue(path, CgVfxParams.CODEC);
+    }
+
+    /** A cue carrying parameters of a type of its own, written by {@code codec}. */
+    public <P> CgVfxCue<P> cue(String path, CgCodec<P> codec) {
+        if (path.indexOf(':') >= 0) throw new IllegalArgumentException("a path, not an id: '" + path + "'");
+        return CgVfxCue.declare(namespace + ":" + path, codec);
+    }
+
+    /**
+     * What {@code cue}, declared alone, plays on this client. At client init.
+     *
+     * <pre>{@code
+     * public static final CgVfxCue<CgVfxParams> EXPLOSION = VFX.cue("explosion");                 // common
+     * VFX.register(EXPLOSION, Blast.LOOK, (look, cue) -> new Blast(look, cue.x(), cue.y(), cue.z()));   // client
+     * }</pre>
+     */
+    public <P> CgVfxRegistry.Entry register(CgVfxCue<P> cue, CgVfxLook look, CgVfxRegistry.CueFactory<P> factory) {
+        return CgVfxRegistry.register(cue, look, factory);
     }
 
     /** {@code id} as a full id: a bare path is this namespace's. */

@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
@@ -10,10 +11,16 @@ import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+import com.crystalgraphics.world.CgWorldQueries;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 /**
  * An effect playing in a world: placed at an origin in doubles, simulated in floats relative to it on the
@@ -49,16 +56,26 @@ public abstract class CgVfxEffect {
 
     public enum State { PLAYING, STOPPING, DEAD }
 
+    private static final Logger LOGGER = LogManager.getLogger("CgVfx");
+    private static final CgVar.Bool TRACE_AUTHORITY = CgVar.bool("crystalgraphics.vfx.traceAuthority", false, CgVar.DEV,
+            "Logs each raycast an effect makes on a server: from where, along what, what it met, and every entity its"
+                    + " level lists along the first 32 blocks.");
+
     /** Where it is: fixed, or moved each frame by {@link #follow}. An effect reads it and never writes it. */
     protected double originX, originY, originZ;
     /** The system playing it, set by {@link CgVfxSystem#play}. */
     CgVfxSystem system;
     /** Who played it, or null for a system played into directly. */
     CgVfxOwner owner;
+    /** What runs it on a server, or null on a client: {@link #authoritative}. */
+    CgVfxAuthority authority;
     /** Its index in its owner's list; -1 out of it. */
     int ownerSlot = -1;
     /** The entity it follows and the attachment point on it ({@code CgEntityAttachments}); -1 for none. */
     int followEntity = -1, followPoint;
+    /** Keeps its offset from the point ({@link #followKeepingOffset}): NaN until its first placement measures it. */
+    boolean followKeep;
+    double followDx = Double.NaN, followDy, followDz;
     /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
     float startAge;
     /** Fast-forwarding to its start age: shakes and moments are not played. */
@@ -110,6 +127,8 @@ public abstract class CgVfxEffect {
      */
     protected final int subject = SUBJECTS.incrementAndGet() & Integer.MAX_VALUE | 1;
     private static final AtomicInteger SUBJECTS = new AtomicInteger();
+    /** The seed {@link #seeded} hands the effect its supplier constructs; NaN for a random one. */
+    private static final ThreadLocal<float[]> PENDING_SEED = ThreadLocal.withInitial(() -> new float[]{Float.NaN});
 
     protected CgVfxEffect(CgVfxLook look, double x, double y, double z) {
         this.look = look;
@@ -117,7 +136,34 @@ public abstract class CgVfxEffect {
         this.originX = x;
         this.originY = y;
         this.originZ = z;
-        this.seed = (float) Math.random();
+        float[] pending = PENDING_SEED.get();
+        this.seed = Float.isNaN(pending[0]) ? (float) Math.random() : pending[0];
+        pending[0] = Float.NaN;
+    }
+
+    /**
+     * The effect {@code make} constructs, given {@code seed} (0..1) rather than a random one, so every client playing one
+     * cue draws the same effect.
+     *
+     * <pre>{@code
+     * CgVfxEffect effect = CgVfxEffect.seeded(0.37f, () -> new HitSpark(HitSpark.LOOK, x, y, z));
+     * }</pre>
+     *
+     * Only the first effect {@code make} constructs takes it; one it constructs inside that is random.
+     */
+    public static <E extends CgVfxEffect> E seeded(float seed, Supplier<E> make) {
+        float[] pending = PENDING_SEED.get();
+        pending[0] = seed;
+        try {
+            return make.get();
+        } finally {
+            pending[0] = Float.NaN;
+        }
+    }
+
+    /** Its stable random number, 0..1. */
+    public final float seed() {
+        return seed;
     }
 
     protected abstract void tick(float dt);
@@ -150,7 +196,37 @@ public abstract class CgVfxEffect {
     public final CgVfxEffect follow(int entity, int point) {
         followEntity = entity;
         followPoint = point;
+        followKeep = false;
         return this;
+    }
+
+    /**
+     * As {@link #follow(int, int)}, but it stays where it was played relative to the point rather than jumping to it: the
+     * offset is taken at its first placement and kept, in world axes. A hit spark at the contact riding the body.
+     *
+     * <pre>{@code
+     * owner.play(new HitSpark(look, contactX, contactY, contactZ).followKeepingOffset(targetId, CgEntityAttachments.CHEST));
+     * }</pre>
+     */
+    public final CgVfxEffect followKeepingOffset(int entity, int point) {
+        follow(entity, point);
+        followKeep = true;
+        followDx = Double.NaN;
+        return this;
+    }
+
+    /** Places it at the point it follows, now at {@code (px, py, pz)}, or at its kept offset from it. */
+    final void moveToFollowed(double px, double py, double pz) {
+        if (!followKeep) {
+            moveTo(px, py, pz);
+            return;
+        }
+        if (Double.isNaN(followDx)) {
+            followDx = originX - px;
+            followDy = originY - py;
+            followDz = originZ - pz;
+        }
+        moveTo(px + followDx, py + followDy, pz + followDz);
     }
 
     /** As {@link #follow(int, int)}, at the entity's feet. */
@@ -184,6 +260,60 @@ public abstract class CgVfxEffect {
         if (age > 0f) throw new IllegalStateException("startAt after its first tick: it has started");
         startAge = Math.max(0f, seconds);
         return this;
+    }
+
+    /**
+     * Whether it runs on a server ({@link CgVfxAuthority}): there it decides what gameplay hears, where it goes and what
+     * it strikes, while each client draws it. Its shakes, post volumes, particles and moments do nothing there, and its
+     * collisions reach only its own listeners. Guard what else is the client's:
+     *
+     * <pre>{@code
+     * if (!authoritative()) blastGround.fill(CgVfxGround.FILL_PER_TICK);   // reads the client's world
+     * }</pre>
+     */
+    public final boolean authoritative() {
+        return authority != null;
+    }
+
+    /**
+     * {@link CgWorldQueries#raycastAll}: the first block or entity a ray of {@code radius} meets within {@code reach},
+     * passing through {@code ignore}. Against its server's level when {@link #authoritative}, else the client's world.
+     */
+    protected final boolean raycastAll(double x, double y, double z, double dx, double dy, double dz, double reach,
+                                       double radius, int ignore, CgWorldQueries.Hit out) {
+        if (authority != null) {
+            boolean met = CgWorldQueries.raycastAll(authority.world, authority.entities, x, y, z, dx, dy, dz, reach, radius,
+                    ignore, out);
+            if (TRACE_AUTHORITY.get()) traceRay(x, y, z, dx, dy, dz, reach, radius, ignore, met, out);
+            return met;
+        }
+        return CgWorldQueries.raycastAll(x, y, z, dx, dy, dz, reach, radius, ignore, out);
+    }
+
+    private void traceRay(double x, double y, double z, double dx, double dy, double dz, double reach, double radius,
+                          int ignore, boolean met, CgWorldQueries.Hit out) {
+        double length = Math.sqrt(dx * dx + dy * dy + dz * dz), span = Math.min(reach, 32.0);
+        double ex = x + dx / length * span, ey = y + dy / length * span, ez = z + dz / length * span;
+        CgEntityQuery entities = authority.entities;
+        double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+        StringBuilder listed = new StringBuilder();
+        entities.within(Math.min(x, ex) - radius, Math.min(y, ey) - radius, Math.min(z, ez) - radius,
+                Math.max(x, ex) + radius, Math.max(y, ey) + radius, Math.max(z, ez) + radius, id -> {
+                    listed.append(" [").append(id).append(" kind ").append(entities.kind(id)).append(" flags 0x")
+                            .append(Integer.toHexString(entities.flags(id)));
+                    if (entities.pose(id, 1f, pose)) {
+                        listed.append(String.format(" at %.2f %.2f %.2f w %.2f h %.2f", pose[CgEntityQuery.X],
+                                pose[CgEntityQuery.Y], pose[CgEntityQuery.Z], pose[CgEntityQuery.WIDTH],
+                                pose[CgEntityQuery.HEIGHT]));
+                    }
+                    listed.append(']');
+                });
+        String result = !met ? "nothing" : (out.entity >= 0 ? "entity " + out.entity : "a block")
+                + String.format(" at %.2f %.2f %.2f", out.x, out.y, out.z);
+        LOGGER.info(String.format("[CgVfx] %s on the server, age %.3f: from %.2f %.2f %.2f along %.3f %.3f %.3f, reach %.1f,"
+                        + " radius %.2f, ignoring %d: met %s; world %s, entities %s; listed:%s", getClass().getSimpleName(),
+                age, x, y, z, dx, dy, dz, reach, radius, ignore, result, authority.world.getClass().getSimpleName(),
+                entities.getClass().getSimpleName(), listed.length() == 0 ? " none" : listed));
     }
 
     /** Who played it; null when played into a system directly. */
@@ -275,7 +405,9 @@ public abstract class CgVfxEffect {
      * }</pre>
      */
     protected final CgPostVolume openVolume(int priority, CgPostSettings settings, float x, float y, float z) {
-        CgPostVolume volume = CgPostStack.get().volume(priority, settings).at(originX + x, originY + y, originZ + z).weight(0f);
+        // On a server, one no stack applies: the effect weighs it as on a client.
+        CgPostVolume volume = (authority != null ? new CgPostVolume(priority, settings, v -> { })
+                : CgPostStack.get().volume(priority, settings)).at(originX + x, originY + y, originZ + z).weight(0f);
         volumes = volumes == null ? new CgPostVolume[1] : Arrays.copyOf(volumes, volumes.length + 1);
         volumes[volumes.length - 1] = volume;
         return volume;
@@ -332,12 +464,12 @@ public abstract class CgVfxEffect {
 
     /** Plays the shake {@code param} at a point relative to its origin, its radii in units of {@code scale} blocks. */
     protected final void playShake(CgVfxParam param, float x, float y, float z, float scale) {
-        if (!seeking) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
+        if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
     }
 
     /** As {@link #playShake(CgVfxParam, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
     protected final void playShake(CgVfxParam param, float x, float y, float z, float dx, float dy, float dz, float scale) {
-        if (!seeking) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
+        if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
     }
 
     /**
@@ -345,7 +477,7 @@ public abstract class CgVfxEffect {
      * while it lasts. Left unset for a quarter second, it lapses.
      */
     protected final void holdShake(CgVfxParam param, float x, float y, float z, float scale, float level) {
-        if (seeking) return;
+        if (seeking || authority != null) return;
         CgCameraShake shake = values.shake(param);
         int slot = 0;
         if (heldParams == null) {
@@ -398,12 +530,15 @@ public abstract class CgVfxEffect {
      * }</pre>
      *
      * <ul>
+     *   <li>{@link #authoritative} on a server, it does nothing: the emitter never finishes, so an effect whose end waits
+     *       on its particles ends itself there.</li>
      *   <li>What it reads of the emitter in the same {@code tick} is the previous tick's.</li>
      *   <li>Nothing the emitter's modules read may change after this call within the tick: its ground's
      *       {@code fill} belongs before it.</li>
      * </ul>
      */
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
+        if (authority != null) return;
         if (system == null) {
             emitter.tick(dt, air(), originX, originY, originZ);
             return;

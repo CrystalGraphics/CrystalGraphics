@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -84,6 +85,7 @@ public final class CgVfx {
         if (installed) return;
         installed = true;
         CgWorldRenderer.get().onFrame(CgVfx::frame);
+        CgVfxCueClient.install();
         // Every frame's end, the title screen's too: a logout clears before the next world.
         CgGraphicsLifecycle.addListener(new CgLifecycleListener() {
             @Override

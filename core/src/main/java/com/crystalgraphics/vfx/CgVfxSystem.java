@@ -476,7 +476,7 @@ public final class CgVfxSystem {
             }
             if (entities.pose(effect.followEntity, partialTick, pose)) {
                 CgEntityAttachments.point(effect.followEntity, effect.followPoint, partialTick, pose, point);
-                effect.moveTo(point[0], point[1], point[2]);
+                effect.moveToFollowed(point[0], point[1], point[2]);
             } else {
                 effect.followEntity = -1;
                 effect.stop();

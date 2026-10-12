@@ -28,6 +28,8 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.camera.CgCameraShakes;
+import com.crystalgraphics.vfx.net.CgVfxCue;
+import com.crystalgraphics.vfx.net.CgVfxParams;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -92,7 +94,7 @@ import java.util.List;
  *       the blast when its shock front reaches the camera.</li>
  * </ul>
  */
-public final class CgEnergyWave extends CgVfxEffect {
+public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live<Object>, CgVfxCue.Authoritative<Object> {
 
     public static final CgVfxSchema SCHEMA = new CgVfxSchema();
 
@@ -499,6 +501,14 @@ public final class CgEnergyWave extends CgVfxEffect {
     private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
     /** Whether the aim met something at the last test: then {@link #hit} holds it. */
     private boolean aimMet;
+    /** Where {@link #collide} last aimed it, in world coordinates, and the age of that test; NaN before the first. */
+    private double endX = Double.NaN, endY, endZ;
+    private float rayAge = Float.NEGATIVE_INFINITY;
+    /** The end last {@link #publish published}, NaN before the first, and the entity it was on. */
+    private double publishedX = Double.NaN, publishedY, publishedZ;
+    private int publishedEntity = -1;
+    /** Homing on a server's end, the entity it is on ({@code CgVfxCue.Play.struck}); -1 for none. */
+    private int cueStruck = -1;
     /** The contact last reported and its entity, null while none: a new one reports ({@link #reportContact}). */
     private CgVfxCollision.Hit struck;
     private int struckEntity = -1;
@@ -515,6 +525,8 @@ public final class CgEnergyWave extends CgVfxEffect {
     /** The moments already announced, a bit each, and the stream's size when it was stopped. */
     private int momentsFired, sizeAtStop;
     private boolean released;
+    /** {@link #hold}: charging until fired. */
+    private boolean held;
 
     public CgEnergyWave(CgVfxLook look, double x, double y, double z) {
         super(look, x, y, z);
@@ -618,6 +630,7 @@ public final class CgEnergyWave extends CgVfxEffect {
     public CgEnergyWave hold() {
         if (age > 0f) throw new IllegalStateException("hold after its first tick: it has started");
         releaseAge = Float.POSITIVE_INFINITY;
+        held = true;
         return this;
     }
 
@@ -625,6 +638,108 @@ public final class CgEnergyWave extends CgVfxEffect {
     public CgEnergyWave fire() {
         releaseAge = Math.min(releaseAge, age);
         return this;
+    }
+
+    /** Releases the charge at {@code seconds} into its life: a viewer joining late fires where the caster fired. */
+    public CgEnergyWave fireAt(float seconds) {
+        releaseAge = Math.min(releaseAge, Math.max(seconds, 0f));
+        return this;
+    }
+
+    /**
+     * Follows its cue as the server changes it: the aim, the target, what it struck, and {@link #CUE_FIRE}, the age it
+     * fired at. An authoritative cue's server wave publishes all of them ({@link #publish}); a cosmetic one sets them.
+     *
+     * <pre>{@code
+     * Playing<CgVfxParams> wave = KAMEHAMEHA.on(player, CgEntityAttachments.HANDS_FORWARD)
+     *         .params(CgVfxParams.of().set(CgEnergyWave.CUE_HOLD, 1f)).start();       // charging
+     * wave.params(CgVfxParams.of().set(CgEnergyWave.CUE_FIRE, wave.age()));             // released
+     * }</pre>
+     */
+    @Override
+    public void cueChanged(CgVfxCue.Play<Object> cue) {
+        if (cue.hasDirection()) aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
+        if (cue.hasTarget()) target(cue.tx(), cue.ty(), cue.tz());
+        cueStruck = cue.struck();
+        if (cue.params() instanceof CgVfxParams) {
+            float fireAge = ((CgVfxParams) cue.params()).get(CUE_FIRE, Float.NaN);
+            if (!Float.isNaN(fireAge)) fireAt(fireAge);
+        }
+    }
+
+    /** The cue parameters a wave reads: 1 to charge until fired; the age it fired at, in seconds. */
+    public static final String CUE_HOLD = "hold", CUE_FIRE = "fire";
+
+    /** Blocks the end must move before a server publishes it again. */
+    private static final double PUBLISH_MOVE = 0.05;
+    /** How far the unit aim must turn, summed over its axes, before a server publishes it again. */
+    private static final double AIM_EPSILON = 1.0e-4;
+    /** A server tests its aim once a server tick: entities and the aim move no faster. */
+    private static final float SERVER_RAY_SECONDS = 0.05f - 1.0e-4f;
+
+    /**
+     * On a server, what its viewers draw: where the beam ends and the entity there, which they home on rather than test
+     * their own worlds; and its aim, hold and release as the server drove it ({@code Playing.effect()}).
+     */
+    @Override
+    public boolean publish(CgVfxCue.Play<Object> cue) {
+        // Each part goes out when it differs from what the cue says, however the server changed it.
+        boolean changed = false;
+        float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
+        if (length > 0f && Math.abs(aimX / length - cue.dx()) + Math.abs(aimY / length - cue.dy())
+                + Math.abs(aimZ / length - cue.dz()) > AIM_EPSILON) {
+            cue.toward(aimX, aimY, aimZ);
+            changed = true;
+        }
+        if (cue.params() == null || cue.params() instanceof CgVfxParams) {
+            CgVfxParams given = (CgVfxParams) cue.params();
+            boolean saysHeld = given != null && given.get(CUE_HOLD, 0f) > 0f;
+            boolean fire = releaseAge != Float.POSITIVE_INFINITY
+                    && releaseAge != (given == null ? Float.NaN : given.get(CUE_FIRE, Float.NaN));
+            if (held != saysHeld || fire) {
+                // A copy: the params given may be a constant the caller shares.
+                CgVfxParams params = given == null ? CgVfxParams.of() : given.copy();
+                if (held) params.set(CUE_HOLD, 1f);
+                if (fire) params.set(CUE_FIRE, releaseAge);
+                cue.params(params);
+                changed = true;
+            }
+        }
+        if (Double.isNaN(endX)) return changed;
+        double dx = endX - publishedX, dy = endY - publishedY, dz = endZ - publishedZ;
+        // The comparison is false while the last is NaN.
+        if (dx * dx + dy * dy + dz * dz < PUBLISH_MOVE * PUBLISH_MOVE && hitEntity == publishedEntity) return changed;
+        publishedX = endX;
+        publishedY = endY;
+        publishedZ = endZ;
+        publishedEntity = hitEntity;
+        cue.target(endX, endY, endZ).struck(hitEntity);
+        return true;
+    }
+
+    /**
+     * A wave from a cue: at its point, aimed and targeted as it says, charging and fired as its parameters say. The one
+     * factory for both sides of an authoritative cue: the server's wave {@linkplain #collide collides}, finding its own
+     * end, unless the cue gave it a target.
+     *
+     * <pre>{@code
+     * public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
+     *         CgEnergyWave::fromCue).range(96).authoritative();
+     * }</pre>
+     */
+    public static CgEnergyWave fromCue(CgVfxLook look, CgVfxCue.Play<?> cue) {
+        CgEnergyWave wave = new CgEnergyWave(look, cue.x(), cue.y(), cue.z());
+        if (cue.hasDirection()) wave.aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
+        if (cue.hasTarget()) wave.target(cue.tx(), cue.ty(), cue.tz());
+        else if (cue.authoritative()) wave.collide();
+        wave.cueStruck = cue.struck();
+        if (cue.params() instanceof CgVfxParams) {
+            CgVfxParams params = (CgVfxParams) cue.params();
+            if (params.get(CUE_HOLD, 0f) > 0f) wave.hold();
+            float fireAge = params.get(CUE_FIRE, Float.NaN);
+            if (!Float.isNaN(fireAge)) wave.fireAt(fireAge);
+        }
+        return wave;
     }
 
     @Override
@@ -779,6 +894,7 @@ public final class CgEnergyWave extends CgVfxEffect {
      * with the beam, its dust left to settle.
      */
     private void tickWake(float dt) {
+        if (authoritative()) return;
         float ground = groundHeight();
         if (wake == null) {
             CgVfxEmitter definition = look().emitter(WAKE.name());
@@ -815,6 +931,7 @@ public final class CgEnergyWave extends CgVfxEffect {
      * ink only after an impact frame.
      */
     private void startBlast() {
+        if (authoritative()) return;
         CgTrace.marker(CgVfxTrace.CHANNEL, BLAST_MARKER);
         List<CgVfxEmitter> emitters = look().emitters();
         blastGround = new CgVfxGround(32).reset(originX, originY, originZ, stream.impactX(), stream.impactY(), stream.impactZ());
@@ -832,16 +949,23 @@ public final class CgEnergyWave extends CgVfxEffect {
     private void targetAlongAim() {
         double length = Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
         if (length == 0.0) return;
+        if (authoritative() && age - rayAge < SERVER_RAY_SECONDS) return;
+        rayAge = age;
         double x = originX + muzzleX, y = originY + muzzleY, z = originZ + muzzleZ;
         float reach = get(MAX_LENGTH);
-        aimMet = CgWorldQueries.raycastAll(x, y, z, aimX, aimY, aimZ, reach, get(RADIUS), following(), hit);
+        aimMet = raycastAll(x, y, z, aimX, aimY, aimZ, reach, get(RADIUS), following(), hit);
         if (aimMet) {
             hitEntity = hit.entity;
-            target(hit.x, hit.y, hit.z);
+            endX = hit.x;
+            endY = hit.y;
+            endZ = hit.z;
         } else {
             hitEntity = -1;
-            target(x + aimX / length * reach, y + aimY / length * reach, z + aimZ / length * reach);
+            endX = x + aimX / length * reach;
+            endY = y + aimY / length * reach;
+            endZ = z + aimZ / length * reach;
         }
+        target(endX, endY, endZ);
     }
 
     /**
@@ -851,14 +975,14 @@ public final class CgEnergyWave extends CgVfxEffect {
      */
     private void reportContact() {
         CgVfxCollision.Hit now = !stream.impacting() ? null
-                : !collides ? CgVfxCollision.Hit.TARGET
+                : !collides ? (cueStruck >= 0 ? CgVfxCollision.Hit.ENTITY : CgVfxCollision.Hit.TARGET)
                 : !aimMet ? null
                 : hitEntity >= 0 ? CgVfxCollision.Hit.ENTITY : CgVfxCollision.Hit.BLOCK;
-        int entity = now == CgVfxCollision.Hit.ENTITY ? hitEntity : -1;
+        int entity = now != CgVfxCollision.Hit.ENTITY ? -1 : collides ? hitEntity : cueStruck;
         if (now != null && (now != struck || entity != struckEntity)) {
             float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ), speed = get(SPEED);
             float dx = length > 0f ? aimX / length : 0f, dy = length > 0f ? aimY / length : 0f, dz = length > 0f ? aimZ / length : 0f;
-            boolean tested = now != CgVfxCollision.Hit.TARGET;
+            boolean tested = collides && now != CgVfxCollision.Hit.TARGET;
             lastStruck = now;
             lastStruckEntity = entity;
             lastNormalX = tested ? hit.normalX : -dx;

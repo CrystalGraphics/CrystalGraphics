@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.net.CgVfxCue;
 
 import java.util.Collections;
 import java.util.List;
@@ -39,19 +40,27 @@ public final class CgVfxRegistry {
         CgVfxEffect spawn(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz);
     }
 
+    /** Starts an effect of a look from a cue the server sent, reading its parameters and where it aims. */
+    @FunctionalInterface
+    public interface CueFactory<P> {
+        CgVfxEffect spawn(CgVfxLook look, CgVfxCue.Play<P> cue);
+    }
+
     public static final class Entry {
         private final String id;
         private final String name;
         private final String category;
         private final CgVfxLook look;
         private final Factory factory;
+        private final CueFactory<?> cueFactory;
 
-        Entry(String id, String name, String category, CgVfxLook look, Factory factory) {
+        Entry(String id, String name, String category, CgVfxLook look, Factory factory, CueFactory<?> cueFactory) {
             this.id = id;
             this.name = name;
             this.category = category;
             this.look = look;
             this.factory = factory;
+            this.cueFactory = cueFactory;
         }
 
         public String id() {
@@ -74,18 +83,37 @@ public final class CgVfxRegistry {
             return factory.spawn(look, x, y, z, tx, ty, tz);
         }
 
+        /**
+         * The effect a cue plays: its cue factory's, else the point factory's, aimed at the cue's target, else
+         * {@link #CUE_REACH} along its direction, else at its own point.
+         */
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        public CgVfxEffect spawn(CgVfxCue.Play<?> cue) {
+            if (cueFactory != null) return ((CueFactory) cueFactory).spawn(look, cue);
+            double tx = cue.tx(), ty = cue.ty(), tz = cue.tz();
+            if (!cue.hasTarget() && cue.hasDirection()) {
+                tx = cue.x() + cue.dx() * CUE_REACH;
+                ty = cue.y() + cue.dy() * CUE_REACH;
+                tz = cue.z() + cue.dz() * CUE_REACH;
+            }
+            return spawn(look, cue.x(), cue.y(), cue.z(), tx, ty, tz);
+        }
+
         @Override
         public String toString() {
             return id;
         }
     }
 
+    /** How far along its direction a cue with no target aims a point factory's effect, in blocks. */
+    public static final double CUE_REACH = 64;
+
     private static final List<Entry> ENTRIES = new CopyOnWriteArrayList<>();
 
     static {
-        register("crystalgraphics:kamehameha", "Kamehameha", "Beams", CgEnergyWave.kamehameha(), CgVfxRegistry::wave);
-        register("crystalgraphics:final_flash", "Final Flash", "Beams", CgEnergyWave.finalFlash(), CgVfxRegistry::wave);
-        register("crystalgraphics:galick_gun", "Galick Gun", "Beams", CgEnergyWave.galickGun(), CgVfxRegistry::wave);
+        wave("crystalgraphics:kamehameha", "Kamehameha", CgEnergyWave.kamehameha());
+        wave("crystalgraphics:final_flash", "Final Flash", CgEnergyWave.finalFlash());
+        wave("crystalgraphics:galick_gun", "Galick Gun", CgEnergyWave.galickGun());
         CgVfxSchema schema = new CgVfxSchema();
         // Before the builder, which takes the schema's defaults: the kit declares its parameters on it.
         CgVfxExplosion blast = new CgVfxExplosion(schema, "blast");
@@ -99,7 +127,31 @@ public final class CgVfxRegistry {
     }
 
     public static Entry register(String id, String name, String category, CgVfxLook look, Factory factory) {
-        Entry entry = new Entry(id, name, category, look, factory);
+        return add(new Entry(id, name, category, look, factory, null));
+    }
+
+    /**
+     * What a cue plays here, under the cue's id. A tool lists it, and plays it at a point through a cue it makes there.
+     *
+     * <pre>{@code
+     * static final CgVfxCue<CgVfxParams> HIT = CgVfxCue.declare("mymod:hit_spark");        // both sides
+     * CgVfxRegistry.register(HIT, "Hit spark", "Impacts", HitSpark.LOOK,                     // client
+     *         (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()).level((int) cue.params().get("level", 1f)));
+     * }</pre>
+     */
+    public static <P> Entry register(CgVfxCue<P> cue, String name, String category, CgVfxLook look,
+                                     CueFactory<P> factory) {
+        return add(new Entry(cue.id(), name, category, look, (l, x, y, z, tx, ty, tz) ->
+                factory.spawn(l, cue.at(x, y, z).target(tx, ty, tz)), factory));
+    }
+
+    /** {@link #register(CgVfxCue, String, String, CgVfxLook, CueFactory)} named by its id, in category "Cues". */
+    public static <P> Entry register(CgVfxCue<P> cue, CgVfxLook look, CueFactory<P> factory) {
+        return register(cue, cue.id(), "Cues", look, factory);
+    }
+
+    private static Entry add(Entry entry) {
+        String id = entry.id;
         synchronized (ENTRIES) {
             if (get(id) != null) throw new IllegalArgumentException("VFX '" + id + "' is already registered");
             ENTRIES.add(entry);
@@ -116,6 +168,10 @@ public final class CgVfxRegistry {
     public static Entry get(String id) {
         for (Entry entry : ENTRIES) if (entry.id.equals(id)) return entry;
         return null;
+    }
+
+    private static void wave(String id, String name, CgVfxLook look) {
+        add(new Entry(id, name, "Beams", look, CgVfxRegistry::wave, CgEnergyWave::fromCue));
     }
 
     private static CgVfxEffect wave(CgVfxLook look, double x, double y, double z, double tx, double ty, double tz) {

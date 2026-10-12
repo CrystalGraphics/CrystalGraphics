@@ -14,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Where every {@link CgVfxCollision} goes: the effect's listeners, its owner's, then the global ones. Particles' rows
  * come in through one pool listener, a collision's and a landing's, tagged with the effect whose slot they came from.
+ * An effect running on a server ({@link CgVfxEffect#authoritative}) is heard by its own listeners alone: the others are
+ * a client's, and on an integrated server share its JVM.
  */
 final class CgVfxCollisions {
 
@@ -44,6 +46,7 @@ final class CgVfxCollisions {
 
     /** Whether a collision of {@code effect}'s would be heard. */
     static boolean heard(CgVfxEffect effect) {
+        if (effect != null && effect.authoritative()) return effect.collideListeners() != null;
         if (!GLOBAL.isEmpty()) return true;
         if (effect == null) return false;
         return effect.collideListeners() != null || effect.owner != null && !effect.owner.collideListeners.isEmpty();
@@ -53,7 +56,9 @@ final class CgVfxCollisions {
     static void effect(CgVfxEffect effect, String part, CgVfxCollision.Hit hit, int entity, double x, double y, double z,
                        float nx, float ny, float nz, float vx, float vy, float vz, float radius) {
         if (!heard(effect)) return;
-        dispatch(EVENT.effect(effect, part, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, radius));
+        // A server's own event: EVENT is the render thread's.
+        CgVfxCollision event = effect.authoritative() ? new CgVfxCollision() : EVENT;
+        dispatch(event.effect(effect, part, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, radius));
     }
 
     private static void rows(CgVfxGpuEmitter definition, int event, CgVfxEventRows rows) {
@@ -75,6 +80,7 @@ final class CgVfxCollisions {
             if (own != null) {
                 for (CgVfxCollisionListener l : own) if (l != null) call(l, c);
             }
+            if (effect.authoritative()) return;
             if (effect.owner != null) call(effect.owner.collideListeners, c);
         }
         call(GLOBAL, c);
