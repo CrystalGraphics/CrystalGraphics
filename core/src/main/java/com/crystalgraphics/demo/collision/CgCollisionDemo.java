@@ -39,10 +39,11 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <ul>
- *   <li>The row: every shape turning and bobbing over a box. Green touching its box (the box red), orange touching
- *       the ground or a block, white apart.</li>
+ *   <li>The row: every shape turning and bobbing through a box floating at the middle of its bob. Green touching its
+ *       box (the box red), orange touching the ground or a block at the bottom, white apart.</li>
  *   <li>Behind: a ball cast through three walls moving up and down and the world, stopping red at the first it meets
- *       with that surface's normal; over it, rays down, each ending at what it meets.</li>
+ *       with that surface's normal; over it, rays down, each ending at what it meets. A hit is a cross on the surface
+ *       and its normal.</li>
  *   <li>In front: a ring hitbox's front growing through six boxes, each flashing red as it is hit, and through the
  *       world's entities, whose boxes flash red too. Every entity within {@link #ENTITY_RANGE} is boxed yellow.</li>
  *   <li>Render thread, once a frame. {@code seconds} is the frame clock: the hitbox ticks at 20 a second of it.</li>
@@ -51,11 +52,13 @@ import java.util.function.Consumer;
 public final class CgCollisionDemo {
 
     /** How far round the point entities are boxed. */
-    public static final double ENTITY_RANGE = 24;
+    public static final double ENTITY_RANGE = 48;
 
     private static final int WHITE = 0xFFFFFFFF, GREEN = 0xFF40FF60, GREY = 0xFF808080, RED = 0xFFFF4040,
             YELLOW = 0xFFFFD040, CYAN = 0xFF40D0FF, ORANGE = 0xFFFF9030;
     private static final double SPACING = 4;
+    /** The row's bob, and its boxes' height: the shapes pass through a box mid-bob and reach the ground below it. */
+    private static final double BOB_Y = 2.4, BOB = 2, TARGET_Y = 2.8;
     private static final CgBox TARGET = CgBox.of(0.6, 0.6, 0.6);
     private static final CgPlane FLOOR = CgPlane.of(0, 1, 0);
     private static final CgSphere NEAR = CgSphere.of(ENTITY_RANGE);
@@ -79,6 +82,7 @@ public final class CgCollisionDemo {
     private static final double[] WALLS_X = {-6, 3, 10};
     private static final CgBox WALL = CgBox.of(0.5, 1.5, 1.5);
     private static final int RAYS = 13;
+    private static final double MARK = 0.4;
     private static final double RAY_FROM = 9, RAY_LENGTH = 16;
 
     // the hitbox, in front of the row
@@ -142,9 +146,9 @@ public final class CgCollisionDemo {
         double left = -(SHAPES.length - 1) * SPACING / 2;
         for (int i = 0; i < SHAPES.length; i++) {
             double x = ox + left + i * SPACING;
-            pose.at(x, oy + 2.2 + 1.8 * Math.sin(seconds * 0.9 + i), oz)
+            pose.at(x, oy + BOB_Y + BOB * Math.sin(seconds * 0.9 + i), oz)
                     .facing(seconds * 0.5 + i, Math.sin(seconds * 0.4 + i));
-            other.identity().at(x, oy + 0.6, oz);
+            other.identity().at(x, oy + TARGET_Y, oz);
             boolean touching = CgShapes.overlaps(SHAPES[i], pose, TARGET, other);
             boolean grounded = !touching && touchesGround(SHAPES[i], pose);
             CgCollisionDebug.shape(SHAPES[i], pose, touching ? GREEN : grounded ? ORANGE : WHITE);
@@ -162,7 +166,9 @@ public final class CgCollisionDemo {
     private void sweep(double seconds) {
         double y = oy + 1.5, z = oz + SWEEP_Z, from = ox + SWEEP_FROM;
         for (int w = 0; w < WALLS_X.length; w++) {
-            other.identity().at(ox + WALLS_X[w], y + 3 * Math.sin(seconds * (0.7 + 0.3 * w) + w * 2), z);
+            // from standing on the ground to its bottom over the ball, never under the ground
+            double rise = WALL.halfY() * (1 + Math.sin(seconds * (0.7 + 0.3 * w) + w * 2));
+            other.identity().at(ox + WALLS_X[w], oy + WALL.halfY() + rise, z);
             props.move(WALL_ID + w, other);
             CgCollisionDebug.shape(WALL, other, YELLOW);
         }
@@ -176,7 +182,7 @@ public final class CgCollisionDemo {
         CgCollisionDebug.shape(BALL, pose.identity().at(from, y, z), WHITE);
         CgCollisionDebug.line(from, y, z, end, y, z, WHITE);
         CgCollisionDebug.shape(BALL, pose.identity().at(end, y, z), met ? RED : WHITE);
-        if (met) normal(hit);
+        if (met) mark(hit);
     }
 
     private void rays() {
@@ -191,18 +197,35 @@ public final class CgCollisionDemo {
             }
             if (met) {
                 CgCollisionDebug.line(x, top, z, x, hit.y(), z, CYAN);
-                normal(hit);
+                mark(hit);
             } else if (world == null) {
                 CgCollisionDebug.line(x, top, z, x, oy, z, CYAN);
-                CgCollisionDebug.line(x, oy, z, x, oy + 1, z, RED);
+                mark(x, oy, z, 0, 1, 0);
             } else {
                 CgCollisionDebug.line(x, top, z, x, top - RAY_LENGTH, z, GREY);
             }
         }
     }
 
-    private static void normal(CgHit h) {
-        CgCollisionDebug.line(h.x(), h.y(), h.z(), h.x() + h.normalX(), h.y() + h.normalY(), h.z() + h.normalZ(), RED);
+    private static void mark(CgHit h) {
+        mark(h.x(), h.y(), h.z(), h.normalX(), h.normalY(), h.normalZ());
+    }
+
+    /** A cross on the surface at a hit, and its normal. */
+    private static void mark(double x, double y, double z, double nx, double ny, double nz) {
+        // two tangents: the normal crossed with whichever axis it is furthest from, then with that
+        double ax = Math.abs(ny) < 0.9 ? 0 : 1, ay = 1 - ax;
+        double tx = -nz * ay, ty = nz * ax, tz = nx * ay - ny * ax;
+        double len = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (len == 0) return;
+        double r = MARK / len;
+        tx *= r;
+        ty *= r;
+        tz *= r;
+        double ux = ny * tz - nz * ty, uy = nz * tx - nx * tz, uz = nx * ty - ny * tx;
+        CgCollisionDebug.line(x - tx, y - ty, z - tz, x + tx, y + ty, z + tz, RED);
+        CgCollisionDebug.line(x - ux, y - uy, z - uz, x + ux, y + uy, z + uz, RED);
+        CgCollisionDebug.line(x, y, z, x + nx, y + ny, z + nz, RED);
     }
 
     // ---- the hitbox
