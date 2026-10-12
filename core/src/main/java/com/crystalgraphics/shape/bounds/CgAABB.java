@@ -156,48 +156,7 @@ public final class CgAABB implements CgAABBc {
     }
 
     /** A box nothing can change: the constants. */
-    static final class Fixed implements CgAABBc {
-
-        private final double minX, minY, minZ, maxX, maxY, maxZ;
-
-        Fixed(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
-            this.minX = minX;
-            this.minY = minY;
-            this.minZ = minZ;
-            this.maxX = maxX;
-            this.maxY = maxY;
-            this.maxZ = maxZ;
-        }
-
-        @Override
-        public double minX() {
-            return minX;
-        }
-
-        @Override
-        public double minY() {
-            return minY;
-        }
-
-        @Override
-        public double minZ() {
-            return minZ;
-        }
-
-        @Override
-        public double maxX() {
-            return maxX;
-        }
-
-        @Override
-        public double maxY() {
-            return maxY;
-        }
-
-        @Override
-        public double maxZ() {
-            return maxZ;
-        }
+    record Fixed(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) implements CgAABBc {
 
         @Override
         public String toString() {
