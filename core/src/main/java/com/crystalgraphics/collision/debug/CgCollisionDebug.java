@@ -7,6 +7,7 @@ import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -14,7 +15,6 @@ import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.Set;
 
 /**
@@ -25,11 +25,13 @@ import java.util.Set;
  * CgCollisionDebug.shape(CgSphere.of(2), pose.at(x, y, z), 0xFFFF4040);    // a red ball this frame
  * CgCollisionDebug.hitbox(slam, 0xFF40FF60);                               // each part as its last tick tested it
  * CgCollisionDebug.line(x, y, z, x, y + 3, z, 0xFFFFFFFF);
+ * if (world.ray().at(x, y, z).along(0, -1, 0, 8).unwatched().first(hit)) CgCollisionDebug.mark(hit, 0xFFFF4040);
  * }</pre>
  *
  * <ul>
  *   <li>Render thread. Colours are ARGB.</li>
- *   <li>Every live hitbox at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this draws too.</li>
+ *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
+ *       draws too: mark a query drawn here {@code unwatched()}, or it is drawn twice.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
@@ -39,9 +41,15 @@ public final class CgCollisionDebug {
     public static final int CLIENT = 0xFF40FF60, SERVER = 0xFFFF9030;
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
+    /** How long a query is drawn: past a game tick, so one asked each tick shows steadily. */
+    private static final long QUERY_HOLD_NANOS = 60_000_000L;
+    private static final double MARK = 0.4;
 
     private static final Lines LINES = new Lines();
     private static final CgShapeLines SHAPES = new CgShapeLines();
+    private static final CgQueryLines QUERIES = new CgQueryLines(1 << 14);
+    private static final CgHitboxLinger LINGER = new CgHitboxLinger();
+    private static boolean shown;
     private static boolean installed;
     private static CgMesh mesh;
     private static CgMaterial material;
@@ -62,7 +70,7 @@ public final class CgCollisionDebug {
         SHAPES.write(shape, pose, LINES);
     }
 
-    /** Draws each part of {@code hitbox} as its last tick tested it on the next world frame; nothing once stopped. */
+    /** Draws each part of {@code hitbox} as its last tick tested it on the next world frame; the last, once stopped. */
     public static void hitbox(CgHitbox hitbox, int argb) {
         colour = argb;
         hitbox.parts(CgCollisionDebug::part);
@@ -74,10 +82,22 @@ public final class CgCollisionDebug {
         LINES.line(ax, ay, az, bx, by, bz);
     }
 
-    /** Draws what was queued each world frame, and the show variable's hitboxes. Once, with the world renderer. */
+    /** Draws a hit on the next world frame: a cross on the surface and its normal. */
+    public static void mark(CgHit hit, int argb) {
+        mark(hit.x(), hit.y(), hit.z(), hit.normalX(), hit.normalY(), hit.normalZ(), argb);
+    }
+
+    /** Draws a cross on a surface at a point and its unit normal on the next world frame. */
+    public static void mark(double x, double y, double z, double nx, double ny, double nz, int argb) {
+        colour = argb;
+        CgShapeLines.mark(x, y, z, nx, ny, nz, MARK, LINES);
+    }
+
+    /** Draws what was queued each world frame, and the show variable's. Once, with the world renderer. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
+        CgCollisionShow.clientQueries(QUERIES);
         CgCollisionShow.install();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
         CgNetwork.onClientTick(CgCollisionDebug::ask);
@@ -102,7 +122,15 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        if (CgCollisionShow.showing()) show();
+        QUERIES.eye(view.x(), view.y(), view.z());
+        boolean showing = CgCollisionShow.showing();
+        if (showing) {
+            show();
+        } else if (shown) {
+            LINGER.clear();
+            QUERIES.clear();
+        }
+        shown = showing;
         if (LINES.count == 0) return;
         if (mesh == null) {
             mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, LINES));
@@ -115,16 +143,21 @@ public final class CgCollisionDebug {
     }
 
     private static void show() {
+        long now = System.nanoTime();
         Set<CgHitbox> seen = CgCollisionShow.seen();
-        for (Iterator<CgHitbox> it = seen.iterator(); it.hasNext(); ) {
-            CgHitbox hitbox = it.next();
-            if (hitbox.stopped()) it.remove();
-            else hitbox(hitbox, CLIENT);
-        }
+        LINGER.take(seen, now);
+        for (CgHitbox hitbox : seen) hitbox(hitbox, CLIENT);
+        for (int i = 0, n = LINGER.expire(now); i < n; i++) hitbox(LINGER.get(i), CLIENT);
+        QUERIES.drawTo(now, QUERY_HOLD_NANOS, CgCollisionDebug::coloured);
         if (serverLines != null && System.nanoTime() - serverAt < SERVER_HOLD_NANOS) {
             colour = SERVER;
             CgLinePack.read(serverLines, LINES);
         }
+    }
+
+    private static void coloured(int argb, double ax, double ay, double az, double bx, double by, double bz) {
+        colour = argb;
+        LINES.line(ax, ay, az, bx, by, bz);
     }
 
     /** Follows the host's view, and keeps the server told while showing and once when it stops. Client thread. */

@@ -507,15 +507,15 @@ public final class CgHitbox {
     }
 
     /**
-     * Each part as this tick tested it, sized as it is now; nothing while it is not active or once it stops. What a
-     * debug view draws. On its thread.
+     * Each part as its last tick tested it, sized as it was then: the last it tested once it stops, and nothing before
+     * its first active tick. What a debug view draws. On its thread.
      *
      * <pre>{@code
      * hitbox.parts((part, shape, pose) -> CgCollisionDebug.shape(shape, pose, 0xFF40FF60));
      * }</pre>
      */
     public void parts(PartSink out) {
-        if (!hasPrev || stopped) return;
+        if (!hasPrev) return;
         for (int p = 0; p < parts; p++) {
             CgShape shape = shapes[p];
             if (sizeKind == RADIUS) shape = sized[p].radius(sizeNow);
@@ -723,7 +723,7 @@ public final class CgHitbox {
     }
 
     private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc q) {
-        CgQuery query = world.overlap(shape).at(px, py, pz).rotation(q).part(names[p]);
+        CgQuery query = world.overlap(shape).at(px, py, pz).rotation(q).part(names[p]).unwatched();
         for (int i = 0; i < excepts; i++) query.except(except[i]);
         if (source >= 0) query.source(source);
         if (anything) query.anything();

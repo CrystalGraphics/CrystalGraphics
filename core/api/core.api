@@ -1568,6 +1568,8 @@ com/crystalgraphics/collision/debug/CgCollisionDebug
   method public,static hitbox (Lcom/crystalgraphics/collision/hitbox/CgHitbox;I)V
   method public,static install ()V
   method public,static line (DDDDDDI)V
+  method public,static mark (DDDDDDI)V
+  method public,static mark (Lcom/crystalgraphics/collision/query/CgHit;I)V
   method public,static release ()V
   method public,static shape (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;I)V
 com/crystalgraphics/collision/debug/CgCollisionShow
@@ -1586,6 +1588,8 @@ com/crystalgraphics/collision/debug/CgShapeLines
   method public eye (DDD)Lcom/crystalgraphics/collision/debug/CgShapeLines;
   method public noEye ()Lcom/crystalgraphics/collision/debug/CgShapeLines;
   method public write (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/collision/debug/CgShapeLines$Sink;)V
+  method public,static box (Lcom/crystalgraphics/shape/bounds/CgAABBc;Lcom/crystalgraphics/collision/debug/CgShapeLines$Sink;)V
+  method public,static mark (DDDDDDDLcom/crystalgraphics/collision/debug/CgShapeLines$Sink;)V
 com/crystalgraphics/collision/debug/CgShapeLines$Sink
   access public,abstract,interface
   extends java/lang/Object
@@ -1800,8 +1804,14 @@ com/crystalgraphics/collision/query/CgQuery
   method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public source (I)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public unwatched ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public visible ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public,static watch (Lcom/crystalgraphics/collision/query/CgQuery$Watcher;)V
+com/crystalgraphics/collision/query/CgQuery$Watcher
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract ran (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;DDDDLcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/collision/query/CgHit;)V
 com/crystalgraphics/collision/query/CgShapeWorld
   access public,final
   extends com/crystalgraphics/collision/query/CgCollisionWorld

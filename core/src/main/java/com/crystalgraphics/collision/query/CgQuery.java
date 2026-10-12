@@ -12,6 +12,7 @@ import com.crystalgraphics.shape.query.CgShapes;
 import org.joml.Quaterniondc;
 import org.joml.Quaternionfc;
 
+import javax.annotation.Nullable;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
@@ -47,6 +48,8 @@ import java.util.function.IntPredicate;
  *   <li>A cast or ray with blocks stops at the first block: that block is the last hit, and nothing beyond it is.</li>
  *   <li>An unloaded cell stops a cast or ray ({@link CgHit#unloaded()}) and is left out of an overlap.</li>
  *   <li>A multipart entity is hit once, by its nearest part; {@link #living} and {@link #kinds} ask of the whole.</li>
+ *   <li>A host world's queries are drawn under {@code crystalgraphics.collision.show} and F3+B ({@link #watch});
+ *       {@link #unwatched} leaves one out.</li>
  * </ul>
  */
 public final class CgQuery {
@@ -57,6 +60,8 @@ public final class CgQuery {
     private static final int TARGETS = CgEntityQuery.ALIVE | CgEntityQuery.PICKABLE;
     /** How far a block's shape reaches into the cell above: fences and walls stand 1.5 high. */
     private static final double TALL_SHAPE = 0.5;
+
+    private static volatile @Nullable Watcher watcher;
 
     private final CgCollisionWorld world;
     private final CgPose pose = new CgPose();
@@ -80,6 +85,7 @@ public final class CgQuery {
     private IntPredicate where;
     private double inflate;
     private CgHitPart part;
+    private boolean unwatched;
 
     private double ox, oy, oz, invX, invY, invZ, entityLimit;
     private boolean stopAtFirst, done, partsSeen, blockFound;
@@ -109,6 +115,7 @@ public final class CgQuery {
         where = null;
         inflate = 0;
         part = null;
+        unwatched = false;
         return this;
     }
 
@@ -267,6 +274,42 @@ public final class CgQuery {
         return this;
     }
 
+    /** Left out of what {@link #watch} hears: for a query its owner draws its own way, as a hitbox draws its parts. */
+    public CgQuery unwatched() {
+        unwatched = true;
+        return this;
+    }
+
+    // ---- watching
+
+    /** Hears each query a host's world runs, as it ends, on the thread running it. */
+    @FunctionalInterface
+    public interface Watcher {
+        /**
+         * Every argument is valid during the call only.
+         *
+         * @param shape   null for a ray and for a box overlap
+         * @param box     a box overlap's box, else null
+         * @param length  how far a cast or ray went along its unit direction; 0 for an overlap
+         * @param level   the host level it asked
+         * @param nearest the nearest hit found, null for none
+         */
+        void ran(@Nullable CgShape shape, CgPose pose, @Nullable CgAABBc box, double dx, double dy, double dz,
+                 double length, CgWorldQuery level, @Nullable CgHit nearest);
+    }
+
+    /**
+     * Hands {@code watcher} every query a host's world runs from now on; null stops. One for the process:
+     * {@code crystalgraphics.collision.show} is it. A {@link CgShapeWorld}'s queries are never handed over.
+     *
+     * <pre>{@code
+     * CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> count++);
+     * }</pre>
+     */
+    public static void watch(@Nullable Watcher watcher) {
+        CgQuery.watcher = watcher;
+    }
+
     // ---- ending it
 
     /** Hands every hit to {@code visitor}, nearest first; the hit is valid during the call. */
@@ -378,6 +421,11 @@ public final class CgQuery {
                 CgHit h = hits.get(i);
                 if (h.entity >= 0) h.exposure = world.exposure(ox, oy, oz, h.entity);
             }
+        }
+        Watcher heard = watcher;
+        if (heard != null && !unwatched && world.hasBlocks()) {
+            heard.ran(shape, pose, boxQuery ? queryBox : null, dirX, dirY, dirZ, length, world.world,
+                    hits.isEmpty() ? null : hits.get(0));
         }
     }
 

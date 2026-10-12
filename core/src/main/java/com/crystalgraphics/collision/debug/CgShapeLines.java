@@ -2,6 +2,7 @@ package com.crystalgraphics.collision.debug;
 
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
 import com.crystalgraphics.shape.primitive.CgCompound;
@@ -71,6 +72,36 @@ public final class CgShapeLines {
     public CgShapeLines noEye() {
         eyeX = Double.NaN;
         return this;
+    }
+
+    /** A world box's twelve edges. */
+    public static void box(CgAABBc box, Sink out) {
+        double x0 = box.minX(), y0 = box.minY(), z0 = box.minZ(), x1 = box.maxX(), y1 = box.maxY(), z1 = box.maxZ();
+        for (int s = 0; s < 2; s++) {
+            for (int t = 0; t < 2; t++) {
+                double xs = s == 0 ? x0 : x1, ys = s == 0 ? y0 : y1, yt = t == 0 ? y0 : y1, zt = t == 0 ? z0 : z1;
+                out.line(x0, ys, zt, x1, ys, zt);
+                out.line(xs, y0, zt, xs, y1, zt);
+                out.line(xs, yt, z0, xs, yt, z1);
+            }
+        }
+    }
+
+    /** A hit: a cross {@code size} wide each way on the surface at a point, and its unit normal. */
+    public static void mark(double x, double y, double z, double nx, double ny, double nz, double size, Sink out) {
+        // two tangents: the normal crossed with whichever axis it is furthest from, then with that
+        double ax = Math.abs(ny) < 0.9 ? 0 : 1, ay = 1 - ax;
+        double tx = -nz * ay, ty = nz * ax, tz = nx * ay - ny * ax;
+        double len = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        if (len == 0) return;
+        double r = size / len;
+        tx *= r;
+        ty *= r;
+        tz *= r;
+        double ux = ny * tz - nz * ty, uy = nz * tx - nx * tz, uz = nx * ty - ny * tx;
+        out.line(x - tx, y - ty, z - tz, x + tx, y + ty, z + tz);
+        out.line(x - ux, y - uy, z - uz, x + ux, y + uy, z + uz);
+        out.line(x, y, z, x + nx, y + ny, z + nz);
     }
 
     /** Writes {@code shape} placed at {@code pose} into {@code out}. */

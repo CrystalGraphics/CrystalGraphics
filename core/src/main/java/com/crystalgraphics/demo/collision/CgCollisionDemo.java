@@ -83,7 +83,6 @@ public final class CgCollisionDemo {
     private static final double[] WALLS_X = {-6, 3, 10};
     private static final CgBox WALL = CgBox.of(0.5, 1.5, 1.5);
     private static final int RAYS = 13;
-    private static final double MARK = 0.4;
     private static final double RAY_FROM = 9, RAY_LENGTH = 16;
 
     // the hitbox, in front of the row
@@ -159,7 +158,7 @@ public final class CgCollisionDemo {
 
     private boolean touchesGround(CgShape shape, CgPose at) {
         if (world == null) return CgShapes.overlaps(shape, at, FLOOR, floor.identity().at(ox, oy, oz));
-        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.rotation(rotation)).blocksToo().anything()
+        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.rotation(rotation)).blocksToo().anything().unwatched()
                 .first(worldHit)) {
             return false;
         }
@@ -180,7 +179,8 @@ public final class CgCollisionDemo {
         }
         boolean met = props.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).anything().first(hit);
         if (world != null
-                && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksToo().anything().first(worldHit)
+                && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksToo().anything().unwatched()
+                .first(worldHit)
                 && (!met || worldHit.distance() < hit.distance())) {
             hit.set(worldHit);
             met = true;
@@ -190,7 +190,7 @@ public final class CgCollisionDemo {
         CgCollisionDebug.shape(BALL, pose.identity().at(from, y, z), WHITE);
         CgCollisionDebug.line(from, y, z, end, y, z, WHITE);
         CgCollisionDebug.shape(BALL, pose.identity().at(end, y, z), met ? RED : WHITE);
-        if (met) mark(hit);
+        if (met) CgCollisionDebug.mark(hit, RED);
     }
 
     private void rays() {
@@ -199,7 +199,8 @@ public final class CgCollisionDemo {
             double x = ox + SWEEP_FROM + 2.5 * i;
             boolean met = props.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).anything().first(hit);
             if (world != null
-                    && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksToo().anything().first(worldHit)
+                    && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksToo().anything().unwatched()
+                    .first(worldHit)
                     && (!met || worldHit.distance() < hit.distance())) {
                 hit.set(worldHit);
                 met = true;
@@ -207,35 +208,14 @@ public final class CgCollisionDemo {
             }
             if (met) {
                 CgCollisionDebug.line(x, top, z, x, hit.y(), z, CYAN);
-                mark(hit);
+                CgCollisionDebug.mark(hit, RED);
             } else if (world == null) {
                 CgCollisionDebug.line(x, top, z, x, oy, z, CYAN);
-                mark(x, oy, z, 0, 1, 0);
+                CgCollisionDebug.mark(x, oy, z, 0, 1, 0, RED);
             } else {
                 CgCollisionDebug.line(x, top, z, x, top - RAY_LENGTH, z, GREY);
             }
         }
-    }
-
-    private static void mark(CgHit h) {
-        mark(h.x(), h.y(), h.z(), h.normalX(), h.normalY(), h.normalZ());
-    }
-
-    /** A cross on the surface at a hit, and its normal. */
-    private static void mark(double x, double y, double z, double nx, double ny, double nz) {
-        // two tangents: the normal crossed with whichever axis it is furthest from, then with that
-        double ax = Math.abs(ny) < 0.9 ? 0 : 1, ay = 1 - ax;
-        double tx = -nz * ay, ty = nz * ax, tz = nx * ay - ny * ax;
-        double len = Math.sqrt(tx * tx + ty * ty + tz * tz);
-        if (len == 0) return;
-        double r = MARK / len;
-        tx *= r;
-        ty *= r;
-        tz *= r;
-        double ux = ny * tz - nz * ty, uy = nz * tx - nx * tz, uz = nx * ty - ny * tx;
-        CgCollisionDebug.line(x - tx, y - ty, z - tz, x + tx, y + ty, z + tz, RED);
-        CgCollisionDebug.line(x - ux, y - uy, z - uz, x + ux, y + uy, z + uz, RED);
-        CgCollisionDebug.line(x, y, z, x + nx, y + ny, z + nz, RED);
     }
 
     // ---- the hitbox
@@ -290,7 +270,7 @@ public final class CgCollisionDemo {
     // ---- the world's entities
 
     private void entities() {
-        world.overlap(NEAR).at(ox, oy, oz).anything().forEach(boxEntity);
+        world.overlap(NEAR).at(ox, oy, oz).anything().unwatched().forEach(boxEntity);
         for (int i = 0; i < FLASHED; i++) {
             if (flashedFor[i] <= 0) continue;
             if (world.entities().box(flashedIds[i], world.partialTick(), box)) drawBox(RED);
