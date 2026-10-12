@@ -25,6 +25,7 @@ import net.minecraft.util.math.AxisAlignedBB;
 /*import net.minecraft.util.AxisAlignedBB;
 *///?}
 
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntConsumer;
@@ -46,18 +47,20 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
     /** Parts {@link #within} handed out, overwritten in turn: what a part's id resolves through on a client. */
     private static final int PARTS = 16;
 
-    private final World bound;
-    private final Entity[] parts = new Entity[PARTS];
+    /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
+    private final WeakReference<World> bound;
+    @SuppressWarnings("unchecked")
+    private final WeakReference<Entity>[] parts = new WeakReference[PARTS];
     private int nextPart;
-    private World partsWorld;
+    private WeakReference<World> partsWorld = new WeakReference<>(null);
 
     LevelEntityQueryLegacy(World bound) {
-        this.bound = bound;
+        this.bound = new WeakReference<>(bound);
     }
 
     /** The level it answers for; null for none. */
     World world() {
-        return bound;
+        return bound.get();
     }
 
     /** Whether {@code e} is the player at this client's keyboard. */
@@ -83,9 +86,9 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
     }
 
     private Entity rememberedPart(World world, int id) {
-        if (world != partsWorld) return null;
+        if (world != partsWorld.get()) return null;
         for (int i = 0; i < PARTS; i++) {
-            Entity p = parts[i];
+            Entity p = parts[i] == null ? null : parts[i].get();
             if (p == null || p.getEntityId() != id) continue;
             Entity parent = parentOf(p);
             if (parent == p ? p.isEntityAlive() : world.getEntityByID(parent.getEntityId()) == parent) return p;
@@ -103,14 +106,14 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
     }
 
     private void remember(World world, Entity part) {
-        if (world != partsWorld) {
+        if (world != partsWorld.get()) {
             Arrays.fill(parts, null);
-            partsWorld = world;
+            partsWorld = new WeakReference<>(world);
         }
-        for (Entity p : parts) {
-            if (p == part) return;
+        for (WeakReference<Entity> p : parts) {
+            if (p != null && p.get() == part) return;
         }
-        parts[nextPart] = part;
+        parts[nextPart] = new WeakReference<>(part);
         nextPart = (nextPart + 1) % PARTS;
     }
 

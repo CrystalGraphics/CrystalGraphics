@@ -9,6 +9,7 @@ import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.BiomeGenBase;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -33,17 +34,18 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     private static final AxisAlignedBB EVERYWHERE = AxisAlignedBB.getBoundingBox(-3.0E7, -1.0E4, -3.0E7, 3.0E7, 1.0E4, 3.0E7);
 
     private final List<AxisAlignedBB> boxes = new ArrayList<AxisAlignedBB>();
-    private final World bound;
+    /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
+    private final WeakReference<World> bound;
     private World seen;
     private int epoch;
 
     LevelWorldQuery1710(World bound) {
-        this.bound = bound;
+        this.bound = new WeakReference<>(bound);
     }
 
     /** The level it answers for; null for none. */
     World world() {
-        return bound;
+        return bound.get();
     }
 
     /** Whether there is no level, or the block's chunk is not loaded: a server's level would load it to answer. */

@@ -18,6 +18,7 @@ import net.minecraft.util.BlockPos;
 import net.minecraft.world.biome.BiomeGenBase;
 *///?}
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -43,17 +44,18 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
 
     private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private final List<AxisAlignedBB> boxes = new ArrayList<>();
-    private final World bound;
+    /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
+    private final WeakReference<World> bound;
     private World seen;
     private int epoch;
 
     LevelWorldQueryLegacy(World bound) {
-        this.bound = bound;
+        this.bound = new WeakReference<>(bound);
     }
 
     /** The level it answers for; null for none. */
     World world() {
-        return bound;
+        return bound.get();
     }
 
     BlockPos at(int x, int y, int z) {

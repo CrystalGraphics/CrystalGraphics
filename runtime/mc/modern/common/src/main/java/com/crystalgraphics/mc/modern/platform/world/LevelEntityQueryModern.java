@@ -32,6 +32,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.entity.EntityTypeTest;
 //?}
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -62,20 +63,22 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     /** Parts {@link #within} handed out, overwritten in turn: what a part's id resolves through off a server. */
     private static final int PARTS = 16;
 
-    private final Level bound;
+    /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
+    private final WeakReference<Level> bound;
     private final List<Entity> found = new ArrayList<>();
     private boolean walking;
-    private final Entity[] parts = new Entity[PARTS];
+    @SuppressWarnings("unchecked")
+    private final WeakReference<Entity>[] parts = new WeakReference[PARTS];
     private int nextPart;
-    private Level partsLevel;
+    private WeakReference<Level> partsLevel = new WeakReference<>(null);
 
     LevelEntityQueryModern(Level bound) {
-        this.bound = bound;
+        this.bound = new WeakReference<>(bound);
     }
 
     /** The level it answers for; null for none. */
     Level level() {
-        return bound;
+        return bound.get();
     }
 
     /** Whether {@code e} is the player at this client's keyboard. */
@@ -108,9 +111,9 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     }
 
     private Entity rememberedPart(Level level, int id) {
-        if (level != partsLevel) return null;
+        if (level != partsLevel.get()) return null;
         for (int i = 0; i < PARTS; i++) {
-            Entity p = parts[i];
+            Entity p = parts[i] == null ? null : parts[i].get();
             if (p == null || p.getId() != id) continue;
             Entity parent = parentOf(p);
             if (parent == p ? p.isAlive() : level.getEntity(parent.getId()) == parent) return p;
@@ -121,14 +124,14 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     }
 
     private void remember(Level level, Entity part) {
-        if (level != partsLevel) {
+        if (level != partsLevel.get()) {
             Arrays.fill(parts, null);
-            partsLevel = level;
+            partsLevel = new WeakReference<>(level);
         }
-        for (Entity p : parts) {
-            if (p == part) return;
+        for (WeakReference<Entity> p : parts) {
+            if (p != null && p.get() == part) return;
         }
-        parts[nextPart] = part;
+        parts[nextPart] = new WeakReference<>(part);
         nextPart = (nextPart + 1) % PARTS;
     }
 

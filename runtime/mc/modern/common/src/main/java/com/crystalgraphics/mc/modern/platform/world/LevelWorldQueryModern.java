@@ -15,6 +15,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.level.LightLayer;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -38,17 +39,18 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     private static final FluidState NO_FLUID = Fluids.EMPTY.defaultFluidState();
 
     final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-    private final Level bound;
+    /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
+    private final WeakReference<Level> bound;
     private Level seen;
     private int epoch;
 
     LevelWorldQueryModern(Level bound) {
-        this.bound = bound;
+        this.bound = new WeakReference<>(bound);
     }
 
     /** The level it answers for; null for none. */
     Level level() {
-        return bound;
+        return bound.get();
     }
 
     /** The block at {@link #pos}, set here; air where its chunk is not loaded, which a server would load to answer. */
