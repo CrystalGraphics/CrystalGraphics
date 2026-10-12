@@ -40,12 +40,13 @@ import java.util.function.Consumer;
  *
  * <ul>
  *   <li>The row: every shape turning and bobbing through a box floating at the middle of its bob. Green touching its
- *       box (the box red), orange touching the ground or a block at the bottom, white apart.</li>
+ *       box (the box red), orange touching the ground, a block or an entity, white apart.</li>
  *   <li>Behind: a ball cast through three walls moving up and down and the world, stopping red at the first it meets
  *       with that surface's normal; over it, rays down, each ending at what it meets. A hit is a cross on the surface
  *       and its normal.</li>
  *   <li>In front: a ring hitbox's front growing through six boxes, each flashing red as it is hit, and through the
- *       world's entities, whose boxes flash red too. Every entity within {@link #ENTITY_RANGE} is boxed yellow.</li>
+ *       world's entities. Every entity within {@link #ENTITY_RANGE} is boxed yellow, and red for a moment once
+ *       anything here hits it: a shape, the cast, a ray or the ring.</li>
  *   <li>Render thread, once a frame. {@code seconds} is the frame clock: the hitbox ticks at 20 a second of it.</li>
  * </ul>
  */
@@ -104,7 +105,7 @@ public final class CgCollisionDemo {
     private double lastSeconds = Double.NaN, ticks;
     private @Nullable CgCollisionWorld world;
     private final Consumer<CgHit> boxEntity = h -> {
-        if (world.entities().box(h.entity(), world.partialTick(), box)) drawBox(YELLOW);
+        if (!flashed(h.entity()) && world.entities().box(h.entity(), world.partialTick(), box)) drawBox(YELLOW);
     };
 
     public CgCollisionDemo() {
@@ -158,7 +159,12 @@ public final class CgCollisionDemo {
 
     private boolean touchesGround(CgShape shape, CgPose at) {
         if (world == null) return CgShapes.overlaps(shape, at, FLOOR, floor.identity().at(ox, oy, oz));
-        return world.overlap(shape).at(at.x, at.y, at.z).rotation(at.rotation(rotation)).blocksOnly().any();
+        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.rotation(rotation)).blocksToo().anything()
+                .first(worldHit)) {
+            return false;
+        }
+        if (worldHit.entity() >= 0) flashEntity(worldHit.entity());
+        return true;
     }
 
     // ---- the cast and the rays
@@ -173,10 +179,12 @@ public final class CgCollisionDemo {
             CgCollisionDebug.shape(WALL, other, YELLOW);
         }
         boolean met = props.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).anything().first(hit);
-        if (world != null && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksOnly().first(worldHit)
+        if (world != null
+                && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksToo().anything().first(worldHit)
                 && (!met || worldHit.distance() < hit.distance())) {
             hit.set(worldHit);
             met = true;
+            if (hit.entity() >= 0) flashEntity(hit.entity());
         }
         double end = from + (met ? hit.distance() : SWEEP_LENGTH);
         CgCollisionDebug.shape(BALL, pose.identity().at(from, y, z), WHITE);
@@ -190,10 +198,12 @@ public final class CgCollisionDemo {
         for (int i = 0; i < RAYS; i++) {
             double x = ox + SWEEP_FROM + 2.5 * i;
             boolean met = props.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).anything().first(hit);
-            if (world != null && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksOnly().first(worldHit)
+            if (world != null
+                    && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksToo().anything().first(worldHit)
                     && (!met || worldHit.distance() < hit.distance())) {
                 hit.set(worldHit);
                 met = true;
+                if (hit.entity() >= 0) flashEntity(hit.entity());
             }
             if (met) {
                 CgCollisionDebug.line(x, top, z, x, hit.y(), z, CYAN);
@@ -257,6 +267,13 @@ public final class CgCollisionDemo {
     private CgHitbox grow() {
         return CgHitbox.of(CgRing.front(1.0, 0.8)).at(ox, oy + 0.8, oz + RING_Z).radius(0, RING_REACH, RING_TICKS)
                 .activeFor(RING_TICKS);
+    }
+
+    private boolean flashed(int id) {
+        for (int i = 0; i < FLASHED; i++) {
+            if (flashedFor[i] > 0 && flashedIds[i] == id) return true;
+        }
+        return false;
     }
 
     private void flashEntity(int id) {
