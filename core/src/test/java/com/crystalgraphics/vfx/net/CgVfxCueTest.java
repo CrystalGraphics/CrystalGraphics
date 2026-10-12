@@ -2,6 +2,8 @@ package com.crystalgraphics.vfx.net;
 
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgLevelQueries;
@@ -13,7 +15,6 @@ import com.crystalgraphics.vfx.CgVfxCollision;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
-import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -22,7 +23,6 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.junit.After;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -46,16 +46,39 @@ public class CgVfxCueTest {
     private static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 1f);
     private static final CgVfxParam KI = SCHEMA.color("ki", 1f, 1f, 1f, 1f);
     private static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).build();
-    private static final String SPARK_ID = "cue_test:spark", SEEKER_ID = "cue_test:seeker", WAVE_ID = "cue_test:wave";
-    /** Each target a client's seeker was given. */
-    private static final List<double[]> SEEN = new ArrayList<>();
+    private static final CgNetField<Integer> LEVEL = CgNetField.ofInt("cue_test/level");
 
-    /** What the factory built, and the play it built each from. */
+    /** What the factories built, and the plays they built each from. */
     private static final List<Probe> BUILT = new ArrayList<>();
-    private static final List<CgVfxCue.Play<?>> CUES = new ArrayList<>();
+    private static final List<CgVfxCue.Play> CUES = new ArrayList<>();
+    /** Each target a client's seeker was given, and what each viewer heard confirmed. */
+    private static final List<double[]> SEEN = new ArrayList<>();
+    private static final List<String> CONFIRMED = new ArrayList<>();
     /** The plays each viewer's wave was built from, and the waves. */
-    private static final List<CgVfxCue.Play<?>> WAVE_CUES = new ArrayList<>();
+    private static final List<CgVfxCue.Play> WAVE_CUES = new ArrayList<>();
     private static final List<CgEnergyWave> WAVES = new ArrayList<>();
+
+    private static final CgVfxCue SPARK = CgVfxCue.define("cue_test:spark", LOOK, CgVfxCueTest::probe).fields(LEVEL).build();
+    private static final CgVfxCue KEPT = CgVfxCue.define("cue_test:kept", LOOK, CgVfxCueTest::probe).persisted().build();
+    private static final CgVfxCue SEEKER = CgVfxCue.define("cue_test:seeker", LOOK, (look, cue) -> {
+        if (cue.hasTarget()) SEEN.add(new double[]{cue.tx(), cue.ty(), cue.tz(), cue.struck()});   // published before it was seen
+        return new Seeker(cue.x(), cue.y(), cue.z());
+    }).authoritative().build().onConfirmedCollide(c -> CONFIRMED.add(c.hit() + " at y " + Math.round(c.y())));
+    private static final CgVfxCue WAVE = CgVfxCue.define("cue_test:wave", CgEnergyWave.kamehameha(), (look, cue) -> {
+        CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
+        if (!cue.authoritative()) {
+            WAVE_CUES.add(cue);
+            WAVES.add(wave);
+        }
+        return wave;
+    }).authoritative().build();
+
+    private static CgVfxEffect probe(CgVfxLook look, CgVfxCue.Play cue) {
+        CUES.add(cue);
+        Probe probe = new Probe(cue.x(), cue.y(), cue.z());
+        BUILT.add(probe);
+        return probe;
+    }
 
     static final class Probe extends CgVfxEffect {
         Probe(double x, double y, double z) {
@@ -72,10 +95,9 @@ public class CgVfxCueTest {
     }
 
     /** Goes along its direction to the first block: found on the server, given to its viewers. */
-    static final class Seeker extends CgVfxEffect implements CgVfxCue.Live<Object>, CgVfxCue.Authoritative<Object> {
+    static final class Seeker extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
         private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
-        private double dx, dy = -1, dz, endX = Double.NaN, endY, endZ;
-        private boolean published;
+        private double endX = Double.NaN, endY, endZ;
 
         Seeker(double x, double y, double z) {
             super(LOOK, x, y, z);
@@ -85,7 +107,7 @@ public class CgVfxCueTest {
         protected void tick(float dt) {
             if (state() == State.STOPPING) die();
             if (!authoritative() || !Double.isNaN(endX)) return;
-            if (raycastAll(originX, originY, originZ, dx, dy, dz, 100, 0.2, -1, hit)) {
+            if (raycastAll(originX, originY, originZ, 0, -1, 0, 100, 0.2, -1, hit)) {
                 endX = hit.x;
                 endY = hit.y;
                 endZ = hit.z;
@@ -98,16 +120,13 @@ public class CgVfxCueTest {
         }
 
         @Override
-        public void cueChanged(CgVfxCue.Play<Object> cue) {
+        public void cueChanged(CgVfxCue.Play cue) {
             if (cue.hasTarget() && !authoritative()) SEEN.add(new double[]{cue.tx(), cue.ty(), cue.tz(), cue.struck()});
         }
 
         @Override
-        public boolean publish(CgVfxCue.Play<Object> cue) {
-            if (Double.isNaN(endX) || published) return false;
-            published = true;
-            cue.target(endX, endY, endZ).struck(42);
-            return true;
+        public void publish(CgVfxCue.Play cue) {
+            if (!Double.isNaN(endX)) cue.target(endX, endY, endZ).struck(42);
         }
     }
 
@@ -116,10 +135,13 @@ public class CgVfxCueTest {
         boolean alive = true;
     }
 
+    /** The overworld's server level. */
+    private static final Object OVERWORLD = new Object();
+
     private final class Players implements CgServerPlayers {
         @Override
         public String dimension(Object handle) {
-            return handle instanceof Body ? "minecraft:overworld" : null;
+            return handle instanceof Body || handle == OVERWORLD ? "minecraft:overworld" : null;
         }
 
         @Override
@@ -158,6 +180,21 @@ public class CgVfxCueTest {
         public Path saveDirectory(Object handle) {
             return world.getRoot().toPath();
         }
+
+        @Override
+        public Object level(Object handle, String dimension) {
+            return "minecraft:overworld".equals(dimension) ? OVERWORLD : null;
+        }
+
+        @Override
+        public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
+            return false;
+        }
+
+        @Override
+        public Object entity(Object level, int entityId) {
+            return null;
+        }
     }
 
     private final class Loopback implements CgNetworkChannel {
@@ -170,34 +207,15 @@ public class CgVfxCueTest {
         @Override public boolean isAvailable() { return true; }
     }
 
+    private static final CgLevelQueries FLOOR_EVERYWHERE = new CgLevelQueries() {
+        @Override public CgWorldQuery world(Object level) { return CgVfxAuthorityTest.FLOOR; }
+        @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
+    };
+
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
 
     private final Body body = new Body();
-    private CgVfxCue<CgVfxParams> spark;
-
-    @BeforeClass
-    public static void registerOnce() {
-        reset();
-        CgVfxRegistry.register(CgVfxCue.declare(SPARK_ID), LOOK, (look, cue) -> {
-            CUES.add(cue);
-            Probe probe = new Probe(cue.x(), cue.y(), cue.z());
-            BUILT.add(probe);
-            return probe;
-        });
-        CgVfxRegistry.register(CgVfxCue.declare(SEEKER_ID), LOOK, (look, cue) -> {
-            if (cue.hasTarget()) SEEN.add(new double[]{cue.tx(), cue.ty(), cue.tz(), cue.struck()});   // published before it was added
-            return new Seeker(cue.x(), cue.y(), cue.z());
-        });
-        CgVfxRegistry.register(CgVfxCue.declare(WAVE_ID), CgEnergyWave.kamehameha(), (look, cue) -> {
-            CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
-            if (!cue.authoritative()) {
-                WAVE_CUES.add(cue);
-                WAVES.add(wave);
-            }
-            return wave;
-        });
-    }
 
     @Before
     public void setUp() {
@@ -205,11 +223,12 @@ public class CgVfxCueTest {
         BUILT.clear();
         CUES.clear();
         SEEN.clear();
+        CONFIRMED.clear();
         WAVE_CUES.clear();
         WAVES.clear();
         CgPlatform.provide(CgServerPlayers.SERVICE, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
-        spark = CgVfxCue.declare(SPARK_ID);
+        CgNetwork.serverStarting(null);
         CgVfxCueClient.install();
     }
 
@@ -222,7 +241,6 @@ public class CgVfxCueTest {
 
     private static void reset() {
         CgNetTesting.reset();
-        CgVfxWire.resetForTesting();
         CgVfxCueClient.resetForTesting();
     }
 
@@ -233,7 +251,11 @@ public class CgVfxCueTest {
     }
 
     private static void settle() {
-        for (int i = 0; i < 12; i++) {
+        ticks(12);
+    }
+
+    private static void ticks(int n) {
+        for (int i = 0; i < n; i++) {
             CgNetwork.serverTick();
             CgNetwork.clientTick();
         }
@@ -242,15 +264,16 @@ public class CgVfxCueTest {
     @Test
     public void aOneShotIsBuiltAsTheServerSentIt() {
         join();
-        spark.at(body, 1, 64, 2).toward(0, 0, 4).seed(0x12345600)
-                .params(CgVfxParams.of().set("radius", 3f).color("ki", 0xFF0000FF)).send();
+        SPARK.at(body, 1, 64, 2).toward(0, 0, 4).seed(0x12345600)
+                .set(RADIUS, 3f).set(KI, 0f, 0f, 1f, 1f).setInt(LEVEL, 2).send();
         settle();
 
         assertEquals(1, BUILT.size());
         Probe probe = BUILT.get(0);
-        CgVfxCue.Play<?> cue = CUES.get(0);
+        CgVfxCue.Play cue = CUES.get(0);
         assertEquals(1.0, cue.x(), 0.0);
-        assertEquals(1.0, cue.dz(), 1e-9);
+        assertEquals(1.0, cue.dz(), 1e-6);
+        assertEquals("its own field", 2, cue.getInt(LEVEL));
         assertEquals((0x12345600 >>> 8) / (float) (1 << 24), probe.seed(), 0f);
         assertEquals(3f, probe.get(RADIUS), 0f);
         assertEquals(0f, probe.get(KI, 0), 0f);
@@ -258,18 +281,9 @@ public class CgVfxCueTest {
     }
 
     @Test
-    public void exceptLeavesOutThePlayerWhoAlreadyShowedIt() {
-        join();
-        spark.at(body, 0, 64, 0).except(body).send();
-        settle();
-
-        assertEquals(0, BUILT.size());
-    }
-
-    @Test
     public void aFollowedOneCarriesTheEntityAndPoint() {
         join();
-        spark.at(body, 0, 64, 0).follow(body, "crystalgraphics:hands_forward").keepOffset().send();
+        SPARK.at(body, 0, 64, 0).follow(body, "crystalgraphics:hands_forward").keepOffset().send();
         settle();
 
         assertEquals(7, CUES.get(0).following());
@@ -279,8 +293,8 @@ public class CgVfxCueTest {
 
     @Test
     public void aLateViewerStartsALastingOneAtItsAge() {
-        spark.at(body, 0, 64, 0).start();
-        for (int i = 0; i < 40; i++) CgNetwork.serverTick();
+        SPARK.at(body, 0, 64, 0).start();
+        ticks(40);
         join();
 
         assertEquals(1, BUILT.size());
@@ -291,10 +305,9 @@ public class CgVfxCueTest {
     @Test
     public void aChangeReachesTheEffectsParameters() {
         join();
-        CgVfxCue.Playing<CgVfxParams> playing = spark.at(body, 0, 64, 0)
-                .params(CgVfxParams.of().set("radius", 1f)).start();
+        CgVfxCue.Playing playing = SPARK.at(body, 0, 64, 0).set(RADIUS, 1f).start();
         settle();
-        playing.params(CgVfxParams.of().set("radius", 5f));
+        playing.set(RADIUS, 5f);
         settle();
 
         assertEquals(1, BUILT.size());
@@ -304,8 +317,8 @@ public class CgVfxCueTest {
     @Test
     public void stopIsGracefulAndKillIsAtOnce() {
         join();
-        CgVfxCue.Playing<CgVfxParams> stopped = spark.at(body, 0, 64, 0).start();
-        CgVfxCue.Playing<CgVfxParams> killed = spark.at(body, 0, 64, 0).start();
+        CgVfxCue.Playing stopped = SPARK.at(body, 0, 64, 0).start();
+        CgVfxCue.Playing killed = SPARK.at(body, 0, 64, 0).start();
         settle();
         stopped.stop();
         killed.kill();
@@ -313,14 +326,14 @@ public class CgVfxCueTest {
 
         assertEquals(CgVfxEffect.State.STOPPING, BUILT.get(0).state());
         assertEquals(CgVfxEffect.State.DEAD, BUILT.get(1).state());
-        assertEquals(0, CgVfxWire.playing.size());
+        assertEquals(0, CgNetObjects.serverCount());
     }
 
     @Test
     public void aLifetimeOrALostEntityEndsIt() {
         join();
-        spark.at(body, 0, 64, 0).lifetime(0.2f).start();
-        CgVfxCue.Playing<CgVfxParams> following = spark.at(body, 0, 64, 0).follow(body, null).start();
+        SPARK.at(body, 0, 64, 0).lifetime(0.2f).start();
+        CgVfxCue.Playing following = SPARK.at(body, 0, 64, 0).follow(body, (String) null).start();
         settle();
         assertEquals(CgVfxEffect.State.STOPPING, BUILT.get(0).state());
         assertTrue(following.playing());
@@ -332,51 +345,59 @@ public class CgVfxCueTest {
 
     @Test
     public void aPersistedOneResumesAfterARestart() {
-        spark.at(body, 0, 64, 0).lifetime(600f).persist().start();
+        KEPT.at(body, 0, 64, 0).lifetime(600f).start();
         CgNetwork.closeAll("server stopping");
-        assertEquals(0, CgVfxWire.kept.size());
+        assertEquals(0, CgNetObjects.serverCount());
 
         CgNetwork.serverStarting(null);
-        assertEquals(1, CgVfxWire.kept.size());
+        assertEquals(1, CgNetObjects.serverCount());
         join();
         assertEquals(1, BUILT.size());
     }
 
     @Test
-    public void aPredictionIsRefusedUntilAllowedAndRateLimited() {
+    public void aPredictionIsRefusedUntilAllowedOutOfReachAndOverTheRate() {
         join();
-        spark.at(0, 64, 0).predict();
+        SPARK.at(0, 64, 0).predict();
         settle();
-        assertEquals(1, BUILT.size());
-        assertEquals(1, spark.refused());
+        assertEquals("played here at once", 1, BUILT.size());
+        assertEquals(1, SPARK.refused());
+        assertEquals("and kept playing, refused", CgVfxEffect.State.PLAYING, BUILT.get(0).state());
 
         AtomicInteger allowed = new AtomicInteger();
-        spark.fromClients((player, play) -> allowed.incrementAndGet() >= 0);
-        spark.at(500, 64, 0).predict();
+        SPARK.fromClients((player, play) -> allowed.incrementAndGet() > 0);
+        SPARK.at(500, 64, 0).predict();
         settle();
-        assertEquals(2, spark.refused());
+        assertEquals("out of reach", 2, SPARK.refused());
+        assertEquals(0, allowed.get());
 
-        for (int i = 0; i < CgVfxWire.BURST + 5; i++) spark.at(1, 64, 0).predict();
+        SPARK.at(1, 64, 0).predict();
         settle();
-        assertEquals((int) CgVfxWire.BURST, allowed.get());
-        assertEquals(7, spark.refused());
+        assertEquals("adopted, not sent back as a second", 3, BUILT.size());
+        assertEquals(1, allowed.get());
+
+        for (int i = 0; i < 30; i++) SPARK.at(1, 64, 0).predict();
+        settle();
+        long overRate = SPARK.refused() - 2;
+        assertTrue("some refused over the rate: " + overRate, overRate >= 10);
+        assertEquals(30, allowed.get() - 1 + overRate);
     }
 
     @Test
     public void anAuthorityDecidesWhereItEndsAndHearsWhatItStrikes() {
         CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
-            @Override public CgWorldQuery world(Object level) { return level == body ? CgVfxAuthorityTest.FLOOR : CgWorldQuery.NONE; }
+            @Override public CgWorldQuery world(Object level) { return level == OVERWORLD ? CgVfxAuthorityTest.FLOOR : CgWorldQuery.NONE; }
             @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
         });
-        CgVfxCue<CgVfxParams> seeker = CgVfxCue.declare(SEEKER_ID).authoritative();
         join();
         List<String> heard = new ArrayList<>();
-        CgVfxCue.Playing<CgVfxParams> playing = seeker.at(body, 2, 64, 3).toward(0, -1, 0).start();
+        CgVfxCue.Playing playing = SEEKER.at(body, 2, 64, 3).toward(0, -1, 0).start();
         playing.onCollide(c -> heard.add(c.hit() + " at y " + Math.round(c.y()) + " on " + Thread.currentThread().getName()));
         settle();
 
         String thread = Thread.currentThread().getName();
         assertEquals("heard on the server's tick", List.of("BLOCK at y 0 on " + thread), heard);
+        assertEquals("and confirmed to its viewer", List.of("BLOCK at y 0"), CONFIRMED);
         assertEquals("the viewer was given where it ends", 1, SEEN.size());
         assertEquals(2.0, SEEN.get(0)[0], 1e-6);
         assertEquals(0.0, SEEN.get(0)[1], 1e-6);
@@ -386,77 +407,63 @@ public class CgVfxCueTest {
         playing.stop();
         settle();
         assertEquals(CgVfxEffect.State.DEAD, playing.effect().state());
+        assertEquals(0, CgNetObjects.serverCount());
     }
 
     @Test
     public void anAuthoritativeWaveIsDrivenOnTheServerLikeALocalOne() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
-            @Override public CgWorldQuery world(Object level) { return CgVfxAuthorityTest.FLOOR; }
-            @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
-        });
-        CgVfxCue<CgVfxParams> cue = CgVfxCue.declare(WAVE_ID).authoritative();
+        CgPlatform.provide(CgLevelQueries.SERVICE, FLOOR_EVERYWHERE);
         join();
-        CgVfxCue.Playing<CgVfxParams> playing = cue.at(body, 0, 64, 0).toward(0, 0, 1).start();
+        CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(0, 0, 1).start();
         CgEnergyWave beam = playing.effect();
         beam.hold().aim(1, 0, 0);
         settle();
 
-        CgVfxCue.Play<?> added = WAVE_CUES.get(0);
-        assertTrue("built charging", ((CgVfxParams) added.params()).get(CgEnergyWave.CUE_HOLD, 0f) > 0f);
+        CgVfxCue.Play added = WAVE_CUES.get(0);
+        assertTrue("built charging", added.getBool(CgEnergyWave.HELD));
         assertEquals("aimed as the server aimed it", 1.0, added.dx(), 1e-6);
         assertTrue("homing on the end the server found", added.hasTarget());
 
         float firedAt = beam.age();
         beam.fire();
         settle();
-        float[] published = {Float.NaN};
-        CgVfxWire.playing.forEach(h -> published[0] = ((CgVfxParams) h.value().params()).get(CgEnergyWave.CUE_FIRE, Float.NaN));
-        assertEquals("its release published", firedAt, published[0], 0f);
+        assertEquals("its release published", firedAt, playing.object().getFloat(CgEnergyWave.FIRED_AT), 0f);
 
         beam.stop();
         settle();
         assertFalse("stopping it ended the cue", playing.playing());
-        assertEquals(0, CgVfxWire.playing.size());
+        ticks(200 + 2);   // the type's linger
+        assertEquals("and its object, once the effect played out", 0, CgNetObjects.serverCount());
     }
 
     @Test
     public void whatTheServerSetsOnItsEffectReachesEveryViewer() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
-            @Override public CgWorldQuery world(Object level) { return CgVfxAuthorityTest.FLOOR; }
-            @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
-        });
-        CgVfxCue<CgVfxParams> cue = CgVfxCue.declare(WAVE_ID).authoritative();
+        CgPlatform.provide(CgLevelQueries.SERVICE, FLOOR_EVERYWHERE);
         join();
-        CgVfxCue.Playing<CgVfxParams> playing = cue.at(body, 0, 64, 0).toward(1, 0, 0)
-                .params(CgVfxParams.of().set("radius", 0.5f)).start();
-        settle();
+        CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(1, 0, 0).set(CgEnergyWave.RADIUS, 0.5f).start();
         CgEnergyWave beam = playing.effect();
+        assertEquals("the server's effect is built with what the play set", 0.5f, beam.get(CgEnergyWave.RADIUS), 0f);
+        settle();
         beam.set(CgEnergyWave.RADIUS, 0.4f);
         settle();
         assertEquals("a viewer playing it", 0.4f, WAVES.get(0).get(CgEnergyWave.RADIUS), 0f);
+        CgNetField<Float> radius = WAVE.look.of(CgEnergyWave.RADIUS)[0];
+        assertEquals("and one joining later", 0.4f, playing.object().getFloat(radius), 0f);
 
-        playing.params(CgVfxParams.of().set("unrelated", 1f));
+        playing.set(CgEnergyWave.RADIUS, 0.7f);
         settle();
-        float[] carried = {Float.NaN};
-        CgVfxWire.playing.forEach(h -> carried[0] = ((CgVfxParams) h.value().params()).get("radius", Float.NaN));
-        assertEquals("and one joining later", 0.4f, carried[0], 0f);
-        assertEquals("a params call sets on top", 0.4f, beam.get(CgEnergyWave.RADIUS), 0f);
-
-        playing.params(CgVfxParams.of().set("radius", 0.7f));
-        settle();
-        assertEquals("the server's effect takes the cue's", 0.7f, beam.get(CgEnergyWave.RADIUS), 0f);
+        assertEquals("the server's effect takes the Playing's", 0.7f, beam.get(CgEnergyWave.RADIUS), 0f);
         assertEquals(0.7f, WAVES.get(0).get(CgEnergyWave.RADIUS), 0f);
     }
 
     @Test(expected = IllegalStateException.class)
     public void hearingNeedsAnAuthority() {
-        spark.at(body, 0, 64, 0).start().onCollide(c -> { });
+        SPARK.at(body, 0, 64, 0).start().onCollide(c -> { });
     }
 
     @Test
     public void aViewersWaveReportsTheEntityItsServerStruck() {
-        CgVfxCue.Play<Object> cue = new CgVfxCue.Play<>(null, "cue_test:wave", 0, 0, 0);
-        cue.toward(1, 0, 0).target(8, 0, 0).struck(42);
+        CgVfxCue.Play cue = WAVE.at(0, 0, 0).toward(1, 0, 0).target(8, 0, 0).struck(42);
         CgVfxSystem vfx = new CgVfxSystem();
         CgEnergyWave wave = CgVfx.owner("cue_test", vfx).play(CgEnergyWave.fromCue(CgEnergyWave.kamehameha(), cue));
         List<String> heard = new ArrayList<>();

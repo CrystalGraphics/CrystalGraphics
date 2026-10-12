@@ -80,6 +80,31 @@ final class ServerPlayersLegacy implements CgServerPlayers {
     }
 
     @Override
+    public Object level(Object handle, String dimension) {
+        WorldServer[] worlds = DimensionManager.getWorlds();
+        if (worlds == null) return null;
+        for (WorldServer world : worlds) {
+            if (dimension.equals(dimension(world))) return world;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
+        if (!(level instanceof WorldServer)) return false;
+        //? if <1.9 {
+        /*return ((WorldServer) level).theChunkProviderServer.chunkExists(chunkX, chunkZ);
+        *///?} else {
+        return ((WorldServer) level).getChunkProvider().chunkExists(chunkX, chunkZ);
+        //?}
+    }
+
+    @Override
+    public Object entity(Object level, int entityId) {
+        return level instanceof World ? ((World) level).getEntityByID(entityId) : null;
+    }
+
+    @Override
     public void trackingEntity(Object entity, Consumer<UUID> out) {
         if (!(entity instanceof Entity)) return;
         Entity e = (Entity) entity;

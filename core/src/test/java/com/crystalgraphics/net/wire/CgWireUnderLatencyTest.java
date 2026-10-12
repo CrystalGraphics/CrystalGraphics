@@ -149,8 +149,8 @@ public class CgWireUnderLatencyTest {
         assertTrue("one flush emitted " + frames[0] + " frame(s); the window is "
                         + CgFrameMultiplexer.DEFAULT_WINDOW_BYTES + " bytes",
                 frames[0] > 1);
-        assertEquals("and it must stop at the window, not run past it",
-                0L, solo.sendCredit());
+        assertEquals("and it must stop at the reserve kept for one-frame messages, not run past it",
+                (long) CgFrameMultiplexer.URGENT_RESERVE_BYTES, solo.sendCredit());
     }
 
     // ── Latency ─────────────────────────────────────────────────────────────────────────────────

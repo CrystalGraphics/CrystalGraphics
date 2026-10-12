@@ -110,6 +110,15 @@ public final class CgVfxCollision {
     /** How far round {@link #x()}, {@link #y()}, {@link #z()} it reaches, in blocks: a blast's; 0 for a point contact. */
     public float radius() { return radius; }
 
+    /**
+     * What the server's copy of an effect struck, as a viewer hears it ({@code CgVfxCue.onConfirmedCollide}), on the
+     * viewer's own copy, {@code effect}, when it has one.
+     */
+    public static CgVfxCollision confirmed(CgVfxEffect effect, CgVfxPart part, Hit hit, int entity, double x, double y,
+                                           double z, float nx, float ny, float nz, float radius) {
+        return new CgVfxCollision().effect(effect, part, hit, entity, x, y, z, nx, ny, nz, 0f, 0f, 0f, radius);
+    }
+
     /** The {@link Hit} for an {@code fx_hit} code ({@code CgVfxEventRows.HIT_*}). */
     static Hit hitOf(int code) {
         return code >= 0 && code < BY_CODE.length ? BY_CODE[code] : Hit.OTHER;

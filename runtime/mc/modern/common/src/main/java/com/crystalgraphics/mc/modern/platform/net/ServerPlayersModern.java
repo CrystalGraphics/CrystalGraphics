@@ -1,7 +1,10 @@
 package com.crystalgraphics.mc.modern.platform.net;
 
 import java.nio.file.Path;
+import java.util.Collections;
+import java.util.Map;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.platform.service.CgServerPlayers;
@@ -13,7 +16,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 //? if >=1.14 {
 import net.minecraft.world.level.ChunkPos;
-//?}
+//?} else {
+/*import net.minecraft.core.BlockPos;
+*///?}
 //? if >=1.16 {
 import net.minecraft.world.level.storage.LevelResource;
 //?} else {
@@ -33,10 +38,19 @@ import net.minecraft.world.level.storage.LevelResource;
  */
 final class ServerPlayersModern implements CgServerPlayers {
 
+    /** Each level's id, asked per player per tick: the id's toString builds a new string. */
+    private final Map<Level, String> dimensions = Collections.synchronizedMap(new WeakHashMap<>());
+
     @Override
     public String dimension(Object handle) {
         Level level = handle instanceof Level ? (Level) handle : handle instanceof Entity ? levelOf((Entity) handle) : null;
         if (level == null) return null;
+        String id = dimensions.get(level);
+        if (id == null) dimensions.put(level, id = dimensionOf(level));
+        return id;
+    }
+
+    private static String dimensionOf(Level level) {
         //? if >=1.21.11 {
         /*return level.dimension().identifier().toString();
         *///?} elif >=1.16 {
@@ -108,15 +122,46 @@ final class ServerPlayersModern implements CgServerPlayers {
 
     @Override
     public Path saveDirectory(Object handle) {
-        Level level = handle instanceof Level ? (Level) handle : handle instanceof Entity ? levelOf((Entity) handle) : null;
-        MinecraftServer server = handle instanceof MinecraftServer ? (MinecraftServer) handle
-                : level == null ? null : level.getServer();
+        MinecraftServer server = serverOf(handle);
         if (server == null) return null;
         //? if >=1.16 {
         return server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
         //?} else {
         /*return server.getStorageSource().getFile(server.getLevelIdName(), "").toPath().toAbsolutePath().normalize();
         *///?}
+    }
+
+    @Override
+    public Object level(Object handle, String dimension) {
+        MinecraftServer server = serverOf(handle);
+        if (server == null) return null;
+        // Object: 1.13.2's levels are an unmapped type.
+        for (Object level : server.getAllLevels()) {
+            if (dimension.equals(dimension(level))) return level;
+        }
+        return null;
+    }
+
+    @Override
+    public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
+        if (!(level instanceof ServerLevel)) return false;
+        //? if >=1.14 {
+        return ((ServerLevel) level).getChunkSource().hasChunk(chunkX, chunkZ);
+        //?} else {
+        /*// 1.13.2's getChunkSource answers an unmapped type.
+        return ((ServerLevel) level).isLoaded(new BlockPos(chunkX << 4, 64, chunkZ << 4));
+        *///?}
+    }
+
+    @Override
+    public Object entity(Object level, int entityId) {
+        return level instanceof Level ? ((Level) level).getEntity(entityId) : null;
+    }
+
+    private static MinecraftServer serverOf(Object handle) {
+        if (handle instanceof MinecraftServer) return (MinecraftServer) handle;
+        Level level = handle instanceof Level ? (Level) handle : handle instanceof Entity ? levelOf((Entity) handle) : null;
+        return level == null ? null : level.getServer();
     }
 
     private static void chunkPlayers(ServerLevel level, int chunkX, int chunkZ, Consumer<ServerPlayer> out) {

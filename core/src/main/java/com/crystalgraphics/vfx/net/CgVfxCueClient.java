@@ -1,20 +1,21 @@
 package com.crystalgraphics.vfx.net;
 
-import com.crystalgraphics.net.CgReplicated;
+import com.crystalgraphics.net.object.CgNetBehaviour;
+import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.HashMap;
-import java.util.Map;
+import javax.annotation.Nullable;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The client's side of cues: what arrives is built from the registry and played under the owner its id names. The
- * engine installs it with the world's VFX ({@code CgVfx.install}); nothing else calls it.
+ * The client's side of cues: each cue object the server sends is built from the registry and played under the owner
+ * its id names. The engine installs it with the world's VFX ({@code CgVfx.install}); nothing else calls it.
  */
 public final class CgVfxCueClient {
 
@@ -22,69 +23,94 @@ public final class CgVfxCueClient {
     /** Ids a play missed, warned once each. */
     private static final Set<String> MISSED = ConcurrentHashMap.newKeySet();
 
-    private static boolean installed;
+    private static volatile boolean installed;
 
     private CgVfxCueClient() {
     }
 
-    /** Hears cues from the server from now on. Once, on the client. */
+    /** Builds the cues the server sends from now on. Once, on the client. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgVfxWire.ensure();
-        CgVfxWire.play.onReceive(CgVfxCueClient::play);
-        CgVfxWire.playing.onClient(new View());
-        CgVfxWire.kept.onClient(new View());
+        for (CgVfxCue cue : CgVfxCue.all()) view(cue);
+    }
+
+    /** A cue was declared: built here too, once installed. */
+    static synchronized void declared(CgVfxCue cue) {
+        if (installed) view(cue);
+    }
+
+    private static void view(CgVfxCue cue) {
+        cue.type.onClient(obj -> new View(cue));
     }
 
     /** Builds {@code p} and plays it under its namespace's owner; null where nothing is registered under its id. */
-    static CgVfxEffect play(CgVfxCue.Play<?> p) {
-        CgVfxEffect effect = build(p);
-        return effect == null ? null : CgVfx.owner(p.id.substring(0, p.id.indexOf(':'))).play(effect);
-    }
-
-    private static CgVfxEffect build(CgVfxCue.Play<?> p) {
-        CgVfxRegistry.Entry entry = CgVfxRegistry.get(p.id);
+    @Nullable
+    static CgVfxEffect play(CgVfxCue.Play p) {
+        String id = p.id();
+        CgVfxRegistry.Entry entry = CgVfxRegistry.get(id);
         if (entry == null) {
-            if (MISSED.add(p.id)) LOGGER.warn("[CgVfx] a cue arrived for '{}', which nothing registers here", p.id);
+            if (MISSED.add(id)) LOGGER.warn("[CgVfx] a cue arrived for '{}', which nothing registers here", id);
             return null;
         }
-        return CgVfxWire.build(p, () -> entry.spawn(p));
+        return CgVfx.owner(id.substring(0, id.indexOf(':'))).play(p.build(entry));
     }
 
-    /** Lasting cues the client sees: started at their age as they come into view, stopped as they leave. */
-    private static final class View implements CgReplicated.View<CgVfxCue.Play<?>> {
-        private final Map<Long, CgVfxEffect> live = new HashMap<>();
+    /** A cue object as this client shows it: its effect, started at its age, taking what changes. */
+    static final class View implements CgNetBehaviour {
+        private final CgVfxCue cue;
+        private CgVfxCue.Play play;
+        @Nullable
+        CgVfxEffect effect;
+        private boolean changed;
 
-        @Override
-        public void added(long id, CgVfxCue.Play<?> p) {
-            CgVfxEffect effect = play(p);
-            if (effect != null) live.put(id, effect);
+        View(CgVfxCue cue) {
+            this.cue = cue;
         }
 
         @Override
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        public void changed(long id, CgVfxCue.Play<?> p) {
-            CgVfxEffect effect = live.get(id);
-            if (effect == null) return;
-            if (effect.state() == CgVfxEffect.State.DEAD) {
-                live.remove(id);
-            } else if (p.killed) {
-                live.remove(id);
-                effect.kill();
-            } else {
-                CgVfxWire.take(p, effect);
-            }
+        public void spawned(CgNetObject obj, float age) {
+            play = CgVfxCue.Play.read(cue, obj);
+            play.age = age * CgVfxCueAuthority.SERVER_TICK;
+            effect = play(play);
         }
 
         @Override
-        public void removed(long id) {
-            CgVfxEffect effect = live.remove(id);
+        public void changed(CgNetObject obj, CgNetField<?> field) {
+            if (effect != null && !cue.applyLook(play, effect, field)) changed = true;
+        }
+
+        @Override
+        public void received(CgNetObject obj) {
+            if (!changed || effect == null) return;
+            changed = false;
+            play.readFrom(obj);
+            if (!obj.isStopping() && effect instanceof CgVfxCue.Live) ((CgVfxCue.Live) effect).cueChanged(play);
+        }
+
+        /** The server's effect plays out: this one too, while its confirmed collisions still arrive. */
+        @Override
+        public void stopping(CgNetObject obj) {
             if (effect != null) effect.stop();
         }
+
+        @Override
+        public void moved(CgNetObject obj) {
+            if (effect == null) return;
+            play.readFrom(obj);
+            if (effect instanceof CgVfxCue.Live) ((CgVfxCue.Live) effect).cueChanged(play);
+        }
+
+        @Override
+        public void despawned(CgNetObject obj, boolean killed) {
+            // A one-shot plays out whatever the network says: a refused prediction included.
+            if (effect == null || obj.isFired()) return;
+            if (killed) effect.kill();
+            else effect.stop();
+        }
     }
 
-    /** Back to uninstalled, for a test that reset the network's declarations. */
+    /** Back to uninstalled, for a test. */
     static synchronized void resetForTesting() {
         installed = false;
     }

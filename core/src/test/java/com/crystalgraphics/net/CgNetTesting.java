@@ -12,6 +12,5 @@ public final class CgNetTesting {
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
         CgMessage.resetForTesting();
-        CgReplicated.resetForTesting();
     }
 }

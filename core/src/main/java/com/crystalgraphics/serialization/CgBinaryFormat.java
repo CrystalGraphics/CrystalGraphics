@@ -82,15 +82,28 @@ public final class CgBinaryFormat {
 
     /** Encodes a {@link CgPlainOps} tree. Throws {@link CgCodecException} on anything it cannot represent. */
     public static byte[] encode(Object tree) {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        try (DataOutputStream out = new DataOutputStream(bytes)) {
-            write(out, tree);
+        Scratch scratch = SCRATCH.get();
+        scratch.bytes.reset();
+        try {
+            write(scratch.out, tree);
         } catch (IOException impossible) {
             // A ByteArrayOutputStream does not do I/O. If this ever fires, the cause is not I/O.
             throw new CgCodecException("encoding to memory failed", impossible);
         }
-        return bytes.toByteArray();
+        byte[] encoded = scratch.bytes.toByteArray();
+        // A transfer's buffer is not kept: one megabyte message would otherwise pin a megabyte per thread.
+        if (encoded.length > Scratch.KEEP_BYTES) SCRATCH.remove();
+        return encoded;
     }
+
+    /** Each thread's encoding buffer, reused so a message costs its result and not the buffer's growth. */
+    private static final class Scratch {
+        static final int KEEP_BYTES = 64 * 1024;
+        final ByteArrayOutputStream bytes = new ByteArrayOutputStream(4096);
+        final DataOutputStream out = new DataOutputStream(bytes);
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
 
     private static void write(DataOutputStream out, Object value) throws IOException {
         if (value == null) {

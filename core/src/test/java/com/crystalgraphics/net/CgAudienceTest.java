@@ -81,6 +81,21 @@ public class CgAudienceTest {
         public Path saveDirectory(Object handle) {
             return null;
         }
+
+        @Override
+        public Object level(Object handle, String dimension) {
+            return null;
+        }
+
+        @Override
+        public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
+            return false;
+        }
+
+        @Override
+        public Object entity(Object level, int entityId) {
+            return null;
+        }
     }
 
     private static final class Silent implements CgNetworkChannel {

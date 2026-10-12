@@ -58,6 +58,12 @@ public final class CgChannels {
      */
     public static final CgTraceChannel VFX = CgTrace.channel("crystalgraphics.vfx");
 
+    /**
+     * Networked objects, per type each server tick: {@code net.objects/<type>}, {@code net.viewers/<type>} (objects
+     * seen, summed over players), {@code net.bytes/<type>} and {@code net.refused/<type>} (commands and predictions).
+     */
+    public static final CgTraceChannel NET = CgTrace.channel("crystalgraphics.net");
+
     /** Work on background workers. */
     public static final CgTraceChannel ASYNC = CgTrace.channel("crystalgraphics.async");
 

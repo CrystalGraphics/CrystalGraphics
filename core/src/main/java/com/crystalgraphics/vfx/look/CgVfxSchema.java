@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,6 +30,7 @@ public final class CgVfxSchema {
     private float[] defaults = new float[0];
     // Curves and shakes, by a parameter's offset.
     private final List<Object> objects = new ArrayList<>();
+    private final List<CgNetField<?>> networked = new ArrayList<>();
 
     public CgVfxParam scalar(String name, float value) {
         CgVfxParam param = declare(name, 1);
@@ -58,6 +60,27 @@ public final class CgVfxSchema {
 
     public List<CgVfxParam> params() {
         return Collections.unmodifiableList(params);
+    }
+
+    /**
+     * State an effect of this kind sends from the server's copy to its viewers, beyond its parameters: every cue playing
+     * a look of this schema lists these fields, and the effect writes and reads them through its cue
+     * ({@code CgVfxCue.Authoritative}, {@code CgVfxCue.Live}).
+     *
+     * <pre>{@code
+     * public static final CgNetField<Float> FIRED_AT = CgNetField.ofFloat("wave/fired_at").fallback(Float.NaN);
+     * static { SCHEMA.networked(FIRED_AT); }
+     * }</pre>
+     *
+     * Before any cue playing it is declared.
+     */
+    public CgVfxSchema networked(CgNetField<?>... fields) {
+        Collections.addAll(networked, fields);
+        return this;
+    }
+
+    public List<CgNetField<?>> networked() {
+        return Collections.unmodifiableList(networked);
     }
 
     /** Floats in a full set of values. */

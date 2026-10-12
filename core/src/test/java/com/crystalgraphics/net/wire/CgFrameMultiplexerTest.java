@@ -342,8 +342,23 @@ public class CgFrameMultiplexerTest {
         long sentBytes = (long) emitted.get() * 4096;
         assertTrue("sent " + sentBytes + " bytes with no acknowledgement — the window did not hold",
                 sentBytes <= CgFrameMultiplexer.DEFAULT_WINDOW_BYTES + 4096);
-        assertEquals("credit should be spent", 0, Math.max(0, sender.sendCredit()));
+        assertEquals("credit should be spent down to the reserve", CgFrameMultiplexer.URGENT_RESERVE_BYTES, sender.sendCredit());
         assertTrue("the rest must still be queued", sender.pendingOutboundMessages() > 0);
+    }
+
+    @Test
+    public void aOneFrameMessageGoesAheadOfATransferThatSpentItsCredit() {
+        List<byte[]> emitted = new ArrayList<>();
+        CgFrameMultiplexer sender = new CgFrameMultiplexer(4096, true, emitted::add);
+        sender.send(bytes(4 * 1024 * 1024, 9));
+        sender.flush();
+        int before = emitted.size();
+
+        sender.send(bytes(100, 3));
+        sender.flush();
+
+        assertEquals("the small message left at once, from the reserve", before + 1, emitted.size());
+        assertEquals(CgFrameMultiplexer.URGENT_RESERVE_BYTES - 100, sender.sendCredit());
     }
 
     @Test

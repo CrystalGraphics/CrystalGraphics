@@ -8,8 +8,9 @@ import java.util.function.Consumer;
 
 /**
  * Answers the server's questions about its players: which dimension a level, entity or player is in, where an entity
- * is, whose client has a chunk or an entity loaded, and where the world is saved. What {@code CgAudience} composes its audiences from; a mod
- * reaches it through those rather than here.
+ * is, whose client has a chunk or an entity loaded, which chunks are loaded, and where the world is saved. What
+ * {@code CgAudience} and networked objects compose their audiences from; a mod reaches it through those rather than
+ * here.
  *
  * <pre>{@code
  * CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
@@ -40,6 +41,9 @@ public interface CgServerPlayers {
         @Override public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) { }
         @Override public void trackingEntity(Object entity, Consumer<UUID> out) { }
         @Override public Path saveDirectory(Object handle) { return null; }
+        @Override public Object level(Object handle, String dimension) { return null; }
+        @Override public boolean chunkLoaded(Object level, int chunkX, int chunkZ) { return false; }
+        @Override public Object entity(Object level, int entityId) { return null; }
     };
 
     CgService<CgServerPlayers> SERVICE = CgService.of("crystalgraphics:server_players", NONE);
@@ -73,6 +77,18 @@ public interface CgServerPlayers {
      * without a running server.
      */
     Path saveDirectory(Object handle);
+
+    /**
+     * The server's level for a dimension id, {@code handle} being the server or anything on it; null when it has no
+     * such level, or without a running server.
+     */
+    Object level(Object handle, String dimension);
+
+    /** Whether chunk ({@code chunkX}, {@code chunkZ}) of a server level is loaded. Never loads it. */
+    boolean chunkLoaded(Object level, int chunkX, int chunkZ);
+
+    /** The entity of a server level with network id {@code entityId}, as its clients know it; null for none. */
+    Object entity(Object level, int entityId);
 
     /** The id of a numbered dimension: vanilla's three by their modern names, any other {@code "legacy:dim<n>"}. */
     static String dimensionId(int dimension) {

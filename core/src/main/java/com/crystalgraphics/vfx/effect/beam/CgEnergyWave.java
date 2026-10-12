@@ -29,8 +29,8 @@ import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.camera.CgCameraShakes;
+import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.vfx.net.CgVfxCue;
-import com.crystalgraphics.vfx.net.CgVfxParams;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -95,9 +95,25 @@ import java.util.List;
  *       the blast when its shock front reaches the camera.</li>
  * </ul>
  */
-public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live<Object>, CgVfxCue.Authoritative<Object> {
+public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
 
     public static final CgVfxSchema SCHEMA = new CgVfxSchema();
+
+    /**
+     * What a cue playing a wave carries beyond its look: whether it charges until fired, and the age it fired at, in
+     * seconds. An authoritative cue's server wave publishes both; a cosmetic one sets them.
+     *
+     * <pre>{@code
+     * Playing wave = KAMEHAMEHA.on(player, CgEntityAttachments.HANDS_FORWARD).setBool(CgEnergyWave.HELD, true).start();
+     * wave.set(CgEnergyWave.FIRED_AT, wave.age());   // released
+     * }</pre>
+     */
+    public static final CgNetField<Boolean> HELD = CgNetField.ofBool("wave/held");
+    public static final CgNetField<Float> FIRED_AT = CgNetField.ofFloat("wave/fired_at").fallback(Float.NaN);
+
+    static {
+        SCHEMA.networked(HELD, FIRED_AT);
+    }
 
     /** The trace marker each blast leaves as it starts: where a profile splits a frame's beams from its blasts. */
     public static final String BLAST_MARKER = "vfx.blast";
@@ -646,28 +662,17 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live<Obj
     }
 
     /**
-     * Follows its cue as the server changes it: the aim, the target, what it struck, and {@link #CUE_FIRE}, the age it
-     * fired at. An authoritative cue's server wave publishes all of them ({@link #publish}); a cosmetic one sets them.
-     *
-     * <pre>{@code
-     * Playing<CgVfxParams> wave = KAMEHAMEHA.on(player, CgEntityAttachments.HANDS_FORWARD)
-     *         .params(CgVfxParams.of().set(CgEnergyWave.CUE_HOLD, 1f)).start();       // charging
-     * wave.params(CgVfxParams.of().set(CgEnergyWave.CUE_FIRE, wave.age()));             // released
-     * }</pre>
+     * Follows its cue as the server changes it: the aim, the target, what it struck, and {@link #FIRED_AT}. An
+     * authoritative cue's server wave publishes all of them ({@link #publish}); a cosmetic one sets them.
      */
     @Override
-    public void cueChanged(CgVfxCue.Play<Object> cue) {
+    public void cueChanged(CgVfxCue.Play cue) {
         if (cue.hasDirection()) aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
         if (cue.hasTarget()) target(cue.tx(), cue.ty(), cue.tz());
         cueStruck = cue.struck();
-        if (cue.params() instanceof CgVfxParams) {
-            float fireAge = ((CgVfxParams) cue.params()).get(CUE_FIRE, Float.NaN);
-            if (!Float.isNaN(fireAge)) fireAt(fireAge);
-        }
+        float fireAge = cue.getFloat(FIRED_AT);
+        if (!Float.isNaN(fireAge)) fireAt(fireAge);
     }
-
-    /** The cue parameters a wave reads: 1 to charge until fired; the age it fired at, in seconds. */
-    public static final String CUE_HOLD = "hold", CUE_FIRE = "fire";
 
     /** Blocks the end must move before a server publishes it again. */
     private static final double PUBLISH_MOVE = 0.05;
@@ -681,63 +686,45 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live<Obj
      * their own worlds; and its aim, hold and release as the server drove it ({@code Playing.effect()}).
      */
     @Override
-    public boolean publish(CgVfxCue.Play<Object> cue) {
+    public void publish(CgVfxCue.Play cue) {
         // Each part goes out when it differs from what the cue says, however the server changed it.
-        boolean changed = false;
         float length = (float) Math.sqrt(aimX * aimX + aimY * aimY + aimZ * aimZ);
         if (length > 0f && Math.abs(aimX / length - cue.dx()) + Math.abs(aimY / length - cue.dy())
                 + Math.abs(aimZ / length - cue.dz()) > AIM_EPSILON) {
             cue.toward(aimX, aimY, aimZ);
-            changed = true;
         }
-        if (cue.params() == null || cue.params() instanceof CgVfxParams) {
-            CgVfxParams given = (CgVfxParams) cue.params();
-            boolean saysHeld = given != null && given.get(CUE_HOLD, 0f) > 0f;
-            boolean fire = releaseAge != Float.POSITIVE_INFINITY
-                    && releaseAge != (given == null ? Float.NaN : given.get(CUE_FIRE, Float.NaN));
-            if (held != saysHeld || fire) {
-                // A copy: the params given may be a constant the caller shares.
-                CgVfxParams params = given == null ? CgVfxParams.of() : given.copy();
-                if (held) params.set(CUE_HOLD, 1f);
-                if (fire) params.set(CUE_FIRE, releaseAge);
-                cue.params(params);
-                changed = true;
-            }
-        }
-        if (Double.isNaN(endX)) return changed;
+        cue.setBool(HELD, held);
+        if (releaseAge != Float.POSITIVE_INFINITY) cue.setFloat(FIRED_AT, releaseAge);
+        if (Double.isNaN(endX)) return;
         double dx = endX - publishedX, dy = endY - publishedY, dz = endZ - publishedZ;
         // The comparison is false while the last is NaN.
-        if (dx * dx + dy * dy + dz * dz < PUBLISH_MOVE * PUBLISH_MOVE && hitEntity == publishedEntity) return changed;
+        if (dx * dx + dy * dy + dz * dz < PUBLISH_MOVE * PUBLISH_MOVE && hitEntity == publishedEntity) return;
         publishedX = endX;
         publishedY = endY;
         publishedZ = endZ;
         publishedEntity = hitEntity;
         cue.target(endX, endY, endZ).struck(hitEntity);
-        return true;
     }
 
     /**
-     * A wave from a cue: at its point, aimed and targeted as it says, charging and fired as its parameters say. The one
-     * factory for both sides of an authoritative cue: the server's wave {@linkplain #collide collides}, finding its own
-     * end, unless the cue gave it a target.
+     * A wave from a cue: at its point, aimed and targeted as it says, charging and fired as {@link #HELD} and
+     * {@link #FIRED_AT} say. The one factory for both sides of an authoritative cue: the server's wave
+     * {@linkplain #collide collides}, finding its own end, unless the cue gave it a target.
      *
      * <pre>{@code
-     * public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
-     *         CgEnergyWave::fromCue).range(96).authoritative();
+     * public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), CgEnergyWave::fromCue)
+     *         .range(96).authoritative().build();
      * }</pre>
      */
-    public static CgEnergyWave fromCue(CgVfxLook look, CgVfxCue.Play<?> cue) {
+    public static CgEnergyWave fromCue(CgVfxLook look, CgVfxCue.Play cue) {
         CgEnergyWave wave = new CgEnergyWave(look, cue.x(), cue.y(), cue.z());
         if (cue.hasDirection()) wave.aim((float) cue.dx(), (float) cue.dy(), (float) cue.dz());
         if (cue.hasTarget()) wave.target(cue.tx(), cue.ty(), cue.tz());
         else if (cue.authoritative()) wave.collide();
         wave.cueStruck = cue.struck();
-        if (cue.params() instanceof CgVfxParams) {
-            CgVfxParams params = (CgVfxParams) cue.params();
-            if (params.get(CUE_HOLD, 0f) > 0f) wave.hold();
-            float fireAge = params.get(CUE_FIRE, Float.NaN);
-            if (!Float.isNaN(fireAge)) wave.fireAt(fireAge);
-        }
+        if (cue.getBool(HELD)) wave.hold();
+        float fireAge = cue.getFloat(FIRED_AT);
+        if (!Float.isNaN(fireAge)) wave.fireAt(fireAge);
         return wave;
     }
 

@@ -72,6 +72,8 @@ public final class CgConnections {
     }
 
     private final Map<Object, Held> peers = new ConcurrentHashMap<>();
+    /** {@link #peers}' values, for {@link #tick}: a map's iterator is an allocation every tick. */
+    private volatile Held[] ticking = new Held[0];
     private final String which;
     private final int maxFrameBytes;
     private final boolean initiator;
@@ -121,7 +123,12 @@ public final class CgConnections {
                 CgProtocols.open(transport, CgPlainOps.INSTANCE, transport::pump, peer);
         connection.flushWith(frames::flush);
         peers.put(key, new Held(frames, connection, peer));
+        snapshot();
         return connection;
+    }
+
+    private synchronized void snapshot() {
+        ticking = peers.values().toArray(new Held[0]);
     }
 
     /** The connection held for {@code key}, or null. */
@@ -154,6 +161,7 @@ public final class CgConnections {
     public boolean close(Object key, String reason) {
         Held held = peers.remove(key);
         if (held == null) return false;
+        snapshot();
         if (held.peer != null && onClosed != null) onClosed.accept(held.peer);
         held.connection.close(reason);
         return true;
@@ -168,7 +176,7 @@ public final class CgConnections {
      * fault.</p>
      */
     public void tick() {
-        for (Held held : peers.values()) {
+        for (Held held : ticking) {
             try {
                 held.connection.tick();
             } catch (RuntimeException failed) {

@@ -1,10 +1,12 @@
 package com.crystalgraphics.serialization;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Function;
 
 /** Built-in primitive {@link CgCodec}s and generic combinators — the reusable low-level vocabulary
@@ -101,6 +103,22 @@ public final class CgCodecs {
         @Override
         public <T> Double decode(CgDynamicOps<T> ops, T input) {
             return ops.getNumberValue(input).doubleValue();
+        }
+    };
+
+    /** A UUID as its two longs. */
+    public static final CgCodec<UUID> UUID = new CgCodec<UUID>() {
+        @Override
+        public <T> T encode(CgDynamicOps<T> ops, UUID input) {
+            return ops.createList(Arrays.asList(ops.createNumber(input.getMostSignificantBits()),
+                    ops.createNumber(input.getLeastSignificantBits())));
+        }
+
+        @Override
+        public <T> UUID decode(CgDynamicOps<T> ops, T input) {
+            List<T> halves = ops.getListValue(input);
+            if (halves.size() != 2) throw new CgCodecException("a UUID is two longs, not " + halves.size() + " values");
+            return new UUID(ops.getNumberValue(halves.get(0)).longValue(), ops.getNumberValue(halves.get(1)).longValue());
         }
     };
 

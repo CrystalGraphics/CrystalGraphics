@@ -11,6 +11,8 @@ import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.net.object.CgNetObjects;
+import com.crystalgraphics.net.object.CgNetStress;
 import com.crystalgraphics.net.protocol.CgConnections;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
@@ -108,17 +110,36 @@ public final class CgNetwork {
                 CgHello.bind(connection, CgNetwork::namespaces);
                 CgMessage.bindAll(connection);
                 CgRequest.bindAll(connection);
+                CgNetObjects.bind(connection);
             });
         }
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
+        if (Boolean.getBoolean(CgNetStress.PROPERTY)) CgNetStress.install();
         return true;
     }
 
-    /** What the hello says this side speaks: every message's and request's namespace. */
+    /** What the hello says this side speaks: every message's, request's and networked object type's namespace. */
     private static Map<String, Integer> namespaces() {
         Map<String, Integer> out = CgMessage.namespaces();
         out.putAll(CgRequest.namespaces());
+        out.putAll(CgNetObjects.namespaces());
         return out;
+    }
+
+    /** This side's version of {@code namespace}: 1 unless {@link CgMessage#version} said otherwise. */
+    public static int version(String namespace) {
+        return CgMessage.versionOf(namespace);
+    }
+
+    /** Whether the peer of {@code connection} has said hello. */
+    public static boolean helloKnown(CgProtocolConnection<Object> connection) {
+        return CgHello.state(connection).known();
+    }
+
+    /** The version of {@code namespace} the peer of {@code connection} declared; -1 if it lacks it or has not said. */
+    public static int helloVersion(CgProtocolConnection<Object> connection, String namespace) {
+        CgHello.State state = CgHello.state(connection);
+        return state.known() ? state.version(namespace) : -1;
     }
 
     /** Whether {@link #install} installed. A server with no networking otherwise boots and looks healthy. */
@@ -132,7 +153,7 @@ public final class CgNetwork {
     }
 
     /**
-     * Runs {@code listener} once a server tick, on the server thread, before {@link CgReplicated} sends the tick's
+     * Runs {@code listener} once a server tick, on the server thread, before networked objects send the tick's
      * changes: a change made here reaches clients this tick. At init.
      */
     public static void onServerTick(Runnable listener) {
@@ -220,40 +241,70 @@ public final class CgNetwork {
         if (table != null && table.close(CLIENT, "disconnected")) {
             LOGGER.info("[cg-net] client connection closed");
         }
-        CgReplicated.clientClosedAll();
     }
 
     /**
-     * The server is starting: what {@link CgReplicated} persists is loaded, before any mod's own start handler or
-     * player. {@code server} is anything the host's {@code CgServerPlayers.saveDirectory} accepts.
+     * The server is starting: persisted networked objects are loaded, before any mod's own start handler or player.
+     * {@code server} is anything the host's {@code CgServerPlayers.saveDirectory} accepts.
      */
     public static void serverStarting(@Nullable Object server) {
-        CgReplicated.serverStarting(server);
+        CgNetObjects.serverStarting(server);
     }
 
     public static void serverTick() {
         CgConnections table = server;
         if (table == null) return;
         serverTicks++;
-        for (Runnable listener : SERVER_TICK) {
+        // Indexed: a copy-on-write list's iterator is an allocation every tick.
+        for (int i = 0; i < SERVER_TICK.size(); i++) {
             try {
-                listener.run();
+                SERVER_TICK.get(i).run();
             } catch (RuntimeException failed) {
                 LOGGER.error("[cg-net] a server-tick listener failed", failed);
             }
         }
-        CgReplicated.serverTickAll();
+        long started = System.nanoTime();
+        long allocated = measureAllocation ? CgThreadAllocation.current() : 0;
+        CgNetObjects.serverTick();
         table.tick();
+        serverTickNanos = System.nanoTime() - started;
+        if (measureAllocation) serverTickAllocated = CgThreadAllocation.current() - allocated;
     }
 
     public static void clientTick() {
         CgConnections table = client;
-        if (table != null) table.tick();
+        if (table == null) return;
+        long started = System.nanoTime();
+        table.tick();
+        clientTickNanos = System.nanoTime() - started;
+    }
+
+    private static volatile boolean measureAllocation;
+    private static long serverTickNanos, serverTickAllocated, clientTickNanos;
+
+    /** The last server tick's network work, objects then every connection, in nanoseconds. Server thread. */
+    public static long serverTickNanos() {
+        return serverTickNanos;
+    }
+
+    /** Bytes the server thread allocated in that work, or 0 unless {@link #measureAllocation(boolean)} is on. */
+    public static long serverTickAllocated() {
+        return serverTickAllocated;
+    }
+
+    /** Reads the server thread's allocation around each tick's network work: two counter reads a tick. */
+    public static void measureAllocation(boolean on) {
+        measureAllocation = on && CgThreadAllocation.available();
+    }
+
+    /** The last client tick's network work, receiving and every listener it ran, in nanoseconds. Client thread. */
+    public static long clientTickNanos() {
+        return clientTickNanos;
     }
 
     /**
      * The server is stopping: fails everything outstanding now, rather than leaving each caller to wait out its timeout,
-     * and saves what {@link CgReplicated} persists.
+     * and saves the networked objects that persist.
      */
     public static void closeAll(String reason) {
         int had = openConnections();
@@ -261,8 +312,7 @@ public final class CgNetwork {
         CgConnections c = client;
         if (s != null) s.closeAll(reason);
         if (c != null) c.closeAll(reason);
-        CgReplicated.serverStopped();
-        CgReplicated.clientClosedAll();
+        CgNetObjects.serverStopped();
         if (had > 0) LOGGER.info("[cg-net] closed {} connection(s): {}", had, reason);
     }
 
@@ -281,7 +331,6 @@ public final class CgNetwork {
 
     private static void closed(Object peer) {
         if (!(peer instanceof CgPeer)) return;
-        CgReplicated.peerClosed(((CgPeer) peer).id());
         for (Consumer<CgPeer> listener : CLOSED) {
             try {
                 listener.accept((CgPeer) peer);
@@ -291,9 +340,10 @@ public final class CgNetwork {
         }
     }
 
-    /** Back to before {@link #install}. Tests only. */
-    static synchronized void resetForTesting() {
+    /** Back to before {@link #install}, with no networked objects; declarations stay. Tests only. */
+    public static synchronized void resetForTesting() {
         closeAll("reset");
+        CgNetObjects.resetForTesting();
         CLOSED.clear();
         SERVER_TICK.clear();
         serverTicks = 0;

@@ -1,10 +1,8 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCue;
-import com.crystalgraphics.vfx.net.CgVfxParams;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -186,50 +184,52 @@ public final class CgVfxOwner {
     }
 
     /**
-     * Declares a cue as {@code namespace:path}, carrying {@link CgVfxParams}, and what it plays: what the server sends and
-     * the clients build. On both sides, at init, as a constant.
+     * Starts declaring a cue as {@code namespace:path}, with what it plays: what the server sends and the clients build.
+     * On both sides, at init, as a constant; {@code build()} declares it.
      *
      * <pre>{@code
-     * public static final CgVfxCue<CgVfxParams> EXPLOSION = VFX.cue("explosion", Blast.LOOK,
-     *         (look, cue) -> new Blast(look, cue.x(), cue.y(), cue.z()));
-     * EXPLOSION.at(level, x, y, z).params(CgVfxParams.of().set("radius", 6f)).send();   // server
+     * public static final CgVfxCue EXPLOSION = VFX.cue("explosion", Blast.LOOK,
+     *         (look, cue) -> new Blast(look, cue.x(), cue.y(), cue.z())).build();
+     * EXPLOSION.at(level, x, y, z).set(Blast.RADIUS, 6f).send();   // server: a look parameter, by its constant
      *
      * // the server runs it too, deciding what it strikes: one factory for both sides
-     * public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
-     *         CgEnergyWave::fromCue).range(96).authoritative();
+     * public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), CgEnergyWave::fromCue)
+     *         .range(96).authoritative().build();
      * }</pre>
      *
-     * A cue's parameters reach the effect's look parameters of the same name without the factory reading them.
+     * Its look's numbers and colours are its fields: set on a play, they reach the effect with no code in the factory.
      */
-    public CgVfxCue<CgVfxParams> cue(String path, CgVfxLook look, CgVfxRegistry.CueFactory<CgVfxParams> factory) {
-        CgVfxCue<CgVfxParams> cue = cue(path);
-        CgVfxRegistry.register(cue, look, factory);
-        return cue;
+    public CgVfxCue.Builder cue(String path, CgVfxLook look, CgVfxRegistry.CueFactory factory) {
+        return CgVfxCue.define(namespace + ":" + path(path), look, factory);
     }
 
     /**
-     * Declares a cue alone, for {@link #register(CgVfxCue, CgVfxLook, CgVfxRegistry.CueFactory)} to say on the client
-     * what it plays: where what it plays names client-only classes.
+     * Starts declaring a cue alone, for {@link #register(CgVfxCue, CgVfxLook, CgVfxRegistry.CueFactory)} to say on the
+     * client what it plays: where what it plays names client-only classes. Its data is fields it declares.
+     *
+     * <pre>{@code
+     * public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL).build();   // common
+     * }</pre>
      */
-    public CgVfxCue<CgVfxParams> cue(String path) {
-        return cue(path, CgVfxParams.CODEC);
+    public CgVfxCue.Builder cue(String path) {
+        return CgVfxCue.define(namespace + ":" + path(path));
     }
 
-    /** A cue carrying parameters of a type of its own, written by {@code codec}. */
-    public <P> CgVfxCue<P> cue(String path, CgCodec<P> codec) {
+    private static String path(String path) {
         if (path.indexOf(':') >= 0) throw new IllegalArgumentException("a path, not an id: '" + path + "'");
-        return CgVfxCue.declare(namespace + ":" + path, codec);
+        return path;
     }
 
     /**
      * What {@code cue}, declared alone, plays on this client. At client init.
      *
      * <pre>{@code
-     * public static final CgVfxCue<CgVfxParams> EXPLOSION = VFX.cue("explosion");                 // common
-     * VFX.register(EXPLOSION, Blast.LOOK, (look, cue) -> new Blast(look, cue.x(), cue.y(), cue.z()));   // client
+     * public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL).build();       // common
+     * VFX.register(HIT, HitSpark.LOOK,                                                       // client
+     *         (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z(), cue.getInt(LEVEL)));
      * }</pre>
      */
-    public <P> CgVfxRegistry.Entry register(CgVfxCue<P> cue, CgVfxLook look, CgVfxRegistry.CueFactory<P> factory) {
+    public CgVfxRegistry.Entry register(CgVfxCue cue, CgVfxLook look, CgVfxRegistry.CueFactory factory) {
         return CgVfxRegistry.register(cue, look, factory);
     }
 

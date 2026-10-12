@@ -42,8 +42,8 @@ public final class CgVfxRegistry {
 
     /** Starts an effect of a look from a cue the server sent, reading its parameters and where it aims. */
     @FunctionalInterface
-    public interface CueFactory<P> {
-        CgVfxEffect spawn(CgVfxLook look, CgVfxCue.Play<P> cue);
+    public interface CueFactory {
+        CgVfxEffect spawn(CgVfxLook look, CgVfxCue.Play cue);
     }
 
     public static final class Entry {
@@ -52,9 +52,9 @@ public final class CgVfxRegistry {
         private final String category;
         private final CgVfxLook look;
         private final Factory factory;
-        private final CueFactory<?> cueFactory;
+        private final CueFactory cueFactory;
 
-        Entry(String id, String name, String category, CgVfxLook look, Factory factory, CueFactory<?> cueFactory) {
+        Entry(String id, String name, String category, CgVfxLook look, Factory factory, CueFactory cueFactory) {
             this.id = id;
             this.name = name;
             this.category = category;
@@ -87,9 +87,8 @@ public final class CgVfxRegistry {
          * The effect a cue plays: its cue factory's, else the point factory's, aimed at the cue's target, else
          * {@link #CUE_REACH} along its direction, else at its own point.
          */
-        @SuppressWarnings({"unchecked", "rawtypes"})
-        public CgVfxEffect spawn(CgVfxCue.Play<?> cue) {
-            if (cueFactory != null) return ((CueFactory) cueFactory).spawn(look, cue);
+        public CgVfxEffect spawn(CgVfxCue.Play cue) {
+            if (cueFactory != null) return cueFactory.spawn(look, cue);
             double tx = cue.tx(), ty = cue.ty(), tz = cue.tz();
             if (!cue.hasTarget() && cue.hasDirection()) {
                 tx = cue.x() + cue.dx() * CUE_REACH;
@@ -134,19 +133,18 @@ public final class CgVfxRegistry {
      * What a cue plays here, under the cue's id. A tool lists it, and plays it at a point through a cue it makes there.
      *
      * <pre>{@code
-     * static final CgVfxCue<CgVfxParams> HIT = CgVfxCue.declare("mymod:hit_spark");        // both sides
+     * static final CgVfxCue HIT = CgVfxCue.define("mymod:hit_spark").fields(LEVEL).build();   // both sides
      * CgVfxRegistry.register(HIT, "Hit spark", "Impacts", HitSpark.LOOK,                     // client
-     *         (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()).level((int) cue.params().get("level", 1f)));
+     *         (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()).level(cue.getInt(LEVEL)));
      * }</pre>
      */
-    public static <P> Entry register(CgVfxCue<P> cue, String name, String category, CgVfxLook look,
-                                     CueFactory<P> factory) {
+    public static Entry register(CgVfxCue cue, String name, String category, CgVfxLook look, CueFactory factory) {
         return add(new Entry(cue.id(), name, category, look, (l, x, y, z, tx, ty, tz) ->
                 factory.spawn(l, cue.at(x, y, z).target(tx, ty, tz)), factory));
     }
 
     /** {@link #register(CgVfxCue, String, String, CgVfxLook, CueFactory)} named by its id, in category "Cues". */
-    public static <P> Entry register(CgVfxCue<P> cue, CgVfxLook look, CueFactory<P> factory) {
+    public static Entry register(CgVfxCue cue, CgVfxLook look, CueFactory factory) {
         return register(cue, cue.id(), "Cues", look, factory);
     }
 

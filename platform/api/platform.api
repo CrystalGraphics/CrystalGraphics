@@ -37,6 +37,10 @@ com/crystalgraphics/platform/CgService
 com/crystalgraphics/platform/device/CgDevice
   access public,abstract,interface
   extends java/lang/Object
+  field public,static,final ASYNC_COMPUTE Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final PRESENT_MODE Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final SYNC_VALIDATION Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final TRANSFER Lcom/crystalgraphics/variable/CgVar$Bool;
   method public fromHost ()V
   method public toHost ()V
   method public,abstract createBindingLayout (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/platform/device/pipeline/CgBindingLayout;
@@ -952,6 +956,10 @@ com/crystalgraphics/platform/device/shader/CgShaderModule$Stage
 com/crystalgraphics/platform/gl/CgCapabilities
   access public,final
   extends java/lang/Object
+  field public,static,final COMPUTE_TIER Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final MULTI_DRAW Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final SHADER_BUFFER_TIER Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final STREAM_TIER Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final SUBGROUP_ARITHMETIC I
   field public,static,final SUBGROUP_BALLOT I
   field public,static,final SUBGROUP_BASIC I
@@ -1044,6 +1052,7 @@ com/crystalgraphics/platform/gl/CgCapabilities$StreamBufferTier
 com/crystalgraphics/platform/gl/CgDisabledExtensions
   access public,final
   extends java/lang/Object
+  field public,static,final DISABLED Lcom/crystalgraphics/variable/CgVar$Text;
   method public,static all ()Ljava/util/Set;
   method public,static filter (Lcom/crystalgraphics/platform/gl/CgGLContext;)Lcom/crystalgraphics/platform/gl/CgGLContext;
   method public,static has (Ljava/lang/String;)Z
@@ -1549,6 +1558,7 @@ com/crystalgraphics/platform/gl/CgGL
   method public,static glFenceSync (II)J
   method public,static glFlushMappedBufferRange (IJJ)V
   method public,static glFramebufferRenderbuffer (IIII)V
+  method public,static glFramebufferTexture (IIII)V
   method public,static glFramebufferTexture2D (IIIII)V
   method public,static glFramebufferTextureLayer (IIIII)V
   method public,static glFrontFace (I)V
@@ -1654,16 +1664,22 @@ com/crystalgraphics/platform/gl/CgGL
 com/crystalgraphics/platform/gl/CgGLBackend
   access public,abstract
   extends java/lang/Object
+  field public,static,final DEBUG_PERF Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final DEBUG_STACKS Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final DEBUG_STACKS_LIMIT Lcom/crystalgraphics/variable/CgVar$Int;
+  field public,static,final KEEP_HOST_DEBUG_OUTPUT Lcom/crystalgraphics/variable/CgVar$Bool;
   method protected,final fillBySubData (IJJI)V
   method public <init> ()V
   method public cgBeginAsync ()V
   method public cgBeginTransfer ()V
   method public cgBufferBarrier (III)V
+  method public cgClipZeroToOne (Z)V
   method public cgEndAsync ()J
   method public cgEndTransfer ()V
   method public cgImageBarrier (III)V
   method public cgWaitAsync (J)V
   method public copyImageSubData (IIIIIIIIIIIIIII)V
+  method public framebufferTexture (IIII)V
   method public framebufferTextureLayer (IIIII)V
   method public,abstract bindFramebuffer (II)V
   method public,abstract blitFramebuffer (IIIIIIIIII)V
@@ -1879,6 +1895,7 @@ com/crystalgraphics/platform/gl/CgGlStateManager
   field public callsIssued J
   field public callsSkipped J
   field public disagreements J
+  field public,static,final ROUND_TRIP Lcom/crystalgraphics/variable/CgVar$Bool;
   method public <init> (Lcom/crystalgraphics/platform/gl/state/CgGlStateProvider;)V
   method public activeTextureChanged (I)Z
   method public alphaFuncChanged (IF)Z
@@ -2145,6 +2162,7 @@ com/crystalgraphics/platform/gl/state/CgGlStateShadow
 com/crystalgraphics/platform/gl/state/CgHostStateCache
   access public,final
   extends java/lang/Object
+  field public,static,final VERIFY Lcom/crystalgraphics/variable/CgVar$Bool;
   method public <init> (Ljava/lang/Class;ILjava/util/function/IntConsumer;Ljava/util/function/IntSupplier;)V
   method public answer (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)Z
   method public excuse (Lcom/crystalgraphics/platform/gl/state/CgGlSlot;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;Lcom/crystalgraphics/platform/gl/state/CgGlStateShadow;)V
@@ -2163,6 +2181,7 @@ com/crystalgraphics/platform/gl/tracked/CgTrackedGLBackend
   method public cgBeginAsync ()V
   method public cgBeginTransfer ()V
   method public cgBufferBarrier (III)V
+  method public cgClipZeroToOne (Z)V
   method public cgEndAsync ()J
   method public cgEndTransfer ()V
   method public cgFillBuffer (IJJI)V
@@ -3005,6 +3024,8 @@ com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
 com/crystalgraphics/platform/service/CgCacheDirectory
   access public,final
   extends java/lang/Object
+  field public,static,final DIR Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final ENABLED Lcom/crystalgraphics/variable/CgVar$Bool;
   method public,static of (Ljava/lang/String;)Ljava/nio/file/Path;
 com/crystalgraphics/platform/service/CgCursorService
   access public,abstract,interface
@@ -3102,6 +3123,13 @@ com/crystalgraphics/platform/service/CgInputService
   method public,abstract setClipboard (Ljava/lang/String;)V
   method public,abstract translateKeyboardCodes (I)I
   method public,abstract translateMouseCodes (I)I
+com/crystalgraphics/platform/service/CgLevelQueries
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgLevelQueries;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract entities (Ljava/lang/Object;)Lcom/crystalgraphics/platform/service/CgEntityQuery;
+  method public,abstract world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/service/CgWorldQuery;
 com/crystalgraphics/platform/service/CgLifecycleService
   access public,abstract,interface
   extends java/lang/Object
@@ -3109,11 +3137,18 @@ com/crystalgraphics/platform/service/CgLifecycleService
   method public,abstract onContextInit (II)V
   method public,abstract onFrameRendered ()V
   method public,abstract onResize (II)V
+com/crystalgraphics/platform/service/CgModelSpace
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgModelSpace;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract frame ([D[F)Z
 com/crystalgraphics/platform/service/CgNetworkChannel
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final SAFE_FLOOR_BYTES I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  field public,static,final TRACE Lcom/crystalgraphics/variable/CgVar$Bool;
   method public,abstract isAvailable ()Z
   method public,abstract maxFrameBytes ()I
   method public,abstract sendToPlayer (Ljava/lang/Object;[B)V
@@ -3137,7 +3172,12 @@ com/crystalgraphics/platform/service/CgServerPlayers
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgServerPlayers;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract alive (Ljava/lang/Object;)Z
+  method public,abstract chunkLoaded (Ljava/lang/Object;II)Z
   method public,abstract dimension (Ljava/lang/Object;)Ljava/lang/String;
+  method public,abstract entity (Ljava/lang/Object;I)Ljava/lang/Object;
+  method public,abstract entityId (Ljava/lang/Object;)I
+  method public,abstract level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
   method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
   method public,abstract position (Ljava/lang/Object;[D)Z
   method public,abstract saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
@@ -3156,6 +3196,7 @@ com/crystalgraphics/platform/service/CgWorldEvents
   field public,static,final ENTITY_HURT I
   field public,static,final EXPLOSION I
   field public,static,final LIGHTNING I
+  field public,static,final TRACE Lcom/crystalgraphics/variable/CgVar$Bool;
   method public,static blockBroken (IIIII)V
   method public,static declare (I)V
   method public,static declared ()I
@@ -3333,8 +3374,8 @@ com/crystalgraphics/trace/CgGpuTrace$Support
 com/crystalgraphics/trace/CgTrace
   access public,final
   extends java/lang/Object
-  field public,static,final CHANNELS_PROPERTY Ljava/lang/String;
   field public,static,final MAX_CHANNELS I
+  field public,static,final RECORDED_CHANNELS Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final TRACE Lcom/crystalgraphics/trace/CgTraceChannel;
   method public,static add (Lcom/crystalgraphics/trace/CgTraceChannel;IJ)V
   method public,static add (Lcom/crystalgraphics/trace/CgTraceChannel;Ljava/lang/String;J)V
@@ -3610,3 +3651,97 @@ com/crystalgraphics/trace/CgTraceSnapshot$ZoneView
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVar
+  access public,abstract
+  extends java/lang/Object
+  field public,static,final DEV I
+  field public,static,final READ_ONLY I
+  field public,static,final RESTART I
+  field public,static,final SAVED I
+  method public format (Ljava/lang/Object;)Ljava/lang/String;
+  method public,abstract range ()Ljava/lang/String;
+  method public,abstract type ()Ljava/lang/String;
+  method public,final clear (Lcom/crystalgraphics/variable/CgVar$Source;)Z
+  method public,final defaultText ()Ljava/lang/String;
+  method public,final defaultValue ()Ljava/lang/Object;
+  method public,final description ()Ljava/lang/String;
+  method public,final has (I)Z
+  method public,final id ()Ljava/lang/String;
+  method public,final onChange (Ljava/util/function/Consumer;)V
+  method public,final removeListener (Ljava/util/function/Consumer;)V
+  method public,final set (Lcom/crystalgraphics/variable/CgVar$Source;Ljava/lang/Object;)Z
+  method public,final setText (Lcom/crystalgraphics/variable/CgVar$Source;Ljava/lang/String;)Z
+  method public,final source ()Lcom/crystalgraphics/variable/CgVar$Source;
+  method public,final text ()Ljava/lang/String;
+  method public,final toString ()Ljava/lang/String;
+  method public,final value ()Ljava/lang/Object;
+  method public,final valueAt (Lcom/crystalgraphics/variable/CgVar$Source;)Ljava/lang/Object;
+  method public,static bool (Ljava/lang/String;ZILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Bool;
+  method public,static bool (Ljava/lang/String;ZLjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Bool;
+  method public,static choice (Ljava/lang/String;Ljava/lang/Enum;ILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Choice;
+  method public,static choice (Ljava/lang/String;Ljava/lang/Enum;Ljava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Choice;
+  method public,static integer (Ljava/lang/String;IIIILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Int;
+  method public,static integer (Ljava/lang/String;IIILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Int;
+  method public,static number (Ljava/lang/String;FFFILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Num;
+  method public,static number (Ljava/lang/String;FFFLjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Num;
+  method public,static text (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Text;
+  method public,static text (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Text;
+com/crystalgraphics/variable/CgVar$Bool
+  access public,final
+  extends com/crystalgraphics/variable/CgVar
+  method public get ()Z
+  method public range ()Ljava/lang/String;
+  method public set (Z)V
+  method public type ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVar$Choice
+  access public,final
+  extends com/crystalgraphics/variable/CgVar
+  method public format (Ljava/lang/Enum;)Ljava/lang/String;
+  method public get ()Ljava/lang/Enum;
+  method public options ()[Ljava/lang/Enum;
+  method public range ()Ljava/lang/String;
+  method public set (Ljava/lang/Enum;)V
+  method public type ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVar$Int
+  access public,final
+  extends com/crystalgraphics/variable/CgVar
+  method public get ()I
+  method public max ()I
+  method public min ()I
+  method public range ()Ljava/lang/String;
+  method public set (I)V
+  method public type ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVar$Num
+  access public,final
+  extends com/crystalgraphics/variable/CgVar
+  method public get ()F
+  method public max ()F
+  method public min ()F
+  method public range ()Ljava/lang/String;
+  method public set (F)V
+  method public type ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVar$Source
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CODE Lcom/crystalgraphics/variable/CgVar$Source;
+  field public,static,final CONSOLE Lcom/crystalgraphics/variable/CgVar$Source;
+  field public,static,final FILE Lcom/crystalgraphics/variable/CgVar$Source;
+  field public,static,final PROPERTY Lcom/crystalgraphics/variable/CgVar$Source;
+  field public,static,final REMOTE Lcom/crystalgraphics/variable/CgVar$Source;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/variable/CgVar$Source;
+  method public,static values ()[Lcom/crystalgraphics/variable/CgVar$Source;
+com/crystalgraphics/variable/CgVar$Text
+  access public,final
+  extends com/crystalgraphics/variable/CgVar
+  method public get ()Ljava/lang/String;
+  method public isSet ()Z
+  method public range ()Ljava/lang/String;
+  method public set (Ljava/lang/String;)V
+  method public type ()Ljava/lang/String;
+com/crystalgraphics/variable/CgVars
+  access public,final
+  extends java/lang/Object
+  method public,static all ()Ljava/util/List;
+  method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/variable/CgVar;
+  method public,static under (Ljava/lang/String;)Ljava/util/List;
+  method public,static unregister (Lcom/crystalgraphics/variable/CgVar;)V

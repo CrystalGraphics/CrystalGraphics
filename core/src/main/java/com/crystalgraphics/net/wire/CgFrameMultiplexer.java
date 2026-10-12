@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  * {@code NetworkManager.outboundPacketsQueue} — that is an <b>unbounded</b>
  * {@code ConcurrentLinkedQueue} shared with the entire game.</p>
  *
- * <h3>Three mechanisms, none of them invented</h3>
+ * <h3>Four mechanisms, none of them invented</h3>
  *
  * <ul>
  *   <li><b>Stream multiplexing</b>, from HTTP/2. Every message gets a stream id and frames from
@@ -36,6 +36,9 @@ import java.util.function.Consumer;
  *       See {@link CgFrameCodec} for why there is no sequence number.</li>
  *   <li><b>Credit flow control</b>, from HTTP/2's {@code WINDOW_UPDATE}. The receiver advertises a byte
  *       budget; the sender spends it and stops when it is gone.</li>
+ *   <li><b>Urgency</b>, from RFC 9218's extensible priorities. A message that fits in one frame goes before
+ *       any fragment, in order, and fragments leave {@link #URGENT_RESERVE_BYTES} of credit for it: an
+ *       object frame behind a transfer arrives the next tick, not after the peer's next grant.</li>
  * </ul>
  *
  * <p><b>Flow control is the one that is not optional here.</b> RFC 9113 gives the general reason —
@@ -106,6 +109,14 @@ public final class CgFrameMultiplexer {
 
     /** Messages waiting to go out, each already assigned a stream. Round-robined by {@link #flush}. */
     private final Deque<Outbound> outbound = new ArrayDeque<>();
+    /** Messages that fit in one frame, in order: sent before any fragment. @see #flush */
+    private final Deque<Outbound> urgent = new ArrayDeque<>();
+
+    /**
+     * Credit a fragmenting message leaves unspent, for the one-frame messages behind it: an object frame or a ping then
+     * never waits a round trip for the peer's {@code WINDOW_UPDATE}.
+     */
+    static final int URGENT_RESERVE_BYTES = DEFAULT_WINDOW_BYTES / 4;
 
     private Consumer<byte[]> messageHandler = message -> { };
 
@@ -166,7 +177,8 @@ public final class CgFrameMultiplexer {
      */
     public void send(byte[] message) {
         if (closed) throw new IllegalStateException("connection is closed");
-        outbound.addLast(new Outbound(allocateStreamId(), message));
+        Outbound queued = new Outbound(allocateStreamId(), message);
+        (queued.fragments(maxPayloadBytes) ? outbound : urgent).addLast(queued);
     }
 
     private int allocateStreamId() {
@@ -223,6 +235,21 @@ public final class CgFrameMultiplexer {
      * </ul>
      */
     public void flush() {
+        // One-frame messages first, in order, with all the credit there is: RFC 9218's urgency, where a small
+        // message is more urgent than a transfer. A large one cannot starve them: it stops at the reserve below.
+        while (sendCredit > 0 && !urgent.isEmpty()) {
+            Outbound message = urgent.peekFirst();
+            int chunk = (int) Math.min(message.remaining(), sendCredit);
+            boolean fin = chunk == message.remaining();
+            sink.send(CgFrameCodec.data(message.streamId, message.bytes, message.sent, chunk, fin));
+            message.sent += chunk;
+            sendCredit -= chunk;
+            if (fin) urgent.pollFirst();
+        }
+        flushFragmenting();
+    }
+
+    private void flushFragmenting() {
         // ROUND-ROBIN PASSES, REPEATED WHILE CREDIT LASTS -- and the repetition is the fix, not a detail.
         //
         // This was a SINGLE pass: `spins = outbound.size()`, one turn each, done. Fair, and it silently
@@ -239,11 +266,11 @@ public final class CgFrameMultiplexer {
         // anti-head-of-line-blocking property below is untouched. The outer loop only decides HOW MANY
         // rounds happen, and credit -- which is what the peer actually promised to buffer -- decides
         // that. Termination: every round either sends (strictly decreasing finite credit) or breaks.
-        while (sendCredit > 0 && !outbound.isEmpty()) {
+        while (sendCredit > URGENT_RESERVE_BYTES && !outbound.isEmpty()) {
             int spins = outbound.size();
             boolean progressed = false;
 
-            while (spins-- > 0 && sendCredit > 0 && !outbound.isEmpty()) {
+            while (spins-- > 0 && sendCredit > URGENT_RESERVE_BYTES && !outbound.isEmpty()) {
                 Outbound message = outbound.pollFirst();
 
                 if (message.sent == 0 && message.fragments(maxPayloadBytes)) {
@@ -257,7 +284,7 @@ public final class CgFrameMultiplexer {
                 }
 
                 int remaining = message.remaining();
-                int chunk = (int) Math.min(Math.min(remaining, maxPayloadBytes), sendCredit);
+                int chunk = (int) Math.min(Math.min(remaining, maxPayloadBytes), sendCredit - URGENT_RESERVE_BYTES);
                 boolean fin = chunk == remaining;
 
                 sink.send(CgFrameCodec.data(message.streamId, message.bytes, message.sent, chunk, fin));
@@ -431,6 +458,12 @@ public final class CgFrameMultiplexer {
             it.remove();
             return;
         }
+        // A one-frame message is reset only before it went whole, so it holds no admission budget.
+        for (Iterator<Outbound> it = urgent.iterator(); it.hasNext(); ) {
+            if (it.next().streamId != streamId) continue;
+            it.remove();
+            return;
+        }
     }
 
     /**
@@ -460,6 +493,7 @@ public final class CgFrameMultiplexer {
         }
         reassemblyBytes = 0;
         outbound.clear();
+        urgent.clear();
         fragmentingBytes = 0;
         arrived.clear();
     }
@@ -470,7 +504,7 @@ public final class CgFrameMultiplexer {
 
     /** Whole messages queued or partly sent. Zero means everything handed to the platform. */
     public int pendingOutboundMessages() {
-        return outbound.size();
+        return outbound.size() + urgent.size();
     }
 
     /** Bytes held in partial inbound messages — the number {@link #MAX_REASSEMBLY_BYTES} bounds. */
