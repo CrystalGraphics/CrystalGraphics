@@ -49,15 +49,15 @@ public class CgShapeTest {
                 p -> segmentDistance(p, -1, 0.5, 0, 2, 1, 1.5) <= 0.5 + EPS));
         c.add(new Case("cylinder", CgCylinder.of(1.5, 2), 3,
                 p -> p.x * p.x + p.z * p.z <= 1.5 * 1.5 + EPS && Math.abs(p.y) <= 2 + EPS));
-        c.add(new Case("cone 35", CgCone.of(3, 35), 3.5, p -> inCone(p, 3, 35)));
-        c.add(new Case("cone 90", CgCone.of(3, 90), 3.5, p -> inCone(p, 3, 90)));
-        c.add(new Case("cone 140", CgCone.of(3, 140), 3.5, p -> inCone(p, 3, 140)));
+        c.add(new Case("cone 35", CgCone.of(3, Math.toRadians(35)), 3.5, p -> inCone(p, 3, 35)));
+        c.add(new Case("cone 90", CgCone.of(3, Math.PI / 2), 3.5, p -> inCone(p, 3, 90)));
+        c.add(new Case("cone 140", CgCone.of(3, Math.toRadians(140)), 3.5, p -> inCone(p, 3, 140)));
         c.add(new Case("shell", CgShell.of(1.5, 2.5), 3, p -> p.length() >= 1.5 - EPS && p.length() <= 2.5 + EPS));
         c.add(new Case("ring", CgRing.of(1, 2.5, 0.5), 3, p -> {
             double r2 = p.x * p.x + p.z * p.z;
             return r2 >= 1 - EPS && r2 <= 2.5 * 2.5 + EPS && Math.abs(p.y) <= 0.5 + EPS;
         }));
-        CgPose head = new CgPose().at(0, 0, 1.5).facing(30, 20);
+        CgPose head = new CgPose().at(0, 0, 1.5).facing(Math.toRadians(30), Math.toRadians(20));
         CgCompound hammer = CgCompound.builder().add(CgCapsule.of(1, 0.4), 0, 0, 0).add(CgBox.of(0.5, 0.3, 0.4), head)
                 .build();
         c.add(new Case("compound", hammer, 2.5, p -> segmentDistance(p, 0, 0, -1, 0, 0, 1) <= 0.4 + EPS
@@ -126,8 +126,8 @@ public class CgShapeTest {
 
     @Test
     public void convexity() {
-        assertTrue(CgCone.of(5, 90).isConvex());
-        assertFalse(CgCone.of(5, 91).isConvex());
+        assertTrue(CgCone.of(5, Math.PI / 2).isConvex());
+        assertFalse(CgCone.of(5, Math.toRadians(91)).isConvex());
         assertFalse(CgShell.of(1, 2).isConvex());
         assertTrue(CgShell.of(0, 2).isConvex());
         assertFalse(CgRing.of(1, 2, 1).isConvex());
@@ -150,7 +150,7 @@ public class CgShapeTest {
         assertThrows(IllegalArgumentException.class, () -> CgSphere.of(-1));
         assertThrows(IllegalArgumentException.class, () -> CgSphere.of(Double.NaN));
         assertThrows(IllegalArgumentException.class, () -> CgBox.of(1, Double.POSITIVE_INFINITY, 1));
-        assertThrows(IllegalArgumentException.class, () -> CgCone.of(3, 181));
+        assertThrows(IllegalArgumentException.class, () -> CgCone.of(3, Math.PI + 1e-9));
         assertThrows(IllegalArgumentException.class, () -> CgShell.of(3, 2));
         assertThrows(IllegalArgumentException.class, () -> CgConvex.hull(new double[]{1, 2}));
         assertThrows(IllegalStateException.class, () -> CgCompound.builder().build());

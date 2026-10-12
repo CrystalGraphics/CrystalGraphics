@@ -11,7 +11,7 @@ import org.joml.Vector3d;
  *
  * <pre>{@code
  * static final CgShape BLAST = CgSphere.of(6);
- * static final CgShape CLEAVE = CgCone.of(8, 35);          // 8 blocks along local +Z, 35 degrees either side
+ * static final CgShape CLEAVE = CgCone.of(8, Math.toRadians(35));   // 8 blocks along local +Z, 35 degrees either side
  *
  * BLAST.bounds(pose.at(x, y, z), box);                       // its box in the world
  * }</pre>

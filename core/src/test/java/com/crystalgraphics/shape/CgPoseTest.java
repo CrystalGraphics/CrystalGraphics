@@ -17,8 +17,8 @@ public class CgPoseTest {
         Vector3d forward = new Vector3d(), right = new Vector3d();
         for (double yaw = -180; yaw <= 180; yaw += 22.5) {
             for (double pitch = -89; pitch <= 89; pitch += 17.8) {
-                pose.facing(yaw, pitch);
                 double y = Math.toRadians(yaw), p = Math.toRadians(pitch);
+                pose.facing(y, p);
                 pose.rotate(0, 0, 1, forward);
                 assertEquals(-Math.sin(y) * Math.cos(p), forward.x, 1e-12);
                 assertEquals(-Math.sin(p), forward.y, 1e-12);

@@ -12,14 +12,21 @@ import org.joml.Vector3d;
  * <pre>{@code
  * private final CgPose pose = new CgPose();
  *
- * pose.at(eyeX, eyeY, eyeZ).facing(yaw, pitch);      // Minecraft's degrees: yaw 0 faces +z, pitch down positive
+ * pose.at(eyeX, eyeY, eyeZ).facing(yaw, pitch);      // radians: yaw 0 faces +z, pitch down positive
  * pose.at(x, y, z).rotation(quaternion);             // any rotation
  * shape.bounds(pose, box);
  * }</pre>
  *
+ * A player's look, which {@code CgEntityQuery.pose} reports in Minecraft's degrees:
+ *
+ * <pre>{@code
+ * double yaw = Math.toRadians(look[CgEntityQuery.YAW]), pitch = Math.toRadians(look[CgEntityQuery.PITCH]);
+ * pose.at(eyeX, eyeY, eyeZ).facing(yaw, pitch);
+ * }</pre>
+ *
  * <ul>
- *   <li>{@link #facing} takes what {@code CgEntityQuery.pose} reports ({@code YAW}, {@code PITCH}), so a cone in front
- *       of a player is one call.</li>
+ *   <li>Angles are radians everywhere in {@code shape}; {@link #facing} follows Minecraft's directions, not its
+ *       units.</li>
  *   <li>A rotation is normalized as it is set; position calls leave it alone, and the other way round.</li>
  * </ul>
  */
@@ -45,9 +52,9 @@ public final class CgPose {
         return this;
     }
 
-    /** Turns local +Z to look along Minecraft's yaw and pitch, in degrees, with no roll. */
-    public CgPose facing(double yawDegrees, double pitchDegrees) {
-        double halfYaw = Math.toRadians(-yawDegrees) * 0.5, halfPitch = Math.toRadians(pitchDegrees) * 0.5;
+    /** Turns local +Z to look along a yaw and pitch in radians, as Minecraft's point, with no roll. */
+    public CgPose facing(double yaw, double pitch) {
+        double halfYaw = -yaw * 0.5, halfPitch = pitch * 0.5;
         double sy = Math.sin(halfYaw), cy = Math.cos(halfYaw), sp = Math.sin(halfPitch), cp = Math.cos(halfPitch);
         // about Y by -yaw, then about X by pitch
         return rotation(cy * sp, cp * sy, -sy * sp, cy * cp);

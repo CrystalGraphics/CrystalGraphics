@@ -8,14 +8,14 @@ import org.joml.Vector3d;
  * cleaves, shotgun blasts, sight cones; the apex is the origin, so the pose is where it comes from.
  *
  * <pre>{@code
- * static final CgShape CLEAVE = CgCone.of(8, 35);            // 8 blocks long, 35 degrees either side of the look
+ * static final CgShape CLEAVE = CgCone.of(8, Math.toRadians(35));   // 8 blocks long, 35 degrees either side
  * CLEAVE.bounds(pose.at(eyeX, eyeY, eyeZ).facing(yaw, pitch), box);
  * }</pre>
  *
  * <ul>
  *   <li>The far end is a cap of the sphere, not a flat disc: a target at the edge of the angle is as far away as one
  *       straight ahead.</li>
- *   <li>Up to 90 degrees it is convex; wider (up to 180, a whole ball) it is not, and is tested as a ball and an
+ *   <li>Up to a right angle it is convex; wider (up to pi, a whole ball) it is not, and is tested as a ball and an
  *       angle.</li>
  * </ul>
  */
@@ -30,13 +30,16 @@ public final class CgCone extends CgShape {
         this.cos = Math.cos(halfAngle);
     }
 
-    /** @throws IllegalArgumentException for a negative range, or an angle outside 0 to 180 degrees */
-    public static CgCone of(double range, double halfAngleDegrees) {
+    /**
+     * @param halfAngle in radians, either side of local +Z
+     * @throws IllegalArgumentException for a negative range, or an angle outside 0 to pi
+     */
+    public static CgCone of(double range, double halfAngle) {
         CgShapeArgs.length("range", range);
-        if (!(halfAngleDegrees >= 0 && halfAngleDegrees <= 180)) {
-            throw new IllegalArgumentException("halfAngleDegrees must be 0 to 180: " + halfAngleDegrees);
+        if (!(halfAngle >= 0 && halfAngle <= Math.PI)) {
+            throw new IllegalArgumentException("halfAngle must be 0 to pi radians: " + halfAngle);
         }
-        return new CgCone(range, Math.toRadians(halfAngleDegrees));
+        return new CgCone(range, halfAngle);
     }
 
     public double range() {
@@ -67,6 +70,6 @@ public final class CgCone extends CgShape {
 
     @Override
     public String toString() {
-        return "CgCone[range " + range + ", half angle " + Math.toDegrees(halfAngle) + "]";
+        return "CgCone[range " + range + ", half angle " + Math.toDegrees(halfAngle) + " degrees]";
     }
 }
