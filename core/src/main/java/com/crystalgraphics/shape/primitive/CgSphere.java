@@ -15,7 +15,7 @@ import org.joml.Vector3d;
  */
 public final class CgSphere extends CgShape {
 
-    private final double radius;
+    private double radius;
 
     private CgSphere(double radius) {
         this.radius = radius;
@@ -48,6 +48,15 @@ public final class CgSphere extends CgShape {
     @Override
     public CgAABB bounds(CgPose pose, CgAABB out) {
         return out.setCenterHalf(pose.x, pose.y, pose.z, radius, radius, radius);
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgSphere copy() {
+        return new CgSphere(radius);
+    }
+
+    void resize(double radius) {
+        this.radius = radius;
     }
 
     @Override

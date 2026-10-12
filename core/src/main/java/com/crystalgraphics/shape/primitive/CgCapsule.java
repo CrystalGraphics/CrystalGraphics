@@ -19,7 +19,7 @@ import org.joml.Vector3d;
  */
 public final class CgCapsule extends CgShape {
 
-    private final double ax, ay, az, bx, by, bz, radius;
+    private double ax, ay, az, bx, by, bz, radius;
 
     private CgCapsule(double ax, double ay, double az, double bx, double by, double bz, double radius) {
         this.ax = ax;
@@ -66,6 +66,45 @@ public final class CgCapsule extends CgShape {
     @Override
     public boolean isConvex() {
         return true;
+    }
+
+    double ax() {
+        return ax;
+    }
+
+    double ay() {
+        return ay;
+    }
+
+    double az() {
+        return az;
+    }
+
+    double bx() {
+        return bx;
+    }
+
+    double by() {
+        return by;
+    }
+
+    double bz() {
+        return bz;
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgCapsule copy() {
+        return new CgCapsule(ax, ay, az, bx, by, bz, radius);
+    }
+
+    void resize(double ax, double ay, double az, double bx, double by, double bz, double radius) {
+        this.ax = ax;
+        this.ay = ay;
+        this.az = az;
+        this.bx = bx;
+        this.by = by;
+        this.bz = bz;
+        this.radius = radius;
     }
 
     @Override

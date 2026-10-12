@@ -13,7 +13,7 @@ import org.joml.Vector3d;
  */
 public final class CgCylinder extends CgShape {
 
-    private final double radius, halfHeight;
+    private double radius, halfHeight;
 
     private CgCylinder(double radius, double halfHeight) {
         this.radius = radius;
@@ -49,6 +49,16 @@ public final class CgCylinder extends CgShape {
     @Override
     public boolean isConvex() {
         return true;
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgCylinder copy() {
+        return new CgCylinder(radius, halfHeight);
+    }
+
+    void resize(double radius, double halfHeight) {
+        this.radius = radius;
+        this.halfHeight = halfHeight;
     }
 
     @Override

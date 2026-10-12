@@ -21,7 +21,8 @@ import org.joml.Vector3d;
  */
 public final class CgCone extends CgShape {
 
-    private final double range, halfAngle, sin, cos;
+    private final double halfAngle, sin, cos;
+    private double range;
 
     private CgCone(double range, double halfAngle) {
         this.range = range;
@@ -66,6 +67,15 @@ public final class CgCone extends CgShape {
     @Override
     public boolean isConvex() {
         return halfAngle <= Math.PI / 2;
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgCone copy() {
+        return new CgCone(range, halfAngle);
+    }
+
+    void resize(double range) {
+        this.range = range;
     }
 
     @Override

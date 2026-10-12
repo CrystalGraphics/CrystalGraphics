@@ -19,7 +19,7 @@ import org.joml.Vector3d;
  */
 public final class CgRing extends CgShape {
 
-    private final double inner, outer, halfHeight;
+    private double inner, outer, halfHeight;
     private final boolean front;
 
     private CgRing(double inner, double outer, double halfHeight, boolean front) {
@@ -71,6 +71,17 @@ public final class CgRing extends CgShape {
     @Override
     public boolean isConvex() {
         return inner == 0;
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgRing copy() {
+        return new CgRing(inner, outer, halfHeight, front);
+    }
+
+    void resize(double inner, double outer, double halfHeight) {
+        this.inner = inner;
+        this.outer = outer;
+        this.halfHeight = halfHeight;
     }
 
     @Override

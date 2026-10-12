@@ -21,7 +21,7 @@ import org.joml.Vector3d;
  */
 public final class CgShell extends CgShape {
 
-    private final double inner, outer;
+    private double inner, outer;
     private final boolean front;
 
     private CgShell(double inner, double outer, boolean front) {
@@ -78,6 +78,16 @@ public final class CgShell extends CgShape {
     @Override
     public CgAABB bounds(CgPose pose, CgAABB out) {
         return out.setCenterHalf(pose.x, pose.y, pose.z, outer, outer, outer);
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgShell copy() {
+        return new CgShell(inner, outer, front);
+    }
+
+    void resize(double inner, double outer) {
+        this.inner = inner;
+        this.outer = outer;
     }
 
     @Override

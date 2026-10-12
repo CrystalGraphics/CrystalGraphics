@@ -16,7 +16,7 @@ import org.joml.Vector3d;
  */
 public final class CgBox extends CgShape {
 
-    private final double halfX, halfY, halfZ;
+    private double halfX, halfY, halfZ;
 
     private CgBox(double halfX, double halfY, double halfZ) {
         this.halfX = halfX;
@@ -63,6 +63,17 @@ public final class CgBox extends CgShape {
         double ey = Math.abs(pose.m10()) * halfX + Math.abs(pose.m11()) * halfY + Math.abs(pose.m12()) * halfZ;
         double ez = Math.abs(pose.m20()) * halfX + Math.abs(pose.m21()) * halfY + Math.abs(pose.m22()) * halfZ;
         return out.setCenterHalf(pose.x, pose.y, pose.z, ex, ey, ez);
+    }
+
+    /** A copy {@link CgResizable} sizes in place. */
+    CgBox copy() {
+        return new CgBox(halfX, halfY, halfZ);
+    }
+
+    void resize(double halfX, double halfY, double halfZ) {
+        this.halfX = halfX;
+        this.halfY = halfY;
+        this.halfZ = halfZ;
     }
 
     @Override
