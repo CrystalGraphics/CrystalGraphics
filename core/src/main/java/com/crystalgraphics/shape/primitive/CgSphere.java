@@ -50,8 +50,8 @@ public final class CgSphere extends CgShape {
         return out.setCenterHalf(pose.x, pose.y, pose.z, radius, radius, radius);
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgSphere copy() {
+    @Override
+    public CgSphere copy() {
         return new CgSphere(radius);
     }
 

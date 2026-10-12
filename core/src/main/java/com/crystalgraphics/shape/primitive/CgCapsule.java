@@ -92,8 +92,8 @@ public final class CgCapsule extends CgShape {
         return bz;
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgCapsule copy() {
+    @Override
+    public CgCapsule copy() {
         return new CgCapsule(ax, ay, az, bx, by, bz, radius);
     }
 

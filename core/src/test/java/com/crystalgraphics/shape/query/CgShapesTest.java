@@ -9,6 +9,7 @@ import com.crystalgraphics.shape.primitive.CgCompound;
 import com.crystalgraphics.shape.primitive.CgCone;
 import com.crystalgraphics.shape.primitive.CgConvex;
 import com.crystalgraphics.shape.primitive.CgCylinder;
+import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -154,6 +155,20 @@ public class CgShapesTest {
     }
 
     // ---- closed forms against GJK
+
+    @Test
+    public void aPlaneIsSolidBehindAndEndsAtItsRadius() {
+        CgShape floor = CgPlane.of(0, 1, 0, 10);
+        CgPose at = new CgPose(), box = new CgPose();
+        CgShape cube = CgBox.of(0.5, 0.5, 0.5);
+        assertTrue(CgShapes.overlaps(floor, at, cube, box.at(3, 0.4, -2)));
+        assertFalse(CgShapes.overlaps(floor, at, cube, box.at(3, 0.6, -2)));
+        assertFalse(CgShapes.overlaps(floor, at, cube, box.at(11, 0, 0)));
+        assertFalse(CgShapes.overlaps(floor, at, cube, box.at(0, -11, 0)));
+        CgCastHit hit = new CgCastHit();
+        assertTrue(CgShapes.castRay(floor, at.at(0, 0, 0), 2, 5, 1, 0, -1, 0, 20, hit));
+        assertEquals(5, hit.distance, 1e-6);
+    }
 
     @Test
     public void closedFormsAgreeWithGjk() {

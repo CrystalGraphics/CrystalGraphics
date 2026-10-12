@@ -51,8 +51,8 @@ public final class CgCylinder extends CgShape {
         return true;
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgCylinder copy() {
+    @Override
+    public CgCylinder copy() {
         return new CgCylinder(radius, halfHeight);
     }
 

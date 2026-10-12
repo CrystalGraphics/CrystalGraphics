@@ -73,8 +73,8 @@ public final class CgRing extends CgShape {
         return inner == 0;
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgRing copy() {
+    @Override
+    public CgRing copy() {
         return new CgRing(inner, outer, halfHeight, front);
     }
 

@@ -80,8 +80,8 @@ public final class CgShell extends CgShape {
         return out.setCenterHalf(pose.x, pose.y, pose.z, outer, outer, outer);
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgShell copy() {
+    @Override
+    public CgShell copy() {
         return new CgShell(inner, outer, front);
     }
 

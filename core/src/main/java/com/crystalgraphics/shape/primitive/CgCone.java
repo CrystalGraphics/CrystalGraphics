@@ -69,8 +69,8 @@ public final class CgCone extends CgShape {
         return halfAngle <= Math.PI / 2;
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgCone copy() {
+    @Override
+    public CgCone copy() {
         return new CgCone(range, halfAngle);
     }
 

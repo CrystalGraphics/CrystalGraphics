@@ -78,6 +78,13 @@ public final class CgCompound extends CgShape {
     }
 
     @Override
+    public CgCompound copy() {
+        CgShape[] copies = new CgShape[shapes.length];
+        for (int i = 0; i < shapes.length; i++) copies[i] = shapes[i].copy();
+        return new CgCompound(copies, poses);
+    }
+
+    @Override
     public String toString() {
         return "CgCompound[" + shapes.length + " shapes]";
     }

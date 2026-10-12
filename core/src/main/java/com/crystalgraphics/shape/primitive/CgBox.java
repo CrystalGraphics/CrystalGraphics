@@ -65,8 +65,8 @@ public final class CgBox extends CgShape {
         return out.setCenterHalf(pose.x, pose.y, pose.z, ex, ey, ez);
     }
 
-    /** A copy {@link CgResizable} sizes in place. */
-    CgBox copy() {
+    @Override
+    public CgBox copy() {
         return new CgBox(halfX, halfY, halfZ);
     }
 

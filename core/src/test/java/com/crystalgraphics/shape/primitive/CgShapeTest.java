@@ -64,6 +64,12 @@ public class CgShapeTest {
                 || inBox(head.toLocal(p.x, p.y, p.z, new Vector3d()), 0.5, 0.3, 0.4)));
         c.add(new Case("hull", CgConvex.hull(new double[]{-1, -2, -3, 1, -2, -3, -1, 2, -3, 1, 2, -3, -1, -2, 3, 1, -2, 3,
                 -1, 2, 3, 1, 2, 3}), 4, p -> inBox(p, 1, 2, 3)));
+        CgPlane ramp = CgPlane.of(0.3, 1, 0.2, 2);
+        c.add(new Case("plane", ramp, 3, p -> {
+            double d = p.x * ramp.nx() + p.y * ramp.ny() + p.z * ramp.nz();
+            double tx = p.x - ramp.nx() * d, ty = p.y - ramp.ny() * d, tz = p.z - ramp.nz() * d;
+            return d <= EPS && d >= -2 - EPS && tx * tx + ty * ty + tz * tz <= 4 + EPS;
+        }));
         CgSphere ball = CgSphere.of(1.25);
         c.add(new Case("support function", CgConvex.of(ball::support), 2, p -> p.length() <= 1.25 + EPS));
         return c;
@@ -153,7 +159,23 @@ public class CgShapeTest {
         assertThrows(IllegalArgumentException.class, () -> CgCone.of(3, Math.PI + 1e-9));
         assertThrows(IllegalArgumentException.class, () -> CgShell.of(3, 2));
         assertThrows(IllegalArgumentException.class, () -> CgConvex.hull(new double[]{1, 2}));
+        assertThrows(IllegalArgumentException.class, () -> CgPlane.of(0, 0, 0));
+        assertThrows(IllegalArgumentException.class, () -> CgPlane.of(0, 1, 0, 0));
         assertThrows(IllegalStateException.class, () -> CgCompound.builder().build());
+    }
+
+    @Test
+    public void copiesAreTheirOwnTypeAndAlike() {
+        Vector3d a = new Vector3d(), b = new Vector3d();
+        for (Case c : cases()) {
+            CgShape copy = c.shape.copy();
+            assertTrue(c.name, copy != c.shape && copy.getClass() == c.shape.getClass());
+            c.shape.support(0.3, -1, 0.7, a);
+            copy.support(0.3, -1, 0.7, b);
+            assertEquals(c.name, 0, a.distance(b), 0);
+        }
+        CgBox box = CgBox.of(1, 2, 3).copy();
+        assertEquals(2, box.halfY(), 0);
     }
 
     @Test

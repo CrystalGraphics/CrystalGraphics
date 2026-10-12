@@ -38,19 +38,15 @@ public final class CgResizable {
     }
 
     /**
-     * @throws IllegalArgumentException for a compound or a convex hull, which have neither a radius nor a resize
+     * @throws IllegalArgumentException for a compound, a convex hull or a plane, which have neither a radius nor a
+     *                                  resize
      */
     public static CgResizable of(CgShape base) {
-        CgShape copy;
-        if (base instanceof CgSphere) copy = ((CgSphere) base).copy();
-        else if (base instanceof CgBox) copy = ((CgBox) base).copy();
-        else if (base instanceof CgCapsule) copy = ((CgCapsule) base).copy();
-        else if (base instanceof CgCylinder) copy = ((CgCylinder) base).copy();
-        else if (base instanceof CgCone) copy = ((CgCone) base).copy();
-        else if (base instanceof CgShell) copy = ((CgShell) base).copy();
-        else if (base instanceof CgRing) copy = ((CgRing) base).copy();
-        else throw new IllegalArgumentException("cannot resize " + base);
-        return new CgResizable(base, copy);
+        if (!(base instanceof CgSphere || base instanceof CgBox || base instanceof CgCapsule || base instanceof CgCylinder
+                || base instanceof CgCone || base instanceof CgShell || base instanceof CgRing)) {
+            throw new IllegalArgumentException("cannot resize " + base);
+        }
+        return new CgResizable(base, base.copy());
     }
 
     /** The shape it was made from, unchanged. */
