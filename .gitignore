@@ -22,6 +22,8 @@ options.txt
 /docs/ignored/
 research/
 debug/
+# a run directory's, not a source package's
+!**/src/**/debug/
 usernamecache.json
 banned-ips.json
 banned-players.json
