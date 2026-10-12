@@ -590,8 +590,7 @@ com/crystalgraphics/api/mesh/CgMesh
   access public,final
   extends java/lang/Object
   method public autoBounds ()V
-  method public bounds (FFFFFF)V
-  method public bounds ([F)[F
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public changesSince (ILcom/crystalgraphics/api/mesh/CgMeshChanges;)Z
   method public dropCpuCopy ()V
   method public edit (Ljava/lang/Object;Ljava/util/function/BiConsumer;)V
@@ -609,6 +608,7 @@ com/crystalgraphics/api/mesh/CgMesh
   method public releases ()I
   method public reserve (II)V
   method public revision ()I
+  method public setBounds (Lcom/crystalgraphics/shape/bounds/CgAABBc;)V
   method public submesh (I)Lcom/crystalgraphics/api/mesh/CgSubmesh;
   method public submesh (III)V
   method public submesh (I[I)[I
@@ -1554,6 +1554,227 @@ com/crystalgraphics/api/vertex/CgVertexTransformUtil
   method public,static transformPosition (Lorg/joml/Matrix4f;FFF)Lorg/joml/Vector4f;
   method public,static vertex (Lcom/crystalgraphics/api/vertex/CgVertexConsumer;Lorg/joml/Matrix4f;FF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public,static vertex (Lcom/crystalgraphics/api/vertex/CgVertexConsumer;Lorg/joml/Matrix4f;FFF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
+com/crystalgraphics/collision/CgHitPart
+  access public,final
+  extends java/lang/Object
+  method public name ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/collision/CgHitPart;
+com/crystalgraphics/collision/hitbox/CgHitList
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public clear ()V
+  method public contains (I)Z
+  method public count (I)I
+  method public lastHit (I)D
+  method public size ()I
+com/crystalgraphics/collision/hitbox/CgHitbox
+  access public,final
+  extends java/lang/Object
+  method public activeFor (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public activeFrom (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public age ()D
+  method public anything ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public at (DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public except (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public exposure ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public facing (DD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public facing (Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public hasListeners ()Z
+  method public hitList ()Lcom/crystalgraphics/collision/hitbox/CgHitList;
+  method public hitList (Lcom/crystalgraphics/collision/hitbox/CgHitList;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public inflate (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public items ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public kinds (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public living ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public maxHits (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public maxSweep (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public maxTargets (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public on (II)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public onEnter (Ljava/util/function/Consumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public onExit (Ljava/util/function/IntConsumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public onHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public part (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public part (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public pose (Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public radius (DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public radius (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public rehit (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public scale (DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public scale (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public source (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public start (Lcom/crystalgraphics/collision/query/CgCollisionWorld;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public start (Ljava/lang/Object;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public stop ()V
+  method public stopped ()Z
+  method public tick (Lcom/crystalgraphics/collision/query/CgCollisionWorld;D)V
+  method public toString ()Ljava/lang/String;
+  method public visible ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public,static follow (II)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public,static of (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public,static of (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+com/crystalgraphics/collision/hitbox/CgHitbox$Facing
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BODY Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;
+  field public,static,final FIXED Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;
+  field public,static,final LOOK Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;
+  method public,static values ()[Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;
+com/crystalgraphics/collision/hitbox/CgHitboxType
+  access public,final
+  extends java/lang/Object
+  method public acceptPredictionsFrom (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType;
+  method public id ()Ljava/lang/String;
+  method public onConfirmedHit (Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType;
+  method public onHit (Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType;
+  method public onPredictedHit (Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType;
+  method public predict (Lcom/crystalgraphics/net/object/CgAnchor;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public spawn (Lcom/crystalgraphics/net/object/CgAnchor;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public toString ()Ljava/lang/String;
+  method public type ()Lcom/crystalgraphics/net/object/CgNetType;
+  method public,static define (Ljava/lang/String;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Builder;
+  method public,static hitbox (Lcom/crystalgraphics/net/object/CgNetObject;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public,static pose (Lcom/crystalgraphics/net/object/CgNetObject;Lcom/crystalgraphics/shape/CgPose;)V
+com/crystalgraphics/collision/hitbox/CgHitboxType$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/collision/hitbox/CgHitboxType;
+  method public fields ([Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Builder;
+  method public hitbox (Ljava/util/function/Function;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Builder;
+  method public outlivesSource ()Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Builder;
+  method public range (D)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Builder;
+com/crystalgraphics/collision/hitbox/CgHitboxType$Spawn
+  access public,final
+  extends java/lang/Object
+  method public facing (DD)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public facing (Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public owner (Ljava/lang/Object;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public point (I)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public set (Lcom/crystalgraphics/net/object/CgNetField;Ljava/lang/Object;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public setBool (Lcom/crystalgraphics/net/object/CgNetField;Z)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public setDouble (Lcom/crystalgraphics/net/object/CgNetField;D)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public setFloat (Lcom/crystalgraphics/net/object/CgNetField;F)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public setInt (Lcom/crystalgraphics/net/object/CgNetField;I)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public source (I)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public source (Ljava/lang/Object;)Lcom/crystalgraphics/collision/hitbox/CgHitboxType$Spawn;
+  method public start ()Lcom/crystalgraphics/net/object/CgNetObject;
+com/crystalgraphics/collision/hitbox/CgSentHit
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public part ()I
+  method public read (Lcom/crystalgraphics/collision/query/CgHit;Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public set (Lcom/crystalgraphics/collision/query/CgHit;I)Lcom/crystalgraphics/collision/hitbox/CgSentHit;
+  method public,static wire ()Lcom/crystalgraphics/net/object/CgNetWire;
+com/crystalgraphics/collision/query/CgCollisionWorld
+  access public
+  extends java/lang/Object
+  method public blocks ()Lcom/crystalgraphics/platform/service/CgWorldQuery;
+  method public cast (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public entities ()Lcom/crystalgraphics/platform/service/CgEntityQuery;
+  method public exposure (DDDI)F
+  method public lineOfSight (DDDI)Z
+  method public overlap (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public overlap (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public partialTick ()F
+  method public ray ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public,static client (F)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
+  method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
+  method public,static shapes ()Lcom/crystalgraphics/collision/query/CgShapeWorld;
+com/crystalgraphics/collision/query/CgHit
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public blockX ()I
+  method public blockY ()I
+  method public blockZ ()I
+  method public distance ()D
+  method public entity ()I
+  method public exposure ()F
+  method public falloff (DD)F
+  method public fluid ()I
+  method public fraction ()D
+  method public isBlock ()Z
+  method public kind ()Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  method public normalX ()D
+  method public normalY ()D
+  method public normalZ ()D
+  method public parent ()I
+  method public part ()Lcom/crystalgraphics/collision/CgHitPart;
+  method public set (Lcom/crystalgraphics/collision/query/CgHit;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public setBlock (IIIDDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public setEntity (IIDDDFLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public setPoint (DDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public toString ()Ljava/lang/String;
+  method public unloaded ()Z
+  method public x ()D
+  method public y ()D
+  method public z ()D
+com/crystalgraphics/collision/query/CgHit$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLOCK Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  field public,static,final ENTITY Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  field public,static,final FLUID Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  field public,static,final POINT Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  field public,static,final UNLOADED Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  method public,static values ()[Lcom/crystalgraphics/collision/query/CgHit$Kind;
+com/crystalgraphics/collision/query/CgHits
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public clear ()V
+  method public distance (I)D
+  method public entity (I)I
+  method public get (I)Lcom/crystalgraphics/collision/query/CgHit;
+  method public isEmpty ()Z
+  method public size ()I
+com/crystalgraphics/collision/query/CgQuery
+  access public,final
+  extends java/lang/Object
+  method public along (DDDD)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public any ()Z
+  method public anything ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public at (DDD)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public blocksOnly ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public blocksToo ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public count ()I
+  method public except (I)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public exposure ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public facing (DD)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public first (Lcom/crystalgraphics/collision/query/CgHit;)Z
+  method public fluids ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public forEach (Ljava/util/function/Consumer;)V
+  method public inflate (D)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public into (Lcom/crystalgraphics/collision/query/CgHits;)I
+  method public items ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public kinds (I)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public living ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public max (I)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public part (Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public source (I)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public visible ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/query/CgQuery;
+com/crystalgraphics/collision/query/CgShapeWorld
+  access public,final
+  extends com/crystalgraphics/collision/query/CgCollisionWorld
+  method public add (ILcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/query/CgShapeWorld;
+  method public clear ()Lcom/crystalgraphics/collision/query/CgShapeWorld;
+  method public exposure (DDDI)F
+  method public lineOfSight (DDDI)Z
+  method public move (ILcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/query/CgShapeWorld;
+  method public remove (I)Z
+  method public size ()I
 com/crystalgraphics/compute/CgCompute
   access public,final
   extends java/lang/Object
@@ -1980,7 +2201,7 @@ com/crystalgraphics/compute/ops/CgCull
   extends java/lang/Object
   field public,static,final MAX_LEVELS I
   method public <init> ()V
-  method public box (FFFFFF)Lcom/crystalgraphics/compute/ops/CgCull;
+  method public box (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/compute/ops/CgCull;
   method public custom (IFFFF)Lcom/crystalgraphics/compute/ops/CgCull;
   method public levels ()I
   method public light (FF)Lcom/crystalgraphics/compute/ops/CgCull;
@@ -3208,6 +3429,7 @@ com/crystalgraphics/gl/material/CgMaterialShader
   method public hasParsedPass (Ljava/lang/String;)Z
   method public isDirty ()Z
   method public isGenerated ()Z
+  method public isPending ()Z
   method public lastCompileError ()Ljava/lang/String;
   method public markDirty ()V
   method public pollPending ()Z
@@ -3846,12 +4068,15 @@ com/crystalgraphics/net/CgNetwork
   method public,static install (Lcom/crystalgraphics/platform/service/CgNetworkChannel;Ljava/util/function/Function;)Z
   method public,static isInstalled ()Z
   method public,static measureAllocation (Z)V
+  method public,static onClientTick (Ljava/lang/Runnable;)V
   method public,static onPeerClosed (Ljava/util/function/Consumer;)V
   method public,static onServerTick (Ljava/lang/Runnable;)V
   method public,static openConnections ()I
   method public,static playerJoined (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
   method public,static playerLeft (Ljava/util/UUID;)V
   method public,static resetForTesting ()V
+  method public,static serverObjectsAllocated ()J
+  method public,static serverObjectsNanos ()J
   method public,static serverStarting (Ljava/lang/Object;)V
   method public,static serverTick ()V
   method public,static serverTickAllocated ()J
@@ -3911,6 +4136,7 @@ com/crystalgraphics/net/CgRequest$ServerHandler
 com/crystalgraphics/net/CgTransport
   access public,abstract,interface
   extends java/lang/Object
+  method public sendNotification (Ljava/lang/String;[BI)Z
   method public,abstract send (Ljava/lang/Object;)V
   method public,abstract setReceiver (Ljava/util/function/Consumer;)V
 com/crystalgraphics/net/object/CgAnchor
@@ -3973,6 +4199,7 @@ com/crystalgraphics/net/object/CgNetEvent
   method public name ()Ljava/lang/String;
   method public toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetEvent;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/net/object/CgNetWire;)Lcom/crystalgraphics/net/object/CgNetEvent;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Lcom/crystalgraphics/net/object/CgNetEvent;
 com/crystalgraphics/net/object/CgNetField
   access public,final
@@ -4146,6 +4373,31 @@ com/crystalgraphics/net/object/CgNetType$Builder
   method public range (D)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleTo (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleToTrackers ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
+com/crystalgraphics/net/object/CgNetWire
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract read (Lcom/crystalgraphics/net/object/CgNetWire$In;)Ljava/lang/Object;
+  method public,abstract write (Ljava/lang/Object;Lcom/crystalgraphics/net/object/CgNetWire$Out;)V
+com/crystalgraphics/net/object/CgNetWire$In
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract readBool ()Z
+  method public,abstract readDouble ()D
+  method public,abstract readFloat ()F
+  method public,abstract readInt ()I
+  method public,abstract readLong ()J
+  method public,abstract readVarInt ()I
+  method public,abstract readZigZag ()J
+com/crystalgraphics/net/object/CgNetWire$Out
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract writeBool (Z)V
+  method public,abstract writeDouble (D)V
+  method public,abstract writeFloat (F)V
+  method public,abstract writeInt (I)V
+  method public,abstract writeLong (J)V
+  method public,abstract writeVarInt (I)V
+  method public,abstract writeZigZag (J)V
 com/crystalgraphics/net/protocol/CgCall
   access public,abstract,interface
   extends java/lang/Object
@@ -4268,6 +4520,7 @@ com/crystalgraphics/net/protocol/CgProtocolConnection
   method public hasAttachment (Ljava/lang/Class;)Z
   method public isClosed ()Z
   method public notify (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgStateMap;)V
+  method public notifyBytes (Ljava/lang/String;[BI)V
   method public onClosed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public onNotify (Ljava/lang/String;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public onRequest (Ljava/lang/String;Lcom/crystalgraphics/net/protocol/CgCall$Handler;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
@@ -4360,6 +4613,7 @@ com/crystalgraphics/net/wire/CgWireTransport
   method public frames ()Lcom/crystalgraphics/net/wire/CgFrameMultiplexer;
   method public pump ()I
   method public send (Ljava/lang/Object;)V
+  method public sendNotification (Ljava/lang/String;[BI)Z
   method public setReceiver (Ljava/util/function/Consumer;)V
 com/crystalgraphics/noise/CgNoiseBake
   access public,final
@@ -4440,10 +4694,17 @@ com/crystalgraphics/render/CgViewFrustum
   method public clear ()V
   method public isInitialised ()Z
   method public set (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/CgViewFrustum;
+  method public test (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
   method public testAabb (FFFFFF)Z
-  method public testAabb ([F)Z
   method public testRect (FFFF)Z
   method public testSphere (FFFF)Z
+com/crystalgraphics/render/CgWarmBudget
+  access public,final
+  extends java/lang/Object
+  method public,static allows ()Z
+  method public,static nextFrame ()V
+  method public,static spend (J)V
+  method public,static start ()V
 com/crystalgraphics/render/draw/CgBatcher
   access public,final
   extends java/lang/Object
@@ -5637,7 +5898,8 @@ com/crystalgraphics/render/world/CgWorldRenderer$Draw
   method public afterDistortion ()Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public at (DDD)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public batchKey (I)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
-  method public bounds (FFFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public bounds (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public buffer (Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public custom (IFFFF)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public each (DDDJ)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
@@ -6416,6 +6678,296 @@ com/crystalgraphics/shadergraph/CgTemplateShaderNode$Builder
   method public previewBodyFor (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgTemplateShaderNode$Builder;
   method public previewGeometry (Lcom/crystalgraphics/shadergraph/CgPreviewGeometry;)Lcom/crystalgraphics/shadergraph/CgTemplateShaderNode$Builder;
   method public property (Lcom/crystalgraphics/shadergraph/CgShaderNodeProperty;)Lcom/crystalgraphics/shadergraph/CgTemplateShaderNode$Builder;
+com/crystalgraphics/shape/CgPose
+  access public,final
+  extends java/lang/Object
+  field public x D
+  field public y D
+  field public z D
+  method public <init> ()V
+  method public <init> (Lcom/crystalgraphics/shape/CgPose;)V
+  method public at (DDD)Lcom/crystalgraphics/shape/CgPose;
+  method public facing (DD)Lcom/crystalgraphics/shape/CgPose;
+  method public identity ()Lcom/crystalgraphics/shape/CgPose;
+  method public m00 ()D
+  method public m01 ()D
+  method public m02 ()D
+  method public m10 ()D
+  method public m11 ()D
+  method public m12 ()D
+  method public m20 ()D
+  method public m21 ()D
+  method public m22 ()D
+  method public mul (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
+  method public rotate (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public rotation (DDDD)Lcom/crystalgraphics/shape/CgPose;
+  method public rotation (Lorg/joml/Quaterniond;)Lorg/joml/Quaterniond;
+  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/shape/CgPose;
+  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/shape/CgPose;
+  method public set (Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
+  method public toLocal (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public toWorld (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public unrotate (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+com/crystalgraphics/shape/CgShape
+  access public,abstract
+  extends java/lang/Object
+  method protected <init> ()V
+  method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public,abstract copy ()Lcom/crystalgraphics/shape/CgShape;
+  method public,abstract isConvex ()Z
+  method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/shape/CgShape;
+com/crystalgraphics/shape/bounds/CgAABB
+  access public,final
+  extends java/lang/Object
+  field public maxX D
+  field public maxY D
+  field public maxZ D
+  field public minX D
+  field public minY D
+  field public minZ D
+  implements com/crystalgraphics/platform/service/CgBoxSink
+  implements com/crystalgraphics/shape/bounds/CgAABBc
+  method public <init> ()V
+  method public <init> (DDDDDD)V
+  method public <init> (Lcom/crystalgraphics/shape/bounds/CgAABBc;)V
+  method public empty ()Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public grow (D)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public grow (DDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public maxX ()D
+  method public maxY ()D
+  method public maxZ ()D
+  method public minX ()D
+  method public minY ()D
+  method public minZ ()D
+  method public set (DDDDDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public set (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public set (Ljava/lang/Object;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public setCenterHalf (DDDDDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public toHost ()Ljava/lang/Object;
+  method public toString ()Ljava/lang/String;
+  method public translate (DDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public union (DDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public union (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public,static of (DDDDDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public,static ofCenter (DDDDDD)Lcom/crystalgraphics/shape/bounds/CgAABB;
+com/crystalgraphics/shape/bounds/CgAABBc
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final UNIT Lcom/crystalgraphics/shape/bounds/CgAABBc;
+  method public boundingRadius ()D
+  method public centerX ()D
+  method public centerY ()D
+  method public centerZ ()D
+  method public closestPoint (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public contains (DDD)Z
+  method public contains (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
+  method public distanceSquared (DDD)D
+  method public halfX ()D
+  method public halfY ()D
+  method public halfZ ()D
+  method public intersects (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
+  method public isEmpty ()Z
+  method public rayHit (DDDDDDD)D
+  method public transform (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public transform (Lorg/joml/Matrix4fc;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public,abstract maxX ()D
+  method public,abstract maxY ()D
+  method public,abstract maxZ ()D
+  method public,abstract minX ()D
+  method public,abstract minY ()D
+  method public,abstract minZ ()D
+com/crystalgraphics/shape/primitive/CgBox
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgBox;
+  method public halfX ()D
+  method public halfY ()D
+  method public halfZ ()D
+  method public isConvex ()Z
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static of (DDD)Lcom/crystalgraphics/shape/primitive/CgBox;
+com/crystalgraphics/shape/primitive/CgCapsule
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public a (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public b (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCapsule;
+  method public isConvex ()Z
+  method public radius ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static between (DDDDDDD)Lcom/crystalgraphics/shape/primitive/CgCapsule;
+  method public,static of (DD)Lcom/crystalgraphics/shape/primitive/CgCapsule;
+com/crystalgraphics/shape/primitive/CgCompound
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCompound;
+  method public isConvex ()Z
+  method public pose (ILcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
+  method public shape (I)Lcom/crystalgraphics/shape/CgShape;
+  method public size ()I
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static builder ()Lcom/crystalgraphics/shape/primitive/CgCompound$Builder;
+com/crystalgraphics/shape/primitive/CgCompound$Builder
+  access public,final
+  extends java/lang/Object
+  method public add (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/shape/primitive/CgCompound$Builder;
+  method public add (Lcom/crystalgraphics/shape/CgShape;DDD)Lcom/crystalgraphics/shape/primitive/CgCompound$Builder;
+  method public add (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/primitive/CgCompound$Builder;
+  method public build ()Lcom/crystalgraphics/shape/primitive/CgCompound;
+com/crystalgraphics/shape/primitive/CgCone
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCone;
+  method public halfAngle ()D
+  method public isConvex ()Z
+  method public range ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static of (DD)Lcom/crystalgraphics/shape/primitive/CgCone;
+com/crystalgraphics/shape/primitive/CgConvex
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgConvex;
+  method public isConvex ()Z
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static hull ([D)Lcom/crystalgraphics/shape/primitive/CgConvex;
+  method public,static of (Lcom/crystalgraphics/shape/primitive/CgConvex$Support;)Lcom/crystalgraphics/shape/primitive/CgConvex;
+com/crystalgraphics/shape/primitive/CgConvex$Support
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+com/crystalgraphics/shape/primitive/CgCylinder
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCylinder;
+  method public halfHeight ()D
+  method public isConvex ()Z
+  method public radius ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static of (DD)Lcom/crystalgraphics/shape/primitive/CgCylinder;
+com/crystalgraphics/shape/primitive/CgPlane
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  field public,static,final DEFAULT_RADIUS D
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgPlane;
+  method public isConvex ()Z
+  method public nx ()D
+  method public ny ()D
+  method public nz ()D
+  method public radius ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static of (DDD)Lcom/crystalgraphics/shape/primitive/CgPlane;
+  method public,static of (DDDD)Lcom/crystalgraphics/shape/primitive/CgPlane;
+com/crystalgraphics/shape/primitive/CgResizable
+  access public,final
+  extends java/lang/Object
+  method public base ()Lcom/crystalgraphics/shape/CgShape;
+  method public hasRadius ()Z
+  method public radius (D)Lcom/crystalgraphics/shape/CgShape;
+  method public scale (D)Lcom/crystalgraphics/shape/CgShape;
+  method public sweptRadius (DD)Lcom/crystalgraphics/shape/CgShape;
+  method public sweptScale (DD)Lcom/crystalgraphics/shape/CgShape;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/shape/primitive/CgResizable;
+com/crystalgraphics/shape/primitive/CgRing
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgRing;
+  method public halfHeight ()D
+  method public inner ()D
+  method public isConvex ()Z
+  method public isFront ()Z
+  method public outer ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public width ()D
+  method public,static front (DD)Lcom/crystalgraphics/shape/primitive/CgRing;
+  method public,static of (DDD)Lcom/crystalgraphics/shape/primitive/CgRing;
+com/crystalgraphics/shape/primitive/CgShell
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgShell;
+  method public inner ()D
+  method public isConvex ()Z
+  method public isFront ()Z
+  method public outer ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public width ()D
+  method public,static front (D)Lcom/crystalgraphics/shape/primitive/CgShell;
+  method public,static of (DD)Lcom/crystalgraphics/shape/primitive/CgShell;
+com/crystalgraphics/shape/primitive/CgSphere
+  access public,final
+  extends com/crystalgraphics/shape/CgShape
+  method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public copy ()Lcom/crystalgraphics/shape/primitive/CgSphere;
+  method public isConvex ()Z
+  method public radius ()D
+  method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
+  method public toString ()Ljava/lang/String;
+  method public,static of (D)Lcom/crystalgraphics/shape/primitive/CgSphere;
+com/crystalgraphics/shape/query/CgCastHit
+  access public,final
+  extends java/lang/Object
+  field public distance D
+  field public fraction D
+  field public,final normal Lorg/joml/Vector3d;
+  field public,final point Lorg/joml/Vector3d;
+  method public <init> ()V
+  method public toString ()Ljava/lang/String;
+com/crystalgraphics/shape/query/CgContact
+  access public,final
+  extends java/lang/Object
+  field public depth D
+  field public,final normal Lorg/joml/Vector3d;
+  field public,final pointA Lorg/joml/Vector3d;
+  field public,final pointB Lorg/joml/Vector3d;
+  method public <init> ()V
+  method public toString ()Ljava/lang/String;
+com/crystalgraphics/shape/query/CgShapes
+  access public,final
+  extends java/lang/Object
+  method public,static cast (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;DDDLcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/query/CgCastHit;)Z
+  method public,static cast (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;DDDLcom/crystalgraphics/shape/bounds/CgAABBc;Lcom/crystalgraphics/shape/query/CgCastHit;)Z
+  method public,static castRay (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;DDDDDDDLcom/crystalgraphics/shape/query/CgCastHit;)Z
+  method public,static contact (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/query/CgContact;)Z
+  method public,static distance (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)D
+  method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Z
+  method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
+com/crystalgraphics/shape/query/convex/CgEpa
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/shape/query/convex/CgGjk;)V
+  method public penetration (Lcom/crystalgraphics/shape/query/convex/CgSupport;DLcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DLcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)Z
+  method public penetration (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)Z
+com/crystalgraphics/shape/query/convex/CgGjk
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_ITERATIONS I
+  method public <init> ()V
+  method public castShape (Lcom/crystalgraphics/shape/query/convex/CgSupport;DDDDLcom/crystalgraphics/shape/query/convex/CgSupport;DDDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)D
+  method public closestPoints (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)D
+  method public intersects (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DLorg/joml/Vector3d;)Z
+  method public simplex ([Lorg/joml/Vector3d;[Lorg/joml/Vector3d;[Lorg/joml/Vector3d;)I
+com/crystalgraphics/shape/query/convex/CgSupport
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
 com/crystalgraphics/text/atlas/CgGlyphAtlas
   access public
   extends java/lang/Object
@@ -7339,7 +7891,6 @@ com/crystalgraphics/vfx/CgVfx
   access public,final
   extends java/lang/Object
   method public,static install ()V
-  method public,static onCollide (Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/CgVfxCollision$Registration;
   method public,static owner (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxOwner;
   method public,static owner (Ljava/lang/String;Lcom/crystalgraphics/vfx/CgVfxSystem;)Lcom/crystalgraphics/vfx/CgVfxOwner;
   method public,static release ()V
@@ -7347,61 +7898,11 @@ com/crystalgraphics/vfx/CgVfx
 com/crystalgraphics/vfx/CgVfxAuthority
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)V
+  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/collision/query/CgCollisionWorld;)V
   method public advance (F)V
   method public done ()Z
   method public drainSet (Ljava/util/function/Consumer;)V
   method public effect ()Lcom/crystalgraphics/vfx/CgVfxEffect;
-com/crystalgraphics/vfx/CgVfxCollision
-  access public,final
-  extends java/lang/Object
-  method public effect ()Lcom/crystalgraphics/vfx/CgVfxEffect;
-  method public emitter ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;
-  method public entity ()I
-  method public firing ()I
-  method public hit ()Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  method public nx ()F
-  method public ny ()F
-  method public nz ()F
-  method public part ()Lcom/crystalgraphics/vfx/CgVfxPart;
-  method public radius ()F
-  method public source ()Lcom/crystalgraphics/vfx/CgVfxCollision$Source;
-  method public toString ()Ljava/lang/String;
-  method public vx ()F
-  method public vy ()F
-  method public vz ()F
-  method public x ()D
-  method public y ()D
-  method public z ()D
-  method public,static confirmed (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/CgVfxPart;Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;IDDDFFFF)Lcom/crystalgraphics/vfx/CgVfxCollision;
-com/crystalgraphics/vfx/CgVfxCollision$Hit
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final BLOCK Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final ENTITY Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final GROUND Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final OTHER Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final SCENE Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final SHAPE Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  field public,static,final TARGET Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-  method public,static values ()[Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;
-com/crystalgraphics/vfx/CgVfxCollision$Registration
-  access public,abstract,interface
-  extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public,abstract close ()V
-com/crystalgraphics/vfx/CgVfxCollision$Source
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final EFFECT Lcom/crystalgraphics/vfx/CgVfxCollision$Source;
-  field public,static,final PARTICLE Lcom/crystalgraphics/vfx/CgVfxCollision$Source;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxCollision$Source;
-  method public,static values ()[Lcom/crystalgraphics/vfx/CgVfxCollision$Source;
-com/crystalgraphics/vfx/CgVfxCollisionListener
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract collided (Lcom/crystalgraphics/vfx/CgVfxCollision;)V
 com/crystalgraphics/vfx/CgVfxEffect
   access public,abstract
   extends java/lang/Object
@@ -7416,18 +7917,18 @@ com/crystalgraphics/vfx/CgVfxEffect
   method protected,abstract submit (Lcom/crystalgraphics/vfx/CgVfxFrame;)V
   method protected,abstract tick (F)V
   method protected,final air ()Lcom/crystalgraphics/vfx/particle/CgVfxAir;
-  method protected,final collided (Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;IDDDFFFFFF)V
-  method protected,final collided (Lcom/crystalgraphics/vfx/CgVfxPart;Lcom/crystalgraphics/vfx/CgVfxCollision$Hit;IDDDFFFFFFF)V
   method protected,final die ()V
   method protected,final groundHeight ()F
+  method protected,final hit (Lcom/crystalgraphics/collision/query/CgHit;)V
+  method protected,final hitbox (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method protected,final holdShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFF)V
   method protected,final moment (Ljava/lang/String;FFFF)V
   method protected,final momentsHeard ()Z
   method protected,final openVolume (ILcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)Lcom/crystalgraphics/render/post/volume/CgPostVolume;
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFF)V
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam;FFFFFFF)V
-  method protected,final raycastAll (DDDDDDDDILcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
   method protected,final tick (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method protected,final world ()Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public kill ()V
   method public stop ()V
   method public,final age ()F
@@ -7441,9 +7942,8 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam;I)F
   method public,final ground (D)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final look ()Lcom/crystalgraphics/vfx/look/CgVfxLook;
-  method public,final onCollide (Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/CgVfxEffect;
-  method public,final onCollide (Lcom/crystalgraphics/vfx/CgVfxPart;Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/CgVfxEffect;
-  method public,final onCollide (Ljava/lang/Runnable;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final onHit (Lcom/crystalgraphics/collision/CgHitPart;Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final onHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final owner ()Lcom/crystalgraphics/vfx/CgVfxOwner;
   method public,final seed ()F
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam;F)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -7490,7 +7990,6 @@ com/crystalgraphics/vfx/CgVfxOwner
   method public enabled (Z)V
   method public id (Ljava/lang/String;)Ljava/lang/String;
   method public namespace ()Ljava/lang/String;
-  method public onCollide (Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/CgVfxCollision$Registration;
   method public play (Lcom/crystalgraphics/vfx/CgVfxEffect;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public play (Ljava/lang/String;DDDDDD)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public playing ()I
@@ -7501,12 +8000,6 @@ com/crystalgraphics/vfx/CgVfxOwner
   method public system ()Lcom/crystalgraphics/vfx/CgVfxSystem;
   method public toString ()Ljava/lang/String;
   method public warmed ()Z
-com/crystalgraphics/vfx/CgVfxPart
-  access public,final
-  extends java/lang/Object
-  method public name ()Ljava/lang/String;
-  method public toString ()Ljava/lang/String;
-  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxPart;
 com/crystalgraphics/vfx/CgVfxRegistry
   access public,final
   extends java/lang/Object
@@ -7537,6 +8030,7 @@ com/crystalgraphics/vfx/CgVfxRegistry$Factory
 com/crystalgraphics/vfx/CgVfxSystem
   access public,final
   extends java/lang/Object
+  field public,static,final GAME_TICK F
   field public,static,final MAX_START_SECONDS F
   field public,static,final PREWARM_SECONDS F
   field public,static,final TICK F
@@ -7706,8 +8200,9 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   field public,static,final MOMENT_TAIL Ljava/lang/String;
   field public,static,final MOMENT_WAYPOINT Ljava/lang/String;
   field public,static,final NAVIGATION Lcom/crystalgraphics/vfx/look/CgVfxParam;
-  field public,static,final PART_BEAM Lcom/crystalgraphics/vfx/CgVfxPart;
-  field public,static,final PART_BLAST Lcom/crystalgraphics/vfx/CgVfxPart;
+  field public,static,final PART_BEAM Lcom/crystalgraphics/collision/CgHitPart;
+  field public,static,final PART_BLAST Lcom/crystalgraphics/collision/CgHitPart;
+  field public,static,final PART_BURST Lcom/crystalgraphics/collision/CgHitPart;
   field public,static,final PULSE Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final RADIUS Lcom/crystalgraphics/vfx/look/CgVfxParam;
   field public,static,final RELEASE_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam;
@@ -7750,6 +8245,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
   implements com/crystalgraphics/vfx/net/CgVfxCue$Live
   method public <init> (Lcom/crystalgraphics/vfx/look/CgVfxLook;DDD)V
   method public aim (FFF)Lcom/crystalgraphics/vfx/effect/beam/CgEnergyWave;
+  method public blastRadius ()F
   method public burst ()Z
   method public charging ()Z
   method public collide ()Lcom/crystalgraphics/vfx/effect/beam/CgEnergyWave;
@@ -7885,9 +8381,12 @@ com/crystalgraphics/vfx/look/CgVfxSchema
   method public <init> ()V
   method public color (Ljava/lang/String;FFFF)Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public curve (Ljava/lang/String;Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/vfx/look/CgVfxParam;
+  method public indexOf (Lcom/crystalgraphics/collision/CgHitPart;)I
   method public networked ()Ljava/util/List;
   method public networked ([Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/vfx/look/CgVfxSchema;
   method public params ()Ljava/util/List;
+  method public part (Ljava/lang/String;)Lcom/crystalgraphics/collision/CgHitPart;
+  method public partAt (I)Lcom/crystalgraphics/collision/CgHitPart;
   method public scalar (Ljava/lang/String;F)Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public shake (Ljava/lang/String;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/look/CgVfxParam;
   method public width ()I
@@ -7922,8 +8421,8 @@ com/crystalgraphics/vfx/net/CgVfxCue
   method public hasAuthority ()Z
   method public id ()Ljava/lang/String;
   method public on (Ljava/lang/Object;I)Lcom/crystalgraphics/vfx/net/CgVfxCue$Play;
-  method public onConfirmedCollide (Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/net/CgVfxCue;
-  method public onConfirmedCollide (Lcom/crystalgraphics/vfx/CgVfxPart;Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/net/CgVfxCue;
+  method public onConfirmedHit (Lcom/crystalgraphics/collision/CgHitPart;Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/net/CgVfxCue;
+  method public onConfirmedHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/net/CgVfxCue;
   method public range ()F
   method public refused ()J
   method public toString ()Ljava/lang/String;
@@ -8005,8 +8504,8 @@ com/crystalgraphics/vfx/net/CgVfxCue$Playing
   method public kill ()V
   method public moveTo (DDD)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
   method public object ()Lcom/crystalgraphics/net/object/CgNetObject;
-  method public onCollide (Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
-  method public onCollide (Lcom/crystalgraphics/vfx/CgVfxPart;Lcom/crystalgraphics/vfx/CgVfxCollisionListener;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
+  method public onHit (Lcom/crystalgraphics/collision/CgHitPart;Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
+  method public onHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
   method public playing ()Z
   method public set (Lcom/crystalgraphics/net/object/CgNetField;Ljava/lang/Object;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam;F)Lcom/crystalgraphics/vfx/net/CgVfxCue$Playing;
@@ -8080,8 +8579,6 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public optional ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public rate (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public renderer (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
-  method public reportCollisions ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
-  method public reportCollisions (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public shape (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public shape (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public size (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -8168,9 +8665,10 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Attract
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;F)V
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FFFFFF)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;F)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;FFFFFFFFF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Attract;
   method public attenuation ()F
   method public attenuation (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Attract;
   method public axisX ()F
@@ -8182,10 +8680,13 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Attract
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public paramVectors ()I
   method public pull (F)F
+  method public shape ()Lcom/crystalgraphics/shape/CgShape;
   method public strength ()F
-  method public volume ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public x ()F
+  method public y ()F
+  method public z ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -8208,10 +8709,11 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Collide
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FFF)V
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FFFFZZ)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;FFF)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;FFFFFFFZZ)V
   method public afterSolve ()Z
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Collide;
   method public bounce ()F
   method public container ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Collide;
   method public friction ()F
@@ -8224,9 +8726,12 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Collide
   method public radius ()F
   method public radius (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Collide;
   method public rest ()F
-  method public volume ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
+  method public shape ()Lcom/crystalgraphics/shape/CgShape;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public x ()F
+  method public y ()F
+  method public z ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -8295,9 +8800,10 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Conform
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FFF)V
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FFFFF)V
+  method public <init> (Lcom/crystalgraphics/shape/primitive/CgSphere;FFF)V
+  method public <init> (Lcom/crystalgraphics/shape/primitive/CgSphere;FFFFFFFF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Conform;
   method public attraction ()F
   method public gpuKind ()Ljava/lang/String;
   method public influence ()F
@@ -8306,10 +8812,13 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Conform
   method public pull (F)F
   method public shell ()F
   method public speed ()F
-  method public sphere ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
+  method public sphere ()Lcom/crystalgraphics/shape/primitive/CgSphere;
   method public sticky ()F
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public x ()F
+  method public y ()F
+  method public z ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -8411,16 +8920,21 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Kill
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;Z)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;FFFZ)V
+  method public <init> (Lcom/crystalgraphics/shape/CgShape;Z)V
   method public afterSolve ()Z
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Kill;
   method public gpuKind ()Ljava/lang/String;
   method public inside ()Z
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public paramVectors ()I
-  method public volume ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
+  method public shape ()Lcom/crystalgraphics/shape/CgShape;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
+  method public x ()F
+  method public y ()F
+  method public z ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -8511,10 +9025,12 @@ com/crystalgraphics/vfx/particle/CgVfxModule$VectorField
   access public,final,record
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxField;Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;FF)V
+  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxField;Lcom/crystalgraphics/shape/primitive/CgBox;FF)V
+  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxField;Lcom/crystalgraphics/shape/primitive/CgBox;FFFFF)V
   method public apply (Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;F)V
+  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$VectorField;
   method public attenuation ()F
-  method public box ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
+  method public box ()Lcom/crystalgraphics/shape/primitive/CgBox;
   method public field ()Lcom/crystalgraphics/vfx/particle/CgVfxField;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
@@ -8524,37 +9040,12 @@ com/crystalgraphics/vfx/particle/CgVfxModule$VectorField
   method public textures ()[Lcom/crystalgraphics/api/texture/CgTexture;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public writeParams (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/vfx/particle/CgVfxModule$Volume
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;FFFFFFF)V
-  method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
-  method public ex ()F
-  method public ey ()F
-  method public ez ()F
-  method public form ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
-  method public reach ()F
-  method public within (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
   method public x ()F
   method public y ()F
   method public z ()F
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-  method public,static box (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
-  method public,static plane (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
-  method public,static sphere (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume;
-com/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final BOX Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
-  field public,static,final PLANE Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
-  field public,static,final SPHERE Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
-  method public,static values ()[Lcom/crystalgraphics/vfx/particle/CgVfxModule$Volume$Form;
 com/crystalgraphics/vfx/particle/CgVfxModule$Vortex
   access public,final,record
   extends java/lang/Record
@@ -9046,6 +9537,7 @@ com/crystalgraphics/world/CgEntityAttachments
   field public,static,final RIGHT_HAND I
   field public,static,final RIGHT_HAND_FORWARD I
   method public,static declare (Ljava/lang/String;I)I
+  method public,static find (Ljava/lang/String;)I
   method public,static forward ([D[D)[D
   method public,static mark (IIDDD)V
   method public,static mark (IILorg/joml/Matrix4fc;)V
@@ -9072,24 +9564,3 @@ com/crystalgraphics/world/CgWorldQueries
   method public,static groundBelow (DDDI)D
   method public,static groundBelow (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDI)D
   method public,static groundUnder (DDDI)D
-  method public,static raycast (DDDDDDDLcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-  method public,static raycast (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDDDDDLcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-  method public,static raycastAll (DDDDDDDDILcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-  method public,static raycastAll (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;DDDDDDDDILcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-  method public,static raycastEntities (DDDDDDDDILcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-  method public,static raycastEntities (Lcom/crystalgraphics/platform/service/CgEntityQuery;DDDDDDDDILcom/crystalgraphics/world/CgWorldQueries$Hit;)Z
-com/crystalgraphics/world/CgWorldQueries$Hit
-  access public,final
-  extends java/lang/Object
-  field public blockX I
-  field public blockY I
-  field public blockZ I
-  field public distance D
-  field public entity I
-  field public normalX F
-  field public normalY F
-  field public normalZ F
-  field public x D
-  field public y D
-  field public z D
-  method public <init> ()V
