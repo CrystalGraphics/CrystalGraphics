@@ -18,6 +18,7 @@ import org.joml.Quaterniondc;
 import org.joml.Quaternionfc;
 import org.joml.Vector3d;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -92,6 +93,21 @@ public final class CgHitbox {
         BODY
     }
 
+    /**
+     * What {@link #parts} hands each part.
+     *
+     * <pre>{@code
+     * hitbox.parts((part, shape, pose) -> lines.write(shape, pose, sink));
+     * }</pre>
+     */
+    @FunctionalInterface
+    public interface PartSink {
+        /** {@code name} is null for a hitbox of one unnamed part; {@code pose} is valid during the call. */
+        void part(@Nullable CgHitPart name, CgShape shape, CgPose pose);
+    }
+
+    private static volatile @Nullable Consumer<? super CgHitbox> watcher;
+
     /** The most sub-steps one tick takes, however fast it turns or moves. */
     private static final int MAX_STEPS = 16;
     private static final int MAX_EXCEPT = 8;
@@ -138,10 +154,10 @@ public final class CgHitbox {
     /** Ticks as usual, keeping its hit list and who is inside, and tells no listener: a late joiner catching up. */
     private boolean silent;
     private int epoch;
-    private double age;
+    private double age, sizeNow;
     private double prevX, prevY, prevZ, nowX, nowY, nowZ;
     private final Quaterniond prevQ = new Quaterniond(), nowQ = new Quaterniond(), stepQ = new Quaterniond();
-    private final CgPose stepPose = new CgPose();
+    private final CgPose stepPose = new CgPose(), drawPose = new CgPose();
     private final Vector3d scratch = new Vector3d();
     private final double[] entityPose = new double[CgEntityQuery.POSE_LENGTH];
     private final double[] at = new double[3];
@@ -485,6 +501,39 @@ public final class CgHitbox {
         return onHit != null || onEnter != null || onExit != null;
     }
 
+    /** The world it last ticked in; null before its first tick or start. */
+    public @Nullable CgCollisionWorld world() {
+        return world;
+    }
+
+    /**
+     * Each part as this tick tested it, sized as it is now; nothing while it is not active or once it stops. What a
+     * debug view draws. On its thread.
+     *
+     * <pre>{@code
+     * hitbox.parts((part, shape, pose) -> CgCollisionDebug.shape(shape, pose, 0xFF40FF60));
+     * }</pre>
+     */
+    public void parts(PartSink out) {
+        if (!hasPrev || stopped) return;
+        for (int p = 0; p < parts; p++) {
+            CgShape shape = shapes[p];
+            if (sizeKind == RADIUS) shape = sized[p].radius(sizeNow);
+            else if (sizeKind == SCALE) shape = sized[p].scale(sizeNow);
+            partOrigin(nowX, nowY, nowZ, nowQ, offsets[p * 3], offsets[p * 3 + 1], offsets[p * 3 + 2]);
+            drawPose.at(scratch.x, scratch.y, scratch.z).rotation((Quaterniondc) nowQ);
+            out.part(names[p], shape, drawPose);
+        }
+    }
+
+    /**
+     * Hands {@code watcher} every hitbox each time it ticks, on the thread ticking it, after its hits; null stops. One
+     * watcher for the process: {@code crystalgraphics.collision.show} is it.
+     */
+    public static void watch(@Nullable Consumer<? super CgHitbox> watcher) {
+        CgHitbox.watcher = watcher;
+    }
+
     // ---- for CgHitboxType, which builds one per side
 
     void silent(boolean silent) {
@@ -561,6 +610,7 @@ public final class CgHitbox {
         }
         double now = sizeKind == NO_SIZE ? 0 : size(Math.min(active, activeFor));
         double before = sizeKind == NO_SIZE ? 0 : size(Math.max(0, active - ticks));
+        sizeNow = now;
         gather(before, now);
         prevX = nowX;
         prevY = nowY;
@@ -568,6 +618,8 @@ public final class CgHitbox {
         prevQ.set(nowQ);
         hasPrev = true;
         apply();
+        Consumer<? super CgHitbox> w = watcher;
+        if (w != null) w.accept(this);
         if (!stopped && active >= activeFor) stop();
     }
 

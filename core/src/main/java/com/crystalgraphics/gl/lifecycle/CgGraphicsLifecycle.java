@@ -1,5 +1,6 @@
 package com.crystalgraphics.gl.lifecycle;
 
+import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
@@ -230,6 +231,7 @@ public final class CgGraphicsLifecycle {
                 CgRenderDemo.INSTANCE.install();
                 // After the demo's onFrame listener: what it plays starts the same frame.
                 CgVfx.install();
+                CgCollisionDebug.install();
                 CgWorldProbe.installIfEnabled();
 
                 initialized = true;
@@ -561,6 +563,7 @@ public final class CgGraphicsLifecycle {
         // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
         CgVfx.release();
+        CgCollisionDebug.release();
         CgWorldRenderer.get().release();
         CgPostStack.get().release();
 

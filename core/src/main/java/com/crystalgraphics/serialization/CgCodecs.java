@@ -106,6 +106,19 @@ public final class CgCodecs {
         }
     };
 
+    /** Raw bytes: one tag and a length on the wire, base64 in text formats. */
+    public static final CgCodec<byte[]> BYTES = new CgCodec<byte[]>() {
+        @Override
+        public <T> T encode(CgDynamicOps<T> ops, byte[] input) {
+            return ops.createBytes(input);
+        }
+
+        @Override
+        public <T> byte[] decode(CgDynamicOps<T> ops, T input) {
+            return ops.getBytesValue(input);
+        }
+    };
+
     /** A UUID as its two longs. */
     public static final CgCodec<UUID> UUID = new CgCodec<UUID>() {
         @Override

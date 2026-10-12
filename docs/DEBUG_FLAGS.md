@@ -46,6 +46,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.cache` | true, false | `true` | Keep what can be rebuilt across launches; false rebuilds SPIR-V and the Vulkan pipeline cache each launch. |
 | `crystalgraphics.cache.dir` | text | empty | The cache root, a folder per kind (spirv, vulkan); empty for <game directory>/crystalgraphics/cache. |
 
+## `crystalgraphics.collision`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.collision.show` | true, false | `false` | Draws every live hitbox as lines: the client's, and a server's whose own is on. |
+
 ## `crystalgraphics.compute`
 
 | Variable | Takes | Default | |
