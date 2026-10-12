@@ -67,6 +67,7 @@ public final class CgNetwork {
 
     private static final List<Consumer<CgPeer>> CLOSED = new CopyOnWriteArrayList<>();
     private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>();
+    private static final List<Runnable> CLIENT_TICK = new CopyOnWriteArrayList<>();
 
     /** Server ticks since this process started a server: what an age on the wire is measured in. */
     private static volatile long serverTicks;
@@ -158,6 +159,11 @@ public final class CgNetwork {
      */
     public static void onServerTick(Runnable listener) {
         SERVER_TICK.add(listener);
+    }
+
+    /** Runs {@code listener} once a client tick, on the client thread, while connected to a server. At init. */
+    public static void onClientTick(Runnable listener) {
+        CLIENT_TICK.add(listener);
     }
 
     /** Server ticks counted since this process first ticked a server; a server thread's clock. */
@@ -280,6 +286,13 @@ public final class CgNetwork {
     public static void clientTick() {
         CgConnections table = client;
         if (table == null) return;
+        for (int i = 0; i < CLIENT_TICK.size(); i++) {
+            try {
+                CLIENT_TICK.get(i).run();
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] a client-tick listener failed", failed);
+            }
+        }
         long started = System.nanoTime();
         table.tick();
         clientTickNanos = System.nanoTime() - started;
@@ -362,6 +375,7 @@ public final class CgNetwork {
         CgNetObjects.resetForTesting();
         CLOSED.clear();
         SERVER_TICK.clear();
+        CLIENT_TICK.clear();
         serverTicks = 0;
         channel = null;
         idOf = null;
