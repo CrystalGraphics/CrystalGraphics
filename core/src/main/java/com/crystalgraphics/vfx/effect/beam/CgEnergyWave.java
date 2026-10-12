@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.effect.beam;
 
-import com.crystalgraphics.collision.CgPart;
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.post.volume.CgImpact;
@@ -175,7 +175,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
      *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
      * }</pre>
      */
-    public static final CgPart PART_BEAM = CgPart.of("beam"), PART_BLAST = CgPart.of("blast");
+    public static final CgHitPart PART_BEAM = CgHitPart.of("beam"), PART_BLAST = CgHitPart.of("blast");
     /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
     public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
     /** The impact frame's frames, its fade's too, announced as moments: bits 18 to 31 of {@code momentsFired}. */

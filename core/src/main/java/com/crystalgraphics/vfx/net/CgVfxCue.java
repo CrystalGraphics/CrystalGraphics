@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
-import com.crystalgraphics.collision.CgPart;
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetEvent;
@@ -336,14 +336,14 @@ public final class CgVfxCue {
     }
 
     /** As {@link #onConfirmedCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes. */
-    public CgVfxCue onConfirmedCollide(CgPart part, CgVfxCollisionListener listener) {
+    public CgVfxCue onConfirmedCollide(CgHitPart part, CgVfxCollisionListener listener) {
         confirmations.add(new Confirmation(Objects.requireNonNull(part, "part"), Objects.requireNonNull(listener, "listener")));
         return this;
     }
 
     private void confirmed(CgNetObject obj, Confirmed c) {
         if (confirmations.isEmpty()) return;
-        CgPart part = null;
+        CgHitPart part = null;
         for (Confirmation each : confirmations) {
             if (each.part != null && each.part.name().equals(c.part)) part = each.part;
         }
@@ -359,10 +359,10 @@ public final class CgVfxCue {
 
     private static final class Confirmation {
         @Nullable
-        final CgPart part;
+        final CgHitPart part;
         final CgVfxCollisionListener listener;
 
-        Confirmation(@Nullable CgPart part, CgVfxCollisionListener listener) {
+        Confirmation(@Nullable CgHitPart part, CgVfxCollisionListener listener) {
             this.part = part;
             this.listener = listener;
         }
@@ -1023,7 +1023,7 @@ public final class CgVfxCue {
         }
 
         /** As {@link #onCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes. */
-        public Playing onCollide(CgPart part, CgVfxCollisionListener listener) {
+        public Playing onCollide(CgHitPart part, CgVfxCollisionListener listener) {
             running().onCollide(part, listener);
             return this;
         }

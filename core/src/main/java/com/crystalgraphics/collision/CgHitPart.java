@@ -12,7 +12,7 @@ package com.crystalgraphics.collision;
  * Declaring parts for an effect of your own:
  *
  * <pre>{@code
- * public static final CgPart PART_BOLT = CgPart.of("bolt"), PART_ARC = CgPart.of("arc");
+ * public static final CgHitPart PART_BOLT = CgHitPart.of("bolt"), PART_ARC = CgHitPart.of("arc");
  *
  * collided(PART_ARC, CgVfxCollision.Hit.ENTITY, struck, x, y, z, nx, ny, nz, vx, vy, vz, 0f);   // in tick
  * }</pre>
@@ -22,17 +22,17 @@ package com.crystalgraphics.collision;
  *   <li>The name is for logs and {@code toString}.</li>
  * </ul>
  */
-public final class CgPart {
+public final class CgHitPart {
 
     private final String name;
 
-    private CgPart(String name) {
+    private CgHitPart(String name) {
         this.name = name;
     }
 
-    public static CgPart of(String name) {
+    public static CgHitPart of(String name) {
         if (name == null || name.isEmpty()) throw new IllegalArgumentException("a part needs a name");
-        return new CgPart(name);
+        return new CgHitPart(name);
     }
 
     public String name() {
