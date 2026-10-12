@@ -23,7 +23,8 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
  * FML's lifecycle on Forge 1.8–1.12.2, turned into {@link CgNetwork} calls. Both sides, from init: the channel
  * registered at preInit on 1.7.10 delivered nothing in either direction.
  *
- * <p>Ticks at {@code START}, so what arrived since the last tick is applied before the world runs on it.</p>
+ * <p>Ticks at {@code END}, as every other host does: what arrived during the tick is taken in it, and what the world
+ * changed in it goes out at once.</p>
  */
 public final class NetworkLegacy {
 
@@ -107,12 +108,12 @@ public final class NetworkLegacy {
 
         @SubscribeEvent
         public void onServerTick(TickEvent.ServerTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) CgNetwork.serverTick();
+            if (event.phase == TickEvent.Phase.END) CgNetwork.serverTick();
         }
 
         @SubscribeEvent
         public void onClientTick(TickEvent.ClientTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) CgNetwork.clientTick();
+            if (event.phase == TickEvent.Phase.END) CgNetwork.clientTick();
         }
     }
 }

@@ -23,7 +23,8 @@ import net.minecraft.network.NetHandlerPlayServer;
  * FML's lifecycle on 1.7.10, turned into {@link CgNetwork} calls. Both sides, from init: the channel registered
  * at preInit delivered nothing in either direction.
  *
- * <p>Ticks at {@code START}, so what arrived since the last tick is applied before the world runs on it.</p>
+ * <p>Ticks at {@code END}, as the modern hosts do: 1.7.10 hands our frames over inside the tick (the server's
+ * {@code networkTick}, the client's {@code updateController}), so a {@code START} pump left each a tick late.</p>
  */
 public final class Network1710 {
 
@@ -89,12 +90,12 @@ public final class Network1710 {
 
         @SubscribeEvent
         public void onServerTick(TickEvent.ServerTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) CgNetwork.serverTick();
+            if (event.phase == TickEvent.Phase.END) CgNetwork.serverTick();
         }
 
         @SubscribeEvent
         public void onClientTick(TickEvent.ClientTickEvent event) {
-            if (event.phase == TickEvent.Phase.START) CgNetwork.clientTick();
+            if (event.phase == TickEvent.Phase.END) CgNetwork.clientTick();
         }
     }
 }

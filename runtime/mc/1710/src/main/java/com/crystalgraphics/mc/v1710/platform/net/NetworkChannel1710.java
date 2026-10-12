@@ -154,7 +154,7 @@ public final class NetworkChannel1710 implements CgNetworkChannel {
         return true;
     }
 
-    // ── Inbound. Both fire on the Netty thread. ─────────────────────────────
+    // ── Inbound. Both fire on the game thread, from vanilla's packet queue, mid-tick. ──
 
     /** A frame from a client. The sender is the player, which is what a session map keys on. */
     @SubscribeEvent
