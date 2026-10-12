@@ -434,13 +434,19 @@ public abstract class CgVfxEffect {
         return values.get(param, index);
     }
 
+    /**
+     * Sets a number. On a server, an effect a lasting cue runs sends it to every viewer at the tick's end, as it does a
+     * colour ({@code CgVfxCue.authoritative()}).
+     */
     public final CgVfxEffect set(CgVfxParam param, float value) {
         values.set(param, value);
+        if (authority != null) authority.set(param);
         return this;
     }
 
     public final CgVfxEffect set(CgVfxParam param, float r, float g, float b, float a) {
         values.set(param, r, g, b, a);
+        if (authority != null) authority.set(param);
         return this;
     }
 

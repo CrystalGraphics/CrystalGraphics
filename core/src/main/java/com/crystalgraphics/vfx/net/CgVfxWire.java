@@ -110,12 +110,14 @@ final class CgVfxWire {
         return running;
     }
 
-    /** The server changed {@code running}'s cue: its effect hears it as a client's would. */
+    /**
+     * {@code effect} takes a change to its cue, on either side: its parameters set by name, then the rest by the effect
+     * itself ({@link CgVfxCue.Live}).
+     */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    static void changed(Running running) {
-        CgVfxEffect effect = running.authority.effect();
-        if (effect instanceof CgVfxCue.Live) ((CgVfxCue.Live) effect).cueChanged(running.play);
-        else if (running.play.params instanceof CgVfxParams) apply((CgVfxParams) running.play.params, effect);
+    static void take(CgVfxCue.Play<?> p, CgVfxEffect effect) {
+        if (p.params instanceof CgVfxParams) apply((CgVfxParams) p.params, effect);
+        if (effect instanceof CgVfxCue.Live) ((CgVfxCue.Live) effect).cueChanged(p);
     }
 
     /**
@@ -173,7 +175,6 @@ final class CgVfxWire {
      * Steps each authority's effect a server tick, publishing what its viewers must draw. An ended cue's effect plays
      * out, its blast heard, for {@link #LINGER} at most; an effect stopped on the server ends its cue.
      */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private static void runAuthorities() {
         int kept = 0;
         for (int i = 0; i < RUNNING.size(); i++) {
@@ -194,13 +195,26 @@ final class CgVfxWire {
                 ended = true;
             }
             if (r.authority.done()) continue;
-            if (!ended && effect instanceof CgVfxCue.Authoritative
-                    && ((CgVfxCue.Authoritative) effect).publish(r.play)) {
-                r.handle.set(r.handle.value());
-            }
+            if (!ended && publish(r, effect)) r.handle.set(r.handle.value());
             RUNNING.set(kept++, r);
         }
         for (int i = RUNNING.size() - 1; i >= kept; i--) RUNNING.remove(i);
+    }
+
+    /** Writes into {@code r}'s cue what its effect changed: the numbers and colours set on it, and its own state. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean publish(Running r, CgVfxEffect effect) {
+        CgVfxCue.Play play = r.play;
+        boolean changed = false;
+        if (play.params == null || play.params instanceof CgVfxParams) {
+            CgVfxParams params = r.authority.publishParams((CgVfxParams) play.params);
+            if (params != null) {
+                play.params = params;
+                changed = true;
+            }
+        }
+        if (effect instanceof CgVfxCue.Authoritative) changed |= ((CgVfxCue.Authoritative) effect).publish(play);
+        return changed;
     }
 
     /** A lasting play's effect, run by its cue's authority. */

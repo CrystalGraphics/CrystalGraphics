@@ -72,10 +72,8 @@ public final class CgVfxCueClient {
             } else if (p.killed) {
                 live.remove(id);
                 effect.kill();
-            } else if (effect instanceof CgVfxCue.Live) {
-                ((CgVfxCue.Live) effect).cueChanged(p);
-            } else if (p.params instanceof CgVfxParams) {
-                CgVfxWire.apply((CgVfxParams) p.params, effect);
+            } else {
+                CgVfxWire.take(p, effect);
             }
         }
 

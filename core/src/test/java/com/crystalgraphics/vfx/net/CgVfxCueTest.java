@@ -53,8 +53,9 @@ public class CgVfxCueTest {
     /** What the factory built, and the play it built each from. */
     private static final List<Probe> BUILT = new ArrayList<>();
     private static final List<CgVfxCue.Play<?>> CUES = new ArrayList<>();
-    /** The plays each viewer's wave was built from. */
+    /** The plays each viewer's wave was built from, and the waves. */
     private static final List<CgVfxCue.Play<?>> WAVE_CUES = new ArrayList<>();
+    private static final List<CgEnergyWave> WAVES = new ArrayList<>();
 
     static final class Probe extends CgVfxEffect {
         Probe(double x, double y, double z) {
@@ -189,8 +190,12 @@ public class CgVfxCueTest {
             return new Seeker(cue.x(), cue.y(), cue.z());
         });
         CgVfxRegistry.register(CgVfxCue.declare(WAVE_ID), CgEnergyWave.kamehameha(), (look, cue) -> {
-            if (!cue.authoritative()) WAVE_CUES.add(cue);
-            return CgEnergyWave.fromCue(look, cue);
+            CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
+            if (!cue.authoritative()) {
+                WAVE_CUES.add(cue);
+                WAVES.add(wave);
+            }
+            return wave;
         });
     }
 
@@ -201,6 +206,7 @@ public class CgVfxCueTest {
         CUES.clear();
         SEEN.clear();
         WAVE_CUES.clear();
+        WAVES.clear();
         CgPlatform.provide(CgServerPlayers.SERVICE, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
         spark = CgVfxCue.declare(SPARK_ID);
@@ -411,6 +417,35 @@ public class CgVfxCueTest {
         settle();
         assertFalse("stopping it ended the cue", playing.playing());
         assertEquals(0, CgVfxWire.playing.size());
+    }
+
+    @Test
+    public void whatTheServerSetsOnItsEffectReachesEveryViewer() {
+        CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
+            @Override public CgWorldQuery world(Object level) { return CgVfxAuthorityTest.FLOOR; }
+            @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
+        });
+        CgVfxCue<CgVfxParams> cue = CgVfxCue.declare(WAVE_ID).authoritative();
+        join();
+        CgVfxCue.Playing<CgVfxParams> playing = cue.at(body, 0, 64, 0).toward(1, 0, 0)
+                .params(CgVfxParams.of().set("radius", 0.5f)).start();
+        settle();
+        CgEnergyWave beam = playing.effect();
+        beam.set(CgEnergyWave.RADIUS, 0.4f);
+        settle();
+        assertEquals("a viewer playing it", 0.4f, WAVES.get(0).get(CgEnergyWave.RADIUS), 0f);
+
+        playing.params(CgVfxParams.of().set("unrelated", 1f));
+        settle();
+        float[] carried = {Float.NaN};
+        CgVfxWire.playing.forEach(h -> carried[0] = ((CgVfxParams) h.value().params()).get("radius", Float.NaN));
+        assertEquals("and one joining later", 0.4f, carried[0], 0f);
+        assertEquals("a params call sets on top", 0.4f, beam.get(CgEnergyWave.RADIUS), 0f);
+
+        playing.params(CgVfxParams.of().set("radius", 0.7f));
+        settle();
+        assertEquals("the server's effect takes the cue's", 0.7f, beam.get(CgEnergyWave.RADIUS), 0f);
+        assertEquals(0.7f, WAVES.get(0).get(CgEnergyWave.RADIUS), 0f);
     }
 
     @Test(expected = IllegalStateException.class)

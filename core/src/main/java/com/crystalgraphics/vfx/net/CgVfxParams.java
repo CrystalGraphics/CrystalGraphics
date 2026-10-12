@@ -81,10 +81,14 @@ public final class CgVfxParams {
 
     /** A copy to change, leaving this one as it is. */
     public CgVfxParams copy() {
-        CgVfxParams out = new CgVfxParams();
-        values.forEach((k, v) -> out.values.put(k, v.clone()));
-        out.texts.putAll(texts);
-        return out;
+        return new CgVfxParams().setAll(this);
+    }
+
+    /** Sets each of {@code other}'s values on this, over any of the same name. */
+    public CgVfxParams setAll(CgVfxParams other) {
+        other.values.forEach((k, v) -> values.put(k, v.clone()));
+        texts.putAll(other.texts);
+        return this;
     }
 
     public CgVfxParams set(String name, float value) {

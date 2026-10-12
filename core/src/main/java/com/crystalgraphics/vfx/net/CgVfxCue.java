@@ -211,8 +211,8 @@ public final class CgVfxCue<P> {
     }
 
     /**
-     * An effect that takes a lasting cue's changes itself: a new target, new parameters. Without it, a change sets
-     * {@link CgVfxParams} by name and nothing else.
+     * An effect that takes what else a lasting cue's change says: a new target, a direction, a parameter that is no look
+     * parameter. A change sets {@link CgVfxParams} onto the look's parameters by name first, with or without it.
      *
      * <pre>{@code
      * public final class Beam extends CgVfxEffect implements CgVfxCue.Live<CgVfxParams> {
@@ -229,7 +229,8 @@ public final class CgVfxCue<P> {
     /**
      * An effect whose server half decides what its viewers draw ({@link CgVfxCue#authoritative()}): after each server
      * tick it writes that into its cue, which reaches every viewer as a change, where {@link Live} takes it. Driven on the
-     * server like a local effect ({@link Playing#effect()}), it publishes what that changed too.
+     * server like a local effect ({@link Playing#effect()}), it publishes what that changed too. The numbers and colours
+     * set on it need none of this: every authoritative effect sends those.
      *
      * <pre>{@code
      * public boolean publish(CgVfxCue.Play<Object> cue) {
@@ -595,6 +596,7 @@ public final class CgVfxCue<P> {
      * CgVfxCue.Playing<CgVfxParams> wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
      * CgEnergyWave beam = wave.effect();
      * beam.hold().aim(look.x, look.y, look.z);   // before its first tick, as on a client
+     * beam.set(CgEnergyWave.RADIUS, 1.2f);       // a number or colour set on it reaches every viewer too
      * beam.fire();                               // what it publishes reaches every viewer
      * }</pre>
      */
@@ -629,14 +631,24 @@ public final class CgVfxCue<P> {
             return changed();
         }
 
+        /**
+         * Sets its parameters; viewers hear it at the end of the tick. {@link CgVfxParams} go on top of what it carries,
+         * so what was set before (here, or on the server's effect) stays for a viewer joining later; any other type
+         * replaces it.
+         */
+        @SuppressWarnings("unchecked")
         public Playing<P> params(P params) {
-            play().params(params);
+            Play<P> play = play();
+            if (params instanceof CgVfxParams && play.params instanceof CgVfxParams) {
+                params = (P) ((CgVfxParams) play.params).copy().setAll((CgVfxParams) params);
+            }
+            play.params(params);
             return changed();
         }
 
         private Playing<P> changed() {
             handle.set(handle.value());
-            if (running != null) CgVfxWire.changed(running);
+            if (running != null) CgVfxWire.take(running.play, running.authority.effect());
             return this;
         }
 
