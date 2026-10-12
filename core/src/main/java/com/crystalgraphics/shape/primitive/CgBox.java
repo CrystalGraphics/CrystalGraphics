@@ -14,7 +14,7 @@ import org.joml.Vector3d;
  * SLAM.bounds(pose.at(x, y, z).facing(yaw, 0), box);         // its box in the world, turned with the look
  * }</pre>
  */
-public final class CgBox extends CgShape {
+public final class CgBox extends CgSizedShape {
 
     private double halfX, halfY, halfZ;
 
@@ -68,6 +68,21 @@ public final class CgBox extends CgShape {
     @Override
     public CgBox copy() {
         return new CgBox(halfX, halfY, halfZ);
+    }
+
+    @Override
+    boolean hasRadius() {
+        return false;
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        throw new IllegalArgumentException("a box has no radius: scale it");
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgBox) into).resize(halfX() * hi, halfY() * hi, halfZ() * hi);
     }
 
     void resize(double halfX, double halfY, double halfZ) {

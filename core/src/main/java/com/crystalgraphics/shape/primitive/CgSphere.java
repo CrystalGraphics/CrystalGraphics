@@ -13,7 +13,7 @@ import org.joml.Vector3d;
  * BLAST.bounds(pose.at(x, y, z), box);                       // x - 6 .. x + 6 on every axis
  * }</pre>
  */
-public final class CgSphere extends CgShape {
+public final class CgSphere extends CgSizedShape {
 
     private double radius;
 
@@ -53,6 +53,16 @@ public final class CgSphere extends CgShape {
     @Override
     public CgSphere copy() {
         return new CgSphere(radius);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgSphere) into).resize(hi);
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgSphere) into).resize(radius() * hi);
     }
 
     void resize(double radius) {

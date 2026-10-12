@@ -6818,7 +6818,7 @@ com/crystalgraphics/shape/bounds/CgAABBc
   method public,abstract minZ ()D
 com/crystalgraphics/shape/primitive/CgBox
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgBox;
@@ -6831,7 +6831,7 @@ com/crystalgraphics/shape/primitive/CgBox
   method public,static of (DDD)Lcom/crystalgraphics/shape/primitive/CgBox;
 com/crystalgraphics/shape/primitive/CgCapsule
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public a (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public b (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgCapsule;
@@ -6861,7 +6861,7 @@ com/crystalgraphics/shape/primitive/CgCompound$Builder
   method public build ()Lcom/crystalgraphics/shape/primitive/CgCompound;
 com/crystalgraphics/shape/primitive/CgCone
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgCone;
   method public halfAngle ()D
   method public isConvex ()Z
@@ -6884,7 +6884,7 @@ com/crystalgraphics/shape/primitive/CgConvex$Support
   method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
 com/crystalgraphics/shape/primitive/CgCylinder
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgCylinder;
   method public halfHeight ()D
   method public isConvex ()Z
@@ -6919,7 +6919,7 @@ com/crystalgraphics/shape/primitive/CgResizable
   method public,static of (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/shape/primitive/CgResizable;
 com/crystalgraphics/shape/primitive/CgRing
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgRing;
   method public halfHeight ()D
   method public inner ()D
@@ -6933,7 +6933,7 @@ com/crystalgraphics/shape/primitive/CgRing
   method public,static of (DDD)Lcom/crystalgraphics/shape/primitive/CgRing;
 com/crystalgraphics/shape/primitive/CgShell
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgShell;
@@ -6948,7 +6948,7 @@ com/crystalgraphics/shape/primitive/CgShell
   method public,static of (DD)Lcom/crystalgraphics/shape/primitive/CgShell;
 com/crystalgraphics/shape/primitive/CgSphere
   access public,final
-  extends com/crystalgraphics/shape/CgShape
+  extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public copy ()Lcom/crystalgraphics/shape/primitive/CgSphere;

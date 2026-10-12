@@ -11,7 +11,7 @@ import org.joml.Vector3d;
  * PILLAR.bounds(pose.at(x, y + 4, z), box);                  // standing on y
  * }</pre>
  */
-public final class CgCylinder extends CgShape {
+public final class CgCylinder extends CgSizedShape {
 
     private double radius, halfHeight;
 
@@ -54,6 +54,16 @@ public final class CgCylinder extends CgShape {
     @Override
     public CgCylinder copy() {
         return new CgCylinder(radius, halfHeight);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgCylinder) into).resize(hi, halfHeight());
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgCylinder) into).resize(radius() * hi, halfHeight() * hi);
     }
 
     void resize(double radius, double halfHeight) {

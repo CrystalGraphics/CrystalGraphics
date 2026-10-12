@@ -17,7 +17,7 @@ import org.joml.Vector3d;
  *   <li>A moving beam is a sphere cast along the aim, not a capsule rebuilt each tick.</li>
  * </ul>
  */
-public final class CgCapsule extends CgShape {
+public final class CgCapsule extends CgSizedShape {
 
     private double ax, ay, az, bx, by, bz, radius;
 
@@ -95,6 +95,16 @@ public final class CgCapsule extends CgShape {
     @Override
     public CgCapsule copy() {
         return new CgCapsule(ax, ay, az, bx, by, bz, radius);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgCapsule) into).resize(ax(), ay(), az(), bx(), by(), bz(), hi);
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgCapsule) into).resize(ax() * hi, ay() * hi, az() * hi, bx() * hi, by() * hi, bz() * hi, radius() * hi);
     }
 
     void resize(double ax, double ay, double az, double bx, double by, double bz, double radius) {

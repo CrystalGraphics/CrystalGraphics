@@ -19,7 +19,7 @@ import org.joml.Vector3d;
  *       angle.</li>
  * </ul>
  */
-public final class CgCone extends CgShape {
+public final class CgCone extends CgSizedShape {
 
     private final double halfAngle, sin, cos;
     private double range;
@@ -72,6 +72,16 @@ public final class CgCone extends CgShape {
     @Override
     public CgCone copy() {
         return new CgCone(range, halfAngle);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgCone) into).resize(hi);
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgCone) into).resize(range() * hi);
     }
 
     void resize(double range) {

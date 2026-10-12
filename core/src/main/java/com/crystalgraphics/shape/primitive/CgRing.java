@@ -17,7 +17,7 @@ import org.joml.Vector3d;
  *   <li>Centred on the origin vertically: a pose at the ground puts half of it below.</li>
  * </ul>
  */
-public final class CgRing extends CgShape {
+public final class CgRing extends CgSizedShape {
 
     private double inner, outer, halfHeight;
     private final boolean front;
@@ -76,6 +76,16 @@ public final class CgRing extends CgShape {
     @Override
     public CgRing copy() {
         return new CgRing(inner, outer, halfHeight, front);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgRing) into).resize(innerAt(inner(), outer(), isFront(), lo), hi, halfHeight());
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgRing) into).resize(inner() * lo, outer() * hi, halfHeight() * hi);
     }
 
     void resize(double inner, double outer, double halfHeight) {

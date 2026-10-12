@@ -30,9 +30,9 @@ import com.crystalgraphics.shape.CgShape;
  */
 public final class CgResizable {
 
-    private final CgShape base, copy;
+    private final CgSizedShape base, copy;
 
-    private CgResizable(CgShape base, CgShape copy) {
+    private CgResizable(CgSizedShape base, CgSizedShape copy) {
         this.base = base;
         this.copy = copy;
     }
@@ -42,11 +42,9 @@ public final class CgResizable {
      *                                  resize
      */
     public static CgResizable of(CgShape base) {
-        if (!(base instanceof CgSphere || base instanceof CgBox || base instanceof CgCapsule || base instanceof CgCylinder
-                || base instanceof CgCone || base instanceof CgShell || base instanceof CgRing)) {
-            throw new IllegalArgumentException("cannot resize " + base);
-        }
-        return new CgResizable(base, base.copy());
+        if (!(base instanceof CgSizedShape)) throw new IllegalArgumentException("cannot resize " + base);
+        CgSizedShape sized = (CgSizedShape) base;
+        return new CgResizable(sized, sized.copy());
     }
 
     /** The shape it was made from, unchanged. */
@@ -56,7 +54,7 @@ public final class CgResizable {
 
     /** Whether {@link #radius} applies: everything but a box. */
     public boolean hasRadius() {
-        return !(base instanceof CgBox);
+        return base.hasRadius();
     }
 
     /**
@@ -75,25 +73,7 @@ public final class CgResizable {
     public CgShape sweptRadius(double from, double to) {
         CgShapeArgs.length("radius", from);
         CgShapeArgs.length("radius", to);
-        double lo = Math.min(from, to), hi = Math.max(from, to);
-        if (base instanceof CgSphere) {
-            ((CgSphere) copy).resize(hi);
-        } else if (base instanceof CgCylinder) {
-            ((CgCylinder) copy).resize(hi, ((CgCylinder) base).halfHeight());
-        } else if (base instanceof CgCapsule) {
-            CgCapsule b = (CgCapsule) base;
-            ((CgCapsule) copy).resize(b.ax(), b.ay(), b.az(), b.bx(), b.by(), b.bz(), hi);
-        } else if (base instanceof CgCone) {
-            ((CgCone) copy).resize(hi);
-        } else if (base instanceof CgShell) {
-            CgShell b = (CgShell) base;
-            ((CgShell) copy).resize(innerAt(b.inner(), b.outer(), b.isFront(), lo), hi);
-        } else if (base instanceof CgRing) {
-            CgRing b = (CgRing) base;
-            ((CgRing) copy).resize(innerAt(b.inner(), b.outer(), b.isFront(), lo), hi, b.halfHeight());
-        } else {
-            throw new IllegalArgumentException("a box has no radius: scale it");
-        }
+        base.sweptRadius(copy, Math.min(from, to), Math.max(from, to));
         return copy;
     }
 
@@ -106,35 +86,8 @@ public final class CgResizable {
     public CgShape sweptScale(double from, double to) {
         CgShapeArgs.length("scale", from);
         CgShapeArgs.length("scale", to);
-        double lo = Math.min(from, to), hi = Math.max(from, to);
-        if (base instanceof CgSphere) {
-            ((CgSphere) copy).resize(((CgSphere) base).radius() * hi);
-        } else if (base instanceof CgBox) {
-            CgBox b = (CgBox) base;
-            ((CgBox) copy).resize(b.halfX() * hi, b.halfY() * hi, b.halfZ() * hi);
-        } else if (base instanceof CgCylinder) {
-            CgCylinder b = (CgCylinder) base;
-            ((CgCylinder) copy).resize(b.radius() * hi, b.halfHeight() * hi);
-        } else if (base instanceof CgCapsule) {
-            CgCapsule b = (CgCapsule) base;
-            ((CgCapsule) copy).resize(b.ax() * hi, b.ay() * hi, b.az() * hi, b.bx() * hi, b.by() * hi, b.bz() * hi,
-                    b.radius() * hi);
-        } else if (base instanceof CgCone) {
-            ((CgCone) copy).resize(((CgCone) base).range() * hi);
-        } else if (base instanceof CgShell) {
-            CgShell b = (CgShell) base;
-            ((CgShell) copy).resize(b.inner() * lo, b.outer() * hi);
-        } else {
-            CgRing b = (CgRing) base;
-            ((CgRing) copy).resize(b.inner() * lo, b.outer() * hi, b.halfHeight() * hi);
-        }
+        base.sweptScale(copy, Math.min(from, to), Math.max(from, to));
         return copy;
-    }
-
-    /** A shell's or ring's inner edge at outer radius {@code r}. */
-    private static double innerAt(double inner, double outer, boolean front, double r) {
-        if (front) return Math.max(0, r - (outer - inner));
-        return outer == 0 ? 0 : inner * r / outer;
     }
 
     @Override

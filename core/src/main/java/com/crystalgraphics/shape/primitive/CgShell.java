@@ -19,7 +19,7 @@ import org.joml.Vector3d;
  *   <li>A front on its own, before anything sizes it, is a ball of radius {@code width}.</li>
  * </ul>
  */
-public final class CgShell extends CgShape {
+public final class CgShell extends CgSizedShape {
 
     private double inner, outer;
     private final boolean front;
@@ -83,6 +83,16 @@ public final class CgShell extends CgShape {
     @Override
     public CgShell copy() {
         return new CgShell(inner, outer, front);
+    }
+
+    @Override
+    void sweptRadius(CgSizedShape into, double lo, double hi) {
+        ((CgShell) into).resize(innerAt(inner(), outer(), isFront(), lo), hi);
+    }
+
+    @Override
+    void sweptScale(CgSizedShape into, double lo, double hi) {
+        ((CgShell) into).resize(inner() * lo, outer() * hi);
     }
 
     void resize(double inner, double outer) {
