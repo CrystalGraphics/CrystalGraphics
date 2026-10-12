@@ -91,4 +91,10 @@ public final class CgShapes {
                                CgPose poseB, CgCastHit out) {
         return CgNarrowPhase.CURRENT.get().cast(a, poseA, moveX, moveY, moveZ, b, poseB, out);
     }
+
+    /** Where {@code shape}, moving by {@code (moveX, moveY, moveZ)} from {@code pose}, first touches a box. */
+    public static boolean cast(CgShape shape, CgPose pose, double moveX, double moveY, double moveZ, CgAABBc box,
+                               CgCastHit out) {
+        return CgNarrowPhase.CURRENT.get().cast(shape, pose, moveX, moveY, moveZ, box, out);
+    }
 }

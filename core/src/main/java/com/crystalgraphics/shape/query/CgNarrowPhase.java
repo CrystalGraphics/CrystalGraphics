@@ -341,6 +341,56 @@ final class CgNarrowPhase {
         return true;
     }
 
+    boolean cast(CgShape s, CgPose p, double mx, double my, double mz, CgAABBc box, CgCastHit out) {
+        if (box.isEmpty()) return false;
+        base(p);
+        double len = Math.sqrt(mx * mx + my * my + mz * mz);
+        if (len == 0) {
+            if (!overlapsBox(s, p, box)) return false;
+            out.fraction = 0;
+            out.distance = 0;
+            out.point.set(p.x, p.y, p.z);
+            out.normal.zero();
+            return true;
+        }
+        dx = mx;
+        dy = my;
+        dz = mz;
+        best = Double.POSITIVE_INFINITY;
+        castBox(s, p, box);
+        if (best == Double.POSITIVE_INFINITY) return false;
+        out.fraction = best;
+        out.distance = best * len;
+        out.point.set(bestB).add(baseX, baseY, baseZ);
+        out.normal.set(bestNormal);
+        return true;
+    }
+
+    private void castBox(CgShape s, CgPose p, CgAABBc box) {
+        if (s instanceof CgCompound) {
+            CgCompound c = (CgCompound) s;
+            CgPose child = push();
+            try {
+                for (int i = 0; i < c.size(); i++) castBox(c.shape(i), p.mul(c.pose(i, child), child), box);
+            } finally {
+                depth--;
+            }
+            return;
+        }
+        if (!s.isConvex()) {
+            throw new IllegalArgumentException("cast takes convex shapes and compounds of them: " + s);
+        }
+        CgPlaced mover = a.set(s, p, baseX, baseY, baseZ);
+        CgPlaced still = b.box(box, baseX, baseY, baseZ);
+        double lambda = gjk.castShape(mover.core, dx, dy, dz, CAST_TOLERANCE, still.core, mover.radius(),
+                still.radius(), 1, onA, onB, v);
+        if (lambda >= best) return;
+        best = lambda;
+        castNormal(mover, still, lambda, dx, dy, dz);
+        bestB.set(onB);
+        bestNormal.set(normal);
+    }
+
     private void castAt(CgShape sa, CgPose pa, CgShape sb, CgPose pb, boolean swapped) {
         if (sa instanceof CgCompound) {
             CgCompound c = (CgCompound) sa;
