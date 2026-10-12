@@ -7,6 +7,7 @@ import com.crystalgraphics.compute.ops.CgGpuOpsCheck;
 import com.crystalgraphics.compute.program.CgComputeCheck;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgFrameClock;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.demo.CgRenderDemo;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.probe.CgWorldProbe;
@@ -222,6 +223,8 @@ public final class CgGraphicsLifecycle {
                     CgNoiseVolumes.install();
                     warmUpDeferredStartupCosts();
                 }
+                // From here warm-ups spread over frames: the demo's first scene took the first frame 0.7-10 s on 1.7.10.
+                CgWarmBudget.start();
                 CgWorldRenderer.get().install();
                 CgPostStack.get().install();
                 CgRenderDemo.INSTANCE.install();
@@ -446,6 +449,7 @@ public final class CgGraphicsLifecycle {
                 }
             }
             CgFrameClock.advanceToNow();
+            CgWarmBudget.nextFrame();
         } finally {
             CgGL.toHost();
         }

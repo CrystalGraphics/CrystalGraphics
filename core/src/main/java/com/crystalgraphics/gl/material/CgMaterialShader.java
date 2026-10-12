@@ -708,6 +708,11 @@ public final class CgMaterialShader implements CgReloadable {
         return true;
     }
 
+    /** Whether a {@link #submitRecompile} is waiting to be committed. Commits nothing. */
+    public boolean isPending() {
+        return pendingCommit != null;
+    }
+
     /** Commits whatever {@link #submitRecompile} left pending, waiting for the driver if it must. */
     public void awaitPending() {
         PendingCommit pending = pendingCommit;

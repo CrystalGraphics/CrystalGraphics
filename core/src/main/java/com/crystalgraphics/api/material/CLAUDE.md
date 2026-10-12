@@ -217,6 +217,8 @@ current.bind();
   `KHR`/`ARB_parallel_shader_compile` (`CgCapabilities.isParallelShaderCompile()`), and answers true where it
   does not — the driver has had one frame of its own threads.
 - A `bind()` before it answers true waits for the compile there, exactly as an unprepared material does.
+- It answers false without submitting while `CgWarmBudget` is spent for the frame, so many materials prepared at
+  once spread over frames.
 - It compiles the Forward pass only. The auto-generated shadow and depth programs are built, synchronously,
   the first time `bindForPass(SHADOW/DEPTH)` or `hasCompiledDepthPass()` asks — a preview never does, and they
   were half of what an edit compiled.

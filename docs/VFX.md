@@ -217,8 +217,8 @@ Shakes and moments stay silent until it reaches its age. This is how a player jo
 
 ### Other controls
 
-- **`VFX.prepare(look)`** builds a look's shaders, meshes and kernels before it first plays; `VFX.warmed()` says when
-  all of them are ready. A look played cold compiles on its first frame and can hitch.
+- **`VFX.prepare(look)`** builds a look's shaders, meshes and kernels before it first plays, spread over frames within
+  `crystalgraphics.warmBudget`; `VFX.warmed()` says when all of them are ready. A look played cold compiles on its first frame and can hitch.
 - **`effect.ground(y)`** gives particles a floor where the host has no world (the debug harness). In Minecraft they
   land on the world's surfaces by themselves.
 - **`system.timeScale(s)`** slows or speeds every effect in a system (1 by default).

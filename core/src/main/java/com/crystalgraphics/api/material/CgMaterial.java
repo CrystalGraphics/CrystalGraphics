@@ -25,6 +25,7 @@ import com.crystalgraphics.gl.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -716,8 +717,9 @@ public final class CgMaterial {
      * }</pre>
      *
      * <p>False on the frame it starts a compile, always: where the driver cannot report progress, that frame is
-     * the head start its own compile threads get. Binding before it answers true waits for the compile, as a
-     * material that was never prepared does.</p>
+     * the head start its own compile threads get. False too while the frame's {@link CgWarmBudget} is spent, so
+     * many materials prepared at once spread over frames. Binding before it answers true waits for the compile, as
+     * a material that was never prepared does.</p>
      *
      * <p>It compiles what {@link #bind} needs, the Forward pass. A shadow or depth program the shader does not
      * author is generated the first time {@link #bindForPass} or {@link #hasCompiledDepthPass} asks for it.</p>
@@ -725,11 +727,18 @@ public final class CgMaterial {
     public boolean prepare() {
         checkNotDeleted();
         if (cgMaterialShader == null || !PARALLEL_COMPILE) return true;
-        if (cgMaterialShader.isDirty()) {
-            cgMaterialShader.submitRecompile(true);
-            return false;
+        if (!cgMaterialShader.isDirty() && !cgMaterialShader.isPending()) return true;
+        if (!CgWarmBudget.allows()) return false;
+        long start = System.nanoTime();
+        try {
+            if (cgMaterialShader.isDirty()) {
+                cgMaterialShader.submitRecompile(true);
+                return false;
+            }
+            return cgMaterialShader.pollPending();
+        } finally {
+            CgWarmBudget.spend(System.nanoTime() - start);
         }
-        return cgMaterialShader.pollPending();
     }
 
     /**

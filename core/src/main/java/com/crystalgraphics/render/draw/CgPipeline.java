@@ -11,6 +11,7 @@ import com.crystalgraphics.gl.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.gl.material.parse.CgParsedPass;
 import com.crystalgraphics.gl.material.parse.CgParsedShader;
 import com.crystalgraphics.platform.gl.CgGL;
+import com.crystalgraphics.render.CgWarmBudget;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -86,6 +87,8 @@ public final class CgPipeline {
     @Nullable
     private CgShader program;
     private int programRevision = -1;
+    /** The shader revision {@link #prepare} last answered true at: a built pipeline spends no warming budget. */
+    private int preparedRevision = -1;
     private int instanceBaseLocation = UNRESOLVED, vertexBaseLocation = UNRESOLVED;
 
     /** {@link #withState} answers, by state identity. */
@@ -447,9 +450,25 @@ public final class CgPipeline {
     /**
      * Starts this pipeline's program compiling without waiting, the shader's first and then this pass, keyword set
      * and multi-draw form of it, and says whether {@link #program()} would now return without compiling or waiting
-     * on the driver. False on a frame that starts one; poll it frame to frame.
+     * on the driver. False on a frame that starts one, or once the frame's {@link CgWarmBudget} is spent; poll it frame
+     * to frame.
      */
     public boolean prepare() {
+        if (preparedRevision == shader.getRevisionNumber() && !shader.isDirty()) return true;
+        preparedRevision = -1;
+        if (!CgWarmBudget.allows()) return false;
+        long start = System.nanoTime();
+        boolean ready;
+        try {
+            ready = startOrPoll();
+        } finally {
+            CgWarmBudget.spend(System.nanoTime() - start);
+        }
+        if (ready) preparedRevision = shader.getRevisionNumber();
+        return ready;
+    }
+
+    private boolean startOrPoll() {
         if (shader.isDirty()) {
             shader.submitRecompile(pass == CgRenderPassVariant.FORWARD);
             return false;

@@ -219,6 +219,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
 | `crystalgraphics.vfx.threads` | 0 to 256 | `0` | Threads effects' emitters tick on, the render thread one of them; 0 for two fewer than the cores, 1 for all on the render thread. Read at launch. |
+| `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each raycast an effect makes on a server: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
 
 ## `crystalgraphics.vulkan`
 
@@ -228,6 +229,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vulkan.presentMode` | text | empty | immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose. Read at launch. |
 | `crystalgraphics.vulkan.syncValidation` | true, false | `false` | With the validation layer on, its synchronization checks too. Read at launch. |
 | `crystalgraphics.vulkan.transfer` | true, false | `true` | New textures' copies and the mesh store's run on a transfer queue where there is one; false keeps them on the frame's queue (ENGINE_API.md, Async). Read at launch. |
+
+## `crystalgraphics.warmBudget`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.warmBudget` | 0.0 to 1000.0 | `4.0` | Milliseconds a frame may spend starting programs, kernels and meshes ahead of their first use; 0 for no limit. |
 
 ## `crystalgraphics.world`
 

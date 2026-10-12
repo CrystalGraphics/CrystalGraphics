@@ -11,6 +11,7 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -224,6 +225,8 @@ public final class CgVfxSystem {
     private final List<CgMaterial> unbound = new ArrayList<>();
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
+    /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
+    private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
     private CgTexture2D boundTexture;
     // The tube is this system's own; the ribbons, sphere and quads are shared.
     private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, quadMesh, volumeMesh;
@@ -770,8 +773,9 @@ public final class CgVfxSystem {
 
     /**
      * Warms what {@code look} simulates and draws before any effect of it plays: its GPU kernels, slot meshes and
-     * materials' programs, so its first play stalls no frame. On the render thread, ahead of time: a loading screen's
-     * work. Programs still compiling are polled while this system submits.
+     * materials' programs, so its first play stalls no frame. On the render thread, ahead of time. The work is queued
+     * and done over the next frames within {@link CgWarmBudget}, polled while this system submits or {@link #warmed}
+     * is asked; a look played before then builds what is left on its first frame.
      *
      * <pre>{@code
      * CgVfxSystem vfx = new CgVfxSystem();
@@ -781,7 +785,10 @@ public final class CgVfxSystem {
      * }</pre>
      */
     public void prepare(CgVfxLook look) {
-        prepareGpu(look, false);
+        List<CgVfxEmitter> emitters = look.emitters();
+        for (int k = 0; k < emitters.size(); k++) {
+            if (!gpuWarming.contains(emitters.get(k))) gpuWarming.add(emitters.get(k));
+        }
         prepareDraws(look);
         pollWarming(CgWorldRenderer.get());
     }
@@ -798,7 +805,7 @@ public final class CgVfxSystem {
      */
     public boolean warmed() {
         pollWarming(CgWorldRenderer.get());
-        return warming.isEmpty();
+        return warming.isEmpty() && gpuWarming.isEmpty();
     }
 
     /** Stops every effect: none emits again, and what is in flight plays out before each dies. */
@@ -823,25 +830,32 @@ public final class CgVfxSystem {
 
     /** {@code look}'s kernels and slot meshes; the voxel window's too when {@code useWindow}, which starts it filling. */
     private void prepareGpu(CgVfxLook look, boolean useWindow) {
-        // Below compute each kernel is several lowered programs; built on the first burst, they stall it.
-        if (!rangePrepared) {
-            rangePrepared = true;
-            CgVfxRange.prepare();
-        }
+        prepareRange();
         List<CgVfxEmitter> emitters = look.emitters();
         for (int k = 0; k < emitters.size(); k++) {
             CgVfxEmitter emitter = emitters.get(k);
-            CgVfxParticlePool.prepare(emitter);
-            // Each slot's draw mesh, built and placed on its first ask: here, not in the first burst's frame.
-            CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
-            for (int e = 0; e < emitter.events().size(); e++) {
-                CgVfxGpuEmitter child = emitter.events().get(e).child();
-                if (child == null) continue;
-                CgVfxParticlePool.prepare(child);
-                CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
-            }
+            prepareEmitter(emitter);
             // The window's first use starts its kernels and its filling: at play, not on the first landing.
             if (useWindow && readsWorld(emitter)) CgVfxVoxelWindow.get().use();
+        }
+    }
+
+    /** Range and Place's kernels: below compute each is several lowered programs, which would stall the first burst. */
+    private void prepareRange() {
+        if (rangePrepared) return;
+        rangePrepared = true;
+        CgVfxRange.prepare();
+    }
+
+    /** {@code emitter}'s Step kernels and slot meshes, its children's too: built here, not in the first burst's frame. */
+    private static void prepareEmitter(CgVfxEmitter emitter) {
+        CgVfxParticlePool.prepare(emitter);
+        CgVfxFrame.slotMesh(emitter.renderer(), emitter.peakAlive());
+        for (int e = 0; e < emitter.events().size(); e++) {
+            CgVfxGpuEmitter child = emitter.events().get(e).child();
+            if (child == null) continue;
+            CgVfxParticlePool.prepare(child);
+            CgVfxFrame.slotMesh(child.renderer(), emitter.peakChildren(e));
         }
     }
 
@@ -859,8 +873,17 @@ public final class CgVfxSystem {
         }
     }
 
-    /** Every pass the world draws a material with (depth, emissive, distortion, the joined form), not Forward alone. */
+    /**
+     * The queued emitters, one a step while the frame's {@link CgWarmBudget} lasts; then every pass the world draws each
+     * warming material with (depth, emissive, distortion, the joined form), not Forward alone.
+     */
     private void pollWarming(CgWorldRenderer world) {
+        while (!gpuWarming.isEmpty() && CgWarmBudget.allows()) {
+            long start = System.nanoTime();
+            if (!rangePrepared) prepareRange();
+            else prepareEmitter(gpuWarming.remove(0));
+            CgWarmBudget.spend(System.nanoTime() - start);
+        }
         for (int i = warming.size() - 1; i >= 0; i--) {
             if (world.prepare(warming.get(i))) warming.remove(i);
         }
@@ -897,6 +920,7 @@ public final class CgVfxSystem {
         boundTexture = null;
         unbound.addAll(materials.values());
         warming.clear();
+        gpuWarming.clear();
     }
 
     CgVfxPathTexture paths() {

@@ -166,7 +166,9 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
 - **Warming**: `world.prepare(material)` starts every program the renderer will draw a material with (each pass of its
   chain, its depth, Emissive and Distortion passes, and the multi-draw form of each) without waiting, and answers true
   once all are built. Poll it from a warm-up list before a material's first draw: a program compiled at its first
-  draw is 7-110 ms of that frame on GL.
+  draw is 7-110 ms of that frame on GL. Warm-ups share `CgWarmBudget`, a few milliseconds a frame
+  (`crystalgraphics.warmBudget`): one that would pass it waits for the next frame, so a scene's warm-up spreads over
+  frames rather than taking the first one. A draw never waits on the budget.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
   (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
   (`docs/PROFILING.md`).
