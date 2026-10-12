@@ -8,6 +8,7 @@ import com.crystalgraphics.mc.legacy.platform.world.LevelQueriesLegacy;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgLevelQueries;
+import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -41,6 +42,8 @@ public final class NetworkLegacy {
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersLegacy());
         CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesLegacy());
+        // FML traps a mod's own Runtime.halt.
+        CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 

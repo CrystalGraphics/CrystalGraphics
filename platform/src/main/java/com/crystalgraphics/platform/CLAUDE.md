@@ -47,6 +47,7 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
 | `service/CgServerPlayers` | Interface + slot | The server's players, server thread: a level's, entity's or player's dimension id, an entity's position, network id and whether it is alive, a player's profile id, who has a chunk or an entity loaded, and where the world saves. What core's `CgAudience` composes; `NONE` reaches nobody |
+| `service/CgProcessExit` | Interface + slot | Ending the process at once the way the host allows: `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
 
