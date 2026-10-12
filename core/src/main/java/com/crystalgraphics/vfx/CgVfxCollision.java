@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.collision.CgPart;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventRows;
 
@@ -64,7 +65,7 @@ public final class CgVfxCollision {
     private float nx, ny, nz, vx, vy, vz;
     private CgVfxGpuEmitter emitter;
     private int firing;
-    private CgVfxPart part;
+    private CgPart part;
     private float radius;
 
     CgVfxCollision() {
@@ -105,7 +106,7 @@ public final class CgVfxCollision {
      * Which part of the effect struck ({@code CgEnergyWave.PART_BEAM}, {@code PART_BLAST}); null for a particle's, or an
      * effect that has one part. To hear one part alone, subscribe to it: {@code effect.onCollide(part, listener)}.
      */
-    public CgVfxPart part() { return part; }
+    public CgPart part() { return part; }
 
     /** How far round {@link #x()}, {@link #y()}, {@link #z()} it reaches, in blocks: a blast's; 0 for a point contact. */
     public float radius() { return radius; }
@@ -114,7 +115,7 @@ public final class CgVfxCollision {
      * What the server's copy of an effect struck, as a viewer hears it ({@code CgVfxCue.onConfirmedCollide}), on the
      * viewer's own copy, {@code effect}, when it has one.
      */
-    public static CgVfxCollision confirmed(CgVfxEffect effect, CgVfxPart part, Hit hit, int entity, double x, double y,
+    public static CgVfxCollision confirmed(CgVfxEffect effect, CgPart part, Hit hit, int entity, double x, double y,
                                            double z, float nx, float ny, float nz, float radius) {
         return new CgVfxCollision().effect(effect, part, hit, entity, x, y, z, nx, ny, nz, 0f, 0f, 0f, radius);
     }
@@ -124,7 +125,7 @@ public final class CgVfxCollision {
         return code >= 0 && code < BY_CODE.length ? BY_CODE[code] : Hit.OTHER;
     }
 
-    CgVfxCollision effect(CgVfxEffect effect, CgVfxPart part, Hit hit, int entity, double x, double y, double z, float nx,
+    CgVfxCollision effect(CgVfxEffect effect, CgPart part, Hit hit, int entity, double x, double y, double z, float nx,
                           float ny, float nz, float vx, float vy, float vz, float radius) {
         set(effect, Source.EFFECT, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz);
         emitter = null;

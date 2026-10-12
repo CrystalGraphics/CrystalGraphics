@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.collision.CgPart;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.render.post.CgPostStack;
@@ -351,7 +352,7 @@ public abstract class CgVfxEffect {
      *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
      * }</pre>
      */
-    public final CgVfxEffect onCollide(CgVfxPart part, CgVfxCollisionListener listener) {
+    public final CgVfxEffect onCollide(CgPart part, CgVfxCollisionListener listener) {
         if (part == null) throw new IllegalArgumentException("part");
         if (listener == null) throw new IllegalArgumentException("listener");
         return onCollide(c -> {
@@ -386,14 +387,14 @@ public abstract class CgVfxEffect {
 
     /**
      * As {@link #collided(CgVfxCollision.Hit, int, double, double, double, float, float, float, float, float, float)}, for
-     * an effect with more than one part that strikes: which one ({@link CgVfxPart}, a constant on the effect), and how
+     * an effect with more than one part that strikes: which one ({@link CgPart}, a constant on the effect), and how
      * far it reaches round the point (a blast's radius; 0 for a point contact).
      *
      * <pre>{@code
      * collided(PART_BLAST, hit, entity, bx, by, bz, nx, ny, nz, 0f, 0f, 0f, blastRadius);
      * }</pre>
      */
-    protected final void collided(CgVfxPart part, CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx,
+    protected final void collided(CgPart part, CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx,
                                   float ny, float nz, float vx, float vy, float vz, float radius) {
         if (!seeking) CgVfxCollisions.effect(this, part, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, radius);
     }

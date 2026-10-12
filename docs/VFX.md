@@ -614,7 +614,7 @@ CgVfx.onCollide(listener);
 
 ### Parts
 
-An effect with more than one thing that strikes names each as a **part** (`CgVfxPart`): the Kamehameha's beam
+An effect with more than one thing that strikes names each as a **part** (`CgPart`): the Kamehameha's beam
 contact is `CgEnergyWave.PART_BEAM`, its explosion `PART_BLAST`. Subscribe to a part and hear it alone:
 
 ```java
@@ -884,7 +884,7 @@ moment("impact", hitX, hitY, hitZ, radius);          // a named point in its lif
 collided(CgVfxCollision.Hit.BLOCK, -1, x, y, z, nx, ny, nz, vx, vy, vz);
 
 // an effect with several parts that strike declares each once, and reports through it
-public static final CgVfxPart PART_BOLT = CgVfxPart.of("bolt"), PART_BURST = CgVfxPart.of("burst");
+public static final CgPart PART_BOLT = CgPart.of("bolt"), PART_BURST = CgPart.of("burst");
 collided(PART_BURST, CgVfxCollision.Hit.OTHER, -1, x, y, z, 0f, 1f, 0f, 0f, 0f, 0f, burstRadius);
 ```
 
