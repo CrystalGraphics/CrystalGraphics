@@ -1583,6 +1583,8 @@ com/crystalgraphics/collision/debug/CgShapeLines
   field public,static,final CIRCLE I
   field public,static,final PLANE_SHOWN D
   method public <init> ()V
+  method public eye (DDD)Lcom/crystalgraphics/collision/debug/CgShapeLines;
+  method public noEye ()Lcom/crystalgraphics/collision/debug/CgShapeLines;
   method public write (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/collision/debug/CgShapeLines$Sink;)V
 com/crystalgraphics/collision/debug/CgShapeLines$Sink
   access public,abstract,interface

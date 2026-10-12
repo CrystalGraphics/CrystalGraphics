@@ -100,6 +100,8 @@ public final class CgCollisionDebug {
     }
 
     private static void frame(CgHostView view) {
+        // for what is written before the next frame: the outline lags the camera by a frame
+        SHAPES.eye(view.x(), view.y(), view.z());
         if (CgCollisionShow.showing()) show();
         if (LINES.count == 0) return;
         if (mesh == null) {

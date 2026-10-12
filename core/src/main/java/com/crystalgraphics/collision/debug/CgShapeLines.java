@@ -24,6 +24,13 @@ import java.util.Arrays;
  * lines.write(CgSphere.of(2), pose.at(x, y, z), (ax, ay, az, bx, by, bz) -> draw(ax, ay, az, bx, by, bz));
  * }</pre>
  *
+ * Given where the eye is, a ball also draws its outline as the eye sees it, as Unity's sphere gizmo does, so it reads
+ * as a ball however its circles turn:
+ *
+ * <pre>{@code
+ * lines.eye(camX, camY, camZ);                                  // until changed; noEye() for none, as on a server
+ * }</pre>
+ *
  * <ul>
  *   <li>The outlines are Unreal's {@code DrawWire*}: a ball's three great circles, a capsule's two rings, four sides
  *       and end arcs, a cylinder's two rings and four sides, a cone's rim, four sides and cap arcs. A shell or ring
@@ -48,7 +55,23 @@ public final class CgShapeLines {
     private CgPose[] poses = {new CgPose()};
     private int depth;
     private final Vector3d a = new Vector3d(), b = new Vector3d(), u = new Vector3d(), v = new Vector3d();
+    private final Vector3d local = new Vector3d();
     private Sink out;
+    private double eyeX = Double.NaN, eyeY, eyeZ;
+
+    /** Where the eye is, in the world: each ball written from now on draws its outline from there too. */
+    public CgShapeLines eye(double x, double y, double z) {
+        eyeX = x;
+        eyeY = y;
+        eyeZ = z;
+        return this;
+    }
+
+    /** No eye: balls draw their three circles alone. */
+    public CgShapeLines noEye() {
+        eyeX = Double.NaN;
+        return this;
+    }
 
     /** Writes {@code shape} placed at {@code pose} into {@code out}. */
     public void write(CgShape shape, CgPose pose, Sink out) {
@@ -87,9 +110,7 @@ public final class CgShapeLines {
     }
 
     private void sphere(double r) {
-        arc(0, 0, 0, 1, 0, 0, 0, 1, 0, r, 0, 2 * Math.PI);
-        arc(0, 0, 0, 0, 1, 0, 0, 0, 1, r, 0, 2 * Math.PI);
-        arc(0, 0, 0, 0, 0, 1, 1, 0, 0, r, 0, 2 * Math.PI);
+        centred(0, 0, 0, r);
     }
 
     private void capsule(CgCapsule capsule) {
@@ -186,6 +207,22 @@ public final class CgShapeLines {
         arc(cx, cy, cz, 1, 0, 0, 0, 1, 0, r, 0, 2 * Math.PI);
         arc(cx, cy, cz, 0, 1, 0, 0, 0, 1, r, 0, 2 * Math.PI);
         arc(cx, cy, cz, 0, 0, 1, 1, 0, 0, r, 0, 2 * Math.PI);
+        outline(cx, cy, cz, r);
+    }
+
+    /** Where the eye's lines of sight graze the ball: a circle nearer the eye than its centre, square to the view. */
+    private void outline(double cx, double cy, double cz, double r) {
+        if (Double.isNaN(eyeX)) return;
+        poses[depth].toLocal(eyeX, eyeY, eyeZ, local);
+        double dx = local.x - cx, dy = local.y - cy, dz = local.z - cz;
+        double d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 <= r * r) return;
+        double d = Math.sqrt(d2), toward = r * r / d, radius = r * Math.sqrt(d2 - r * r) / d;
+        dx /= d;
+        dy /= d;
+        dz /= d;
+        basis(dx, dy, dz);
+        arc(cx + dx * toward, cy + dy * toward, cz + dz * toward, u.x, u.y, u.z, v.x, v.y, v.z, radius, 0, 2 * Math.PI);
     }
 
     /** The farthest points along each direction around the three axes, joined: a hull's girth. */
