@@ -806,7 +806,7 @@ tests on every target. Files live under `shaders/`, beside the `.shader` that dr
 that runs well on all of them: [Designing for every tier](#designing-for-every-tier). Plan:
 `plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`. The VFX particle kernels are
 generated from emitters' module stacks, with no `.compute` file: a particle behaviour is a module
-([`VFX.md`](VFX.md) § *A module of your own*), not a kernel.
+([`VFX.md`](VFX.md) § *Writing a particle module of your own*), not a kernel.
 
 ### Start to finish
 

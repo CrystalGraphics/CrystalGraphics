@@ -41,7 +41,7 @@ for what runs on the server tick (a beam's raycast).
 tick, a player coming into view is sent the current value, and `persisted()` saves under the world's directory
 (`crystalgraphics/replicated/`) at stop and every five minutes. Who sees an object is its definition's range, or an
 audience per object (`visibleTo`, asked once a tick): a VFX cue is seen by those tracking what it follows. Effects
-over the network are `vfx.net`'s cues, built on these (`docs/VFX.md` § *Effects over the network*). Hosts forward the server starting too
+over the network are `vfx.net`'s cues, built on these (`docs/VFX.md` § *Effects over the network: cues*). Hosts forward the server starting too
 (`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
 
 **`CgRequest`** is a typed question with one answer (`toServer`/`toClient`, `onServer`/`onClient`, `ask`), over the
