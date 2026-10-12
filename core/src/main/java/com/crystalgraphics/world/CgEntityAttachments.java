@@ -146,6 +146,12 @@ public final class CgEntityAttachments {
         return id;
     }
 
+    /** The id of the point named {@code name} on this side, built in or declared; -1 for none. */
+    public static synchronized int find(String name) {
+        Integer id = IDS.get(name);
+        return id == null ? -1 : id;
+    }
+
     /** The name a point was declared with, for a log line. */
     public static synchronized String name(int point) {
         return point >= 0 && point < NAMES.size() ? NAMES.get(point) : "unknown point " + point;

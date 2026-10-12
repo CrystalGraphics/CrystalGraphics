@@ -3,6 +3,8 @@ package com.crystalgraphics.collision.query;
 import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
+import javax.annotation.Nullable;
+
 /**
  * One thing a query met: an entity or a block, where, and how far from the query. A visitor's hit is the query's own,
  * valid during the call; {@link CgQuery#first} copies into one you hold.
@@ -137,6 +139,24 @@ public final class CgHit {
         fluid = CgWorldQuery.FLUID_NONE;
         exposure = Float.NaN;
         part = null;
+    }
+
+    /**
+     * Makes this an entity hit at a point, with no normal or distance: what a hit that crossed the network is read back
+     * into. {@code exposure} is NaN where it was not sampled.
+     */
+    public CgHit setEntity(int entity, int parent, double x, double y, double z, float exposure,
+                           @Nullable CgHitPart part) {
+        reset();
+        this.entity = entity;
+        this.parent = parent;
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.exposure = exposure;
+        normalX = normalY = normalZ = distance = fraction = 0;
+        this.part = part;
+        return this;
     }
 
     /** Copies {@code o} into this: a visitor's hit kept past the call. */

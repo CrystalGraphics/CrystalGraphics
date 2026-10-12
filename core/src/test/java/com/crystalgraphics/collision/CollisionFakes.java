@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -102,6 +103,16 @@ public final class CollisionFakes {
             r[0] = x;
             r[1] = y;
             r[2] = z;
+            return this;
+        }
+
+        /** {@code id} is gone. */
+        public Table remove(int id) {
+            rows.set(id, null);
+            int[] kept = new int[ids.length];
+            int n = 0;
+            for (int other : ids) if (other != id) kept[n++] = other;
+            ids = Arrays.copyOf(kept, n);
             return this;
         }
 

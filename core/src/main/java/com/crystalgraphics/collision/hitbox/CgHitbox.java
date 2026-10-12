@@ -135,6 +135,8 @@ public final class CgHitbox {
     // ---- running
     private CgCollisionWorld world;
     private boolean prepared, engine, stopped, hasPrev;
+    /** Ticks as usual, keeping its hit list and who is inside, and tells no listener: a late joiner catching up. */
+    private boolean silent;
     private int epoch;
     private double age;
     private double prevX, prevY, prevZ, nowX, nowY, nowZ;
@@ -473,6 +475,44 @@ public final class CgHitbox {
         return hitList;
     }
 
+    // ---- for CgHitboxType, which builds one per side
+
+    void silent(boolean silent) {
+        this.silent = silent;
+    }
+
+    /** Ages it {@code ticks} without testing anything: the start of a late joiner's catch-up. */
+    void skip(double ticks) {
+        if (!prepared) prepare();
+        age += ticks;
+        hasPrev = false;
+        if (age - activeFrom >= activeFor) stop();
+    }
+
+    boolean hasListeners() {
+        return onHit != null || onEnter != null || onExit != null;
+    }
+
+    int partCount() {
+        return parts;
+    }
+
+    /** {@code part}'s index, by identity; -1 for none. */
+    int partIndex(CgHitPart part) {
+        for (int p = 0; p < parts; p++) {
+            if (names[p] == part) return p;
+        }
+        return -1;
+    }
+
+    CgHitPart partName(int index) {
+        return index >= 0 && index < parts ? names[index] : null;
+    }
+
+    boolean placed() {
+        return entity >= 0;
+    }
+
     /** The engine's tick: stops with its level. */
     void engineTick() {
         if (epoch != 0 && world.blocks().levelEpoch() != epoch) {
@@ -680,10 +720,10 @@ public final class CgHitbox {
         for (int i = 0; i < targetCount && !stopped; i++) {
             CgHit h = targets[i];
             int whole = h.parent();
-            if (zone && enters(whole) && onEnter != null) onEnter.accept(h);
+            if (zone && enters(whole) && onEnter != null && !silent) onEnter.accept(h);
             if (stopped || onHit == null || !allowed(whole)) continue;
             hitList.record(whole, age);
-            onHit.accept(h);
+            if (!silent) onHit.accept(h);
         }
         if (!zone || stopped) return;
         for (int i = insideCount - 1; i >= 0; i--) {
@@ -691,7 +731,7 @@ public final class CgHitbox {
             int gone = inside[i];
             inside[i] = inside[--insideCount];
             seen[i] = seen[insideCount];
-            if (onExit != null) onExit.accept(gone);
+            if (onExit != null && !silent) onExit.accept(gone);
             if (stopped) return;
         }
     }
