@@ -110,14 +110,16 @@ one jar for several loaders are all in [Setup](docs/SETUP.md).
 Draw a glass sphere into the world:
 
 ```java
-CgWorldRenderer world = CgWorldRenderer.get();
-CgMaterial glass = CgMaterial.load("mymod:shaders/glass.shader");
+CgMaterial sphere = CgMeshShapes.sphere(24, 32);                   // generates a UV sphere mesh with 24 rings and 32 sectors
+CgMaterial glass = CgMaterial.load("mymod:shaders/glass.shader");  // loads the glass shader material
 glass.applyProperties(p -> p.vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f));   // pink glass instead of blue
 
-world.onFrame(view -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
+CgWorldRenderer world = CgWorldRenderer.get();
+world.onFrame(view -> world.draw(sphere, glass).at(x, y, z).submit()); // adds a callback for drawing the mesh with the material
+                                                                       // in the client world at world position [x,y,z] on every frame
 ```
 
-The material it draws with:
+The `glass.shader` material it draws with:
 
 ```glsl
 // A transparent glass material with a tint
