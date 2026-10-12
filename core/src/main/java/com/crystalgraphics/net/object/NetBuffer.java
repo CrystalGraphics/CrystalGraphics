@@ -106,10 +106,6 @@ final class NetBuffer {
         writeBytes(other.bytes, from, to - from);
     }
 
-    byte[] toArray() {
-        return Arrays.copyOf(bytes, size);
-    }
-
     // ── Reading ─────────────────────────────────────────────────────────────────────────────────
 
     boolean more() {

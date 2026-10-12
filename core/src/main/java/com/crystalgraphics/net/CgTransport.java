@@ -1,11 +1,13 @@
 package com.crystalgraphics.net;
 
+import com.crystalgraphics.net.protocol.CgEnvelope;
+
 import java.util.function.Consumer;
 
 /**
  * Carries already-encoded messages between the two halves of a session.
  *
- * <p>Deliberately takes {@code T} rather than an {@link com.crystalgraphics.net.protocol.CgEnvelope}:
+ * <p>Deliberately takes {@code T} rather than an {@link CgEnvelope}:
  * sessions encode before handing over,
  * so every implementation — including the in-memory one used by tests — exercises the real codec on
  * every hop. A transport that passed object references would let a field somebody forgot to encode
@@ -25,4 +27,14 @@ public interface CgTransport<T> {
 
     /** Installs the sink. Replacing it replaces the previous one. */
     void setReceiver(Consumer<T> receiver);
+
+    /**
+     * Sends a notification whose payload the caller encoded as bytes, answering whether this transport took it. One
+     * that frames bytes itself writes them once, past the envelope's tree, and delivers a decoded
+     * {@link CgEnvelope} at the far side; the default declines, and the caller sends
+     * the envelope.
+     */
+    default boolean sendNotification(String method, byte[] payload, int length) {
+        return false;
+    }
 }

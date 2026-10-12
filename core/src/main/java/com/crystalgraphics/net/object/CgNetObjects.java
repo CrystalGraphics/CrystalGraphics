@@ -1060,7 +1060,7 @@ public final class CgNetObjects {
             bytesSent += frame.size;
             framesSent++;
             largestFrame = Math.max(largestFrame, frame.size);
-            connection.router().notify(METHOD, frame.toArray());
+            connection.notifyBytes(METHOD, frame.bytes, frame.size);
             connection.flush();
         }
     }

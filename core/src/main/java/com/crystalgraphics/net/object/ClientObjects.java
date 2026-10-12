@@ -588,8 +588,8 @@ final class ClientObjects {
         }
         // After the behaviours: what they command leaves this tick, not the next.
         gate.flush();
-        if (!predictions.isEmpty() && !connection.isClosed()) connection.router().notify(CgNetObjects.PREDICT, predictions.toArray());
-        if (!outgoing.isEmpty() && !connection.isClosed()) connection.router().notify(CgNetObjects.COMMANDS, outgoing.toArray());
+        if (!predictions.isEmpty() && !connection.isClosed()) connection.notifyBytes(CgNetObjects.PREDICT, predictions.bytes, predictions.size);
+        if (!outgoing.isEmpty() && !connection.isClosed()) connection.notifyBytes(CgNetObjects.COMMANDS, outgoing.bytes, outgoing.size);
         if (!predictions.isEmpty() || !outgoing.isEmpty()) connection.flush();
         predictions.clear();
         outgoing.clear();

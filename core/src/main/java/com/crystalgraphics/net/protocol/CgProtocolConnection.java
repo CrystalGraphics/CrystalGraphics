@@ -9,6 +9,7 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +46,7 @@ public final class CgProtocolConnection<T> {
 
 
     private final CgMessageRouter<T> router;
+    private final CgTransport<T> transport;
     private final CgDynamicOps<T> ops;
     private final Runnable pump;
     /** Sends what is queued now; a no-op in memory. @see #flush */
@@ -76,6 +78,7 @@ public final class CgProtocolConnection<T> {
     private String closeReason = "";
 
     CgProtocolConnection(CgTransport<T> transport, CgDynamicOps<T> ops, Runnable pump, @Nullable Object peer) {
+        this.transport = transport;
         this.ops = ops;
         this.pump = pump;
         this.peer = peer;
@@ -259,6 +262,16 @@ public final class CgProtocolConnection<T> {
     }
 
     /**
+     * Tells the peer {@code method} with the first {@code length} of {@code bytes}, encoded by the caller. Over the wire
+     * they are copied once into the message, past the envelope's tree; the peer's {@code router().onNotify} handler gets
+     * them as a {@code byte[]}. For a payload sent every tick: the networked objects' frames.
+     */
+    @SuppressWarnings("unchecked")
+    public void notifyBytes(String method, byte[] bytes, int length) {
+        if (!transport.sendNotification(method, bytes, length)) router.notify(method, (T) Arrays.copyOf(bytes, length));
+    }
+
+    /**
      * Sends what is queued now instead of at the next {@link #tick()}, so it leaves in order with whatever the game
      * sends on the same connection this tick. On the thread that ticks it.
      */
@@ -296,7 +309,8 @@ public final class CgProtocolConnection<T> {
         for (T raw : batch) {
             CgEnvelope envelope;
             try {
-                envelope = CgEnvelopeCodec.decode(ops, raw);
+                // A transport that decoded a notification of bytes itself hands over the envelope. @see #notifyBytes
+                envelope = raw instanceof CgEnvelope decoded ? decoded : CgEnvelopeCodec.decode(ops, raw);
             } catch (RuntimeException malformed) {
                 // Per message, so one unreadable frame cannot take the rest of the batch with it.
                 LOGGER.warn("Dropping an undecodable message: {}", malformed.getMessage());
