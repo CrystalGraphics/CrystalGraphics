@@ -1,5 +1,6 @@
 package com.crystalgraphics.render;
 
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.FrustumIntersection;
@@ -19,7 +20,7 @@ import org.joml.Matrix4fc;
  * frustum.set(new Matrix4f(projection).mul(view));
  *
  * // then, per object — allocation-free
- * if (!frustum.testAabb(minX, minY, minZ, maxX, maxY, maxZ)) continue;   // skip it
+ * if (!frustum.test(box)) continue;   // skip it
  * }</pre>
  *
  * <p>Mutable and intended to be reused. Nothing here allocates, so it is safe to call from the
@@ -82,17 +83,18 @@ public final class CgViewFrustum {
     }
 
     /**
-     * Tests an AABB laid out as {@code [minX, minY, minZ, maxX, maxY, maxZ]}, finite and ordered: nothing is
-     * revalidated here.
+     * Tests a box in the frustum's own space (camera-relative where the view is). An empty box is never visible.
+     *
+     * <pre>{@code
+     * if (!frustum.test(box)) continue;   // skip it
+     * }</pre>
      *
      * @return {@code true} if the box is at least partially visible
-     * @throws IllegalArgumentException if the array is not length 6
      */
-    public boolean testAabb(float[] aabb) {
-        if (aabb == null || aabb.length != 6) {
-            throw new IllegalArgumentException("aabb must be a float[6] of [minX,minY,minZ,maxX,maxY,maxZ]");
-        }
-        return testAabb(aabb[0], aabb[1], aabb[2], aabb[3], aabb[4], aabb[5]);
+    public boolean test(CgAABBc box) {
+        if (box.isEmpty()) return false;
+        return testAabb((float) box.minX(), (float) box.minY(), (float) box.minZ(), (float) box.maxX(),
+                (float) box.maxY(), (float) box.maxZ());
     }
 
     /**

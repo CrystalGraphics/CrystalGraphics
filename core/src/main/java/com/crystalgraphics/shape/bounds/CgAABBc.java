@@ -5,13 +5,14 @@ import org.joml.Matrix4fc;
 import org.joml.Vector3d;
 
 /**
- * A read-only view of an axis-aligned box: what a mesh hands out as its bounds, so nothing can change them behind it.
- * {@link CgAABB} is the mutable box; this is its {@code Vector3fc}, in JOML's sense.
+ * A read-only view of an axis-aligned box: what an API takes when it only reads one, so a shared constant such as
+ * {@link #UNIT} can be passed and never changed. {@link CgAABB} is the mutable box; this is its {@code Vector3fc}, in
+ * JOML's sense.
  *
  * <pre>{@code
- * CgAABBc box = mesh.bounds();
- * if (box != null && box.intersects(area)) ...
- * double r = box.boundingRadius();
+ * world.draw(sparks, material).at(x, y, z).bounds(CgAABBc.UNIT).submit();   // the -1..1 cube
+ * static final CgAABBc ARENA = CgAABB.of(-20, 0, -20, 20, 12, 20);   // read-only through this type
+ * if (ARENA.contains(px, py, pz)) ...
  * }</pre>
  *
  * <ul>

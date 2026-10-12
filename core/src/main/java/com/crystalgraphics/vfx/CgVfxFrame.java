@@ -11,6 +11,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -226,7 +227,7 @@ public final class CgVfxFrame {
                         float ex, float ey, float ez, float ew) {
         if (skips(layer)) return;
         CgVfxTrace.count(DRAWS_RIBBONS, 1);
-        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f).submit();
+        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
     }
 
     /**
@@ -453,7 +454,7 @@ public final class CgVfxFrame {
             }
             scaled.scaling(Math.max(hx, 1.0e-3f), Math.max(hy, 1.0e-3f), Math.max(hz, 1.0e-3f));
             CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer)).indices(0, n * indicesEach)
-                    .bounds(-1f, -1f, -1f, 1f, 1f, 1f)
+                    .bounds(CgAABBc.UNIT)
                     .at(emitter.originX() + cx, emitter.originY() + cy, emitter.originZ() + cz).transform(scaled)
                     .custom(0, base + start, n, layer.radius(), layer.parameter())
                     .custom(1, cx, cy, cz, effect.age);
@@ -482,7 +483,7 @@ public final class CgVfxFrame {
         if (skips(layer)) return;
         CgVfxTrace.count(DRAWS_BILLBOARD, 1);
         // Its bounds: the cube its transform scales, whichever way the shader turns it.
-        draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
+        draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(CgAABBc.UNIT)
                 .submit();
     }
 
@@ -514,7 +515,7 @@ public final class CgVfxFrame {
         // The ribbon mesh spans -1..1: half the extent each way.
         scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
         CgVfxValues values = effect.values();
-        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer)).bounds(-1f, -1f, -1f, 1f, 1f, 1f)
+        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer)).bounds(CgAABBc.UNIT)
                 .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled).subject(effect.subject)
                 .custom(0, row, 0f, layer.radius(), layer.parameter())
                 .custom(1, cx, cy, cz, intensity);

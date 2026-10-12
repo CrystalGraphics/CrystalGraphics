@@ -125,8 +125,8 @@ CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
     placed = true;
 });
 
-// Every frame: one draw, whatever N is
-world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds(0, 0, 0, w, 40, d).submit();
+// Every frame: one draw, whatever N is, culled by the forest's box (a CgAABB made once: CgAABB.of(0, 0, 0, w, 40, d))
+world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds(forest).submit();
 ```
 
 - **Each stage that draws the set** builds a depth pyramid of what was drawn before the world renderer (in Minecraft,

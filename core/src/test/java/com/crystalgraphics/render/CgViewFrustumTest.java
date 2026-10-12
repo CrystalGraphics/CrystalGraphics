@@ -1,8 +1,12 @@
 package com.crystalgraphics.render;
 
+import com.crystalgraphics.shape.CgPose;
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.primitive.CgSphere;
 import org.joml.Matrix4f;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -35,7 +39,7 @@ public class CgViewFrustumTest {
         // A culler nobody configured must never remove geometry -- failing open is the only safe
         // default, since the alternative is a blank screen with no error.
         assertTrue(f.testRect(-9e9f, -9e9f, -8e9f, -8e9f));
-        assertTrue(f.testAabb(new float[] {1e9f, 1e9f, 1e9f, 2e9f, 2e9f, 2e9f}));
+        assertTrue(f.test(CgAABB.of(1e9, 1e9, 1e9, 2e9, 2e9, 2e9)));
         assertTrue(f.testSphere(1e9f, 1e9f, 1e9f, 1f));
     }
 
@@ -135,26 +139,24 @@ public class CgViewFrustumTest {
         assertFalse(f.testSphere(450f, 0f, -9f, 1f));
     }
 
-    // ── array contract ──────────────────────────────────────────────────
+    // ── boxes ───────────────────────────────────────────────────────────
 
     @Test
-    public void aabbArrayIsMinsThenMaxes() {
-        // [minX, minY, minZ, maxX, maxY, maxZ]: the order CgMesh.bounds() uses.
+    public void boxAgreesWithTheSixFloatTestAndAnEmptyOneIsHidden() {
         CgViewFrustum f = perspectiveLookingDownNegZ();
-        assertTrue(f.testAabb(new float[] {-1f, -1f, -10f, 1f, 1f, -8f}));
-        assertFalse(f.testAabb(new float[] {-1f, -1f, 8f, 1f, 1f, 10f}));
+        assertTrue(f.test(CgAABB.of(-1, -1, -10, 1, 1, -8)));
+        assertFalse(f.test(CgAABB.of(-1, -1, 8, 1, 1, 10)));
+        assertFalse(f.test(new CgAABB()));
     }
 
     @Test
-    public void wrongLengthAabbThrows() {
+    public void aShapesBoxCullsAsTheSixFloatsItReplaced() {
         CgViewFrustum f = perspectiveLookingDownNegZ();
-        for (float[] bad : new float[][] {new float[0], new float[3], new float[7]}) {
-            try {
-                f.testAabb(bad);
-                fail("expected IllegalArgumentException for length " + bad.length);
-            } catch (IllegalArgumentException expected) {
-                // expected
-            }
+        CgAABB box = new CgAABB();
+        CgPose pose = new CgPose();
+        for (float z = -600; z <= 20; z += 7) {
+            CgSphere.of(1.5).bounds(pose.at(0.5, 0, z), box);
+            assertEquals("z " + z, f.testAabb(-1f, -1.5f, z - 1.5f, 2f, 1.5f, z + 1.5f), f.test(box));
         }
     }
 

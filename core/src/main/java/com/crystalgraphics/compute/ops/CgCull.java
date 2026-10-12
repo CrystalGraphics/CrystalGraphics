@@ -5,6 +5,8 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.gl.texture.CgFallbackTextures;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -56,6 +58,7 @@ public final class CgCull {
     final float[] eye = new float[4];
     float screenY = 1f;
     final float[] box = new float[6];
+    private final CgAABB meshBox = new CgAABB();
     float pad;
     final float[] heights = new float[MAX_LEVELS];
     /** Levels by screen height; 0 for one never culled by size. */
@@ -112,13 +115,13 @@ public final class CgCull {
     }
 
     /** The box every instance's model transforms, in place of the mesh's: for a shader that moves vertices. */
-    public CgCull box(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-        box[0] = minX;
-        box[1] = minY;
-        box[2] = minZ;
-        box[3] = maxX;
-        box[4] = maxY;
-        box[5] = maxZ;
+    public CgCull box(CgAABBc box) {
+        this.box[0] = (float) box.minX();
+        this.box[1] = (float) box.minY();
+        this.box[2] = (float) box.minZ();
+        this.box[3] = (float) box.maxX();
+        this.box[4] = (float) box.maxY();
+        this.box[5] = (float) box.maxZ();
         return this;
     }
 
@@ -236,6 +239,7 @@ public final class CgCull {
     }
 
     private void boundsOf(CgMesh mesh) {
-        if (mesh.bounds(box) == null) throw new IllegalArgumentException(mesh + " has no bounds: state them with box()");
+        if (mesh.bounds(meshBox) == null) throw new IllegalArgumentException(mesh + " has no bounds: state them with box()");
+        box(meshBox);
     }
 }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
@@ -52,7 +54,7 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>Indices count from their submesh's first vertex ({@link CgSubmesh}).</li>
- *   <li>Bounds follow the positions written, unless {@link #bounds(float, float, float, float, float, float)} states
+ *   <li>Bounds follow the positions written, unless {@link #setBounds(CgAABBc)} states
  *       them; {@link #pad} grows either, for a vertex shader that displaces.</li>
  *   <li>A shared mesh from {@link CgMeshShapes} or {@link CgMeshLoader} refuses edits and {@link #release()}: build
  *       your own with the writer form of the shape.</li>
@@ -153,7 +155,7 @@ public final class CgMesh {
      * count; it has no bounds, so a draw of it states its own.
      *
      * <pre>{@code
-     * world.draw(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
+     * world.draw(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
      * }</pre>
      *
      * <p>Its shader declares {@code #type none}: there are no attributes to read.</p>
@@ -314,14 +316,20 @@ public final class CgMesh {
         changed(false, 0, 0, 0, 0);
     }
 
-    /** States the bounds, in the mesh's own space, in place of those of its positions. */
-    public synchronized void bounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-        declared[0] = minX;
-        declared[1] = minY;
-        declared[2] = minZ;
-        declared[3] = maxX;
-        declared[4] = maxY;
-        declared[5] = maxZ;
+    /**
+     * States the bounds, in the mesh's own space, in place of those of its positions, until {@link #autoBounds()}.
+     *
+     * <pre>{@code
+     * mesh.setBounds(CgAABB.of(-2, 0, -2, 2, 4, 2));
+     * }</pre>
+     */
+    public synchronized void setBounds(CgAABBc box) {
+        declared[0] = (float) box.minX();
+        declared[1] = (float) box.minY();
+        declared[2] = (float) box.minZ();
+        declared[3] = (float) box.maxX();
+        declared[4] = (float) box.maxY();
+        declared[5] = (float) box.maxZ();
         hasDeclared = true;
         changed(false, 0, 0, 0, 0);
     }
@@ -475,22 +483,23 @@ public final class CgMesh {
     }
 
     /**
-     * The bounds, padded, into {@code out} as min x, y, z then max x, y, z; zero for a mesh with no vertices. Null
-     * when there are none to give: positions that are not floats, or none, and no bounds stated.
+     * The bounds, padded, into {@code out}; a point at the origin for a mesh with no vertices. Null when there are none
+     * to give: positions that are not floats, or none, and no bounds stated.
+     *
+     * <pre>{@code
+     * private final CgAABB box = new CgAABB();
+     * if (mesh.bounds(box) != null && frustum.test(box)) ...
+     * }</pre>
      */
     @Nullable
-    public synchronized float[] bounds(float[] out) {
+    public synchronized CgAABB bounds(CgAABB out) {
         float[] b = declared;
         if (!hasDeclared) {
             if (computedStale) computeBounds();
             if (noBounds) return null;
             b = computed;
         }
-        for (int i = 0; i < 3; i++) {
-            out[i] = b[i] - pad;
-            out[i + 3] = b[i + 3] + pad;
-        }
-        return out;
+        return out.set(b[0] - pad, b[1] - pad, b[2] - pad, b[3] + pad, b[4] + pad, b[5] + pad);
     }
 
     /** Bounds from the position bytes, after a raw {@link #writeVertices} write. */

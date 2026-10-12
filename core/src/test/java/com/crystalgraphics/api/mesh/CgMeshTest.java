@@ -3,6 +3,8 @@ package com.crystalgraphics.api.mesh;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;
+import com.crystalgraphics.shape.bounds.CgAABBc;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -101,18 +103,18 @@ public class CgMeshTest {
     @Test
     public void boundsFollowThePositionsUnlessStatedAndPadGrowsEither() {
         CgMesh mesh = CgMeshShapes.sphere(8, 8);
-        assertArrayEquals(new float[]{-1, -1, -1, 1, 1, 1}, mesh.bounds(new float[6]), 1e-6f);
+        assertBox(-1, -1, -1, 1, 1, 1, mesh.bounds(new CgAABB()), 1e-6f);
 
         CgMesh mine = line(4);
-        assertArrayEquals(new float[]{0, 0, 0, 3, 0, 0}, mine.bounds(new float[6]), 0f);
+        assertBox(0, 0, 0, 3, 0, 0, mine.bounds(new CgAABB()), 0f);
         mine.pad(0.5f);
-        assertArrayEquals(new float[]{-0.5f, -0.5f, -0.5f, 3.5f, 0.5f, 0.5f}, mine.bounds(new float[6]), 0f);
-        mine.bounds(-10, -10, -10, 10, 10, 10);
-        assertArrayEquals(new float[]{-10.5f, -10.5f, -10.5f, 10.5f, 10.5f, 10.5f}, mine.bounds(new float[6]), 0f);
+        assertBox(-0.5f, -0.5f, -0.5f, 3.5f, 0.5f, 0.5f, mine.bounds(new CgAABB()), 0f);
+        mine.setBounds(CgAABB.of(-10, -10, -10, 10, 10, 10));
+        assertBox(-10.5f, -10.5f, -10.5f, 10.5f, 10.5f, 10.5f, mine.bounds(new CgAABB()), 0f);
         mine.autoBounds();
         mine.pad(0f);
         mine.writeVertices(1, vertex(-7f));
-        assertArrayEquals("raw bytes count too", new float[]{-7, 0, 0, 3, 0, 0}, mine.bounds(new float[6]), 0f);
+        assertBox("raw bytes count too", -7, 0, 0, 3, 0, 0, mine.bounds(new CgAABB()), 0f);
     }
 
     // ── Edits and what a reader is told ────────────────────────────────────────
@@ -192,9 +194,20 @@ public class CgMeshTest {
         int[] indices = new int[18];
         quads.readIndices(0, 18, indices, 0);
         assertArrayEquals(new int[]{0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4, 8, 9, 10, 10, 11, 8}, indices);
-        assertNull("no positions: a draw states its bounds", quads.bounds(new float[6]));
+        assertNull("no positions: a draw states its bounds", quads.bounds(new CgAABB()));
         assertEquals(0, CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP).indexCount());
         assertNotSame(CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP), CgMesh.vertices(64, CgMeshTopology.LINES));
+    }
+
+    private static void assertBox(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+                                  CgAABBc box, double delta) {
+        assertBox("", minX, minY, minZ, maxX, maxY, maxZ, box, delta);
+    }
+
+    private static void assertBox(String message, double minX, double minY, double minZ, double maxX, double maxY,
+                                  double maxZ, CgAABBc box, double delta) {
+        assertArrayEquals(message, new double[]{minX, minY, minZ, maxX, maxY, maxZ},
+                new double[]{box.minX(), box.minY(), box.minZ(), box.maxX(), box.maxY(), box.maxZ()}, delta);
     }
 
     private static ByteBuffer vertex(float x) {
@@ -210,7 +223,7 @@ public class CgMeshTest {
         mesh.dropCpuCopy();
         assertEquals(vertices, mesh.vertexCount());
         assertEquals(indices, mesh.indexCount());
-        assertArrayEquals(new float[] {-2, -2, -2, 2, 2, 2}, mesh.bounds(new float[6]), 1e-5f);
+        assertBox(-2, -2, -2, 2, 2, 2, mesh.bounds(new CgAABB()), 1e-5f);
         assertThrows(IllegalStateException.class, () -> mesh.readVertices(0, 1, ByteBuffer.allocate(64)));
         assertThrows(IllegalStateException.class, () -> mesh.readIndices(0, 1, new int[1], 0));
         assertThrows(IllegalStateException.class, () -> mesh.writeIndices(0, new int[] {0}));

@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.mesh;
 
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import org.junit.Test;
 
 import java.io.ByteArrayInputStream;
@@ -53,8 +54,9 @@ public class CgMeshLoaderTest {
         int[] indices = new int[6];
         mesh.readIndices(mesh.submesh(1).firstIndex(), 6, indices, 0);
         assertArrayEquals(new int[] {0, 1, 2, 2, 1, 3}, indices);   // the second keeps the winding
-        float[] bounds = mesh.bounds(new float[6]);
-        assertArrayEquals(new float[] {0, 0, 0, 3, 1, 0}, bounds, 0f);
+        CgAABB bounds = mesh.bounds(new CgAABB());
+        assertArrayEquals(new double[] {0, 0, 0, 3, 1, 0},
+                new double[] {bounds.minX, bounds.minY, bounds.minZ, bounds.maxX, bounds.maxY, bounds.maxZ}, 0);
     }
 
     @Test

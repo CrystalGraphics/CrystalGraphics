@@ -82,7 +82,7 @@ world.onFrame(view -> {                                // once a frame, before t
 world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
 
 // Part of a mesh, geometry with no vertex data, and bounds the draw states itself:
-world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(-1, -1, -1, 1, 1, 1).submit();
+world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
 world.draw(model, brass).submesh(1).at(x, y, z).submit();
 world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
 

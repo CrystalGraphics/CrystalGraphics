@@ -1,6 +1,9 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.render.post.debug.CgPostDebug;
+import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
@@ -169,6 +172,7 @@ public final class CgWorldRenderer {
     private CgMesh[] meshes = new CgMesh[64];
     private CgMeshLods[] lods = new CgMeshLods[64];
     private final float[] meshBounds = new float[6];
+    private final CgAABB meshAabb = new CgAABB();
     /** Per draw: submesh, first, count of its mesh; its stated bounds (6) and whether set; its padding. */
     private int[] ranges = new int[64 * 3];
     private float[] drawBounds = new float[64 * 6];
@@ -642,7 +646,7 @@ public final class CgWorldRenderer {
         private CgGpuCount setCount;
         private CgBufferHandle buffer;
         private CgBindingPoints.Binding bufferPoint;
-        private final float[] meshBox = new float[6];
+        private final CgAABB meshBox = new CgAABB();
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
         private float emission;
@@ -758,16 +762,35 @@ public final class CgWorldRenderer {
         /**
          * The box this draw covers, in its own space (transformed with it, as a mesh's bounds are): what it is culled
          * by, in place of its mesh's. A mesh the shader places, {@code CgMesh.quads(n)}, has none of its own.
+         *
+         * <pre>{@code
+         * world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
+         *
+         * private final CgAABB box = new CgAABB();                      // a box that changes: one, reused
+         * world.draw(ribbon, bolt).at(x, y, z).bounds(box.set(0, 0, 0, tx, ty, tz).grow(0.5)).submit();
+         * }</pre>
          */
-        public Draw bounds(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
-            bounds[0] = minX;
-            bounds[1] = minY;
-            bounds[2] = minZ;
-            bounds[3] = maxX;
-            bounds[4] = maxY;
-            bounds[5] = maxZ;
+        public Draw bounds(CgAABBc box) {
+            bounds[0] = (float) box.minX();
+            bounds[1] = (float) box.minY();
+            bounds[2] = (float) box.minZ();
+            bounds[3] = (float) box.maxX();
+            bounds[4] = (float) box.maxY();
+            bounds[5] = (float) box.maxZ();
             boundsSet = true;
             return this;
+        }
+
+        /**
+         * As {@link #bounds(CgAABBc)}, by a shape's own-space box: an orb drawn round its centre states the ball it
+         * fills.
+         *
+         * <pre>{@code
+         * world.draw(orb, plasma).at(x, y, z).bounds(CgSphere.of(2)).submit();
+         * }</pre>
+         */
+        public Draw bounds(CgShape shape) {
+            return bounds(shape.bounds(meshBox));
         }
 
         /**
@@ -1814,8 +1837,16 @@ public final class CgWorldRenderer {
             bounds = meshBounds;
         } else if (sets[i] != null) {
             bounds = null;   // a set's instances are culled one by one, on the GPU
+        } else if ((lods[i] != null ? lods[i].finest() : meshes[i]).bounds(meshAabb) != null) {
+            meshBounds[0] = (float) meshAabb.minX;
+            meshBounds[1] = (float) meshAabb.minY;
+            meshBounds[2] = (float) meshAabb.minZ;
+            meshBounds[3] = (float) meshAabb.maxX;
+            meshBounds[4] = (float) meshAabb.maxY;
+            meshBounds[5] = (float) meshAabb.maxZ;
+            bounds = meshBounds;
         } else {
-            bounds = (lods[i] != null ? lods[i].finest() : meshes[i]).bounds(meshBounds);
+            bounds = null;
         }
         if (bounds != null) {
             float p = pads[i];
