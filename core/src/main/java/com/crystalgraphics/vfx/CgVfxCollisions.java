@@ -53,7 +53,7 @@ final class CgVfxCollisions {
     }
 
     /** An effect's own collision. */
-    static void effect(CgVfxEffect effect, String part, CgVfxCollision.Hit hit, int entity, double x, double y, double z,
+    static void effect(CgVfxEffect effect, CgVfxPart part, CgVfxCollision.Hit hit, int entity, double x, double y, double z,
                        float nx, float ny, float nz, float vx, float vy, float vz, float radius) {
         if (!heard(effect)) return;
         // A server's own event: EVENT is the render thread's.

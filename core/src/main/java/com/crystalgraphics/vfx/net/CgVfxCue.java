@@ -6,8 +6,10 @@ import com.crystalgraphics.net.CgReplicated;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.vfx.CgVfxAuthority;
 import com.crystalgraphics.vfx.CgVfxCollisionListener;
 import com.crystalgraphics.vfx.CgVfxEffect;
+import com.crystalgraphics.vfx.CgVfxPart;
 import com.crystalgraphics.world.CgEntityAttachments;
 
 import java.util.Map;
@@ -657,20 +659,28 @@ public final class CgVfxCue<P> {
          * authoritative}: damage from where the effect truly is. Server thread.
          *
          * <pre>{@code
-         * wave.onCollide(c -> {
-         *     if (CgEnergyWave.PART_BEAM.equals(c.part()) && c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity());
-         *     if (CgEnergyWave.PART_BLAST.equals(c.part())) explode(c.x(), c.y(), c.z(), c.radius());
-         * });
+         * wave.onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity()); })
+         *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
          * }</pre>
          *
          * It keeps hearing after {@link #stop()} while what is in flight plays out: a beam's blast comes then.
          */
         public Playing<P> onCollide(CgVfxCollisionListener listener) {
+            running().effect().onCollide(listener);
+            return this;
+        }
+
+        /** As {@link #onCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes. */
+        public Playing<P> onCollide(CgVfxPart part, CgVfxCollisionListener listener) {
+            running().effect().onCollide(part, listener);
+            return this;
+        }
+
+        private CgVfxAuthority running() {
             if (running == null) {
                 throw new IllegalStateException("cue '" + play().id + "' runs nowhere on the server: declare it authoritative()");
             }
-            running.authority.effect().onCollide(listener);
-            return this;
+            return running.authority;
         }
 
         /**

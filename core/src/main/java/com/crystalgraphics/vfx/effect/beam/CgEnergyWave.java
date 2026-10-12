@@ -12,6 +12,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxCollision;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.CgVfxPart;
 import com.crystalgraphics.world.CgWorldQueries;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
@@ -154,13 +155,11 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live<Obj
      * {@link #RADIUS} times {@link #BLAST_RADIUS} round the point (its {@code radius}).
      *
      * <pre>{@code
-     * wave.onCollide(c -> {
-     *     if (CgEnergyWave.PART_BEAM.equals(c.part()) && c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity());
-     *     if (CgEnergyWave.PART_BLAST.equals(c.part())) explode(c.x(), c.y(), c.z(), c.radius());
-     * });
+     * wave.onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity()); })
+     *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
      * }</pre>
      */
-    public static final String PART_BEAM = "beam", PART_BLAST = "blast";
+    public static final CgVfxPart PART_BEAM = CgVfxPart.of("beam"), PART_BLAST = CgVfxPart.of("blast");
     /** Each frame of the blast's impact frame, the k-th named this with k from 1: {@code impact-frame-1} and on. */
     public static final String MOMENT_IMPACT_FRAME = "impact-frame-";
     /** The impact frame's frames, its fade's too, announced as moments: bits 18 to 31 of {@code momentsFired}. */

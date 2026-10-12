@@ -98,12 +98,16 @@ public class CgVfxCollisionsTest {
         List<String> heard = new ArrayList<>();
         CgEnergyWave wave = owner.play(new CgEnergyWave(CgEnergyWave.kamehameha(), 0, 0, 0));
         wave.aim(1f, 0f, 0f).target(8, 0, 0);
-        wave.onCollide(c -> heard.add(c.part() + " " + c.hit() + " " + Math.round(c.x()) + (c.radius() > 0f ? " wide" : "")));
+        List<String> blasts = new ArrayList<>();
+        wave.onCollide(c -> heard.add(c.part() + " " + c.hit() + " " + Math.round(c.x()) + (c.radius() > 0f ? " wide" : "")))
+                .onCollide(CgEnergyWave.PART_BLAST, c -> blasts.add(c.part() + " " + Math.round(c.x())));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);
         assertEquals("held on the target, not every tick", List.of("beam TARGET 8"), heard);
+        assertEquals("a part's listener hears that part alone", List.of(), blasts);
         wave.stop();
         for (int f = 601; f <= 1500; f++) vfx.update(f / 60.0);
         assertEquals(List.of("beam TARGET 8", "blast TARGET 8 wide"), heard);
+        assertEquals(List.of("blast 8"), blasts);
     }
 
     @Test
