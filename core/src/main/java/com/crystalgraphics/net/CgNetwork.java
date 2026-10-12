@@ -266,9 +266,15 @@ public final class CgNetwork {
         long started = System.nanoTime();
         long allocated = measureAllocation ? CgThreadAllocation.current() : 0;
         CgNetObjects.serverTick();
+        long objectsDone = System.nanoTime();
+        long objectsAllocated = measureAllocation ? CgThreadAllocation.current() : 0;
         table.tick();
         serverTickNanos = System.nanoTime() - started;
-        if (measureAllocation) serverTickAllocated = CgThreadAllocation.current() - allocated;
+        serverObjectsNanos = objectsDone - started;
+        if (measureAllocation) {
+            serverTickAllocated = CgThreadAllocation.current() - allocated;
+            serverObjectsAllocated = objectsAllocated - allocated;
+        }
     }
 
     public static void clientTick() {
@@ -280,7 +286,7 @@ public final class CgNetwork {
     }
 
     private static volatile boolean measureAllocation;
-    private static long serverTickNanos, serverTickAllocated, clientTickNanos;
+    private static long serverTickNanos, serverTickAllocated, serverObjectsNanos, serverObjectsAllocated, clientTickNanos;
 
     /** The last server tick's network work, objects then every connection, in nanoseconds. Server thread. */
     public static long serverTickNanos() {
@@ -292,7 +298,17 @@ public final class CgNetwork {
         return serverTickAllocated;
     }
 
-    /** Reads the server thread's allocation around each tick's network work: two counter reads a tick. */
+    /** The networked-objects share of {@link #serverTickNanos()}; the rest is the connections'. */
+    public static long serverObjectsNanos() {
+        return serverObjectsNanos;
+    }
+
+    /** The networked-objects share of {@link #serverTickAllocated()}. */
+    public static long serverObjectsAllocated() {
+        return serverObjectsAllocated;
+    }
+
+    /** Reads the server thread's allocation around each tick's network work: three counter reads a tick. */
     public static void measureAllocation(boolean on) {
         measureAllocation = on && CgThreadAllocation.available();
     }

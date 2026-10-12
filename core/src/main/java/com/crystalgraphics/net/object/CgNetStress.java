@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
+import javax.management.ObjectName;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -24,6 +26,7 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.serialization.CgCodecs;
 
@@ -34,7 +37,13 @@ import com.crystalgraphics.serialization.CgCodecs;
  * <p>Off unless {@value #PROPERTY} is true on every side, server and clients; {@code CgNetwork.install} then installs
  * it. The server starts once {@code .players} players (2 unless said) have joined, runs about two minutes, logs the
  * report with a PASS or FAIL per check, and writes it to {@code .report} ({@code net-stress.txt} in the server's run
- * directory unless said). The processes keep running afterwards.
+ * directory unless said). Each process then ends itself: a client once it has sent its report, the server once it has
+ * written it; a client the run stops reaching for a minute ends too, and so does a server no players join in ten
+ * minutes. {@code .keepOpen=true} keeps them running.
+ *
+ * <p>A tick over 10 ms or 1 MB is logged as it happens, split between the objects and the connections. Over 20 ms or
+ * 4 MB, a server started with {@code -XX:StartFlightRecording=name=net-stress,settings=profile} dumps that recording
+ * beside the report (three at most): the allocations with their stacks, and the JIT's compilations.
  *
  * <pre>{@code
  * ./gradlew :runtime:mc:modern:fabric:26.2:runServer -PcgLiveServer -PcgAcceptEula -PcgNoLanguage -Dcrystalgraphics.net.stress=true
@@ -98,6 +107,29 @@ public final class CgNetStress {
         LOGGER.info("[net-stress] installed: waiting for {} players", server.players);
     }
 
+    /** A run left open holds its port and its windows: each process ends once its part is over, unless this is set. */
+    private static final boolean KEEP_OPEN = Boolean.getBoolean(PROPERTY + ".keepOpen");
+    /** The flight recording a large outlier dumps, if the server was started with one by this name. */
+    private static final String RECORDING = "net-stress";
+    private static volatile boolean exiting;
+
+    /** Halts this process {@code millis} from now, leaving the log time to reach its file. */
+    private static synchronized void exitLater(long millis, String why) {
+        if (KEEP_OPEN || exiting) return;
+        exiting = true;
+        LOGGER.info("[net-stress] exiting in {} ms: {}", millis, why);
+        Thread exit = new Thread(() -> {
+            try {
+                Thread.sleep(millis);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            CgPlatform.get(CgProcessExit.SERVICE).halt(0);
+        }, "net-stress exit");
+        exit.setDaemon(true);
+        exit.start();
+    }
+
     private static long now() {
         return System.currentTimeMillis();
     }
@@ -142,7 +174,8 @@ public final class CgNetStress {
     // ── The server ──────────────────────────────────────────────────────────────────────────────
 
     private static final class Server {
-        static final int SETTLE = 200, CROWD = 600, WARM = 100, BURST = 5000, QUIET = 200;
+        static final int SETTLE = 200, CROWD = 600, WARM = 100, BURST = 5000, QUIET = 200, DUMPS = 3;
+        static final long WAIT_LIMIT = 10 * 60_000L;
 
         final int players;
         final Path out;
@@ -167,8 +200,9 @@ public final class CgNetStress {
         int burstTicks = -1;
         long burstLargest, burstSlowest, quietAllocated;
         final List<GarbageCollectorMXBean> collectors = ManagementFactory.getGarbageCollectorMXBeans();
-        long collections;
-        int outliers;
+        long collections, waitingSince = now();
+        int outliers, dumps;
+        boolean skipNext;
 
         Server(int players, Path out) {
             this.players = players;
@@ -186,6 +220,7 @@ public final class CgNetStress {
             if (phase != Phase.WAIT && ids.size() > 0 && CgNetwork.forPlayer(ids.get(0)) == null && phase != Phase.REPORT) {
                 LOGGER.warn("[net-stress] a player left mid-run; stopping");
                 enter(Phase.DONE);
+                exitLater(3000, "a player left mid-run");
                 return;
             }
             if (tracker != null && phase != Phase.QUIET && phase != Phase.TEARDOWN) tracker.setLong(SENT, now());
@@ -218,6 +253,7 @@ public final class CgNetStress {
             }
             if (ready < players) {
                 ticks = -1;
+                if (now() - waitingSince > WAIT_LIMIT) exitLater(0, "no " + players + " players joined in ten minutes");
                 return;
             }
             if (ticks < SETTLE) return;
@@ -247,13 +283,37 @@ public final class CgNetStress {
             long total = 0;
             for (GarbageCollectorMXBean collector : collectors) total += Math.max(0, collector.getCollectionCount());
             long nanos = CgNetwork.serverTickNanos(), allocated = CgNetwork.serverTickAllocated();
-            if (nanos > 10_000_000L || allocated > 1 << 20) {
+            if (!skipNext && (nanos > 10_000_000L || allocated > 1 << 20)) {
                 outliers++;
-                LOGGER.info("[net-stress] outlier in {} tick {}: {} ms, {} KB, {} collections since the last tick, uptime {} ms",
-                        phase.name().toLowerCase(), ticks, nanos / 1_000_000, allocated >> 10, total - collections,
-                        ManagementFactory.getRuntimeMXBean().getUptime());
+                LOGGER.info("[net-stress] outlier in {} tick {}: {} ms ({} in objects), {} KB ({} in objects), {} collections"
+                                + " since the last tick, uptime {} ms", phase.name().toLowerCase(), ticks, nanos / 1_000_000,
+                        CgNetwork.serverObjectsNanos() / 1_000_000, allocated >> 10, CgNetwork.serverObjectsAllocated() >> 10,
+                        total - collections, ManagementFactory.getRuntimeMXBean().getUptime());
+                if ((nanos > 20_000_000L || allocated > 4 << 20) && dumps < DUMPS) dump(phase.name().toLowerCase() + "-" + ticks);
+            } else {
+                skipNext = false;
             }
             collections = total;
+        }
+
+        /**
+         * Dumps the flight recording named {@value #RECORDING}, which holds the outlier's allocations with their stacks
+         * and the JIT's compilations. The dump itself stalls the next tick, which is not counted.
+         */
+        void dump(String label) {
+            Path file = out.toAbsolutePath().resolveSibling("net-stress-" + label + ".jfr");
+            try {
+                ManagementFactory.getPlatformMBeanServer().invoke(new ObjectName("com.sun.management:type=DiagnosticCommand"),
+                        "jfrDump", new Object[] {new String[] {"name=" + RECORDING, "filename=" + file}},
+                        new String[] {String[].class.getName()});
+                dumps++;
+                LOGGER.info("[net-stress] flight recording dumped to {}", file);
+            } catch (Exception failed) {
+                dumps = DUMPS;
+                LOGGER.info("[net-stress] no flight recording to dump ({}): start the server with"
+                        + " -XX:StartFlightRecording=name={},settings=profile", failed.toString(), RECORDING);
+            }
+            skipNext = true;
         }
 
         CgAnchor near(double half) {
@@ -443,6 +503,7 @@ public final class CgNetStress {
                 LOGGER.error("[net-stress] could not write {}", out, failed);
             }
             enter(Phase.DONE);
+            exitLater(3000, "the report is written");
         }
 
         void received(CgPeer peer, String text) {
@@ -477,6 +538,8 @@ public final class CgNetStress {
         long bulkMillis = -1, burstMillis = -1;
         /** When this client last ticked, and the arrivals measured just after it had not ticked for over 100 ms. */
         long lastTick;
+        /** When the run last reached this client: a phase or a tick. Read by the watchdog thread. */
+        volatile long lastProgress;
         int stalled;
         long longestStall;
 
@@ -513,7 +576,28 @@ public final class CgNetStress {
             });
         }
 
+        /**
+         * From the first phase on, ends this client once the run stops reaching it for a minute: the server halted, or
+         * the connection dropped and the client sits on a disconnect screen.
+         */
+        void watch() {
+            Thread watchdog = new Thread(() -> {
+                while (true) {
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException stopped) {
+                        return;
+                    }
+                    if (now() - lastProgress > 60_000) exitLater(0, "nothing from the server for a minute");
+                }
+            }, "net-stress watchdog");
+            watchdog.setDaemon(true);
+            watchdog.start();
+        }
+
         void phase(String next) {
+            if (lastProgress == 0) watch();
+            lastProgress = now();
             phase = next;
             phaseStarted = now();
             phaseTicks = 0;
@@ -524,11 +608,13 @@ public final class CgNetStress {
                 phase = "burst";
             } else if ("report".equals(next)) {
                 REPORT.sendToServer(report());
+                exitLater(5000, "the report is sent");
             }
         }
 
         void tick() {
             lastTick = now();
+            lastProgress = lastTick;
             clientTicks++;
             phaseTicks++;
             if ("crowd".equals(phase)) tickNanos.add(CgNetwork.clientTickNanos());

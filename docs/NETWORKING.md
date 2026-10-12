@@ -941,7 +941,8 @@ allocates nothing. On 1.7.10 the same run passes with the same margins.
         -Dcrystalgraphics.net.stress=true
 ```
 
-The report is in the server's log and in `runs/server/net-stress.txt`. A second client's directory needs an
+The report is in the server's log and in `runs/server/net-stress.txt`, and each process then ends itself
+(`-Dcrystalgraphics.net.stress.keepOpen=true` keeps them running). A second client's directory needs an
 `options.txt` (copy `runs/client`'s), or Minecraft's first-launch screen stops it joining.
 
 On 1.7.10 it is `:runtime:mc:1710:runServer -PcgLiveServer` and `:runtime:mc:1710:runClient` with the same flags (Bob's
