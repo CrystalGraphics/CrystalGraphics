@@ -91,7 +91,7 @@ public class CgVfxAuthorityTest {
         wave.aim(1f, 0f, 0f);
         CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(FLOOR, new Crowd()));
         List<String> heard = new ArrayList<>();
-        wave.onCollide(c -> heard.add(c.part() + " " + c.hit() + " " + c.entity() + (c.radius() > 0f ? " wide" : "")));
+        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entity()));
 
         for (int t = 0; t < 200; t++) run.advance(0.05f);
         assertEquals("through its caster, onto the zombie, once", List.of("beam ENTITY 2"), heard);
@@ -100,7 +100,7 @@ public class CgVfxAuthorityTest {
         wave.stop();
         for (int t = 0; t < 600 && !run.done(); t++) run.advance(0.05f);
         assertEquals("the burst at its point, then its front on the zombie",
-                List.of("beam ENTITY 2", "blast TARGET -1 wide", "blast ENTITY 2"), heard);
+                List.of("beam ENTITY 2", "burst POINT -1", "blast ENTITY 2"), heard);
         assertTrue("it ends by itself, its particles never stepped", run.done());
     }
 

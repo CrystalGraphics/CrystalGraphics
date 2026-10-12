@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.collision.hitbox.CgSentHit;
 import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
@@ -8,8 +10,6 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfxAuthority;
-import com.crystalgraphics.vfx.CgVfxCollision;
-import com.crystalgraphics.vfx.CgVfxCollisionListener;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -25,7 +25,7 @@ import java.util.function.Consumer;
  * viewers draw and emitting what it strikes. Stopped, the cue is the layer's stopping object while the effect plays
  * out, so its blast is still confirmed to viewers; it ends when the effect dies, or at the type's linger.
  */
-final class CgVfxCueAuthority implements CgNetBehaviour, CgVfxCollisionListener, Consumer<CgVfxParam> {
+final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
 
     private static final Logger LOGGER = LogManager.getLogger("CgVfx");
     /** Seconds of game time a server tick runs. */
@@ -35,6 +35,7 @@ final class CgVfxCueAuthority implements CgNetBehaviour, CgVfxCollisionListener,
 
     private final CgVfxCue.Play play;
     private final CgVfxAuthority authority;
+    private final CgSentHit sent = new CgSentHit();
 
     /** Builds {@code play}'s effect, as its registry entry makes it, against its level. */
     CgVfxCueAuthority(CgVfxCue.Play play) {
@@ -58,7 +59,7 @@ final class CgVfxCueAuthority implements CgNetBehaviour, CgVfxCollisionListener,
                     + " so it strikes nothing", play.id(), play.level.getClass().getName());
         }
         authority = new CgVfxAuthority(effect, CgCollisionWorld.of(level));
-        effect.onCollide(this);
+        effect.onHit(this::hit);
     }
 
     CgVfxEffect effect() {
@@ -96,9 +97,8 @@ final class CgVfxCueAuthority implements CgNetBehaviour, CgVfxCollisionListener,
         for (int k = 0; k < fields.length; k++) play.setFloat(fields[k], effect.get(param, k));
     }
 
-    @Override
-    public void collided(CgVfxCollision collision) {
-        play.obj.emit(CgVfxCue.COLLIDED, CgVfxCue.Confirmed.of(collision));
+    private void hit(CgHit h) {
+        play.obj.emit(CgVfxCue.HIT, sent.set(h, authority.effect().look().schema().indexOf(h.part())));
     }
 
     @Override

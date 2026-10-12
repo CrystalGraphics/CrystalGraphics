@@ -563,31 +563,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /**
-         * Reports up to {@code most} of its particles' collisions a step to the effect's {@code onCollide} listeners (and
-         * its owner's and the global ones), as {@code CgVfxCollision}s: an {@link #event} of
-         * {@code CgVfxEvent.onCollision().readback(most)}. Needs a collider module.
-         *
-         * <pre>{@code
-         * .module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
-         * .reportCollisions(32)
-         * }</pre>
-         *
-         * <ul>
-         *   <li>The cap is shared by every effect playing this emitter; past it a step's collisions are dropped.</li>
-         *   <li>GPU only, a few frames after the step; a landing reported with {@code onLanding().readback(n)} is heard
-         *       too, as {@code GROUND}.</li>
-         * </ul>
-         */
-        public Builder reportCollisions(int most) {
-            return event(CgVfxEvent.onCollision().readback(most));
-        }
-
-        /** {@link #reportCollisions(int)} of 16. */
-        public Builder reportCollisions() {
-            return reportCollisions(16);
-        }
-
         /** Size over life, as a share of the starting size; 1 throughout unless given. */
         public Builder size(CgKeyframes overLife) {
             sizeOverLife = overLife;

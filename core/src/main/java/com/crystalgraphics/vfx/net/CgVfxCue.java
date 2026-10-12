@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx.net;
 
 import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hitbox.CgSentHit;
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetEvent;
@@ -9,11 +11,7 @@ import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgServerPlayers;
-import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.vfx.CgVfxCollision;
-import com.crystalgraphics.vfx.CgVfxCollisionListener;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -33,6 +31,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Consumer;
 
 /**
  * An effect named for the network: the server plays it, every client that sees it builds and draws it. A cue is a
@@ -111,8 +110,8 @@ public final class CgVfxCue {
     static final CgNetField<Integer> STRUCK = CgNetField.ofInt("cue/struck").fallback(-1);
     private static final CgNetField<?>[] CORE = {SEED, FLAGS, X, Y, Z, FOLLOW, POINT, DX, DY, DZ, TX, TY, TZ, STRUCK};
 
-    /** What an authoritative cue's server copy struck. */
-    static final CgNetEvent<Confirmed> COLLIDED = CgNetEvent.of("cue/collided", Confirmed.CODEC);
+    /** What an authoritative cue's server copy struck, its part by its place in the look's schema. */
+    static final CgNetEvent<CgSentHit> HIT = CgNetEvent.of("cue/hit", CgSentHit.wire());
 
     private static final Map<String, CgVfxCue> CUES = new ConcurrentHashMap<>();
     private static final Map<CgVfxSchema, LookFields> LOOK_FIELDS = new IdentityHashMap<>();
@@ -124,7 +123,9 @@ public final class CgVfxCue {
     private final float range;
     final boolean authoritative;
     private volatile Policy policy;
-    private final List<Confirmation> confirmations = new CopyOnWriteArrayList<>();
+    private final List<Consumer<? super CgHit>> confirmations = new CopyOnWriteArrayList<>();
+    /** The confirmed hit handed to listeners; client thread. */
+    private final CgHit arrived = new CgHit();
 
     private CgVfxCue(Builder b, CgNetType type) {
         this.id = b.id;
@@ -175,14 +176,14 @@ public final class CgVfxCue {
         /**
          * Runs its effect on the server too, for as long as a {@linkplain Play#start() lasting} play lasts: the same class
          * its viewers play, headless against the server's level ({@code CgVfxAuthority}). It decides where the effect goes
-         * and what it strikes; the server hears its collisions ({@link Playing#onCollide}) and viewers hear them
-         * confirmed ({@link #onConfirmedCollide}); and it publishes what its viewers draw ({@link Authoritative}).
+         * and what it strikes; the server hears its hits ({@link Playing#onHit}) and viewers hear them confirmed
+         * ({@link #onConfirmedHit}); and it publishes what its viewers draw ({@link Authoritative}).
          *
          * <pre>{@code
          * public static final CgVfxCue WAVE = VFX.cue("kamehameha", LOOK, CgEnergyWave::fromCue).authoritative().build();
          *
          * CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();   // server
-         * wave.onCollide(c -> damage(c.entity()));
+         * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));
          * }</pre>
          *
          * <ul>
@@ -222,14 +223,14 @@ public final class CgVfxCue {
             }
             if (CUES.containsKey(id)) throw new IllegalStateException("cue '" + id + "' is already declared");
             CgNetType.Builder type = CgNetType.define(id).fields(CORE).fields(fields.toArray(new CgNetField<?>[0]))
-                    .events(COLLIDED).range(range).keepRefused();
+                    .events(HIT).range(range).keepRefused();
             if (look != null) {
                 type.fields(look.schema().networked().toArray(new CgNetField<?>[0]));
                 type.fields(lookFields(look.schema()).all);
             }
             if (persisted) type.persisted();
             CgVfxCue cue = new CgVfxCue(this, type.build());
-            cue.type.onEvent(COLLIDED, cue::confirmed);
+            cue.type.onEvent(HIT, cue::confirmed);
             if (factory != null) CgVfxRegistry.register(cue, look, factory);
             CUES.put(id, cue);
             CgVfxCueClient.declared(cue);
@@ -323,49 +324,31 @@ public final class CgVfxCue {
 
     /**
      * On a client: hears what an {@linkplain Builder#authoritative() authoritative} play's server copy strikes, as the
-     * server heard it: the hit that counted, where every viewer's copy agrees. The collision's effect is this client's
-     * copy, or null where it builds none. Client thread.
+     * server heard it: the hit that counted. It carries what was met, the point and the part; no normal or distance.
+     * Client thread; the hit is valid during the call.
      *
      * <pre>{@code
-     * WAVE.onConfirmedCollide(CgEnergyWave.PART_BLAST, c -> decals.scorch(c.x(), c.y(), c.z(), c.radius()));
+     * WAVE.onConfirmedHit(CgEnergyWave.PART_BURST, h -> decals.scorch(h.x(), h.y(), h.z()));
      * }</pre>
      */
-    public CgVfxCue onConfirmedCollide(CgVfxCollisionListener listener) {
-        confirmations.add(new Confirmation(null, Objects.requireNonNull(listener, "listener")));
+    public CgVfxCue onConfirmedHit(Consumer<? super CgHit> listener) {
+        confirmations.add(Objects.requireNonNull(listener, "listener"));
         return this;
     }
 
-    /** As {@link #onConfirmedCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes. */
-    public CgVfxCue onConfirmedCollide(CgHitPart part, CgVfxCollisionListener listener) {
-        confirmations.add(new Confirmation(Objects.requireNonNull(part, "part"), Objects.requireNonNull(listener, "listener")));
-        return this;
+    /** As {@link #onConfirmedHit(Consumer)}, hearing only what {@code part} strikes. */
+    public CgVfxCue onConfirmedHit(CgHitPart part, Consumer<? super CgHit> listener) {
+        Objects.requireNonNull(part, "part");
+        Objects.requireNonNull(listener, "listener");
+        return onConfirmedHit(h -> {
+            if (h.part() == part) listener.accept(h);
+        });
     }
 
-    private void confirmed(CgNetObject obj, Confirmed c) {
+    private void confirmed(CgNetObject obj, CgSentHit sent) {
         if (confirmations.isEmpty()) return;
-        CgHitPart part = null;
-        for (Confirmation each : confirmations) {
-            if (each.part != null && each.part.name().equals(c.part)) part = each.part;
-        }
-        CgVfxCueClient.View view = obj.behaviour();
-        CgVfxCollision.Hit[] hits = CgVfxCollision.Hit.values();
-        CgVfxCollision collision = CgVfxCollision.confirmed(view == null ? null : view.effect, part,
-                c.hit < hits.length ? hits[c.hit] : CgVfxCollision.Hit.OTHER, c.entity, c.x, c.y, c.z, c.nx, c.ny, c.nz,
-                c.radius);
-        for (Confirmation each : confirmations) {
-            if (each.part == null || each.part == part) each.listener.collided(collision);
-        }
-    }
-
-    private static final class Confirmation {
-        @Nullable
-        final CgHitPart part;
-        final CgVfxCollisionListener listener;
-
-        Confirmation(@Nullable CgHitPart part, CgVfxCollisionListener listener) {
-            this.part = part;
-            this.listener = listener;
-        }
+        sent.read(arrived, look == null ? null : look.schema.partAt(sent.part()));
+        for (Consumer<? super CgHit> listener : confirmations) listener.accept(arrived);
     }
 
     /** Who may predict a cue, and where. */
@@ -1011,20 +994,21 @@ public final class CgVfxCue {
          * authoritative}: damage from where the effect truly is. Server thread.
          *
          * <pre>{@code
-         * wave.onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity()); })
-         *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
+         * wave.onHit(CgEnergyWave.PART_BEAM, h -> stagger(h.entity()))
+         *     .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
+         *     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
          * }</pre>
          *
          * It keeps hearing after {@link #stop()} while what is in flight plays out: a beam's blast comes then.
          */
-        public Playing onCollide(CgVfxCollisionListener listener) {
-            running().onCollide(listener);
+        public Playing onHit(Consumer<? super CgHit> listener) {
+            running().onHit(listener);
             return this;
         }
 
-        /** As {@link #onCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes. */
-        public Playing onCollide(CgHitPart part, CgVfxCollisionListener listener) {
-            running().onCollide(part, listener);
+        /** As {@link #onHit(Consumer)}, hearing only what {@code part} strikes. */
+        public Playing onHit(CgHitPart part, Consumer<? super CgHit> listener) {
+            running().onHit(part, listener);
             return this;
         }
 
@@ -1083,52 +1067,4 @@ public final class CgVfxCue {
 
     // ── What the server struck ──────────────────────────────────────────────────────────────────
 
-    /** A collision of an authoritative cue's server copy, as it travels. */
-    static final class Confirmed {
-        final String part;
-        final int hit, entity;
-        final double x, y, z;
-        final float nx, ny, nz, radius;
-
-        Confirmed(String part, int hit, int entity, double x, double y, double z, float nx, float ny, float nz, float radius) {
-            this.part = part;
-            this.hit = hit;
-            this.entity = entity;
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            this.nx = nx;
-            this.ny = ny;
-            this.nz = nz;
-            this.radius = radius;
-        }
-
-        static Confirmed of(CgVfxCollision c) {
-            return new Confirmed(c.part() == null ? "" : c.part().name(), c.hit().ordinal(), c.entity(), c.x(), c.y(), c.z(),
-                    c.nx(), c.ny(), c.nz(), c.radius());
-        }
-
-        static final CgCodec<Confirmed> CODEC = new CgCodec<Confirmed>() {
-            @Override
-            public <T> T encode(CgDynamicOps<T> ops, Confirmed c) {
-                return CgCodecs.map(ops)
-                        .optional("p", CgCodecs.STRING, c.part, "")
-                        .field("h", CgCodecs.INT, c.hit)
-                        .optional("e", CgCodecs.INT, c.entity, -1)
-                        .field("x", CgCodecs.DOUBLE, c.x).field("y", CgCodecs.DOUBLE, c.y).field("z", CgCodecs.DOUBLE, c.z)
-                        .field("nx", CgCodecs.FLOAT, c.nx).field("ny", CgCodecs.FLOAT, c.ny).field("nz", CgCodecs.FLOAT, c.nz)
-                        .optional("r", CgCodecs.FLOAT, c.radius, 0f)
-                        .build();
-            }
-
-            @Override
-            public <T> Confirmed decode(CgDynamicOps<T> ops, T input) {
-                CgCodecs.MapCodecReader<T> in = CgCodecs.read(ops, input);
-                return new Confirmed(in.optional("p", CgCodecs.STRING, ""), in.field("h", CgCodecs.INT),
-                        in.optional("e", CgCodecs.INT, -1), in.field("x", CgCodecs.DOUBLE), in.field("y", CgCodecs.DOUBLE),
-                        in.field("z", CgCodecs.DOUBLE), in.field("nx", CgCodecs.FLOAT), in.field("ny", CgCodecs.FLOAT),
-                        in.field("nz", CgCodecs.FLOAT), in.optional("r", CgCodecs.FLOAT, 0f));
-            }
-        };
-    }
 }

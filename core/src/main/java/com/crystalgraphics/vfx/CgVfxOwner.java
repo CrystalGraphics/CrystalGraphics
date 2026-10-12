@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -70,7 +69,6 @@ public final class CgVfxOwner {
     private final List<CgVfxEffect> effects = new ArrayList<>();
     /** The system whose owner list holds it. */
     CgVfxSystem listedIn;
-    final CopyOnWriteArrayList<CgVfxCollisionListener> collideListeners = new CopyOnWriteArrayList<>();
 
     CgVfxOwner(String namespace, CgVfxSystem fixed) {
         if (!namespace.matches("[a-z0-9_.-]+")) {
@@ -286,21 +284,6 @@ public final class CgVfxOwner {
     /** Whether it plays: true unless {@link #enabled(boolean)} turned it off. */
     public boolean enabled() {
         return enabled;
-    }
-
-    /**
-     * Hears what any of its effects, and their particles, strike: after each effect's own listeners, before the global
-     * ones. From any thread; heard on the render thread.
-     *
-     * <pre>{@code
-     * CgVfxCollision.Registration scorch = VFX.onCollide(c -> {
-     *     if (c.hit() == CgVfxCollision.Hit.BLOCK) decals.scorch(c.x(), c.y(), c.z(), c.nx(), c.ny(), c.nz());
-     * });
-     * scorch.close();   // stops hearing
-     * }</pre>
-     */
-    public CgVfxCollision.Registration onCollide(CgVfxCollisionListener listener) {
-        return CgVfxCollisions.add(collideListeners, listener);
     }
 
     /** How many of its effects its system holds: playing, or ended since its last update. Render thread. */

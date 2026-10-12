@@ -11,13 +11,13 @@ import java.util.function.Consumer;
 /**
  * Runs an effect on a server: the half gameplay depends on (where a beam goes, what it strikes, when it bursts) on the
  * server's tick, against one level, while each client draws the effect. The effect is the same class the clients play;
- * {@link CgVfxEffect#authoritative} turns its shakes, post volumes, particles and moments off, and its collisions reach
- * only its own listeners, on the server thread.
+ * {@link CgVfxEffect#authoritative} turns its shakes, post volumes, particles and moments off, and its hits reach its
+ * listeners on the server thread.
  *
  * <pre>{@code
  * CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z).collide();
  * CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(level));
- * wave.onCollide(c -> damage(c.entity()));
+ * wave.onHit(CgEnergyWave.PART_BEAM, h -> damage(h.entity()));
  * run.advance(0.05f);                 // each server tick, after wave.aim(...)
  * if (run.done()) ...
  * }</pre>

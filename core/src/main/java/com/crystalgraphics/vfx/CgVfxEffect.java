@@ -17,7 +17,10 @@ import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,6 +58,8 @@ import java.util.function.Supplier;
  * </ul>
  */
 public abstract class CgVfxEffect {
+
+    private static final Logger LOGGER = LogManager.getLogger("CgVfx");
 
     public enum State { PLAYING, STOPPING, DEAD }
 
@@ -97,9 +102,9 @@ public abstract class CgVfxEffect {
     /** The shakes it holds, by parameter; made when first held. */
     private CgVfxParam[] heldParams;
     private CgCameraShake.Held[] held;
-    /** What hears its collisions; null for none. */
-    private CgVfxCollisionListener[] collideListeners;
-    /** Its hitboxes, ticked after each tick; whether each has had its hits routed to {@link #collided}. */
+    /** What hears its hits; null for none. */
+    private List<Consumer<? super CgHit>> hitListeners;
+    /** Its hitboxes, ticked after each tick; whether each has had its hits routed to {@link #hit}. */
     private CgHitbox[] hitboxes;
     private boolean[] routed;
     private int hitboxCount;
@@ -266,8 +271,8 @@ public abstract class CgVfxEffect {
 
     /**
      * Whether it runs on a server ({@link CgVfxAuthority}): there it decides what gameplay hears, where it goes and what
-     * it strikes, while each client draws it. Its shakes, post volumes, particles and moments do nothing there, and its
-     * collisions reach only its own listeners. Guard what else is the client's:
+     * it strikes, while each client draws it. Its shakes, post volumes, particles and moments do nothing there. Guard
+     * what else is the client's:
      *
      * <pre>{@code
      * if (!authoritative()) blastGround.fill(CgVfxGround.FILL_PER_TICK);   // reads the client's world
@@ -294,8 +299,8 @@ public abstract class CgVfxEffect {
 
     /**
      * A hitbox it owns, of one part: ticked with it after each {@link #tick(float)} against {@link #world()}, and
-     * stopped when it dies. Each hit is reported as {@code collided(part, ENTITY, ...)}, so {@code onCollide(part, ...)}
-     * hears every target once. Configure it where it is made; its time is game ticks, as every hitbox's.
+     * stopped when it dies. Its hits are the effect's, so {@code onHit(part, ...)} hears every target once. Configure it
+     * where it is made; its time is game ticks, as every hitbox's.
      *
      * <pre>{@code
      * // in tick, as the blast bursts: a front 2 thick running 10 blocks out over 8 ticks
@@ -306,7 +311,7 @@ public abstract class CgVfxEffect {
      * <ul>
      *   <li>Give it no listener: its hits are the effect's, and its first tick throws if it has one.</li>
      *   <li>Authoritative on a server, against the level; cosmetic on a client, against what it draws.</li>
-     *   <li>Silent while it fast-forwards to its start age, as every collision is.</li>
+     *   <li>Silent while it fast-forwards to its start age, as every hit is.</li>
      * </ul>
      */
     protected final CgHitbox hitbox(CgHitPart part, CgShape shape) {
@@ -314,8 +319,7 @@ public abstract class CgVfxEffect {
         if (hitboxes == null) {
             hitboxes = new CgHitbox[2];
             routed = new boolean[2];
-            hitboxHits = h -> collided(h.part(), CgVfxCollision.Hit.ENTITY, h.entity(), h.x(), h.y(), h.z(),
-                    (float) -h.normalX(), (float) -h.normalY(), (float) -h.normalZ(), 0f, 0f, 0f, 0f);
+            hitboxHits = this::hit;
         } else if (hitboxCount == hitboxes.length) {
             hitboxes = Arrays.copyOf(hitboxes, hitboxCount * 2);
             routed = Arrays.copyOf(routed, hitboxCount * 2);
@@ -333,7 +337,7 @@ public abstract class CgVfxEffect {
                 if (!routed[i]) {
                     if (hitbox.hasListeners()) {
                         throw new IllegalStateException(getClass().getSimpleName()
-                                + "'s hitbox has a listener of its own: its hits are the effect's, heard by onCollide");
+                                + "'s hitbox has a listener of its own: its hits are the effect's, heard by onHit");
                     }
                     hitbox.onHit(hitboxHits);
                     routed[i] = true;
@@ -355,80 +359,61 @@ public abstract class CgVfxEffect {
     }
 
     /**
-     * Hears what it and its particles strike, before its owner's listeners and the global ones. Its particles report
-     * only from emitters that ask to ({@code reportCollisions}).
+     * Hears what it strikes: each hit its {@link #hitbox hitboxes} make and each it {@linkplain #hit reports}, its part
+     * saying which part of it struck.
      *
      * <pre>{@code
-     * owner.play(new CgEnergyWave(look, x, y, z).collide())
-     *         .onCollide(c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) damage(c.entity()); });
+     * owner.play(new CgEnergyWave(look, x, y, z).collide()).onHit(h -> { if (h.entity() >= 0) flash(h.entity()); });
      * }</pre>
      *
      * <ul>
-     *   <li>Render thread, or before it plays. Its listeners go with it.</li>
-     *   <li>Its particles' rows arrive a few frames after their step, so they may still come after it has died.</li>
+     *   <li>The thread it ticks on: the render thread, or the server thread for an {@link #authoritative} one. Before
+     *       it plays is fine too.</li>
+     *   <li>The hit is valid during the call: copy what you keep ({@code CgHit.set}).</li>
+     *   <li>One that throws is logged, and the others still hear.</li>
      * </ul>
      */
-    public final CgVfxEffect onCollide(CgVfxCollisionListener listener) {
+    public final CgVfxEffect onHit(Consumer<? super CgHit> listener) {
         if (listener == null) throw new IllegalArgumentException("listener");
-        int n = collideListeners == null ? 0 : collideListeners.length;
-        collideListeners = collideListeners == null ? new CgVfxCollisionListener[1] : Arrays.copyOf(collideListeners, n + 1);
-        collideListeners[n] = listener;
+        if (hitListeners == null) hitListeners = new ArrayList<>(2);
+        hitListeners.add(listener);
         return this;
     }
 
     /**
-     * As {@link #onCollide(CgVfxCollisionListener)}, hearing only what {@code part} strikes.
+     * As {@link #onHit(Consumer)}, hearing only what {@code part} strikes.
      *
      * <pre>{@code
-     * wave.onCollide(CgEnergyWave.PART_BEAM, c -> stagger(c.entity()))
-     *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
+     * wave.onHit(CgEnergyWave.PART_BEAM, h -> stagger(h.entity()))
+     *     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
      * }</pre>
      */
-    public final CgVfxEffect onCollide(CgHitPart part, CgVfxCollisionListener listener) {
+    public final CgVfxEffect onHit(CgHitPart part, Consumer<? super CgHit> listener) {
         if (part == null) throw new IllegalArgumentException("part");
         if (listener == null) throw new IllegalArgumentException("listener");
-        return onCollide(c -> {
-            if (c.part() == part) listener.collided(c);
+        return onHit(h -> {
+            if (h.part() == part) listener.accept(h);
         });
     }
 
-    /** As {@link #onCollide(CgVfxCollisionListener)}, for a listener that needs nothing of the collision. */
-    public final CgVfxEffect onCollide(Runnable listener) {
-        if (listener == null) throw new IllegalArgumentException("listener");
-        return onCollide(c -> listener.run());
-    }
-
-    /** Its collision listeners, or null for none. */
-    final CgVfxCollisionListener[] collideListeners() {
-        return collideListeners;
-    }
-
     /**
-     * Reports something it struck, at {@code (x, y, z)} in world coordinates: an effect's own collision test calls it as a
-     * contact starts. Its normal {@code n} and velocity {@code v}; {@code entity} for {@link CgVfxCollision.Hit#ENTITY},
-     * else -1. Nothing when no one listens.
+     * Reports something it struck to its {@link #onHit} listeners: a query's hit, or one it makes itself. Its part
+     * ({@code CgHit.part}) is one its schema declares; nothing while it fast-forwards to its start age.
      *
      * <pre>{@code
-     * if (struck != wasStruck) collided(CgVfxCollision.Hit.ENTITY, struck, hx, hy, hz, nx, ny, nz, vx, vy, vz);
+     * if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).part(PART_BOLT).first(hit)) hit(hit);
+     * hit(burst.setPoint(bx, by, bz, PART_BURST));        // where it burst, struck by no test
      * }</pre>
      */
-    protected final void collided(CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx, float ny,
-                                  float nz, float vx, float vy, float vz) {
-        collided(null, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, 0f);
-    }
-
-    /**
-     * As {@link #collided(CgVfxCollision.Hit, int, double, double, double, float, float, float, float, float, float)}, for
-     * an effect with more than one part that strikes: which one ({@link CgHitPart}, a constant on the effect), and how
-     * far it reaches round the point (a blast's radius; 0 for a point contact).
-     *
-     * <pre>{@code
-     * collided(PART_BLAST, hit, entity, bx, by, bz, nx, ny, nz, 0f, 0f, 0f, blastRadius);
-     * }</pre>
-     */
-    protected final void collided(CgHitPart part, CgVfxCollision.Hit hit, int entity, double x, double y, double z, float nx,
-                                  float ny, float nz, float vx, float vy, float vz, float radius) {
-        if (!seeking) CgVfxCollisions.effect(this, part, hit, entity, x, y, z, nx, ny, nz, vx, vy, vz, radius);
+    protected final void hit(CgHit hit) {
+        if (seeking || hitListeners == null) return;
+        for (int i = 0; i < hitListeners.size(); i++) {
+            try {
+                hitListeners.get(i).accept(hit);
+            } catch (RuntimeException e) {
+                LOGGER.error("A hit listener of {} threw on {}", getClass().getSimpleName(), hit, e);
+            }
+        }
     }
 
     protected final void die() {

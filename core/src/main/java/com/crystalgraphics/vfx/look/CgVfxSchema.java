@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
@@ -7,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import javax.annotation.Nullable;
 
 /**
  * The parameters one kind of effect reads, each with a built-in default: what its {@link CgVfxLook}s fill in and what
@@ -31,6 +33,7 @@ public final class CgVfxSchema {
     // Curves and shakes, by a parameter's offset.
     private final List<Object> objects = new ArrayList<>();
     private final List<CgNetField<?>> networked = new ArrayList<>();
+    private final List<CgHitPart> parts = new ArrayList<>();
 
     public CgVfxParam scalar(String name, float value) {
         CgVfxParam param = declare(name, 1);
@@ -81,6 +84,33 @@ public final class CgVfxSchema {
 
     public List<CgNetField<?>> networked() {
         return Collections.unmodifiableList(networked);
+    }
+
+    /**
+     * Declares a part of an effect of this kind that strikes: each hit it reports names its part, so a listener may hear
+     * one part alone. A cue sends a part as its place here, so declare parts as constants beside the parameters.
+     *
+     * <pre>{@code
+     * public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_ARC = SCHEMA.part("arc");
+     *
+     * bolt.onHit(Bolt.PART_ARC, h -> chain(h.entity()));
+     * }</pre>
+     */
+    public CgHitPart part(String name) {
+        CgHitPart part = CgHitPart.of(name);
+        parts.add(part);
+        return part;
+    }
+
+    /** The part declared {@code index}-th; null out of range. */
+    @Nullable
+    public CgHitPart partAt(int index) {
+        return index >= 0 && index < parts.size() ? parts.get(index) : null;
+    }
+
+    /** Where {@code part} was declared; -1 for null or another schema's. */
+    public int indexOf(@Nullable CgHitPart part) {
+        return part == null ? -1 : parts.indexOf(part);
     }
 
     /** Floats in a full set of values. */

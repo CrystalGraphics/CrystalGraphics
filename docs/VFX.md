@@ -16,7 +16,7 @@ the picture that everything else uses. After that, jump to what you need.
 5. [Looks and parameters](#5-looks-and-parameters)
 6. [Effects over the network: cues](#6-effects-over-the-network-cues)
 7. [Effects gameplay depends on: server authority](#7-effects-gameplay-depends-on-server-authority)
-8. [Collisions: what an effect strikes](#8-collisions-what-an-effect-strikes)
+8. [Hits: what an effect strikes](#8-hits-what-an-effect-strikes)
 9. [Particles](#9-particles)
 10. [Writing an effect of your own](#10-writing-an-effect-of-your-own)
 11. [Writing a particle module of your own](#11-writing-a-particle-module-of-your-own)
@@ -145,7 +145,7 @@ the server runs it as well: [§7](#7-effects-gameplay-depends-on-server-authorit
 | Anything on a playing effect (`aim`, `fire`, `stop`, `set`) | the render thread on a client; the server thread for a server's effect |
 | A cue's `send()`, `start()`, and every `Playing` method | the server thread |
 | A cue's `play()` and `predict()` | the client thread |
-| Collision listeners | called on the render thread (client) or the server thread (an authoritative effect) |
+| Hit listeners | called on the render thread (client) or the server thread (an authoritative effect) |
 
 ---
 
@@ -449,7 +449,7 @@ the server decided.
 The server runs **the same effect class** the clients play, headless against the server's world (`CgVfxAuthority`):
 
 - it decides where the effect goes and what it strikes;
-- the server hears its collisions, so you apply damage there;
+- the server hears its hits, so you apply damage there;
 - it publishes what clients must draw, and each client follows it.
 
 Unreal and Unity Netcode run one actor on both sides the same way, with its cosmetic parts off on the server.
@@ -467,8 +467,9 @@ CgEnergyWave beam = wave.effect();
 beam.hold().aim(look.x, look.y, look.z);   // key down: before its first tick
 
 // what it hits, decided here: each part its own listener
-wave.onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) stagger(c.entity()); })
-    .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
+wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.kind() == CgHit.Kind.ENTITY) stagger(h.entity()); })
+    .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
+    .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
 
 beam.aim(look.x, look.y, look.z);          // each tick, as the caster turns
 beam.set(CgEnergyWave.RADIUS, 1.2f);       // powered up: every viewer's beam widens, and the server's ray with it
@@ -478,7 +479,7 @@ beam.stop();                               // every viewer's beam fades; the bla
 
 ```java
 // client, at init: the hits the server counted, for feedback that must agree with the damage
-WAVE.onConfirmedCollide(CgEnergyWave.PART_BLAST, c -> decals.scorch(c.x(), c.y(), c.z(), c.radius()));
+WAVE.onConfirmedHit(CgEnergyWave.PART_BURST, h -> decals.scorch(h.x(), h.y(), h.z()));
 ```
 
 ### What happens each server tick
@@ -487,7 +488,7 @@ WAVE.onConfirmedCollide(CgEnergyWave.PART_BLAST, c -> decals.scorch(c.x(), c.y()
 2. The wave tests its aim against the server's world and finds where the beam ends and what entity is there.
 3. Everything that changed is written into the cue's fields and sent to every viewer at the end of the tick: where
    the beam ends, the entity it hit, the aim, hold and fire, and any number or colour set on the effect. What it
-   struck goes too, as a confirmed collision.
+   struck goes too, as a confirmed hit.
 4. Each viewer's copy homes on that end point rather than testing its own world, so every player sees the beam end
    where the server says. A viewer's wave reports the hit as an `ENTITY` with the server's id.
 
@@ -519,7 +520,7 @@ field for it, which sends only what changed. Curves and camera shakes do not tra
 | Particles | not simulated: emitters do nothing |
 | Post effects (flashes, impact frames) | not applied: the effect gets a detached volume, so its timing logic runs the same |
 | Camera shakes, moments | silent |
-| Collisions | heard only by the cue's own listeners (`wave.onCollide`), on the server thread, and sent to viewers as confirmed collisions; never heard by `CgVfx.onCollide` or the owner's |
+| Hits | heard by the effect's own listeners (`wave.onHit`), on the server thread, and sent to viewers as confirmed hits |
 
 An effect that ends when its particles finish therefore ends itself on the server.
 
@@ -551,6 +552,7 @@ public final class Bolt extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.A
         if (world().cast(bolt).at(originX, originY, originZ).along(dirX, dirY, dirZ, 64)
                 .source(following()).blocksToo().first(hit)) {
             endX = hit.x(); endY = hit.y(); endZ = hit.z();
+            hit(hit);                    // heard by onHit; on the server, confirmed to viewers
         }
     }
 
@@ -581,8 +583,8 @@ if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the fa
 - **`cue.authoritative()`** in a factory is true while the server builds its copy: one factory can configure both
   sides (`CgEnergyWave.fromCue` turns on its own collision this way).
 - **A factory reads `hasTarget()` at build time**: the first publish lands before viewers build their copy.
-- Report hits with `collided(...)` ([§8](#8-collisions-what-an-effect-strikes)); on the server they reach
-  `wave.onCollide`.
+- Report hits with `hit(...)` ([§8](#8-hits-what-an-effect-strikes)); on the server they reach
+  `wave.onHit`.
 
 ### When it never hits
 
@@ -594,96 +596,97 @@ if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the fa
 
 ---
 
-## 8. Collisions: what an effect strikes
+## 8. Hits: what an effect strikes
 
-Everything an effect or its particles strike reaches one listener type, `CgVfxCollisionListener`, at whichever scope
-you need:
+An effect strikes through the collision engine (`com.crystalgraphics.collision`): the queries it makes through
+`world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
 
 ```java
-// One effect: a wave that finds its own target
 CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(playerId, HANDS_FORWARD).collide());
-wave.onCollide(c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) flash(c.entity()); });
-
-// Every effect of your mod, particles included: scorch marks wherever anything lands on a block
-CgVfxCollision.Registration scorch = VFX.onCollide(c -> {
-    if (c.hit() == CgVfxCollision.Hit.BLOCK) decals.scorch(c.x(), c.y(), c.z(), c.nx(), c.ny(), c.nz());
-});
-scorch.close();   // stop listening
-
-// Every effect of every mod
-CgVfx.onCollide(listener);
+wave.onHit(h -> { if (h.kind() == CgHit.Kind.ENTITY) flash(h.entity()); });
 ```
 
 ### Parts
 
-An effect with more than one thing that strikes names each as a **part** (`CgHitPart`): the Kamehameha's beam
-contact is `CgEnergyWave.PART_BEAM`, its explosion `PART_BLAST`. Subscribe to a part and hear it alone:
+An effect with more than one thing that strikes declares each as a **part** on its schema (`SCHEMA.part("beam")`), and
+every hit names its part. Subscribe to a part and hear it alone:
 
 ```java
-wave.onCollide(CgEnergyWave.PART_BEAM, c -> flash(c.entity()))
-    .onCollide(CgEnergyWave.PART_BLAST, c -> shatter(c.x(), c.y(), c.z(), c.radius()));
+wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()))
+    .onHit(CgEnergyWave.PART_BURST, h -> shatter(h.x(), h.y(), h.z(), wave.blastRadius()))
+    .onHit(CgEnergyWave.PART_BLAST, h -> knockBack(h.entity()));
 ```
 
-A listener on the whole effect hears every part, and `c.part()` says which (compare with `==`).
+A listener on the whole effect hears every part, and `h.part()` says which (compare with `==`).
 
-Each `CgVfxCollision` says:
+Each `CgHit` says:
 
 | Field | Meaning |
 |---|---|
-| `source()` | `EFFECT` (the effect's own test) or `PARTICLE` |
-| `hit()` | `BLOCK`, `ENTITY`, `GROUND`, `SCENE`, `SHAPE`, `TARGET` (reached the point it was aimed at), `OTHER` |
-| `entity()` | the entity's id, or -1 |
-| `x() y() z()`, `nx() ny() nz()` | where, and the surface normal |
-| `part()` | which part struck, for an effect with several (`CgEnergyWave.PART_BEAM`, `PART_BLAST`); null otherwise |
-| `radius()` | how far an area hit reaches (the blast) |
+| `kind()` | `ENTITY`, `BLOCK`, `FLUID`, `UNLOADED` (the edge of what is loaded), `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
+| `entity()`, `parent()` | the entity met, and the whole one for a part of a multipart entity; -1 otherwise |
+| `blockX() blockY() blockZ()` | the block met |
+| `x() y() z()` | where |
+| `normalX() normalY() normalZ()`, `distance()` | from the query toward what it met, and how far it travelled; 0 on a confirmed hit |
+| `part()` | which part struck |
 
-- **Order**: the effect's listeners, then its owner's, then `CgVfx.onCollide`'s. The event is valid only during the
-  call: copy what you keep.
-- **An effect reports a contact as it starts**, and again when what it strikes changes, never every tick.
-- **Particles report only from emitters that ask**, and a few frames late (they come back from the GPU), possibly
-  after their effect died:
+- **The hit is valid during the call**: copy what you keep (`new CgHit().set(h)`).
+- **An effect reports a contact as it starts**, and again when what it strikes changes, never every tick. A hitbox hits
+  each target once.
+- **Listeners hear on the thread the effect ticks on**: the render thread, or the server thread for an authoritative
+  copy. One that throws is logged and the others still hear.
+- **The Kamehameha** reports `PART_BEAM` as its head reaches what it hits, `PART_BURST` once where it bursts after its
+  impact frame (the block the beam last met, else a `POINT`), then `PART_BLAST` for each entity as its shock front
+  reaches it, out to `blastRadius()`.
 
-  ```java
-  .module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
-  .module(new CgVfxModule.CollideEntities(0.3f, 0.4f, 0.4f, 0.5f))
-  .reportCollisions(32)   // at most 32 rows a step, shared by every effect playing this emitter
-  ```
+### Particles
 
-  A landing an emitter reports (`onLanding().readback(n)`) is heard as `GROUND`.
+A particle's contact is not a hit: it happens on the GPU, comes back a few frames late, and only on a client. An emitter
+that wants its contacts reports them as an event, and a system listener hears the rows, each tagged with the effect whose
+particle it was (`rows.owner(i)`):
 
-- **Particle collisions are client-side only**: never base gameplay on them ([§13](#do-particles-and-post-effects-need-the-server)).
-- **The Kamehameha** reports `PART_BEAM` when its head reaches what it hits, then `PART_BLAST` once as the explosion
-  bursts, with the blast's radius. Damage the contact, the blast, or both.
+```java
+.module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
+.event(CgVfxEvent.onCollision().readback(32))   // at most 32 rows a step, shared by every effect playing this emitter
+
+CgVfx.world().onEvents((definition, event, rows) -> {   // render thread
+    for (int i = 0; i < rows.count(); i++) {
+        if (rows.hit(i) == CgVfxEventRows.HIT_BLOCK) decals.scorch(rows.x(i), rows.y(i), rows.z(i));
+    }
+});
+```
+
+Never base gameplay on them ([§13](#do-particles-and-post-effects-need-the-server)).
 
 ### Damage on the server, sparks on every client
 
-What the server's copy strikes reaches every viewer as a **confirmed collision**, the same event the server heard:
+What the server's copy strikes reaches every viewer as a **confirmed hit**: what was met, the point and the part.
 
 ```java
 // server
 WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start()
-        .onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) damage(c.entity()); });
+        .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
 
 // client, at init
-WAVE.onConfirmedCollide(CgEnergyWave.PART_BEAM, c -> VFX.play(new CgVfxBurst(SPARKS, c.x(), c.y(), c.z())));
+WAVE.onConfirmedHit(CgEnergyWave.PART_BLAST, h -> VFX.play(new CgVfxBurst(SPARKS, h.x(), h.y(), h.z())));
 ```
 
-A confirmed collision arrives a network trip after the server's. For feedback timed to what this client draws, listen
-to the viewer's own copy instead: the factory builds both copies, and `cue.authoritative()` tells them apart.
+A confirmed hit arrives a network trip after the server's. For feedback timed to what this client draws, listen to the
+viewer's own copy instead: the factory builds both copies, and `cue.authoritative()` tells them apart.
 
 ```java
 public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
     CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
-    if (!cue.authoritative()) wave.onCollide(CgEnergyWave.PART_BEAM, c -> flash(c.x(), c.y(), c.z()));   // each viewer
+    if (!cue.authoritative()) wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()));   // each viewer
     return wave;
 }).range(96).authoritative().build();
 ```
 
 - **Both land where the damage does**: a viewer's copy reports where the server published the beam ending.
-- **A late joiner gets no sparks for hits it missed**: collisions are silent while an effect fast-forwards to its age.
+- **A late joiner gets no sparks for hits it missed**: hits are silent while an effect fast-forwards to its age.
 - **An effect of your own** can start the emitter itself when it reports the contact, with no listener at all.
 - **A visual that depends on the outcome** (blocked, a critical hit, a kill) is something only the server knows: send
-  a one-off cue from the server's listener instead, `HIT.at(level, c.x(), c.y(), c.z()).send()`.
+  a one-off cue from the server's listener instead, `HIT.at(level, h.x(), h.y(), h.z()).send()`.
 
 ---
 
@@ -882,18 +885,22 @@ moment("impact", hitX, hitY, hitZ, radius);          // a named point in its lif
 
 ### Reporting what it hits
 
-```java
-collided(CgVfxCollision.Hit.BLOCK, -1, x, y, z, nx, ny, nz, vx, vy, vz);
+Test the world through `world()`, which is each side's own ([§7](#making-your-own-effect-authoritative)), and report
+what counts; or give the effect a hitbox, whose hits are reported for it:
 
-// an effect with several parts that strike declares each once, and reports through it
-public static final CgHitPart PART_BOLT = CgHitPart.of("bolt"), PART_BURST = CgHitPart.of("burst");
-collided(PART_BURST, CgVfxCollision.Hit.OTHER, -1, x, y, z, 0f, 1f, 0f, 0f, 0f, 0f, burstRadius);
+```java
+public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_BURST = SCHEMA.part("burst"),
+        PART_ARC = SCHEMA.part("arc");
+
+// a query's hit, labelled with its part
+if (world().ray().at(x, y, z).along(dx, dy, dz, 32).part(PART_BOLT).blocksToo().first(hit)) hit(hit);
+hit(burst.setPoint(bx, by, bz, PART_BURST));       // struck by no test: where it burst
+
+// a hitbox it owns: ticked with it, stopped when it dies
+hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).activeFor(4).source(following());
 ```
 
 Listeners then subscribe to a part ([§8](#parts)).
-
-Test the world through `world()`, which works on both sides ([§7](#making-your-own-effect-authoritative)), or give
-the effect a `hitbox(part, shape)`, which reports each entity it meets on that part.
 
 ### Taking cue changes
 
@@ -991,22 +998,21 @@ Only if its cue is declared `authoritative()` and started with `start()`. Then t
 cue, with the same factory as clients, and steps it every server tick on the client's 120 Hz clock (six steps a tick).
 It is never drawn; it decides and publishes ([§7](#what-happens-each-server-tick)).
 
-### Do collision events run on the server?
+### Do hits run on the server?
 
-Only an authoritative effect's own, and only for its own listeners. Each side hears its own copy's collisions, and
-the server's travel to viewers as confirmed collisions.
+Only an authoritative effect's. Each side hears its own copy's hits, and the server's travel to viewers as confirmed
+hits.
 
-| Collision | Server | Each client |
+| Hit | Server | Each client |
 |---|---|---|
-| An authoritative effect's (`PART_BEAM`, `PART_BLAST`) | yes: `playing.onCollide` / the effect's `onCollide`, on the server thread. **Apply gameplay here** | the server's, confirmed: `cue.onConfirmedCollide`. And its own copy's: the effect's, the owner's and `CgVfx.onCollide` listeners, on the render thread. Cosmetic: decals, sounds |
+| An authoritative effect's (`PART_BEAM`, `PART_BURST`, `PART_BLAST`) | yes: `playing.onHit` / the effect's `onHit`, on the server thread. **Apply gameplay here** | the server's, confirmed: `cue.onConfirmedHit`. And its own copy's, through listeners the factory gave it, on the render thread. Cosmetic: decals, sounds |
 | A plain cue's, or a locally played effect's | never | yes, its own copy's; each client decides for itself |
-| A particle's | never | yes, a few frames late, from the GPU |
+| A particle's contact | never | yes, a few frames late, from the GPU, as an event row ([§8](#particles)) |
 
-- **A client's collisions never reach the server.** A viewer's copy reports where the server published the beam
-  ending, so it agrees with the confirmed one: `ENTITY` with the server's entity id, or `TARGET` where it struck
-  nothing.
-- **`CgVfx.onCollide` and an owner's `onCollide` never hear the server's copy**, so a client-side listener
-  (a scorch decal) never fires twice in singleplayer, where both copies run in one process.
+- **A client's hits never reach the server.** A viewer's copy reports where the server published the beam ending, so
+  it agrees with the confirmed one: an `ENTITY` with the server's entity id, or a `POINT` where it struck nothing.
+- **In singleplayer both copies run in one process**: a listener the factory gives only the viewer's copy
+  (`!cue.authoritative()`) fires once.
 - Damage on the server and an emitter on each client, for one cue: [§8](#damage-on-the-server-sparks-on-every-client).
 
 ### What shape does an effect hit with?
@@ -1017,17 +1023,19 @@ The built-in ones:
 | What | Shape | Against |
 |---|---|---|
 | The wave's beam (`PART_BEAM`) | a sphere of `RADIUS` cast from the muzzle along the aim, out to `MAX_LENGTH` | blocks and entity boxes. The first thing met stops it: it does not pierce. The caster is skipped |
-| The wave's blast (`PART_BLAST`) | one event at the impact point carrying a radius (`RADIUS` × `BLAST_RADIUS`), then a shell hitbox expanding out to that radius | each entity once, as the front passes it |
+| The wave's burst (`PART_BURST`) | no test: one hit where it bursts | the block the beam last met, else a `POINT` |
+| The wave's blast (`PART_BLAST`) | a shell hitbox expanding out to `blastRadius()` (`RADIUS` × `BLAST_RADIUS`) | each entity once, as the front passes it. The caster is skipped |
 | Shock fronts, rings, dust | none: drawn only | — |
 | Particles (`CollideEntities`) | each particle a point | the boxes of the 64 living entities nearest the camera; client only, cosmetic |
 
 - The beam is reported when its head *reaches* the point, so the hit lands as the beam visibly arrives.
 - On the server the beam tests once a server tick, against entity boxes at that tick's positions.
-- **An area hit is your listener's**: query the entities within `c.radius()` of `c.x(), c.y(), c.z()`, then apply
-  falloff and line of sight as your game needs:
+- **Damage of your own shape** goes on the burst: query from its point, with the falloff and line of sight your
+  game needs:
 
   ```java
-  wave.onCollide(CgEnergyWave.PART_BLAST, c -> damageWithin(c.x(), c.y(), c.z(), c.radius()));   // your game's
+  wave.onHit(CgEnergyWave.PART_BURST, h -> CgCollisionWorld.of(level).overlap(CgSphere.of(wave.blastRadius()))
+          .at(h.x(), h.y(), h.z()).exposure().forEach(e -> damage(e.entity(), 20f * e.falloff(2, wave.blastRadius()))));
   ```
 
 ### If I change a parameter on the server's effect, do all clients see it?
@@ -1045,8 +1053,9 @@ Roughly 50 µs per authoritative Kamehameha per tick: hundreds are fine, a thous
 No, and they never touch it. They are an extension of the effect: each client works them out from the effect's state
 (published by the server) and the seed, which every client shares. Three rules keep that true:
 
-1. **Nothing gameplay depends on lives in particles.** A particle's collision is a client-side GPU readback the server
-   never hears. Damage comes from the effect's own collisions (`PART_BEAM`, `PART_BLAST`) or logic the server runs.
+1. **Nothing gameplay depends on lives in particles.** A particle's contact is a client-side GPU readback the server
+   never hears. Damage comes from the effect's own hits (`PART_BEAM`, `PART_BURST`, `PART_BLAST`) or logic the server
+   runs.
 2. **Everything that shapes the visuals reaches clients through the cue**: the published state and parameters. Server
    logic that changes something visible without publishing it makes clients drift.
 3. **Small differences between clients are fine**: each client's particles collide with its own loaded world, and a
@@ -1102,7 +1111,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-modules` (one station per module), `vfx-blasts` (360,000 particles), `vfx-spheres-stress`.
 
-Unit tests for the network and server side: `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxCollisionsTest`,
+Unit tests for the network and server side: `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`,
 `CgVfxOwnerTest`, `CgVfxStartAtTest` (`./gradlew :core:test --tests "<class>"`).
 
 Profiling (`docs/PROFILING.md`), trace channel `crystalgraphics.vfx`: zones `vfx.tick`, `vfx.emitters.workers`,

@@ -12,7 +12,6 @@ import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
-import com.crystalgraphics.vfx.CgVfxCollision;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
@@ -63,7 +62,7 @@ public class CgVfxCueTest {
     private static final CgVfxCue SEEKER = CgVfxCue.define("cue_test:seeker", LOOK, (look, cue) -> {
         if (cue.hasTarget()) SEEN.add(new double[]{cue.tx(), cue.ty(), cue.tz(), cue.struck()});   // published before it was seen
         return new Seeker(cue.x(), cue.y(), cue.z());
-    }).authoritative().build().onConfirmedCollide(c -> CONFIRMED.add(c.hit() + " at y " + Math.round(c.y())));
+    }).authoritative().build().onConfirmedHit(h -> CONFIRMED.add(h.kind() + " at y " + Math.round(h.y())));
     private static final CgVfxCue WAVE = CgVfxCue.define("cue_test:wave", CgEnergyWave.kamehameha(), (look, cue) -> {
         CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
         if (!cue.authoritative()) {
@@ -111,7 +110,7 @@ public class CgVfxCueTest {
                 endX = hit.x();
                 endY = hit.y();
                 endZ = hit.z();
-                collided(CgVfxCollision.Hit.BLOCK, -1, endX, endY, endZ, 0f, 1f, 0f, 0f, 0f, 0f);
+                hit(hit);
             }
         }
 
@@ -392,7 +391,7 @@ public class CgVfxCueTest {
         join();
         List<String> heard = new ArrayList<>();
         CgVfxCue.Playing playing = SEEKER.at(body, 2, 64, 3).toward(0, -1, 0).start();
-        playing.onCollide(c -> heard.add(c.hit() + " at y " + Math.round(c.y()) + " on " + Thread.currentThread().getName()));
+        playing.onHit(h -> heard.add(h.kind() + " at y " + Math.round(h.y()) + " on " + Thread.currentThread().getName()));
         settle();
 
         String thread = Thread.currentThread().getName();
@@ -458,7 +457,7 @@ public class CgVfxCueTest {
 
     @Test(expected = IllegalStateException.class)
     public void hearingNeedsAnAuthority() {
-        SPARK.at(body, 0, 64, 0).start().onCollide(c -> { });
+        SPARK.at(body, 0, 64, 0).start().onHit(h -> { });
     }
 
     @Test
@@ -467,7 +466,7 @@ public class CgVfxCueTest {
         CgVfxSystem vfx = new CgVfxSystem();
         CgEnergyWave wave = CgVfx.owner("cue_test", vfx).play(CgEnergyWave.fromCue(CgEnergyWave.kamehameha(), cue));
         List<String> heard = new ArrayList<>();
-        wave.onCollide(c -> heard.add(c.part() + " " + c.hit() + " " + c.entity()));
+        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entity()));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);
 
         assertEquals(List.of("beam ENTITY 42"), heard);

@@ -1251,7 +1251,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     /**
      * The entities round the camera (mobs, players; not items or projectiles), with {@link Collide}'s response at the
      * face of the box a particle entered, on screen or not. A particle strikes a box only on entering it, so one born
-     * inside its caster flies out; its collision events carry the entity ({@code CgVfxCollision.entity}). The CPU path
+     * inside its caster flies out; its collision events carry the entity ({@code CgVfxEventRows.entity}). The CPU path
      * skips it. Runs after the solver.
      *
      * <pre>{@code

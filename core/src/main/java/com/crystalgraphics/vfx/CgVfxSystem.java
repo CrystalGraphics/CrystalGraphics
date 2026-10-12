@@ -214,10 +214,6 @@ public final class CgVfxSystem {
     private final List<CgVfxEffect> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
-
-    {
-        CgVfxCollisions.install();
-    }
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
     private final CgVfxTube tube = new CgVfxTube();
     private final CgVfxFrame frame = new CgVfxFrame(this);
