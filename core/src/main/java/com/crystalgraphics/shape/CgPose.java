@@ -160,6 +160,25 @@ public final class CgPose {
         return m22;
     }
 
+    /**
+     * A pose given in this one's space, into the world: where a compound's child is when the compound is here.
+     * {@code out} may be either argument.
+     *
+     * <pre>{@code
+     * pose.mul(compound.pose(i, child), placed);           // child i of a compound placed at pose
+     * }</pre>
+     */
+    public CgPose mul(CgPose child, CgPose out) {
+        double px = m00 * child.x + m01 * child.y + m02 * child.z + x;
+        double py = m10 * child.x + m11 * child.y + m12 * child.z + y;
+        double pz = m20 * child.x + m21 * child.y + m22 * child.z + z;
+        double nx = qw * child.qx + qx * child.qw + qy * child.qz - qz * child.qy;
+        double ny = qw * child.qy - qx * child.qz + qy * child.qw + qz * child.qx;
+        double nz = qw * child.qz + qx * child.qy - qy * child.qx + qz * child.qw;
+        double nw = qw * child.qw - qx * child.qx - qy * child.qy - qz * child.qz;
+        return out.at(px, py, pz).rotation(nx, ny, nz, nw);
+    }
+
     public Quaterniond rotation(Quaterniond out) {
         return out.set(qx, qy, qz, qw);
     }
