@@ -101,6 +101,21 @@ public class CgCollisionWorld {
         return new CgShapeWorld();
     }
 
+    /** The blocks it asks: {@code CgWorldQuery.NONE} for a world of shapes. */
+    public CgWorldQuery blocks() {
+        return world;
+    }
+
+    /** The entities it asks: {@code CgEntityQuery.NONE} for a world of shapes. */
+    public CgEntityQuery entities() {
+        return entities;
+    }
+
+    /** Where between ticks it reads entities: 1 at the tick's positions. */
+    public float partialTick() {
+        return partialTick;
+    }
+
     /** What {@code shape} overlaps, placed by {@link CgQuery#at} and {@link CgQuery#facing}. */
     public CgQuery overlap(CgShape shape) {
         return next().start(CgQuery.OVERLAP, Objects.requireNonNull(shape), null);
