@@ -1,9 +1,12 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
+import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.IEntityMultiPart;
 import net.minecraft.entity.IProjectile;
+import net.minecraft.entity.boss.EntityDragonPart;
 import net.minecraft.entity.item.EntityBoat;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.item.EntityMinecart;
@@ -13,6 +16,7 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.World;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntConsumer;
 
@@ -22,15 +26,24 @@ import java.util.function.IntConsumer;
  * level's thread.
  *
  * <ul>
- *   <li>No entity swims or glides on this version.</li>
- *   <li>{@link #within} walks the level's own box query: a list per call.</li>
+ *   <li>No entity swims or glides on this version, and no player spectates.</li>
+ *   <li>{@link #within} walks the level's own box query, parts included: a list per call.</li>
+ *   <li>A part's id resolves on a server, which lists parts by id; on a client, through the last parts {@link #within}
+ *       handed out.</li>
  * </ul>
  */
 public class LevelEntityQuery1710 implements CgEntityQuery {
 
     private static final double PLAYER_EYE = 1.62;
+    /** Parts {@link #within} handed out, overwritten in turn: what a part's id resolves through on a client. */
+    private static final int PARTS = 16;
 
     private final World bound;
+    /** The box {@link #within} asks with: 1.7.10's boxes are mutable. */
+    private final AxisAlignedBB query = AxisAlignedBB.getBoundingBox(0, 0, 0, 0, 0, 0);
+    private final Entity[] parts = new Entity[PARTS];
+    private int nextPart;
+    private World partsWorld;
 
     LevelEntityQuery1710(World bound) {
         this.bound = bound;
@@ -58,7 +71,46 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
 
     Entity entity(int id) {
         World world = world();
-        return world == null || id < 0 ? null : world.getEntityByID(id);
+        if (world == null || id < 0) return null;
+        Entity e = world.getEntityByID(id);
+        return e != null ? e : rememberedPart(world, id);
+    }
+
+    private Entity rememberedPart(World world, int id) {
+        if (world != partsWorld) return null;
+        for (int i = 0; i < PARTS; i++) {
+            Entity p = parts[i];
+            if (p == null || p.getEntityId() != id) continue;
+            Entity parent = parentOf(p);
+            if (parent == p ? p.isEntityAlive() : world.getEntityByID(parent.getEntityId()) == parent) return p;
+            parts[i] = null;
+            return null;
+        }
+        return null;
+    }
+
+    /** Hands {@code e} to {@code visitor}, first remembering it if it is a part the level cannot find by id. */
+    void visit(World world, Entity e, IntConsumer visitor) {
+        int id = e.getEntityId();
+        if (world.getEntityByID(id) != e) remember(world, e);
+        visitor.accept(id);
+    }
+
+    private void remember(World world, Entity part) {
+        if (world != partsWorld) {
+            Arrays.fill(parts, null);
+            partsWorld = world;
+        }
+        for (Entity p : parts) {
+            if (p == part) return;
+        }
+        parts[nextPart] = part;
+        nextPart = (nextPart + 1) % PARTS;
+    }
+
+    private static Entity parentOf(Entity e) {
+        IEntityMultiPart parent = e instanceof EntityDragonPart ? ((EntityDragonPart) e).entityDragonObj : null;
+        return parent instanceof Entity ? (Entity) parent : e;
     }
 
     @Override
@@ -105,13 +157,42 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
     }
 
     @Override
+    public boolean box(int id, float partialTick, CgBoxSink out) {
+        Entity e = entity(id);
+        if (e == null) return false;
+        // the box where it is drawn: moved back by what the tick has yet to cover
+        double dx = (e.lastTickPosX - e.posX) * (1 - partialTick), dy = (e.lastTickPosY - e.posY) * (1 - partialTick);
+        double dz = (e.lastTickPosZ - e.posZ) * (1 - partialTick);
+        AxisAlignedBB b = e.boundingBox;
+        out.set(b.minX + dx, b.minY + dy, b.minZ + dz, b.maxX + dx, b.maxY + dy, b.maxZ + dz);
+        return true;
+    }
+
+    @Override
+    public int parent(int id) {
+        Entity e = entity(id);
+        return e == null ? -1 : parentOf(e).getEntityId();
+    }
+
+    @Override
+    public int rootVehicle(int id) {
+        Entity e = entity(id);
+        if (e == null) return -1;
+        while (e.ridingEntity != null) e = e.ridingEntity;
+        return e.getEntityId();
+    }
+
+    @Override
     public int flags(int id) {
         Entity e = entity(id);
         if (e == null) return 0;
         int f = 0;
         if (e.isEntityAlive()) f |= ALIVE;
         if (e instanceof EntityLivingBase) f |= LIVING;
-        if (e instanceof EntityPlayer) f |= PLAYER;
+        if (e instanceof EntityPlayer) {
+            f |= PLAYER;
+            if (((EntityPlayer) e).capabilities.disableDamage) f |= INVULNERABLE;
+        }
         if (isLocal(e)) f |= LOCAL_PLAYER;
         if (e.onGround) f |= ON_GROUND;
         if (e.isSneaking()) f |= SNEAKING;
@@ -119,6 +200,9 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         if (e.isInWater()) f |= IN_WATER;
         if (e.isBurning()) f |= ON_FIRE;
         if (e.isInvisible()) f |= INVISIBLE;
+        if (e.canBeCollidedWith()) f |= PICKABLE;
+        if (e.canAttackWithItem()) f |= ATTACKABLE;
+        if (e.isEntityInvulnerable()) f |= INVULNERABLE;
         return f;
     }
 
@@ -140,7 +224,7 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         World world = world();
         if (world == null) return;
         List<Entity> found = world.getEntitiesWithinAABBExcludingEntity(null,
-                AxisAlignedBB.getBoundingBox(minX, minY, minZ, maxX, maxY, maxZ));
-        for (int i = 0; i < found.size(); i++) visitor.accept(found.get(i).getEntityId());
+                query.setBounds(minX, minY, minZ, maxX, maxY, maxZ));
+        for (int i = 0; i < found.size(); i++) visit(world, found.get(i), visitor);
     }
 }

@@ -1,6 +1,7 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import org.junit.Test;
@@ -111,6 +112,9 @@ public class CgWorldQueriesTest {
         }
         @Override public int flags(int id) { return id == 4 ? 0 : ALIVE | LIVING; }
         @Override public int kind(int id) { return id == 3 ? KIND_ITEM : id == 1 ? KIND_PLAYER : KIND_MONSTER; }
+        @Override public boolean box(int id, float partialTick, CgBoxSink out) { return false; }
+        @Override public int parent(int id) { return id; }
+        @Override public int rootVehicle(int id) { return id; }
         @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                      IntConsumer visitor) {
             for (int id = 1; id < AT.length; id++) {

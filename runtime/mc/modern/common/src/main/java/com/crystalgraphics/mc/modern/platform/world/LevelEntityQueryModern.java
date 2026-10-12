@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -19,23 +20,54 @@ import net.minecraft.world.entity.vehicle.Boat;
 //? if >=1.14 {
 import net.minecraft.world.phys.Vec3;
 //?}
+//? if >=1.21.11 {
+/*import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
+*///?} elif >=1.14 {
+import net.minecraft.world.entity.boss.EnderDragonPart;
+//?}
+//? if >=1.17 {
+import net.minecraft.server.level.ServerLevel;
+//?}
+//? if >=1.19.3 {
+import net.minecraft.world.level.entity.EntityTypeTest;
+//?}
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
 
 /**
  * {@link CgEntityQuery} over one level, 1.13.2 to 26.3, a server's included. Server-safe; {@link LevelQueriesModern}
- * hands one out per level, and the client's {@link EntityQueryModern} extends it with its local and camera entity and
- * its render list. The level's thread.
+ * hands one out per level, and the client's {@link EntityQueryModern} extends it with its local and camera entity. The
+ * level's thread.
  *
  * <ul>
- *   <li>1.13.2 answers no velocity (zero).</li>
+ *   <li>1.13.2 answers no velocity (zero), and a dragon part is its own parent there: its class has no name to
+ *       import.</li>
  *   <li>Vehicles are minecarts and boats, as Minecraft's own vehicle class has them from 1.20.3.</li>
- *   <li>{@link #within} walks the level's own box query: a list per call.</li>
+ *   <li>{@link #within} walks the level's own box query, parts included: into a reused list from 1.19.3, a list per
+ *       call before.</li>
+ *   <li>A part's id resolves through {@code getEntityOrPart} on a 1.17+ server; anywhere else, through the last parts
+ *       {@link #within} handed out. A modded part entity is its own parent: its parent is loader API.</li>
  * </ul>
  */
 public class LevelEntityQueryModern implements CgEntityQuery {
 
+    private static final Predicate<Entity> ANY = e -> true;
+    //? if >=1.19.3 {
+    private static final EntityTypeTest<Entity, Entity> ALL = EntityTypeTest.forClass(Entity.class);
+    //?}
+    /** Parts {@link #within} handed out, overwritten in turn: what a part's id resolves through off a server. */
+    private static final int PARTS = 16;
+
     private final Level bound;
+    private final List<Entity> found = new ArrayList<>();
+    private boolean walking;
+    private final Entity[] parts = new Entity[PARTS];
+    private int nextPart;
+    private Level partsLevel;
 
     LevelEntityQueryModern(Level bound) {
         this.bound = bound;
@@ -63,7 +95,48 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     Entity entity(int id) {
         Level level = level();
-        return level == null || id < 0 ? null : level.getEntity(id);
+        if (level == null || id < 0) return null;
+        Entity e = level.getEntity(id);
+        if (e != null) return e;
+        //? if >=1.17 {
+        if (level instanceof ServerLevel) {
+            e = ((ServerLevel) level).getEntityOrPart(id);
+            if (e != null) return e;
+        }
+        //?}
+        return rememberedPart(level, id);
+    }
+
+    private Entity rememberedPart(Level level, int id) {
+        if (level != partsLevel) return null;
+        for (int i = 0; i < PARTS; i++) {
+            Entity p = parts[i];
+            if (p == null || p.getId() != id) continue;
+            Entity parent = parentOf(p);
+            if (parent == p ? p.isAlive() : level.getEntity(parent.getId()) == parent) return p;
+            parts[i] = null;
+            return null;
+        }
+        return null;
+    }
+
+    private void remember(Level level, Entity part) {
+        if (level != partsLevel) {
+            Arrays.fill(parts, null);
+            partsLevel = level;
+        }
+        for (Entity p : parts) {
+            if (p == part) return;
+        }
+        parts[nextPart] = part;
+        nextPart = (nextPart + 1) % PARTS;
+    }
+
+    private static Entity parentOf(Entity e) {
+        //? if >=1.14 {
+        if (e instanceof EnderDragonPart) return ((EnderDragonPart) e).parentMob;
+        //?}
+        return e;
     }
 
     @Override
@@ -123,6 +196,35 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     }
 
     @Override
+    public boolean box(int id, float partialTick, CgBoxSink out) {
+        Entity e = entity(id);
+        if (e == null) return false;
+        //? if >=1.15 {
+        double x = e.getX(), y = e.getY(), z = e.getZ();
+        //?} else {
+        /*double x = e.x, y = e.y, z = e.z;
+        *///?}
+        // the box where it is drawn: moved back by what the tick has yet to cover
+        double dx = (e.xo - x) * (1 - partialTick), dy = (e.yo - y) * (1 - partialTick);
+        double dz = (e.zo - z) * (1 - partialTick);
+        AABB b = e.getBoundingBox();
+        out.set(b.minX + dx, b.minY + dy, b.minZ + dz, b.maxX + dx, b.maxY + dy, b.maxZ + dz);
+        return true;
+    }
+
+    @Override
+    public int parent(int id) {
+        Entity e = entity(id);
+        return e == null ? -1 : parentOf(e).getId();
+    }
+
+    @Override
+    public int rootVehicle(int id) {
+        Entity e = entity(id);
+        return e == null ? -1 : e.getRootVehicle().getId();
+    }
+
+    @Override
     public int flags(int id) {
         Entity e = entity(id);
         if (e == null) return 0;
@@ -132,7 +234,16 @@ public class LevelEntityQueryModern implements CgEntityQuery {
             f |= LIVING;
             if (((LivingEntity) e).isFallFlying()) f |= GLIDING;
         }
-        if (e instanceof Player) f |= PLAYER;
+        if (e instanceof Player) {
+            Player p = (Player) e;
+            f |= PLAYER;
+            if (p.isSpectator()) f |= SPECTATOR;
+            //? if >=1.17 {
+            if (p.getAbilities().invulnerable) f |= INVULNERABLE;
+            //?} else {
+            /*if (p.abilities.invulnerable) f |= INVULNERABLE;
+            *///?}
+        }
         if (isLocal(e)) f |= LOCAL_PLAYER;
         //? if >=1.20 {
         if (e.onGround()) f |= ON_GROUND;
@@ -151,6 +262,9 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         if (e.isInWater()) f |= IN_WATER;
         if (e.isOnFire()) f |= ON_FIRE;
         if (e.isInvisible()) f |= INVISIBLE;
+        if (e.isPickable()) f |= PICKABLE;
+        if (e.isAttackable()) f |= ATTACKABLE;
+        if (e.isInvulnerable()) f |= INVULNERABLE;
         return f;
     }
 
@@ -174,8 +288,30 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, IntConsumer visitor) {
         Level level = level();
         if (level == null) return;
-        for (Entity e : level.getEntities((Entity) null, new AABB(minX, minY, minZ, maxX, maxY, maxZ))) {
-            visitor.accept(e.getId());
+        AABB box = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+        //? if >=1.19.3 {
+        // a visitor asking again, from inside this walk, gets a list of its own
+        List<Entity> list = walking ? new ArrayList<>() : found;
+        boolean outer = !walking;
+        walking = true;
+        try {
+            level.getEntities(ALL, box, ANY, list);
+            visit(level, list, visitor);
+        } finally {
+            list.clear();
+            if (outer) walking = false;
+        }
+        //?} else {
+        /*visit(level, level.getEntities((Entity) null, box, ANY), visitor);
+        *///?}
+    }
+
+    private void visit(Level level, List<Entity> list, IntConsumer visitor) {
+        for (int i = 0; i < list.size(); i++) {
+            Entity e = list.get(i);
+            int id = e.getId();
+            if (level.getEntity(id) != e) remember(level, e);
+            visitor.accept(id);
         }
     }
 }

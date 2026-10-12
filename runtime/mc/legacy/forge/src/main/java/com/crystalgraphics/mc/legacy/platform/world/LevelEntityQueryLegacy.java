@@ -1,8 +1,10 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
+import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import net.minecraft.entity.IEntityMultiPart;
 import net.minecraft.entity.IProjectile;
 import net.minecraft.entity.item.EntityBoat;
 import net.minecraft.entity.item.EntityItem;
@@ -10,13 +12,20 @@ import net.minecraft.entity.item.EntityMinecart;
 import net.minecraft.entity.monster.IMob;
 import net.minecraft.entity.passive.EntityAnimal;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
+//? if >=1.12 {
+import net.minecraft.entity.MultiPartEntityPart;
+//?} else {
+/*import net.minecraft.entity.boss.EntityDragonPart;
+*///?}
 //? if >=1.9 {
 import net.minecraft.util.math.AxisAlignedBB;
 //?} else {
 /*import net.minecraft.util.AxisAlignedBB;
 *///?}
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntConsumer;
 
@@ -27,12 +36,20 @@ import java.util.function.IntConsumer;
  *
  * <ul>
  *   <li>No entity swims before 1.13, and none glides before 1.9.</li>
- *   <li>{@link #within} walks the level's own box query: a list per call.</li>
+ *   <li>{@link #within} walks the level's own box query, parts included: a list per call.</li>
+ *   <li>A part's id resolves on a server, which lists parts by id; on a client, through the last parts {@link #within}
+ *       handed out.</li>
  * </ul>
  */
 public class LevelEntityQueryLegacy implements CgEntityQuery {
 
+    /** Parts {@link #within} handed out, overwritten in turn: what a part's id resolves through on a client. */
+    private static final int PARTS = 16;
+
     private final World bound;
+    private final Entity[] parts = new Entity[PARTS];
+    private int nextPart;
+    private World partsWorld;
 
     LevelEntityQueryLegacy(World bound) {
         this.bound = bound;
@@ -60,7 +77,50 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     Entity entity(int id) {
         World world = world();
-        return world == null || id < 0 ? null : world.getEntityByID(id);
+        if (world == null || id < 0) return null;
+        Entity e = world.getEntityByID(id);
+        return e != null ? e : rememberedPart(world, id);
+    }
+
+    private Entity rememberedPart(World world, int id) {
+        if (world != partsWorld) return null;
+        for (int i = 0; i < PARTS; i++) {
+            Entity p = parts[i];
+            if (p == null || p.getEntityId() != id) continue;
+            Entity parent = parentOf(p);
+            if (parent == p ? p.isEntityAlive() : world.getEntityByID(parent.getEntityId()) == parent) return p;
+            parts[i] = null;
+            return null;
+        }
+        return null;
+    }
+
+    /** Hands {@code e} to {@code visitor}, first remembering it if it is a part the level cannot find by id. */
+    void visit(World world, Entity e, IntConsumer visitor) {
+        int id = e.getEntityId();
+        if (world.getEntityByID(id) != e) remember(world, e);
+        visitor.accept(id);
+    }
+
+    private void remember(World world, Entity part) {
+        if (world != partsWorld) {
+            Arrays.fill(parts, null);
+            partsWorld = world;
+        }
+        for (Entity p : parts) {
+            if (p == part) return;
+        }
+        parts[nextPart] = part;
+        nextPart = (nextPart + 1) % PARTS;
+    }
+
+    private static Entity parentOf(Entity e) {
+        //? if >=1.12 {
+        IEntityMultiPart parent = e instanceof MultiPartEntityPart ? ((MultiPartEntityPart) e).parent : null;
+        //?} else {
+        /*IEntityMultiPart parent = e instanceof EntityDragonPart ? ((EntityDragonPart) e).entityDragonObj : null;
+        *///?}
+        return parent instanceof Entity ? (Entity) parent : e;
     }
 
     @Override
@@ -100,6 +160,36 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
     }
 
     @Override
+    public boolean box(int id, float partialTick, CgBoxSink out) {
+        Entity e = entity(id);
+        if (e == null) return false;
+        // the box where it is drawn: moved back by what the tick has yet to cover
+        double dx = (e.lastTickPosX - e.posX) * (1 - partialTick), dy = (e.lastTickPosY - e.posY) * (1 - partialTick);
+        double dz = (e.lastTickPosZ - e.posZ) * (1 - partialTick);
+        AxisAlignedBB b = e.getEntityBoundingBox();
+        out.set(b.minX + dx, b.minY + dy, b.minZ + dz, b.maxX + dx, b.maxY + dy, b.maxZ + dz);
+        return true;
+    }
+
+    @Override
+    public int parent(int id) {
+        Entity e = entity(id);
+        return e == null ? -1 : parentOf(e).getEntityId();
+    }
+
+    @Override
+    public int rootVehicle(int id) {
+        Entity e = entity(id);
+        if (e == null) return -1;
+        //? if >=1.10 {
+        return e.getLowestRidingEntity().getEntityId();
+        //?} else {
+        /*while (e.ridingEntity != null) e = e.ridingEntity;
+        return e.getEntityId();
+        *///?}
+    }
+
+    @Override
     public int flags(int id) {
         Entity e = entity(id);
         if (e == null) return 0;
@@ -111,7 +201,12 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
             if (((EntityLivingBase) e).isElytraFlying()) f |= GLIDING;
             //?}
         }
-        if (e instanceof EntityPlayer) f |= PLAYER;
+        if (e instanceof EntityPlayer) {
+            EntityPlayer p = (EntityPlayer) e;
+            f |= PLAYER;
+            if (p.isSpectator()) f |= SPECTATOR;
+            if (p.capabilities.disableDamage) f |= INVULNERABLE;
+        }
         if (isLocal(e)) f |= LOCAL_PLAYER;
         if (e.onGround) f |= ON_GROUND;
         if (e.isSneaking()) f |= SNEAKING;
@@ -119,6 +214,17 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
         if (e.isInWater()) f |= IN_WATER;
         if (e.isBurning()) f |= ON_FIRE;
         if (e.isInvisible()) f |= INVISIBLE;
+        if (e.canBeCollidedWith()) f |= PICKABLE;
+        //? if >=1.10 {
+        if (e.canBeAttackedWithItem()) f |= ATTACKABLE;
+        //?} else {
+        /*if (e.canAttackWithItem()) f |= ATTACKABLE;
+        *///?}
+        //? if >=1.12 {
+        if (e.isEntityInvulnerable(DamageSource.GENERIC)) f |= INVULNERABLE;
+        //?} else {
+        /*if (e.isEntityInvulnerable(DamageSource.generic)) f |= INVULNERABLE;
+        *///?}
         return f;
     }
 
@@ -140,6 +246,6 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
         if (world == null) return;
         List<Entity> found = world.getEntitiesWithinAABBExcludingEntity(null,
                 new AxisAlignedBB(minX, minY, minZ, maxX, maxY, maxZ));
-        for (int i = 0; i < found.size(); i++) visitor.accept(found.get(i).getEntityId());
+        for (int i = 0; i < found.size(); i++) visit(world, found.get(i), visitor);
     }
 }

@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import org.junit.Test;
 
@@ -29,6 +30,9 @@ public class CgVfxEntityBoxesTest {
         }
         @Override public int flags(int id) { return id == 4 ? 0 : ALIVE | LIVING; }
         @Override public int kind(int id) { return id == 3 ? KIND_ITEM : KIND_MONSTER; }
+        @Override public boolean box(int id, float partialTick, CgBoxSink out) { return false; }
+        @Override public int parent(int id) { return id; }
+        @Override public int rootVehicle(int id) { return id; }
         @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                      IntConsumer visitor) {
             asked++;
@@ -77,6 +81,9 @@ public class CgVfxEntityBoxesTest {
             }
             @Override public int flags(int id) { return ALIVE; }
             @Override public int kind(int id) { return KIND_ANIMAL; }
+            @Override public boolean box(int id, float partialTick, CgBoxSink out) { return false; }
+            @Override public int parent(int id) { return id; }
+            @Override public int rootVehicle(int id) { return id; }
             @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                          IntConsumer visitor) {
                 for (int id = many.length - 1; id >= 1; id--) visitor.accept(id);   // farthest first

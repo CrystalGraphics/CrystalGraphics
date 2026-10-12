@@ -4,15 +4,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 
-import java.util.function.IntConsumer;
-
 /**
- * {@link LevelEntityQueryModern} over the client's level, with what only a client has: the local and camera entity, and
- * the render list a box walk reads. Client only: constructed by {@code PlatformServiceModern.gl()}. Render thread;
- * allocates nothing but the iterator of {@link #within}'s walk.
+ * {@link LevelEntityQueryModern} over the client's level, with what only a client has: the local and camera entity.
+ * Client only: constructed by {@code PlatformServiceModern.gl()}. Render thread.
  *
  * <ul>
- *   <li>1.13.2 lists no entities for rendering: {@link #within} walks the level's own box query, a list per call.</li>
+ *   <li>{@link #within} is the level's box query, not the render list, which lists no dragon parts.</li>
  * </ul>
  */
 public final class EntityQueryModern extends LevelEntityQueryModern {
@@ -41,18 +38,5 @@ public final class EntityQueryModern extends LevelEntityQueryModern {
     public int cameraEntity() {
         Entity camera = Minecraft.getInstance().getCameraEntity();
         return camera == null ? -1 : camera.getId();
-    }
-
-    @Override
-    public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, IntConsumer visitor) {
-        //? if >=1.14 {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null) return;
-        for (Entity e : mc.level.entitiesForRendering()) {
-            if (e.getBoundingBox().intersects(minX, minY, minZ, maxX, maxY, maxZ)) visitor.accept(e.getId());
-        }
-        //?} else {
-        /*super.within(minX, minY, minZ, maxX, maxY, maxZ, visitor);
-        *///?}
     }
 }

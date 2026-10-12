@@ -19,6 +19,8 @@ import java.util.function.IntConsumer;
  *
  * // every entity in a box: the visitor gets ids, and is best held in a field
  * entities.within(minX, minY, minZ, maxX, maxY, maxZ, hitEntity);
+ * entities.box(id, partialTick, box);                            // its real box, into a reused CgAABB
+ * int whole = entities.parent(id);                               // the dragon, for one of its parts
  *
  * // a host, once, on a client only
  * CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
@@ -38,10 +40,15 @@ public interface CgEntityQuery {
     int X = 0, Y = 1, Z = 2, VELOCITY_X = 3, VELOCITY_Y = 4, VELOCITY_Z = 5, WIDTH = 6, HEIGHT = 7, EYE_HEIGHT = 8,
             YAW = 9, PITCH = 10, BODY_YAW = 11, HEAD_YAW = 12, LIMB_SWING = 13, LIMB_SWING_AMOUNT = 14, POSE_LENGTH = 15;
 
-    /** {@link #flags} bits. */
+    /**
+     * {@link #flags} bits. The last four are what a hit asks: {@code SPECTATOR} a player in spectator mode;
+     * {@code PICKABLE} what Minecraft's crosshair and projectiles may hit; {@code ATTACKABLE} what a melee attack may
+     * (not items, orbs or arrows); {@code INVULNERABLE} the entity's invulnerable tag, or a player whose abilities make
+     * them so (creative, spectator).
+     */
     int ALIVE = 1, LIVING = 1 << 1, PLAYER = 1 << 2, LOCAL_PLAYER = 1 << 3, ON_GROUND = 1 << 4, SNEAKING = 1 << 5,
             SPRINTING = 1 << 6, SWIMMING = 1 << 7, GLIDING = 1 << 8, IN_WATER = 1 << 9, ON_FIRE = 1 << 10,
-            INVISIBLE = 1 << 11;
+            INVISIBLE = 1 << 11, SPECTATOR = 1 << 12, PICKABLE = 1 << 13, ATTACKABLE = 1 << 14, INVULNERABLE = 1 << 15;
 
     /** What an entity is, as an effect would sort it: {@link #kind}. */
     int KIND_OTHER = 0, KIND_PLAYER = 1, KIND_MONSTER = 2, KIND_ANIMAL = 3, KIND_ITEM = 4, KIND_PROJECTILE = 5,
@@ -54,6 +61,9 @@ public interface CgEntityQuery {
         @Override public boolean pose(int id, float partialTick, double[] out) { return false; }
         @Override public int flags(int id) { return 0; }
         @Override public int kind(int id) { return KIND_OTHER; }
+        @Override public boolean box(int id, float partialTick, CgBoxSink out) { return false; }
+        @Override public int parent(int id) { return -1; }
+        @Override public int rootVehicle(int id) { return -1; }
         @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                      IntConsumer visitor) { }
     };
@@ -79,6 +89,25 @@ public interface CgEntityQuery {
     /** What entity {@code id} is: a {@code KIND_} constant. */
     int kind(int id);
 
-    /** Hands {@code visitor} the id of every entity whose box touches the box given, in absolute world coordinates. */
+    /**
+     * Entity {@code id}'s bounding box at {@code partialTick}, into {@code out}: the real box, which is not always
+     * square about the feet (a painting, an item frame, a shulker opening). False, with {@code out} untouched, when
+     * there is no such entity.
+     */
+    boolean box(int id, float partialTick, CgBoxSink out);
+
+    /**
+     * The whole entity {@code id} is part of: the Ender Dragon for one of its parts, {@code id} itself for anything
+     * else; -1 when there is no such entity. Hit lists are kept per parent, so a blast over three parts hits once.
+     */
+    int parent(int id);
+
+    /** What entity {@code id} rides at the bottom of the stack: itself when riding nothing; -1 for no such entity. */
+    int rootVehicle(int id);
+
+    /**
+     * Hands {@code visitor} the id of every entity whose box touches the box given, in absolute world coordinates.
+     * Parts of a multipart entity come as their own ids, which {@link #pose}, {@link #box} and {@link #parent} answer.
+     */
     void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, IntConsumer visitor);
 }

@@ -15,7 +15,7 @@ import java.util.function.IntConsumer;
 
 /**
  * {@link LevelEntityQueryLegacy} over the client's level, with its local and camera entity, and a box walk over the
- * loaded list that allocates nothing. Client only: provided by {@code PlatformServiceLegacy.register}. Render thread.
+ * loaded list and each entity's parts that allocates nothing. Client only: provided by {@code PlatformServiceLegacy.register}. Render thread.
  */
 public final class EntityQueryLegacy extends LevelEntityQueryLegacy {
 
@@ -52,10 +52,19 @@ public final class EntityQueryLegacy extends LevelEntityQueryLegacy {
         List<?> entities = world.loadedEntityList;
         for (int i = 0; i < entities.size(); i++) {
             Entity e = (Entity) entities.get(i);
-            AxisAlignedBB b = e.getEntityBoundingBox();
-            if (b.maxX > minX && b.minX < maxX && b.maxY > minY && b.minY < maxY && b.maxZ > minZ && b.minZ < maxZ) {
-                visitor.accept(e.getEntityId());
+            if (touches(e, minX, minY, minZ, maxX, maxY, maxZ)) visitor.accept(e.getEntityId());
+            // a client lists no parts, loaded or by id
+            Entity[] parts = e.getParts();
+            if (parts == null) continue;
+            for (Entity part : parts) {
+                if (touches(part, minX, minY, minZ, maxX, maxY, maxZ)) visit(world, part, visitor);
             }
         }
+    }
+
+    private static boolean touches(Entity e, double minX, double minY, double minZ, double maxX, double maxY,
+                                   double maxZ) {
+        AxisAlignedBB b = e.getEntityBoundingBox();
+        return b.maxX > minX && b.minX < maxX && b.maxY > minY && b.minY < maxY && b.maxZ > minZ && b.minZ < maxZ;
     }
 }
