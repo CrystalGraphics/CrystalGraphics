@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.query;
 
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
 /**
@@ -34,6 +35,7 @@ public final class CgHit {
     double normalX, normalY, normalZ;
     double distance, fraction;
     float exposure = Float.NaN;
+    CgHitPart part;
 
     /** The entity met, a part of a multipart one included; -1 for a block. */
     public int entity() {
@@ -113,6 +115,11 @@ public final class CgHit {
         return exposure;
     }
 
+    /** The part that met it: a hitbox's, or a query's {@link CgQuery#part}; null for neither. */
+    public CgHitPart part() {
+        return part;
+    }
+
     /**
      * 1 within {@code inner} blocks of the query, 0 from {@code outer} on, falling linearly between: Unreal's radial
      * falloff, for damage that weakens with distance.
@@ -129,9 +136,11 @@ public final class CgHit {
         block = unloaded = false;
         fluid = CgWorldQuery.FLUID_NONE;
         exposure = Float.NaN;
+        part = null;
     }
 
-    CgHit set(CgHit o) {
+    /** Copies {@code o} into this: a visitor's hit kept past the call. */
+    public CgHit set(CgHit o) {
         entity = o.entity;
         parent = o.parent;
         blockX = o.blockX;
@@ -149,6 +158,7 @@ public final class CgHit {
         distance = o.distance;
         fraction = o.fraction;
         exposure = o.exposure;
+        part = o.part;
         return this;
     }
 

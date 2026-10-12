@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.query;
 
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
@@ -78,6 +79,7 @@ public final class CgQuery {
     private int require, forbid, wholeRequire, kinds, excepts, source, max;
     private IntPredicate where;
     private double inflate;
+    private CgHitPart part;
 
     private double ox, oy, oz, invX, invY, invZ, entityLimit;
     private boolean stopAtFirst, done, partsSeen, blockFound;
@@ -106,6 +108,7 @@ public final class CgQuery {
         max = Integer.MAX_VALUE;
         where = null;
         inflate = 0;
+        part = null;
         return this;
     }
 
@@ -258,6 +261,12 @@ public final class CgQuery {
         return this;
     }
 
+    /** Labels every hit with {@code part}: several queries' hits told apart in one list. */
+    public CgQuery part(CgHitPart part) {
+        this.part = part;
+        return this;
+    }
+
     // ---- ending it
 
     /** Hands every hit to {@code visitor}, nearest first; the hit is valid during the call. */
@@ -361,6 +370,9 @@ public final class CgQuery {
         }
         hits.sort();
         hits.truncate(max);
+        if (part != null) {
+            for (int i = 0; i < hits.size(); i++) hits.get(i).part = part;
+        }
         if (exposure) {
             for (int i = 0; i < hits.size(); i++) {
                 CgHit h = hits.get(i);
