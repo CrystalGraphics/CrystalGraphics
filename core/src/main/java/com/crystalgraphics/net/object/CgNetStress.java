@@ -1,6 +1,8 @@
 package com.crystalgraphics.net.object;
 
 import java.io.IOException;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -164,6 +166,9 @@ public final class CgNetStress {
         final Map<UUID, Integer> burstExpected = new LinkedHashMap<>();
         int burstTicks = -1;
         long burstLargest, burstSlowest, quietAllocated;
+        final List<GarbageCollectorMXBean> collectors = ManagementFactory.getGarbageCollectorMXBeans();
+        long collections;
+        int outliers;
 
         Server(int players, Path out) {
             this.players = players;
@@ -184,6 +189,7 @@ public final class CgNetStress {
                 return;
             }
             if (tracker != null && phase != Phase.QUIET && phase != Phase.TEARDOWN) tracker.setLong(SENT, now());
+            if (phase != Phase.WAIT) watchOutliers();
             switch (phase) {
                 case WAIT: waitForPlayers(); break;
                 case CROWD: crowd(); break;
@@ -230,6 +236,24 @@ public final class CgNetStress {
             sentBefore = sent();
             PHASE.send(CgAudience.all(), "crowd");
             enter(Phase.CROWD);
+        }
+
+        /**
+         * Logs the last tick's network work when it is far off a typical tick, as it happens. The uptime lines it up
+         * with {@code -XX:+PrintCompilation} (a deoptimized tick runs interpreted, allocating what escape analysis
+         * removes); a collection during it marks a pause rather than work.
+         */
+        void watchOutliers() {
+            long total = 0;
+            for (GarbageCollectorMXBean collector : collectors) total += Math.max(0, collector.getCollectionCount());
+            long nanos = CgNetwork.serverTickNanos(), allocated = CgNetwork.serverTickAllocated();
+            if (nanos > 10_000_000L || allocated > 1 << 20) {
+                outliers++;
+                LOGGER.info("[net-stress] outlier in {} tick {}: {} ms, {} KB, {} collections since the last tick, uptime {} ms",
+                        phase.name().toLowerCase(), ticks, nanos / 1_000_000, allocated >> 10, total - collections,
+                        ManagementFactory.getRuntimeMXBean().getUptime());
+            }
+            collections = total;
         }
 
         CgAnchor near(double half) {
@@ -408,6 +432,7 @@ public final class CgNetStress {
             for (Map.Entry<String, String> client : reports.entrySet()) {
                 text.append("client ").append(client.getKey()).append('\n').append(client.getValue());
             }
+            text.append("outliers: ").append(outliers).append(" ticks over 10 ms or 1 MB, each logged as it happened").append('\n');
             if (reports.size() < ids.size()) verdicts.add("FAIL " + (ids.size() - reports.size()) + " clients never reported");
             for (String verdict : verdicts) text.append(verdict).append('\n');
             for (String line : text.toString().split("\n")) LOGGER.info("[net-stress] {}", line);
