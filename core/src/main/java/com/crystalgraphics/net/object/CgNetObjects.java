@@ -33,6 +33,7 @@ import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -66,7 +67,9 @@ public final class CgNetObjects {
 
     /** Spawn priority: distance in buckets of this many blocks, nearest first. */
     static final int BUCKETS = 64, BUCKET_BLOCKS = 8;
-    private static int budget = Integer.getInteger("crystalgraphics.net.budget", 32 * 1024);
+    private static int budget = CgVar.integer("crystalgraphics.net.budget", 32 * 1024, 1024, Integer.MAX_VALUE,
+            CgVar.RESTART, "Bytes of objects a server sends each player a tick; CgNetObjects.budget sets it in code.")
+            .get();
 
     // Server thread.
     private static final ArrayList<CgNetObject> LIVE = new ArrayList<>();

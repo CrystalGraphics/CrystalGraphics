@@ -118,6 +118,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.net.budget` | 1024 to 2147483647 | `32768` | Bytes of objects a server sends each player a tick; CgNetObjects.budget sets it in code. Read at launch. |
 | `crystalgraphics.net.trace` | true, false | `false` | Log the first few frames each way through the host's network channel (1.7.10 and legacy Forge). Read at launch. |
 
 ## `crystalgraphics.noise`
@@ -219,7 +220,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
 | `crystalgraphics.vfx.threads` | 0 to 256 | `0` | Threads effects' emitters tick on, the render thread one of them; 0 for two fewer than the cores, 1 for all on the render thread. Read at launch. |
-| `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each raycast an effect makes on a server: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
+| `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
 
 ## `crystalgraphics.vulkan`
 
