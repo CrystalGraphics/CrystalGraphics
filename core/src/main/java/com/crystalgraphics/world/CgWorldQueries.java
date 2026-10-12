@@ -30,7 +30,9 @@ import java.util.function.IntConsumer;
  *
  * <ul>
  *   <li>Coordinates are absolute world coordinates in doubles, never camera-relative.</li>
- *   <li>Render thread only, like the slot it reads.</li>
+ *   <li>Render thread only, like the slots it reads; the overloads given a {@link CgWorldQuery} and a
+ *       {@link CgEntityQuery} run on the thread owning their level, a server's included ({@code CgLevelQueries}), and
+ *       see entities where they are this tick.</li>
  *   <li>A block counts by its collision span in y ({@code collisionTop}, {@code collisionBottom}), so a slab or a layer
  *       of snow is stood on at its own height; across x and z every solid block fills its cell.</li>
  * </ul>
@@ -190,11 +192,26 @@ public final class CgWorldQueries {
      */
     public static boolean raycastEntities(double x, double y, double z, double dx, double dy, double dz, double maxDistance,
                                           double radius, int ignore, Hit hit) {
+        return raycastEntities(ENTITY_RAY, CgPlatform.get(CgEntityQuery.SERVICE),
+                CgRenderStage.WORLD_OPAQUE.host().partialTick(), x, y, z, dx, dy, dz, maxDistance, radius, ignore, hit);
+    }
+
+    /**
+     * As {@link #raycastEntities(double, double, double, double, double, double, double, double, int, Hit)}, against
+     * {@code entities} at their positions this tick: on any thread owning their level, a server's included
+     * ({@code CgLevelQueries}).
+     */
+    public static boolean raycastEntities(CgEntityQuery entities, double x, double y, double z, double dx, double dy,
+                                          double dz, double maxDistance, double radius, int ignore, Hit hit) {
+        return raycastEntities(THREAD_RAY.get(), entities, 1f, x, y, z, dx, dy, dz, maxDistance, radius, ignore, hit);
+    }
+
+    private static boolean raycastEntities(EntityRay ray, CgEntityQuery entities, float partialTick, double x, double y,
+                                           double z, double dx, double dy, double dz, double maxDistance, double radius,
+                                           int ignore, Hit hit) {
         double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (length == 0.0) return false;
-        CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
-        EntityRay ray = ENTITY_RAY;
-        ray.begin(entities, x, y, z, dx / length, dy / length, dz / length, radius, ignore, maxDistance);
+        ray.begin(entities, partialTick, x, y, z, dx / length, dy / length, dz / length, radius, ignore, maxDistance);
         // A short box at a time: a host lists the entities of every chunk section a box covers.
         for (double from = 0.0; from < maxDistance; from += ENTITY_SEGMENT) {
             double to = Math.min(from + ENTITY_SEGMENT, maxDistance);
@@ -221,6 +238,23 @@ public final class CgWorldQueries {
         return raycastEntities(x, y, z, dx, dy, dz, block ? hit.distance : maxDistance, radius, ignore, hit) || block;
     }
 
+    /**
+     * As {@link #raycastAll(double, double, double, double, double, double, double, double, int, Hit)}, against one
+     * level's blocks and entities: where a beam stops on the server.
+     *
+     * <pre>{@code
+     * CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
+     * if (CgWorldQueries.raycastAll(levels.world(caster), levels.entities(caster), x, y, z, dx, dy, dz, 64, 0.5,
+     *         casterId, hit)) damage(hit.entity);
+     * }</pre>
+     */
+    public static boolean raycastAll(CgWorldQuery world, CgEntityQuery entities, double x, double y, double z, double dx,
+                                     double dy, double dz, double maxDistance, double radius, int ignore, Hit hit) {
+        boolean block = raycast(world, x, y, z, dx, dy, dz, maxDistance, hit);
+        return raycastEntities(entities, x, y, z, dx, dy, dz, block ? hit.distance : maxDistance, radius, ignore, hit)
+                || block;
+    }
+
     private static int floor(double v) {
         return (int) Math.floor(v);
     }
@@ -228,6 +262,8 @@ public final class CgWorldQueries {
     /** How long a stretch of ray each entity box query covers, in blocks. */
     private static final double ENTITY_SEGMENT = 8.0;
     private static final EntityRay ENTITY_RAY = new EntityRay();
+    /** For the overloads given their queries, which run on whichever thread owns the level. */
+    private static final ThreadLocal<EntityRay> THREAD_RAY = ThreadLocal.withInitial(EntityRay::new);
 
     /** The entity test {@link #raycastEntities} hands the host's box walk; render thread, so one is shared. */
     private static final class EntityRay implements IntConsumer {
@@ -238,9 +274,10 @@ public final class CgWorldQueries {
         private float partialTick;
         double best;
 
-        void begin(CgEntityQuery entities, double x, double y, double z, double dx, double dy, double dz, double radius,
-                   int ignore, double maxDistance) {
+        void begin(CgEntityQuery entities, float partialTick, double x, double y, double z, double dx, double dy, double dz,
+                   double radius, int ignore, double maxDistance) {
             this.entities = entities;
+            this.partialTick = partialTick;
             this.x = x;
             this.y = y;
             this.z = z;
@@ -250,7 +287,6 @@ public final class CgWorldQueries {
             this.radius = radius;
             this.ignore = ignore;
             this.maxDistance = maxDistance;
-            partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
             best = Double.POSITIVE_INFINITY;
             bestEntity = -1;
         }

@@ -157,4 +157,22 @@ public class CgWorldQueriesTest {
             CgPlatform.provide(CgWorldQuery.SERVICE, null);
         }
     }
+
+    /** A server's level, on a thread of its own, with nothing in the client slots. */
+    @Test
+    public void raycastAllGivenALevelsQueriesNeedsNoSlotOrRenderThread() throws Exception {
+        CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
+        boolean[] found = new boolean[2];
+        Thread server = new Thread(() -> {
+            found[0] = CgWorldQueries.raycastAll(FLAT, new Crowd(), 0.5, -59.8, 0.5, 1, 0, 0, 100, 0.3, 1, hit)
+                    && hit.entity == -1;
+            found[1] = CgWorldQueries.raycastAll(FLAT, new Crowd(), 0.5, -59, 0.5, 1, 0, 0, 100, 0.3, 1, hit)
+                    && hit.entity == 2;
+        });
+        server.start();
+        server.join();
+
+        assertTrue("the slab", found[0]);
+        assertTrue("the zombie", found[1]);
+    }
 }
