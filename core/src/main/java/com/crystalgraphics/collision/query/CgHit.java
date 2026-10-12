@@ -1,0 +1,161 @@
+package com.crystalgraphics.collision.query;
+
+import com.crystalgraphics.platform.service.CgWorldQuery;
+
+/**
+ * One thing a query met: an entity or a block, where, and how far from the query. A visitor's hit is the query's own,
+ * valid during the call; {@link CgQuery#first} copies into one you hold.
+ *
+ * <pre>{@code
+ * world.overlap(BLAST).at(x, y, z).forEach(h -> damage(h.entity(), 10f * h.falloff(2, 6)));
+ *
+ * private final CgHit hit = new CgHit();                        // a field, reused
+ * if (world.ray().at(eyeX, eyeY, eyeZ).along(lookX, lookY, lookZ, 64).blocksToo().first(hit)) {
+ *     if (hit.isBlock()) chip(hit.blockX(), hit.blockY(), hit.blockZ());
+ *     else strike(hit.entity());
+ * }
+ * }</pre>
+ *
+ * <ul>
+ *   <li>The normal points from the query toward the target: the way to knock it back. A surface's own normal, facing
+ *       a ray, is its negation.</li>
+ *   <li>For an overlap the point is the target's nearest to the query's origin and the distance is to it, 0 when the
+ *       origin is inside; for a cast or a ray, where it was first touched and how far the query travelled.</li>
+ *   <li>A multipart entity is hit once: {@link #entity()} is its nearest part, {@link #parent()} the whole.</li>
+ * </ul>
+ */
+public final class CgHit {
+
+    int entity = -1, parent = -1;
+    int blockX, blockY, blockZ;
+    boolean block, unloaded;
+    int fluid;
+    double x, y, z;
+    double normalX, normalY, normalZ;
+    double distance, fraction;
+    float exposure = Float.NaN;
+
+    /** The entity met, a part of a multipart one included; -1 for a block. */
+    public int entity() {
+        return entity;
+    }
+
+    /** The whole entity: the Ender Dragon for one of its parts, else {@link #entity()}; -1 for a block. */
+    public int parent() {
+        return parent;
+    }
+
+    /** Whether a block was met rather than an entity. */
+    public boolean isBlock() {
+        return block;
+    }
+
+    public int blockX() {
+        return blockX;
+    }
+
+    public int blockY() {
+        return blockY;
+    }
+
+    public int blockZ() {
+        return blockZ;
+    }
+
+    /** Whether a cast or ray stopped at the edge of what is loaded, rather than at a block. */
+    public boolean unloaded() {
+        return unloaded;
+    }
+
+    /** The fluid surface met ({@code CgWorldQuery.FLUID_WATER}, {@code FLUID_LAVA}), with {@code fluids()} asked. */
+    public int fluid() {
+        return fluid;
+    }
+
+    /** The point on the target, in the world. */
+    public double x() {
+        return x;
+    }
+
+    public double y() {
+        return y;
+    }
+
+    public double z() {
+        return z;
+    }
+
+    /** From the query toward the target, unit length. */
+    public double normalX() {
+        return normalX;
+    }
+
+    public double normalY() {
+        return normalY;
+    }
+
+    public double normalZ() {
+        return normalZ;
+    }
+
+    /** In blocks: from the query's origin to the point, or how far a cast or ray travelled. */
+    public double distance() {
+        return distance;
+    }
+
+    /** How far along a cast or ray, 0 to 1; 0 for an overlap. */
+    public double fraction() {
+        return fraction;
+    }
+
+    /** How much of the target the query's origin sees, 0 to 1, as Minecraft's explosions sample; NaN unless asked. */
+    public float exposure() {
+        return exposure;
+    }
+
+    /**
+     * 1 within {@code inner} blocks of the query, 0 from {@code outer} on, falling linearly between: Unreal's radial
+     * falloff, for damage that weakens with distance.
+     */
+    public float falloff(double inner, double outer) {
+        if (distance <= inner) return 1f;
+        if (distance >= outer) return 0f;
+        return (float) (1 - (distance - inner) / (outer - inner));
+    }
+
+    void reset() {
+        entity = parent = -1;
+        blockX = blockY = blockZ = 0;
+        block = unloaded = false;
+        fluid = CgWorldQuery.FLUID_NONE;
+        exposure = Float.NaN;
+    }
+
+    CgHit set(CgHit o) {
+        entity = o.entity;
+        parent = o.parent;
+        blockX = o.blockX;
+        blockY = o.blockY;
+        blockZ = o.blockZ;
+        block = o.block;
+        unloaded = o.unloaded;
+        fluid = o.fluid;
+        x = o.x;
+        y = o.y;
+        z = o.z;
+        normalX = o.normalX;
+        normalY = o.normalY;
+        normalZ = o.normalZ;
+        distance = o.distance;
+        fraction = o.fraction;
+        exposure = o.exposure;
+        return this;
+    }
+
+    @Override
+    public String toString() {
+        String what = block ? (unloaded ? "unloaded " : fluid != CgWorldQuery.FLUID_NONE ? "fluid " : "block ")
+                + blockX + "," + blockY + "," + blockZ : "entity " + entity + (parent != entity ? " of " + parent : "");
+        return "CgHit[" + what + " at " + distance + ", point " + x + "," + y + "," + z + "]";
+    }
+}
