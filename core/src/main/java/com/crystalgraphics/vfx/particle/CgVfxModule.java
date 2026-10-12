@@ -1,6 +1,10 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.shape.primitive.CgBox;
+import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
@@ -38,14 +42,16 @@ import java.util.Objects;
  *         new CgVfxModule.Spin(0.8f));
  *
  * // energy gathering: spiralling into a hand and absorbed there
- * Volume hand = Volume.sphere(6f).at(0f, 1.5f, 0f);
- * List.of(new CgVfxModule.Attract(hand, 30f),
+ * List.of(new CgVfxModule.Attract(CgSphere.of(6), 30f).at(0f, 1.5f, 0f),
  *         new CgVfxModule.Orbit(0.6f, 0f, 1f, 0f, 0f, 1.5f, 0f),
- *         new CgVfxModule.Kill(Volume.sphere(0.3f).at(0f, 1.5f, 0f), true));
+ *         new CgVfxModule.Kill(CgSphere.of(0.3), true).at(0f, 1.5f, 0f));
  * }</pre>
  *
  * <ul>
  *   <li>Order matters only among forces that read velocity ({@link Wind}); the solver sums all forces before it moves.</li>
+ *   <li>{@link Attract}, {@link VectorField}, {@link Conform}, {@link Collide} and {@link Kill} act in a collision
+ *       engine shape, a {@link CgSphere}, {@link CgBox} or {@link CgPlane}, centred on the source or {@code at} a point
+ *       from it. Any other shape is refused.</li>
  *   <li>{@link Ground} does nothing unless the instance has a ground height
  *       ({@link CgVfxEmitterInstance#ground(float)}).</li>
  *   <li>A new kind is a record here, its {@code apply}, and its GPU side: {@code fx_<kind>.glsl} and the
@@ -499,97 +505,28 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
-     * Where a module acts, placed from the emitter's source: a sphere, a box by its half extents, or a plane, solid
-     * behind its normal. Godot's attractor and collider shapes, bevy_hanabi's kill volumes.
-     *
-     * <pre>{@code
-     * Volume.sphere(3f).at(0f, 2f, 0f)            // radius 3, two blocks over the source
-     * Volume.box(4f, 1f, 4f)                       // 8 x 2 x 8 round the source
-     * Volume.plane(0f, 1f, 0f).at(0f, -1f, 0f)    // solid below the block under the source
-     * }</pre>
-     */
-    record Volume(Form form, float x, float y, float z, float ex, float ey, float ez, float reach) {
-        /** Its shape; a plane's extents are its unit normal. */
-        public enum Form { SPHERE, BOX, PLANE }
-
-        public Volume {
-            Objects.requireNonNull(form, "form");
-            if (reach != 0f && !(form == Form.PLANE && reach > 0f)) {
-                throw new IllegalArgumentException("a reach of " + reach + " on a " + form);
-            }
-            if (form == Form.SPHERE && !(ex > 0f)) throw new IllegalArgumentException("a sphere of radius " + ex);
-            if (form == Form.BOX && !(ex > 0f && ey > 0f && ez > 0f)) {
-                throw new IllegalArgumentException("a box of half extents " + ex + ", " + ey + ", " + ez);
-            }
-        }
-
-        public static Volume sphere(float radius) {
-            return new Volume(Form.SPHERE, 0f, 0f, 0f, radius, radius, radius, 0f);
-        }
-
-        public static Volume box(float halfX, float halfY, float halfZ) {
-            return new Volume(Form.BOX, 0f, 0f, 0f, halfX, halfY, halfZ, 0f);
-        }
-
-        /** Through the source, solid on the side away from {@code (nx, ny, nz)}, which need not be unit. */
-        public static Volume plane(float nx, float ny, float nz) {
-            float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-            if (!(length > 0f)) throw new IllegalArgumentException("a plane needs a normal");
-            return new Volume(Form.PLANE, 0f, 0f, 0f, nx / length, ny / length, nz / length, 0f);
-        }
-
-        /** The same volume centred {@code (x, y, z)} from the source. */
-        public Volume at(float x, float y, float z) {
-            return new Volume(form, x, y, z, ex, ey, ez, reach);
-        }
-
-        /**
-         * A plane that ends: a disc {@code reach} blocks round its centre, so a particle past its edge falls off rather
-         * than sliding on forever. For {@link Collide} only; {@link Kill} refuses it.
-         */
-        public Volume within(float reach) {
-            return new Volume(form, x, y, z, ex, ey, ez, reach);
-        }
-
-        /** Whether {@code (rx, ry, rz)} from the centre is over the volume: always, but past a bounded plane's edge. */
-        boolean over(float rx, float ry, float rz) {
-            if (reach == 0f) return true;
-            float d = rx * ex + ry * ey + rz * ez;
-            float tx = rx - ex * d, ty = ry - ey * d, tz = rz - ez * d;
-            return tx * tx + ty * ty + tz * tz <= reach * reach;
-        }
-
-        void writeShape(CgVfxWords out) {
-            out.vec4(ex, ey, ez, form.ordinal());
-        }
-
-        void writeCentre(CgVfxInstanceView instance, CgVfxWords out) {
-            out.vec4(instance.sourceX() + x, instance.sourceY() + y, instance.sourceZ() + z, reach);
-        }
-    }
-
-    /**
      * A pull toward a sphere or box (Godot's attractors): {@code strength} blocks a second squared at the centre, falling
      * to nothing at the edge as {@code (1 - d)^attenuation}, d being 0 at the centre and 1 at the edge. A negative
-     * strength pushes out. Directionality turns the pull, 0 to 1, into a push along {@code axis}.
+     * strength pushes out. Directionality turns the pull, 0 to 1, into a push along {@code axis}. The shape is centred
+     * on the source, or {@link #at} a point from it.
      *
      * <pre>{@code
-     * new CgVfxModule.Attract(Volume.sphere(6f).at(0f, 1.5f, 0f), 30f)                  // energy gathering in a hand
-     * new CgVfxModule.Attract(Volume.box(3f, 3f, 3f), 12f).attenuation(0f)               // even over the box
-     * new CgVfxModule.Attract(Volume.sphere(4f), 10f).directed(1f, 0f, 1f, 0f)           // a lift inside the sphere
+     * new CgVfxModule.Attract(CgSphere.of(6), 30f).at(0f, 1.5f, 0f)              // energy gathering in a hand
+     * new CgVfxModule.Attract(CgBox.of(3, 3, 3), 12f).attenuation(0f)            // even over the box
+     * new CgVfxModule.Attract(CgSphere.of(4), 10f).directed(1f, 0f, 1f, 0f)      // a lift inside the sphere
      * }</pre>
      *
      * <ul>
-     *   <li>A plane attracts nothing, and is refused.</li>
+     *   <li>A plane attracts nothing, and is refused, as is any shape but a sphere or box.</li>
      *   <li>Pair it with {@link Orbit} round the same centre for a spiral in, Godot's orbit velocity.</li>
      * </ul>
      */
-    record Attract(Volume volume, float strength, float attenuation, float directionality, float axisX, float axisY,
-                   float axisZ) implements CgVfxModule {
+    record Attract(CgShape shape, float x, float y, float z, float strength, float attenuation, float directionality,
+                   float axisX, float axisY, float axisZ) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Attract {
-            if (volume.form() == Volume.Form.PLANE) throw new IllegalArgumentException("a plane attracts nothing");
+            if (CgVfxContacts.check(shape) instanceof CgPlane) throw new IllegalArgumentException("a plane attracts nothing");
             if (!(attenuation >= 0f)) throw new IllegalArgumentException("attenuation " + attenuation);
             float length = (float) Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
             if (length > 0f) {
@@ -599,29 +536,34 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             }
         }
 
-        public Attract(Volume volume, float strength) {
-            this(volume, strength, 1f, 0f, 0f, 1f, 0f);
+        public Attract(CgShape shape, float strength) {
+            this(shape, 0f, 0f, 0f, strength, 1f, 0f, 0f, 1f, 0f);
+        }
+
+        /** The shape centred {@code (x, y, z)} from the source. */
+        public Attract at(float x, float y, float z) {
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ);
         }
 
         /** How the pull falls off toward the edge: 0 even, 1 linear (the default), 2 and up held to the centre. */
         public Attract attenuation(float attenuation) {
-            return new Attract(volume, strength, attenuation, directionality, axisX, axisY, axisZ);
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, axisX, axisY, axisZ);
         }
 
-        /** A push along {@code (x, y, z)} in place of {@code directionality} of the pull. */
-        public Attract directed(float directionality, float x, float y, float z) {
-            return new Attract(volume, strength, attenuation, directionality, x, y, z);
+        /** A push along {@code (ax, ay, az)} in place of {@code directionality} of the pull. */
+        public Attract directed(float directionality, float ax, float ay, float az) {
+            return new Attract(shape, x, y, z, strength, attenuation, directionality, ax, ay, az);
         }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             float[] dir = emitter.scratch();
-            float cx = emitter.sourceX() + volume.x(), cy = emitter.sourceY() + volume.y(), cz = emitter.sourceZ() + volume.z();
+            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
             float keep = 1f - directionality;
             for (int i = 0; i < p.count(); i++) {
                 float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
-                float d = CgVfxContacts.reach(volume, rx, ry, rz);
+                float d = CgVfxContacts.reach(shape, rx, ry, rz);
                 if (d > 1f) continue;
                 float amount = (float) Math.pow(Math.max(0f, 1f - d), attenuation);
                 CgVfxContacts.safeNormalize(rx, ry, rz, dir);
@@ -651,7 +593,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            volume.writeShape(out);
+            CgVfxContacts.writeShape(shape, out);
             out.vec4(strength, attenuation, directionality, 0f).vec4(axisX, axisY, axisZ, 0f);
         }
 
@@ -662,7 +604,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            volume.writeCentre(instance, out);
+            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
         }
     }
 
@@ -825,30 +767,41 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     /**
      * A {@link CgVfxField} over a box (Godot's vector field attractor): each particle pushed by the field where it is,
      * {@code strength} blocks a second squared for a unit vector, a longer one as {@code length^attenuation}. Outside the
-     * box nothing pushes, unless the field tiles.
+     * box nothing pushes, unless the field tiles. The box is centred on the source, or {@link #at} a point from it.
      *
      * <pre>{@code
-     * new CgVfxModule.VectorField(swirl, Volume.box(4f, 4f, 4f).at(0f, 4f, 0f), 3f, 1f)
+     * new CgVfxModule.VectorField(swirl, CgBox.of(4, 4, 4), 3f, 1f).at(0f, 4f, 0f)
      * }</pre>
      */
-    record VectorField(CgVfxField field, Volume box, float strength, float attenuation) implements CgVfxModule {
+    record VectorField(CgVfxField field, CgBox box, float x, float y, float z, float strength, float attenuation)
+            implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public VectorField {
             Objects.requireNonNull(field, "field");
-            if (box.form() != Volume.Form.BOX) throw new IllegalArgumentException("a vector field fills a box, not a " + box.form());
+            Objects.requireNonNull(box, "box");
             if (!(attenuation >= 0f)) throw new IllegalArgumentException("attenuation " + attenuation);
+        }
+
+        public VectorField(CgVfxField field, CgBox box, float strength, float attenuation) {
+            this(field, box, 0f, 0f, 0f, strength, attenuation);
+        }
+
+        /** The box centred {@code (x, y, z)} from the source. */
+        public VectorField at(float x, float y, float z) {
+            return new VectorField(field, box, x, y, z, strength, attenuation);
         }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             float[] v = emitter.scratch();
-            float cx = emitter.sourceX() + box.x(), cy = emitter.sourceY() + box.y(), cz = emitter.sourceZ() + box.z();
+            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
+            float ex = (float) box.halfX(), ey = (float) box.halfY(), ez = (float) box.halfZ();
             boolean tiles = field.tiles();
             for (int i = 0; i < p.count(); i++) {
-                float u = ((p.x[i] - cx) / box.ex() + 1f) * 0.5f, w = ((p.y[i] - cy) / box.ey() + 1f) * 0.5f;
-                float t = ((p.z[i] - cz) / box.ez() + 1f) * 0.5f;
+                float u = ((p.x[i] - cx) / ex + 1f) * 0.5f, w = ((p.y[i] - cy) / ey + 1f) * 0.5f;
+                float t = ((p.z[i] - cz) / ez + 1f) * 0.5f;
                 if (!tiles && (u < 0f || w < 0f || t < 0f || u > 1f || w > 1f || t > 1f)) continue;
                 field.sample(u, w, t, v);
                 float length = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
@@ -877,7 +830,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(box.ex(), box.ey(), box.ez(), field.tiles() ? 1f : 0f).vec4(strength, attenuation, 0f, 0f);
+            out.vec4((float) box.halfX(), (float) box.halfY(), (float) box.halfZ(), field.tiles() ? 1f : 0f)
+                    .vec4(strength, attenuation, 0f, 0f);
         }
 
         @Override
@@ -887,7 +841,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            box.writeCentre(instance, out);
+            CgVfxContacts.writeCentre(box, x, y, z, instance, out);
         }
 
         @Override
@@ -975,37 +929,44 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * Draws particles onto a sphere's surface and holds them there while they move along it (bevy_hanabi's conform to
      * sphere): those within {@code influence} blocks of the surface, or inside, are pushed toward it at
      * {@code attraction} blocks a second squared, no faster than {@code speed}, and harder ({@code sticky} times) in a
-     * shell {@code shell} blocks either side of it, so they settle rather than overshoot.
+     * shell {@code shell} blocks either side of it, so they settle rather than overshoot. The sphere is centred on the
+     * source, or {@link #at} a point from it.
      *
      * <pre>{@code
-     * new CgVfxModule.Conform(Volume.sphere(2f).at(0f, 2f, 0f), 3f, 40f, 6f)   // a shield taking shape
+     * new CgVfxModule.Conform(CgSphere.of(2), 3f, 40f, 6f).at(0f, 2f, 0f)   // a shield taking shape
      * }</pre>
      */
-    record Conform(Volume sphere, float influence, float attraction, float speed, float shell, float sticky)
-            implements CgVfxModule {
+    record Conform(CgSphere sphere, float x, float y, float z, float influence, float attraction, float speed, float shell,
+                   float sticky) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Conform {
-            if (sphere.form() != Volume.Form.SPHERE) throw new IllegalArgumentException("conforms to a sphere, not a " + sphere.form());
+            Objects.requireNonNull(sphere, "sphere");
             if (!(shell > 0f)) throw new IllegalArgumentException("a shell of " + shell);
         }
 
         /** bevy_hanabi's defaults: a shell of 0.1 blocks, twice as sticky in it. */
-        public Conform(Volume sphere, float influence, float attraction, float speed) {
-            this(sphere, influence, attraction, speed, 0.1f, 2f);
+        public Conform(CgSphere sphere, float influence, float attraction, float speed) {
+            this(sphere, 0f, 0f, 0f, influence, attraction, speed, 0.1f, 2f);
+        }
+
+        /** The sphere centred {@code (x, y, z)} from the source. */
+        public Conform at(float x, float y, float z) {
+            return new Conform(sphere, x, y, z, influence, attraction, speed, shell, sticky);
         }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
-            float cx = emitter.sourceX() + sphere.x(), cy = emitter.sourceY() + sphere.y(), cz = emitter.sourceZ() + sphere.z();
+            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
+            float radius = (float) sphere.radius();
             for (int i = 0; i < p.count(); i++) {
                 if (p.resting[i] != 0f) continue;
                 float rx = cx - p.x[i], ry = cy - p.y[i], rz = cz - p.z[i];
                 float distance = (float) Math.sqrt(rx * rx + ry * ry + rz * rz);
                 if (distance <= 0f) continue;
                 float dx = rx / distance, dy = ry / distance, dz = rz / distance;
-                float surface = distance - sphere.ex();
+                float surface = distance - radius;
                 if (surface > influence) continue;
                 float radial = p.vx[i] * dx + p.vy[i] * dy + p.vz[i] * dz;
                 float t = Math.max(0f, Math.min(1f, Math.abs(surface) / shell));
@@ -1036,7 +997,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(sphere.ex(), influence, attraction, speed).vec4(shell, sticky, 0f, 0f);
+            out.vec4((float) sphere.radius(), influence, attraction, speed).vec4(shell, sticky, 0f, 0f);
         }
 
         @Override
@@ -1046,7 +1007,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            sphere.writeCentre(instance, out);
+            CgVfxContacts.writeCentre(sphere, x, y, z, instance, out);
         }
     }
 
@@ -1054,58 +1015,65 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * Particles meet a sphere, box or plane (Godot's colliders and rigid response): each is pushed out of it, loses its
      * speed into the surface and {@code friction} of its sliding, and bounces at {@code bounce} once it strikes fast
      * enough, Godot's slide-to-bounce threshold of 2 / (bounce + 1) blocks a second; slower than {@code rest} after, it
-     * rests. Each bounce is a hit: it counts toward and fires {@link CgVfxEvent#onCollision()}.
-     * Runs after the solver.
+     * rests. Each bounce is a hit: it counts toward and fires {@link CgVfxEvent#onCollision()}. The shape is centred on
+     * the source, or {@link #at} a point from it. Runs after the solver.
      *
      * <pre>{@code
-     * new CgVfxModule.Collide(Volume.sphere(1.5f).at(0f, 1.5f, 0f), 0.6f, 0.1f, 0.2f)    // a boulder sparks bounce off
-     * new CgVfxModule.Collide(Volume.box(3f, 3f, 3f), 0.8f, 0f, 0f).container()          // kept inside a box
-     * new CgVfxModule.Collide(Volume.plane(0f, 1f, 0f), 0f, 0f, 0f).killing()            // die on the plane
-     * new CgVfxModule.Collide(Volume.plane(0.4f, 1f, 0f).within(5f), 0.3f, 0f, 0f)     // a ramp pieces fall off
+     * new CgVfxModule.Collide(CgSphere.of(1.5), 0.6f, 0.1f, 0.2f).at(0f, 1.5f, 0f)    // a boulder sparks bounce off
+     * new CgVfxModule.Collide(CgBox.of(3, 3, 3), 0.8f, 0f, 0f).container()           // kept inside a box
+     * new CgVfxModule.Collide(CgPlane.of(0, 1, 0), 0f, 0f, 0f).killing()             // die on the plane
+     * new CgVfxModule.Collide(CgPlane.of(0.4, 1, 0, 5), 0.3f, 0f, 0f)                // a ramp pieces fall off
      * }</pre>
      *
      * <ul>
      *   <li>A particle collides as a ball of {@code radius} times its size, its quad's half-width: all of it by default,
      *       so a piece rests on a surface rather than sunk into it. Godot's base size is a diameter; this is not.</li>
+     *   <li>A plane ends at its {@link CgPlane#radius() radius}: a particle past the edge falls off rather than sliding
+     *       on.</li>
      *   <li>A {@link #killing()} collider is Godot's hide on contact: a hit, then death at the end of the step.</li>
      * </ul>
      */
-    record Collide(Volume volume, float bounce, float friction, float rest, float radius, boolean keepsInside, boolean kill)
-            implements CgVfxModule {
+    record Collide(CgShape shape, float x, float y, float z, float bounce, float friction, float rest, float radius,
+                   boolean keepsInside, boolean kill) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Collide {
-            Objects.requireNonNull(volume, "volume");
+            CgVfxContacts.check(shape);
         }
 
-        public Collide(Volume volume, float bounce, float friction, float rest) {
-            this(volume, bounce, friction, rest, 1f, false, false);
+        public Collide(CgShape shape, float bounce, float friction, float rest) {
+            this(shape, 0f, 0f, 0f, bounce, friction, rest, 1f, false, false);
+        }
+
+        /** The shape centred {@code (x, y, z)} from the source. */
+        public Collide at(float x, float y, float z) {
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, kill);
         }
 
         /** Collides as a ball of {@code radius} times a particle's size. */
         public Collide radius(float radius) {
-            return new Collide(volume, bounce, friction, rest, radius, keepsInside, kill);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, kill);
         }
 
-        /** Keeps particles inside the volume rather than out of it. */
+        /** Keeps particles inside the shape rather than out of it. */
         public Collide container() {
-            return new Collide(volume, bounce, friction, rest, radius, true, kill);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, true, kill);
         }
 
         /** Kills a particle on contact rather than bouncing it. */
         public Collide killing() {
-            return new Collide(volume, bounce, friction, rest, radius, keepsInside, true);
+            return new Collide(shape, x, y, z, bounce, friction, rest, radius, keepsInside, true);
         }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
             float[] n = emitter.scratch();
-            float cx = emitter.sourceX() + volume.x(), cy = emitter.sourceY() + volume.y(), cz = emitter.sourceZ() + volume.z();
+            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
             for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f || !volume.over(p.x[i] - cx, p.y[i] - cy, p.z[i] - cz)) continue;
-                float depth = CgVfxContacts.contact(volume, keepsInside, p.x[i] - cx, p.y[i] - cy, p.z[i] - cz,
-                        radius * p.size[i], n);
+                float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
+                if (p.resting[i] != 0f || !CgVfxContacts.over(shape, rx, ry, rz)) continue;
+                float depth = CgVfxContacts.contact(shape, keepsInside, rx, ry, rz, radius * p.size[i], n);
                 if (depth == depth) CgVfxContacts.respond(p, i, n[0], n[1], n[2], depth, bounce, friction, rest, kill);
             }
         }
@@ -1127,7 +1095,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            volume.writeShape(out);
+            CgVfxContacts.writeShape(shape, out);
             out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(radius, keepsInside ? 1f : 0f, 0f, 0f);
         }
 
@@ -1138,7 +1106,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            volume.writeCentre(instance, out);
+            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
         }
     }
 
@@ -1309,29 +1277,39 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
-     * Kills the particles inside a volume, or with {@code inside} false those outside it (bevy_hanabi's kill sphere and
-     * kill box; a plane kills behind it). They die, and their death events fire, at the end of the step. Runs after the
-     * solver.
+     * Kills the particles inside a shape, or with {@code inside} false those outside it (bevy_hanabi's kill sphere and
+     * kill box; a plane kills behind it, out to its radius). They die, and their death events fire, at the end of the
+     * step. The shape is centred on the source, or {@link #at} a point from it. Runs after the solver.
      *
      * <pre>{@code
-     * new CgVfxModule.Kill(Volume.sphere(0.4f).at(0f, 1.5f, 0f), true)   // absorbed at the centre
-     * new CgVfxModule.Kill(Volume.box(20f, 20f, 20f), false)              // never past the play area
+     * new CgVfxModule.Kill(CgSphere.of(0.4), true).at(0f, 1.5f, 0f)   // absorbed at the centre
+     * new CgVfxModule.Kill(CgBox.of(20, 20, 20), false)                // never past the play area
      * }</pre>
      */
-    record Kill(Volume volume, boolean inside) implements CgVfxModule {
+    record Kill(CgShape shape, float x, float y, float z, boolean inside) implements CgVfxModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Kill {
-            Objects.requireNonNull(volume, "volume");
-            if (volume.reach() != 0f) throw new IllegalArgumentException("a kill volume cannot end: " + volume);
+            CgVfxContacts.check(shape);
+        }
+
+        public Kill(CgShape shape, boolean inside) {
+            this(shape, 0f, 0f, 0f, inside);
+        }
+
+        /** The shape centred {@code (x, y, z)} from the source. */
+        public Kill at(float x, float y, float z) {
+            return new Kill(shape, x, y, z, inside);
         }
 
         @Override
         public void apply(CgVfxEmitterInstance emitter, float dt) {
             CgVfxParticleSet p = emitter.particles();
-            float cx = emitter.sourceX() + volume.x(), cy = emitter.sourceY() + volume.y(), cz = emitter.sourceZ() + volume.z();
+            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
             for (int i = 0; i < p.count(); i++) {
-                if (CgVfxContacts.inside(volume, p.x[i] - cx, p.y[i] - cy, p.z[i] - cz) == inside) p.life[i] = p.age[i];
+                float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
+                boolean in = CgVfxContacts.inside(shape, rx, ry, rz) && CgVfxContacts.over(shape, rx, ry, rz);
+                if (in == inside) p.life[i] = p.age[i];
             }
         }
 
@@ -1352,7 +1330,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            volume.writeShape(out);
+            CgVfxContacts.writeShape(shape, out);
             out.vec4(inside ? 1f : 0f, 0f, 0f, 0f);
         }
 
@@ -1363,7 +1341,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            volume.writeCentre(instance, out);
+            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
         }
     }
 }

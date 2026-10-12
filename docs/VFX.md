@@ -773,21 +773,26 @@ Modules run in order every step. Forces come first and are integrated together; 
 | `Gravity`, `Force` | A constant pull down; a constant push in any direction |
 | `Drag`, `Damping`, `LimitSpeed` | Linear and quadratic drag; velocity decaying by a rate; a speed cap |
 | `Wind`, `Turbulence`, `Buoyancy`, `Updraft` | The system's gusting air; curl noise; hot particles rising as they cool; a column of rising air |
-| `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a `Volume`; circling an axis; a vortex's pull; settling onto a sphere's shell |
+| `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a sphere or box; circling an axis; a vortex's pull; settling onto a sphere's shell |
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
 | `Ground` | Landing on the effect's ground: bounce, friction, rest |
 | `Current` | Dust carried along the ground by a blast's gravity current |
-| `Collide` | A sphere, box, plane or container (`Volume`): bounce, friction, or kill on contact |
+| `Collide` | A sphere, box, plane or container: bounce, friction, or kill on contact |
 | `CollideWorld` | The world's blocks round the camera |
 | `CollideDepth` | What is on screen (mobs and players), from the depth buffer |
 | `CollideEntities` | The boxes of the 64 living entities nearest the camera; struck only on entering, so a particle born inside its caster flies out |
-| `Kill` | Dies inside (or outside) a `Volume` |
+| `Kill` | Dies inside (or outside) a sphere, box or plane |
+
+`Attract`, `VectorField`, `Conform`, `Collide` and `Kill` take a collision engine shape, a `CgSphere`, `CgBox` or
+`CgPlane`, centred on the emitter's source or `at` a point from it. A plane ends at its radius, 1000 blocks unless
+given: a particle past the edge falls off.
 
 ```java
-.module(new CgVfxModule.Attract(CgVfxModule.Volume.sphere(2f).at(0f, 3f, 0f), 12f, 1f, 0f, 0f, 1f, 0f))
-.module(new CgVfxModule.Collide(CgVfxModule.Volume.sphere(1.8f).at(0f, -5.2f, 0f), 0.6f, 0.05f, 0.3f))
-.module(new CgVfxModule.Kill(CgVfxModule.Volume.box(4f, 1f, 4f).at(0f, -2f, 0f), true))
+.module(new CgVfxModule.Attract(CgSphere.of(2), 12f).at(0f, 3f, 0f))
+.module(new CgVfxModule.Collide(CgSphere.of(1.8), 0.6f, 0.05f, 0.3f).at(0f, -5.2f, 0f))
+.module(new CgVfxModule.Collide(CgPlane.of(0.4, 1, 0, 5), 0.3f, 0f, 0f))      // a ramp 5 blocks round
+.module(new CgVfxModule.Kill(CgBox.of(4, 1, 4), true).at(0f, -2f, 0f))
 ```
 
 ### Events: particles spawning particles

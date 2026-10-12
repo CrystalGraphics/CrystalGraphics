@@ -12,6 +12,9 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.shape.primitive.CgBox;
+import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
@@ -28,7 +31,6 @@ import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
-import com.crystalgraphics.vfx.particle.CgVfxModule.Volume;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -222,11 +224,11 @@ public final class CgVfxModules {
         CgVfxEmitter motes = CgVfxEmitter.builder("gather").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
                 .rate(380f, 0f, PERIOD - 3f).shape(6.5f).launch(-0.4f, 0.4f, 1f).speed(0f, 0.3f).life(3f, 4f)
                 .size(0.04f, 0.1f, 1.5f).heat(1f)
-                .module(new CgVfxModule.Attract(Volume.sphere(9f), 30f).attenuation(1.6f))
+                .module(new CgVfxModule.Attract(CgSphere.of(9f), 30f).attenuation(1.6f))
                 .module(new CgVfxModule.Vortex(0.15f, 1f, 0.1f, 7f, 0f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Turbulence(2.5f, 0.45f, 0.5f))
                 .module(new CgVfxModule.Drag(1.1f, 0f))
-                .module(new CgVfxModule.Kill(Volume.sphere(0.45f), true))
+                .module(new CgVfxModule.Kill(CgSphere.of(0.45f), true))
                 .size(CgKeyframes.start(0f, 0.6f).to(0.15f, 1f, CgEasings.OUT_QUAD).to(1f, 0.5f, CgEasings.IN_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
@@ -261,11 +263,12 @@ public final class CgVfxModules {
         // drag holds its smoke to the wall above the foot; the debris's lets it fly off.
         float drag = 8f;
         CgVfxField air = tornadoField();
-        Volume box = Volume.box(TORNADO_HALF, TORNADO_TOP / 2f, TORNADO_HALF).at(0f, TORNADO_TOP / 2f - 0.3f, 0f);
+        CgBox box = CgBox.of(TORNADO_HALF, TORNADO_TOP / 2f, TORNADO_HALF);
+        float boxY = TORNADO_TOP / 2f - 0.3f;
         CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
                 .rate(320f, 0f, PERIOD - 2.5f).shape(0.6f).launch(0f, 1f, 1f).speed(0f, 0.5f).life(3f, 4f)
                 .size(0.25f, 0.4f, 1f).spin(0.5f, 1.5f)
-                .module(new CgVfxModule.VectorField(air, box, drag, 1f))
+                .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Turbulence(10f, 0.6f, 0.8f))
                 .module(new CgVfxModule.Drag(drag, 0f))
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 4f, CgEasings.IN_QUAD).build())
@@ -274,7 +277,7 @@ public final class CgVfxModules {
         CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").renderer(CgVfxEmitter.Renderer.QUADS).capacity(800)
                 .rate(120f, 0f, PERIOD - 2.5f).shape(2.5f).launch(0f, 0.3f, 1f).speed(0.5f, 2f).life(2f, 3f)
                 .size(0.05f, 0.12f, 1.5f).spin(2f, 8f)
-                .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f))
+                .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Drag(0.7f, 0f))
                 .module(new CgVfxModule.Ground(0.2f, 0.05f, 0.3f))
@@ -282,7 +285,7 @@ public final class CgVfxModules {
         CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
                 .rate(45f, 0f, PERIOD - 2.5f).shape(2.5f).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
                 .size(0.9f, 1.4f, 1f).spin(0.2f, 0.8f)
-                .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f))
+                .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Force(0f, -2f, 0f))
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .module(new CgVfxModule.Ground(0f, 0.05f, 0.1f))
@@ -335,7 +338,8 @@ public final class CgVfxModules {
     private void field(float x, float z, CgTexture dot, CgTexture ring) {
         float drag = 10f;
         // Source-relative, from the north pole: the field's box round the magnet, and the south pole under it.
-        Volume box = Volume.box(MAGNET_HALF, MAGNET_HALF_Y, MAGNET_HALF).at(0f, -MAGNET_POLE, 0f);
+        CgBox box = CgBox.of(MAGNET_HALF, MAGNET_HALF_Y, MAGNET_HALF);
+        float boxY = -MAGNET_POLE;
         CgVfxField air = magnetField();
         // A line's launch angle picks its shell: leaving at these vertical shares, they loop about 1.5, 2, 2.6 and 3.2
         // blocks out. One leaving upward would fly off the field.
@@ -349,12 +353,12 @@ public final class CgVfxModules {
             CgVfxEmitter shell = CgVfxEmitter.builder("fieldShell" + s).renderer(CgVfxEmitter.Renderer.QUADS)
                     .capacity(900).rate(110f, 0f, PERIOD - 3.5f).shape(0.35f).launch(shares[s], shares[s] + 0.02f, 1f)
                     .speed(0.5f, 1f).life(4.5f, 5.5f).size(0.022f, 0.032f, 1.5f).heat(1f)
-                    .module(new CgVfxModule.VectorField(air, box, drag, 1f))
+                    .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                     .module(new CgVfxModule.Vortex(0f, 1f, 0f, 6f, 0f, 0f, -MAGNET_POLE, 0f))
                     .module(new CgVfxModule.Drag(drag, 0f))
                     .module(new CgVfxModule.Buoyancy(0f, 2.2f))
-                    .module(new CgVfxModule.Kill(Volume.sphere(0.3f).at(0f, -2f * MAGNET_POLE, 0f), true))
-                    .module(new CgVfxModule.Kill(box, false))
+                    .module(new CgVfxModule.Kill(CgSphere.of(0.3f), true).at(0f, -2f * MAGNET_POLE, 0f))
+                    .module(new CgVfxModule.Kill(box, false).at(0f, boxY, 0f))
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
@@ -441,7 +445,7 @@ public final class CgVfxModules {
         CgVfxEmitter motes = CgVfxEmitter.builder("shield").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
                 .rate(520f, 0f, PERIOD - 3f).shape(5.5f).launch(-0.5f, 0.5f, 1f).speed(0.3f, 1.5f).life(2.6f, 3.4f)
                 .size(0.06f, 0.14f, 1.5f).heat(0.7f)
-                .module(new CgVfxModule.Conform(Volume.sphere(2.6f), 4.5f, 40f, 6f))
+                .module(new CgVfxModule.Conform(CgSphere.of(2.6f), 4.5f, 40f, 6f))
                 .module(new CgVfxModule.Turbulence(9f, 0.9f, 0.6f))
                 .module(new CgVfxModule.Vortex(0.2f, 1f, 0f, 2.5f, 0f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Drag(0.9f, 0f))
@@ -471,7 +475,7 @@ public final class CgVfxModules {
                 .rate(120f, 0f, PERIOD - 3f).shape(1.2f).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
                 .size(0.08f, 0.14f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
-                .module(new CgVfxModule.Collide(Volume.sphere(1.8f).at(0f, -5.2f, 0f), 0.6f, 0.05f, 0.3f))
+                .module(new CgVfxModule.Collide(CgSphere.of(1.8f), 0.6f, 0.05f, 0.3f).at(0f, -5.2f, 0f))
                 .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f))
                 // A mob or player under the boulder: what the voxel window does not hold, on screen.
                 .module(new CgVfxModule.CollideDepth(0.35f, 0.4f, 0.4f, DEPTH_THICKNESS))
@@ -497,7 +501,7 @@ public final class CgVfxModules {
                 .burst(0f, 300).burst(3.5f, 150).shape(1f).launch(-1f, 1f, 1f).speed(4f, 9f)
                 .life(PERIOD - 1f, PERIOD - 0.5f).size(0.1f, 0.2f, 1f).heat(0.9f)
                 .module(new CgVfxModule.Gravity(9.8f))
-                .module(new CgVfxModule.Collide(Volume.box(2.5f, 2.5f, 2.5f), 0.78f, 0.03f, 0.4f).container())
+                .module(new CgVfxModule.Collide(CgBox.of(2.5f, 2.5f, 2.5f), 0.78f, 0.03f, 0.4f).container())
                 .event(CgVfxEvent.onCollision().spawn(glint, 1))
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(balls).emitter(glint)
@@ -541,8 +545,8 @@ public final class CgVfxModules {
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 1.5f))
-                .module(new CgVfxModule.Collide(Volume.plane(nx, ny, 0f).at(0f, top - source, 0f).within(ramp / 2f),
-                        0.3f, 0.02f, 0f))
+                .module(new CgVfxModule.Collide(CgPlane.of(nx, ny, 0f, ramp / 2f), 0.3f, 0.02f, 0f)
+                        .at(0f, top - source, 0f))
                 // Friction takes its share of the sliding speed every step: 0.05 skids a piece off the ramp a block or two.
                 .module(new CgVfxModule.CollideWorld(0.3f, 0.05f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(snow, 1))
@@ -606,14 +610,14 @@ public final class CgVfxModules {
                 .rate(rate, 0f, PERIOD - 3f).shape(spread).launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f)
                 .size(0.025f, 0.035f, 1f).heat(0.4f)
                 .module(new CgVfxModule.Gravity(20f))
-                .module(new CgVfxModule.Collide(Volume.box(1.5f, 1f, 1.5f).at(0f, 1f - source, 0f), 0f, 0f, 0f))
+                .module(new CgVfxModule.Collide(CgBox.of(1.5f, 1f, 1.5f), 0f, 0f, 0f).at(0f, 1f - source, 0f))
                 // Just past the block's surface: a drop is killed the step it lands, after its collision fired.
-                .module(new CgVfxModule.Kill(Volume.box(1.52f, 1.03f, 1.52f).at(0f, 1f - source, 0f), true))
+                .module(new CgVfxModule.Kill(CgBox.of(1.52f, 1.03f, 1.52f), true).at(0f, 1f - source, 0f))
                 .module(new CgVfxModule.CollideWorld(0f, 0f, 0f).killing())
                 .module(new CgVfxModule.CollideDepth(0f, 0f, 0f, DEPTH_THICKNESS).killing());
         if (spread > 1.5f) {
             float column = (source - 2f) / 2f;
-            rain.module(new CgVfxModule.Kill(Volume.box(1.55f, column, 1.55f).at(0f, -column, 0f), true));
+            rain.module(new CgVfxModule.Kill(CgBox.of(1.55f, column, 1.55f), true).at(0f, -column, 0f));
         }
         return rain.event(CgVfxEvent.onCollision().spawn(splash, 3)).event(CgVfxEvent.onCollision().spawn(ripple, 1))
                 .build();
@@ -642,11 +646,11 @@ public final class CgVfxModules {
                 .size(0.05f, 0.08f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 2.5f))
-                .module(new CgVfxModule.Collide(Volume.sphere(sphereR).at(sphereX - sx, sphereY - sy, 0f), 0.5f, 0.05f, 0.3f))
-                .module(new CgVfxModule.Collide(Volume.box(cubeHalf, cubeHalf, cubeHalf).at(cubeX - sx, cubeY - sy, 0f),
-                        0.35f, 0.05f, 0.3f))
-                .module(new CgVfxModule.Collide(Volume.plane(nx, 1f, 0f).at(-sx, rampY - sy, 0f).within(rampLength / 2f),
-                        0.3f, 0.02f, 0f))
+                .module(new CgVfxModule.Collide(CgSphere.of(sphereR), 0.5f, 0.05f, 0.3f).at(sphereX - sx, sphereY - sy, 0f))
+                .module(new CgVfxModule.Collide(CgBox.of(cubeHalf, cubeHalf, cubeHalf), 0.35f, 0.05f, 0.3f)
+                        .at(cubeX - sx, cubeY - sy, 0f))
+                .module(new CgVfxModule.Collide(CgPlane.of(nx, 1f, 0f, rampLength / 2f), 0.3f, 0.02f, 0f)
+                        .at(-sx, rampY - sy, 0f))
                 // A grippy floor stops a bead within a block or so: it cools and fades where it rests.
                 .module(new CgVfxModule.CollideWorld(0.3f, 0.12f, 0.1f))
                 .event(CgVfxEvent.onCollision().spawn(sparks, 2))

@@ -1,6 +1,6 @@
-// CgVfxModule.Volume and the rigid collision response, shared by the attracting, colliding and killing kinds; the CPU
-// side is CgVfxContacts, term for term. A volume is e: its extents (a sphere's radius in x, a box's half extents, a
-// plane's unit normal) and its form in w (FX_SPHERE, FX_BOX, FX_PLANE); every point is relative to its centre.
+// A module's shape and the rigid collision response, shared by the attracting, colliding and killing kinds; the CPU
+// side is CgVfxContacts, term for term. A volume is e: its extents (a CgSphere's radius in x, a CgBox's half extents, a
+// CgPlane's unit normal) and its form in w (FX_SPHERE, FX_BOX, FX_PLANE); every point is relative to its centre.
 //
 // Ported from Godot Engine (MIT, (c) 2014-present Godot Engine contributors): the attractor falloff and the sphere and
 // box colliders of servers/rendering/renderer_rd/shaders/particles.glsl, the rigid response of
@@ -32,6 +32,13 @@ bool fx_volume_inside(vec4 e, vec3 r) {
     if (e.w == FX_SPHERE) return dot(r, r) < e.x * e.x;
     if (e.w == FX_BOX) return all(lessThan(abs(r), e.xyz));
     return dot(r, e.xyz) < 0.0;
+}
+
+// Whether r is over the volume: always, but past a plane's radius, centre.w.
+bool fx_volume_over(vec4 e, vec4 centre, vec3 r) {
+    if (e.w != FX_PLANE) return true;
+    vec3 t = r - e.xyz * dot(r, e.xyz);
+    return dot(t, t) <= centre.w * centre.w;
 }
 
 // Godot's collider: whether a particle of radius size at r touches the volume, or, a container, its inside wall. The

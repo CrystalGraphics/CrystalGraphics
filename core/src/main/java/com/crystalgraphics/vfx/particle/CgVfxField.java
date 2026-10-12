@@ -18,7 +18,7 @@ import java.nio.ByteOrder;
  * CgVfxField swirl = CgVfxField.of(16, 16, 16, false, (x, y, z, out) -> {
  *     out[0] = (float) Math.sin(y * 0.4); out[1] = 0.3f; out[2] = (float) Math.cos(x * 0.4);
  * });
- * CgVfxModule field = new CgVfxModule.VectorField(swirl, CgVfxModule.Volume.box(4f, 4f, 4f), 3f, 1f);
+ * CgVfxModule field = new CgVfxModule.VectorField(swirl, CgBox.of(4, 4, 4), 3f, 1f);
  * }</pre>
  *
  * <ul>

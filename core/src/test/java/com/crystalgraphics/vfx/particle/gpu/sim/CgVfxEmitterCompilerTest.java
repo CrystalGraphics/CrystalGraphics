@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.shape.primitive.CgBox;
+import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxField;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
@@ -114,24 +117,24 @@ public class CgVfxEmitterCompilerTest {
 
     @Test
     public void theCatalogueCompilesOnEveryTier() {
-        CgVfxModule.Volume sphere = CgVfxModule.Volume.sphere(2f).at(0f, 1f, 0f);
+        CgSphere sphere = CgSphere.of(2);
         CgVfxField field = CgVfxField.of(4, 4, 4, true, (x, y, z, out) -> out[0] = x);
         CgVfxEmitter catalogue = CgVfxEmitter.builder("catalogue").renderer(CgVfxEmitter.Renderer.QUADS)
                 .capacity(64).burst(0f, 64).life(1f, 2f)
-                .module(new CgVfxModule.Attract(sphere, 20f).attenuation(2f).directed(0.3f, 0f, 1f, 0f))
+                .module(new CgVfxModule.Attract(sphere, 20f).attenuation(2f).directed(0.3f, 0f, 1f, 0f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 10f, -3f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(1f, 0f, 0f))
-                .module(new CgVfxModule.VectorField(field, CgVfxModule.Volume.box(2f, 2f, 2f), 3f, 1f))
+                .module(new CgVfxModule.VectorField(field, CgBox.of(2, 2, 2), 3f, 1f))
                 .module(new CgVfxModule.Damping(2f))
-                .module(new CgVfxModule.Conform(sphere, 2f, 30f, 5f))
+                .module(new CgVfxModule.Conform(sphere, 2f, 30f, 5f).at(0f, 1f, 0f))
                 .module(new CgVfxModule.LimitSpeed(8f))
                 .module(new CgVfxModule.Orbit(0.5f, 0f, 1f, 0f, 0f, 0f, 0f))
-                .module(new CgVfxModule.Collide(CgVfxModule.Volume.box(1f, 1f, 1f), 0.5f, 0.2f, 0.1f))
-                .module(new CgVfxModule.Collide(CgVfxModule.Volume.plane(0f, 1f, 0f), 0f, 0f, 0f).killing())
+                .module(new CgVfxModule.Collide(CgBox.of(1, 1, 1), 0.5f, 0.2f, 0.1f))
+                .module(new CgVfxModule.Collide(CgPlane.of(0, 1, 0), 0f, 0f, 0f).killing())
                 .module(new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f))
                 .module(new CgVfxModule.CollideDepth(0.4f, 0.3f, 0.3f, 0.5f))
                 .module(new CgVfxModule.CollideEntities(0.4f, 0.3f, 0.3f, 0.5f))
-                .module(new CgVfxModule.Kill(CgVfxModule.Volume.box(20f, 20f, 20f), false))
+                .module(new CgVfxModule.Kill(CgBox.of(20, 20, 20), false))
                 .event(CgVfxEvent.onCollision().readback(8))
                 .build();
         CgVfxShape shape = CgVfxShape.of(catalogue);
