@@ -6,7 +6,7 @@ import java.util.Arrays;
 import com.crystalgraphics.serialization.CgCodecException;
 
 /** A growable byte buffer with the varints and fixed widths an object frame is made of. Reused; never shrinks. */
-final class NetBuffer {
+final class NetBuffer implements CgNetWire.Out, CgNetWire.In {
 
     byte[] bytes;
     /** Where the next write goes; the end of what a read may see. */
@@ -44,12 +44,14 @@ final class NetBuffer {
         bytes[size++] = (byte) b;
     }
 
-    void writeBool(boolean b) {
+    @Override
+    public void writeBool(boolean b) {
         writeByte(b ? 1 : 0);
     }
 
     /** Unsigned. */
-    void writeVarInt(int v) {
+    @Override
+    public void writeVarInt(int v) {
         writeVarLong(v & 0xFFFFFFFFL);
     }
 
@@ -64,11 +66,13 @@ final class NetBuffer {
     }
 
     /** Signed, small either side of zero. */
-    void writeZigZag(long v) {
+    @Override
+    public void writeZigZag(long v) {
         writeVarLong((v << 1) ^ (v >> 63));
     }
 
-    void writeInt(int v) {
+    @Override
+    public void writeInt(int v) {
         ensure(4);
         bytes[size++] = (byte) (v >>> 24);
         bytes[size++] = (byte) (v >>> 16);
@@ -76,16 +80,19 @@ final class NetBuffer {
         bytes[size++] = (byte) v;
     }
 
-    void writeLong(long v) {
+    @Override
+    public void writeLong(long v) {
         writeInt((int) (v >>> 32));
         writeInt((int) v);
     }
 
-    void writeFloat(float v) {
+    @Override
+    public void writeFloat(float v) {
         writeInt(Float.floatToRawIntBits(v));
     }
 
-    void writeDouble(double v) {
+    @Override
+    public void writeDouble(double v) {
         writeLong(Double.doubleToRawLongBits(v));
     }
 
@@ -121,11 +128,13 @@ final class NetBuffer {
         return bytes[pos++] & 0xFF;
     }
 
-    boolean readBool() {
+    @Override
+    public boolean readBool() {
         return readByte() != 0;
     }
 
-    int readVarInt() {
+    @Override
+    public int readVarInt() {
         long v = readVarLong();
         if (v > 0xFFFFFFFFL) throw new CgCodecException("varint too long");
         return (int) v;
@@ -141,27 +150,32 @@ final class NetBuffer {
         throw new CgCodecException("varint too long");
     }
 
-    long readZigZag() {
+    @Override
+    public long readZigZag() {
         long v = readVarLong();
         return (v >>> 1) ^ -(v & 1);
     }
 
-    int readInt() {
+    @Override
+    public int readInt() {
         need(4);
         int v = (bytes[pos] & 0xFF) << 24 | (bytes[pos + 1] & 0xFF) << 16 | (bytes[pos + 2] & 0xFF) << 8 | (bytes[pos + 3] & 0xFF);
         pos += 4;
         return v;
     }
 
-    long readLong() {
+    @Override
+    public long readLong() {
         return (long) readInt() << 32 | (readInt() & 0xFFFFFFFFL);
     }
 
-    float readFloat() {
+    @Override
+    public float readFloat() {
         return Float.intBitsToFloat(readInt());
     }
 
-    double readDouble() {
+    @Override
+    public double readDouble() {
         return Double.longBitsToDouble(readLong());
     }
 

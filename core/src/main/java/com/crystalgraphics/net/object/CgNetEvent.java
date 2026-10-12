@@ -22,6 +22,12 @@ import com.crystalgraphics.serialization.CgPlainOps;
  * TURRET.onEvent(FIRED, (obj, shot) -> flash(shot)); // client
  * }</pre>
  *
+ * An event emitted often (hits, shots) takes a {@link CgNetWire} instead of a codec, and allocates nothing:
+ *
+ * <pre>{@code
+ * public static final CgNetEvent<Shot> SHOT = CgNetEvent.of("shot", Shot.WIRE);
+ * }</pre>
+ *
  * <ul>
  *   <li>Delivered after the tick, in emit order, after the object's changes of that tick: a behaviour reads the state
  *       the event happened in.</li>
@@ -36,21 +42,31 @@ public final class CgNetEvent<P> {
     final String name;
     @Nullable
     final CgCodec<P> codec;
+    @Nullable
+    final CgNetWire<P> wire;
 
-    private CgNetEvent(String name, @Nullable CgCodec<P> codec) {
-        if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("an event name is lowercase, not '" + name + "'");
+    private CgNetEvent(String name, @Nullable CgCodec<P> codec, @Nullable CgNetWire<P> wire) {
+        if (!NAME.matcher(name).matches()) {
+            throw new IllegalArgumentException("an event name is lowercase, not '" + name + "'");
+        }
         this.name = name;
         this.codec = codec;
+        this.wire = wire;
     }
 
     /** An event carrying a value. */
     public static <P> CgNetEvent<P> of(String name, CgCodec<P> codec) {
-        return new CgNetEvent<>(name, Objects.requireNonNull(codec, "codec"));
+        return new CgNetEvent<>(name, Objects.requireNonNull(codec, "codec"), null);
+    }
+
+    /** An event carrying a value in its fixed-width form: nothing allocated per emit. */
+    public static <P> CgNetEvent<P> of(String name, CgNetWire<P> wire) {
+        return new CgNetEvent<>(name, null, Objects.requireNonNull(wire, "wire"));
     }
 
     /** An event carrying nothing. */
     public static CgNetEvent<Void> of(String name) {
-        return new CgNetEvent<>(name, null);
+        return new CgNetEvent<>(name, null, null);
     }
 
     public String name() {
@@ -58,6 +74,10 @@ public final class CgNetEvent<P> {
     }
 
     void write(NetBuffer out, @Nullable P value) {
+        if (wire != null) {
+            wire.write(Objects.requireNonNull(value, name), out);
+            return;
+        }
         if (codec == null) return;
         byte[] encoded = CgBinaryFormat.encode(codec.encode(CgPlainOps.INSTANCE, Objects.requireNonNull(value, name)));
         out.writeBytes(encoded, 0, encoded.length);
@@ -65,6 +85,17 @@ public final class CgNetEvent<P> {
 
     @Nullable
     P read(NetBuffer in, int length) {
+        if (wire != null) {
+            int end = in.pos + length;
+            int size = in.size;
+            in.size = end;
+            try {
+                return wire.read(in);
+            } finally {
+                in.size = size;
+                in.pos = end;
+            }
+        }
         if (codec == null) {
             in.skip(length);
             return null;

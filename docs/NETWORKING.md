@@ -713,6 +713,13 @@ Turret.TYPE.onEvent(FIRED, (obj, shot) -> flash(shot)); // client
 - **A viewer who was not watching that tick never gets it**, and a later viewer never does: an event is a moment,
   not state. What a newcomer must know is a field.
 - An event emitted in the tick an object despawns still reaches its viewers, before the end.
+- **An event emitted often** (hits, shots) takes a `CgNetWire` instead of a codec: you write its fields straight into
+  the frame and read them back, so neither side allocates per event. Its javadoc has the pattern: one mutable value
+  refilled per emit on the server, one reused instance read back on the client.
+
+  ```java
+  public static final CgNetEvent<Shot> SHOT = CgNetEvent.of("shot", Shot.WIRE);
+  ```
 
 ### Commands: a client asks (client to server)
 
