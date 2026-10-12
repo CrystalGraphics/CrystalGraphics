@@ -5,7 +5,9 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.CgNetwork;
+import com.crystalgraphics.mc.modern.platform.world.LevelQueriesModern;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 
@@ -26,6 +28,7 @@ public final class NetworkModern {
     public static void install(CgNetworkChannel channel) {
         CgNetwork.install(channel, player -> player instanceof ServerPlayer ? idOf((ServerPlayer) player) : null);
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersModern());
+        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesModern());
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {

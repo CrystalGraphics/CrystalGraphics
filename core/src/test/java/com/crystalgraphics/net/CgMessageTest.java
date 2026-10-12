@@ -57,8 +57,11 @@ public class CgMessageTest {
 
         @Override
         public void sendToPlayer(Object player, byte[] frame) {
+            toPlayer++;
             inbound.accept(null, frame);
         }
+
+        int toPlayer;
 
         @Override
         public void setInboundHandler(BiConsumer<Object, byte[]> handler) {
@@ -116,6 +119,22 @@ public class CgMessageTest {
 
         assertEquals(new Blast("blast", 42L), arrived.get());
         assertEquals(0, play.skipped());
+    }
+
+    /** An effect sent with the hit that caused it arrives with it, not a tick behind. */
+    @Test
+    public void aSendLeavesAtOnceNotAtTheNextTick() {
+        CgMessage<Blast> play = CgMessage.toClients("test:vfx/play", Blast.CODEC);
+        Loopback channel = new Loopback(id);
+        CgNetwork.install(channel, player -> (UUID) player);
+        CgNetwork.playerJoined(id, "Steve", () -> id);
+        CgNetwork.clientConnected();
+        settle();
+
+        int before = channel.toPlayer;
+        play.send(CgAudience.all(), new Blast("blast", 42L));
+
+        assertTrue(channel.toPlayer > before);
     }
 
     @Test

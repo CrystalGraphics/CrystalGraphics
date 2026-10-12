@@ -64,6 +64,10 @@ public final class CgNetwork {
     private static final String CONTRIBUTOR = "cg";
 
     private static final List<Consumer<CgPeer>> CLOSED = new CopyOnWriteArrayList<>();
+    private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>();
+
+    /** Server ticks since this process started a server: what an age on the wire is measured in. */
+    private static volatile long serverTicks;
 
     @Nullable
     private static volatile CgNetworkChannel channel;
@@ -125,6 +129,19 @@ public final class CgNetwork {
     /** Called with each peer whose connection has closed, so per-peer state elsewhere can be dropped. */
     public static void onPeerClosed(Consumer<CgPeer> listener) {
         CLOSED.add(listener);
+    }
+
+    /**
+     * Runs {@code listener} once a server tick, on the server thread, before {@link CgReplicated} sends the tick's
+     * changes: a change made here reaches clients this tick. At init.
+     */
+    public static void onServerTick(Runnable listener) {
+        SERVER_TICK.add(listener);
+    }
+
+    /** Server ticks counted since this process first ticked a server; a server thread's clock. */
+    public static long serverTicks() {
+        return serverTicks;
     }
 
     /** The connection to this player, or null when they have none. */
@@ -217,6 +234,14 @@ public final class CgNetwork {
     public static void serverTick() {
         CgConnections table = server;
         if (table == null) return;
+        serverTicks++;
+        for (Runnable listener : SERVER_TICK) {
+            try {
+                listener.run();
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] a server-tick listener failed", failed);
+            }
+        }
         CgReplicated.serverTickAll();
         table.tick();
     }
@@ -270,6 +295,8 @@ public final class CgNetwork {
     static synchronized void resetForTesting() {
         closeAll("reset");
         CLOSED.clear();
+        SERVER_TICK.clear();
+        serverTicks = 0;
         channel = null;
         idOf = null;
         server = null;

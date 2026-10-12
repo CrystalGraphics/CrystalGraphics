@@ -35,6 +35,8 @@ public interface CgServerPlayers {
         @Override public String dimension(Object handle) { return null; }
         @Override public boolean position(Object entity, double[] out) { return false; }
         @Override public UUID playerId(Object entity) { return null; }
+        @Override public int entityId(Object entity) { return -1; }
+        @Override public boolean alive(Object entity) { return false; }
         @Override public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) { }
         @Override public void trackingEntity(Object entity, Consumer<UUID> out) { }
         @Override public Path saveDirectory(Object handle) { return null; }
@@ -53,6 +55,12 @@ public interface CgServerPlayers {
 
     /** A player entity's profile id; null for any other object. */
     UUID playerId(Object entity);
+
+    /** An entity's network id, the one its clients know it by; -1 for any other object. */
+    int entityId(Object entity);
+
+    /** Whether an entity is alive and in its level; false for any other object. */
+    boolean alive(Object entity);
 
     /** Hands {@code out} each player whose client has chunk ({@code chunkX}, {@code chunkZ}) of {@code level} loaded. */
     void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out);

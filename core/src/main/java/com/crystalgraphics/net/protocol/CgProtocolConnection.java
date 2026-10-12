@@ -47,6 +47,8 @@ public final class CgProtocolConnection<T> {
     private final CgMessageRouter<T> router;
     private final CgDynamicOps<T> ops;
     private final Runnable pump;
+    /** Sends what is queued now; a no-op in memory. @see #flush */
+    private Runnable flush = () -> { };
     @Nullable
     private final Object peer;
 
@@ -254,6 +256,18 @@ public final class CgProtocolConnection<T> {
     /** Tells the peer. Nothing comes back, and nothing may be waited on. */
     public void notify(String method, @Nullable CgStateMap<T> payload) {
         router.notify(method, payload == null ? null : payload.encode());
+    }
+
+    /**
+     * Sends what is queued now instead of at the next {@link #tick()}, so it leaves in order with whatever the game
+     * sends on the same connection this tick. On the thread that ticks it.
+     */
+    public void flush() {
+        if (!closed) flush.run();
+    }
+
+    void flushWith(Runnable flush) {
+        this.flush = flush;
     }
 
     // ── Running ─────────────────────────────────────────────────────────────

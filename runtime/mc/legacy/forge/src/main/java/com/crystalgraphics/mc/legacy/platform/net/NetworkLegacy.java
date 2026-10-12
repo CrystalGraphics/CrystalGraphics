@@ -4,8 +4,10 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.mc.legacy.platform.world.LevelQueriesLegacy;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -37,6 +39,7 @@ public final class NetworkLegacy {
         CgNetwork.install(NetworkChannelLegacy.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersLegacy());
+        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesLegacy());
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 

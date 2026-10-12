@@ -59,6 +59,16 @@ public class CgAudienceTest {
         }
 
         @Override
+        public int entityId(Object entity) {
+            return -1;
+        }
+
+        @Override
+        public boolean alive(Object entity) {
+            return entity instanceof Body;
+        }
+
+        @Override
         public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
         }
 

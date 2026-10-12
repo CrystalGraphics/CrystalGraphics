@@ -24,17 +24,24 @@ CrystalGUI's `docs/CGUI_NETWORKING_PRIMER.md` is the guide.
 **A mod sends a typed `CgMessage`** (a name, a direction and a `CgCodec`, declared at init) to a `CgAudience`.
 Each connection opens with `cg/hello`: the client says which message namespaces it declared, until the server
 answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
-skipped and counted rather than sent.
+skipped and counted rather than sent. **A send leaves at once**, flushed in order with the game's packets that tick,
+so send from the game thread; replicated changes still coalesce to the tick's end. `CgNetwork.onServerTick` runs a
+listener each server tick before those changes go out, and `serverTicks()` counts the ticks.
 
 **Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
 `except`. All but the first two and the last ask the `CgServerPlayers` slot (`platform.service`), which each host
 fills beside its channel (`ServerPlayersModern`, `ServerPlayersLegacy`, `ServerPlayers1710`) with facts only:
-dimension, position, profile id, and who has a chunk or an entity loaded. Modern Minecraft has no public answer to
+dimension, position, profile id, an entity's network id and whether it is alive, and who has a chunk or an entity
+loaded. Modern Minecraft has no public answer to
 the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
+Beside it each host provides `CgLevelQueries`: the world and entity queries over any level, a server's included,
+for what runs on the server tick (a beam's raycast).
 
 **`CgReplicated`** is a server-owned object mirrored to the clients that can see it: changes coalesce to one a
 tick, a player coming into view is sent the current value, and `persisted()` saves under the world's directory
-(`crystalgraphics/replicated/`) at stop and every five minutes. Hosts forward the server starting too
+(`crystalgraphics/replicated/`) at stop and every five minutes. Who sees an object is its definition's range, or an
+audience per object (`visibleTo`, asked once a tick): a VFX cue is seen by those tracking what it follows. Effects
+over the network are `vfx.net`'s cues, built on these (`docs/VFX.md` § *Effects over the network*). Hosts forward the server starting too
 (`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
 
 **`CgRequest`** is a typed question with one answer (`toServer`/`toClient`, `onServer`/`onClient`, `ask`), over the

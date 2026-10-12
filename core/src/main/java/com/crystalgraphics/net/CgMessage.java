@@ -51,6 +51,8 @@ import org.apache.logging.log4j.Logger;
  *   <li>A peer that lacks the namespace, or never says hello (no mod), is skipped and counted
  *       ({@link #skipped()}), never logged per send. A version mismatch ({@link #version}) is logged once per peer.</li>
  *   <li>Handlers run on the receiving side's game thread, at its tick. The client thread is the render thread.</li>
+ *   <li>Send from the game thread. A send leaves at once, in order with what the game sends on the same connection
+ *       that tick: a hit's effect arrives with the hit, not a tick after it.</li>
  *   <li>Install a client handler from client code, so a dedicated server never loads its classes.</li>
  *   <li>The sender of a {@code toServer} message is the connection's, never a field of the payload: a client that
  *       could name its sender could name another player.</li>
@@ -218,6 +220,7 @@ public final class CgMessage<T> {
             return;
         }
         connection.router().notify(name, encoded);
+        connection.flush();
     }
 
     private void receive(CgProtocolConnection<Object> connection, @Nullable Object payload) {

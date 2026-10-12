@@ -119,6 +119,7 @@ public final class CgConnections {
         // subsystem that forgot to pump would receive nothing, silently.
         CgProtocolConnection<Object> connection =
                 CgProtocols.open(transport, CgPlainOps.INSTANCE, transport::pump, peer);
+        connection.flushWith(frames::flush);
         peers.put(key, new Held(frames, connection, peer));
         return connection;
     }

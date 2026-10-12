@@ -89,6 +89,8 @@ public final class CgReplicated<T> {
     private final CgCodec<T> codec;
     private final CgMessage<Op<T>> message;
     private double range = -1;
+    @Nullable
+    private Visibility<T> visibility;
     private boolean persisted;
 
     // Server thread.
@@ -123,6 +125,27 @@ public final class CgReplicated<T> {
         if (!(blocks > 0)) throw new IllegalArgumentException("range must be positive: " + blocks);
         range = blocks;
         return this;
+    }
+
+    /**
+     * Who sees each object, asked once a tick per object: an audience, or null for the dimension within
+     * {@link #visibleWithin}'s range. Server thread.
+     *
+     * <pre>{@code
+     * AURAS.visibleTo(h -> CgAudience.trackingAndSelf(casterOf(h)));   // whoever has the caster loaded
+     * }</pre>
+     */
+    public CgReplicated<T> visibleTo(Visibility<T> visibility) {
+        this.visibility = Objects.requireNonNull(visibility, "visibility");
+        return this;
+    }
+
+    /** Who sees one object. */
+    @FunctionalInterface
+    public interface Visibility<T> {
+        /** The players who see {@code handle} this tick, or null for the definition's range. */
+        @Nullable
+        CgAudience audience(Handle<T> handle);
     }
 
     /** Saved with the world and loaded the next time it starts. */
@@ -187,6 +210,9 @@ public final class CgReplicated<T> {
         private boolean dirty;
         private boolean removed;
         private final Set<UUID> viewers = new HashSet<>();
+        /** This tick's audience, when the definition's {@link Visibility} gave one. */
+        private final Set<UUID> audience = new HashSet<>();
+        private boolean byAudience;
 
         private Handle(CgReplicated<T> owner, long id, String dimension, double x, double y, double z, T value) {
             this.owner = owner;
@@ -364,6 +390,15 @@ public final class CgReplicated<T> {
             }
         }
 
+        if (visibility != null) {
+            for (Handle<T> handle : live.values()) {
+                CgAudience who = visibility.audience(handle);
+                handle.byAudience = who != null;
+                handle.audience.clear();
+                if (who != null) who.forEach(handle.audience::add);
+            }
+        }
+
         int version = CgMessage.versionOf(namespace);
         for (Viewer viewer : viewers) {
             boolean speaks = viewer.hello.version(namespace) == version;
@@ -386,6 +421,7 @@ public final class CgReplicated<T> {
 
     private boolean sees(Viewer viewer, Handle<T> handle) {
         if (!viewer.dimension.equals(handle.dimension)) return false;
+        if (handle.byAudience) return handle.audience.contains(viewer.id);
         if (range < 0) return true;
         double dx = viewer.x - handle.x, dy = viewer.y - handle.y, dz = viewer.z - handle.z;
         return dx * dx + dy * dy + dz * dz <= range * range;

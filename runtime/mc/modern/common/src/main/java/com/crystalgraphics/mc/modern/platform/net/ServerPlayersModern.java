@@ -69,6 +69,16 @@ final class ServerPlayersModern implements CgServerPlayers {
     }
 
     @Override
+    public int entityId(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getId() : -1;
+    }
+
+    @Override
+    public boolean alive(Object entity) {
+        return entity instanceof Entity && ((Entity) entity).isAlive();
+    }
+
+    @Override
     public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
         if (!(level instanceof ServerLevel)) return;
         chunkPlayers((ServerLevel) level, chunkX, chunkZ, player -> {

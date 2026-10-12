@@ -43,6 +43,16 @@ final class ServerPlayers1710 implements CgServerPlayers {
     }
 
     @Override
+    public int entityId(Object entity) {
+        return entity instanceof Entity ? ((Entity) entity).getEntityId() : -1;
+    }
+
+    @Override
+    public boolean alive(Object entity) {
+        return entity instanceof Entity && ((Entity) entity).isEntityAlive();
+    }
+
+    @Override
     public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
         if (!(level instanceof WorldServer)) return;
         WorldServer world = (WorldServer) level;

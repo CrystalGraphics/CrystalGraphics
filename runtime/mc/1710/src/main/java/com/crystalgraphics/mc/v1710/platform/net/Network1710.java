@@ -4,8 +4,10 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.mc.v1710.platform.world.LevelQueries1710;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 
 import cpw.mods.fml.common.FMLCommonHandler;
@@ -37,6 +39,7 @@ public final class Network1710 {
         CgNetwork.install(NetworkChannel1710.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayers1710());
+        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueries1710());
         FMLCommonHandler.instance().bus().register(new Handler());
     }
 

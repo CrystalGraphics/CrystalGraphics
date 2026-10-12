@@ -50,6 +50,16 @@ public class CgReplicatedTest {
         }
 
         @Override
+        public int entityId(Object entity) {
+            return -1;
+        }
+
+        @Override
+        public boolean alive(Object entity) {
+            return entity instanceof Body;
+        }
+
+        @Override
         public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
         }
 
@@ -162,6 +172,22 @@ public class CgReplicatedTest {
 
         assertEquals(List.of("added fresh", "removed", "added changed while away", "removed"), told);
         assertEquals(0, craters.size());
+    }
+
+    @Test
+    public void anAudienceDecidesWhoSeesEachObject() {
+        CgReplicated<String> craters = CgReplicated.define("test:crater", CgCodecs.STRING)
+                .visibleTo(h -> h.value().startsWith("mine") ? CgAudience.player(body.id)
+                        : CgAudience.except(CgAudience.all(), body.id))
+                .onClient(view);
+        join();
+        craters.create(body, 0, 64, 0, "mine");
+        CgReplicated.Handle<String> other = craters.create(body, 0, 64, 0, "theirs");
+        settle();
+        other.set("mine too");
+        settle();
+
+        assertEquals(List.of("added mine", "added mine too"), told);
     }
 
     @Test
