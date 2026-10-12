@@ -1,5 +1,7 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
@@ -204,10 +206,12 @@ public final class CgWorldProbe {
                     String.format("ground %.3f below feet %.3f, not on the ground", ground, py));
         }
         if (!Double.isNaN(ground)) {
-            CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
-            boolean struck = CgWorldQueries.raycast(world, px, py + eye, pz, 0, -1, 0, 80, hit);
-            check("world.raycast", struck && Math.abs(hit.y - ground) < 0.08,
-                    String.format("ray hit %s at %.3f, ground %.3f", struck, hit.y, ground));
+            // The block's real shapes, against the scan's spans.
+            CgHit hit = new CgHit();
+            boolean struck = CgCollisionWorld.of(world, CgEntityQuery.NONE).ray().at(px, py + eye, pz)
+                    .along(0, -1, 0, 80).blocksOnly().first(hit) && !hit.unloaded();
+            check("world.raycast", struck && Math.abs(hit.y() - ground) < 0.08,
+                    String.format("ray hit %s at %.3f, ground %.3f", struck, hit.y(), ground));
             int by = floor(ground - 0.001);
             check("world.ground-block", !Float.isNaN(world.collisionTop(bx, by, bz))
                     && world.surface(bx, by, bz) != CgWorldQuery.SURFACE_NONE && !Float.isNaN(world.hardness(bx, by, bz)),

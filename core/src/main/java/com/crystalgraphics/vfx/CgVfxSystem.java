@@ -179,6 +179,8 @@ public final class CgVfxSystem {
 
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
+    /** Seconds a game tick lasts: what a hitbox's time counts ({@link CgVfxEffect#hitbox}). */
+    public static final float GAME_TICK = 0.05f;
     /** The most of an effect's life {@link CgVfxEffect#startAt} steps through; past it the age jumps. */
     public static final float MAX_START_SECONDS = 30f;
     /** The most of an effect's last seconds before its start age whose particles a prewarm makes. */

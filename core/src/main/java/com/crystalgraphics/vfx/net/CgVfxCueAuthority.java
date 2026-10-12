@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
@@ -56,7 +57,7 @@ final class CgVfxCueAuthority implements CgNetBehaviour, CgVfxCollisionListener,
             LOGGER.warn("[CgVfx] {}'s authority tests no world: at() was given a {}, neither a level nor an entity in one,"
                     + " so it strikes nothing", play.id(), play.level.getClass().getName());
         }
-        authority = new CgVfxAuthority(effect, levels.world(level), levels.entities(level));
+        authority = new CgVfxAuthority(effect, CgCollisionWorld.of(level));
         effect.onCollide(this);
     }
 

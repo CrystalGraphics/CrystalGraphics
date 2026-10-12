@@ -542,13 +542,15 @@ state must reach viewers (like the wave's end point) adds two small interfaces:
 
 ```java
 public final class Bolt extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
-    private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
+    private final CgHit hit = new CgHit();
+    private final CgSphere bolt = CgSphere.of(0.3);
     private double endX = Double.NaN, endY, endZ;
 
     @Override protected void tick(float dt) {
-        // raycastAll reads the server's world on the server and the client's world on a client
-        if (raycastAll(originX, originY, originZ, dirX, dirY, dirZ, 64, 0.3, following(), hit)) {
-            endX = hit.x; endY = hit.y; endZ = hit.z;
+        // world() is the server's world on the server and the client's world on a client
+        if (world().cast(bolt).at(originX, originY, originZ).along(dirX, dirY, dirZ, 64)
+                .source(following()).blocksToo().first(hit)) {
+            endX = hit.x(); endY = hit.y(); endZ = hit.z();
         }
     }
 
@@ -588,7 +590,7 @@ if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the fa
   `{NoGravity:1b}`.
 - **Was `at(...)` given a level or an entity?** If not, the log says the authority tests no world.
 - **Trace it**: `-Dcrystalgraphics.vfx.traceAuthority` (or the console, `docs/DEBUG_FLAGS.md`) logs every server
-  raycast: from where, along what, what it met, and every entity the level lists along the first 32 blocks.
+  cast: from where, along what, and what it met.
 
 ---
 
@@ -890,7 +892,8 @@ collided(PART_BURST, CgVfxCollision.Hit.OTHER, -1, x, y, z, 0f, 1f, 0f, 0f, 0f, 
 
 Listeners then subscribe to a part ([§8](#parts)).
 
-Test the world through `raycastAll(...)`, which works on both sides ([§7](#making-your-own-effect-authoritative)).
+Test the world through `world()`, which works on both sides ([§7](#making-your-own-effect-authoritative)), or give
+the effect a `hitbox(part, shape)`, which reports each entity it meets on that part.
 
 ### Taking cue changes
 
@@ -965,7 +968,7 @@ Kamehameha, each server tick:
 | Part | Cost |
 |---|---|
 | Six effect ticks at 120 Hz: the beam's centreline and timers, on the CPU as on a client | ~10-30 µs |
-| One raycast: blocks out to its reach, about a dozen entity box queries along it | ~10-50 µs, depending on how crowded |
+| One sphere cast: blocks out to its reach, and the entities the level lists along it | ~10-50 µs, depending on how crowded |
 | Publishing: about 100 bytes to each viewer whenever the end or aim moves | ~0 CPU; network |
 
 **About 50 µs a wave**: 100 waves take ~5 ms of a 50 ms server tick; 1,000 take all of it.
@@ -974,7 +977,7 @@ Kamehameha, each server tick:
   the world belongs to the server thread.
 - A client spends more per wave (the same logic, plus drawing, emitters and the GPU) but only on the waves it sees, and
   its GPU runs out first at counts like that. Realistic play is dozens at once, where neither side notices.
-- **Levers, cheapest first**, once a profile asks for them: step the server's copy at 20 Hz instead of 120; raycast
+- **Levers, cheapest first**, once a profile asks for them: step the server's copy at 20 Hz instead of 120; cast
   only when the aim or the caster moved; replace the beam's path on the server with its arrival time worked out from
   speed and distance.
 
@@ -1008,13 +1011,13 @@ the server's travel to viewers as confirmed collisions.
 
 ### What shape does an effect hit with?
 
-Whatever its own code tests: the engine has no hit volume of its own. Each effect calls the world queries it needs and
-reports what they meet. The built-in ones:
+Whatever its own code tests: its queries through `world()`, and the hitboxes it gives itself with `hitbox(part, shape)`.
+The built-in ones:
 
 | What | Shape | Against |
 |---|---|---|
-| The wave's beam (`PART_BEAM`) | a ray from the muzzle along the aim, out to `MAX_LENGTH`, `RADIUS` thick (`raycastAll`) | blocks along its centre line; each entity's box grown by `RADIUS` on every side. The first thing met stops it: it does not pierce. The caster is skipped |
-| The wave's blast (`PART_BLAST`) | no test: one event at the impact point carrying a radius (`RADIUS` × `BLAST_RADIUS`) | nothing: your listener decides who is inside, as a game's radial damage does |
+| The wave's beam (`PART_BEAM`) | a sphere of `RADIUS` cast from the muzzle along the aim, out to `MAX_LENGTH` | blocks and entity boxes. The first thing met stops it: it does not pierce. The caster is skipped |
+| The wave's blast (`PART_BLAST`) | one event at the impact point carrying a radius (`RADIUS` × `BLAST_RADIUS`), then a shell hitbox expanding out to that radius | each entity once, as the front passes it |
 | Shock fronts, rings, dust | none: drawn only | — |
 | Particles (`CollideEntities`) | each particle a point | the boxes of the 64 living entities nearest the camera; client only, cosmetic |
 

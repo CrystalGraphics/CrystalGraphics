@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgEntityAttachments;
 
@@ -15,9 +15,8 @@ import java.util.function.Consumer;
  * only its own listeners, on the server thread.
  *
  * <pre>{@code
- * CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
  * CgEnergyWave wave = new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z).collide();
- * CgVfxAuthority run = new CgVfxAuthority(wave, levels.world(level), levels.entities(level));
+ * CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(level));
  * wave.onCollide(c -> damage(c.entity()));
  * run.advance(0.05f);                 // each server tick, after wave.aim(...)
  * if (run.done()) ...
@@ -36,8 +35,8 @@ public final class CgVfxAuthority {
     /** Ticks one advance may step: a server that stalls longer drops the rest rather than catch up in a burst. */
     static final int MAX_STEPS = 60;
 
-    final CgWorldQuery world;
-    final CgEntityQuery entities;
+    /** What its effect's hitboxes and queries test ({@link CgVfxEffect#world}). */
+    final CgCollisionWorld world;
     private final CgVfxEffect effect;
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
     private float pending;
@@ -46,12 +45,11 @@ public final class CgVfxAuthority {
     private CgVfxParam[] set = new CgVfxParam[4];
     private int setCount;
 
-    /** Takes {@code effect}, unplayed, to run against {@code world} and {@code entities}: one level's. */
-    public CgVfxAuthority(CgVfxEffect effect, CgWorldQuery world, CgEntityQuery entities) {
+    /** Takes {@code effect}, unplayed, to run against {@code world}: one level's. */
+    public CgVfxAuthority(CgVfxEffect effect, CgCollisionWorld world) {
         if (effect.system != null || effect.authority != null) throw new IllegalStateException("an effect plays once");
         this.effect = effect;
         this.world = world;
-        this.entities = entities;
         effect.authority = this;
     }
 
@@ -122,7 +120,7 @@ public final class CgVfxAuthority {
 
     private void follow() {
         if (effect.followEntity < 0) return;
-        if (!entities.pose(effect.followEntity, 1f, pose)) {
+        if (!world.entities().pose(effect.followEntity, 1f, pose)) {
             effect.followEntity = -1;
             effect.stop();
             return;

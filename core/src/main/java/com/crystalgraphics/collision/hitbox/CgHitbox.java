@@ -161,6 +161,11 @@ public final class CgHitbox {
         return new CgHitbox().part(null, shape);
     }
 
+    /** A hitbox of one part, {@code shape}, its hits naming {@code part}. */
+    public static CgHitbox of(CgHitPart part, CgShape shape) {
+        return new CgHitbox().part(part, shape);
+    }
+
     /** A hitbox on point {@code point} of {@code entity} (a {@link CgEntityAttachments} point), its parts to add. */
     public static CgHitbox follow(int entity, int point) {
         return new CgHitbox().on(entity, point);
@@ -475,6 +480,11 @@ public final class CgHitbox {
         return hitList;
     }
 
+    /** Whether it was given a listener: an owner hearing its hits itself refuses one that was. */
+    public boolean hasListeners() {
+        return onHit != null || onEnter != null || onExit != null;
+    }
+
     // ---- for CgHitboxType, which builds one per side
 
     void silent(boolean silent) {
@@ -487,10 +497,6 @@ public final class CgHitbox {
         age += ticks;
         hasPrev = false;
         if (age - activeFrom >= activeFor) stop();
-    }
-
-    boolean hasListeners() {
-        return onHit != null || onEnter != null || onExit != null;
     }
 
     int partCount() {

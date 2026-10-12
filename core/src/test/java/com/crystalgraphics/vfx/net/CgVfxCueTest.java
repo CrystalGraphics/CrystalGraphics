@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;
@@ -20,7 +21,6 @@ import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
-import com.crystalgraphics.world.CgWorldQueries;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -96,7 +96,7 @@ public class CgVfxCueTest {
 
     /** Goes along its direction to the first block: found on the server, given to its viewers. */
     static final class Seeker extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
-        private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
+        private final CgHit hit = new CgHit();
         private double endX = Double.NaN, endY, endZ;
 
         Seeker(double x, double y, double z) {
@@ -107,10 +107,10 @@ public class CgVfxCueTest {
         protected void tick(float dt) {
             if (state() == State.STOPPING) die();
             if (!authoritative() || !Double.isNaN(endX)) return;
-            if (raycastAll(originX, originY, originZ, 0, -1, 0, 100, 0.2, -1, hit)) {
-                endX = hit.x;
-                endY = hit.y;
-                endZ = hit.z;
+            if (world().ray().at(originX, originY, originZ).along(0, -1, 0, 100).blocksToo().first(hit)) {
+                endX = hit.x();
+                endY = hit.y();
+                endZ = hit.z();
                 collided(CgVfxCollision.Hit.BLOCK, -1, endX, endY, endZ, 0f, 1f, 0f, 0f, 0f, 0f);
             }
         }

@@ -35,7 +35,7 @@ dimension, position, profile id, an entity's network id and whether it is alive,
 loaded. Modern Minecraft has no public answer to
 the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
 Beside it each host provides `CgLevelQueries`: the world and entity queries over any level, a server's included,
-for what runs on the server tick (a beam's raycast).
+for what runs on the server tick (a beam's cast).
 
 **Networked objects** (`net.object`: `CgNetType`, `CgNetObject`) are server-owned objects of typed fields, mirrored
 to the clients that can see them: changes coalesce to one frame a tick, a player coming into view is sent the

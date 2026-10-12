@@ -11,7 +11,7 @@ import com.crystalgraphics.platform.CgService;
  * CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
  * CgWorldQuery world = levels.world(caster);              // the caster's level: an entity, or a level itself
  * CgEntityQuery entities = levels.entities(caster);
- * CgWorldQueries.raycastAll(world, entities, x, y, z, dx, dy, dz, 64, 0.5, casterId, hit);
+ * CgCollisionWorld.of(caster).ray()...                    // core's queries, over these two
  *
  * // a host, once, on both sides
  * CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesModern());

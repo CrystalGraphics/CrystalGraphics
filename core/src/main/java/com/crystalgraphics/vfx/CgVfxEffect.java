@@ -1,26 +1,27 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
-import com.crystalgraphics.world.CgWorldQueries;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -56,11 +57,6 @@ import java.util.function.Supplier;
 public abstract class CgVfxEffect {
 
     public enum State { PLAYING, STOPPING, DEAD }
-
-    private static final Logger LOGGER = LogManager.getLogger("CgVfx");
-    private static final CgVar.Bool TRACE_AUTHORITY = CgVar.bool("crystalgraphics.vfx.traceAuthority", false, CgVar.DEV,
-            "Logs each raycast an effect makes on a server: from where, along what, what it met, and every entity its"
-                    + " level lists along the first 32 blocks.");
 
     /** Where it is: fixed, or moved each frame by {@link #follow}. An effect reads it and never writes it. */
     protected double originX, originY, originZ;
@@ -103,6 +99,11 @@ public abstract class CgVfxEffect {
     private CgCameraShake.Held[] held;
     /** What hears its collisions; null for none. */
     private CgVfxCollisionListener[] collideListeners;
+    /** Its hitboxes, ticked after each tick; whether each has had its hits routed to {@link #collided}. */
+    private CgHitbox[] hitboxes;
+    private boolean[] routed;
+    private int hitboxCount;
+    private Consumer<CgHit> hitboxHits;
     /** The post volumes it opened, closed when it dies. */
     private CgPostVolume[] volumes;
     /** The emitters {@link #tick(CgVfxEmitterInstance, float)} queued this tick, run by the system after the steps. */
@@ -277,44 +278,75 @@ public abstract class CgVfxEffect {
     }
 
     /**
-     * {@link CgWorldQueries#raycastAll}: the first block or entity a ray of {@code radius} meets within {@code reach},
-     * passing through {@code ignore}. Against its server's level when {@link #authoritative}, else the client's world.
+     * What its hitboxes and queries test: its server's level when {@link #authoritative}, else the client's, its
+     * entities where this frame draws them.
+     *
+     * <pre>{@code
+     * if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(following()).blocksToo().first(hit)) ...
+     * }</pre>
+     *
+     * Ask during {@link #tick}, and end each query before the next ({@code CgQuery}).
      */
-    protected final boolean raycastAll(double x, double y, double z, double dx, double dy, double dz, double reach,
-                                       double radius, int ignore, CgWorldQueries.Hit out) {
-        if (authority != null) {
-            boolean met = CgWorldQueries.raycastAll(authority.world, authority.entities, x, y, z, dx, dy, dz, reach, radius,
-                    ignore, out);
-            if (TRACE_AUTHORITY.get()) traceRay(x, y, z, dx, dy, dz, reach, radius, ignore, met, out);
-            return met;
-        }
-        return CgWorldQueries.raycastAll(x, y, z, dx, dy, dz, reach, radius, ignore, out);
+    protected final CgCollisionWorld world() {
+        return authority != null ? authority.world
+                : CgCollisionWorld.client(CgRenderStage.WORLD_OPAQUE.host().partialTick());
     }
 
-    private void traceRay(double x, double y, double z, double dx, double dy, double dz, double reach, double radius,
-                          int ignore, boolean met, CgWorldQueries.Hit out) {
-        double length = Math.sqrt(dx * dx + dy * dy + dz * dz), span = Math.min(reach, 32.0);
-        double ex = x + dx / length * span, ey = y + dy / length * span, ez = z + dz / length * span;
-        CgEntityQuery entities = authority.entities;
-        double[] pose = new double[CgEntityQuery.POSE_LENGTH];
-        StringBuilder listed = new StringBuilder();
-        entities.within(Math.min(x, ex) - radius, Math.min(y, ey) - radius, Math.min(z, ez) - radius,
-                Math.max(x, ex) + radius, Math.max(y, ey) + radius, Math.max(z, ez) + radius, id -> {
-                    listed.append(" [").append(id).append(" kind ").append(entities.kind(id)).append(" flags 0x")
-                            .append(Integer.toHexString(entities.flags(id)));
-                    if (entities.pose(id, 1f, pose)) {
-                        listed.append(String.format(" at %.2f %.2f %.2f w %.2f h %.2f", pose[CgEntityQuery.X],
-                                pose[CgEntityQuery.Y], pose[CgEntityQuery.Z], pose[CgEntityQuery.WIDTH],
-                                pose[CgEntityQuery.HEIGHT]));
+    /**
+     * A hitbox it owns, of one part: ticked with it after each {@link #tick(float)} against {@link #world()}, and
+     * stopped when it dies. Each hit is reported as {@code collided(part, ENTITY, ...)}, so {@code onCollide(part, ...)}
+     * hears every target once. Configure it where it is made; its time is game ticks, as every hitbox's.
+     *
+     * <pre>{@code
+     * // in tick, as the blast bursts: a front 2 thick running 10 blocks out over 8 ticks
+     * hitbox(PART_BLAST, CgShell.front(2)).at(originX + x, originY + y, originZ + z).radius(0, 10, 8).activeFor(8)
+     *         .source(following());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Give it no listener: its hits are the effect's, and its first tick throws if it has one.</li>
+     *   <li>Authoritative on a server, against the level; cosmetic on a client, against what it draws.</li>
+     *   <li>Silent while it fast-forwards to its start age, as every collision is.</li>
+     * </ul>
+     */
+    protected final CgHitbox hitbox(CgHitPart part, CgShape shape) {
+        CgHitbox hitbox = CgHitbox.of(part, shape);
+        if (hitboxes == null) {
+            hitboxes = new CgHitbox[2];
+            routed = new boolean[2];
+            hitboxHits = h -> collided(h.part(), CgVfxCollision.Hit.ENTITY, h.entity(), h.x(), h.y(), h.z(),
+                    (float) -h.normalX(), (float) -h.normalY(), (float) -h.normalZ(), 0f, 0f, 0f, 0f);
+        } else if (hitboxCount == hitboxes.length) {
+            hitboxes = Arrays.copyOf(hitboxes, hitboxCount * 2);
+            routed = Arrays.copyOf(routed, hitboxCount * 2);
+        }
+        hitboxes[hitboxCount] = hitbox;
+        routed[hitboxCount++] = false;
+        return hitbox;
+    }
+
+    private void tickHitboxes(float dt) {
+        CgCollisionWorld world = world();
+        for (int i = 0; i < hitboxCount; i++) {
+            CgHitbox hitbox = hitboxes[i];
+            if (!hitbox.stopped()) {
+                if (!routed[i]) {
+                    if (hitbox.hasListeners()) {
+                        throw new IllegalStateException(getClass().getSimpleName()
+                                + "'s hitbox has a listener of its own: its hits are the effect's, heard by onCollide");
                     }
-                    listed.append(']');
-                });
-        String result = !met ? "nothing" : (out.entity >= 0 ? "entity " + out.entity : "a block")
-                + String.format(" at %.2f %.2f %.2f", out.x, out.y, out.z);
-        LOGGER.info(String.format("[CgVfx] %s on the server, age %.3f: from %.2f %.2f %.2f along %.3f %.3f %.3f, reach %.1f,"
-                        + " radius %.2f, ignoring %d: met %s; world %s, entities %s; listed:%s", getClass().getSimpleName(),
-                age, x, y, z, dx, dy, dz, reach, radius, ignore, result, authority.world.getClass().getSimpleName(),
-                entities.getClass().getSimpleName(), listed.length() == 0 ? " none" : listed));
+                    hitbox.onHit(hitboxHits);
+                    routed[i] = true;
+                }
+                hitbox.tick(world, dt / CgVfxSystem.GAME_TICK);
+            }
+            if (hitbox.stopped()) {
+                hitboxes[i] = hitboxes[--hitboxCount];
+                routed[i] = routed[hitboxCount];
+                hitboxes[hitboxCount] = null;
+                i--;
+            }
+        }
     }
 
     /** Who played it; null when played into a system directly. */
@@ -401,6 +433,11 @@ public abstract class CgVfxEffect {
 
     protected final void die() {
         state = State.DEAD;
+        for (int i = 0; i < hitboxCount; i++) {
+            hitboxes[i].stop();
+            hitboxes[i] = null;
+        }
+        hitboxCount = 0;
         if (held != null) {
             for (CgCameraShake.Held h : held) {
                 if (h != null) h.close();
@@ -666,6 +703,7 @@ public abstract class CgVfxEffect {
         values.takeTuning();
         age += dt;
         tick(dt);
+        if (hitboxCount > 0) tickHitboxes(dt);
     }
 
     /** Moves the origin, between ticks: {@link #follow}'s. */
