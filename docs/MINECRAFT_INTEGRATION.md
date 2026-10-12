@@ -19,13 +19,13 @@ forwards join, leave, both ticks, the client's connect and disconnect, and serve
 The forwards are `NetworkModern` (each loader's entry class), `NetworkLegacy` and `Network1710`, registered at init
 on both sides. A peer without the mod is accepted; what may be sent to it is the protocol's. Anything that
 talks over a connection contributes to `CgProtocols` at init and asks `CgNetwork.forPlayer`/`client`.
-CrystalGUI's `docs/CGUI_NETWORKING_PRIMER.md` is the guide.
+Using all of it from a mod: [`docs/NETWORKING.md`](NETWORKING.md). This section is how the hosts carry it.
 
 **A mod sends a typed `CgMessage`** (a name, a direction and a `CgCodec`, declared at init) to a `CgAudience`.
 Each connection opens with `cg/hello`: the client says which message namespaces it declared, until the server
 answers with its own, and a send to a peer lacking the namespace, on another version, or silent (no mod) is
 skipped and counted rather than sent. **A send leaves at once**, flushed in order with the game's packets that tick,
-so send from the game thread; replicated changes still coalesce to the tick's end. `CgNetwork.onServerTick` runs a
+so send from the game thread; networked objects' changes still coalesce to the tick's end. `CgNetwork.onServerTick` runs a
 listener each server tick before those changes go out, and `serverTicks()` counts the ticks.
 
 **Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
@@ -37,12 +37,13 @@ the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7
 Beside it each host provides `CgLevelQueries`: the world and entity queries over any level, a server's included,
 for what runs on the server tick (a beam's raycast).
 
-**`CgReplicated`** is a server-owned object mirrored to the clients that can see it: changes coalesce to one a
-tick, a player coming into view is sent the current value, and `persisted()` saves under the world's directory
-(`crystalgraphics/replicated/`) at stop and every five minutes. Who sees an object is its definition's range, or an
-audience per object (`visibleTo`, asked once a tick): a VFX cue is seen by those tracking what it follows. Effects
-over the network are `vfx.net`'s cues, built on these (`docs/VFX.md` § *Effects over the network: cues*). Hosts forward the server starting too
-(`serverStarting`, about-to-start on modern), so a persisted definition is loaded before any player joins.
+**Networked objects** (`net.object`: `CgNetType`, `CgNetObject`) are server-owned objects of typed fields, mirrored
+to the clients that can see them: changes coalesce to one frame a tick, a player coming into view is sent the
+current values, and a `persisted()` type saves under the world's directory (`crystalgraphics/objects/`) at stop and
+every five minutes. Who sees an object is its anchor (a point within its type's range, an entity's or a chunk's
+trackers, a dimension, everyone), or an audience per object (`visibleTo`). Effects over the network are `vfx.net`'s
+cues, a type each (`docs/VFX.md` § *Effects over the network: cues*). Hosts forward the server starting too
+(`serverStarting`, about-to-start on modern), so persisted objects are loaded before any player joins.
 
 **`CgRequest`** is a typed question with one answer (`toServer`/`toClient`, `onServer`/`onClient`, `ask`), over the
 router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods

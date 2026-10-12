@@ -166,7 +166,8 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |
-| Wire anything into Minecraft, or send between client and server | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
+| Send between client and server, or keep state in sync on the clients that see it | [`docs/NETWORKING.md`](docs/NETWORKING.md) | `net/CLAUDE.md` |
+| Wire anything into Minecraft | [`docs/MINECRAFT_INTEGRATION.md`](docs/MINECRAFT_INTEGRATION.md) | each host's `CLAUDE.md` |
 | Diagnose with a JVM flag | [`docs/DEBUG_FLAGS.md`](docs/DEBUG_FLAGS.md) | — |
 | Build, ship, or add a Minecraft version | [Build and run](#build-and-run) | `docs/BUILD.md` |
 

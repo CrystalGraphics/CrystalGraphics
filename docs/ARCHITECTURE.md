@@ -60,6 +60,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`runtime/mc/modern/README.md`](../runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `CLAUDE.md` |
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
 | [`docs/VFX.md`](VFX.md) | Writing effects: emitters, modules, events, a module of your own, and the gates for each |
+| [`docs/NETWORKING.md`](NETWORKING.md) | Sending between server and clients: messages, requests, and networked objects (state mirrored to whoever sees it, per-player data, events, commands, server behaviours, prediction, saving, the test rig) |
 | **[`docs/GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md)** | **Building a rendering pipeline on compute**: kernels writing records and counts, indirect and multi-draw draws, GPU culling and levels, and the design production engines follow |
 | **[`docs/PROFILING.md`](PROFILING.md)** | **Measuring anything**: the trace engine, the one-run rule, the harness and game runs, reading a report, what is instrumented. CrystalGUI adds `docs/CGUI_PROFILING.md`; the `profiling` skill is the checklist |
 | [`docs/DEBUG_FLAGS.md`](DEBUG_FLAGS.md) | Every engine switch, generated from the variable registry (`CgVar`, platform's `com.crystalgraphics.variable`): its sources, declaring a new one, and the table |
@@ -151,6 +152,12 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `text/atlas/packing/CLAUDE.md` | Packing algorithms |
 | `text/msdf/CLAUDE.md` | Distance-field generation logic |
 | `text/render/CLAUDE.md` | Draw-time orchestration |
+
+### Effects and networking
+| Path | What it covers |
+|---|---|
+| `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
+| `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
 
 ### Platform SPI and hosts (outside `core/`)
 | Path | What it covers |

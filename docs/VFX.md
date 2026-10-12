@@ -40,8 +40,8 @@ Where each class lives is `vfx/CLAUDE.md`, which loads itself for anyone editing
 | **Layer** | One draw of a look: a shader and the parameters it reads. A layer drawing particles names the emitter it draws (its **slot**). | `CgVfxLayer` |
 | **Owner** | Your mod's handle on the VFX engine. You play, stop and clear your effects through it, and they are timed under your mod's name. | `CgVfxOwner`, from `CgVfx.owner("mymod")` |
 | **System** | What updates and draws effects. The engine owns the one for the client's world; you rarely touch it. | `CgVfxSystem` |
-| **Cue** | An effect named for the network, so the server can tell clients to play it. | `CgVfxCue` |
-| **Authority** | The server running an effect itself, because gameplay depends on what it does (what a beam hits). | `CgVfxCue.authoritative()`, `CgVfxAuthority` |
+| **Cue** | An effect named for the network, so the server can tell clients to play it. Each play is a networked object (`net.object`), so the network layer decides who sees it and sends its changes. | `CgVfxCue` |
+| **Authority** | The server running an effect itself, because gameplay depends on what it does (what a beam hits). | `CgVfxCue.Builder.authoritative()`, `CgVfxAuthority` |
 | **Attachment point** | A named point on an entity an effect can ride: feet, chest, hands, or one your mod declares. | `CgEntityAttachments` |
 
 How they fit together:
@@ -102,8 +102,8 @@ Declare a cue once, in code both sides run, and send it from the server:
 
 ```java
 // common, at init
-public static final CgVfxCue<CgVfxParams> PUFF = VFX.cue("puff", PUFF_LOOK,
-        (look, cue) -> new CgVfxBurst(look, cue.x(), cue.y(), cue.z()));
+public static final CgVfxCue PUFF = VFX.cue("puff", PUFF_LOOK,
+        (look, cue) -> new CgVfxBurst(look, cue.x(), cue.y(), cue.z())).build();
 
 // server, whenever
 PUFF.at(level, x, y, z).send();
@@ -280,7 +280,8 @@ public static final CgVfxParam SHOCK = SCHEMA.shake("shock", CgCameraShakes.EXPL
 
 Declare the parameters before building the look: the builder takes the schema's defaults.
 
-- **The name matters**: a cue's parameters reach the look by name ([§6](#parameters)).
+- **The name matters**: a cue carries each number and colour as a field named after it
+  ([§6](#look-parameters-and-data-of-its-own)), so renaming one is a network change.
 - **A camera shake is a parameter** too, so a look can change it. Never hard-code shake numbers in an effect.
 
 ### Tuning live
@@ -305,6 +306,10 @@ tuning.close();   // the variables go; the look keeps what was set for the run
 On a server you cannot call `VFX.play`: nothing draws there. Instead you send a **cue**, and every client that should
 see it builds and plays the effect. The model is Unreal's gameplay cues.
 
+Each play is a networked object (`net.object`, [`NETWORKING.md`](NETWORKING.md) § 6): the network layer
+decides who sees it, sends what changed once a tick, and starts a player who comes into view at its age. You rarely
+touch that layer; `Playing.object()` reaches it when you need it.
+
 ### Which kind do I want?
 
 | You want | Use | Late joiners see it? |
@@ -319,74 +324,91 @@ see it builds and plays the effect. The model is Unreal's gameplay cues.
 Declare it **once, as a constant, in code both sides run** (common code), at init, before any player joins:
 
 ```java
-public static final CgVfxCue<CgVfxParams> HIT = VFX.cue("hit_spark", HitSpark.LOOK,
-        (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()));
+public static final CgVfxCue HIT = VFX.cue("hit_spark", HitSpark.LOOK,
+        (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z())).build();
 ```
 
-The factory gets the look and the `Play` (what the server sent: `x()`, `dx()`, `tx()`, `params()`, `seed()`, ...).
+The factory gets the look and the `Play`: what the server sent (`x()`, `dx()`, `tx()`, `seed()`, its fields).
+Before `build()`, the declaration takes:
 
+| Call | Does |
+|---|---|
+| `.range(96)` | How far round its point a play reaches when it follows nothing; 64 blocks unless said |
+| `.fields(LEVEL, GUARDED)` | Data of its own, beyond its look ([below](#look-parameters-and-data-of-its-own)) |
+| `.authoritative()` | The server runs it too ([§7](#7-effects-gameplay-depends-on-server-authority)) |
+| `.persisted()` | Lasting plays are saved with the world and resume when the server starts again. Not with `follow`, not with `authoritative()` |
+
+- **Finish with `build()`**: a cue is a network type, fixed once built.
 - **When what it plays uses client-only classes**, declare the cue alone in common and say what it plays on the
   client:
 
   ```java
-  public static final CgVfxCue<CgVfxParams> HIT = VFX.cue("hit_spark");                        // common
+  public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL).build();                     // common
   VFX.register(HIT, HitSpark.LOOK, (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()));   // client init
   ```
 
+  Declared without its look, a cue carries none of the look's parameters: send what varies as fields of its own.
 - **A cue a client has nothing registered for** is dropped on that client, with one warning per id.
-- **Your own parameter type** instead of `CgVfxParams`: `VFX.cue("x", MyParams.CODEC)`.
 
 ### Sending a one-off
 
 ```java
 HIT.at(level, x, y, z).send();
-HIT.at(level, x, y, z).toward(dx, dy, dz).follow(target, MyMod.BODY).keepOffset()
-        .params(CgVfxParams.of().set("level", 2f).color("ki", 0xFF40A0FF)).send();
-HIT.at(level, x, y, z).except(attacker).send();        // everyone but the player who already showed it
-HIT.at(level, x, y, z).send(CgAudience.all());        // an audience of your own
+HIT.at(level, x, y, z).toward(dx, dy, dz).follow(target, MyMod.BODY).keepOffset().set(HitSpark.SIZE, 2f).send();
 ```
 
 - `level` is a level, an entity in it, or a dimension id.
-- **Who receives it**: the players tracking what it follows; otherwise everyone within the cue's `range`
-  (64 blocks; `.range(96)` on the declaration changes it).
-- **It leaves at once**, in order with the game's own packets that tick, so the spark arrives with the hit that caused
-  it.
+- **Who receives it**: the players tracking what it follows; otherwise everyone within the cue's range.
+- **It goes with the tick's other changes**, at the end of the server tick it was sent in.
+- **A player who predicted it** ([below](#predicting-from-a-client)) is not sent it again.
 
 ### Starting a lasting one
 
 ```java
-CgVfxCue.Playing<CgVfxParams> aura = AURA.on(player, CgEntityAttachments.CENTRE).start();
-aura.params(CgVfxParams.of().set("level", 3f));   // every viewer, at the end of this tick
-aura.stop();                                      // gracefully on every viewer; kill() for at once
+CgVfxCue.Playing aura = AURA.on(player, CgEntityAttachments.CENTRE).start();
+aura.set(Aura.INTENSITY, 3f);   // a look number: every viewer, at the end of this tick
+aura.stop();                    // gracefully on every viewer; kill() for at once
 ```
 
 - **`on(entity, point)`** is the short way to say "at this entity, following it at this point, in its level".
 - **A player who comes into view later** starts it at its current age.
-- **It ends** by `stop()`, `kill()`, its `.lifetime(seconds)`, or the entity it follows dying.
-- **`.persist()`** saves it with the world, to resume when the server restarts. Not with `follow`.
+- **It ends** by `stop()`, `kill()`, the play's `.lifetime(seconds)`, or the entity it follows dying.
 
 ### Changing a lasting one
 
 | Call | Viewers get |
 |---|---|
-| `toward(dx, dy, dz)` | a new direction (nothing is sent if it did not change) |
+| `toward(dx, dy, dz)` | a new direction |
 | `target(x, y, z)` | a new target point |
-| `params(p)` | these values, set **on top of** what it already carries |
+| `set(PARAM, v)`, `set(PARAM, r, g, b, a)` | a number or colour of its look |
+| `set(FIELD, v)` | one of its own fields |
 | `moveTo(x, y, z)` | a new position, and who is in range is worked out again |
 
-Changes from one tick are combined and sent once at its end. On each viewer, parameters are set onto the look's
-parameters by name, then an effect implementing `CgVfxCue.Live` takes the rest (the wave takes its aim and target).
+A field is sent only when its value changed, and one tick's changes go together at its end. On each viewer, look
+numbers and colours are set onto its effect as they arrive; then an effect implementing `CgVfxCue.Live` takes the rest,
+once a frame (the wave takes its aim and target).
 
-### Parameters
+### Look parameters and data of its own
 
-Each number and colour in a `CgVfxParams` is set onto the effect's look parameter **of the same name**, with no code in
-the factory. A factory reads only what is not a look parameter:
+Every number and colour of a cue's look is a field of the cue, so `set(Blast.RADIUS, 6f)` on a play reaches each
+viewer's effect with no code in the factory. Curves and camera shakes do not travel.
+
+Data the look has no parameter for is a field the cue declares:
 
 ```java
-int level = (int) cue.params().get("level", 1f);
+public static final CgNetField<Integer> LEVEL = CgNetField.ofInt("level");
+public static final CgNetField<Boolean> GUARDED = CgNetField.ofBool("guarded");
+public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL, GUARDED).build();
+
+HIT.at(level, x, y, z).setInt(LEVEL, 2).setBool(GUARDED, true).send();              // server
+VFX.register(HIT, HitSpark.LOOK, (look, cue) ->                                     // client
+        new HitSpark(look, cue.x(), cue.y(), cue.z(), cue.getInt(LEVEL), cue.getBool(GUARDED)));
 ```
 
-Text values travel too (`set("name", "text")`, `text("name", fallback)`).
+- A field never set reads as its fallback: 0, false, null, or what `.fallback(v)` said.
+- `CgNetField.ofInt`, `ofFloat`, `ofDouble`, `ofBool`, and `of(name, codec)` for anything else.
+- State an effect class publishes itself, whichever cue plays it, is declared on its schema instead
+  (`SCHEMA.networked(...)`, [§7](#making-your-own-effect-authoritative)).
 
 ### Every client draws the same thing
 
@@ -401,12 +423,15 @@ Text values travel too (`set("name", "text")`, `text("name", fallback)`).
 A client can show its own action at once, and ask the server to show everyone else:
 
 ```java
-HIT.at(x, y, z).params(p).predict();                                  // client
+HIT.at(x, y, z).set(HitSpark.SIZE, 2f).predict();                    // client: plays here now
 HIT.fromClients((player, play) -> withinReach(player, play));        // server, at init: who may
 ```
 
-The server refuses unless the cue allows it (`fromClients`), the player is within the rate (20 at once, 10 a second)
-and the point is within `range` of them. `refused()` counts refusals. The predicting client is not sent its own back.
+- The server refuses unless the cue allows it (`fromClients`), the player is within the rate (20 a second, in bursts
+  of 20) and the point is within `range` of them. `refused()` counts refusals.
+- **Accepted**, the server's play takes over the client's own, so the predicting player sees it once.
+  **Refused**, the client's copy plays out alone.
+- Only one-offs are predicted, so an authoritative cue never is.
 
 ### Cues are for showing, not for state
 
@@ -433,11 +458,11 @@ Unreal and Unity Netcode run one actor on both sides the same way, with its cosm
 
 ```java
 // common, at init: one declaration, one factory for both sides
-public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
-        CgEnergyWave::fromCue).range(96).authoritative();
+public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
+        CgEnergyWave::fromCue).range(96).authoritative().build();
 
 // server: start it, then drive its effect exactly as you would on a client
-CgVfxCue.Playing<CgVfxParams> wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
+CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
 CgEnergyWave beam = wave.effect();
 beam.hold().aim(look.x, look.y, look.z);   // key down: before its first tick
 
@@ -448,23 +473,30 @@ wave.onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.
 beam.aim(look.x, look.y, look.z);          // each tick, as the caster turns
 beam.set(CgEnergyWave.RADIUS, 1.2f);       // powered up: every viewer's beam widens, and the server's ray with it
 beam.fire();                               // key up
-beam.stop();                               // ends the cue; the blast is still heard as it bursts
+beam.stop();                               // every viewer's beam fades; the blast is still heard as it bursts
+```
+
+```java
+// client, at init: the hits the server counted, for feedback that must agree with the damage
+WAVE.onConfirmedCollide(CgEnergyWave.PART_BLAST, c -> decals.scorch(c.x(), c.y(), c.z(), c.radius()));
 ```
 
 ### What happens each server tick
 
 1. The server steps its copy of the effect on the same clock clients use (120 ticks a second, six per server tick).
 2. The wave tests its aim against the server's world and finds where the beam ends and what entity is there.
-3. Everything that changed is written into the cue and sent to every viewer at the end of the tick: where the beam
-   ends, the entity it hit, the aim, hold and fire, and any number or colour set on the effect.
+3. Everything that changed is written into the cue's fields and sent to every viewer at the end of the tick: where
+   the beam ends, the entity it hit, the aim, hold and fire, and any number or colour set on the effect. What it
+   struck goes too, as a confirmed collision.
 4. Each viewer's copy homes on that end point rather than testing its own world, so every player sees the beam end
    where the server says. A viewer's wave reports the hit as an `ENTITY` with the server's id.
 
 ### Driving it
 
 - **`wave.effect()`** is the server's copy. Call it exactly as on a client: `aim`, `fire`, `set`, `stop`.
-- **Stopping the effect ends the cue.** `wave.stop()` does the same from the `Playing` side.
-- `wave.toward(...)`, `wave.params(...)` still work and reach the server's copy too.
+- **Stopping the effect stops every viewer's copy.** The cue lasts until the server's copy has played out, so what it
+  strikes meanwhile (the blast) still reaches viewers. `wave.stop()` does the same from the `Playing` side.
+- `wave.toward(...)` and `wave.set(...)` still work and reach the server's copy too.
 - A play started during a tick is published before any viewer hears of it, so the first state viewers receive
   already includes what you set right after `start()` (the hold, the aim).
 
@@ -477,8 +509,8 @@ beam.set(CgEnergyWave.RADIUS, 1.2f);
 beam.set(MyEffect.CORE, 1f, 0.2f, 0.2f, 1f);
 ```
 
-This works for every authoritative effect, with no code of its own: the server sends each value that differs from
-what the cue carries. Curves and camera shakes do not travel.
+This works for every authoritative effect, with no code of its own: each value set on it is written into the cue's
+field for it, which sends only what changed. Curves and camera shakes do not travel.
 
 ### What is switched off on the server
 
@@ -487,20 +519,20 @@ what the cue carries. Curves and camera shakes do not travel.
 | Particles | not simulated: emitters do nothing |
 | Post effects (flashes, impact frames) | not applied: the effect gets a detached volume, so its timing logic runs the same |
 | Camera shakes, moments | silent |
-| Collisions | heard only by the cue's own listeners (`wave.onCollide`), on the server thread; never by `CgVfx.onCollide` or the owner's |
+| Collisions | heard only by the cue's own listeners (`wave.onCollide`), on the server thread, and sent to viewers as confirmed collisions; never heard by `CgVfx.onCollide` or the owner's |
 
 An effect that ends when its particles finish therefore ends itself on the server.
 
 ### Limits and rules
 
 - **Lasting cues only** (`start()`). A one-off `send()` never runs on the server.
-- **Never `persist()`**.
+- **Never `persisted()`**: `build()` refuses it.
 - **`at(level, ...)` must be a level or an entity in one**: that is the world it tests. Given something else, it warns
   once and strikes nothing.
-- **The cue must be declared with its factory in common code**: `start()` throws if the server has nothing to build.
+- **The cue must be declared with its factory in common code**: `build()` refuses an authoritative cue without one.
 - **It follows its entity by the attachment point's proportions**: a server has no model, so marked points
   ([§4](#following-an-entity)) are a client-only refinement.
-- **It plays out for at most 10 seconds** after its cue ends, so a blast is still heard, then it is killed.
+- **It plays out for at most 10 seconds** after it is stopped, so a blast is still heard, then it is killed.
 - What it costs the server: [§12](#on-the-server).
 
 ### Making your own effect authoritative
@@ -509,7 +541,7 @@ Most effects need nothing: declare the cue `authoritative()` and parameters sync
 state must reach viewers (like the wave's end point) adds two small interfaces:
 
 ```java
-public final class Bolt extends CgVfxEffect implements CgVfxCue.Live<Object>, CgVfxCue.Authoritative<Object> {
+public final class Bolt extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.Authoritative {
     private final CgWorldQueries.Hit hit = new CgWorldQueries.Hit();
     private double endX = Double.NaN, endY, endZ;
 
@@ -520,18 +552,27 @@ public final class Bolt extends CgVfxEffect implements CgVfxCue.Live<Object>, Cg
         }
     }
 
-    // server, after each tick: write into the cue whatever differs from what it says; true if anything did
-    @Override public boolean publish(CgVfxCue.Play<Object> cue) {
-        if (Double.isNaN(endX) || endX == cue.tx() && endY == cue.ty() && endZ == cue.tz()) return false;
-        cue.target(endX, endY, endZ);
-        return true;
+    // server, after each tick: write what viewers draw; a value written unchanged sends nothing
+    @Override public void publish(CgVfxCue.Play cue) {
+        if (!Double.isNaN(endX)) cue.target(endX, endY, endZ);
     }
 
-    // every viewer (and the server), when the cue changes
-    @Override public void cueChanged(CgVfxCue.Play<Object> cue) {
+    // every viewer, once a frame that changed the cue (and the server, for a change through Playing)
+    @Override public void cueChanged(CgVfxCue.Play cue) {
         if (!authoritative() && cue.hasTarget()) endAt(cue.tx(), cue.ty(), cue.tz());
     }
 }
+```
+
+State with no place in a play (the wave's hold, its release time) is fields its schema declares, which every cue
+playing the effect then carries:
+
+```java
+public static final CgNetField<Boolean> CHARGING = CgNetField.ofBool("bolt/charging");
+static { SCHEMA.networked(CHARGING); }
+
+cue.setBool(CHARGING, charging);                 // in publish
+if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the factory
 ```
 
 - **`authoritative()`** on the effect is true for the server's copy. Guard anything client-only with it.
@@ -614,24 +655,29 @@ Each `CgVfxCollision` says:
 
 ### Damage on the server, sparks on every client
 
-An authoritative cue's factory builds both copies, the server's and each viewer's, so it is where a viewer's copy
-gets a listener. `cue.authoritative()` tells the two apart:
+What the server's copy strikes reaches every viewer as a **confirmed collision**, the same event the server heard:
 
 ```java
-public static final CgVfxCue<CgVfxParams> WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
-    CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
-    if (!cue.authoritative()) {                                          // each viewer: cosmetic
-        wave.onCollide(CgEnergyWave.PART_BEAM, c -> VFX.play(new CgVfxBurst(SPARKS, c.x(), c.y(), c.z())));
-    }
-    return wave;
-}).range(96).authoritative();
-
 // server
 WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start()
         .onCollide(CgEnergyWave.PART_BEAM, c -> { if (c.hit() == CgVfxCollision.Hit.ENTITY) damage(c.entity()); });
+
+// client, at init
+WAVE.onConfirmedCollide(CgEnergyWave.PART_BEAM, c -> VFX.play(new CgVfxBurst(SPARKS, c.x(), c.y(), c.z())));
 ```
 
-- **The sparks land where the damage does**: a viewer's copy reports where the server published the beam ending.
+A confirmed collision arrives a network trip after the server's. For feedback timed to what this client draws, listen
+to the viewer's own copy instead: the factory builds both copies, and `cue.authoritative()` tells them apart.
+
+```java
+public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
+    CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
+    if (!cue.authoritative()) wave.onCollide(CgEnergyWave.PART_BEAM, c -> flash(c.x(), c.y(), c.z()));   // each viewer
+    return wave;
+}).range(96).authoritative().build();
+```
+
+- **Both land where the damage does**: a viewer's copy reports where the server published the beam ending.
 - **A late joiner gets no sparks for hits it missed**: collisions are silent while an effect fast-forwards to its age.
 - **An effect of your own** can start the emitter itself when it reports the contact, with no listener at all.
 - **A visual that depends on the outcome** (blocked, a critical hit, a kill) is something only the server knows: send
@@ -944,18 +990,18 @@ It is never drawn; it decides and publishes ([§7](#what-happens-each-server-tic
 
 ### Do collision events run on the server?
 
-Only an authoritative effect's own, and only for its own listeners. Each side hears its own copy's collisions; none
-cross the network.
+Only an authoritative effect's own, and only for its own listeners. Each side hears its own copy's collisions, and
+the server's travel to viewers as confirmed collisions.
 
 | Collision | Server | Each client |
 |---|---|---|
-| An authoritative effect's (`PART_BEAM`, `PART_BLAST`) | yes: `playing.onCollide` / the effect's `onCollide`, on the server thread. **Apply gameplay here** | its own copy's too: the effect's, the owner's and `CgVfx.onCollide` listeners, on the render thread. Cosmetic: decals, sounds |
-| A plain cue's, or a locally played effect's | never | yes, as above; each client decides for itself |
+| An authoritative effect's (`PART_BEAM`, `PART_BLAST`) | yes: `playing.onCollide` / the effect's `onCollide`, on the server thread. **Apply gameplay here** | the server's, confirmed: `cue.onConfirmedCollide`. And its own copy's: the effect's, the owner's and `CgVfx.onCollide` listeners, on the render thread. Cosmetic: decals, sounds |
+| A plain cue's, or a locally played effect's | never | yes, its own copy's; each client decides for itself |
 | A particle's | never | yes, a few frames late, from the GPU |
 
-- **The server's collisions are not sent to clients**, and a client's never reach the server. A viewer's copy reports
-  where the server published the beam ending, so it agrees: `ENTITY` with the server's entity id, or `TARGET` where it
-  struck nothing.
+- **A client's collisions never reach the server.** A viewer's copy reports where the server published the beam
+  ending, so it agrees with the confirmed one: `ENTITY` with the server's entity id, or `TARGET` where it struck
+  nothing.
 - **`CgVfx.onCollide` and an owner's `onCollide` never hear the server's copy**, so a client-side listener
   (a scorch decal) never fires twice in singleplayer, where both copies run in one process.
 - Damage on the server and an emitter on each client, for one cue: [§8](#damage-on-the-server-sparks-on-every-client).
@@ -984,7 +1030,7 @@ reports what they meet. The built-in ones:
 ### If I change a parameter on the server's effect, do all clients see it?
 
 Yes. `beam.set(PARAM, value)` on an authoritative effect reaches every viewer at the end of the tick, and anyone who
-joins later. So does `playing.params(...)`. Curves and camera shakes do not travel ([§7](#syncing-parameters)).
+joins later. So does `playing.set(PARAM, value)`. Curves and camera shakes do not travel ([§7](#syncing-parameters)).
 
 ### How many effects can a server run?
 
