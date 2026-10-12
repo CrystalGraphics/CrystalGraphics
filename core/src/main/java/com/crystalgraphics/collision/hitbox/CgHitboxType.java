@@ -10,7 +10,6 @@ import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
-import com.crystalgraphics.net.object.CgNetWire;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgServerPlayers;
@@ -89,7 +88,7 @@ public final class CgHitboxType {
             QZ = CgNetField.ofFloat("hitbox/qz"), QW = CgNetField.ofFloat("hitbox/qw").fallback(1f);
     private static final CgNetField<?>[] CORE = {SOURCE, POINT, FACING, QX, QY, QZ, QW};
 
-    static final CgNetEvent<Sent> HIT = CgNetEvent.of("hitbox/hit", new HitWire());
+    static final CgNetEvent<CgSentHit> HIT = CgNetEvent.of("hitbox/hit", CgSentHit.wire());
 
     private final CgNetType type;
     private final Function<CgNetObject, CgHitbox> factory;
@@ -228,10 +227,9 @@ public final class CgHitboxType {
         return behaviour instanceof Side ? (Side) behaviour : null;
     }
 
-    private void confirmed(CgNetObject obj, Sent sent) {
+    private void confirmed(CgNetObject obj, CgSentHit sent) {
         Side side = side(obj);
-        CgHitPart part = side == null ? null : side.hitbox.partName(sent.part);
-        arrived.setEntity(sent.entity, sent.parent, sent.x, sent.y, sent.z, sent.exposure, part);
+        sent.read(arrived, side == null ? null : side.hitbox.partName(sent.part()));
         for (BiConsumer<CgNetObject, CgHit> listener : confirmed) listener.accept(obj, arrived);
     }
 
@@ -324,7 +322,7 @@ public final class CgHitboxType {
         final boolean server;
         final CgHitbox hitbox;
         final Quaterniond q = new Quaterniond();
-        private final Sent sent = new Sent();
+        private final CgSentHit sent = new CgSentHit();
         private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
         private final int source;
         private CgCollisionWorld world;
@@ -401,51 +399,6 @@ public final class CgHitboxType {
 
         private void predictedHit(CgHit h) {
             for (BiConsumer<CgNetObject, CgHit> listener : predicted) listener.accept(obj, h);
-        }
-    }
-
-    /** A hit as it travels: the part by its index among the hitbox's parts, -1 for none. */
-    static final class Sent {
-        int entity, parent, part;
-        float x, y, z, exposure;
-
-        Sent set(CgHit h, int part) {
-            entity = h.entity();
-            parent = h.parent();
-            this.part = part;
-            x = (float) h.x();
-            y = (float) h.y();
-            z = (float) h.z();
-            exposure = h.exposure();
-            return this;
-        }
-    }
-
-    /** 20 bytes a hit, 24 with the event's header: the entity and its whole, the part, the point and the exposure. */
-    private static final class HitWire implements CgNetWire<Sent> {
-        private final Sent read = new Sent();
-
-        @Override
-        public void write(Sent s, Out out) {
-            out.writeVarInt(s.entity);
-            out.writeZigZag((long) s.parent - s.entity);
-            out.writeVarInt(s.part + 1);
-            out.writeFloat(s.x);
-            out.writeFloat(s.y);
-            out.writeFloat(s.z);
-            out.writeFloat(s.exposure);
-        }
-
-        @Override
-        public Sent read(In in) {
-            read.entity = in.readVarInt();
-            read.parent = (int) (read.entity + in.readZigZag());
-            read.part = in.readVarInt() - 1;
-            read.x = in.readFloat();
-            read.y = in.readFloat();
-            read.z = in.readFloat();
-            read.exposure = in.readFloat();
-            return read;
         }
     }
 }

@@ -1,20 +1,20 @@
 package com.crystalgraphics.collision;
 
 /**
- * One part of something that strikes on its own, as an effect's beam and its blast do: what a listener subscribes to,
- * so it hears that part alone. The owner declares its parts as constants and reports through them.
+ * One part of something that strikes on its own, as an effect's beam and its blast do: each hit names its part
+ * ({@code CgHit.part}), so a listener may hear that part alone. The owner declares its parts as constants.
  *
  * <pre>{@code
- * wave.onCollide(CgEnergyWave.PART_BEAM, c -> stagger(c.entity()))
- *     .onCollide(CgEnergyWave.PART_BLAST, c -> explode(c.x(), c.y(), c.z(), c.radius()));
+ * wave.onHit(CgEnergyWave.PART_BEAM, h -> stagger(h.entity()))
+ *     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
  * }</pre>
  *
- * Declaring parts for an effect of your own:
+ * Declaring parts: a hitbox's, a query's, or an effect's, where its schema numbers them for the network.
  *
  * <pre>{@code
- * public static final CgHitPart PART_BOLT = CgHitPart.of("bolt"), PART_ARC = CgHitPart.of("arc");
- *
- * collided(PART_ARC, CgVfxCollision.Hit.ENTITY, struck, x, y, z, nx, ny, nz, vx, vy, vz, 0f);   // in tick
+ * CgHitbox.follow(id, CgEntityAttachments.CHEST).part(PART_FIST, CgSphere.of(0.4), 0.5, 0, 0);
+ * world.overlap(BLAST).at(x, y, z).part(PART_SHOCK).forEach(...);
+ * public static final CgHitPart PART_ARC = SCHEMA.part("arc");           // on an effect
  * }</pre>
  *
  * <ul>

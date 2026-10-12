@@ -29,6 +29,31 @@ import javax.annotation.Nullable;
  */
 public final class CgHit {
 
+    /**
+     * What a hit met: one switch tells a struck mob from a wall.
+     *
+     * <pre>{@code
+     * switch (hit.kind()) {
+     *     case ENTITY -> damage(hit.entity());
+     *     case BLOCK -> chip(hit.blockX(), hit.blockY(), hit.blockZ());
+     *     case FLUID -> splash(hit.x(), hit.y(), hit.z());
+     *     default -> { }                          // UNLOADED, POINT: nothing there to act on
+     * }
+     * }</pre>
+     */
+    public enum Kind {
+        /** An entity, or a part of one; in a {@code CgShapeWorld}, a shape, by its id. */
+        ENTITY,
+        /** A block. */
+        BLOCK,
+        /** A fluid's surface, with {@code fluids()} asked. */
+        FLUID,
+        /** The edge of what is loaded, where a cast or ray stopped. */
+        UNLOADED,
+        /** Nothing, only a point: where an effect reached the point it was aimed at, or burst in open air. */
+        POINT
+    }
+
     int entity = -1, parent = -1;
     int blockX, blockY, blockZ;
     boolean block, unloaded;
@@ -38,6 +63,11 @@ public final class CgHit {
     double distance, fraction;
     float exposure = Float.NaN;
     CgHitPart part;
+
+    public Kind kind() {
+        if (!block) return entity >= 0 ? Kind.ENTITY : Kind.POINT;
+        return unloaded ? Kind.UNLOADED : fluid != CgWorldQuery.FLUID_NONE ? Kind.FLUID : Kind.BLOCK;
+    }
 
     /** The entity met, a part of a multipart one included; -1 for a block. */
     public int entity() {
@@ -157,6 +187,24 @@ public final class CgHit {
         normalX = normalY = normalZ = distance = fraction = 0;
         this.part = part;
         return this;
+    }
+
+    /** As {@link #setEntity}, for a block met at a point. */
+    public CgHit setBlock(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
+        setPoint(x, y, z, part);
+        block = true;
+        this.blockX = blockX;
+        this.blockY = blockY;
+        this.blockZ = blockZ;
+        return this;
+    }
+
+    /**
+     * Makes this a hit of nothing at a point: where an effect reached the point it was aimed at, or burst in open air.
+     * {@link #entity()} is -1 and {@link #isBlock()} false.
+     */
+    public CgHit setPoint(double x, double y, double z, @Nullable CgHitPart part) {
+        return setEntity(-1, -1, x, y, z, Float.NaN, part);
     }
 
     /** Copies {@code o} into this: a visitor's hit kept past the call. */
