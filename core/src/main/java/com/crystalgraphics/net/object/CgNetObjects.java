@@ -905,10 +905,13 @@ public final class CgNetObjects {
         /** Prediction keys refused since the last frame. */
         int[] refused = new int[4];
         int refusedCount;
-        /** Bytes of spawns held back last tick, by bucket; the worst bucket this tick may spawn; spawn bytes so far. */
+        /**
+         * Bytes of spawns held back last tick, by bucket; the worst bucket this tick may spawn; spawn bytes so far; and
+         * the bytes of last tick's held-back spawns nearer than the cutoff, which the cutoff bucket leaves room for.
+         */
         final int[] wanting = new int[BUCKETS];
         boolean anyWanting;
-        int cutoff = BUCKETS, spawned;
+        int cutoff = BUCKETS, spawned, reserve;
 
         Viewer(CgPeer peer, CgProtocolConnection<Object> connection, int slot) {
             this.peer = peer;
@@ -928,11 +931,11 @@ public final class CgNetObjects {
             // short of it, a bucket bigger than the budget would never be let in. This tick's new spawns arrive in
             // creation order, so priority takes one tick to apply.
             cutoff = BUCKETS;
+            reserve = 0;
             if (anyWanting) {
-                for (int b = 0, sum = 0; b < BUCKETS; b++) {
-                    cutoff = b;
-                    if ((sum += wanting[b]) >= budget) break;
-                }
+                int b = 0;
+                for (; b < BUCKETS - 1 && reserve + wanting[b] < budget; b++) reserve += wanting[b];
+                cutoff = b;
                 Arrays.fill(wanting, 0);
                 anyWanting = false;
             }
@@ -964,8 +967,11 @@ public final class CgNetObjects {
 
         /** Whether a spawn of {@code bytes} in {@code bucket} goes this tick; held back, it is offered again next tick. */
         boolean admits(int bucket, int bytes) {
-            if (bucket <= cutoff && (frame.size + bytes <= budget || spawned < budget / 4)) {
+            // Spawns arrive in creation order: the cutoff bucket's must not take the room of nearer ones held back.
+            int held = bucket < cutoff ? 0 : reserve;
+            if (bucket <= cutoff && (frame.size + bytes + held <= budget || spawned + held < budget / 4)) {
                 spawned += bytes;
+                if (bucket < cutoff) reserve = Math.max(0, reserve - bytes);
                 return true;
             }
             wanting[bucket] += bytes;
