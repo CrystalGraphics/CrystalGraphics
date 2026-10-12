@@ -12,6 +12,7 @@ import com.crystalgraphics.mc.legacy.platform.service.SoundService;
 import com.crystalgraphics.mc.legacy.platform.world.EntityQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.HostDebugLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldQueryLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldSoundLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldStimulusLegacy;
@@ -23,6 +24,7 @@ import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.service.CgHostDebug;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
@@ -83,6 +85,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
                 | CgWorldEvents.ENTITY_DIED | CgWorldEvents.LIGHTNING);
         HostCameraLegacy camera = new HostCameraLegacy();
         CgPlatform.provide(CgHostCamera.SERVICE, camera);
+        CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugLegacy());
         MinecraftForge.EVENT_BUS.register(camera);
         FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
     }

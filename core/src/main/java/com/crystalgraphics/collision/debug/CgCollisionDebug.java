@@ -29,7 +29,7 @@ import java.util.Set;
  *
  * <ul>
  *   <li>Render thread. Colours are ARGB.</li>
- *   <li>Every live hitbox at once is {@link CgCollisionShow#SHOW}, which this draws too.</li>
+ *   <li>Every live hitbox at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this draws too.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
@@ -100,7 +100,7 @@ public final class CgCollisionDebug {
     }
 
     private static void frame(CgHostView view) {
-        if (CgCollisionShow.SHOW.get()) show();
+        if (CgCollisionShow.showing()) show();
         if (LINES.count == 0) return;
         if (mesh == null) {
             mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, LINES));
@@ -125,9 +125,10 @@ public final class CgCollisionDebug {
         }
     }
 
-    /** Keeps the server told while showing, and once when it stops. Client thread. */
+    /** Follows the host's view, and keeps the server told while showing and once when it stops. Client thread. */
     private static void ask() {
-        boolean on = CgCollisionShow.SHOW.get();
+        CgCollisionShow.followHost();
+        boolean on = CgCollisionShow.showing();
         if (on == asked && (!on || ++sinceAsked < CgCollisionShow.ASK_EVERY)) return;
         CgCollisionShow.ASK.sendToServer(on);
         asked = on;

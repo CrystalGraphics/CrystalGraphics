@@ -8,6 +8,7 @@ import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.service.CgHostDebug;
 import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -34,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * }</pre>
  *
  * <ul>
+ *   <li>The host's own hitbox view shows them too ({@link CgHostDebug}: F3+B in Minecraft), and an integrated server
+ *       takes its owner's as its own switch. A dedicated server sends only while its variable is on.</li>
  *   <li>A client's own hitboxes are green and a server's orange: where the two part, a prediction is off.</li>
  *   <li>A server sends a player the hitboxes within {@link #RANGE} of them, at most {@link #MAX_SEGMENTS} segments a
  *       tick, while their client keeps asking.</li>
@@ -43,7 +46,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CgCollisionShow {
 
     public static final CgVar.Bool SHOW = CgVar.bool("crystalgraphics.collision.show", false, CgVar.DEV,
-            "Draws every live hitbox as lines: the client's, and a server's whose own is on.");
+            "Draws every live hitbox as lines, as Minecraft's F3+B also does: the client's, and a server's whose own"
+                    + " is on.");
 
     /** How far from a player a server's hitboxes are sent. */
     public static final double RANGE = 64;
@@ -63,6 +67,8 @@ public final class CgCollisionShow {
 
     private static final Map<UUID, Watcher> WATCHERS = new ConcurrentHashMap<>();
     private static boolean installed;
+    /** The client's host hitbox view, from its tick; false on a dedicated server. */
+    private static volatile boolean host;
 
     // Server thread.
     private static final CgShapeLines LINES_OUT = new CgShapeLines();
@@ -88,8 +94,8 @@ public final class CgCollisionShow {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        SHOW.onChange(CgCollisionShow::follow);
-        follow(SHOW.get());
+        SHOW.onChange(on -> follow());
+        follow();
         ASK.onReceiveFrom(CgCollisionShow::asked);
         CgNetwork.onServerTick(CgCollisionShow::serve);
         CgNetwork.onPeerClosed(peer -> WATCHERS.remove(peer.id()));
@@ -100,8 +106,21 @@ public final class CgCollisionShow {
         return SEEN.get();
     }
 
-    private static void follow(boolean on) {
-        CgHitbox.watch(on ? CgCollisionShow::saw : null);
+    /** Whether hitboxes are shown in this process: the variable, or the client's host view. */
+    static boolean showing() {
+        return SHOW.get() || host;
+    }
+
+    /** Takes the host's hitbox view. Client thread, each tick. */
+    static void followHost() {
+        boolean now = CgPlatform.get(CgHostDebug.SERVICE).hitboxes();
+        if (now == host) return;
+        host = now;
+        follow();
+    }
+
+    private static void follow() {
+        CgHitbox.watch(showing() ? CgCollisionShow::saw : null);
     }
 
     private static void saw(CgHitbox hitbox) {
@@ -119,7 +138,7 @@ public final class CgCollisionShow {
 
     private static void serve() {
         Set<CgHitbox> seen = SEEN.get();
-        if (WATCHERS.isEmpty() || !SHOW.get()) {
+        if (WATCHERS.isEmpty() || !showing()) {
             seen.clear();
             return;
         }

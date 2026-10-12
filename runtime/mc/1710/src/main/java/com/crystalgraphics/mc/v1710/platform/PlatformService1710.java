@@ -20,6 +20,7 @@ import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
 import com.crystalgraphics.mc.v1710.platform.world.EntityQuery1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldQuery1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
@@ -131,6 +132,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQuery1710());
             CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQuery1710());
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
+            CgPlatform.provide(CgHostDebug.SERVICE, new HostDebug1710());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
             CgPlatform.provide(CgGameDirectory.SERVICE, new GameDirectoryService1710());

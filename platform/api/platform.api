@@ -3021,6 +3021,10 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/service/CgBoxSink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract set (DDDDDD)Lcom/crystalgraphics/platform/service/CgBoxSink;
 com/crystalgraphics/platform/service/CgCacheDirectory
   access public,final
   extends java/lang/Object
@@ -3053,12 +3057,14 @@ com/crystalgraphics/platform/service/CgEntityQuery
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final ALIVE I
+  field public,static,final ATTACKABLE I
   field public,static,final BODY_YAW I
   field public,static,final EYE_HEIGHT I
   field public,static,final GLIDING I
   field public,static,final HEAD_YAW I
   field public,static,final HEIGHT I
   field public,static,final INVISIBLE I
+  field public,static,final INVULNERABLE I
   field public,static,final IN_WATER I
   field public,static,final KIND_ANIMAL I
   field public,static,final KIND_ITEM I
@@ -3074,11 +3080,13 @@ com/crystalgraphics/platform/service/CgEntityQuery
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgEntityQuery;
   field public,static,final ON_FIRE I
   field public,static,final ON_GROUND I
+  field public,static,final PICKABLE I
   field public,static,final PITCH I
   field public,static,final PLAYER I
   field public,static,final POSE_LENGTH I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   field public,static,final SNEAKING I
+  field public,static,final SPECTATOR I
   field public,static,final SPRINTING I
   field public,static,final SWIMMING I
   field public,static,final VELOCITY_X I
@@ -3089,11 +3097,14 @@ com/crystalgraphics/platform/service/CgEntityQuery
   field public,static,final Y I
   field public,static,final YAW I
   field public,static,final Z I
+  method public,abstract box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
   method public,abstract cameraEntity ()I
   method public,abstract flags (I)I
   method public,abstract kind (I)I
   method public,abstract localPlayer ()I
+  method public,abstract parent (I)I
   method public,abstract pose (IF[D)Z
+  method public,abstract rootVehicle (I)I
   method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
 com/crystalgraphics/platform/service/CgGameDirectory
   access public,abstract,interface
@@ -3112,6 +3123,21 @@ com/crystalgraphics/platform/service/CgHostCamera
   method public applied ()I
   method public capabilities ()I
   method public,abstract offset (FFFFFFF)V
+com/crystalgraphics/platform/service/CgHostDebug
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostDebug;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract hitboxes ()Z
+com/crystalgraphics/platform/service/CgHostShapes
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostShapes;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract box (Ljava/lang/Object;Lcom/crystalgraphics/platform/service/CgBoxSink;)V
+  method public,abstract boxes (Ljava/lang/Object;[D)I
+  method public,abstract immutable (Ljava/lang/Object;)Z
+  method public,abstract toHost (DDDDDD)Ljava/lang/Object;
 com/crystalgraphics/platform/service/CgInputService
   access public,abstract,interface
   extends java/lang/Object
@@ -3154,6 +3180,12 @@ com/crystalgraphics/platform/service/CgNetworkChannel
   method public,abstract sendToPlayer (Ljava/lang/Object;[B)V
   method public,abstract sendToServer ([B)V
   method public,abstract setInboundHandler (Ljava/util/function/BiConsumer;)V
+com/crystalgraphics/platform/service/CgProcessExit
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final DIRECT Lcom/crystalgraphics/platform/service/CgProcessExit;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract halt (I)V
 com/crystalgraphics/platform/service/CgReloadService
   access public,abstract,interface
   extends java/lang/Object
