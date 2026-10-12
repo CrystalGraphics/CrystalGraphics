@@ -64,7 +64,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, blast) starts on it; empty on blasts. Read at launch. |
+| `crystalgraphics.demo` | text | empty | false draws no world demo; a scene's name (blasts, beams, modules, blast, collision) starts on it; empty on blasts. Read at launch. |
 | `crystalgraphics.demo.blasts` | 1 to 100000 | `120` | Blasts in the demo's blasts scene; 120 keep about 360,000 particles alive. Read at launch. |
 | `crystalgraphics.demo.capture` | text | empty | A PNG path: the world, with no GUI over it, written there captureAt world frames after the demo was placed. Read at launch. |
 | `crystalgraphics.demo.captureAt` | 1 to 2147483647 | `300` | World frames after the demo was placed that its capture is written. Read at launch. |

@@ -8,6 +8,8 @@ import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.demo.collision.CgCollisionDemo;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
@@ -61,6 +63,7 @@ import java.util.function.Supplier;
  * beams     CgVfxShowcase: sixteen effect spheres and three beams, under its sky
  * modules   CgVfxModules: X6's particle modules, a station each
  * blast     CgVfxBlastFlash: one wave at a time bursting on the ground, for its flash and impact frame
+ * collision CgCollisionDemo: every collision shape, a cast, rays and a hitbox against the world, as debug lines
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -103,7 +106,8 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, blast) starts on it; empty on blasts.").get();
+            "false draws no world demo; a scene's name (blasts, beams, modules, blast, collision) starts on it; empty on"
+                    + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
     private static final boolean SKY = CgVar.bool("crystalgraphics.demo.sky", true, CgVar.DEV | CgVar.RESTART,
             "The demo's beams scene under the showcase's sky; false keeps the world's own.").get();
@@ -157,6 +161,7 @@ public final class CgRenderDemo {
             new Kind("beams", 12, this::beams),
             new Kind("modules", 34, this::modules),
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
+            new Kind("collision", 24, this::collision),
     };
 
     private boolean installed;
@@ -400,6 +405,36 @@ public final class CgRenderDemo {
             @Override
             public boolean waves() {
                 return true;
+            }
+        };
+    }
+
+    private Scene collision() {
+        CgCollisionDemo demo = new CgCollisionDemo();
+        return new Scene() {
+            @Override
+            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, float seconds) {
+                float partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+                demo.submit(CgCollisionWorld.client(partialTick), x, y, z, seconds);
+            }
+
+            @Override
+            public void prepare() {
+            }
+
+            @Override
+            public boolean warmed() {
+                return true;
+            }
+
+            @Override
+            public void clear() {
+                demo.clear();
+            }
+
+            @Override
+            public void delete() {
+                demo.clear();
             }
         };
     }

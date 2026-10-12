@@ -2816,6 +2816,13 @@ com/crystalgraphics/demo/CgVfxShowcase
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
   method public warmed ()Z
   method public,static stress (I)Lcom/crystalgraphics/demo/CgVfxShowcase;
+com/crystalgraphics/demo/collision/CgCollisionDemo
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENTITY_RANGE D
+  method public <init> ()V
+  method public clear ()V
+  method public submit (Lcom/crystalgraphics/collision/query/CgCollisionWorld;DDDD)V
 com/crystalgraphics/easing/CgConstantEasing
   access public,final
   extends java/lang/Object
