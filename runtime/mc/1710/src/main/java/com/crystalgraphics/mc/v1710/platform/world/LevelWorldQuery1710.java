@@ -20,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * level's thread; reuses one box list.
  *
  * <ul>
+ *   <li>A block in a chunk that is not loaded reads as air: a server's level would load the chunk to answer.</li>
  *   <li>Heights: {@code HEIGHT_TOP} is the precipitation height; the other two are the top solid block below leaves and
  *       liquid alike. The sea level is 63, which this version hard-codes.</li>
  * </ul>
@@ -45,9 +46,15 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
         return bound;
     }
 
-    /** The block's collision boxes in world space, into {@link #boxes}. */
+    /** Whether there is no level, or the block's chunk is not loaded: a server's level would load it to answer. */
+    static boolean absent(World world, int x, int y, int z) {
+        return world == null || !world.blockExists(x, y, z);
+    }
+
+    /** The block's collision boxes in world space, into {@link #boxes}; none where it is not loaded. */
     private List<AxisAlignedBB> boxes(World world, int x, int y, int z) {
         boxes.clear();
+        if (!world.blockExists(x, y, z)) return boxes;
         world.getBlock(x, y, z).addCollisionBoxesToList(world, x, y, z, EVERYWHERE, boxes, null);
         return boxes;
     }
@@ -102,7 +109,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public float fluidHeight(int x, int y, int z) {
         World world = world();
-        if (world == null) return Float.NaN;
+        if (absent(world, x, y, z)) return Float.NaN;
         Block block = world.getBlock(x, y, z);
         Material m = block.getMaterial();
         if (!m.isLiquid()) return Float.NaN;
@@ -114,26 +121,26 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public int fluidKind(int x, int y, int z) {
         World world = world();
-        return world == null ? FLUID_NONE : fluidOf(world.getBlock(x, y, z).getMaterial());
+        return absent(world, x, y, z) ? FLUID_NONE : fluidOf(world.getBlock(x, y, z).getMaterial());
     }
 
     @Override
     public int light(int x, int y, int z) {
         World world = world();
-        if (world == null) return 0;
+        if (absent(world, x, y, z)) return 0;
         return world.getSavedLightValue(EnumSkyBlock.Block, x, y, z) | world.getSavedLightValue(EnumSkyBlock.Sky, x, y, z) << 4;
     }
 
     @Override
     public int lightEmission(int x, int y, int z) {
         World world = world();
-        return world == null ? 0 : world.getBlock(x, y, z).getLightValue(world, x, y, z);
+        return absent(world, x, y, z) ? 0 : world.getBlock(x, y, z).getLightValue(world, x, y, z);
     }
 
     @Override
     public int surface(int x, int y, int z) {
         World world = world();
-        if (world == null) return SURFACE_NONE;
+        if (absent(world, x, y, z)) return SURFACE_NONE;
         Block block = world.getBlock(x, y, z);
         return block.getMaterial() == Material.air ? SURFACE_NONE : surfaceOf(block);
     }
@@ -156,7 +163,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public float hardness(int x, int y, int z) {
         World world = world();
-        if (world == null) return Float.NaN;
+        if (absent(world, x, y, z)) return Float.NaN;
         Block block = world.getBlock(x, y, z);
         return block.getMaterial() == Material.air ? Float.NaN : block.getBlockHardness(world, x, y, z);
     }
@@ -164,7 +171,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public int mapColor(int x, int y, int z) {
         World world = world();
-        if (world == null) return 0;
+        if (absent(world, x, y, z)) return 0;
         Block block = world.getBlock(x, y, z);
         return block.getMaterial() == Material.air ? 0 : mapColorOf(block, world.getBlockMetadata(x, y, z));
     }

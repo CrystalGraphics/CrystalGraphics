@@ -5,6 +5,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * box list.
  *
  * <ul>
+ *   <li>A block or fluid in a chunk that is not loaded reads as air: a server's level would load the chunk to answer.</li>
  *   <li>1.13.2 has no sound type, light listener or fluid height under these names: it answers {@code SURFACE_OTHER},
  *       block brightness and a source block's height.</li>
  * </ul>
@@ -32,6 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class LevelWorldQueryModern implements CgWorldQuery {
 
     private static final AtomicInteger EPOCHS = new AtomicInteger();
+    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
+    private static final FluidState NO_FLUID = Fluids.EMPTY.defaultFluidState();
 
     final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private final Level bound;
@@ -47,8 +51,13 @@ public class LevelWorldQueryModern implements CgWorldQuery {
         return bound;
     }
 
+    /** The block at {@link #pos}, set here; air where its chunk is not loaded, which a server would load to answer. */
     BlockState state(Level level, int x, int y, int z) {
-        return level.getBlockState(pos.set(x, y, z));
+        return level.isLoaded(pos.set(x, y, z)) ? level.getBlockState(pos) : AIR;
+    }
+
+    private FluidState fluid(Level level, int x, int y, int z) {
+        return level.isLoaded(pos.set(x, y, z)) ? level.getFluidState(pos) : NO_FLUID;
     }
 
     @Override
@@ -91,7 +100,7 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     public float fluidHeight(int x, int y, int z) {
         Level level = level();
         if (level == null) return Float.NaN;
-        FluidState fluid = level.getFluidState(pos.set(x, y, z));
+        FluidState fluid = fluid(level, x, y, z);
         if (fluid.isEmpty()) return Float.NaN;
         //? if >=1.14 {
         return fluid.getHeight(level, pos);
@@ -104,7 +113,7 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     public int fluidKind(int x, int y, int z) {
         Level level = level();
         if (level == null) return FLUID_NONE;
-        FluidState fluid = level.getFluidState(pos.set(x, y, z));
+        FluidState fluid = fluid(level, x, y, z);
         if (fluid.isEmpty()) return FLUID_NONE;
         if (fluid.getType().isSame(Fluids.WATER)) return FLUID_WATER;
         return fluid.getType().isSame(Fluids.LAVA) ? FLUID_LAVA : FLUID_NONE;

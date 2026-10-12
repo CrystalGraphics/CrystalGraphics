@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * one box list.
  *
  * <ul>
+ *   <li>A block in a chunk that is not loaded reads as air: a server's level would load the chunk to answer.</li>
  *   <li>Heights: {@code HEIGHT_TOP} is the precipitation height (the first block that blocks movement or holds
  *       liquid); the other two are the top solid block below leaves and liquid alike.</li>
  * </ul>
@@ -63,10 +64,17 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
         *///?}
     }
 
-    /** The block's collision boxes in world space, into {@link #boxes}. */
+    /** {@link #at}, or null where the chunk is not loaded: a server's level would load it to answer. */
+    BlockPos loadedAt(World world, int x, int y, int z) {
+        BlockPos p = at(x, y, z);
+        return world.isBlockLoaded(p) ? p : null;
+    }
+
+    /** The block's collision boxes in world space, into {@link #boxes}; none where it is not loaded. */
     private List<AxisAlignedBB> boxes(World world, int x, int y, int z) {
         boxes.clear();
-        BlockPos p = at(x, y, z);
+        BlockPos p = loadedAt(world, x, y, z);
+        if (p == null) return boxes;
         IBlockState state = world.getBlockState(p);
         //? if >=1.12 {
         state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, null, false);
@@ -141,7 +149,7 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public float fluidHeight(int x, int y, int z) {
         World world = world();
-        if (world == null) return Float.NaN;
+        if (world == null || loadedAt(world, x, y, z) == null) return Float.NaN;
         IBlockState state = world.getBlockState(at(x, y, z));
         Material m = material(state);
         if (!m.isLiquid()) return Float.NaN;
@@ -153,22 +161,23 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public int fluidKind(int x, int y, int z) {
         World world = world();
-        return world == null ? FLUID_NONE : fluidOf(material(world.getBlockState(at(x, y, z))));
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        return p == null ? FLUID_NONE : fluidOf(material(world.getBlockState(p)));
     }
 
     @Override
     public int light(int x, int y, int z) {
         World world = world();
-        if (world == null) return 0;
-        BlockPos p = at(x, y, z);
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        if (p == null) return 0;
         return world.getLightFor(EnumSkyBlock.BLOCK, p) | world.getLightFor(EnumSkyBlock.SKY, p) << 4;
     }
 
     @Override
     public int lightEmission(int x, int y, int z) {
         World world = world();
-        if (world == null) return 0;
-        BlockPos p = at(x, y, z);
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        if (p == null) return 0;
         //? if >=1.9 {
         return world.getBlockState(p).getLightValue(world, p);
         //?} else {
@@ -179,8 +188,8 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public int surface(int x, int y, int z) {
         World world = world();
-        if (world == null) return SURFACE_NONE;
-        BlockPos p = at(x, y, z);
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        if (p == null) return SURFACE_NONE;
         return world.isAirBlock(p) ? SURFACE_NONE : surfaceOf(world.getBlockState(p), world, p);
     }
 
@@ -215,9 +224,8 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public float hardness(int x, int y, int z) {
         World world = world();
-        if (world == null) return Float.NaN;
-        BlockPos p = at(x, y, z);
-        if (world.isAirBlock(p)) return Float.NaN;
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        if (p == null || world.isAirBlock(p)) return Float.NaN;
         //? if >=1.9 {
         return world.getBlockState(p).getBlockHardness(world, p);
         //?} else {
@@ -228,8 +236,8 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public int mapColor(int x, int y, int z) {
         World world = world();
-        if (world == null) return 0;
-        BlockPos p = at(x, y, z);
+        BlockPos p = world == null ? null : loadedAt(world, x, y, z);
+        if (p == null) return 0;
         return world.isAirBlock(p) ? 0 : mapColorOf(world.getBlockState(p), world, p);
     }
 
