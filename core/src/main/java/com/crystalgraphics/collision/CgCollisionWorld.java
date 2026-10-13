@@ -24,7 +24,7 @@ import java.util.Objects;
 
 /**
  * A level's blocks and entities, asked what a shape meets: everyone in a blast, the first thing a bolt strikes, whether
- * a target can be seen. Each question is a {@link CgQuery}, started here and read left to right.
+ * a target can be seen. Each question is a {@link CgCollisionQuery}, started here and read left to right.
  *
  * <pre>{@code
  * CgCollisionWorld world = CgCollisionWorld.of(level);          // a server's or a client's level
@@ -73,11 +73,11 @@ import java.util.Objects;
  *   <li>A world is its thread's: {@link #of(Object)} and {@link #client} hand each thread its own, and asking one on
  *       another thread throws. Ask on the level's thread; a worker asks a {@link #snapshot}.</li>
  *   <li>{@link #of(Object)} reads entities where they are this tick; {@link #client} where the frame draws them.</li>
- *   <li>A query is its thread's scratch: end one before starting the next (see {@link CgQuery}).</li>
+ *   <li>A query is its thread's scratch: end one before starting the next (see {@link CgCollisionQuery}).</li>
  *   <li>An unloaded cell blocks line of sight; a block is never loaded to answer.</li>
- *   <li>Inside a batch, an entity a hitbox's listener or {@link CgQuery#forEach} was handed is asked of the host again
- *       for the rest of it, so what a hit damages, knocks back or kills is seen as it now is. Code that changes any
- *       other entity tells the batch with {@link #changed(int)}. Hitboxes the engine ticks, and effects, run in one
+ *   <li>Inside a batch, an entity a hitbox's listener or {@link CgCollisionQuery#forEach} was handed is asked of the
+ *       host again for the rest of it, so what a hit damages, knocks back or kills is seen as it now is. Code that
+ *       changes any other entity tells the batch with {@link #changed(int)}. Hitboxes the engine ticks, and effects, run in one
  *       already.</li>
  * </ul>
  */
@@ -291,24 +291,24 @@ public class CgCollisionWorld {
         return partialTick;
     }
 
-    /** What {@code shape} overlaps, placed by {@link CgQuery#at} and {@link CgQuery#facing}. */
-    public CgQuery overlap(CgShape shape) {
-        return next().start(this, CgQuery.OVERLAP, Objects.requireNonNull(shape), null);
+    /** What {@code shape} overlaps, placed by {@link CgCollisionQuery#at} and {@link CgCollisionQuery#facing}. */
+    public CgCollisionQuery overlap(CgShape shape) {
+        return next().start(this, CgCollisionQuery.OVERLAP, Objects.requireNonNull(shape), null);
     }
 
     /** What a box overlaps, absolute in the world: an entity's own box, a region. */
-    public CgQuery overlap(CgAABBc box) {
-        return next().start(this, CgQuery.OVERLAP, null, Objects.requireNonNull(box));
+    public CgCollisionQuery overlap(CgAABBc box) {
+        return next().start(this, CgCollisionQuery.OVERLAP, null, Objects.requireNonNull(box));
     }
 
-    /** What {@code shape} first meets moving {@link CgQuery#along} a line. */
-    public CgQuery cast(CgShape shape) {
-        return next().start(this, CgQuery.CAST, Objects.requireNonNull(shape), null);
+    /** What {@code shape} first meets moving {@link CgCollisionQuery#along} a line. */
+    public CgCollisionQuery cast(CgShape shape) {
+        return next().start(this, CgCollisionQuery.CAST, Objects.requireNonNull(shape), null);
     }
 
-    /** What a ray first meets, from {@link CgQuery#at} {@link CgQuery#along} a line. */
-    public CgQuery ray() {
-        return next().start(this, CgQuery.RAY, null, null);
+    /** What a ray first meets, from {@link CgCollisionQuery#at} {@link CgCollisionQuery#along} a line. */
+    public CgCollisionQuery ray() {
+        return next().start(this, CgCollisionQuery.RAY, null, null);
     }
 
     /** Whether no block stands between the point and {@code target}'s eyes; false for no such entity. */
@@ -353,12 +353,12 @@ public class CgCollisionWorld {
     // ---- what a query asks of the world
 
     /** This thread's query at the depth now running. */
-    private CgQuery next() {
+    private CgCollisionQuery next() {
         checkThread();
         PerThread t = PER_THREAD.get();
         if (t.depth == MAX_DEPTH) throw new IllegalStateException("queries nest " + MAX_DEPTH + " deep at most");
-        CgQuery q = t.queries[t.depth];
-        if (q == null) t.queries[t.depth] = q = new CgQuery(t);
+        CgCollisionQuery q = t.queries[t.depth];
+        if (q == null) t.queries[t.depth] = q = new CgCollisionQuery(t);
         return q;
     }
 
@@ -420,7 +420,7 @@ public class CgCollisionWorld {
                 public boolean wants(CgHitbox hitbox, CgCollisionWorld tickedIn, int owner) {
                     if (!world.sameLevel(tickedIn)) return false;
                     this.owner = owner;
-                    flags = CgQuery.flagsOf(view, owner);
+                    flags = CgCollisionQuery.flagsOf(view, owner);
                     kind = view.kind(owner);
                     root = view.rootVehicle(owner);
                     return true;
@@ -457,7 +457,7 @@ public class CgCollisionWorld {
         }
 
         /** Hands {@code q} each part whose box touches {@code within}. */
-        void scan(CgQuery q, CgAABBc within) {
+        void scan(CgCollisionQuery q, CgAABBc within) {
             for (int i = 0; i < size; i++) {
                 if (!bounds[i].intersects(within)) continue;
                 int o = i * 4;
@@ -477,7 +477,7 @@ public class CgCollisionWorld {
     }
 
     static final class PerThread {
-        final CgQuery[] queries = new CgQuery[MAX_DEPTH];
+        final CgCollisionQuery[] queries = new CgCollisionQuery[MAX_DEPTH];
         /** Queries running on this thread: the depth the next one starts at. */
         int depth;
         final Sight sight = new Sight();

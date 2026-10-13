@@ -38,7 +38,7 @@ import java.util.function.Function;
  * public static final CgNetField<Float> RADIUS = CgNetField.ofFloat("radius");
  * public static final CgHitboxType SLAM = CgHitboxType.define("mymod:slam").fields(RADIUS)
  *         .hitbox(obj -> CgHitbox.of(CgRing.front(1.2, 0.6)).radius(0, obj.getFloat(RADIUS), 12)
- *                 .query(CgQuery::living))
+ *                 .query(CgCollisionQuery::living))
  *         .build();
  *
  * SLAM.onHit((obj, h) -> damage(h.entity()));                // server, at init: the only place damage happens

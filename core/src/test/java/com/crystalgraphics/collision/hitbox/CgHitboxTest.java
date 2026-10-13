@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.hitbox;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
@@ -228,7 +228,7 @@ public class CgHitboxTest {
         int[] hits = {0};
         CgHitbox[] boxes = new CgHitbox[1000];
         for (int i = 0; i < boxes.length; i++) {
-            boxes[i] = CgHitbox.of(CgSphere.of(1.5)).rehit(4).query(CgQuery::living).onHit(h -> hits[0]++);
+            boxes[i] = CgHitbox.of(CgSphere.of(1.5)).rehit(4).query(CgCollisionQuery::living).onHit(h -> hits[0]++);
         }
         int ticks = 0;
         for (; ticks < 200; ticks++) tickAll(w, boxes, ticks);

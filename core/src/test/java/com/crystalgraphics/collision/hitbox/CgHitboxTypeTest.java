@@ -1,6 +1,6 @@
 package com.crystalgraphics.collision.hitbox;
 
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -56,7 +56,7 @@ public class CgHitboxTypeTest {
 
     private static final CgHitboxType WAVE = CgHitboxType.define("hitbox_test:wave").fields(RADIUS).range(64)
             .hitbox(obj -> CgHitbox.of(CgRing.front(1.2, 0.6)).radius(0, obj.getFloat(RADIUS), 12).activeFor(12)
-                    .query(CgQuery::living))
+                    .query(CgCollisionQuery::living))
             .build();
     private static final CgHitboxType SLOW = CgHitboxType.define("hitbox_test:slow").fields(RADIUS).range(64)
             .hitbox(obj -> CgHitbox.of(CgRing.front(1.2, 0.6)).radius(0, obj.getFloat(RADIUS), 30).activeFor(30))

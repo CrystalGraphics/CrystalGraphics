@@ -1,10 +1,10 @@
 package com.crystalgraphics.collision.hit;
 
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 
 /**
- * Hits kept past the query that found them, nearest first: what {@link CgQuery#into} fills. Reused; filling it again
- * replaces what it held, and allocates nothing once it has held as many.
+ * Hits kept past the query that found them, nearest first: what {@link CgCollisionQuery#into} fills. Reused; filling it
+ * again replaces what it held, and allocates nothing once it has held as many.
  *
  * <pre>{@code
  * private final CgHits hits = new CgHits();                    // a field, reused

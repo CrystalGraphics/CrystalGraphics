@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.block;
 
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
@@ -15,8 +15,8 @@ import java.util.Arrays;
  * <ul>
  *   <li>Answers what collision asks (boxes, their top and bottom, fluid, loaded, the border, the level's height and
  *       epoch); the rest as {@link CgWorldQuery#NONE}.</li>
- *   <li>Blocks answer as to no one ({@link CgQuery#as} is not kept): what scaffolding shows an entity depends on where
- *       it is when it asks.</li>
+ *   <li>Blocks answer as to no one ({@link CgCollisionQuery#as} is not kept): what scaffolding shows an entity depends
+ *       on where it is when it asks.</li>
  *   <li>Outside its box there is nothing: no boxes, no fluid, and loaded, so sight passes. A column unloaded inside it
  *       is unloaded here too.</li>
  * </ul>

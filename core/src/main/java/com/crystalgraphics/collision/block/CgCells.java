@@ -9,7 +9,7 @@ import org.apache.logging.log4j.Logger;
  * move. Each cell is visited once, and the walk stops at the first slice the box reaches only past
  * {@link Visitor#limit}.
  *
- * <p>Under every {@code CgQuery} and line of sight; one per thread, reused.
+ * <p>Under every {@code CgCollisionQuery} and line of sight; one per thread, reused.
  */
 public final class CgCells {
 

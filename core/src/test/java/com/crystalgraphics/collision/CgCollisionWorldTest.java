@@ -73,7 +73,7 @@ public class CgCollisionWorldTest {
     private final CgHits hits = new CgHits();
     private final CgHit hit = new CgHit();
 
-    private int[] ids(CgQuery q) {
+    private int[] ids(CgCollisionQuery q) {
         int n = q.into(hits);
         int[] out = new int[n];
         for (int i = 0; i < n; i++) out[i] = hits.get(i).entity();

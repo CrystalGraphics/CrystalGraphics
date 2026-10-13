@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -93,7 +93,7 @@ public class CgShapeLinesTest {
         CgCollisionWorld yard = CgCollisionWorld.of(new Yard(), new Table());
         CgShape ball = CgSphere.of(0.5);
         int[] heard = {0};
-        CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> {
+        CgCollisionQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> {
             heard[0]++;
             lines.query(shape, pose, box, dx, dy, dz, length, level, nearest, 0);
         });
@@ -102,7 +102,7 @@ public class CgShapeLinesTest {
             CgHitbox.of(CgSphere.of(1)).at(0.5, 1, 0.5).tick(yard, 1);
             CgCollisionWorld.empty().cast(ball).at(0, 5, 0).along(0, -1, 0, 10).any();
         } finally {
-            CgQuery.watch(null);
+            CgCollisionQuery.watch(null);
         }
         assertEquals("not the hitbox's query, nor the empty world's cast", 1, heard[0]);
         List<Integer> colours = new ArrayList<>();

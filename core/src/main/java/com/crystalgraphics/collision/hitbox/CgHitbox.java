@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.hitbox;
 
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgHits;
@@ -27,8 +27,8 @@ import java.util.function.IntConsumer;
 /**
  * A volume that lives over time and hits what it reaches: a shockwave running along the ground, a sword's swing, a
  * trigger zone. Each tick it tests everything it swept since the last, so nothing fast slips past it, and its rules
- * decide which of those touches are hits. What it may hit is said as a {@link CgQuery} says it: each tick's queries
- * are configured by {@link #query}.
+ * decide which of those touches are hits. What it may hit is said as a {@link CgCollisionQuery} says it: each tick's
+ * queries are configured by {@link #query}.
  *
  * <pre>{@code
  * // a front 1.2 blocks thick runs 12 blocks out in 12 ticks, each enemy hit once as it arrives
@@ -152,7 +152,7 @@ public final class CgHitbox {
 
     // ---- what it may hit
     private int source = -1;
-    private Consumer<? super CgQuery> query;
+    private Consumer<? super CgCollisionQuery> query;
 
     // ---- rules and listeners
     private double rehit = Double.POSITIVE_INFINITY;
@@ -344,14 +344,14 @@ public final class CgHitbox {
 
     /**
      * Configures each query it runs, after placing it and naming its {@link #source}: what it may hit, as
-     * {@link CgQuery} says it. Called on every sub-step, so it must only configure.
+     * {@link CgCollisionQuery} says it. Called on every sub-step, so it must only configure.
      *
      * <pre>{@code
      * hitbox.query(q -> q.except(ally).living().exposure());
      * hitbox.query(q -> q.kinds(1 << CgEntityQuery.KIND_MONSTER).inflate(0.3));
      * }</pre>
      */
-    public CgHitbox query(Consumer<? super CgQuery> configure) {
+    public CgHitbox query(Consumer<? super CgCollisionQuery> configure) {
         query = Objects.requireNonNull(configure, "configure");
         return this;
     }
@@ -747,7 +747,7 @@ public final class CgHitbox {
     }
 
     private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc rotation) {
-        CgQuery q = world.overlap(shape).at(px, py, pz).rotation(rotation).part(names[p]);
+        CgCollisionQuery q = world.overlap(shape).at(px, py, pz).rotation(rotation).part(names[p]);
         if (source >= 0) q.source(source);
         if (query != null) query.accept(q);
         int n = q.into(partHits);

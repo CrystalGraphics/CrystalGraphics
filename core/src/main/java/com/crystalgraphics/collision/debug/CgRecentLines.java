@@ -1,6 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
@@ -58,7 +58,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
         shapes.eye(x, y, z);
     }
 
-    /** Writes one query's lines, as {@link CgQuery.Watcher#ran} hands it, kept {@link #HOLD_NANOS}. */
+    /** Writes one query's lines, as {@link CgCollisionQuery.Watcher#ran} hands it, kept {@link #HOLD_NANOS}. */
     synchronized void query(@Nullable CgShape shape, CgPose pose, @Nullable CgAABBc box, double dx, double dy,
                             double dz, double length, CgWorldQuery level, @Nullable CgHit nearest, long now) {
         this.level = level;

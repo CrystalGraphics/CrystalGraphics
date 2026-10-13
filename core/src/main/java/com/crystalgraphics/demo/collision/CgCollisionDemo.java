@@ -1,7 +1,7 @@
 package com.crystalgraphics.demo.collision;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
@@ -242,7 +242,8 @@ public final class CgCollisionDemo {
         if (ring == null || ring.stopped()) {
             if (worldRing != null) worldRing.stop();
             ring = grow().query(q -> q.where(id -> id < TARGETS)).onHit(h -> flash[h.entity()] = FLASH_TICKS);
-            worldRing = world == null ? null : grow().query(CgQuery::allEntities).onHit(h -> flashEntity(h.entity()));
+            worldRing = world == null ? null
+                    : grow().query(CgCollisionQuery::allEntities).onHit(h -> flashEntity(h.entity()));
         }
         ring.tick(props, ticks);
         if (worldRing != null && world != null) worldRing.tick(world, ticks);

@@ -1554,20 +1554,57 @@ com/crystalgraphics/api/vertex/CgVertexTransformUtil
   method public,static transformPosition (Lorg/joml/Matrix4f;FFF)Lorg/joml/Vector4f;
   method public,static vertex (Lcom/crystalgraphics/api/vertex/CgVertexConsumer;Lorg/joml/Matrix4f;FF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
   method public,static vertex (Lcom/crystalgraphics/api/vertex/CgVertexConsumer;Lorg/joml/Matrix4f;FFF)Lcom/crystalgraphics/api/vertex/CgVertexConsumer;
+com/crystalgraphics/collision/CgCollisionQuery
+  access public,final
+  extends java/lang/Object
+  method public allEntities ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public along (DDDD)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public any ()Z
+  method public as (I)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public at (DDD)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public blocksOnly ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public blocksToo ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public border ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public count ()I
+  method public except (I)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public exposure ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public facing (DD)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public first (Lcom/crystalgraphics/collision/hit/CgHit;)Z
+  method public fluids ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public forEach (Ljava/util/function/Consumer;)V
+  method public inflate (D)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public into (Lcom/crystalgraphics/collision/hit/CgHits;)I
+  method public itemsToo ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public kinds (I)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public living ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public max (I)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public noHitboxes ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public part (Lcom/crystalgraphics/collision/hit/CgHitPart;)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public solid ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public source (I)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public visible ()Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public,static watch (Lcom/crystalgraphics/collision/CgCollisionQuery$Watcher;)V
+com/crystalgraphics/collision/CgCollisionQuery$Watcher
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract ran (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;DDDDLcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/collision/hit/CgHit;)V
 com/crystalgraphics/collision/CgCollisionWorld
   access public
   extends java/lang/Object
   method public blocks ()Lcom/crystalgraphics/platform/service/CgWorldQuery;
-  method public cast (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgQuery;
+  method public cast (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgCollisionQuery;
   method public changed ()V
   method public changed (I)V
   method public entities ()Lcom/crystalgraphics/platform/service/CgEntityQuery;
   method public exposure (DDDI)F
   method public lineOfSight (DDDI)Z
-  method public overlap (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgQuery;
-  method public overlap (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/CgQuery;
+  method public overlap (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgCollisionQuery;
+  method public overlap (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/CgCollisionQuery;
   method public partialTick ()F
-  method public ray ()Lcom/crystalgraphics/collision/CgQuery;
+  method public ray ()Lcom/crystalgraphics/collision/CgCollisionQuery;
   method public snapshot (DDDD)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public snapshot (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static batch ()Lcom/crystalgraphics/collision/CgCollisionWorld$Batch;
@@ -1580,43 +1617,6 @@ com/crystalgraphics/collision/CgCollisionWorld$Batch
   extends java/lang/Object
   implements java/lang/AutoCloseable
   method public close ()V
-com/crystalgraphics/collision/CgQuery
-  access public,final
-  extends java/lang/Object
-  method public allEntities ()Lcom/crystalgraphics/collision/CgQuery;
-  method public along (DDDD)Lcom/crystalgraphics/collision/CgQuery;
-  method public any ()Z
-  method public as (I)Lcom/crystalgraphics/collision/CgQuery;
-  method public at (DDD)Lcom/crystalgraphics/collision/CgQuery;
-  method public blocksOnly ()Lcom/crystalgraphics/collision/CgQuery;
-  method public blocksToo ()Lcom/crystalgraphics/collision/CgQuery;
-  method public border ()Lcom/crystalgraphics/collision/CgQuery;
-  method public count ()I
-  method public except (I)Lcom/crystalgraphics/collision/CgQuery;
-  method public exposure ()Lcom/crystalgraphics/collision/CgQuery;
-  method public facing (DD)Lcom/crystalgraphics/collision/CgQuery;
-  method public first (Lcom/crystalgraphics/collision/hit/CgHit;)Z
-  method public fluids ()Lcom/crystalgraphics/collision/CgQuery;
-  method public forEach (Ljava/util/function/Consumer;)V
-  method public inflate (D)Lcom/crystalgraphics/collision/CgQuery;
-  method public into (Lcom/crystalgraphics/collision/hit/CgHits;)I
-  method public itemsToo ()Lcom/crystalgraphics/collision/CgQuery;
-  method public kinds (I)Lcom/crystalgraphics/collision/CgQuery;
-  method public living ()Lcom/crystalgraphics/collision/CgQuery;
-  method public max (I)Lcom/crystalgraphics/collision/CgQuery;
-  method public noHitboxes ()Lcom/crystalgraphics/collision/CgQuery;
-  method public part (Lcom/crystalgraphics/collision/hit/CgHitPart;)Lcom/crystalgraphics/collision/CgQuery;
-  method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/CgQuery;
-  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/CgQuery;
-  method public solid ()Lcom/crystalgraphics/collision/CgQuery;
-  method public source (I)Lcom/crystalgraphics/collision/CgQuery;
-  method public visible ()Lcom/crystalgraphics/collision/CgQuery;
-  method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/CgQuery;
-  method public,static watch (Lcom/crystalgraphics/collision/CgQuery$Watcher;)V
-com/crystalgraphics/collision/CgQuery$Watcher
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract ran (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;DDDDLcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/collision/hit/CgHit;)V
 com/crystalgraphics/collision/block/CgBlockSnapshot
   access public,final
   extends java/lang/Object

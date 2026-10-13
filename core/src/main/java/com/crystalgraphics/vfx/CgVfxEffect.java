@@ -290,7 +290,7 @@ public abstract class CgVfxEffect {
      * if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(following()).blocksToo().first(hit)) ...
      * }</pre>
      *
-     * Ask during {@link #tick}, and end each query before the next ({@code CgQuery}).
+     * Ask during {@link #tick}, and end each query before the next ({@code CgCollisionQuery}).
      */
     protected final CgCollisionWorld world() {
         return authority != null ? authority.world

@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.entity;
 
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHits;
@@ -33,7 +33,7 @@ public class CgEntityCacheTest {
         for (int id = 0; id < MOBS; id++) table.mob(id, r.nextDouble() * 64 - 32, r.nextDouble() * 64 - 32, KIND_MONSTER);
     }
 
-    private String answer(CgQuery q) {
+    private String answer(CgCollisionQuery q) {
         int n = q.into(hits);
         StringBuilder s = new StringBuilder();
         for (int i = 0; i < n; i++) s.append(hits.get(i).entity()).append('@').append(Math.round(hits.get(i).distance() * 1e6)).append(' ');

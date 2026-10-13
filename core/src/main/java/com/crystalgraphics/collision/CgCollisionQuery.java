@@ -65,7 +65,7 @@ import java.util.function.IntPredicate;
  *   <li>A host world's queries are drawn under {@code crystalgraphics.collision.show} and F3+B.</li>
  * </ul>
  */
-public final class CgQuery {
+public final class CgCollisionQuery {
 
     /** The flags of a hittable's owner in a world with no entities, which entity filters let through. */
     static final int NOT_AN_ENTITY = -1;
@@ -117,11 +117,11 @@ public final class CgQuery {
     private boolean stopAtFirst, done, partsSeen, blockFound;
     private int sourceRoot;
 
-    CgQuery(CgCollisionWorld.PerThread thread) {
+    CgCollisionQuery(CgCollisionWorld.PerThread thread) {
         this.thread = thread;
     }
 
-    CgQuery start(CgCollisionWorld world, int mode, CgShape shape, CgAABBc box) {
+    CgCollisionQuery start(CgCollisionWorld world, int mode, CgShape shape, CgAABBc box) {
         this.world = world;
         this.mode = mode;
         this.shape = shape;
@@ -147,26 +147,26 @@ public final class CgQuery {
 
     // ---- placement
 
-    public CgQuery at(double x, double y, double z) {
+    public CgCollisionQuery at(double x, double y, double z) {
         if (boxQuery) throw new IllegalStateException("a box query is placed by its box");
         pose.at(x, y, z);
         return this;
     }
 
     /** Turns the shape's local +Z to look along a yaw and pitch in radians, as {@link CgPose#facing}. */
-    public CgQuery facing(double yaw, double pitch) {
+    public CgCollisionQuery facing(double yaw, double pitch) {
         turnable();
         pose.facing(yaw, pitch);
         return this;
     }
 
-    public CgQuery rotation(Quaternionfc q) {
+    public CgCollisionQuery rotation(Quaternionfc q) {
         turnable();
         pose.rotation(q);
         return this;
     }
 
-    public CgQuery rotation(Quaterniondc q) {
+    public CgCollisionQuery rotation(Quaterniondc q) {
         turnable();
         pose.rotation(q);
         return this;
@@ -178,7 +178,7 @@ public final class CgQuery {
      * @throws IllegalArgumentException for a zero direction or a negative distance
      * @throws IllegalStateException on an overlap
      */
-    public CgQuery along(double dx, double dy, double dz, double distance) {
+    public CgCollisionQuery along(double dx, double dy, double dz, double distance) {
         if (mode == OVERLAP) throw new IllegalStateException("an overlap does not move: cast(shape) does");
         double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (!(len > 0) || !(distance >= 0) || Double.isInfinite(distance)) {
@@ -200,26 +200,26 @@ public final class CgQuery {
     // ---- what it may hit
 
     /** Blocks as well as entities, by their collision shapes. */
-    public CgQuery blocksToo() {
+    public CgCollisionQuery blocksToo() {
         blocksOn = true;
         return this;
     }
 
     /** Blocks alone: no entity and no hittable hitbox. */
-    public CgQuery blocksOnly() {
+    public CgCollisionQuery blocksOnly() {
         blocksOn = true;
         entitiesOn = false;
         return this;
     }
 
     /** Passes through {@link CgHitbox#hittable() hittable} hitboxes, meeting their owners' bodies alone. */
-    public CgQuery noHitboxes() {
+    public CgCollisionQuery noHitboxes() {
         hitboxesOn = false;
         return this;
     }
 
     /** Fluids as boxes up to their surface, blocks included: a cast or ray stops at water. */
-    public CgQuery fluids() {
+    public CgCollisionQuery fluids() {
         fluidsOn = blocksOn = true;
         return this;
     }
@@ -229,14 +229,14 @@ public final class CgQuery {
      *
      * @throws IllegalStateException for a ninth
      */
-    public CgQuery except(int id) {
+    public CgCollisionQuery except(int id) {
         if (excepts == MAX_EXCEPT) throw new IllegalStateException("except takes " + MAX_EXCEPT + " ids at most");
         except[excepts++] = id;
         return this;
     }
 
     /** Whose query it is: never hits them, their parts, or anyone riding with them, as Minecraft's projectiles. */
-    public CgQuery source(int id) {
+    public CgCollisionQuery source(int id) {
         source = id;
         return this;
     }
@@ -247,7 +247,7 @@ public final class CgQuery {
      * to no one, as they do to particles. A {@link CgCollisionWorld#snapshot} always answers as to no one: what such a
      * block shows depends on where the entity is when it asks.
      */
-    public CgQuery as(int id) {
+    public CgCollisionQuery as(int id) {
         as = id;
         return this;
     }
@@ -256,43 +256,43 @@ public final class CgQuery {
      * The world border too, as Minecraft stops a moving entity at it: every block cell beyond it is solid, while the
      * query's origin is inside. Particles and projectiles pass it in Minecraft, so nothing meets it unasked.
      */
-    public CgQuery border() {
+    public CgCollisionQuery border() {
         borderOn = true;
         return this;
     }
 
     /** Living entities only: a dragon's part by its dragon. */
-    public CgQuery living() {
+    public CgCollisionQuery living() {
         wholeRequire |= CgEntityQuery.LIVING;
         return this;
     }
 
     /** Only what Minecraft stops other entities at, as it does at a block: boats, minecarts, shulkers. */
-    public CgQuery solid() {
+    public CgCollisionQuery solid() {
         wholeRequire |= CgEntityQuery.SOLID;
         return this;
     }
 
     /** Dropped items too, which Minecraft's projectiles pass through. */
-    public CgQuery itemsToo() {
+    public CgCollisionQuery itemsToo() {
         items = true;
         return this;
     }
 
     /** Every entity, spectators and the dead included. */
-    public CgQuery allEntities() {
+    public CgCollisionQuery allEntities() {
         require = forbid = 0;
         return this;
     }
 
     /** Only these kinds: bits {@code 1 << CgEntityQuery.KIND_...}, asked of the whole entity. */
-    public CgQuery kinds(int mask) {
+    public CgCollisionQuery kinds(int mask) {
         kinds = mask;
         return this;
     }
 
     /** Only entities {@code test} accepts: teams, PvP, anything the engine does not decide. */
-    public CgQuery where(IntPredicate test) {
+    public CgCollisionQuery where(IntPredicate test) {
         where = test;
         return this;
     }
@@ -302,33 +302,33 @@ public final class CgQuery {
      *
      * @throws IllegalArgumentException for a negative or non-finite size
      */
-    public CgQuery inflate(double d) {
+    public CgCollisionQuery inflate(double d) {
         if (!(d >= 0) || Double.isInfinite(d)) throw new IllegalArgumentException("inflate(" + d + ")");
         inflate = d;
         return this;
     }
 
     /** At most the {@code n} nearest. */
-    public CgQuery max(int n) {
+    public CgCollisionQuery max(int n) {
         if (n < 1) throw new IllegalArgumentException("max(" + n + ")");
         max = n;
         return this;
     }
 
     /** Only entities the query's origin sees: the centre of their box, past no block. */
-    public CgQuery visible() {
+    public CgCollisionQuery visible() {
         visible = true;
         return this;
     }
 
     /** Fills each entity hit's {@link CgHit#exposure()}, as Minecraft's explosions sample it. */
-    public CgQuery exposure() {
+    public CgCollisionQuery exposure() {
         exposure = true;
         return this;
     }
 
     /** Labels every hit with {@code part}: several queries' hits told apart in one list. */
-    public CgQuery part(CgHitPart part) {
+    public CgCollisionQuery part(CgHitPart part) {
         this.part = part;
         return this;
     }
@@ -356,11 +356,11 @@ public final class CgQuery {
      * collision show is it. A hitbox's queries and an empty world's are never handed over.
      *
      * <pre>{@code
-     * CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> recorder.add(pose, nearest));
+     * CgCollisionQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> recorder.add(pose, nearest));
      * }</pre>
      */
     public static void watch(@Nullable Watcher watcher) {
-        CgQuery.watcher = watcher;
+        CgCollisionQuery.watcher = watcher;
     }
 
     // ---- ending it

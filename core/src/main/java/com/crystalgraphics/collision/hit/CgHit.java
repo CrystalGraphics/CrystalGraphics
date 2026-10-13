@@ -1,6 +1,6 @@
 package com.crystalgraphics.collision.hit;
 
-import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
@@ -8,7 +8,7 @@ import javax.annotation.Nullable;
 
 /**
  * One thing a query met: an entity or a block, where, and how far from the query. A visitor's hit is the query's own,
- * valid during the call; {@link CgQuery#first} copies into one you hold.
+ * valid during the call; {@link CgCollisionQuery#first} copies into one you hold.
  *
  * <pre>{@code
  * world.overlap(BLAST).at(x, y, z).forEach(h -> damage(h.entity(), 10f * h.falloff(2, 6)));
@@ -175,7 +175,7 @@ public final class CgHit {
         return exposure;
     }
 
-    /** The part that met it: a hitbox's, or a query's {@link CgQuery#part}; null for neither. */
+    /** The part that met it: a hitbox's, or a query's {@link CgCollisionQuery#part}; null for neither. */
     public CgHitPart part() {
         return part;
     }
