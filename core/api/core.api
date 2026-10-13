@@ -4495,6 +4495,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static clientTickNanos ()J
   method public,static closeAll (Ljava/lang/String;)V
   method public,static forEachPlayer (Ljava/util/function/Consumer;)V
+  method public,static forPlayer (Ljava/lang/Object;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public,static forPlayer (Ljava/util/UUID;)Lcom/crystalgraphics/net/protocol/CgProtocolConnection;
   method public,static helloKnown (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;)Z
   method public,static helloVersion (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;Ljava/lang/String;)I

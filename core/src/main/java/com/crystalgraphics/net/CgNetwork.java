@@ -32,7 +32,7 @@ import org.apache.logging.log4j.Logger;
  * <pre>{@code
  * CgProtocols.server("mymod", connection -> connection.onNotify("mymod/ping", args -> pong(connection)));
  *
- * CgProtocolConnection<Object> toPlayer = CgNetwork.forPlayer(playerUuid);   // server; null if they have none
+ * CgProtocolConnection<Object> toPlayer = CgNetwork.forPlayer(serverPlayer); // server, the host's player; null if none
  * CgProtocolConnection<Object> toServer = CgNetwork.client();                // client; null outside a world
  * }</pre>
  *
@@ -182,7 +182,23 @@ public final class CgNetwork {
         return serverTicks;
     }
 
-    /** The connection to this player, or null when they have none. */
+    /**
+     * The connection to this player, the host's own player object ({@code ServerPlayer}, {@code EntityPlayerMP}), or
+     * null when they have none.
+     *
+     * <pre>{@code
+     * CgProtocolConnection<Object> toThem = CgNetwork.forPlayer(serverPlayer);   // server
+     * if (toThem != null) toThem.notify("mymod/ping", args);
+     * }</pre>
+     */
+    @Nullable
+    public static CgProtocolConnection<Object> forPlayer(@Nullable Object player) {
+        if (player instanceof UUID) return forPlayer((UUID) player);
+        Function<Object, UUID> ids = idOf;
+        return player == null || ids == null ? null : forPlayer(ids.apply(player));
+    }
+
+    /** The connection to the player with this profile UUID, or null when they have none. */
     @Nullable
     public static CgProtocolConnection<Object> forPlayer(@Nullable UUID id) {
         CgConnections table = server;

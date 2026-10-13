@@ -120,6 +120,16 @@ public class CgNetworkTest {
         assertEquals("Steve", askedBy.get());
     }
 
+    @Test
+    public void aPlayersConnectionIsFoundFromTheHostsObjectOrItsId() {
+        install();
+        join();
+        assertSame(CgNetwork.forPlayer(id), CgNetwork.forPlayer(wearing.get()));
+        assertSame(CgNetwork.forPlayer(id), CgNetwork.forPlayer((Object) id));
+        assertNull(CgNetwork.forPlayer(new Body(UUID.randomUUID())));
+        assertNull(CgNetwork.forPlayer((Object) null));
+    }
+
     /** A respawn replaces the entity; a send goes to the one worn now. */
     @Test
     public void aSendResolvesTheLivePlayer() {
