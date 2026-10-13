@@ -90,7 +90,7 @@ public class CgJobTest {
         AtomicInteger inFlight = new AtomicInteger(), most = new AtomicInteger();
         int[] state = {0};
         int[] reads = {0};
-        CgJob<Integer> job = CgJob.repeat(() -> {
+        CgJob.Repeating<Integer> job = CgJob.repeat(() -> {
             reads[0]++;
             return state[0];
         }).work(s -> {
@@ -117,7 +117,7 @@ public class CgJobTest {
         assertEquals("boom", heard.get().getMessage());
 
         AtomicInteger runs = new AtomicInteger();
-        CgJob<Integer> repeating = CgJob.repeat(runs::incrementAndGet).work(n -> {
+        CgJob.Repeating<Integer> repeating = CgJob.repeat(runs::incrementAndGet).work(n -> {
             if (n == 3) throw new IllegalStateException("third");
             return n;
         }).failed(heard::set);

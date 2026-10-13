@@ -4073,24 +4073,231 @@ com/crystalgraphics/gpu/CgUploads$Tier
   method public,static values ()[Lcom/crystalgraphics/gpu/CgUploads$Tier;
 com/crystalgraphics/job/CgJob
   access public,final
-  extends java/lang/Object
+  extends com/crystalgraphics/job/CgJobBase
+  implements com/crystalgraphics/job/reply/CgReply
+  method public always (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
   method public cancel ()V
+  method public error ()Lcom/crystalgraphics/job/reply/CgReplyError;
   method public failed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
   method public isDone ()Z
+  method public map (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
   method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob;
+  method public onError (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
+  method public progress ()Lcom/crystalgraphics/job/progress/CgProgressState;
+  method public result ()Ljava/lang/Object;
   method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
   method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
+  method public toString ()Ljava/lang/String;
   method public,static drain ()V
   method public,static forEach (ILjava/util/function/IntConsumer;)V
   method public,static forEach (Ljava/util/List;Ljava/util/function/Consumer;)V
   method public,static isWorkerThread ()Z
+  method public,static keyed (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public,static lane (Lcom/crystalgraphics/job/CgJobLane;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public,static on (Lcom/crystalgraphics/job/CgJobLoop;)Lcom/crystalgraphics/job/CgJob$Builder;
   method public,static repeat (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/CgJob$Repeat;
+  method public,static run (Lcom/crystalgraphics/job/CgJob$Work;)Lcom/crystalgraphics/job/CgJob;
   method public,static run (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
   method public,static run (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/CgJob;
+com/crystalgraphics/job/CgJob$Builder
+  access public,final
+  extends java/lang/Object
+  method public debounce (J)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public keyed (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public lane (Lcom/crystalgraphics/job/CgJobLane;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public on (Lcom/crystalgraphics/job/CgJobLoop;)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public run (Lcom/crystalgraphics/job/CgJob$Work;)Lcom/crystalgraphics/job/CgJob;
+  method public run (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
+  method public run (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/CgJob;
 com/crystalgraphics/job/CgJob$Repeat
   access public,final
   extends java/lang/Object
-  method public work (Ljava/util/function/Function;)Lcom/crystalgraphics/job/CgJob;
+  method public work (Ljava/util/function/Function;)Lcom/crystalgraphics/job/CgJob$Repeating;
+com/crystalgraphics/job/CgJob$Repeating
+  access public,final
+  extends com/crystalgraphics/job/CgJobBase
+  method public cancel ()V
+  method public failed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob$Repeating;
+  method public isDone ()Z
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Repeating;
+  method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob$Repeating;
+  method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob$Repeating;
+com/crystalgraphics/job/CgJob$Work
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract run (Lcom/crystalgraphics/job/CgJobContext;)Ljava/lang/Object;
+com/crystalgraphics/job/CgJobContext
+  access public,final
+  extends java/lang/Object
+  method public isCancelled ()Z
+  method public progress ()Lcom/crystalgraphics/job/progress/CgProgress;
+  method public throwIfCancelled ()V
+com/crystalgraphics/job/CgJobContext$CancelledException
+  access public,final
+  extends java/lang/RuntimeException
+com/crystalgraphics/job/CgJobKey
+  access public,final
+  extends java/lang/Object
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public kind ()Ljava/lang/String;
+  method public owner ()Ljava/lang/Object;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/job/CgJobKey;
+com/crystalgraphics/job/CgJobLane
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BACKGROUND Lcom/crystalgraphics/job/CgJobLane;
+  field public,static,final INTERACTIVE Lcom/crystalgraphics/job/CgJobLane;
+  field public,static,final LATENCY Lcom/crystalgraphics/job/CgJobLane;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJobLane;
+  method public,static values ()[Lcom/crystalgraphics/job/CgJobLane;
+com/crystalgraphics/job/CgJobLoop
+  access public,final
+  extends java/lang/Object
+  method public cancel (Ljava/lang/Object;Ljava/lang/String;)V
+  method public cancelAll (Ljava/lang/Object;)V
+  method public close ()V
+  method public drain ()V
+  method public enter ()Lcom/crystalgraphics/job/CgJobLoop$Scope;
+  method public isCurrent ()Z
+  method public name ()Ljava/lang/String;
+  method public pendingCount ()I
+  method public toString ()Ljava/lang/String;
+  method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJobLoop;
+  method public,static create (Ljava/lang/String;Ljava/util/concurrent/Executor;Ljava/util/function/LongSupplier;)Lcom/crystalgraphics/job/CgJobLoop;
+  method public,static current ()Lcom/crystalgraphics/job/CgJobLoop;
+com/crystalgraphics/job/CgJobLoop$Scope
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public close ()V
+com/crystalgraphics/job/progress/CgProgress
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/job/progress/CgProgress;
+  method public begin (Ljava/lang/String;J)V
+  method public,abstract advance (J)V
+  method public,abstract begin (Ljava/lang/String;JLcom/crystalgraphics/job/progress/CgProgress$Unit;)V
+  method public,abstract detail (Ljava/lang/String;)V
+com/crystalgraphics/job/progress/CgProgress$Unit
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BYTES Lcom/crystalgraphics/job/progress/CgProgress$Unit;
+  field public,static,final ITEMS Lcom/crystalgraphics/job/progress/CgProgress$Unit;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/job/progress/CgProgress$Unit;
+  method public,static values ()[Lcom/crystalgraphics/job/progress/CgProgress$Unit;
+com/crystalgraphics/job/progress/CgProgressState
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;JJJJLcom/crystalgraphics/job/progress/CgProgress$Unit;J)V
+  method public begunAtMillis ()J
+  method public detail ()Ljava/lang/String;
+  method public done ()J
+  method public fraction ()F
+  method public isIndeterminate ()Z
+  method public secondsRemaining ()J
+  method public summary ()Ljava/lang/String;
+  method public total ()J
+  method public unit ()Lcom/crystalgraphics/job/progress/CgProgress$Unit;
+  method public updatedAtMillis ()J
+  method public what ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static bytes (J)Ljava/lang/String;
+com/crystalgraphics/job/progress/CgProgressTracker
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/job/progress/CgProgress
+  method public <init> (Ljava/util/function/LongSupplier;)V
+  method public advance (J)V
+  method public begin (Ljava/lang/String;JLcom/crystalgraphics/job/progress/CgProgress$Unit;)V
+  method public detail (Ljava/lang/String;)V
+  method public state ()Lcom/crystalgraphics/job/progress/CgProgressState;
+com/crystalgraphics/job/reply/CgPendingReply
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/job/reply/CgReply
+  method public <init> (Ljava/lang/Runnable;)V
+  method public always (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public cancel ()V
+  method public error ()Lcom/crystalgraphics/job/reply/CgReplyError;
+  method public fail (Lcom/crystalgraphics/job/reply/CgReplyError;)Z
+  method public isDone ()Z
+  method public map (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public onError (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public resolve (Ljava/lang/Object;)V
+  method public result ()Ljava/lang/Object;
+  method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public toString ()Ljava/lang/String;
+com/crystalgraphics/job/reply/CgPendingStream
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/job/reply/CgStream
+  method public <init> (Ljava/lang/Runnable;)V
+  method public always (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public cancel ()V
+  method public emit (Ljava/lang/Object;)V
+  method public emitted ()I
+  method public error ()Lcom/crystalgraphics/job/reply/CgReplyError;
+  method public fail (Lcom/crystalgraphics/job/reply/CgReplyError;)Z
+  method public finish ()V
+  method public isDone ()Z
+  method public map (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public onError (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public onPartial (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgStream;
+  method public result ()Ljava/util/List;
+  method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public toString ()Ljava/lang/String;
+com/crystalgraphics/job/reply/CgReply
+  access public,abstract,interface
+  extends java/lang/Object
+  method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,abstract always (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,abstract cancel ()V
+  method public,abstract error ()Lcom/crystalgraphics/job/reply/CgReplyError;
+  method public,abstract isDone ()Z
+  method public,abstract map (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,abstract onError (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,abstract result ()Ljava/lang/Object;
+  method public,abstract then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,static all (Ljava/util/Collection;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,static both (Lcom/crystalgraphics/job/reply/CgReply;Lcom/crystalgraphics/job/reply/CgReply;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,static failed (Lcom/crystalgraphics/job/reply/CgReplyError;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
+com/crystalgraphics/job/reply/CgReply$Both
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/Object;Ljava/lang/Object;)V
+  method public first ()Ljava/lang/Object;
+  method public second ()Ljava/lang/Object;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/job/reply/CgReplyError
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final CANCELLED Ljava/lang/String;
+  field public,static,final FAILED Ljava/lang/String;
+  field public,static,final TIMEOUT Ljava/lang/String;
+  method public <init> (Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+  method public cause ()Ljava/lang/Throwable;
+  method public code ()Ljava/lang/String;
+  method public detail ()Ljava/lang/String;
+  method public is (Ljava/lang/String;)Z
+  method public toString ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,static cancelled ()Lcom/crystalgraphics/job/reply/CgReplyError;
+  method public,static failed (Ljava/lang/Throwable;)Lcom/crystalgraphics/job/reply/CgReplyError;
+com/crystalgraphics/job/reply/CgStream
+  access public,abstract,interface
+  extends java/lang/Object
+  implements com/crystalgraphics/job/reply/CgReply
+  method public,abstract onPartial (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/reply/CgStream;
 com/crystalgraphics/net/CgAudience
   access public,abstract,interface
   extends java/lang/Object

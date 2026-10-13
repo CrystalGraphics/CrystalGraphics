@@ -158,7 +158,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 |---|---|
 | `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
 | `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
-| `job/CLAUDE.md` | Work off the game's thread: `CgJob` jobs handed back at a tick, `forEach` across threads, the two pools |
+| `job/CLAUDE.md` | Work off the caller's thread: `CgJob` handed back at its loop's drain, keyed and debounced, by lane; `CgJobLoop`; `forEach` across threads; `CgReply` answers and `CgProgress` |
 
 ### Platform SPI and hosts (outside `core/`)
 | Path | What it covers |
