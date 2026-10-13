@@ -199,6 +199,21 @@ public final class CgHit {
         return this;
     }
 
+    /** As {@link #setBlock}, for a fluid's surface: {@code fluid} is {@code CgWorldQuery.FLUID_WATER} or {@code FLUID_LAVA}. */
+    public CgHit setFluid(int blockX, int blockY, int blockZ, int fluid, double x, double y, double z,
+                          @Nullable CgHitPart part) {
+        setBlock(blockX, blockY, blockZ, x, y, z, part);
+        this.fluid = fluid;
+        return this;
+    }
+
+    /** As {@link #setBlock}, for the edge of what is loaded. */
+    public CgHit setUnloaded(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
+        setBlock(blockX, blockY, blockZ, x, y, z, part);
+        unloaded = true;
+        return this;
+    }
+
     /**
      * Makes this a hit of nothing at a point: where an effect reached the point it was aimed at, or burst in open air.
      * {@link #entity()} is -1 and {@link #isBlock()} false.

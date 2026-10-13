@@ -4,6 +4,7 @@ import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgSentHit;
 import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.object.CgNetWire;
+import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -82,7 +83,9 @@ public class CgVfxHitsTest {
         CgNetWire<CgSentHit> wire = CgSentHit.wire();
         List<String> read = new ArrayList<>();
         CgHit[] hits = {new CgHit().setEntity(2001, 2000, 1.5, 64, -3.25, 0.5f, PART_ARC),
-                new CgHit().setBlock(-4, 63, 9, -3.5, 64, 9.5, PART_BOLT), new CgHit().setPoint(8, 0, 0, null)};
+                new CgHit().setBlock(-4, 63, 9, -3.5, 64, 9.5, PART_BOLT), new CgHit().setPoint(8, 0, 0, null),
+                new CgHit().setFluid(2, 62, 2, CgWorldQuery.FLUID_LAVA, 2.5, 62.9, 2.5, PART_BOLT),
+                new CgHit().setUnloaded(100, 70, 0, 100, 70.5, 0.5, null)};
         for (CgHit h : hits) {
             CgSentHit sent = new CgSentHit().set(h, SCHEMA.indexOf(h.part()));
             Tape tape = new Tape();
@@ -90,10 +93,11 @@ public class CgVfxHitsTest {
             CgSentHit back = wire.read(tape);
             CgHit got = back.read(new CgHit(), SCHEMA.partAt(back.part()));
             read.add(got.kind() + " " + got.entity() + "/" + got.parent() + " " + got.blockX() + "," + got.blockY() + ","
-                    + got.blockZ() + " " + got.x() + " " + got.part());
+                    + got.blockZ() + " " + got.x() + " " + got.part() + (got.fluid() != 0 ? " fluid " + got.fluid() : ""));
         }
         assertEquals(List.of("ENTITY 2001/2000 0,0,0 1.5 arc", "BLOCK -1/-1 -4,63,9 -3.5 bolt",
-                "POINT -1/-1 0,0,0 8.0 null"), read);
+                "POINT -1/-1 0,0,0 8.0 null", "FLUID -1/-1 2,62,2 2.5 bolt fluid 2",
+                "UNLOADED -1/-1 100,70,0 100.0 null"), read);
     }
 
     /** Values written, read back in order. */
