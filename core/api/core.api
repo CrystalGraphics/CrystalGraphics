@@ -1718,6 +1718,8 @@ com/crystalgraphics/collision/query/CgCollisionWorld
   extends java/lang/Object
   method public blocks ()Lcom/crystalgraphics/platform/service/CgWorldQuery;
   method public cast (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public changed ()V
+  method public changed (I)V
   method public entities ()Lcom/crystalgraphics/platform/service/CgEntityQuery;
   method public exposure (DDDI)F
   method public lineOfSight (DDDI)Z

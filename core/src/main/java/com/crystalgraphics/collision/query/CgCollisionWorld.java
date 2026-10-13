@@ -48,8 +48,10 @@ import java.util.function.IntConsumer;
  *   <li>{@link #of(Object)} reads entities where they are this tick; {@link #client} where the frame draws them.</li>
  *   <li>A query is the world's scratch: end one before starting the next (see {@link CgQuery}).</li>
  *   <li>An unloaded cell blocks line of sight; a block is never loaded to answer.</li>
- *   <li>Inside a batch, entities may stay where the batch first found them: one moved, added or removed by a hit can be
- *       seen as it was until the batch closes. Hitboxes the engine ticks, and effects, run in one already.</li>
+ *   <li>Inside a batch, an entity a hitbox's listener or {@link CgQuery#forEach} was handed is asked of the host again
+ *       for the rest of it, so what a hit damages, knocks back or kills is seen as it now is. Code that changes any
+ *       other entity tells the batch with {@link #changed(int)}. Hitboxes the engine ticks, and effects, run in one
+ *       already.</li>
  * </ul>
  */
 public class CgCollisionWorld {
@@ -153,6 +155,43 @@ public class CgCollisionWorld {
             if (depth == 0) throw new IllegalStateException("closed more batches than were opened");
             depth--;
         }
+    }
+
+    /**
+     * Tells this thread's open batch that {@code entity} moved, died or changed, so its later queries ask the host;
+     * nothing outside a batch. An entity a hit was handed out for needs none.
+     *
+     * <pre>{@code
+     * try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
+     *     world.overlap(PULL).at(x, y, z).forEach(h -> pull(h.entity()));   // hits are re-read already
+     *     teleport(bystander);
+     *     world.changed(bystander);
+     *     world.overlap(BLAST).at(x, y, z).forEach(this::hurt);             // sees the bystander where it went
+     * }
+     * }</pre>
+     */
+    public void changed(int entity) {
+        if (entity < 0) return;
+        CgEntityCache c = batchCache();
+        if (c != null) c.touch(entity);
+    }
+
+    /** Tells this thread's open batch that every entity may have changed, or one was added: it reads them again. */
+    public void changed() {
+        CgEntityCache c = batchCache();
+        if (c != null) c.forget();
+    }
+
+    /** A hit about to reach user code: its entity, and the whole it is part of, are the host's again. */
+    void handed(CgHit h) {
+        changed(h.entity());
+        if (h.parent() != h.entity()) changed(h.parent());
+    }
+
+    /** The cache of this thread's open batch, if it holds anything yet. */
+    private CgEntityCache batchCache() {
+        Batch b = PER_THREAD.get().batch;
+        return b.depth > 0 && cache != null && cache.answersFor(entities, partialTick, b.generation) ? cache : null;
     }
 
     /** The entities as queries read them: the batch's cache while one is open on this thread, else the host's. */

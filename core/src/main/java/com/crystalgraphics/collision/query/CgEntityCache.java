@@ -17,6 +17,8 @@ import java.util.function.IntConsumer;
  *   <li>An entity is found again in every cell its box touches, and handed out from one: the cell holding the near
  *       corner of where its box and the bounds asked meet.</li>
  *   <li>Bounds spanning more than {@link #MAX_CELLS} cells go straight to the host, uncached.</li>
+ *   <li>An entity {@link #touch}ed is the host's again for the rest of the batch, and every query tests it wherever it
+ *       now is: what a hit's listener damages, moves or kills is never answered as it was.</li>
  * </ul>
  */
 final class CgEntityCache implements CgEntityQuery {
@@ -39,7 +41,10 @@ final class CgEntityCache implements CgEntityQuery {
     private int[] ids = new int[64], flags = new int[64], kinds = new int[64], parents = new int[64],
             roots = new int[64];
     private double[] boxes = new double[6 * 64];
-    private boolean[] boxed = new boolean[64];
+    private boolean[] boxed = new boolean[64], stale = new boolean[64];
+    /** The stale entries: few, each tested live by every query. */
+    private int[] touched = new int[16];
+    private int touchedCount;
     /** Open addressing, id + 1 to entry + 1; 0 is empty. */
     private int[] idKeys = new int[128], idValues = new int[128];
 
@@ -52,6 +57,7 @@ final class CgEntityCache implements CgEntityQuery {
 
     private final Collector collector = new Collector();
     private final BoxInto boxInto = new BoxInto();
+    private final Probe probe = new Probe();
 
     CgEntityCache() {
         Arrays.fill(cellKeys, NO_CELL);
@@ -63,7 +69,13 @@ final class CgEntityCache implements CgEntityQuery {
         this.partialTick = partialTick;
         this.generation = generation;
         asked = 0;
+        forget();
+    }
+
+    /** Forgets every entity and cell, still answering for the same batch. */
+    void forget() {
         count = 0;
+        touchedCount = 0;
         Arrays.fill(idKeys, 0);
         if (cells > 0) Arrays.fill(cellKeys, NO_CELL);
         cells = 0;
@@ -72,6 +84,16 @@ final class CgEntityCache implements CgEntityQuery {
 
     boolean answersFor(CgEntityQuery host, float partialTick, int generation) {
         return this.generation == generation && this.host == host && this.partialTick == partialTick;
+    }
+
+    /** Hands {@code id} back to the host for the rest of the batch: it moved, died or changed. */
+    void touch(int id) {
+        int e = entry(id);
+        if (e < 0) e = add(id);
+        if (stale[e]) return;
+        stale[e] = true;
+        if (touchedCount == touched.length) touched = Arrays.copyOf(touched, touchedCount * 2);
+        touched[touchedCount++] = e;
     }
 
     /** Counts one ask; whether the batch has asked enough to answer from the cache. */
@@ -98,19 +120,19 @@ final class CgEntityCache implements CgEntityQuery {
 
     @Override
     public int flags(int id) {
-        int e = entry(id);
+        int e = fresh(id);
         return e < 0 ? host.flags(id) : flags[e];
     }
 
     @Override
     public int kind(int id) {
-        int e = entry(id);
+        int e = fresh(id);
         return e < 0 ? host.kind(id) : kinds[e];
     }
 
     @Override
     public boolean box(int id, float partialTick, CgBoxSink out) {
-        int e = entry(id);
+        int e = fresh(id);
         if (e < 0 || partialTick != this.partialTick) return host.box(id, partialTick, out);
         if (!boxed[e]) return false;
         int b = e * 6;
@@ -120,13 +142,13 @@ final class CgEntityCache implements CgEntityQuery {
 
     @Override
     public int parent(int id) {
-        int e = entry(id);
+        int e = fresh(id);
         return e < 0 ? host.parent(id) : parents[e];
     }
 
     @Override
     public int rootVehicle(int id) {
-        int e = entry(id);
+        int e = fresh(id);
         return e < 0 ? host.rootVehicle(id) : roots[e];
     }
 
@@ -145,7 +167,7 @@ final class CgEntityCache implements CgEntityQuery {
                     int c = cellIndex(cx, cy, cz);
                     for (int m = cellStart[c], end = m + cellLength[c]; m < end; m++) {
                         int e = members[m];
-                        if (!boxed[e]) continue;
+                        if (!boxed[e] || stale[e]) continue;
                         int b = e * 6;
                         if (boxes[b] > maxX || boxes[b + 3] < minX || boxes[b + 1] > maxY || boxes[b + 4] < minY
                                 || boxes[b + 2] > maxZ || boxes[b + 5] < minZ) continue;
@@ -155,6 +177,10 @@ final class CgEntityCache implements CgEntityQuery {
                     }
                 }
             }
+        }
+        for (int t = 0; t < touchedCount; t++) {
+            int id = ids[touched[t]];
+            if (host.box(id, partialTick, probe) && probe.meets(minX, minY, minZ, maxX, maxY, maxZ)) visitor.accept(id);
         }
     }
 
@@ -227,6 +253,12 @@ final class CgEntityCache implements CgEntityQuery {
 
     // ---- entries
 
+    /** The entry answering for {@code id}, or -1 for the host: unseen, or touched. */
+    private int fresh(int id) {
+        int e = entry(id);
+        return e >= 0 && stale[e] ? -1 : e;
+    }
+
     private int entry(int id) {
         int mask = idKeys.length - 1, s = (id * 0x9E3779B9 >>> 7) & mask;
         while (idKeys[s] != 0) {
@@ -245,6 +277,7 @@ final class CgEntityCache implements CgEntityQuery {
         kinds[e] = host.kind(id);
         parents[e] = host.parent(id);
         roots[e] = host.rootVehicle(id);
+        stale[e] = false;
         boxInto.at = e * 6;
         boxed[e] = host.box(id, partialTick, boxInto);
         int mask = idKeys.length - 1, s = (id * 0x9E3779B9 >>> 7) & mask;
@@ -270,6 +303,26 @@ final class CgEntityCache implements CgEntityQuery {
         }
     }
 
+    /** A touched entity's box, as the host has it now. */
+    private static final class Probe implements CgBoxSink {
+        private double minX, minY, minZ, maxX, maxY, maxZ;
+
+        @Override
+        public CgBoxSink set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+            this.minX = minX;
+            this.minY = minY;
+            this.minZ = minZ;
+            this.maxX = maxX;
+            this.maxY = maxY;
+            this.maxZ = maxZ;
+            return this;
+        }
+
+        boolean meets(double x0, double y0, double z0, double x1, double y1, double z1) {
+            return minX <= x1 && maxX >= x0 && minY <= y1 && maxY >= y0 && minZ <= z1 && maxZ >= z0;
+        }
+    }
+
     private void growEntries() {
         int size = ids.length * 2;
         ids = Arrays.copyOf(ids, size);
@@ -278,6 +331,7 @@ final class CgEntityCache implements CgEntityQuery {
         parents = Arrays.copyOf(parents, size);
         roots = Arrays.copyOf(roots, size);
         boxed = Arrays.copyOf(boxed, size);
+        stale = Arrays.copyOf(stale, size);
         boxes = Arrays.copyOf(boxes, size * 6);
     }
 

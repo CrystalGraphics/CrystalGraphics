@@ -319,7 +319,11 @@ public final class CgQuery {
         world.running++;
         try {
             run(false);
-            for (int i = 0; i < hits.size(); i++) visitor.accept(hits.get(i));
+            for (int i = 0; i < hits.size(); i++) {
+                CgHit h = hits.get(i);
+                world.handed(h);
+                visitor.accept(h);
+            }
         } finally {
             world.running--;
         }

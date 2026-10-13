@@ -778,10 +778,16 @@ public final class CgHitbox {
         for (int i = 0; i < targetCount && !stopped; i++) {
             CgHit h = targets[i];
             int whole = h.parent();
-            if (zone && enters(whole) && onEnter != null && !silent) onEnter.accept(h);
+            if (zone && enters(whole) && onEnter != null && !silent) {
+                handed(h);
+                onEnter.accept(h);
+            }
             if (stopped || onHit == null || !allowed(whole)) continue;
             hitList.record(whole, age);
-            if (!silent) onHit.accept(h);
+            if (!silent) {
+                handed(h);
+                onHit.accept(h);
+            }
         }
         if (!zone || stopped) return;
         for (int i = insideCount - 1; i >= 0; i--) {
@@ -792,6 +798,12 @@ public final class CgHitbox {
             if (onExit != null && !silent) onExit.accept(gone);
             if (stopped) return;
         }
+    }
+
+    /** A hit about to reach a listener: what it damages or moves is the host's again for the rest of the batch. */
+    private void handed(CgHit h) {
+        world.changed(h.entity());
+        if (h.parent() != h.entity()) world.changed(h.parent());
     }
 
     /** Marks {@code whole} inside this tick; whether it was outside before. */

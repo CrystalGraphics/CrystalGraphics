@@ -106,6 +106,12 @@ public final class CollisionFakes {
             return this;
         }
 
+        /** {@code id} is dead, still listed: Minecraft's corpse before it is removed. */
+        public Table kill(int id) {
+            facts.get(id)[0] &= ~ALIVE;
+            return this;
+        }
+
         /** {@code id} is gone. */
         public Table remove(int id) {
             rows.set(id, null);

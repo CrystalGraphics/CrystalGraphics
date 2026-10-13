@@ -66,7 +66,7 @@ public class CgEntityCacheTest {
     }
 
     @Test
-    public void entitiesStayWhereTheBatchFoundThemUntilItCloses() {
+    public void anEntityNoHitWasHandedStaysWhereTheBatchFoundIt() {
         table.mob(500, 100, 100, KIND_MONSTER);
         try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
             warm();
@@ -76,6 +76,37 @@ public class CgEntityCacheTest {
         }
         try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
             assertEquals("a new batch sees the move", 0, world.overlap(BALL).at(100, 1, 100).count());
+        }
+    }
+
+    @Test
+    public void whatAHitWasHandedIsSeenAsItNowIs() {
+        table.mob(500, 100, 100, KIND_MONSTER).mob(501, 140, 140, KIND_MONSTER);
+        try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
+            warm();
+            assertEquals(1, world.overlap(BALL).at(140, 1, 140).count());
+            world.overlap(BALL).at(100, 1, 100).forEach(h -> table.move(h.entity(), 140, 0, 141));
+            assertEquals("found where the hit moved it", 2, world.overlap(BALL).at(140, 1, 140).count());
+            assertEquals("and gone from where it was", 0, world.overlap(BALL).at(100, 1, 100).count());
+            world.overlap(BALL).at(140, 1, 140).forEach(h -> table.kill(h.entity()));
+            assertEquals("a kill is seen at once", 0, world.overlap(BALL).at(140, 1, 140).count());
+        }
+    }
+
+    @Test
+    public void changedHandsABystanderBackToTheHost() {
+        table.mob(500, 100, 100, KIND_MONSTER);
+        try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
+            warm();
+            assertEquals(1, world.overlap(BALL).at(100, 1, 100).count());
+            table.move(500, 120, 0, 120);
+            world.changed(500);
+            assertEquals(0, world.overlap(BALL).at(100, 1, 100).count());
+            assertEquals(1, world.overlap(BALL).at(120, 1, 120).count());
+            table.mob(502, 100, 100, KIND_MONSTER);
+            world.changed();
+            assertEquals("an entity added is found once the batch reads again", 1,
+                    world.overlap(BALL).at(100, 1, 100).count());
         }
     }
 
