@@ -206,6 +206,7 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         if (e.canBeCollidedWith()) f |= PICKABLE;
         if (e.canAttackWithItem()) f |= ATTACKABLE;
         if (e.isEntityInvulnerable()) f |= INVULNERABLE;
+        if (e.getBoundingBox() != null) f |= SOLID;
         return f;
     }
 

@@ -9,7 +9,7 @@ import javax.annotation.Nullable;
 
 /**
  * A hit as it crosses the network: what met it (an entity and its whole, a block, a fluid's surface, the edge of what
- * is loaded, or nothing at a point), the point, the exposure, and the part as an index into a list both sides hold.
+ * is loaded, the world border, or nothing at a point), the point, the exposure, and the part as an index into a list both sides hold.
  * What {@link CgHitboxType} and VFX cues send their server's hits as.
  *
  * <pre>{@code
@@ -29,7 +29,7 @@ import javax.annotation.Nullable;
  */
 public final class CgSentHit {
 
-    private static final int POINT = 0, ENTITY = 1, BLOCK = 2, FLUID = 3, UNLOADED = 4;
+    private static final int POINT = 0, ENTITY = 1, BLOCK = 2, FLUID = 3, UNLOADED = 4, BORDER = 5;
 
     int kind, entity = -1, parent = -1, blockX, blockY, blockZ, fluid, part = -1;
     float x, y, z, exposure = Float.NaN;
@@ -41,6 +41,7 @@ public final class CgSentHit {
             case BLOCK: kind = BLOCK; break;
             case FLUID: kind = FLUID; break;
             case UNLOADED: kind = UNLOADED; break;
+            case BORDER: kind = BORDER; break;
             default: kind = POINT;
         }
         entity = hit.entity();
@@ -68,6 +69,7 @@ public final class CgSentHit {
             case BLOCK: return into.setBlock(blockX, blockY, blockZ, x, y, z, part);
             case FLUID: return into.setFluid(blockX, blockY, blockZ, fluid, x, y, z, part);
             case UNLOADED: return into.setUnloaded(blockX, blockY, blockZ, x, y, z, part);
+            case BORDER: return into.setBorder(blockX, blockY, blockZ, x, y, z, part);
             case ENTITY: return into.setEntity(entity, parent, x, y, z, exposure, part);
             default: return into.setPoint(x, y, z, part);
         }

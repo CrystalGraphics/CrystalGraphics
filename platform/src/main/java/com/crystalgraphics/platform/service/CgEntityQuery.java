@@ -41,14 +41,16 @@ public interface CgEntityQuery {
             YAW = 9, PITCH = 10, BODY_YAW = 11, HEAD_YAW = 12, LIMB_SWING = 13, LIMB_SWING_AMOUNT = 14, POSE_LENGTH = 15;
 
     /**
-     * {@link #flags} bits. The last four are what a hit asks: {@code SPECTATOR} a player in spectator mode;
-     * {@code PICKABLE} what Minecraft's crosshair and projectiles may hit; {@code ATTACKABLE} what a melee attack may
-     * (not items, orbs or arrows); {@code INVULNERABLE} the entity's invulnerable tag, or a player whose abilities make
-     * them so (creative, spectator).
+     * {@link #flags} bits. {@code SPECTATOR} to {@code INVULNERABLE} are what a hit asks: {@code SPECTATOR} a player in
+     * spectator mode; {@code PICKABLE} what Minecraft's crosshair and projectiles may hit; {@code ATTACKABLE} what a
+     * melee attack may (not items, orbs or arrows); {@code INVULNERABLE} the entity's invulnerable tag, or a player
+     * whose abilities make them so (creative, spectator). {@code SOLID} is what Minecraft stops other entities at, as it
+     * does at a block: boats, minecarts, shulkers.
      */
     int ALIVE = 1, LIVING = 1 << 1, PLAYER = 1 << 2, LOCAL_PLAYER = 1 << 3, ON_GROUND = 1 << 4, SNEAKING = 1 << 5,
             SPRINTING = 1 << 6, SWIMMING = 1 << 7, GLIDING = 1 << 8, IN_WATER = 1 << 9, ON_FIRE = 1 << 10,
-            INVISIBLE = 1 << 11, SPECTATOR = 1 << 12, PICKABLE = 1 << 13, ATTACKABLE = 1 << 14, INVULNERABLE = 1 << 15;
+            INVISIBLE = 1 << 11, SPECTATOR = 1 << 12, PICKABLE = 1 << 13, ATTACKABLE = 1 << 14, INVULNERABLE = 1 << 15,
+            SOLID = 1 << 16;
 
     /** What an entity is, as an effect would sort it: {@link #kind}. */
     int KIND_OTHER = 0, KIND_PLAYER = 1, KIND_MONSTER = 2, KIND_ANIMAL = 3, KIND_ITEM = 4, KIND_PROJECTILE = 5,

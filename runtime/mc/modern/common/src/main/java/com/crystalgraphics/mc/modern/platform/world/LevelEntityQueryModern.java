@@ -268,6 +268,14 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         if (e.isPickable()) f |= PICKABLE;
         if (e.isAttackable()) f |= ATTACKABLE;
         if (e.isInvulnerable()) f |= INVULNERABLE;
+        // null: what Minecraft's own entity-less collision asks
+        //? if >=1.21.6 {
+        /*if (e.canBeCollidedWith(null)) f |= SOLID;
+        *///?} elif >=1.16.5 {
+        if (e.canBeCollidedWith()) f |= SOLID;
+        //?} else {
+        /*if (e.getCollideBox() != null) f |= SOLID;
+        *///?}
         return f;
     }
 

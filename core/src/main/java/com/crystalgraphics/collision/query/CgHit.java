@@ -37,7 +37,7 @@ public final class CgHit {
      *     case ENTITY -> damage(hit.entity());
      *     case BLOCK -> chip(hit.blockX(), hit.blockY(), hit.blockZ());
      *     case FLUID -> splash(hit.x(), hit.y(), hit.z());
-     *     default -> { }                          // UNLOADED, POINT: nothing there to act on
+     *     default -> { }                          // UNLOADED, BORDER, POINT: nothing there to act on
      * }
      * }</pre>
      */
@@ -50,13 +50,15 @@ public final class CgHit {
         FLUID,
         /** The edge of what is loaded, where a cast or ray stopped. */
         UNLOADED,
+        /** The world border, with {@code border()} asked: the block cell beyond it. */
+        BORDER,
         /** Nothing, only a point: where an effect reached the point it was aimed at, or burst in open air. */
         POINT
     }
 
     int entity = -1, parent = -1;
     int blockX, blockY, blockZ;
-    boolean block, unloaded;
+    boolean block, unloaded, border;
     int fluid;
     double x, y, z;
     double normalX, normalY, normalZ;
@@ -66,7 +68,9 @@ public final class CgHit {
 
     public Kind kind() {
         if (!block) return entity >= 0 ? Kind.ENTITY : Kind.POINT;
-        return unloaded ? Kind.UNLOADED : fluid != CgWorldQuery.FLUID_NONE ? Kind.FLUID : Kind.BLOCK;
+        if (unloaded) return Kind.UNLOADED;
+        if (border) return Kind.BORDER;
+        return fluid != CgWorldQuery.FLUID_NONE ? Kind.FLUID : Kind.BLOCK;
     }
 
     /** The entity met, a part of a multipart one included; -1 for a block. */
@@ -99,6 +103,11 @@ public final class CgHit {
     /** Whether a cast or ray stopped at the edge of what is loaded, rather than at a block. */
     public boolean unloaded() {
         return unloaded;
+    }
+
+    /** Whether the world border was met, with {@code border()} asked: {@link #blockX()} is the cell beyond it. */
+    public boolean border() {
+        return border;
     }
 
     /** The fluid surface met ({@code CgWorldQuery.FLUID_WATER}, {@code FLUID_LAVA}), with {@code fluids()} asked. */
@@ -165,7 +174,7 @@ public final class CgHit {
     void reset() {
         entity = parent = -1;
         blockX = blockY = blockZ = 0;
-        block = unloaded = false;
+        block = unloaded = border = false;
         fluid = CgWorldQuery.FLUID_NONE;
         exposure = Float.NaN;
         part = null;
@@ -214,6 +223,13 @@ public final class CgHit {
         return this;
     }
 
+    /** As {@link #setBlock}, for the world border: the block is the cell beyond it. */
+    public CgHit setBorder(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
+        setBlock(blockX, blockY, blockZ, x, y, z, part);
+        border = true;
+        return this;
+    }
+
     /**
      * Makes this a hit of nothing at a point: where an effect reached the point it was aimed at, or burst in open air.
      * {@link #entity()} is -1 and {@link #isBlock()} false.
@@ -231,6 +247,7 @@ public final class CgHit {
         blockZ = o.blockZ;
         block = o.block;
         unloaded = o.unloaded;
+        border = o.border;
         fluid = o.fluid;
         x = o.x;
         y = o.y;
@@ -247,7 +264,8 @@ public final class CgHit {
 
     @Override
     public String toString() {
-        String what = block ? (unloaded ? "unloaded " : fluid != CgWorldQuery.FLUID_NONE ? "fluid " : "block ")
+        String what = block ? (unloaded ? "unloaded " : border ? "border " : fluid != CgWorldQuery.FLUID_NONE ? "fluid "
+                : "block ")
                 + blockX + "," + blockY + "," + blockZ : "entity " + entity + (parent != entity ? " of " + parent : "");
         return "CgHit[" + what + " at " + distance + ", point " + x + "," + y + "," + z + "]";
     }

@@ -4,12 +4,14 @@ import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
@@ -17,6 +19,7 @@ import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.level.LightLayer;
 //? if >=1.14.3 {
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 //?} else {
 /*import net.minecraft.world.phys.AABB;
@@ -55,6 +58,10 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     private float[] copyBoxes = new float[6 * 16];
     //? if >=1.14.3 {
     private final BoxesInto boxesInto = new BoxesInto();
+    private WeakReference<CollisionContext> context = new WeakReference<>(null);
+    private int contextId;
+    private long contextTime;
+    private double contextY;
     //?}
 
     LevelWorldQueryModern(Level bound) {
@@ -96,6 +103,55 @@ public class LevelWorldQueryModern implements CgWorldQuery {
         Level level = level();
         if (level == null) return 0;
         return boxesOf(state(level, x, y, z).getCollisionShape(level, pos), out);
+    }
+
+    @Override
+    public int collisionBoxes(int x, int y, int z, int entity, float[] out) {
+        Level level = level();
+        if (level == null) return 0;
+        //? if >=1.14.3 {
+        CollisionContext c = entity < 0 ? null : context(level, entity);
+        if (c != null) return boxesOf(state(level, x, y, z).getCollisionShape(level, pos, c), out);
+        //?}
+        return boxesOf(state(level, x, y, z).getCollisionShape(level, pos), out);
+    }
+
+    //? if >=1.14.3 {
+    /**
+     * Entity {@code id}'s context, made again once it moves or a tick passes, since Minecraft's takes the entity's height
+     * and held item when made; null for none. Held weakly: it holds the entity, which holds the level.
+     */
+    private CollisionContext context(Level level, int id) {
+        Entity e = level.getEntity(id);
+        if (e == null) return null;
+        //? if >=1.15 {
+        double y = e.getY();
+        //?} else {
+        /*double y = e.y;
+        *///?}
+        long time = level.getGameTime();
+        CollisionContext c = context.get();
+        if (c == null || id != contextId || time != contextTime || y != contextY) {
+            c = CollisionContext.of(e);
+            context = new WeakReference<>(c);
+            contextId = id;
+            contextTime = time;
+            contextY = y;
+        }
+        return c;
+    }
+    //?}
+
+    @Override
+    public boolean border(double[] out) {
+        Level level = level();
+        if (level == null) return false;
+        WorldBorder border = level.getWorldBorder();
+        out[0] = border.getMinX();
+        out[1] = border.getMinZ();
+        out[2] = border.getMaxX();
+        out[3] = border.getMaxZ();
+        return true;
     }
 
     /** A shape's boxes into {@code out}, as {@link #collisionBoxes} answers. */

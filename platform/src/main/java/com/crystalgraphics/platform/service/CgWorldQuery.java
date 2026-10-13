@@ -92,6 +92,33 @@ public interface CgWorldQuery {
      */
     int collisionBoxes(int x, int y, int z, float[] out);
 
+    /**
+     * As {@link #collisionBoxes(int, int, int, float[])}, the shape as entity {@code entity} meets it where it stands
+     * now: scaffolding holds up one standing on it, powder snow one in leather boots, lava a strider. -1, or an entity
+     * not in the level, answers as to no one, which is what particles meet.
+     *
+     * <pre>{@code
+     * int n = world.collisionBoxes(x, y, z, player, boxes);
+     * }</pre>
+     */
+    default int collisionBoxes(int x, int y, int z, int entity, float[] out) {
+        return collisionBoxes(x, y, z, out);
+    }
+
+    /**
+     * The world border into {@code out} as min x, min z, max x, max z, in blocks; false, with {@code out} untouched,
+     * where the level has none (1.7.10). Minecraft stops a moving entity at the block-aligned edge: everything from
+     * {@code floor(minX)} and {@code ceil(maxX)} outward.
+     *
+     * <pre>{@code
+     * double[] border = new double[4];
+     * if (world.border(border) && (x < border[0] || x > border[2])) outside();
+     * }</pre>
+     */
+    default boolean border(double[] out) {
+        return false;
+    }
+
     /** What the block is made of: a {@code SURFACE_} constant, {@link #SURFACE_NONE} for air. */
     int surface(int x, int y, int z);
 

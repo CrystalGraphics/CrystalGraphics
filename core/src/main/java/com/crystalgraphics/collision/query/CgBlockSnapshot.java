@@ -11,8 +11,10 @@ import java.util.Arrays;
  * as a palette index per block, the way Minecraft's sections store states. Immutable once made.
  *
  * <ul>
- *   <li>Answers what collision asks (boxes, their top and bottom, fluid, loaded, the level's height and epoch); the rest
- *       as {@link CgWorldQuery#NONE}.</li>
+ *   <li>Answers what collision asks (boxes, their top and bottom, fluid, loaded, the border, the level's height and
+ *       epoch); the rest as {@link CgWorldQuery#NONE}.</li>
+ *   <li>Blocks answer as to no one ({@link CgQuery#as} is not kept): what scaffolding shows an entity depends on where
+ *       it is when it asks.</li>
  *   <li>Outside its box there is nothing: no boxes, no fluid, and loaded, so sight passes. A column unloaded inside it
  *       is unloaded here too.</li>
  * </ul>
@@ -29,8 +31,11 @@ final class CgBlockSnapshot implements CgWorldQuery {
     private final int[] start;
     private final float[] boxes, top, bottom, fluidTop;
     private final byte[] fluid;
+    /** Min x, min z, max x, max z; null for no border. */
+    private final double[] border;
 
     private CgBlockSnapshot(Builder b, int entries) {
+        border = b.border;
         x0 = b.x0;
         y0 = b.y0;
         z0 = b.z0;
@@ -116,6 +121,13 @@ final class CgBlockSnapshot implements CgWorldQuery {
         return dx < 0 || dz < 0 || dx >= sx || dz >= sz || loaded[dx * sz + dz];
     }
 
+    @Override
+    public boolean border(double[] out) {
+        if (border == null) return false;
+        System.arraycopy(border, 0, out, 0, 4);
+        return true;
+    }
+
     @Override public int minY() { return minY; }
     @Override public int maxY() { return maxY; }
     @Override public int seaLevel() { return seaLevel; }
@@ -140,6 +152,7 @@ final class CgBlockSnapshot implements CgWorldQuery {
         final int x0, y0, z0, sx, sy, sz, minY, maxY, epoch, seaLevel;
         final boolean[] loaded;
         final char[] cells;
+        double[] border = new double[4];
         int[] start = new int[64];
         float[] boxes = new float[256];
         byte[] fluid = new byte[64];
@@ -158,6 +171,7 @@ final class CgBlockSnapshot implements CgWorldQuery {
             maxY = host.maxY();
             epoch = host.levelEpoch();
             seaLevel = host.seaLevel();
+            if (!host.border(border)) border = null;
             x0 = (int) Math.floor(bounds.minX());
             z0 = (int) Math.floor(bounds.minZ());
             y0 = Math.max(minY, (int) Math.floor(bounds.minY()));

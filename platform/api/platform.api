@@ -3095,6 +3095,7 @@ com/crystalgraphics/platform/service/CgEntityQuery
   field public,static,final POSE_LENGTH I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   field public,static,final SNEAKING I
+  field public,static,final SOLID I
   field public,static,final SPECTATOR I
   field public,static,final SPRINTING I
   field public,static,final SWIMMING I
@@ -3288,6 +3289,8 @@ com/crystalgraphics/platform/service/CgWorldQuery
   field public,static,final SURFACE_STONE I
   field public,static,final SURFACE_WOOD I
   field public,static,final SURFACE_WOOL I
+  method public border ([D)Z
+  method public collisionBoxes (IIII[F)I
   method public copyBlocks (IIIIIILcom/crystalgraphics/platform/service/CgBlockCopy;)Z
   method public,abstract biomeColor (IIII)I
   method public,abstract collisionBottom (III)F

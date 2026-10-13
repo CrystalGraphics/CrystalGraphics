@@ -85,7 +85,8 @@ public class CgVfxHitsTest {
         CgHit[] hits = {new CgHit().setEntity(2001, 2000, 1.5, 64, -3.25, 0.5f, PART_ARC),
                 new CgHit().setBlock(-4, 63, 9, -3.5, 64, 9.5, PART_BOLT), new CgHit().setPoint(8, 0, 0, null),
                 new CgHit().setFluid(2, 62, 2, CgWorldQuery.FLUID_LAVA, 2.5, 62.9, 2.5, PART_BOLT),
-                new CgHit().setUnloaded(100, 70, 0, 100, 70.5, 0.5, null)};
+                new CgHit().setUnloaded(100, 70, 0, 100, 70.5, 0.5, null),
+                new CgHit().setBorder(11, 64, -20, 11, 64.5, -19.5, PART_ARC)};
         for (CgHit h : hits) {
             CgSentHit sent = new CgSentHit().set(h, SCHEMA.indexOf(h.part()));
             Tape tape = new Tape();
@@ -97,7 +98,7 @@ public class CgVfxHitsTest {
         }
         assertEquals(List.of("ENTITY 2001/2000 0,0,0 1.5 arc", "BLOCK -1/-1 -4,63,9 -3.5 bolt",
                 "POINT -1/-1 0,0,0 8.0 null", "FLUID -1/-1 2,62,2 2.5 bolt fluid 2",
-                "UNLOADED -1/-1 100,70,0 100.0 null"), read);
+                "UNLOADED -1/-1 100,70,0 100.0 null", "BORDER -1/-1 11,64,-20 11.0 arc"), read);
     }
 
     /** Values written, read back in order. */

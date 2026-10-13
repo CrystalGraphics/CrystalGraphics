@@ -6,9 +6,11 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.entity.Entity;
 import net.minecraft.init.Blocks;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.World;
+import net.minecraft.world.border.WorldBorder;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 //? if >=1.9 {
 import net.minecraft.block.SoundType;
@@ -81,25 +83,25 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
         return world.isBlockLoaded(p) ? p : null;
     }
 
-    /** The block's collision boxes in world space, into {@link #boxes}; none where it is not loaded. */
-    private List<AxisAlignedBB> boxes(World world, int x, int y, int z) {
+    /** The block's collision boxes in world space as {@code entity} meets them, into {@link #boxes}; none where it is not loaded. */
+    private List<AxisAlignedBB> boxes(World world, int x, int y, int z, Entity entity) {
         BlockPos p = loadedAt(world, x, y, z);
         if (p == null) {
             boxes.clear();
             return boxes;
         }
-        return boxes(world, p, world.getBlockState(p));
+        return boxes(world, p, world.getBlockState(p), entity);
     }
 
-    /** {@code state}'s collision boxes at {@code p} in world space, into {@link #boxes}. */
-    private List<AxisAlignedBB> boxes(World world, BlockPos p, IBlockState state) {
+    /** {@code state}'s collision boxes at {@code p} in world space as {@code entity} meets them, null for no one. */
+    private List<AxisAlignedBB> boxes(World world, BlockPos p, IBlockState state, Entity entity) {
         boxes.clear();
         //? if >=1.12 {
-        state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, null, false);
+        state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, entity, false);
         //?} elif >=1.9 {
-        /*state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, null);
+        /*state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, entity);
         *///?} else {
-        /*state.getBlock().addCollisionBoxesToList(world, p, state, EVERYWHERE, boxes, null);
+        /*state.getBlock().addCollisionBoxesToList(world, p, state, EVERYWHERE, boxes, entity);
         *///?}
         return boxes;
     }
@@ -109,7 +111,7 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
         World world = world();
         if (world == null) return Float.NaN;
         float top = Float.NaN;
-        for (AxisAlignedBB b : boxes(world, x, y, z)) {
+        for (AxisAlignedBB b : boxes(world, x, y, z, null)) {
             float t = (float) (b.maxY - y);
             if (!(t <= top)) top = t;
         }
@@ -121,7 +123,7 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
         World world = world();
         if (world == null) return Float.NaN;
         float bottom = Float.NaN;
-        for (AxisAlignedBB b : boxes(world, x, y, z)) {
+        for (AxisAlignedBB b : boxes(world, x, y, z, null)) {
             float t = (float) (b.minY - y);
             if (!(t >= bottom)) bottom = t;
         }
@@ -131,7 +133,27 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public int collisionBoxes(int x, int y, int z, float[] out) {
         World world = world();
-        return world == null ? 0 : local(boxes(world, x, y, z), x, y, z, out);
+        return world == null ? 0 : local(boxes(world, x, y, z, null), x, y, z, out);
+    }
+
+    @Override
+    public int collisionBoxes(int x, int y, int z, int entity, float[] out) {
+        World world = world();
+        if (world == null) return 0;
+        Entity e = entity < 0 ? null : world.getEntityByID(entity);
+        return local(boxes(world, x, y, z, e), x, y, z, out);
+    }
+
+    @Override
+    public boolean border(double[] out) {
+        World world = world();
+        if (world == null) return false;
+        WorldBorder border = world.getWorldBorder();
+        out[0] = border.minX();
+        out[1] = border.minZ();
+        out[2] = border.maxX();
+        out[3] = border.maxZ();
+        return true;
     }
 
     /** World-space boxes as block-local ones into {@code out}, as {@link #collisionBoxes} answers. */
@@ -216,7 +238,7 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
                             for (int y = y0; y <= y1; y++) {
                                 IBlockState state = section.get(x & 15, y & 15, z & 15);
                                 if (state.getBlock() == AIR) continue;
-                                List<AxisAlignedBB> list = boxes(world, at(x, y, z), state);
+                                List<AxisAlignedBB> list = boxes(world, at(x, y, z), state, null);
                                 if (list.size() * 6 > copyBoxes.length) copyBoxes = new float[list.size() * 6];
                                 int n = local(list, x, y, z, copyBoxes);
                                 int kind = fluidOf(material(state));

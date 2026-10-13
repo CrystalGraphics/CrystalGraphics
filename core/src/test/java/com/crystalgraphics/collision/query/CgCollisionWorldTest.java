@@ -23,6 +23,7 @@ import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_VEHICLE;
 import static com.crystalgraphics.platform.service.CgEntityQuery.LIVING;
 import static com.crystalgraphics.platform.service.CgEntityQuery.PICKABLE;
 import static com.crystalgraphics.platform.service.CgEntityQuery.PLAYER;
+import static com.crystalgraphics.platform.service.CgEntityQuery.SOLID;
 import static com.crystalgraphics.platform.service.CgEntityQuery.SPECTATOR;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -186,6 +187,44 @@ public class CgCollisionWorldTest {
         assertTrue(world.ray().at(6.5, 3, 5.5).along(0, -1, 0, 10).blocksOnly().first(hit));
         assertEquals("without fluids, the ground", 0.0, hit.y(), 1e-9);
         assertFalse(world.ray().at(6.5, 3, 5.5).along(0, -1, 0, 2).blocksOnly().any());
+    }
+
+    /** The yard inside a border from (-10.5, -30.5) to (10.5, 30.5), with scaffolding at (0, 0, -25) that holds up 40. */
+    private static final class Bordered extends Yard {
+        @Override public int collisionBoxes(int x, int y, int z, int entity, float[] out) {
+            if (x != 0 || y != 0 || z != -25 || entity != 40) return collisionBoxes(x, y, z, out);
+            out[0] = out[1] = out[2] = 0f;
+            out[3] = out[4] = out[5] = 1f;
+            return 1;
+        }
+        @Override public boolean border(double[] out) {
+            out[0] = -10.5;
+            out[1] = -30.5;
+            out[2] = 10.5;
+            out[3] = 30.5;
+            return true;
+        }
+    }
+
+    @Test
+    public void aBodyMeetsTheBorderTheBlocksAsTheyShowItAndSolidEntities() {
+        CgCollisionWorld w = CgCollisionWorld.of(new Bordered(), new Table()
+                .add(3, -4, 0, -20, 0.7, 0.6, ALIVE | PICKABLE | SOLID, KIND_VEHICLE, 3, 3).mob(1, 2, -20, KIND_MONSTER));
+        for (CgCollisionWorld asked : new CgCollisionWorld[]{w, w.snapshot(0, 0.5, -20, 16)}) {
+            assertTrue(asked.ray().at(0, 0.5, -20).along(1, 0, 0, 20).blocksOnly().border().first(hit));
+            assertEquals("the block-aligned cell beyond 10.5", CgHit.Kind.BORDER, hit.kind());
+            assertEquals(11, hit.blockX());
+            assertEquals(11, hit.x(), 1e-9);
+            assertFalse("unasked", asked.ray().at(0, 0.5, -20).along(1, 0, 0, 20).blocksOnly().any());
+            assertFalse("from outside", asked.ray().at(12, 0.5, -20).along(1, 0, 0, 5).blocksOnly().border().any());
+            assertArrayEquals(new int[]{3}, ids(asked.overlap(BLAST).at(CX, CY, CZ).solid()));
+        }
+        assertTrue(w.ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().first(hit));
+        assertEquals("through the scaffolding, as a particle", 0, hit.y(), 1e-9);
+        assertTrue(w.ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().as(40).first(hit));
+        assertEquals("on it, as the one it holds up", 1, hit.y(), 1e-9);
+        assertTrue(w.snapshot(0, 0.5, -20, 16).ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().as(40).first(hit));
+        assertEquals("a snapshot answers as to no one", 0, hit.y(), 1e-9);
     }
 
     @Test

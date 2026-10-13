@@ -5,6 +5,7 @@ import com.crystalgraphics.platform.service.CgWorldQuery;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
+import net.minecraft.entity.Entity;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.EnumSkyBlock;
@@ -57,11 +58,11 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
         return world == null || !world.blockExists(x, y, z);
     }
 
-    /** The block's collision boxes in world space, into {@link #boxes}; none where it is not loaded. */
-    private List<AxisAlignedBB> boxes(World world, int x, int y, int z) {
+    /** The block's collision boxes in world space as {@code entity} meets them, null for no one; none where not loaded. */
+    private List<AxisAlignedBB> boxes(World world, int x, int y, int z, Entity entity) {
         boxes.clear();
         if (!world.blockExists(x, y, z)) return boxes;
-        world.getBlock(x, y, z).addCollisionBoxesToList(world, x, y, z, EVERYWHERE, boxes, null);
+        world.getBlock(x, y, z).addCollisionBoxesToList(world, x, y, z, EVERYWHERE, boxes, entity);
         return boxes;
     }
 
@@ -70,7 +71,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
         World world = world();
         if (world == null) return Float.NaN;
         float top = Float.NaN;
-        for (AxisAlignedBB b : boxes(world, x, y, z)) {
+        for (AxisAlignedBB b : boxes(world, x, y, z, null)) {
             float t = (float) (b.maxY - y);
             if (!(t <= top)) top = t;
         }
@@ -82,7 +83,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
         World world = world();
         if (world == null) return Float.NaN;
         float bottom = Float.NaN;
-        for (AxisAlignedBB b : boxes(world, x, y, z)) {
+        for (AxisAlignedBB b : boxes(world, x, y, z, null)) {
             float t = (float) (b.minY - y);
             if (!(t >= bottom)) bottom = t;
         }
@@ -92,7 +93,15 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public int collisionBoxes(int x, int y, int z, float[] out) {
         World world = world();
-        return world == null ? 0 : local(boxes(world, x, y, z), x, y, z, out);
+        return world == null ? 0 : local(boxes(world, x, y, z, null), x, y, z, out);
+    }
+
+    @Override
+    public int collisionBoxes(int x, int y, int z, int entity, float[] out) {
+        World world = world();
+        if (world == null) return 0;
+        Entity e = entity < 0 ? null : world.getEntityByID(entity);
+        return local(boxes(world, x, y, z, e), x, y, z, out);
     }
 
     /** World-space boxes as block-local ones into {@code out}, as {@link #collisionBoxes} answers. */

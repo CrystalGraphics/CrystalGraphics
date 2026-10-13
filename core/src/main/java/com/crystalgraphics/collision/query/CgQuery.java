@@ -40,7 +40,14 @@ import java.util.function.IntPredicate;
  * }</pre>
  *
  * Targets, by default, are what Minecraft's projectiles hit: alive, pickable, not a spectator. {@link #living},
- * {@link #items}, {@link #anything}, {@link #kinds} and {@link #where} change that.
+ * {@link #items}, {@link #anything}, {@link #kinds}, {@link #solid} and {@link #where} change that.
+ *
+ * An entity's own body moving, met as Minecraft's movement meets it: blocks as they show that entity, the world border,
+ * and the entities it would stand on:
+ *
+ * <pre>{@code
+ * world.cast(body).at(x, y, z).along(vx, vy, vz, 1).as(mob).blocksToo().border().solid().first(hit);
+ * }</pre>
  *
  * <ul>
  *   <li>The query is the world's own scratch, reset by the next query started on it: end one before starting the next,
@@ -80,8 +87,12 @@ public final class CgQuery {
     private CgShape shape;
     private boolean boxQuery, along;
     private double dirX, dirY, dirZ, length;
-    private boolean entitiesOn, blocksOn, fluidsOn, visible, exposure, items;
-    private int require, forbid, wholeRequire, kinds, excepts, source, max;
+    private boolean entitiesOn, blocksOn, fluidsOn, borderOn, visible, exposure, items;
+    private int require, forbid, wholeRequire, kinds, excepts, source, as, max;
+    private final double[] border = new double[4];
+    /** The cells beyond the border, while a run meets it: x below {@code borderMinX} or from {@code borderMaxX} on. */
+    private boolean borderActive;
+    private int borderMinX, borderMinZ, borderMaxX, borderMaxZ;
     private IntPredicate where;
     private double inflate;
     private CgHitPart part;
@@ -106,13 +117,13 @@ public final class CgQuery {
         along = false;
         dirX = dirY = dirZ = length = 0;
         entitiesOn = true;
-        blocksOn = fluidsOn = visible = exposure = items = false;
+        blocksOn = fluidsOn = borderOn = visible = exposure = items = false;
         require = TARGETS;
         forbid = CgEntityQuery.SPECTATOR;
         wholeRequire = 0;
         kinds = ALL_KINDS;
         excepts = 0;
-        source = -1;
+        source = as = -1;
         max = Integer.MAX_VALUE;
         where = null;
         inflate = 0;
@@ -210,9 +221,35 @@ public final class CgQuery {
         return this;
     }
 
+    /**
+     * Whose body is moving: blocks answer as they show entity {@code id} where it stands now, as Minecraft's movement
+     * asks them. Scaffolding holds up one standing on it, powder snow one in leather boots. Without it blocks answer as
+     * to no one, as they do to particles. A {@link CgCollisionWorld#snapshot} always answers as to no one: what such a
+     * block shows depends on where the entity is when it asks.
+     */
+    public CgQuery as(int id) {
+        as = id;
+        return this;
+    }
+
+    /**
+     * The world border too, as Minecraft stops a moving entity at it: every block cell beyond it is solid, while the
+     * query's origin is inside. Particles and projectiles pass it in Minecraft, so nothing meets it unasked.
+     */
+    public CgQuery border() {
+        borderOn = true;
+        return this;
+    }
+
     /** Living entities only: a dragon's part by its dragon. */
     public CgQuery living() {
         wholeRequire |= CgEntityQuery.LIVING;
+        return this;
+    }
+
+    /** Only what Minecraft stops other entities at, as it does at a block: boats, minecarts, shulkers. */
+    public CgQuery solid() {
+        wholeRequire |= CgEntityQuery.SOLID;
         return this;
     }
 
@@ -401,7 +438,15 @@ public final class CgQuery {
         invZ = 1 / dirZ;
         entityLimit = Double.POSITIVE_INFINITY;
         CgWorldQuery w = world.world;
-        if (blocksOn && world.hasBlocks() && w.levelEpoch() != 0) {
+        borderActive = borderOn && w.border(border) && ox > border[0] && ox < border[2] && oz > border[1]
+                && oz < border[3];
+        if (borderActive) {
+            borderMinX = (int) Math.floor(border[0]);
+            borderMinZ = (int) Math.floor(border[1]);
+            borderMaxX = (int) Math.ceil(border[2]);
+            borderMaxZ = (int) Math.ceil(border[3]);
+        }
+        if ((blocksOn || borderActive) && world.hasBlocks() && w.levelEpoch() != 0) {
             // a ray reads only the cells it crosses, as Minecraft's clip
             double low = mode == RAY ? start.minY : start.minY - TALL_SHAPE;
             cells.set(start.minX, low, start.minZ, start.maxX, start.maxY, start.maxZ, mx, my, mz)
@@ -508,22 +553,27 @@ public final class CgQuery {
         @Override
         public boolean cell(int x, int y, int z) {
             CgWorldQuery w = world.world;
-            if (!w.loaded(x, z)) {
-                if (mode != OVERLAP) block(x, y, z, x, y, z, x + 1, y + 1, z + 1, true, CgWorldQuery.FLUID_NONE);
+            if (borderActive && (x < borderMinX || x >= borderMaxX || z < borderMinZ || z >= borderMaxZ)) {
+                block(x, y, z, x, y, z, x + 1, y + 1, z + 1, false, true, CgWorldQuery.FLUID_NONE);
                 return !done;
             }
-            int n = w.collisionBoxes(x, y, z, boxes);
+            if (!blocksOn) return !done;
+            if (!w.loaded(x, z)) {
+                if (mode != OVERLAP) block(x, y, z, x, y, z, x + 1, y + 1, z + 1, true, false, CgWorldQuery.FLUID_NONE);
+                return !done;
+            }
+            int n = w.collisionBoxes(x, y, z, as, boxes);
             if (n * 6 > boxes.length) {
                 boxes = new float[n * 6];
-                n = w.collisionBoxes(x, y, z, boxes);
+                n = w.collisionBoxes(x, y, z, as, boxes);
             }
             for (int i = 0; i < n * 6; i += 6) {
                 block(x, y, z, x + boxes[i], y + boxes[i + 1], z + boxes[i + 2], x + boxes[i + 3], y + boxes[i + 4],
-                        z + boxes[i + 5], false, CgWorldQuery.FLUID_NONE);
+                        z + boxes[i + 5], false, false, CgWorldQuery.FLUID_NONE);
             }
             if (fluidsOn) {
                 float top = w.fluidHeight(x, y, z);
-                if (!Float.isNaN(top)) block(x, y, z, x, y, z, x + 1, y + top, z + 1, false, w.fluidKind(x, y, z));
+                if (!Float.isNaN(top)) block(x, y, z, x, y, z, x + 1, y + top, z + 1, false, false, w.fluidKind(x, y, z));
             }
             return !done;
         }
@@ -534,7 +584,7 @@ public final class CgQuery {
         }
 
         private void block(int cx, int cy, int cz, double minX, double minY, double minZ, double maxX, double maxY,
-                           double maxZ, boolean unloaded, int fluid) {
+                           double maxZ, boolean unloaded, boolean border, int fluid) {
             target.set(minX, minY, minZ, maxX, maxY, maxZ);
             if (mode == OVERLAP) {
                 CgHit h = hits.add();
@@ -542,7 +592,7 @@ public final class CgQuery {
                     hits.removeLast();
                     return;
                 }
-                fill(h, cx, cy, cz, unloaded, fluid);
+                fill(h, cx, cy, cz, unloaded, border, fluid);
                 if (hits.size() > 1) {
                     // a block is hit once: its boxes come one after another
                     CgHit last = hits.get(hits.size() - 2);
@@ -558,17 +608,18 @@ public final class CgQuery {
             probe.reset();
             if (!geometry(target, probe) || blockFound && probe.distance >= nearestBlock.distance) return;
             nearestBlock.set(probe);
-            fill(nearestBlock, cx, cy, cz, unloaded, fluid);
+            fill(nearestBlock, cx, cy, cz, unloaded, border, fluid);
             blockFound = true;
             if (stopAtFirst) done = true;
         }
 
-        private void fill(CgHit h, int cx, int cy, int cz, boolean unloaded, int fluid) {
+        private void fill(CgHit h, int cx, int cy, int cz, boolean unloaded, boolean border, int fluid) {
             h.block = true;
             h.blockX = cx;
             h.blockY = cy;
             h.blockZ = cz;
             h.unloaded = unloaded;
+            h.border = border;
             h.fluid = fluid;
         }
     }

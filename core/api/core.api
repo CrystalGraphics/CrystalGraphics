@@ -1746,6 +1746,7 @@ com/crystalgraphics/collision/query/CgHit
   method public blockX ()I
   method public blockY ()I
   method public blockZ ()I
+  method public border ()Z
   method public distance ()D
   method public entity ()I
   method public exposure ()F
@@ -1761,6 +1762,7 @@ com/crystalgraphics/collision/query/CgHit
   method public part ()Lcom/crystalgraphics/collision/CgHitPart;
   method public set (Lcom/crystalgraphics/collision/query/CgHit;)Lcom/crystalgraphics/collision/query/CgHit;
   method public setBlock (IIIDDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
+  method public setBorder (IIIDDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
   method public setEntity (IIDDDFLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
   method public setFluid (IIIIDDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
   method public setPoint (DDDLcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgHit;
@@ -1774,6 +1776,7 @@ com/crystalgraphics/collision/query/CgHit$Kind
   access public,final,enum
   extends java/lang/Enum
   field public,static,final BLOCK Lcom/crystalgraphics/collision/query/CgHit$Kind;
+  field public,static,final BORDER Lcom/crystalgraphics/collision/query/CgHit$Kind;
   field public,static,final ENTITY Lcom/crystalgraphics/collision/query/CgHit$Kind;
   field public,static,final FLUID Lcom/crystalgraphics/collision/query/CgHit$Kind;
   field public,static,final POINT Lcom/crystalgraphics/collision/query/CgHit$Kind;
@@ -1796,9 +1799,11 @@ com/crystalgraphics/collision/query/CgQuery
   method public along (DDDD)Lcom/crystalgraphics/collision/query/CgQuery;
   method public any ()Z
   method public anything ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public as (I)Lcom/crystalgraphics/collision/query/CgQuery;
   method public at (DDD)Lcom/crystalgraphics/collision/query/CgQuery;
   method public blocksOnly ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public blocksToo ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public border ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public count ()I
   method public except (I)Lcom/crystalgraphics/collision/query/CgQuery;
   method public exposure ()Lcom/crystalgraphics/collision/query/CgQuery;
@@ -1815,6 +1820,7 @@ com/crystalgraphics/collision/query/CgQuery
   method public part (Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/query/CgQuery;
+  method public solid ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public source (I)Lcom/crystalgraphics/collision/query/CgQuery;
   method public unwatched ()Lcom/crystalgraphics/collision/query/CgQuery;
   method public visible ()Lcom/crystalgraphics/collision/query/CgQuery;

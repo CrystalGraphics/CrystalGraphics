@@ -228,6 +228,7 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
         //?} else {
         /*if (e.isEntityInvulnerable(DamageSource.generic)) f |= INVULNERABLE;
         *///?}
+        if (e.getCollisionBoundingBox() != null) f |= SOLID;
         return f;
     }
 
