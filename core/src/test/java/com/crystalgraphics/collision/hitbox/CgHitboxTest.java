@@ -3,6 +3,7 @@ package com.crystalgraphics.collision.hitbox;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.CgSentHit;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -74,7 +75,7 @@ public class CgHitboxTest {
         CgCollisionWorld w = world(t);
         List<Integer> hits = new ArrayList<>();
         CgHitbox swing = CgHitbox.follow(1, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK)
-                .part(TIP, CgSphere.of(0.35), 0, 0, 1.1).except(1).onHit(h -> hits.add(h.entity()));
+                .part(TIP, CgSphere.of(0.35), 0, 0, 1.1).source(1).onHit(h -> hits.add(h.entity()));
         swing.tick(w, 1);
         t.look(1, 170, 0);
         swing.tick(w, 1);
@@ -90,7 +91,7 @@ public class CgHitboxTest {
         CgHitbox swing = CgHitbox.follow(1, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK).activeFor(5)
                 .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)
                 .part(BLADE, CgCapsule.of(0.5, 0.3), 0, 0, 0.5)
-                .except(1)
+                .source(1)
                 .onHit(h -> hits.add(h.entity() + " " + h.part().name()));
         for (int i = 0; i < 5; i++) swing.tick(w, 1);
         hits.sort(null);
@@ -227,7 +228,7 @@ public class CgHitboxTest {
         int[] hits = {0};
         CgHitbox[] boxes = new CgHitbox[1000];
         for (int i = 0; i < boxes.length; i++) {
-            boxes[i] = CgHitbox.of(CgSphere.of(1.5)).rehit(4).living().onHit(h -> hits[0]++);
+            boxes[i] = CgHitbox.of(CgSphere.of(1.5)).rehit(4).query(CgQuery::living).onHit(h -> hits[0]++);
         }
         int ticks = 0;
         for (; ticks < 200; ticks++) tickAll(w, boxes, ticks);

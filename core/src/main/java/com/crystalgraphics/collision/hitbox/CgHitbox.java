@@ -23,17 +23,17 @@ import java.util.Arrays;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
-import java.util.function.IntPredicate;
 
 /**
  * A volume that lives over time and hits what it reaches: a shockwave running along the ground, a sword's swing, a
  * trigger zone. Each tick it tests everything it swept since the last, so nothing fast slips past it, and its rules
- * decide which of those touches are hits.
+ * decide which of those touches are hits. What it may hit is said as a {@link CgQuery} says it: each tick's queries
+ * are configured by {@link #query}.
  *
  * <pre>{@code
  * // a front 1.2 blocks thick runs 12 blocks out in 12 ticks, each enemy hit once as it arrives
- * CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12)
- *         .except(caster).living().exposure()
+ * CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12).source(caster)
+ *         .query(q -> q.living().exposure())
  *         .onHit(h -> damage(h.entity(), 8f * h.exposure()))
  *         .start(level);
  * }</pre>
@@ -46,7 +46,7 @@ import java.util.function.IntPredicate;
  * CgHitbox.follow(player, CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(5)
  *         .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)
  *         .part(BLADE, CgCapsule.of(0.5, 0.3))
- *         .except(player)
+ *         .source(player)
  *         .onHit(h -> damage(h.entity(), h.part() == TIP ? 9f : 5f))
  *         .start(level);
  * }</pre>
@@ -90,7 +90,8 @@ import java.util.function.IntPredicate;
  *   <li>A started hitbox runs on the level's thread, ticked after the level's own tick; one started on a server runs
  *       only there. A followed entity gone stops it, and so does its level unloading.</li>
  *   <li>Configure it before it first ticks: parts and sizes are fixed from then. A hitbox runs once.</li>
- *   <li>The hit handed to a listener is valid during the call.</li>
+ *   <li>The hit handed to a listener is valid during the call. Entities and hittable hitboxes are its targets; a
+ *       block its query meets is not.</li>
  *   <li>A {@link #hittable} one is met by queries on the thread it ticks on, against its level, while it is active and
  *       until it stops: an owner ticking one must stop it.</li>
  *   <li>Placement is from the followed entity's proportions on every side ({@link CgEntityAttachments#point(int,
@@ -124,7 +125,8 @@ public final class CgHitbox {
 
     /** The most sub-steps one tick takes, however fast it turns or moves. */
     private static final int MAX_STEPS = 16;
-    private static final int MAX_EXCEPT = 8;
+    /** The most it turns in one sub-step; a faster turn takes more steps. */
+    private static final double MAX_TURN = Math.toRadians(15);
     private static final int NO_SIZE = 0, RADIUS = 1, SCALE = 2;
     /** How far a part that is not convex moves per sub-step, when it has no width to go by. */
     private static final double DEFAULT_STEP = 0.5, MIN_STEP = 0.05;
@@ -146,14 +148,11 @@ public final class CgHitbox {
     private int sizeKind = NO_SIZE;
     private double sizeFrom, sizeTo, sizeTicks;
     private CgKeyframes sizeCurve;
-    private double activeFrom, activeFor = Double.POSITIVE_INFINITY, maxSweep = Math.toRadians(15);
+    private double activeFrom, activeFor = Double.POSITIVE_INFINITY;
 
-    // ---- filters, applied to each query
-    private final int[] except = new int[MAX_EXCEPT];
-    private int excepts, source = -1, kinds = -1;
-    private boolean living, items, anything, visible, exposure;
-    private IntPredicate where;
-    private double inflate;
+    // ---- what it may hit
+    private int source = -1;
+    private Consumer<? super CgQuery> query;
 
     // ---- rules and listeners
     private double rehit = Double.POSITIVE_INFINITY;
@@ -335,74 +334,25 @@ public final class CgHitbox {
         return this;
     }
 
-    /** The most it turns in one sub-step, in radians; a faster turn takes more steps. 15 degrees by default. */
-    public CgHitbox maxSweep(double radians) {
-        if (!(radians > 0)) throw new IllegalArgumentException("maxSweep(" + radians + ")");
-        maxSweep = radians;
-        return this;
-    }
+    // ---- what it may hit
 
-    // ---- filters, as CgQuery's
-
-    /** Never hits {@code id}, nor its parts; up to eight. */
-    public CgHitbox except(int id) {
-        if (excepts == MAX_EXCEPT) throw new IllegalStateException("except takes " + MAX_EXCEPT + " ids at most");
-        except[excepts++] = id;
-        return this;
-    }
-
-    /** Whose hitbox it is: never hits them, their parts, or anyone riding with them. */
+    /** Whose hitbox it is: never hits them, their parts, or anyone riding with them; a hittable one stands for them. */
     public CgHitbox source(int id) {
         source = id;
         return this;
     }
 
-    /** Living entities only. */
-    public CgHitbox living() {
-        living = true;
-        return this;
-    }
-
-    /** Dropped items too. */
-    public CgHitbox itemsToo() {
-        items = true;
-        return this;
-    }
-
-    /** Every entity, spectators and the dead included. */
-    public CgHitbox allEntities() {
-        anything = true;
-        return this;
-    }
-
-    /** Only these kinds: bits {@code 1 << CgEntityQuery.KIND_...}. */
-    public CgHitbox kinds(int mask) {
-        kinds = mask;
-        return this;
-    }
-
-    /** Only entities {@code test} accepts. */
-    public CgHitbox where(IntPredicate test) {
-        where = test;
-        return this;
-    }
-
-    /** Grows every entity's box by {@code d} blocks a side. */
-    public CgHitbox inflate(double d) {
-        if (!(d >= 0) || Double.isInfinite(d)) throw new IllegalArgumentException("inflate(" + d + ")");
-        inflate = d;
-        return this;
-    }
-
-    /** Only entities its origin sees, past no block. */
-    public CgHitbox visible() {
-        visible = true;
-        return this;
-    }
-
-    /** Fills each hit's {@link CgHit#exposure()}, as Minecraft's explosions sample it. */
-    public CgHitbox exposure() {
-        exposure = true;
+    /**
+     * Configures each query it runs, after placing it and naming its {@link #source}: what it may hit, as
+     * {@link CgQuery} says it. Called on every sub-step, so it must only configure.
+     *
+     * <pre>{@code
+     * hitbox.query(q -> q.except(ally).living().exposure());
+     * hitbox.query(q -> q.kinds(1 << CgEntityQuery.KIND_MONSTER).inflate(0.3));
+     * }</pre>
+     */
+    public CgHitbox query(Consumer<? super CgQuery> configure) {
+        query = Objects.requireNonNull(configure, "configure");
         return this;
     }
 
@@ -684,8 +634,8 @@ public final class CgHitbox {
         prevQ.set(nowQ);
         hasPrev = true;
         if (!passive) apply();
-        CgHitboxes.ticked(this);
         if (!stopped && active >= activeFor) stop();
+        CgHitboxes.ticked(this);
     }
 
     /** Where it is this tick, into {@link #nowX} and {@link #nowQ}; false for a followed entity gone. */
@@ -736,7 +686,7 @@ public final class CgHitbox {
         if (hasPrev) {
             double dot = Math.abs(prevQ.x * nowQ.x + prevQ.y * nowQ.y + prevQ.z * nowQ.z + prevQ.w * nowQ.w);
             double angle = 2 * Math.acos(Math.min(1, dot));
-            if (angle > maxSweep) turnSteps = (int) Math.ceil(angle / maxSweep);
+            if (angle > MAX_TURN) turnSteps = (int) Math.ceil(angle / MAX_TURN);
         }
         for (int p = 0; p < parts; p++) {
             CgShape shape = shapeAt(p, before, now);
@@ -796,22 +746,14 @@ public final class CgHitbox {
         scratch.add(px, py, pz);
     }
 
-    private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc q) {
-        CgQuery query = world.overlap(shape).at(px, py, pz).rotation(q).part(names[p]);
-        for (int i = 0; i < excepts; i++) query.except(except[i]);
-        if (source >= 0) query.source(source);
-        if (anything) query.allEntities();
-        if (living) query.living();
-        if (items) query.itemsToo();
-        if (kinds != -1) query.kinds(kinds);
-        if (where != null) query.where(where);
-        if (inflate > 0) query.inflate(inflate);
-        if (visible) query.visible();
-        if (exposure) query.exposure();
-        int n = query.into(partHits);
+    private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc rotation) {
+        CgQuery q = world.overlap(shape).at(px, py, pz).rotation(rotation).part(names[p]);
+        if (source >= 0) q.source(source);
+        if (query != null) query.accept(q);
+        int n = q.into(partHits);
         for (int i = 0; i < n; i++) {
             CgHit h = partHits.get(i);
-            if (!hasTarget(h.parent())) nextTarget().set(h);
+            if (!h.kind().isTerrain() && !hasTarget(h.parent())) nextTarget().set(h);
         }
     }
 
