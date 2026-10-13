@@ -1,7 +1,7 @@
 # job — work off the caller's thread
 
 CPU work that runs beside the game or a UI and hands its result back to the thread that started it, and work split
-across threads within a tick. GPU work off the render thread is `gpu/` and `render/graph`, not this. Design: private
+across threads within a tick. **Using it: `docs/JOBS.md`, the guide.** GPU work off the render thread is `gpu/` and `render/graph`, not this. Design: private
 plan `crystalgraphics/collision.md` §4.14; the policy (keys, debounce, lanes, replies, progress) is CrystalGUI's
 `core.async`, moved here so both projects share one pool.
 
@@ -46,3 +46,9 @@ CgJob.forEach(shards, s -> s.step(area));                                   // s
   stop). A loop from `create` ignores the session and ends its jobs at `close`.
 - **`drain` and `forEach` allocate nothing.** `run` allocates its job and reply, so a per-tick job is a `repeat`.
 - **Replies are single-threaded**: settle a `CgPendingReply` on the thread that owns it, never a worker.
+
+---
+
+Also loaded with this folder:
+
+@../../../../../../../docs/JOBS.md

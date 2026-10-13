@@ -10,7 +10,7 @@ import java.util.Objects;
 
 /**
  * Several shapes as one, each placed in the compound's own space: multi-part hitboxes, a set of hurtboxes, a block's
- * several boxes. A hit on it says which child it was ({@code hit.shape()}).
+ * several boxes. A test against it answers for its nearest child; a hitbox's parts label their hits instead.
  *
  * <pre>{@code
  * static final CgShape HAMMER = CgCompound.builder()

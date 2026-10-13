@@ -526,7 +526,7 @@ SETTING.ask(playerId, 3).then(value -> remember(playerId, value));              
 - **The answer may come later** than the handler returns: keep the `reply` and call `ok` when you have it. A reply
   answers once; later calls are ignored. `reply.fail("mymod/no_such_machine")` sends an error instead.
 - **Work too heavy for the tick** answers from a job: `reply.from(CgJob.run(() -> scan(snapshot)))` sends what the
-  job returns, or its failure. Hand the job a snapshot, never the level (`CgJob`'s javadoc).
+  job returns, or its failure. Hand the job a snapshot, never the level ([`JOBS.md`](JOBS.md) §5).
 - **Errors you may get**, as `error.code()`: your handler's own text, `CgRequest.UNSUPPORTED` (the other side lacks
   your mod or your version), `CgReplyError.TIMEOUT` (past `STATS.timeout(millis)`), `CgReplyError.CANCELLED` (you
   called `cancel()` on what `ask` returned) and `protocol/handlerFailed` (the handler threw; `error.detail()` says

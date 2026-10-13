@@ -383,6 +383,9 @@ Do NOT attach the engine's own blocks (`CgFrameBlock`, `CgObjectDataBuffer`) —
 
 ## Async: off the render thread, and beside the frame
 
+GPU work only. CPU work beside the game (a simulation, a search, a parse) handed back to its thread is `CgJob`:
+[`JOBS.md`](JOBS.md).
+
 Two kinds, independent of each other:
 
 - **Off the render thread**: the CPU's work (recording, building, decoding, writing bytes) on any thread, leaving the

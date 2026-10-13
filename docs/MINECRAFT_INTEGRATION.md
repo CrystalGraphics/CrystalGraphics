@@ -49,6 +49,53 @@ cues, a type each (`docs/VFX.md` § *Effects over the network: cues*). Hosts for
 router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
 mostly push: a `CgMessage` unless the asker needs the answer.
 
+### Collision — `collision`, `shape`
+
+World queries, hitboxes and snapshots are core (`docs/COLLISION.md`); a host only answers what a level holds, in
+facts, through four `platform.service` slots. A host decides nothing about collision: every rule (who may be hit, the
+nearest first, hit once) is core's.
+
+| Slot | What it answers | Modern | Legacy Forge | 1.7.10 |
+|---|---|---|---|---|
+| `CgLevelQueries` | a `CgWorldQuery` and a `CgEntityQuery` over any level, a server's included: what `CgCollisionWorld.of(level)` asks | `LevelQueriesModern` | `LevelQueriesLegacy` | `LevelQueries1710` |
+| … its block queries | collision boxes per block, fluid height and kind, loaded columns, the border, the level's epoch, and `copyBlocks` for a snapshot | `LevelWorldQueryModern` | `LevelWorldQueryLegacy` | `LevelWorldQuery1710` |
+| … its entity queries | `within` a box, each one's real box, flags, kind, parent, root vehicle | `LevelEntityQueryModern` | `LevelEntityQueryLegacy` | `LevelEntityQuery1710` |
+| `CgHostShapes` | Minecraft's boxes, block shapes and entities into `CgAABB`/`CgShape`, and boxes back (`CgAABB.of`, `set`, `toHost`, `CgShape.of`) | `HostShapesModern` (`AABB`, `VoxelShape`, `Entity`) | `HostShapesLegacy` (`AxisAlignedBB`, box lists, `Entity`) | `HostShapes1710` (the same) |
+| `CgHostDebug` | whether Minecraft's own hitbox view (F3+B) is on, which the collision show follows | `HostDebugModern` | `HostDebugLegacy` | `HostDebug1710` |
+
+`CgCollisionWorld.client(partialTick)` asks the client's frame services instead (`CgWorldQuery`, `CgEntityQuery`,
+the same classes the VFX engine reads), its entities interpolated to where the frame draws them.
+
+**How each era spells it** (read with `mcapi.py` on every node, 1.7.10 from its sources; the plan's S4a table in full):
+
+| Touch point | Modern 1.13.2–26.3 | Legacy 1.8.9–1.12.2 | 1.7.10 |
+|---|---|---|---|
+| An entity's box | `getBoundingBox()`, interpolated on a client by its lerped position | `getEntityBoundingBox()`, `AxisAlignedBB` | the `boundingBox` field, a mutable `AxisAlignedBB` |
+| A block's boxes | `VoxelShape.toAabbs()`, converted once per shared shape; the entity's `CollisionContext` for `as(id)` | `addCollisionBoxesToList` | the same |
+| Entities in a box | 1.19.3+ `getEntities(EntityTypeTest, AABB, Predicate, List)` into a reused list; before, the list-returning form. Parts included (vanilla's dragon loop, Forge's `getPartEntities()`) | `getEntitiesWithinAABBExcludingEntity`, parts through `Chunk` | the same, with one mutable query box kept |
+| A part by id | `ServerLevel.getEntityOrPart` 1.17.1+, `Level.dragonParts()` 1.21.4+; else the parts `within` handed out, remembered (16) with their parent | a server's `getEntityByID` | the same |
+| A part's whole | `EnderDragonPart.parentMob` (its package moves at 1.21.11); a modded `PartEntity` is its own whole (`getParent()` is loader API) | `entityDragonObj` to 1.10.2, `MultiPartEntityPart.parent` 1.12.2 | `entityDragonObj` |
+| Root vehicle | `getRootVehicle()` | `getLowestRidingEntity()` 1.10.2+, the `ridingEntity` chain 1.8.9 | the `ridingEntity` chain |
+| Flags a hit asks | `isSpectator()`, `isPickable()`, `isAttackable()`, `isInvulnerable()` or a player's abilities | `isSpectator()`, `canBeCollidedWith()`, `canBeAttackedWithItem()`, `isEntityInvulnerable(...)` | no spectators; `canBeCollidedWith()`, `canAttackWithItem()` |
+| An unloaded block | `isLoaded(pos)` before `getBlockState`: never loads one | `isBlockLoaded(pos)`: `getBlockState` would load a server chunk | `blockExists(x, y, z)` |
+| A snapshot's blocks | `copyBlocks` by section (`LevelChunkSection`'s states), a palette entry per distinct state | by section (`ExtendedBlockStorage`) | the same |
+
+- **Entity ids are Minecraft's network ids** (`entity.getId()`); a host turns one back with the level's lookup, parts
+  included as above.
+- **Nothing per call allocates beyond Minecraft's own**: one `AABB` per `within` on 1.8–26.3 (its fields are final),
+  nothing on 1.7.10; host-box conversions write into the caller's box (`CgBoxSink`), 2.5 ns each.
+- **Started hitboxes tick on the forwarded ticks** (`CgNetwork.onServerTick`, `onClientTick`), after the level's own,
+  on its thread; job loops (`CgJob`, `docs/JOBS.md`) drain on the same ticks, and `CgNetwork.onSessionEnd` cancels
+  every job a game thread started. A level's epoch changing stops the hitboxes of the level that went.
+- **The collision show** (`crystalgraphics.collision.show`, or F3+B through `CgHostDebug`) rides the channel: a
+  client asks (`crystalgraphics:collision/show`) and the server packs its hitboxes and queries within 64 blocks of
+  that player (`CgServerPlayers` for where they are, `CgLevelQueries` for which level) into
+  `crystalgraphics:collision/lines`. An integrated server follows its player's F3+B; a dedicated one only its own
+  variable.
+- **Proven**: `checkAllTargets` for every host; the section copy against block-by-block reads in `serverSmoke` on
+  Forge 1.20.1, Forge 1.16.5 and 1.7.10 (0 differing blocks, radius 8 to 60). A dragon part, a painting's offset box
+  and a ring hitbox in a live level still want a dev client (the plan's S10).
+
 ### 1.7.10 — `runtime/mc/1710`
 
 `CrystalGraphics` is the `@Mod` class (`modid = "crystalgraphics"`) and does **no GL work**: mod loading

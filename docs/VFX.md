@@ -274,7 +274,7 @@ This changes that one effect, not the look. On a server's authoritative effect i
 static final CgVfxSchema SCHEMA = new CgVfxSchema();
 public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 0.6f);
 public static final CgVfxParam CORE = SCHEMA.color("core", 1f, 1f, 1f, 1f);
-public static final CgVfxParam GLOW = SCHEMA.curve("glow", CgKeyframes.start(0f, 0f).to(0.2f, 1f).to(1f, 0f).build());
+public static final CgVfxParam GLOW = SCHEMA.curve("glow", CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.LINEAR).build());
 public static final CgVfxParam SHOCK = SCHEMA.shake("shock", CgCameraShakes.EXPLOSION);
 ```
 
@@ -598,8 +598,8 @@ if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the fa
 
 ## 8. Hits: what an effect strikes
 
-An effect strikes through the collision engine (`com.crystalgraphics.collision`): the queries it makes through
-`world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
+An effect strikes through the collision engine (`com.crystalgraphics.collision`, [`COLLISION.md`](COLLISION.md)):
+the queries it makes through `world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
 
 ```java
 CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(playerId, HANDS_FORWARD).collide());
