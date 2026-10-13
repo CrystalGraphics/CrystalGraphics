@@ -4166,6 +4166,7 @@ com/crystalgraphics/job/CgJobLoop
   method public enter ()Lcom/crystalgraphics/job/CgJobLoop$Scope;
   method public isCurrent ()Z
   method public name ()Ljava/lang/String;
+  method public nowMillis ()J
   method public pendingCount ()I
   method public toString ()Ljava/lang/String;
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJobLoop;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.job;
 
+import com.crystalgraphics.job.progress.CgProgressState;
 import com.crystalgraphics.net.CgNetwork;
 
 import javax.annotation.Nullable;
@@ -137,6 +138,11 @@ public final class CgJobLoop {
 
     public String name() {
         return name;
+    }
+
+    /** This loop's clock: what debounces are measured on and a {@link CgProgressState#begunAtMillis()} is read against. */
+    public long nowMillis() {
+        return clockMillis.getAsLong();
     }
 
     /**
