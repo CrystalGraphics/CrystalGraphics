@@ -1211,8 +1211,9 @@ CgJob.run(() -> simulate(area, pieces)).then(next -> this.pieces = next);
 - **A snapshot holds hittable hitboxes as they were** when taken.
 - **Blocks in a snapshot answer as to no one** (`as(id)` is not kept): what scaffolding shows an entity depends on where
   it is when it asks.
-- **Copying costs a frame's worth**: on Forge 1.20.1 about 2 ms for a radius of 8, 16 ms for 24, 45 ms for 32. Copy
-  only what the work reaches; past 128 blocks a side (`CgBlockSnapshot.MAX_SIDE`) it throws.
+- **Copying is paid on the level's thread**, section by section: on Forge 1.20.1 about 4 ms for a radius of 32 at the
+  surface and 7 ms underground, 26 to 29 ms for a radius of 60. Copy only what the work reaches; past 128 blocks a
+  side (`CgBlockSnapshot.MAX_SIDE`) it throws.
 - A snapshot of a snapshot is itself; `snapshot(bounds)` takes a box instead.
 
 Jobs, keys, repeating simulations and splitting work across threads are their own guide: [`JOBS.md`](JOBS.md).
@@ -1350,7 +1351,7 @@ Measured on a desktop, warm:
 | A 10-block ray through block cells | 259 ns |
 | A moving hitbox among 50 entities, a tick | 1.7 µs |
 | A hit sent over the network | about 24 bytes |
-| A snapshot, radius 8 / 24 / 32 (Forge 1.20.1) | 2 / 16 / 45 ms |
+| A snapshot, radius 32 / 60 (Forge 1.20.1, surface / underground) | 4.3 / 7.3 ms, 26 / 29 ms |
 
 Every query, hitbox tick and hit allocates nothing (measured: 50,000 hitbox ticks, 0 bytes).
 

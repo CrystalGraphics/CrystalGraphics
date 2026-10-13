@@ -257,7 +257,7 @@ CgJob.run(() -> {
 ```
 
 A snapshot is a world any number of threads may query at once, frozen as it was: entities where they were, blocks as
-they were. Copying is a frame's cost (about 2 ms for a radius of 8, 16 ms for 24 on Forge 1.20.1): copy only what the
+they were. Copying is paid on your thread (about 4 to 7 ms for a radius of 32 on Forge 1.20.1): copy only what the
 work reaches. The full story is [`COLLISION.md`](COLLISION.md) §12.
 
 ### Your own values
