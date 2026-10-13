@@ -1,6 +1,5 @@
-package com.crystalgraphics.collision.query;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
 import javax.annotation.Nullable;

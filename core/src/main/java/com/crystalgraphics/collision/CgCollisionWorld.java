@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision.query;
+package com.crystalgraphics.collision;
 
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.CgPlatform;

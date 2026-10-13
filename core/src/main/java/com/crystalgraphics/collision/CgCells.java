@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision.query;
+package com.crystalgraphics.collision;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
 import com.crystalgraphics.shape.CgShape;
 import org.joml.Vector3d;

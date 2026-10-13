@@ -1,10 +1,5 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
-import com.crystalgraphics.collision.query.CgHit;
-import com.crystalgraphics.collision.query.CgHits;
-import com.crystalgraphics.collision.query.CgQuery;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.shape.CgPose;

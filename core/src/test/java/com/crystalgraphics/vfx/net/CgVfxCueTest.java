@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
-import com.crystalgraphics.collision.query.CgHit;
+import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;

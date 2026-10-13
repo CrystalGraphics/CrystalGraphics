@@ -1,7 +1,7 @@
 package com.crystalgraphics.probe;
 
-import com.crystalgraphics.collision.query.CgCollisionWorld;
-import com.crystalgraphics.collision.query.CgHit;
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;

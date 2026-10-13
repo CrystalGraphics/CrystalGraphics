@@ -15,7 +15,7 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldLight;

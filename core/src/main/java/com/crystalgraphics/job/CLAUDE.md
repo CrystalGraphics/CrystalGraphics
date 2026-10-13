@@ -35,7 +35,7 @@ CgJob.forEach(shards, s -> s.step(area));                                   // s
 - **A job starts on the thread it reports to** and its listeners run there; starting one on a worker throws. Inside
   work, split with `forEach`.
 - **A worker never touches the host.** `CgCollisionWorld.of(level)` and `client()` throw on a worker, and a level's
-  world asked from another thread throws: workers query a snapshot (`collision.query`'s `CgBlockSnapshot`,
+  world asked from another thread throws: workers query a snapshot (`collision`'s `CgBlockSnapshot`,
   `CgEntitySnapshot`, and a frozen `CgShapeWorld`), each thread on a lane of its own.
 - **One in flight per key.** A newer start replaces a waiting job and supersedes a running one: its context is
   cancelled, its result dropped whether it polled or not, and its reply never settles. The newer one waits until the

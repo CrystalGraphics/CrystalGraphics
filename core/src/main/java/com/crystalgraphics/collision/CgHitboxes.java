@@ -1,6 +1,5 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.net.CgNetwork;
 
 /**

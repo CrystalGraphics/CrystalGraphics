@@ -1,7 +1,5 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetWire;
 

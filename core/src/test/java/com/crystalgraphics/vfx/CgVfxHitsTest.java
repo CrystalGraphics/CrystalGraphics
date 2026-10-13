@@ -1,8 +1,8 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.hitbox.CgSentHit;
-import com.crystalgraphics.collision.query.CgHit;
+import com.crystalgraphics.collision.CgSentHit;
+import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.net.object.CgNetWire;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;

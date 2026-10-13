@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision.query;
+package com.crystalgraphics.collision;
 
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;

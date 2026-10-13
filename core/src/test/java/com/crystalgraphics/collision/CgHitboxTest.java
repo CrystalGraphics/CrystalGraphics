@@ -1,8 +1,6 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CollisionFakes.Table;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;

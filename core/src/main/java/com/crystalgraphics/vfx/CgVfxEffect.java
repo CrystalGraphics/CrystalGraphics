@@ -1,9 +1,9 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
-import com.crystalgraphics.collision.query.CgHit;
+import com.crystalgraphics.collision.CgHitbox;
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;

@@ -41,7 +41,7 @@ CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
   graphics and accessibility settings (an effect spawns `particleShare()` of its particles), and the game clock, paused
   and `/tick` state. Absent is NaN, -1 and false, never a default. Questions about a *position* — collision and its
   boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation — are the
-  `CgWorldQuery` slot's, composed into ground scans by `com.crystalgraphics.world.CgWorldQueries` and into rays, casts and hitboxes by `collision.query.CgCollisionWorld`. A GUI stage carries the GUI's projection in its own frame,
+  `CgWorldQuery` slot's, composed into ground scans by `com.crystalgraphics.world.CgWorldQueries` and into rays, casts and hitboxes by `collision.CgCollisionWorld`. A GUI stage carries the GUI's projection in its own frame,
   so the world's camera stays readable while the host draws its GUI.
 - Every era answers the environment, the host textures and the world slots (`CgWorldQuery`, `CgEntityQuery`,
   `CgHostCamera`, `CgWorldSound`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and

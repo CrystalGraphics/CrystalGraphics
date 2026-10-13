@@ -1,6 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.CgHitbox;
 
 import java.util.Arrays;
 import java.util.Iterator;

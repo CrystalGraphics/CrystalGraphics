@@ -1,9 +1,7 @@
-package com.crystalgraphics.collision.hitbox;
+package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
-import com.crystalgraphics.collision.query.CgHit;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;

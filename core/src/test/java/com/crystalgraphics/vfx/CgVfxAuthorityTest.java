@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;

@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision.query;
+package com.crystalgraphics.collision;
 
 /**
  * Hits kept past the query that found them, nearest first: what {@link CgQuery#into} fills. Reused; filling it again

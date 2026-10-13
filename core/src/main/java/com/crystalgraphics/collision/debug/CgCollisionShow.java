@@ -1,10 +1,10 @@
 package com.crystalgraphics.collision.debug;
 
 import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
-import com.crystalgraphics.collision.query.CgHit;
-import com.crystalgraphics.collision.query.CgQuery;
+import com.crystalgraphics.collision.CgHitbox;
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.net.CgAudience;
 import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;

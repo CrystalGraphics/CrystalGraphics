@@ -8,7 +8,7 @@ import com.crystalgraphics.api.font.CgSystemFontFace;
 import com.crystalgraphics.api.font.CgSystemFonts;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
 import com.crystalgraphics.gl.buffer.CgReadback;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
