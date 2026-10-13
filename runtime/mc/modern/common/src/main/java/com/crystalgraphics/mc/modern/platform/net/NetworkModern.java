@@ -4,9 +4,11 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelQueriesModern;
+import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgHostShapes;
 import com.crystalgraphics.platform.service.CgLevelQueries;
@@ -32,6 +34,7 @@ public final class NetworkModern {
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersModern());
         CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesModern());
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
+        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {

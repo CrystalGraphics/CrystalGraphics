@@ -4,8 +4,10 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.legacy.platform.world.HostShapesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.LevelQueriesLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.MirrorHostLegacy;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgHostShapes;
@@ -45,6 +47,7 @@ public final class NetworkLegacy {
         CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersLegacy());
         CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesLegacy());
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesLegacy());
+        CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostLegacy());
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Handler());

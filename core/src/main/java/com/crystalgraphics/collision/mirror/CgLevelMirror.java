@@ -106,6 +106,10 @@ public final class CgLevelMirror {
     private final List<Long> unloadedColumns = new ArrayList<>(), droppedColumns = new ArrayList<>();
     private final ConcurrentLinkedQueue<Runnable> commands = new ConcurrentLinkedQueue<>();
     private final List<Watch> readyWaiting = new ArrayList<>();
+    private final List<CgAABBc> regions = new ArrayList<>();
+    private boolean regionsStale;
+    private int lastEntities;
+    private double regionsMinY, regionsMaxY;
     private int wantedSections;
     private final CgMirrorShape scratch = new CgMirrorShape();
     private final double[] borderScratch = new double[4];
@@ -126,7 +130,9 @@ public final class CgLevelMirror {
     private final ConcurrentLinkedQueue<Found> discovered = new ConcurrentLinkedQueue<>();
 
     // ---- stats
-    private long statLevelNanos, statWorkerNanos, statDirty, statBases, statPublishes;
+    private static final String[] PHASES = {"watches", "resolve", "copies", "entities", "hittables", "handoff"};
+    private long statLevelNanos, statLevelMax, statWorkerNanos, statDirty, statBases, statResolved, statEntities, statPublishes;
+    private final long[] statPhases = new long[PHASES.length], statPhaseMax = new long[PHASES.length];
 
     private CgLevelMirror(CgMirrorHost host, Object level, CgWorldQuery world, CgEntityQuery entities, Freezer freezer) {
         this.host = host;
@@ -254,6 +260,7 @@ public final class CgLevelMirror {
                     if (delta < 0) continue;
                     c = new CgMirrorColumn(this, cx, cz, sectionCount);
                     columns.put(k, c);
+                    regionsStale = true;
                 }
                 for (int s = w.s0; s <= w.s1; s++) {
                     if (delta > 0) {
@@ -273,6 +280,7 @@ public final class CgLevelMirror {
                     if (c.chunk != null) host.attach(c.chunk, null);
                     columns.remove(k);
                     droppedColumns.add(k);
+                    regionsStale = true;
                 }
             }
         }
@@ -361,6 +369,7 @@ public final class CgLevelMirror {
         while ((command = commands.poll()) != null) command.run();
         closeIdle();
         generation++;
+        long t = phase(0, started);
 
         MirrorBatch b = new MirrorBatch(e);
         for (int i = 0; i < dirtyCount; i++) {
@@ -378,18 +387,21 @@ public final class CgLevelMirror {
         droppedColumns.clear();
 
         resolvePositional(lvl, b);
+        t = phase(1, t);
         takeCopies(lvl, b);
-        if (VERIFY.get()) verifyCopies(b);
+        t = phase(2, t);
+        // a worker behind would queue a copy of every section a tick
+        if (VERIFY.get() && batches.isEmpty()) verifyCopies(b);
 
         if (!watches.isEmpty()) {
-            List<CgAABBc> regions = new ArrayList<>(watches.size());
             CgAABB union = new CgAABB();
-            for (Watch w : watches) {
-                regions.add(w.bounds);
-                union.union(w.bounds);
-            }
-            b.entities = CgEntitySnapshot.capture(entities, 1f, regions);
+            for (Watch w : watches) union.union(w.bounds);
+            b.entities = CgEntitySnapshot.capture(entities, 1f, entityRegions(union), lastEntities + lastEntities / 8);
+            lastEntities = b.entities.size();
+            statEntities += lastEntities;
+            t = phase(3, t);
             b.frozen = freezer.freeze(union);
+            t = phase(4, t);
         }
         b.border = world.border(borderScratch) ? borderScratch.clone() : null;
         b.minY = world.minY();
@@ -400,8 +412,49 @@ public final class CgLevelMirror {
         batches.add(b);
         if (working.compareAndSet(false, true)) CgJob.executor(CgJobLane.LATENCY).execute(this::work);
         settleReady();
-        statLevelNanos += System.nanoTime() - started;
+        phase(5, t);
+        long spent = System.nanoTime() - started;
+        statLevelNanos += spent;
+        statLevelMax = Math.max(statLevelMax, spent);
         if (++statPublishes % 100 == 0 && STATS.get()) logStats();
+    }
+
+    /**
+     * The boxes entities are read over: the mirrored columns, each run of neighbours along x as one box, over the
+     * watches' heights. Watches overlap; columns do not, so an entity is visited about once however many watch it.
+     * Rebuilt when the columns change.
+     */
+    private List<CgAABBc> entityRegions(CgAABBc union) {
+        if (!regionsStale && union.minY() == regionsMinY && union.maxY() == regionsMaxY) return regions;
+        regionsStale = false;
+        regionsMinY = union.minY();
+        regionsMaxY = union.maxY();
+        regions.clear();
+        long[] keys = new long[columns.size()];
+        int n = 0;
+        for (CgMirrorColumn c : columns.values()) {
+            // z, then x biased to unsigned so that runs sort together
+            keys[n++] = (long) c.chunkZ << 32 | (c.chunkX + 0x80000000L) & 0xFFFFFFFFL;
+        }
+        Arrays.sort(keys);
+        for (int i = 0; i < n; ) {
+            int z = (int) (keys[i] >> 32), x0 = (int) ((keys[i] & 0xFFFFFFFFL) - 0x80000000L), x1 = x0;
+            i++;
+            while (i < n && (int) (keys[i] >> 32) == z && (int) ((keys[i] & 0xFFFFFFFFL) - 0x80000000L) == x1 + 1) {
+                x1++;
+                i++;
+            }
+            regions.add(CgAABB.of(x0 << 4, regionsMinY, z << 4, (x1 + 1) << 4, regionsMaxY, (z + 1) << 4));
+        }
+        return regions;
+    }
+
+    /** Adds the time since {@code since} to stats phase {@code i}; returns now. */
+    private long phase(int i, long since) {
+        long now = System.nanoTime();
+        statPhases[i] += now - since;
+        statPhaseMax[i] = Math.max(statPhaseMax[i], now - since);
+        return now;
     }
 
     /** Snapshots' watches nothing asked for lately close; past the memory budget, the longest idle go first. */
@@ -489,6 +542,7 @@ public final class CgLevelMirror {
     private void resolve(Object lvl, MirrorBatch b, MirrorSection s, int cell, int x, int y, int z) {
         host.resolveAt(lvl, x, y, z, scratch.clear());
         b.resolved(s, cell, b.shapes.intern(scratch));
+        statResolved++;
     }
 
     /** First copies of sections waiting for one, nearest the oldest asks first, inside the tick's budget. */
@@ -566,11 +620,19 @@ public final class CgLevelMirror {
     }
 
     private void logStats() {
-        LOGGER.info("[cg-mirror] {}: {} columns, {} sections wanted, {} waiting; per tick {} µs level thread, {} µs worker, "
-                        + "{} dirty sections, {} first copies; {} shapes; verify differences {}",
-                level.get(), columns.size(), wantedSections, waiting.size(), statLevelNanos / 100_000,
-                statWorkerNanos / 100_000, statDirty / 100.0, statBases / 100.0, palette.count, VERIFY_DIFFERENCES.get());
-        statLevelNanos = statWorkerNanos = statDirty = statBases = 0;
+        StringBuilder phases = new StringBuilder();
+        for (int i = 0; i < PHASES.length; i++) {
+            phases.append(i == 0 ? "" : ", ").append(PHASES[i]).append(' ').append(statPhases[i] / 100_000).append('/')
+                    .append(statPhaseMax[i] / 1000);
+            statPhases[i] = statPhaseMax[i] = 0;
+        }
+        LOGGER.info("[cg-mirror] {}: {} columns, {} sections wanted, {} waiting; per tick {} µs level thread (max {}; {}), "
+                        + "{} µs worker, {} dirty sections, {} first copies, {} cells resolved, {} entities in {} boxes; "
+                        + "{} shapes; verify differences {}",
+                level.get(), columns.size(), wantedSections, waiting.size(), statLevelNanos / 100_000, statLevelMax / 1000,
+                phases, statWorkerNanos / 100_000, statDirty / 100.0, statBases / 100.0, statResolved / 100.0,
+                statEntities / 100.0, regions.size(), palette.count, VERIFY_DIFFERENCES.get());
+        statLevelNanos = statLevelMax = statWorkerNanos = statDirty = statBases = statResolved = statEntities = 0;
     }
 
     // =====================================================================================================

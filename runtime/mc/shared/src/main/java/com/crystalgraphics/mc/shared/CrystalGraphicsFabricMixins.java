@@ -10,6 +10,6 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsFabricMixins extends VariantMixins {
 
     public CrystalGraphicsFabricMixins() {
-        super("crystalgraphics", "WorldPassHook", "FrameEndHook", "CameraHook", "FovHook", "ExplosionHook", "LevelEventHook");
+        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "WorldPassHook", "FrameEndHook", "CameraHook", "FovHook", "ExplosionHook", "LevelEventHook");
     }
 }

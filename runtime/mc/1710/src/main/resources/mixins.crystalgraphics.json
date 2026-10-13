@@ -6,7 +6,9 @@
   "refmap": "mixins.crystalgraphics.refmap.json",
   "target": "@env(DEFAULT)",
   "compatibilityLevel": "JAVA_8",
-  "mixins": [],
+  "mixins": [
+    "ChunkWriteHook"
+  ],
   "client": [
     "client.CgRenderHook",
     "client.MixinMinecraft",

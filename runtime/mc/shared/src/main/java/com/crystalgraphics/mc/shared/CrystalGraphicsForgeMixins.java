@@ -12,7 +12,7 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsForgeMixins extends VariantMixins {
 
     public CrystalGraphicsForgeMixins() {
-        super("crystalgraphics", "OpaquePassHook", "TransparentPassHook", "ExplosionHook", "LevelEventHook", "CameraHook",
+        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "OpaquePassHook", "TransparentPassHook", "ExplosionHook", "LevelEventHook", "CameraHook",
                 "DeviceFeaturesHook");
     }
 }

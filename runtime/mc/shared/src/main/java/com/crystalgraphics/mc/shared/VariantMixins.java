@@ -36,13 +36,13 @@ import java.util.Set;
  *   <li>Mixins come from {@link #getMixins()}, never the config's lists: Mixin parses every listed
  *       class before asking the plugin, and a Java 21 class read by 1.7.10's ASM is a crash.</li>
  *   <li>A subclass needs a public no-argument constructor; Mixin instantiates it by name.</li>
- *   <li>The client names apply on a client only. There is no server list yet.</li>
+ *   <li>The client names apply on a client only; the common names on both sides.</li>
  * </ul>
  */
 public abstract class VariantMixins implements IMixinConfigPlugin {
 
     private final String modId;
-    private final String[] clientMixins;
+    private final String[] commonMixins, clientMixins;
 
     private boolean owned;
 
@@ -51,7 +51,17 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
      * @param clientMixins mixin names relative to the config's package, applied on a client
      */
     protected VariantMixins(String modId, String... clientMixins) {
+        this(modId, new String[0], clientMixins);
+    }
+
+    /**
+     * @param modId        whose {@code variants.json} to read
+     * @param commonMixins mixin names relative to the config's package, applied on both sides
+     * @param clientMixins mixin names relative to the config's package, applied on a client
+     */
+    protected VariantMixins(String modId, String[] commonMixins, String... clientMixins) {
         this.modId = modId;
+        this.commonMixins = commonMixins;
         this.clientMixins = clientMixins;
     }
 
@@ -81,9 +91,9 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
     @Override
     public List<String> getMixins() {
         List<String> mixins = new ArrayList<String>();
-        if (owned && isClient()) {
-            Collections.addAll(mixins, clientMixins);
-        }
+        if (!owned) return mixins;
+        Collections.addAll(mixins, commonMixins);
+        if (isClient()) Collections.addAll(mixins, clientMixins);
         return mixins;
     }
 
