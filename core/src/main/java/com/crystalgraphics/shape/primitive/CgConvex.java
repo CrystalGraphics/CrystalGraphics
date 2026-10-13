@@ -30,6 +30,7 @@ public final class CgConvex extends CgShape {
     /** The farthest point of a convex set along {@code (dx, dy, dz)}, written into {@code out}. */
     @FunctionalInterface
     public interface Support {
+        /** The direction need not be unit length, and may be zero: answer any point of the set then. Allocates nothing. */
         Vector3d support(double dx, double dy, double dz, Vector3d out);
     }
 

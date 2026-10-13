@@ -1,5 +1,7 @@
 package com.crystalgraphics.shape.query;
 
+import com.crystalgraphics.shape.primitive.CgConvex;
+
 import org.joml.Vector3d;
 
 /**
@@ -60,17 +62,17 @@ final class CgEpa {
      * @param outB                 on true, b's surface point farthest against it; {@code outA - outB} is the
      *                             penetration
      */
-    boolean penetration(CgSupport a, CgSupport b, double collisionTolerance, double penetrationTolerance,
+    boolean penetration(CgConvex.Support a, CgConvex.Support b, double collisionTolerance, double penetrationTolerance,
                                Vector3d ioV, Vector3d outA, Vector3d outB) {
         return penetration(a, 0, a, b, 0, b, collisionTolerance, penetrationTolerance, ioV, outA, outB);
     }
 
     /**
-     * {@link #penetration(CgSupport, CgSupport, double, double, Vector3d, Vector3d, Vector3d)} for shapes given as a
+     * {@link #penetration(CgConvex.Support, CgConvex.Support, double, double, Vector3d, Vector3d, Vector3d)} for shapes given as a
      * core grown by a radius, and whole.
      */
-    boolean penetration(CgSupport aCore, double radiusA, CgSupport a, CgSupport bCore, double radiusB,
-                               CgSupport b, double collisionTolerance, double penetrationTolerance, Vector3d ioV,
+    boolean penetration(CgConvex.Support aCore, double radiusA, CgConvex.Support a, CgConvex.Support bCore, double radiusB,
+                               CgConvex.Support b, double collisionTolerance, double penetrationTolerance, Vector3d ioV,
                                Vector3d outA, Vector3d outB) {
         double sumRadius = radiusA + radiusB;
         double distSq = gjk.closestPoints(aCore, bCore, collisionTolerance, sumRadius * sumRadius, ioV, outA, outB);
@@ -86,7 +88,7 @@ final class CgEpa {
         return expand(a, b, penetrationTolerance, ioV, outA, outB);
     }
 
-    private boolean expand(CgSupport a, CgSupport b, double tolerance, Vector3d outV, Vector3d outA, Vector3d outB) {
+    private boolean expand(CgConvex.Support a, CgConvex.Support b, double tolerance, Vector3d outV, Vector3d outA, Vector3d outB) {
         count = gjk.simplex(y, p, q);
         if (count == 2) {
             double ax = y[1].x - y[0].x, ay = y[1].y - y[0].y, az = y[1].z - y[0].z;
@@ -224,7 +226,7 @@ final class CgEpa {
     }
 
     /** A support point of a - b along the direction; answers its index. */
-    private int add(CgSupport a, CgSupport b, double dx, double dy, double dz) {
+    private int add(CgConvex.Support a, CgConvex.Support b, double dx, double dy, double dz) {
         int i = count++;
         a.support(dx, dy, dz, p[i]);
         b.support(-dx, -dy, -dz, q[i]);

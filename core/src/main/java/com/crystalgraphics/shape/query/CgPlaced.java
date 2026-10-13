@@ -5,6 +5,7 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
+import com.crystalgraphics.shape.primitive.CgConvex;
 import com.crystalgraphics.shape.primitive.CgCylinder;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
@@ -16,7 +17,7 @@ import org.joml.Vector3d;
  * forms, its support for GJK, and its {@link #core} and {@link #radius} for round shapes (Jolt's convex radius).
  * Reused; {@code set} overwrites everything.
  */
-final class CgPlaced implements CgSupport {
+final class CgPlaced implements CgConvex.Support {
 
     static final int POINT = 0, SPHERE = 1, BOX = 2, CAPSULE = 3, CYLINDER = 4, GENERIC = 5;
 
@@ -34,7 +35,7 @@ final class CgPlaced implements CgSupport {
     CgShape shape;
 
     /** The shape less its radius: a sphere's centre, a capsule's segment; the whole shape otherwise. */
-    final CgSupport core = this::coreSupport;
+    final CgConvex.Support core = this::coreSupport;
 
     private final Vector3d local = new Vector3d();
 

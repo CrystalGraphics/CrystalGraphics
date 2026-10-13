@@ -1,5 +1,7 @@
 package com.crystalgraphics.shape.query;
 
+import com.crystalgraphics.shape.primitive.CgConvex;
+
 import org.joml.Vector3d;
 
 /**
@@ -157,7 +159,7 @@ final class CgGjk {
      *
      * @param tolerance how near the sets may come and still count as meeting
      */
-    boolean intersects(CgSupport a, CgSupport b, double tolerance, Vector3d ioV) {
+    boolean intersects(CgConvex.Support a, CgConvex.Support b, double tolerance, Vector3d ioV) {
         double toleranceSq = tolerance * tolerance;
         count = 0;
         double prevLenSq = Double.MAX_VALUE;
@@ -192,7 +194,7 @@ final class CgGjk {
      * @param ioV a non-zero vector to start from; on return the separating axis from a to b, its length the distance
      *            when the answer is below {@code MAX_VALUE}, or zero when they meet
      */
-    double closestPoints(CgSupport a, CgSupport b, double tolerance, double maxDistanceSq, Vector3d ioV,
+    double closestPoints(CgConvex.Support a, CgConvex.Support b, double tolerance, double maxDistanceSq, Vector3d ioV,
                                 Vector3d outA, Vector3d outB) {
         double toleranceSq = tolerance * tolerance;
         count = 0;
@@ -254,7 +256,7 @@ final class CgGjk {
      * @param outAxis     from a to b along their separation; near zero (and the direction unreliable) when they already
      *                    overlap at lambda 0
      */
-    double castShape(CgSupport a, double dx, double dy, double dz, double tolerance, CgSupport b,
+    double castShape(CgConvex.Support a, double dx, double dy, double dz, double tolerance, CgConvex.Support b,
                             double radiusA, double radiusB, double maxLambda, Vector3d outA, Vector3d outB,
                             Vector3d outAxis) {
         double toleranceSq = tolerance * tolerance;
