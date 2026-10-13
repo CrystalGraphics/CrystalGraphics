@@ -213,7 +213,7 @@ public class CgCollisionWorldTest {
     public void aBodyMeetsTheBorderTheBlocksAsTheyShowItAndSolidEntities() {
         CgCollisionWorld w = CgCollisionWorld.of(new Bordered(), new Table()
                 .add(3, -4, 0, -20, 0.7, 0.6, ALIVE | PICKABLE | SOLID, KIND_VEHICLE, 3, 3).mob(1, 2, -20, KIND_MONSTER));
-        for (CgCollisionWorld asked : new CgCollisionWorld[]{w, w.snapshot(0, 0.5, -20, 16)}) {
+        for (CgCollisionWorld asked : new CgCollisionWorld[]{w, w.snapshot(0, 0.5, -20, 16).result()}) {
             assertTrue(asked.ray().at(0, 0.5, -20).along(1, 0, 0, 20).blocksOnly().border().first(hit));
             assertEquals("the block-aligned cell beyond 10.5", CgHit.Kind.BORDER, hit.kind());
             assertEquals(11, hit.blockX());
@@ -226,7 +226,7 @@ public class CgCollisionWorldTest {
         assertEquals("through the scaffolding, as a particle", 0, hit.y(), 1e-9);
         assertTrue(w.ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().as(40).first(hit));
         assertEquals("on it, as the one it holds up", 1, hit.y(), 1e-9);
-        assertTrue(w.snapshot(0, 0.5, -20, 16).ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().as(40).first(hit));
+        assertTrue(w.snapshot(0, 0.5, -20, 16).result().ray().at(0.5, 2, -24.5).along(0, -1, 0, 3).blocksOnly().as(40).first(hit));
         assertEquals("a snapshot answers as to no one", 0, hit.y(), 1e-9);
     }
 

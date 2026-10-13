@@ -5,6 +5,8 @@ import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.function.IntConsumer;
 
 /**
@@ -36,6 +38,19 @@ public final class CgEntitySnapshot extends CgEntityTable {
 
     /** {@code host}'s entities touching {@code bounds}, read now at {@code partialTick}. The host's thread. */
     public static CgEntitySnapshot of(CgEntityQuery host, float partialTick, CgAABBc bounds) {
+        return capture(host, partialTick, Collections.singletonList(bounds)).index();
+    }
+
+    /**
+     * {@code host}'s entities touching any of {@code regions}, each read once, at {@code partialTick}; not answerable
+     * until {@link #index}ed, which another thread may do. The host's thread: everything that asks the host is here.
+     *
+     * <pre>{@code
+     * CgEntitySnapshot rows = CgEntitySnapshot.capture(host, 1f, areas);   // the level's thread, at the tick's end
+     * CgJob.executor(CgJobLane.LATENCY).execute(() -> publish(rows.index()));
+     * }</pre>
+     */
+    public static CgEntitySnapshot capture(CgEntityQuery host, float partialTick, List<? extends CgAABBc> regions) {
         CgEntitySnapshot s = new CgEntitySnapshot(host);
         double[] pose = new double[POSE_LENGTH];
         IntConsumer reader = id -> {
@@ -45,14 +60,22 @@ public final class CgEntitySnapshot extends CgEntityTable {
             if (host.pose(id, partialTick, pose)) System.arraycopy(pose, 0, s.poses, e * POSE_LENGTH, POSE_LENGTH);
             else s.poses[e * POSE_LENGTH] = Double.NaN;
         };
-        host.within(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(), reader);
+        for (int i = 0; i < regions.size(); i++) {
+            CgAABBc b = regions.get(i);
+            host.within(b.minX(), b.minY(), b.minZ(), b.maxX(), b.maxY(), b.maxZ(), reader);
+        }
         // the wholes and mounts of what was found, which a query asks of a part or a rider
         for (int e = 0; e < s.count; e++) {
             reader.accept(s.parents[e]);
             reader.accept(s.roots[e]);
         }
-        s.listCells();
         return s;
+    }
+
+    /** Lists a {@link #capture}d snapshot's entities in their cells, once, on any thread; returns it. */
+    public CgEntitySnapshot index() {
+        if (wide == null) listCells();
+        return this;
     }
 
     @Override

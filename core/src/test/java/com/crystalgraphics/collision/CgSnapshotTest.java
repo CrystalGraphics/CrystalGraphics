@@ -65,16 +65,16 @@ public class CgSnapshotTest {
 
     @Test
     public void aSnapshotAnswersAsItsWorldDid() {
-        CgCollisionWorld snapshot = live.snapshot(0, 0, 0, 60);
+        CgCollisionWorld snapshot = live.snapshot(0, 0, 0, 60).result();
         assertArrayEquals(ask(live), ask(snapshot));
     }
 
     @Test
     public void aSnapshotCopiedFromSectionsAnswersAsOneReadBlockByBlock() {
         CgCollisionWorld sections = CgCollisionWorld.of(new SectionYard(), table);
-        assertArrayEquals(ask(live), ask(sections.snapshot(0, 0, 0, 60)));
+        assertArrayEquals(ask(live), ask(sections.snapshot(0, 0, 0, 60).result()));
         CgHit hit = new CgHit();
-        assertTrue(sections.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4)).ray().at(95, 1, 0).along(1, 0, 0, 10)
+        assertTrue(sections.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4)).result().ray().at(95, 1, 0).along(1, 0, 0, 10)
                 .blocksOnly().first(hit));
         assertEquals(CgHit.Kind.UNLOADED, hit.kind());
     }
@@ -108,7 +108,7 @@ public class CgSnapshotTest {
 
     @Test
     public void anUnloadedColumnStopsARayInASnapshotToo() {
-        CgCollisionWorld snapshot = live.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4));
+        CgCollisionWorld snapshot = live.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4)).result();
         CgHit hit = new CgHit();
         assertTrue(snapshot.ray().at(95, 1, 0).along(1, 0, 0, 10).blocksOnly().first(hit));
         assertEquals(CgHit.Kind.UNLOADED, hit.kind());
@@ -118,12 +118,12 @@ public class CgSnapshotTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void aSnapshotPastItsCapThrows() {
-        live.snapshot(0, 0, 0, CgBlockSnapshot.MAX_SIDE);
+        live.snapshot(0, 0, 0, CgBlockSnapshot.MAX_SIDE).result();
     }
 
     @Test
     public void manyThreadsQueryOneSnapshotAndAgree() throws InterruptedException {
-        CgCollisionWorld snapshot = live.snapshot(0, 0, 0, 60);
+        CgCollisionWorld snapshot = live.snapshot(0, 0, 0, 60).result();
         String[] expected = ask(live);
         AtomicReference<Throwable> failed = new AtomicReference<>();
         String[][] got = new String[8][];
@@ -147,12 +147,12 @@ public class CgSnapshotTest {
     @Test
     public void aSnapshotStaysAsItWasTaken() {
         table.mob(500, 60, 60, KIND_MONSTER);
-        CgCollisionWorld snapshot = live.snapshot(60, 0, 60, 8);
+        CgCollisionWorld snapshot = live.snapshot(60, 0, 60, 8).result();
         table.move(500, 140, 0, 140).kill(500);
         assertEquals(1, snapshot.overlap(CgSphere.of(2)).at(60, 1, 60).count());
         assertEquals(0, live.overlap(CgSphere.of(2)).at(60, 1, 60).count());
         assertEquals("an entity it never held is unknown to it", 0, snapshot.entities().flags(3));
-        assertTrue(snapshot.snapshot(0, 0, 0, 1) == snapshot);
+        assertTrue(snapshot.snapshot(0, 0, 0, 1).result() == snapshot);
     }
 
     @Test
@@ -165,12 +165,12 @@ public class CgSnapshotTest {
             props[id].tick(arena, 1);
         }
         try {
-            CgCollisionWorld frozen = arena.snapshot(CgAABB.of(-10, -10, -10, 110, 10, 10));
+            CgCollisionWorld frozen = arena.snapshot(CgAABB.of(-10, -10, -10, 110, 10, 10)).result();
             props[0].pose(pose.at(500, 0, 0)).tick(arena, 1);
             assertEquals(2, frozen.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
             assertEquals(1, arena.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
             assertEquals("only what touches its box", 2,
-                    arena.snapshot(CgAABB.of(9, -1, -1, 13, 1, 1)).overlap(CgSphere.of(100)).at(0, 0, 0).count());
+                    arena.snapshot(CgAABB.of(9, -1, -1, 13, 1, 1)).result().overlap(CgSphere.of(100)).at(0, 0, 0).count());
 
             int[] counts = new int[8];
             Thread[] threads = new Thread[counts.length];

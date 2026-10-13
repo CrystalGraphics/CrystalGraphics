@@ -1,14 +1,17 @@
 package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.block.CgBlockSnapshot;
 import com.crystalgraphics.collision.block.CgBlockCells;
+import com.crystalgraphics.collision.block.CgBlockSnapshot;
 import com.crystalgraphics.collision.entity.CgEntityCache;
 import com.crystalgraphics.collision.entity.CgEntitySnapshot;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.collision.hitbox.CgHitboxes;
+import com.crystalgraphics.collision.mirror.CgLevelMirror;
+import com.crystalgraphics.collision.mirror.CgMirrorVersion;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgLevelQueries;
@@ -19,6 +22,7 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 import javax.annotation.Nullable;
+import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -51,12 +55,16 @@ import java.util.Objects;
  * arena.ray().at(0, 1, 0).along(1, 0, 0, 10).first(hit);        // hit.entity() == WALL_ID
  * }</pre>
  *
- * Off the level's thread, a {@link #snapshot}: the blocks and entities in a box, copied now, which any number of threads
- * may query at once while the level moves on.
+ * Off the level's thread, a {@link #snapshot} or a {@link #watch}: the blocks and entities in a box as they stood at the
+ * end of the last server tick, which any number of threads may query at once while the level moves on. A server level
+ * keeps them in one shared mirror, so asking costs the tick nothing however many ask.
  *
  * <pre>{@code
- * CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);    // the level's thread
- * CgJob.run(() -> simulate(area)).then(hits -> hits.forEach(this::hurt));      // queried on a worker
+ * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                              // the level's thread
+ *         .then(area -> CgJob.run(() -> simulate(area)).then(hits -> hits.forEach(this::hurt)));
+ *
+ * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);      // a simulation running every tick
+ * CgCollisionWorld now = arena.latest();                                        // any thread: the newest tick's
  * }</pre>
  *
  * Many queries in one tick share what they learn of the entities inside a {@link #batch}, as Unity's batched query
@@ -100,6 +108,8 @@ public class CgCollisionWorld {
     private boolean clientLevel;
     /** A snapshot's hittable hitboxes, frozen; null for none, and for a live world. */
     @Nullable FrozenHittables frozenHittables;
+    /** {@link #of(Object)}'s level, for its mirror; null for every other world. */
+    @Nullable private WeakReference<Object> level;
     private CgEntityCache cache;
 
     CgCollisionWorld(CgWorldQuery world, CgEntityQuery entities, float partialTick) {
@@ -119,6 +129,7 @@ public class CgCollisionWorld {
         }
         CgCollisionWorld made = new CgCollisionWorld(w, levels.entities(level), 1f);
         made.owner = Thread.currentThread();
+        made.level = new WeakReference<>(level);
         t.levels[t.nextLevel] = made;
         t.nextLevel = (t.nextLevel + 1) % CACHED_LEVELS;
         return made;
@@ -163,31 +174,80 @@ public class CgCollisionWorld {
     }
 
     /**
-     * The blocks and entities touching {@code radius} of a point, copied now: a world any number of threads may query
-     * at once, frozen as it was. On the thread this world belongs to.
+     * The blocks and entities touching {@code radius} of a point as they stood at the end of the last server tick: a
+     * world any number of threads may query at once, frozen. On the thread this world belongs to; the reply settles
+     * there too.
      *
      * <pre>{@code
-     * CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);
-     * CgJob.forEach(shards, s -> s.step(area));    // every worker queries it together
+     * CgCollisionWorld.of(level).snapshot(x, y, z, 24)
+     *         .then(area -> CgJob.forEach(shards, s -> s.step(area)));    // every worker queries it together
      * }</pre>
      *
      * <ul>
-     *   <li>Outside the box it holds nothing, and every cell is loaded: a cast leaving it flies on through air.</li>
-     *   <li>It knows only the entities in the box, and whole entities their parts belong to. Another reads as
-     *       none: flags 0, no box, no pose.</li>
-     *   <li>Entities are where this world reads them ({@link #partialTick}), whatever a query asks later.</li>
-     *   <li>Copying is the host's calls for every block: on Forge 1.20.1 about 2 ms for a radius of 8, 16 ms for 24 and
-     *       45 ms for 32. Snapshot only what the work reaches; past 128 blocks a side it throws.</li>
+     *   <li>A server level answers from its mirror: at once when the area is mirrored already, else at the end of a
+     *       later tick, once it is. Asking costs the tick nothing; the same box asked again is the same area, kept
+     *       while it is asked (a {@link #watch} keeps one for good).</li>
+     *   <li>Any other world (a client's, a test's, an {@link #empty()} one, a level whose write hook did not apply) is
+     *       copied now, on this thread, and the reply is settled already.</li>
+     *   <li>Outside the box it holds nothing, and every cell is loaded: a cast leaving it flies on through air. A column
+     *       inside it that is not loaded reads as unloaded.</li>
+     *   <li>Entities are where they stood at the tick's end ({@link #partialTick}), whatever a query asks later.</li>
      *   <li>A snapshot of a snapshot is itself.</li>
      * </ul>
      */
-    public CgCollisionWorld snapshot(double x, double y, double z, double radius) {
+    public CgReply<CgCollisionWorld> snapshot(double x, double y, double z, double radius) {
         return snapshot(new CgAABB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
     }
 
-    /** The blocks and entities touching {@code bounds}, copied now: {@link #snapshot(double, double, double, double)}. */
-    public CgCollisionWorld snapshot(CgAABBc bounds) {
+    /** The blocks and entities touching {@code bounds}: {@link #snapshot(double, double, double, double)}. */
+    public CgReply<CgCollisionWorld> snapshot(CgAABBc bounds) {
         Objects.requireNonNull(bounds);
+        if (frozen) return CgReply.of(this);
+        checkThread();
+        CgLevelMirror mirror = mirror();
+        if (mirror == null) return CgReply.of(copy(bounds));
+        CgLevelMirror.Watch asked = mirror.asked(bounds);
+        CgAABB box = new CgAABB(bounds);
+        return asked.ready().map(v -> frozen(v, box));
+    }
+
+    /**
+     * Keeps {@code bounds} as it stands at the end of every server tick until {@link Watch#close}: what a simulation that
+     * runs every tick reads. On the thread this world belongs to; the watch is any thread's.
+     *
+     * <pre>{@code
+     * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);
+     * CgJob.repeat(arena::latest).run(area -> step(area));    // each run, the newest tick's
+     * arena.close();
+     * }</pre>
+     *
+     * @throws IllegalArgumentException when the area alone is past {@code crystalgraphics.mirror.memory}
+     */
+    public Watch watch(CgAABBc bounds) {
+        Objects.requireNonNull(bounds);
+        checkThread();
+        CgLevelMirror mirror = frozen ? null : mirror();
+        return new Watch(this, bounds, mirror == null ? null : mirror.watch(bounds));
+    }
+
+    /** This level's mirror; null for a world that is not a server level of a host that mirrors it. */
+    @Nullable
+    private CgLevelMirror mirror() {
+        Object lvl = level == null ? null : level.get();
+        if (lvl == null) return null;
+        return CgLevelMirror.of(lvl, world, entities, within -> FrozenHittables.of(this, within));
+    }
+
+    /** A mirror version's world inside {@code bounds}, frozen. */
+    static CgCollisionWorld frozen(CgMirrorVersion v, CgAABBc bounds) {
+        CgCollisionWorld s = new CgCollisionWorld(v.blocks(bounds), v.entities(), 1f);
+        s.frozenHittables = (FrozenHittables) v.frozen();
+        s.frozen = true;
+        return s;
+    }
+
+    /** The blocks and entities touching {@code bounds}, copied now on this thread: a world with no mirror. */
+    CgCollisionWorld copy(CgAABBc bounds) {
         if (frozen) return this;
         checkThread();
         CgWorldQuery blocks = world == CgWorldQuery.NONE ? world : CgBlockSnapshot.of(world, bounds);
@@ -196,6 +256,77 @@ public class CgCollisionWorld {
         s.frozenHittables = FrozenHittables.of(this, bounds);
         s.frozen = true;
         return s;
+    }
+
+    /**
+     * An area kept as it stands at the end of every server tick, until {@link #close}d: {@link CgCollisionWorld#watch}.
+     * {@link #latest} is the newest tick's world, frozen, which any number of threads may query at once.
+     *
+     * <pre>{@code
+     * CgCollisionWorld.Watch watch = CgCollisionWorld.of(level).watch(bounds);   // the level's thread
+     * CgCollisionWorld area = watch.latest();                                    // any thread, each tick
+     * watch.move(next);                                                          // a boss walking: any thread
+     * watch.close();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@link #latest} is null until the level's first tick's end after the watch opened, and holds the area only
+     *       once {@link #complete}: until then, columns not yet mirrored read as unloaded. {@link #ready} waits for it.</li>
+     *   <li>A world with no mirror (a client's, a test's) copies the area at each {@link #latest}, on its own thread
+     *       only.</li>
+     *   <li>Reading allocates one world each new tick, shared by every reader; within a tick it allocates nothing.</li>
+     * </ul>
+     */
+    public static final class Watch implements AutoCloseable {
+
+        private final CgCollisionWorld owner;
+        @Nullable private final CgLevelMirror.Watch mirrored;
+        private volatile CgAABB bounds;
+        @Nullable private volatile CgMirrorVersion seen;
+        @Nullable private volatile CgCollisionWorld seenWorld;
+
+        Watch(CgCollisionWorld owner, CgAABBc bounds, @Nullable CgLevelMirror.Watch mirrored) {
+            this.owner = owner;
+            this.bounds = new CgAABB(bounds);
+            this.mirrored = mirrored;
+        }
+
+        /** The newest tick's world inside the area; null before the first. Any thread (a world with no mirror: its own). */
+        @Nullable
+        public CgCollisionWorld latest() {
+            if (mirrored == null) return owner.copy(bounds);
+            CgMirrorVersion v = mirrored.version();
+            if (v == null) return null;
+            CgCollisionWorld w = seenWorld;
+            if (v == seen && w != null) return w;
+            w = frozen(v, mirrored.bounds());
+            seenWorld = w;
+            seen = v;
+            return w;
+        }
+
+        /** Whether {@link #latest} holds the whole area. Always true for a world with no mirror. Any thread. */
+        public boolean complete() {
+            return mirrored == null || mirrored.complete();
+        }
+
+        /** The first world holding the whole area: settled now when the newest does. The thread the watch was opened on. */
+        public CgReply<CgCollisionWorld> ready() {
+            if (mirrored == null) return CgReply.of(owner.copy(bounds));
+            return mirrored.ready().map(v -> frozen(v, mirrored.bounds()));
+        }
+
+        /** Keeps {@code next} instead, from the next tick's end. Any thread. */
+        public void move(CgAABBc next) {
+            bounds = new CgAABB(next);
+            if (mirrored != null) mirrored.move(next);
+        }
+
+        /** Stops keeping it. Any thread; a second close does nothing. */
+        @Override
+        public void close() {
+            if (mirrored != null) mirrored.close();
+        }
     }
 
     /** The blocks it asks: {@code CgWorldQuery.NONE} for an {@link #empty()} world. */

@@ -190,7 +190,7 @@ public class CgHitboxTest {
         assertEquals("over the network, its owner", "HITBOX 1", sent.kind() + " " + sent.entity());
         assertNull(sent.hitbox());
 
-        CgCollisionWorld frozen = w.snapshot(0, 0, 0, 16);
+        CgCollisionWorld frozen = w.snapshot(0, 0, 0, 16).result();
         shield.stop();
         assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
         assertEquals("stopped, it is met no more", CgHit.Kind.ENTITY, hit.kind());
