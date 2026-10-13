@@ -8,6 +8,8 @@ import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import org.joml.Vector3d;
 
+import javax.annotation.Nullable;
+
 /**
  * {@link CgShapes}' work, one per thread: compounds taken apart child by child, non-convex shapes to
  * {@link CgNonConvex}, closed forms where there are some, GJK and EPA for the rest. Every query works relative to its
@@ -25,6 +27,9 @@ final class CgNarrowPhase {
     /** In blocks: how far short of a cast's hit its normal is measured. */
     private static final double NORMAL_BACKOFF = 1e-4;
 
+    /** What the walk does at each pair of leaves. */
+    private static final int OVERLAP = 0, DISTANCE = 1, CONTACT = 2, CAST = 3, RAY = 4;
+
     private final CgGjk gjk = new CgGjk();
     private final CgEpa epa = new CgEpa(gjk);
     private final CgClosedForms closed = new CgClosedForms();
@@ -40,16 +45,69 @@ final class CgNarrowPhase {
 
     double baseX, baseY, baseZ;
 
+    private int op;
+    /** Stands in for the second shape when the query is against a box. */
+    private @Nullable CgAABBc box;
+    private boolean found;
     /** The best so far over a compound's children. */
     private double best;
     private final Vector3d bestA = new Vector3d(), bestB = new Vector3d(), bestNormal = new Vector3d();
     /** A ray, relative to the base point, its direction unit length; or a cast's motion. */
     private double ox, oy, oz, dx, dy, dz, max;
 
-    private void base(CgPose pose) {
-        baseX = pose.x;
-        baseY = pose.y;
-        baseZ = pose.z;
+    private void start(int op, CgPose base, @Nullable CgAABBc box) {
+        this.op = op;
+        this.box = box;
+        baseX = base.x;
+        baseY = base.y;
+        baseZ = base.z;
+        found = false;
+    }
+
+    // ---- the walk
+
+    /**
+     * Takes compounds apart on either side and runs {@link #op} on each pair of leaves. {@code swapped}: a and b were
+     * exchanged to take b's compound apart, so a directed answer turns back round. {@code sb} is null against a box or
+     * for a ray.
+     */
+    private void walk(CgShape sa, CgPose pa, @Nullable CgShape sb, @Nullable CgPose pb, boolean swapped) {
+        if (sa instanceof CgCompound) {
+            CgCompound c = (CgCompound) sa;
+            CgPose child = push();
+            try {
+                for (int i = 0; i < c.size() && !done(); i++) {
+                    walk(c.shape(i), pa.mul(c.pose(i, child), child), sb, pb, swapped);
+                }
+            } finally {
+                depth--;
+            }
+            return;
+        }
+        if (sb instanceof CgCompound) {
+            walk(sb, pb, sa, pa, !swapped);
+            return;
+        }
+        switch (op) {
+            case OVERLAP:
+                found = overlapLeaf(sa, pa, sb, pb);
+                break;
+            case DISTANCE:
+                distanceLeaf(sa, pa, sb, pb);
+                break;
+            case CONTACT:
+                contactLeaf(sa, pa, sb, pb, swapped);
+                break;
+            case CAST:
+                castLeaf(sa, pa, sb, pb, swapped);
+                break;
+            default:
+                rayLeaf(sa, pa);
+        }
+    }
+
+    private boolean done() {
+        return op == OVERLAP ? found : op == DISTANCE && best <= 0;
     }
 
     private CgPose push() {
@@ -62,57 +120,34 @@ final class CgNarrowPhase {
         return poses[depth++];
     }
 
+    private CgPlaced placeB(@Nullable CgShape sb, @Nullable CgPose pb) {
+        return box != null ? b.box(box, baseX, baseY, baseZ) : b.set(sb, pb, baseX, baseY, baseZ);
+    }
+
     // ---- overlap
 
     boolean overlaps(CgShape sa, CgPose pa, CgShape sb, CgPose pb) {
-        base(pa);
-        return overlapsAt(sa, pa, sb, pb);
-    }
-
-    private boolean overlapsAt(CgShape sa, CgPose pa, CgShape sb, CgPose pb) {
-        if (sa instanceof CgCompound) {
-            CgCompound c = (CgCompound) sa;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) {
-                    if (overlapsAt(c.shape(i), pa.mul(c.pose(i, child), child), sb, pb)) return true;
-                }
-                return false;
-            } finally {
-                depth--;
-            }
-        }
-        if (sb instanceof CgCompound) return overlapsAt(sb, pb, sa, pa);
-        if (!sa.isConvex()) {
-            if (!sb.isConvex()) throw bothNonConvex(sa, sb);
-            return nonConvex.overlaps(sa, pa, b.set(sb, pb, baseX, baseY, baseZ));
-        }
-        if (!sb.isConvex()) return nonConvex.overlaps(sb, pb, a.set(sa, pa, baseX, baseY, baseZ));
-        return convexOverlap(a.set(sa, pa, baseX, baseY, baseZ), b.set(sb, pb, baseX, baseY, baseZ));
+        start(OVERLAP, pa, null);
+        walk(sa, pa, sb, pb, false);
+        return found;
     }
 
     boolean overlaps(CgShape s, CgPose p, CgAABBc box) {
         if (box.isEmpty()) return false;
-        base(p);
-        return overlapsBox(s, p, box);
+        start(OVERLAP, p, box);
+        walk(s, p, null, null, false);
+        return found;
     }
 
-    private boolean overlapsBox(CgShape s, CgPose p, CgAABBc box) {
-        if (s instanceof CgCompound) {
-            CgCompound c = (CgCompound) s;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) {
-                    if (overlapsBox(c.shape(i), p.mul(c.pose(i, child), child), box)) return true;
-                }
-                return false;
-            } finally {
-                depth--;
+    private boolean overlapLeaf(CgShape sa, CgPose pa, @Nullable CgShape sb, @Nullable CgPose pb) {
+        if (!sa.isConvex()) {
+            if (sb != null && !sb.isConvex()) {
+                throw new IllegalArgumentException("no overlap test between two non-convex shapes: " + sa + ", " + sb);
             }
+            return nonConvex.overlaps(sa, pa, placeB(sb, pb));
         }
-        b.box(box, baseX, baseY, baseZ);
-        if (!s.isConvex()) return nonConvex.overlaps(s, p, b);
-        return convexOverlap(a.set(s, p, baseX, baseY, baseZ), b);
+        if (sb != null && !sb.isConvex()) return nonConvex.overlaps(sb, pb, a.set(sa, pa, baseX, baseY, baseZ));
+        return convexOverlap(a.set(sa, pa, baseX, baseY, baseZ), placeB(sb, pb));
     }
 
     /** Two placed convex shapes; leaves {@link #a} and {@link #b} alone, which {@link CgNonConvex} relies on. */
@@ -135,29 +170,13 @@ final class CgNarrowPhase {
     // ---- distance
 
     double distance(CgShape sa, CgPose pa, CgShape sb, CgPose pb) {
-        base(pa);
+        start(DISTANCE, pa, null);
         best = Double.POSITIVE_INFINITY;
-        distanceAt(sa, pa, sb, pb);
+        walk(sa, pa, sb, pb, false);
         return best;
     }
 
-    private void distanceAt(CgShape sa, CgPose pa, CgShape sb, CgPose pb) {
-        if (sa instanceof CgCompound) {
-            CgCompound c = (CgCompound) sa;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size() && best > 0; i++) {
-                    distanceAt(c.shape(i), pa.mul(c.pose(i, child), child), sb, pb);
-                }
-            } finally {
-                depth--;
-            }
-            return;
-        }
-        if (sb instanceof CgCompound) {
-            distanceAt(sb, pb, sa, pa);
-            return;
-        }
+    private void distanceLeaf(CgShape sa, CgPose pa, CgShape sb, CgPose pb) {
         requireConvex("distance", sa, sb);
         a.set(sa, pa, baseX, baseY, baseZ);
         b.set(sb, pb, baseX, baseY, baseZ);
@@ -173,9 +192,9 @@ final class CgNarrowPhase {
     // ---- contact
 
     boolean contact(CgShape sa, CgPose pa, CgShape sb, CgPose pb, CgContact out) {
-        base(pa);
+        start(CONTACT, pa, null);
         best = -1;
-        contactAt(sa, pa, sb, pb, false);
+        walk(sa, pa, sb, pb, false);
         if (best < 0) return false;
         out.pointA.set(bestA).add(baseX, baseY, baseZ);
         out.pointB.set(bestB).add(baseX, baseY, baseZ);
@@ -184,24 +203,7 @@ final class CgNarrowPhase {
         return true;
     }
 
-    /** {@code swapped}: a and b were exchanged to take b's compound apart, so the answer turns back round. */
-    private void contactAt(CgShape sa, CgPose pa, CgShape sb, CgPose pb, boolean swapped) {
-        if (sa instanceof CgCompound) {
-            CgCompound c = (CgCompound) sa;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) {
-                    contactAt(c.shape(i), pa.mul(c.pose(i, child), child), sb, pb, swapped);
-                }
-            } finally {
-                depth--;
-            }
-            return;
-        }
-        if (sb instanceof CgCompound) {
-            contactAt(sb, pb, sa, pa, !swapped);
-            return;
-        }
+    private void contactLeaf(CgShape sa, CgPose pa, CgShape sb, CgPose pb, boolean swapped) {
         requireConvex("contact", sa, sb);
         a.set(sa, pa, baseX, baseY, baseZ);
         b.set(sb, pb, baseX, baseY, baseZ);
@@ -232,7 +234,7 @@ final class CgNarrowPhase {
         if (!(len > 0)) {
             throw new IllegalArgumentException("a ray needs a direction: " + rdx + ", " + rdy + ", " + rdz);
         }
-        base(p);
+        start(RAY, p, null);
         ox = rox - baseX;
         oy = roy - baseY;
         oz = roz - baseZ;
@@ -241,7 +243,7 @@ final class CgNarrowPhase {
         dz = rdz / len;
         max = maxDistance;
         best = Double.POSITIVE_INFINITY;
-        rayAt(s, p);
+        walk(s, p, null, null, false);
         if (best == Double.POSITIVE_INFINITY) return false;
         out.distance = best;
         out.fraction = maxDistance > 0 ? best / maxDistance : 0;
@@ -250,17 +252,7 @@ final class CgNarrowPhase {
         return true;
     }
 
-    private void rayAt(CgShape s, CgPose p) {
-        if (s instanceof CgCompound) {
-            CgCompound c = (CgCompound) s;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) rayAt(c.shape(i), p.mul(c.pose(i, child), child));
-            } finally {
-                depth--;
-            }
-            return;
-        }
+    private void rayLeaf(CgShape s, CgPose p) {
         double t;
         if (s.isConvex()) {
             a.set(s, p, baseX, baseY, baseZ);
@@ -316,21 +308,32 @@ final class CgNarrowPhase {
     // ---- casts
 
     boolean cast(CgShape sa, CgPose pa, double mx, double my, double mz, CgShape sb, CgPose pb, CgCastHit out) {
-        base(pa);
+        return cast(sa, pa, mx, my, mz, sb, pb, null, out);
+    }
+
+    boolean cast(CgShape s, CgPose p, double mx, double my, double mz, CgAABBc box, CgCastHit out) {
+        return !box.isEmpty() && cast(s, p, mx, my, mz, null, null, box, out);
+    }
+
+    private boolean cast(CgShape sa, CgPose pa, double mx, double my, double mz, @Nullable CgShape sb,
+                         @Nullable CgPose pb, @Nullable CgAABBc box, CgCastHit out) {
         double len = Math.sqrt(mx * mx + my * my + mz * mz);
         if (len == 0) {
-            if (!overlapsAt(sa, pa, sb, pb)) return false;
+            start(OVERLAP, pa, box);
+            walk(sa, pa, sb, pb, false);
+            if (!found) return false;
             out.fraction = 0;
             out.distance = 0;
             out.point.set(pa.x, pa.y, pa.z);
             out.normal.zero();
             return true;
         }
+        start(CAST, pa, box);
         dx = mx;
         dy = my;
         dz = mz;
         best = Double.POSITIVE_INFINITY;
-        castAt(sa, pa, sb, pb, false);
+        walk(sa, pa, sb, pb, false);
         if (best == Double.POSITIVE_INFINITY) return false;
         out.fraction = best;
         out.distance = best * len;
@@ -339,77 +342,11 @@ final class CgNarrowPhase {
         return true;
     }
 
-    boolean cast(CgShape s, CgPose p, double mx, double my, double mz, CgAABBc box, CgCastHit out) {
-        if (box.isEmpty()) return false;
-        base(p);
-        double len = Math.sqrt(mx * mx + my * my + mz * mz);
-        if (len == 0) {
-            if (!overlapsBox(s, p, box)) return false;
-            out.fraction = 0;
-            out.distance = 0;
-            out.point.set(p.x, p.y, p.z);
-            out.normal.zero();
-            return true;
-        }
-        dx = mx;
-        dy = my;
-        dz = mz;
-        best = Double.POSITIVE_INFINITY;
-        castBox(s, p, box);
-        if (best == Double.POSITIVE_INFINITY) return false;
-        out.fraction = best;
-        out.distance = best * len;
-        out.point.set(bestB).add(baseX, baseY, baseZ);
-        out.normal.set(bestNormal);
-        return true;
-    }
-
-    private void castBox(CgShape s, CgPose p, CgAABBc box) {
-        if (s instanceof CgCompound) {
-            CgCompound c = (CgCompound) s;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) castBox(c.shape(i), p.mul(c.pose(i, child), child), box);
-            } finally {
-                depth--;
-            }
-            return;
-        }
-        if (!s.isConvex()) {
-            throw new IllegalArgumentException("cast takes convex shapes and compounds of them: " + s);
-        }
-        CgPlaced mover = a.set(s, p, baseX, baseY, baseZ);
-        CgPlaced still = b.box(box, baseX, baseY, baseZ);
-        double lambda = gjk.castShape(mover.core, dx, dy, dz, CAST_TOLERANCE, still.core, mover.radius(),
-                still.radius(), 1, onA, onB, v);
-        if (lambda >= best) return;
-        best = lambda;
-        castNormal(mover, still, lambda, dx, dy, dz);
-        bestB.set(onB);
-        bestNormal.set(normal);
-    }
-
-    private void castAt(CgShape sa, CgPose pa, CgShape sb, CgPose pb, boolean swapped) {
-        if (sa instanceof CgCompound) {
-            CgCompound c = (CgCompound) sa;
-            CgPose child = push();
-            try {
-                for (int i = 0; i < c.size(); i++) {
-                    castAt(c.shape(i), pa.mul(c.pose(i, child), child), sb, pb, swapped);
-                }
-            } finally {
-                depth--;
-            }
-            return;
-        }
-        if (sb instanceof CgCompound) {
-            castAt(sb, pb, sa, pa, !swapped);
-            return;
-        }
+    private void castLeaf(CgShape sa, CgPose pa, @Nullable CgShape sb, @Nullable CgPose pb, boolean swapped) {
         requireConvex("cast", sa, sb);
-        // the mover is always the caller's a, whichever side its compound was taken apart on
-        CgPlaced mover = (swapped ? b : a).set(swapped ? sb : sa, swapped ? pb : pa, baseX, baseY, baseZ);
-        CgPlaced still = (swapped ? a : b).set(swapped ? sa : sb, swapped ? pa : pb, baseX, baseY, baseZ);
+        // the mover is always the caller's a, whichever side its compound was taken apart on; never swapped on a box
+        CgPlaced mover = swapped ? b.set(sb, pb, baseX, baseY, baseZ) : a.set(sa, pa, baseX, baseY, baseZ);
+        CgPlaced still = swapped ? a.set(sa, pa, baseX, baseY, baseZ) : placeB(sb, pb);
         double lambda = gjk.castShape(mover.core, dx, dy, dz, CAST_TOLERANCE, still.core, mover.radius(),
                 still.radius(), 1, onA, onB, v);
         if (lambda >= best) return;
@@ -419,14 +356,10 @@ final class CgNarrowPhase {
         bestNormal.set(normal);
     }
 
-    private static void requireConvex(String query, CgShape sa, CgShape sb) {
-        if (!sa.isConvex() || !sb.isConvex()) {
+    private static void requireConvex(String query, CgShape sa, @Nullable CgShape sb) {
+        if (!sa.isConvex() || sb != null && !sb.isConvex()) {
             throw new IllegalArgumentException(query + " takes convex shapes and compounds of them: "
                     + (sa.isConvex() ? sb : sa));
         }
-    }
-
-    private static IllegalArgumentException bothNonConvex(CgShape sa, CgShape sb) {
-        return new IllegalArgumentException("no overlap test between two non-convex shapes: " + sa + ", " + sb);
     }
 }
