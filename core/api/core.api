@@ -4287,8 +4287,10 @@ com/crystalgraphics/job/reply/CgReplyError
   field public,static,final TIMEOUT Ljava/lang/String;
   method public <init> (Ljava/lang/String;Ljava/lang/String;)V
   method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;Ljava/lang/Object;)V
   method public cause ()Ljava/lang/Throwable;
   method public code ()Ljava/lang/String;
+  method public data ()Ljava/lang/Object;
   method public detail ()Ljava/lang/String;
   method public is (Ljava/lang/String;)Z
   method public toString ()Ljava/lang/String;
