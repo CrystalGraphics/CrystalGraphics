@@ -550,7 +550,7 @@ public final class Bolt extends CgVfxEffect implements CgVfxCue.Live, CgVfxCue.A
     @Override protected void tick(float dt) {
         // world() is the server's world on the server and the client's world on a client
         if (world().cast(bolt).at(originX, originY, originZ).along(dirX, dirY, dirZ, 64)
-                .source(following()).blocksToo().first(hit)) {
+                .source(followingId()).blocksToo().first(hit)) {
             endX = hit.x(); endY = hit.y(); endZ = hit.z();
             hit(hit);                    // heard by onHit; on the server, confirmed to viewers
         }
@@ -624,7 +624,8 @@ Each `CgHit` says:
 | Field | Meaning |
 |---|---|
 | `kind()` | `ENTITY`, `HITBOX` (a hittable hitbox, such as a shield: `entity()` is its owner), `BLOCK`, `FLUID`, `UNLOADED` (the edge of what is loaded), `BORDER` (the world border), `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
-| `entity()`, `parent()` | the entity met, and the whole one for a part of a multipart entity; a hittable hitbox's owner; -1 otherwise |
+| `entity()`, `parent()` | Minecraft's entity met, and the whole one for a part of a multipart entity; a hittable hitbox's owner; null otherwise |
+| `entityId()`, `parentId()` | the same by network id; -1 otherwise |
 | `blockX() blockY() blockZ()` | the block met |
 | `x() y() z()` | where |
 | `normalX() normalY() normalZ()`, `distance()` | from the query toward what it met, and how far it travelled; 0 on a confirmed hit |
@@ -902,7 +903,7 @@ if (world().ray().at(x, y, z).along(dx, dy, dz, 32).part(PART_BOLT).blocksToo().
 hit(burst.setPoint(bx, by, bz, PART_BURST));       // struck by no test: where it burst
 
 // a hitbox it owns: ticked with it, stopped when it dies
-hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).activeFor(4).source(following());
+hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).activeFor(4).source(followingId());
 ```
 
 Listeners then subscribe to a part ([§8](#parts)).

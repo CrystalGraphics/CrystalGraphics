@@ -29,13 +29,14 @@ so send from the game thread; networked objects' changes still coalesce to the t
 listener each server tick before those changes go out, and `serverTicks()` counts the ticks.
 
 **Audiences** are `player`, `all`, `dimension`, `near`, `tracking` (an entity, or a chunk), `trackingAndSelf` and
-`except`. All but the first two and the last ask the `CgServerPlayers` slot (`platform.service`), which each host
-fills beside its channel (`ServerPlayersModern`, `ServerPlayersLegacy`, `ServerPlayers1710`) with facts only:
-dimension, position, profile id, an entity's network id and whether it is alive, and who has a chunk or an entity
-loaded. Modern Minecraft has no public answer to
-the last, so `ServerPlayersModern` ports vanilla's tracking rule; legacy and 1.7.10 ask their entity tracker.
-Beside it each host provides `CgLevelQueries`: the world and entity queries over any level, a server's included,
-for what runs on the server tick (a beam's cast).
+`except`. All but the first two and the last ask the host's levels and players (`platform.world`), which each host
+provides beside its channel, both sides, in facts only. `CgLevels` (`LevelsModern`, `LevelsLegacy`, `Levels1710`)
+answers a level's dimension, an entity's position, network id and life, and the world and entity queries over any
+level, a server's included, for what runs on the server tick (a beam's cast). `CgPlayerQuery` (`PlayerQueryModern`,
+`PlayerQueryLegacy`, `PlayerQuery1710`) answers a player's profile id, the server's player by id, and who has a chunk
+or an entity loaded. Modern Minecraft has no public answer to the last, so `PlayerQueryModern` ports vanilla's
+tracking rule; legacy and 1.7.10 ask their entity tracker. Core reads them only through its facades
+(`CgWorldQueries`, `CgEntityQueries`, `CgPlayers`): `platform/CLAUDE.md` § *The wiring standard*.
 
 **Networked objects** (`net.object`: `CgNetType`, `CgNetObject`) are server-owned objects of typed fields, mirrored
 to the clients that can see them: changes coalesce to one frame a tick, a player coming into view is sent the
@@ -52,20 +53,21 @@ mostly push: a `CgMessage` unless the asker needs the answer.
 ### Collision — `collision`, `shape`
 
 World queries, hitboxes and snapshots are core (`docs/COLLISION.md`); a host only answers what a level holds, in
-facts, through four `platform.service` slots. A host decides nothing about collision: every rule (who may be hit, the
+facts, through the `platform.world` slots and the mirror's. A host decides nothing about collision: every rule (who may be hit, the
 nearest first, hit once) is core's.
 
 | Slot | What it answers | Modern | Legacy Forge | 1.7.10 |
 |---|---|---|---|---|
-| `CgLevelQueries` | a `CgWorldQuery` and a `CgEntityQuery` over any level, a server's included: what `CgCollisionWorld.of(level)` asks | `LevelQueriesModern` | `LevelQueriesLegacy` | `LevelQueries1710` |
+| `CgLevels` | a `CgWorldQuery` and a `CgEntityQuery` over any level, a server's included, the client's by its client subclasses: what `CgCollisionWorld.of(level)` asks | `LevelsModern` | `LevelsLegacy` | `Levels1710` |
 | … its block queries | collision boxes per block, fluid height and kind, loaded columns, the border, the level's epoch, and `copyBlocks` for a snapshot | `LevelWorldQueryModern` | `LevelWorldQueryLegacy` | `LevelWorldQuery1710` |
 | … its entity queries | `within` a box, each one's real box, flags, kind, parent, root vehicle | `LevelEntityQueryModern` | `LevelEntityQueryLegacy` | `LevelEntityQuery1710` |
 | `CgHostShapes` | Minecraft's boxes, block shapes and entities into `CgAABB`/`CgShape`, and boxes back (`CgAABB.of`, `set`, `toHost`, `CgShape.of`) | `HostShapesModern` (`AABB`, `VoxelShape`, `Entity`) | `HostShapesLegacy` (`AxisAlignedBB`, box lists, `Entity`) | `HostShapes1710` (the same) |
 | `CgHostDebug` | whether Minecraft's own hitbox view (F3+B) is on, which the collision show follows | `HostDebugModern` | `HostDebugLegacy` | `HostDebug1710` |
 | `CgMirrorHost` (`collision.mirror`) | a server level's loaded chunks without loading one, a section's states, each state's shape, and the write hook's column on a chunk: what a level's mirror keeps snapshots from | `MirrorHostModern` | `MirrorHostLegacy` | `MirrorHost1710` |
 
-`CgCollisionWorld.client(partialTick)` asks the client's frame services instead (`CgWorldQuery`, `CgEntityQuery`,
-the same classes the VFX engine reads), its entities interpolated to where the frame draws them.
+`CgCollisionWorld.client(partialTick)` asks the client level's queries (`CgWorldQueries.client()`,
+`CgEntityQueries.client()`, the same the VFX engine reads), its entities interpolated to where the frame draws them.
+The client halves are handed to `CgLevels` from client-only code (`ClientModern`, `ClientLegacy`, `Client1710`).
 
 **How each era spells it** (read with `mcapi.py` on every node, 1.7.10 from its sources; the plan's S4a table in full):
 
@@ -110,7 +112,7 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
   every job a game thread started. A level's epoch changing stops the hitboxes of the level that went.
 - **The collision show** (`crystalgraphics.collision.show`, or F3+B through `CgHostDebug`) rides the channel: a
   client asks (`crystalgraphics:collision/show`) and the server packs its hitboxes and queries within 64 blocks of
-  that player (`CgServerPlayers` for where they are, `CgLevelQueries` for which level) into
+  that player (`CgEntityQueries.position` for where they are, `CgWorldQueries.of` for their level) into
   `crystalgraphics:collision/lines`. An integrated server follows its player's F3+B; a dedicated one only its own
   variable.
 - **Proven**: `checkAllTargets` for every host; the section copy against block-by-block reads in `serverSmoke` on

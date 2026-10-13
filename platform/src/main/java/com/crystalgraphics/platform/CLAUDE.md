@@ -36,21 +36,21 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgInputService` | Interface | Key and mouse codes, modifier and button state, **and the clipboard** |
 | `service/CgSoundService` | Interface | UI sounds |
 | `service/CgCursorService` | Interface + slot | Presenting a cursor image; `CgCursorService.SERVICE` |
-| `service/CgWorldQuery` | Interface + slot | The world at a block or column, client only: collision and its boxes (as no one, or as one entity meets them), the world border, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation, the particle sprite. Primitives; core composes the scans (`com.crystalgraphics.world.CgWorldQueries`) and every query (`collision.CgCollisionWorld`) |
-| `service/CgBlockCopy` | Interface | Where a host copies a box of its blocks from its sections (`CgWorldQuery.copyBlocks`): a palette entry per block, each distinct block described once under the host's key. What a collision snapshot is made from; a host without it is read block by block |
-| `service/CgEntityQuery` | Interface + slot | Entities by int id, client only: interpolated pose and box, flags (what a hit asks too: spectator, pickable, attackable, invulnerable; solid, what Minecraft stops other entities at), kind, parent (a dragon part's dragon), root vehicle, and a box walk handing ids to a visitor, parts included. Core computes hands, head and feet (`CgEntityAttachments`) |
-| `service/CgHostShapes` | Interface + slot | The host's boxes and block shapes converted, both sides: what `CgAABB.of`/`set(Object)`/`toHost()` and `CgShape.of(Object)` reach. Provided beside `CgLevelQueries` (`HostShapesModern`, `HostShapesLegacy`, `HostShapes1710`); `NONE` throws |
-| `service/CgBoxSink` | Interface | Where a host writes a box, so it fills the caller's own `CgAABB` with nothing between |
-| `service/CgLevelQueries` | Interface + slot | Both of the above over any level, a server's included: one of each per level (`world(level)`, `entities(level)`), what an effect's authoritative half asks on the server tick. A server level has no tint, biome colour, sprite, local or camera entity. Each host splits its queries into a server-safe `Level*` base the client's extends (`LevelQueriesModern`, `LevelQueriesLegacy`, `LevelQueries1710`, provided beside `CgServerPlayers`); `CgCollisionWorld.of(level)` asks through them |
-| `service/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
-| `service/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
-| `service/CgHostDebug` | Interface + slot | The host's own debug views: whether Minecraft's F3+B hitboxes are on, which `crystalgraphics.collision.show` follows |
-| `service/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
+| `world/CgWorldQuery` | Interface | One level's blocks: collision and its boxes (as no one, or as one entity meets them), the world border, fluid, light, what a block is made of, tint and biome colours (a client level's), heightmaps, precipitation, the particle sprite. Primitives; core composes the scans (`com.crystalgraphics.world.CgWorldQueries`) and every query (`collision.CgCollisionWorld`). Handed out per level by `CgLevels` |
+| `world/CgBlockCopy` | Interface | Where a host copies a box of its blocks from its sections (`CgWorldQuery.copyBlocks`): a palette entry per block, each distinct block described once under the host's key. What a collision snapshot is made from; a host without it is read block by block |
+| `world/CgEntityQuery` | Interface | One level's entities by int id: interpolated pose and box, flags (what a hit asks too: spectator, pickable, attackable, invulnerable; solid, what Minecraft stops other entities at), kind, parent (a dragon part's dragon), root vehicle, a box walk handing ids to a visitor, parts included, and `<V> V entity(id)` / `entity(UUID)`, the host's own entity (a snapshot throws). Core computes hands, head and feet (`CgEntityAttachments`) |
+| `world/CgLevels` | Interface + slot | The host's levels, both sides: a `CgWorldQuery` and a `CgEntityQuery` for any level, the client's answered by its client subclasses (`clientWorld()`, `clientEntities()`, `clientLevel()`), a level's dimension, a server's level by dimension, loaded chunks, where the world saves, and an entity object's id, position and life. One host class per era (`LevelsModern`, `LevelsLegacy`, `Levels1710`), provided from `Network*`; its client half from the client (`ClientModern`, `ClientLegacy`, `Client1710`). Read through `CgWorldQueries` and `CgEntityQueries` |
+| `world/CgPlayerQuery` | Interface + slot | The host's players, both sides: a player entity's profile id, the server's player by profile id or entity id, the client's own, and who has a chunk or an entity loaded. `PlayerQueryModern`, `PlayerQueryLegacy`, `PlayerQuery1710`; read through `CgPlayers` and `CgAudience` |
+| `world/CgHostShapes` | Interface + slot | The host's boxes and block shapes converted, both sides: what `CgAABB.of`/`set(Object)`/`toHost()` and `CgShape.of(Object)` reach. Provided beside `CgLevels` (`HostShapesModern`, `HostShapesLegacy`, `HostShapes1710`); `NONE` throws |
+| `world/CgBoxSink` | Interface | Where a host writes a box, so it fills the caller's own `CgAABB` with nothing between |
+| `world/CgModelSpace` | Interface + slot | The camera and the rotation the world's entity pose stack starts from, read live during the level render: what turns a model's pose matrix into a world point (`CgEntityAttachments.mark`). Modern hosts from 1.15; absent before and elsewhere |
+| `world/CgHostCamera` | Interface + slot | The offset and FOV scale the host adds to its camera each frame; core sums every shake into it (`CgCameraShake`) |
+| `world/CgHostDebug` | Interface + slot | The host's own debug views: whether Minecraft's F3+B hitboxes are on, which `crystalgraphics.collision.show` follows |
+| `world/CgWorldSound` | Interface + slot | A sound at a point in the world, by resource location |
 | `service/CgGameDirectory` | Interface + slot | The client's game directory, where `config/` lives: what CrystalGraphics' settings file (`com.crystalgraphics.settings`) is kept under. Absent: the working directory |
 | `service/CgCacheDirectory` | Final class | `of(name)`: a folder under `<game>/crystalgraphics/cache/` for what can be rebuilt — the SPIR-V (`spirv`) and pipeline (`vulkan`) caches a host passes its compiler and device. Null where `-Dcrystalgraphics.cache=false` or it cannot be made; `-Dcrystalgraphics.cache.dir` moves it |
-| `service/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
+| `world/CgWorldEvents` | Final class | What the client learns happens in the world (explosion, block broken, entity hurt or killed, lightning), pushed by hosts to listeners, on the render thread |
 | `service/CgNetworkChannel` | Interface + slot | Carrying one frame to the server or a player, and its ceiling: the whole platform side of networking. `CgNetworkChannel.SERVICE`; everything above it is core's `net` |
-| `service/CgServerPlayers` | Interface + slot | The server's players, server thread: a level's, entity's or player's dimension id, an entity's position, network id and whether it is alive, a player's profile id, who has a chunk or an entity loaded, and where the world saves. What core's `CgAudience` composes; `NONE` reaches nobody |
 | `service/CgProcessExit` | Interface + slot | Ending the process at once the way the host allows: `Runtime.halt` unless provided. 1.7.10 and legacy Forge provide `FMLCommonHandler.exitJava`, since FML traps a mod's own halt. For a diagnostic run that closes itself, never an ordinary shutdown |
 | `input/CgSystemInput` | Interface | The raw event sink and its two event types |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
@@ -59,6 +59,37 @@ and cursor seams are here too — see [UI-facing services](#ui-facing-services).
 the harness's `PlatformServiceHarness` and core's `TestPlatformService`. Their GL backend, context and
 input come from tier 1 (`runtime/lwjgl/2`, `runtime/lwjgl/3`); a Minecraft host adds only what names
 Minecraft.
+
+---
+
+## The wiring standard
+
+How a platform service is declared, provided and read. `CgLevels` and `CgPlayerQuery` are the worked example.
+
+1. **One SPI per concern**, an interface in `platform.<area>` (`platform.world`, ...), named for what it answers, with
+   a `NONE` that answers nothing and a `SERVICE` slot. A concern never has two slots.
+2. **One static facade per SPI, in core, and only it reads the slot** (`CgWorldQueries`, `CgEntityQueries`,
+   `CgPlayers`, `CgCamera`, `CgSounds`); an SPI with a single reader in core is read by that class alone.
+   `WorldServiceReadersTest` holds it.
+3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
+4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
+   own call site (`hit.entity()`, `CgPlayers.player(id)`).
+5. **Side is declared in the SPI's javadoc** and decides where a host provides it: both-sides slots from `Network*` at
+   init, client-only ones from `PlatformService*`. A both-sides SPI's client half is handed over by a client-only class
+   (`ClientModern.install()`), never by a lambda in a class a server loads.
+6. **One host class per SPI per era**, named `<SPI without Cg><Era>` (`LevelsModern`, `PlayerQuery1710`); a client
+   extra is a subclass, never a second slot.
+
+```java
+// core
+CgEntityQuery here = CgEntityQueries.client();        // never CgPlatform.get(CgLevels.SERVICE)
+ServerPlayer p = CgPlayers.player(profileId);
+
+// a host, at init, both sides
+CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
+// and on a client
+ClientModern.install();
+```
 
 ---
 
@@ -300,8 +331,8 @@ the other, coming up with a working GL backend and a dead keyboard, with nothing
 | `CgPlatform.input()` | `translateKeyboardCodes`, `translateMouseCodes`, `getCurrentModifiers`, `isKeyDown`, `isMouseDown`, `howManyMouseButtons`, `getClipboard`, `setClipboard` |
 | `CgPlatform.sound()` | `play(String soundId)` |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
-| `CgPlatform.get(CgWorldQuery.SERVICE)`, `CgEntityQuery.SERVICE` | the client world's blocks and entities; `NONE` with no level, on a server and in the harness |
-| `CgPlatform.get(CgHostCamera.SERVICE)`, `CgWorldSound.SERVICE` | writes a host opts into: a camera offset and a world sound; `NONE` ignores them |
+| `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
+| `CgCamera`, `CgSounds` (core) | writes a host opts into: a camera offset and a world sound; `NONE` ignores them |
 
 **The clipboard is on `CgInputService`, not a service of its own.** It is not conceptually input, but it
 is reached the same way — one loader-owned handle, needed by exactly the code that handles keys — and

@@ -11,7 +11,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 
 | Module | Java | Role |
 |---|---|---|
-| `platform/` | 25 + 8 copy | The SPI only: `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`, `CgGL`, the services. No implementation — [its guide](../platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md) |
+| `platform/` | 25 + 8 copy | The SPI only: `CgPlatform`, `CgPlatformService`, `CgService`, `CgGLBackend`, `CgGL`, the services (`service`), the world's (`world`: levels, entities, players), each read in core through one facade (`platform/CLAUDE.md` § *The wiring standard*). No implementation — [its guide](../platform/src/main/java/com/crystalgraphics/platform/CLAUDE.md) |
 | `core/` | 25 + 8 copy | All rendering: materials, meshes, the pipeline, fonts, text, atlases. Calls `CgPlatform`/`CgGL` for every GL or lifecycle operation; never imports Minecraft, a loader or LWJGL |
 | `freetype-msdfgen-harfbuzz-bindings/` | 8 | JNI text shaping, with its natives |
 | `runtime/lwjgl/2`, `runtime/lwjgl/3` | 25 + 8 copy | **Tier 1**: GL backend, context, input and cursor per LWJGL (`Lwjgl2*`, `Lwjgl3*`, `Glfw*`). **Name no Minecraft class** (import guard), so one copy serves every host of that LWJGL and the harness. LWJGL3 is pinned to 3.2.2, the oldest in range, so a symbol a 1.16 client lacks is a compile error |

@@ -662,14 +662,14 @@ thing:
 
 - `level` is a level, an entity in it, or a dimension id (`"minecraft:overworld"`).
 - **A point-anchored object can move**: `obj.moveTo(x, y, z)`; who is in range is worked out again.
-- **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server. A client
-  finds the entity by `obj.entityId()`.
+- **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server.
+  `obj.entity()` is the entity on either side: the server's, or the one of `obj.entityId()` in a client's level.
 - **A player who is away** (logged out) leaves a player-anchored object waiting, `obj.isDormant()`, unless the type
   is not persisted, when it ends.
 - **A rule of your own** replaces the anchor's: `.visibleTo((obj, peer) -> sameTeam(peer.id(), obj))` on the type,
   asked once a tick per object and player. Never across dimensions.
 - **On the server, `obj.level()`** is the level it is in, for what your code asks of the world:
-  `CgPlatform.get(CgLevelQueries.SERVICE).world(obj.level())`.
+  `CgWorldQueries.of(obj.level())`, `CgCollisionWorld.of(obj.level())`.
 
 ---
 

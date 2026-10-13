@@ -128,7 +128,7 @@ Where each class lives is `collision/CLAUDE.md`, which loads itself for anyone e
 | **Hitbox type** | A hitbox the server starts that every client watching runs too. | `CgHitboxType` |
 | **Snapshot** | A world's blocks and entities in an area as they stood at the end of a server tick, which any thread may read. | `world.snapshot(...)`, `world.watch(...)` |
 | **Batch** | Many queries in one tick sharing what they learn of the entities. | `CgCollisionWorld.batch()` |
-| **Entity id** | How an entity is named here: Minecraft's `entity.getId()`. `level.getEntity(id)` turns it back. | `int` |
+| **Entity id** | How an entity is named here: Minecraft's `entity.getId()`. A hit hands out both: `entityId()`, and the entity itself, `entity()`. | `int` |
 
 How they fit together:
 
@@ -158,7 +158,7 @@ CgCollisionWorld.of(level).overlap(BLAST).at(x, y, z)
         .source(caster.getId())                                  // never the caster, their mount or passengers
         .living()                                                // mobs and players, a dragon by its whole
         .forEach(h -> {
-            Entity e = level.getEntity(h.entity());
+            LivingEntity e = h.entity();                         // Minecraft's entity, or null if it went
             if (e != null) e.hurt(level.damageSources().magic(), 10f * h.falloff(2, 6));   // full within 2, none past 6
         });
 ```
@@ -238,7 +238,7 @@ turning red), never for what is true. [§10](#10-hitboxes-on-every-side-hitbox-t
 | Angles | radians. `facing(yaw, pitch)` follows Minecraft's directions (yaw 0 faces +Z, pitch down is positive): `facing(Math.toRadians(player.getYRot()), Math.toRadians(player.getXRot()))` |
 | A shape's own axes | +Z forward, +Y up. A cone points along +Z; a capsule from `of` lies along Z |
 | Hitbox time | game ticks, fractional allowed: `activeFor(5)` is a quarter of a second |
-| Entities | ids: `entity.getId()`; `-1` means none |
+| Entities | ids: `entity.getId()`; `-1` means none. A hit's `entity()` is Minecraft's entity, asked on the level's thread |
 
 ### Nothing allocated
 
@@ -553,8 +553,9 @@ Each thing met is a `CgHit`.
 | Reading | Means |
 |---|---|
 | `kind()` | `ENTITY`, `HITBOX`, `BLOCK`, `FLUID`, `UNLOADED`, `BORDER`, `POINT` |
-| `entity()` | the entity met (a dragon's part included), or a hittable hitbox's owner; -1 otherwise |
-| `parent()` | the whole entity: the dragon for one of its parts, else `entity()`; -1 otherwise |
+| `entity()` | Minecraft's entity met (a dragon's part included), or a hittable hitbox's owner, cast to the type you name; null otherwise |
+| `parent()` | the whole entity: the dragon for one of its parts, else `entity()`; null otherwise |
+| `entityId()`, `parentId()` | the same by network id, -1 otherwise: what crosses threads and the network |
 | `hitbox()`, `hitboxPart()` | the hittable hitbox met, and which of its parts; null for any other kind |
 | `blockX()`, `blockY()`, `blockZ()` | the cell met, for a terrain hit (`kind().isTerrain()`: block, fluid, border, unloaded) |
 | `fluid()` | `CgWorldQuery.FLUID_WATER` or `FLUID_LAVA`, for a `FLUID` hit |
@@ -587,6 +588,9 @@ Things to know:
   takes its multiplier), `parent()` the dragon.
 - **A visitor's hit is the query's own**, valid during the call. Keep one with `new CgHit().set(h)`, or end the query
   with `first(hit)` / `into(hits)`.
+- **`entity()` asks the level the hit came from**, on its thread. A snapshot's hit throws there instead: a worker may
+  not touch an entity, so keep `entityId()` and look it up on the level's thread
+  (`CgEntityQueries.of(level).entity(id)`).
 
 ### Many hits: `CgHits`
 
@@ -658,7 +662,7 @@ static final CgShape BLAST = CgSphere.of(8);
 world.overlap(BLAST).at(x, y, z).source(caster.getId()).living().exposure().forEach(h -> {
     float damage = 20f * h.falloff(2, 8) * h.exposure();          // weaker with distance, none behind full cover
     if (damage <= 0) return;
-    Entity e = level.getEntity(h.entity());
+    LivingEntity e = h.entity();
     if (e == null) return;
     e.hurt(level.damageSources().explosion(null, caster), damage);
     e.push(h.normalX() * damage * 0.1, 0.3, h.normalZ() * damage * 0.1);   // away from the blast
@@ -1035,7 +1039,7 @@ CgCollisionWorld arena = CgCollisionWorld.empty();
 CgHitbox target = CgHitbox.of(CgSphere.of(0.5)).source(TARGET_ID).hittable().passive();
 target.pose(pose.at(4, 1, 0)).tick(arena, 1);                    // placed, and met from now on
 
-if (arena.ray().at(0, 1, 0).along(1, 0, 0, 10).first(hit)) score(hit.entity());   // TARGET_ID
+if (arena.ray().at(0, 1, 0).along(1, 0, 0, 10).first(hit)) score(hit.entityId());   // TARGET_ID
 ```
 
 - Its hitboxes are met by queries on the thread that ticks them.
@@ -1147,10 +1151,10 @@ A VFX effect strikes through this same engine. Inside an effect (`CgVfxEffect`):
 public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_BLAST = SCHEMA.part("blast");
 
 @Override protected void tick(float dt) {
-    if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(following()).blocksToo().part(PART_BOLT).first(hit)) {
+    if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(followingId()).blocksToo().part(PART_BOLT).first(hit)) {
         hit(hit);                                                   // reported as the effect's hit
         hitbox(PART_BLAST, CgShell.front(2)).at(hit.x(), hit.y(), hit.z()).radius(0, 10, 8).activeFor(8)
-                .source(following());                               // no listener: its hits are the effect's
+                .source(followingId());                               // no listener: its hits are the effect's
     }
 }
 ```
@@ -1369,7 +1373,7 @@ public void theConeHitsWhatIsInFrontOnly() {
     CgHits hits = new CgHits();
     arena.overlap(CgCone.of(5, Math.toRadians(30))).at(0, 0, 0).into(hits);   // +Z forward
     assertEquals(1, hits.size());
-    assertEquals(1, hits.get(0).entity());
+    assertEquals(1, hits.get(0).entityId());
     front.stop();
     behind.stop();
 }

@@ -33,8 +33,10 @@ MACHINE.spawn(CgAnchor.at(level, x, y, z)).start().setFloat(HEAT, 0.8f);
   into allocating.
 - **Names**: a type is `namespace:path`, the namespace the hello compares; a field, event or command is short and
   matched within its type.
-- **`core/` names no Minecraft**: the hosts answer through `CgServerPlayers` (players, entities, tracking, levels) and
-  `CgLevelQueries` (the world, for server behaviours), each in `platform.service`.
+- **`core/` names no Minecraft**: the hosts answer through `CgPlayerQuery` (players, tracking) and `CgLevels`
+  (levels, entity objects, the world for server behaviours), in `platform.world`, read through `CgPlayers`,
+  `CgWorldQueries` and `CgEntityQueries`.
+- **Which side code runs on** is `CgNetwork.side()`: the server's thread is `SERVER`, a client's every other thread.
 - **Effects are a consumer, not a special case**: `vfx.net`'s cues are types like any other. A need they have that any
   object could have belongs here (`level()`, the graceful end in front of viewers did).
 

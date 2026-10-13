@@ -260,13 +260,14 @@ The work needs the world, and may not touch it. Hand it a copy.
 ### A snapshot of the blocks and entities
 
 ```java
+CgEntityQuery entities = CgEntityQueries.of(level);      // the level's entities, asked on its thread only
 CgCollisionWorld.of(level).snapshot(x, y, z, 24)          // CgReply<CgCollisionWorld>: the area, frozen
         .flatMap(area -> CgJob.run(() -> {                // area arrives here; the job runs on a worker
             CgHits hits = new CgHits();                   // the worker's own
             area.overlap(BLAST).at(x, y, z).living().into(hits);   // query the snapshot as the level
             return hits;                                  // the job's answer: a CgHits
         }))
-        .then(hits -> hits.forEach(h -> hurt(h.entity())));   // hits: what the work returned, on this thread
+        .then(hits -> hits.forEach(h -> hurt(entities.entity(h.entityId()))));   // back on this thread: ids to entities
 ```
 
 A snapshot is a world any number of threads may query at once, frozen at the end of a server tick: entities where they
