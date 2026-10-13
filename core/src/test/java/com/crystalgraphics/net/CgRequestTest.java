@@ -4,7 +4,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
-import com.crystalgraphics.net.protocol.CgProtocolErrors;
+import com.crystalgraphics.job.reply.CgReplyError;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.serialization.CgCodecs;
@@ -68,7 +68,7 @@ public class CgRequestTest {
         greet.onServer((peer, name, reply) -> reply.ok("hello " + name + " from " + peer.name()));
         connect();
 
-        greet.ask("Alex", answer::set, error::set);   // before the hello: held, then sent
+        greet.ask("Alex").then(answer::set).onError(e -> error.set(e.code()));   // before the hello: held, then sent
         settle();
 
         assertEquals("hello Alex from Steve", answer.get());
@@ -82,7 +82,7 @@ public class CgRequestTest {
         connect();
         settle();
 
-        echo.ask(id, "ping", answer::set, error::set);
+        echo.ask(id, "ping").then(answer::set).onError(e -> error.set(e.code()));
         settle();
 
         assertEquals("ping!", answer.get());
@@ -95,7 +95,7 @@ public class CgRequestTest {
         connect();
         settle();
 
-        greet.ask("Alex", answer::set, error::set);
+        greet.ask("Alex").then(answer::set).onError(e -> error.set(e.code()));
         settle();
 
         assertNull(answer.get());
@@ -109,7 +109,7 @@ public class CgRequestTest {
         CgRequest<String, String> late = CgRequest.toServer("late:greet", CgCodecs.STRING, CgCodecs.STRING);
         late.onServer((peer, name, reply) -> reply.ok(name));
 
-        late.ask("Alex", answer::set, error::set);
+        late.ask("Alex").then(answer::set).onError(e -> error.set(e.code()));
         settle();
 
         assertNull(answer.get());
@@ -123,10 +123,10 @@ public class CgRequestTest {
         connect();
         settle();
 
-        greet.ask("Alex", answer::set, error::set).cancel();
+        greet.ask("Alex").then(answer::set).onError(e -> error.set(e.code())).cancel();
         settle();
 
         assertNull(answer.get());
-        assertEquals(CgProtocolErrors.CANCELLED, error.get());
+        assertEquals(CgReplyError.CANCELLED, error.get());
     }
 }

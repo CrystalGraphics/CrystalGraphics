@@ -472,7 +472,7 @@ cancels the question if the player closes it first.
 public class MachineScreen extends Screen {
     private final BlockPos pos;
     private String status = "Loading...";
-    private CgRequest.Pending pending;
+    private CgReply<Stats> pending;
 
     public MachineScreen(BlockPos pos) {
         super(Component.literal("Machine"));
@@ -482,9 +482,9 @@ public class MachineScreen extends Screen {
     @Override
     protected void init() {
         if (pending != null) return;                        // init runs again on every resize: ask once
-        pending = MachineNet.STATS.ask(pos.asLong(),
-                stats -> status = "Heat " + stats.heat() + "   Fuel " + stats.fuel() + "   Owner " + stats.owner(),
-                error -> status = switch (error) {
+        pending = MachineNet.STATS.ask(pos.asLong())
+                .then(stats -> status = "Heat " + stats.heat() + "   Fuel " + stats.fuel() + "   Owner " + stats.owner())
+                .onError(error -> status = switch (error.code()) {
                     case MachineNet.TOO_FAR -> "Too far away";
                     case MachineNet.NO_MACHINE -> "The machine is gone";
                     case CgRequest.UNSUPPORTED -> "The server does not have this mod";
@@ -507,9 +507,9 @@ public class MachineScreen extends Screen {
 ```
 
 What happens, in order: the screen opens and calls `ask`; the question reaches the server; the handler runs on the
-server thread, checks, and calls `reply.ok`; the answer comes back; the `stats ->` callback runs on the client
-thread and the next frame draws it. Had the player walked away first, `reply.fail(TOO_FAR)` would have sent the
-error instead, and the `error ->` callback would have run.
+server thread, checks, and calls `reply.ok`; the answer comes back; the `then` callback runs on the client thread
+and the next frame draws it. Had the player walked away first, `reply.fail(TOO_FAR)` would have sent the error
+instead, and the `onError` callback would have run.
 
 The other way round, the server asks one client:
 
@@ -517,15 +517,18 @@ The other way round, the server asks one client:
 public static final CgRequest<Integer, String> SETTING =
         CgRequest.toClient("mymod:client/setting", CgCodecs.INT, CgCodecs.STRING);
 SETTING.onClient((key, reply) -> reply.ok(localSetting(key)));                     // client entry point
-SETTING.ask(playerId, 3, value -> remember(playerId, value), error -> { });        // server
+SETTING.ask(playerId, 3).then(value -> remember(playerId, value));                 // server
 ```
 
-- **Exactly one of the two callbacks runs, once**, on the asking side's game thread.
+- **`ask` answers a `CgReply`**: `then` hears the answer, `onError` a failure, `always` either, once, on the asking
+  side's game thread. It composes with jobs and other asks (`CgReply.both`, `CgReply.all`). A failure nobody listens
+  for is logged.
 - **The answer may come later** than the handler returns: keep the `reply` and call `ok` when you have it. A reply
   answers once; later calls are ignored. `reply.fail("mymod/no_such_machine")` sends an error instead.
-- **Errors you may get**: your handler's own text, `CgRequest.UNSUPPORTED` (the other side lacks your mod or your
-  version), `protocol/timeout` (past `STATS.timeout(millis)`) and `protocol/cancelled` (you called `cancel()` on what
-  `ask` returned).
+- **Errors you may get**, as `error.code()`: your handler's own text, `CgRequest.UNSUPPORTED` (the other side lacks
+  your mod or your version), `CgReplyError.TIMEOUT` (past `STATS.timeout(millis)`), `CgReplyError.CANCELLED` (you
+  called `cancel()` on what `ask` returned) and `protocol/handlerFailed` (the handler threw; `error.detail()` says
+  what).
 
 ---
 

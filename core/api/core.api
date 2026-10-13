@@ -4393,8 +4393,8 @@ com/crystalgraphics/net/CgRequest
   extends java/lang/Object
   field public,static,final DEFAULT_TIMEOUT_MILLIS J
   field public,static,final UNSUPPORTED Ljava/lang/String;
-  method public ask (Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/CgRequest$Pending;
-  method public ask (Ljava/util/UUID;Ljava/lang/Object;Ljava/util/function/Consumer;Ljava/util/function/Consumer;)Lcom/crystalgraphics/net/CgRequest$Pending;
+  method public ask (Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
+  method public ask (Ljava/util/UUID;Ljava/lang/Object;)Lcom/crystalgraphics/job/reply/CgReply;
   method public direction ()Lcom/crystalgraphics/net/CgRequest$Direction;
   method public name ()Ljava/lang/String;
   method public onClient (Lcom/crystalgraphics/net/CgRequest$ClientHandler;)Lcom/crystalgraphics/net/CgRequest;
@@ -4414,11 +4414,6 @@ com/crystalgraphics/net/CgRequest$Direction
   field public,static,final TO_SERVER Lcom/crystalgraphics/net/CgRequest$Direction;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/CgRequest$Direction;
   method public,static values ()[Lcom/crystalgraphics/net/CgRequest$Direction;
-com/crystalgraphics/net/CgRequest$Pending
-  access public,final
-  extends java/lang/Object
-  method public <init> ()V
-  method public cancel ()V
 com/crystalgraphics/net/CgRequest$Reply
   access public,abstract,interface
   extends java/lang/Object

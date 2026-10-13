@@ -11,6 +11,12 @@ import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.crystalgraphics.job.reply.CgPendingReply;
+import com.crystalgraphics.job.reply.CgReply;
+import com.crystalgraphics.job.reply.CgReplyError;
 import com.crystalgraphics.net.protocol.CgMessageRouter;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocolErrors;
@@ -26,27 +32,36 @@ import com.crystalgraphics.serialization.CgCodecException;
  *         CgRequest.toServer("mymod:machine/stats", BlockPos.CODEC, Stats.CODEC);
  *
  * STATS.onServer((peer, pos, reply) -> reply.ok(statsAt(peer, pos)));        // server
- * STATS.ask(pos, stats -> show(stats), error -> showError(error));           // client
+ * STATS.ask(pos).then(stats -> show(stats)).onError(e -> showError(e.code()));   // client
  *
  * // the other way: the server asks one client
  * public static final CgRequest<Unit, Settings> SETTINGS =
  *         CgRequest.toClient("mymod:client/settings", Unit.CODEC, Settings.CODEC);
  * SETTINGS.onClient((unit, reply) -> reply.ok(localSettings()));             // client entry point
- * SETTINGS.ask(playerId, Unit.INSTANCE, settings -> apply(settings), error -> { });   // server
+ * SETTINGS.ask(playerId, Unit.INSTANCE).then(settings -> apply(settings));   // server
+ * }</pre>
+ *
+ * An ask is a {@link CgReply}, so it composes with jobs and other asks:
+ *
+ * <pre>{@code
+ * CgReply.both(STATS.ask(pos), CgJob.run(() -> loadIcon(pos))).then(both -> show(both.first(), both.second()));
  * }</pre>
  *
  * <ul>
- *   <li>Every answer, error included, arrives on the asking side's game thread at its tick. Exactly one of the two
- *       callbacks runs, once.</li>
+ *   <li>Every answer, error included, arrives on the asking side's game thread at its tick, once.</li>
  *   <li>A reply may be given later than the handler returns; {@link Reply} is answered once and later calls are
  *       ignored.</li>
- *   <li>An error is a code from {@link CgProtocolErrors} or the handler's own text: {@link #UNSUPPORTED} when the
- *       peer lacks the namespace or speaks another version, {@code protocol/timeout} past {@link #timeout},
- *       {@code protocol/cancelled} after {@link Pending#cancel}.</li>
+ *   <li>An error's code is the handler's own text, or {@link #UNSUPPORTED} when the peer lacks the namespace or
+ *       speaks another version, {@link CgReplyError#TIMEOUT} past {@link #timeout}, {@link CgReplyError#CANCELLED}
+ *       after {@code cancel()}, and {@link CgProtocolErrors#HANDLER_FAILED} (its detail what was thrown) when the
+ *       handler threw or an answer would not decode.</li>
+ *   <li>A failure nobody listens for is logged.</li>
  *   <li>Mods mostly push: reach for a {@link CgMessage} unless the asker needs the answer.</li>
  * </ul>
  */
 public final class CgRequest<A, R> {
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     /** The peer cannot answer: no such namespace there, another version of it, or no hello at all. */
     public static final String UNSUPPORTED = "cg/unsupported";
@@ -161,79 +176,79 @@ public final class CgRequest<A, R> {
 
     // ── Asking ──────────────────────────────────────────────────────────────────────────────────
 
-    /** An ask in flight. */
-    public static final class Pending {
-        @Nullable
-        private CgProtocolConnection<Object> connection;
-        private int id = -1;
-        private boolean done;
-        @Nullable
-        private Consumer<String> onError;
-
-        /** Gives up: the error callback runs with {@code protocol/cancelled}, and a late answer is dropped. */
-        public void cancel() {
-            if (done) return;
-            if (connection != null && id >= 0) {
-                connection.router().cancel(id);   // runs onError through the router
-                return;
-            }
-            done = true;
-            if (onError != null) onError.accept(CgProtocolErrors.CANCELLED);
-        }
-    }
-
     /** On a client: asks the server. Fails with {@link #UNSUPPORTED} when not connected. */
-    public Pending ask(A value, Consumer<R> onAnswer, Consumer<String> onError) {
+    public CgReply<R> ask(A value) {
         if (direction != Direction.TO_SERVER) throw new IllegalStateException(name + " is asked by the server");
-        return ask(CgNetwork.client(), value, onAnswer, onError);
+        return ask(CgNetwork.client(), value);
     }
 
     /** On the server: asks one player. Fails with {@link #UNSUPPORTED} when they have no connection. */
-    public Pending ask(UUID player, A value, Consumer<R> onAnswer, Consumer<String> onError) {
+    public CgReply<R> ask(UUID player, A value) {
         if (direction != Direction.TO_CLIENT) throw new IllegalStateException(name + " is asked by a client");
-        return ask(CgNetwork.forPlayer(player), value, onAnswer, onError);
+        return ask(CgNetwork.forPlayer(player), value);
     }
 
-    private Pending ask(@Nullable CgProtocolConnection<Object> connection, A value,
-                        Consumer<R> onAnswer, Consumer<String> onError) {
-        Objects.requireNonNull(onAnswer, "onAnswer");
-        Objects.requireNonNull(onError, "onError");
-        Pending pending = new Pending();
-        pending.onError = error -> {
-            if (pending.done) return;
-            pending.done = true;
-            onError.accept(error);
-        };
+    /** One ask: its reply, and the router's id once it is sent, for cancel. */
+    private final class Asked {
+        final CgPendingReply<R> reply = new CgPendingReply<>(this::cancel);
+        final Consumer<String> failed = this::fail;
+        @Nullable
+        CgProtocolConnection<Object> connection;
+        int id = -1;
+
+        void cancel() {
+            if (connection != null && id >= 0) connection.router().cancel(id);   // fails it through the router
+        }
+
+        void fail(String wire) {
+            if (reply.isDone()) return;
+            CgReplyError error = errorOf(wire);
+            boolean heard = reply.fail(error);
+            if (!heard && !error.is(CgReplyError.CANCELLED)) LOGGER.warn("[cg-net] request {} failed: {}", name, error);
+        }
+    }
+
+    private CgReply<R> ask(@Nullable CgProtocolConnection<Object> connection, A value) {
+        Asked asked = new Asked();
         if (connection == null || connection.isClosed()) {
-            pending.onError.accept(UNSUPPORTED);
-            return pending;
+            asked.fail(UNSUPPORTED);
+            return asked.reply;
         }
         Object encoded = args.encode(connection.ops(), value);
         CgHello.State peer = CgHello.state(connection);
         peer.whenKnown(() -> {
-            if (pending.done) return;
+            if (asked.reply.isDone()) return;
             int theirs = peer.version(namespace);
             int ours = CgMessage.versionOf(namespace);
             if (theirs < 0 || theirs != ours) {
                 if (theirs >= 0) peer.reportMismatch(namespace, ours, connection.peer());
-                pending.onError.accept(UNSUPPORTED);
+                asked.fail(UNSUPPORTED);
                 return;
             }
-            pending.connection = connection;
-            pending.id = connection.router().request(name, encoded, payload -> {
-                if (pending.done) return;
+            asked.connection = connection;
+            asked.id = connection.router().request(name, encoded, payload -> {
+                if (asked.reply.isDone()) return;
                 R answer;
                 try {
                     answer = result.decode(connection.ops(), payload);
                 } catch (CgCodecException malformed) {
-                    pending.onError.accept(CgProtocolErrors.HANDLER_FAILED + ": " + malformed.getMessage());
+                    asked.fail(CgProtocolErrors.HANDLER_FAILED + ": " + malformed.getMessage());
                     return;
                 }
-                pending.done = true;
-                onAnswer.accept(answer);
-            }, pending.onError, System.currentTimeMillis() + timeoutMillis);
-        }, () -> pending.onError.accept(UNSUPPORTED));
-        return pending;
+                asked.reply.resolve(answer);
+            }, asked.failed, System.currentTimeMillis() + timeoutMillis);
+        }, () -> asked.fail(UNSUPPORTED));
+        return asked.reply;
+    }
+
+    /** A wire error as a reply's: the router's cancel and timeout become the codes every reply uses. */
+    static CgReplyError errorOf(String wire) {
+        if (wire.equals(CgProtocolErrors.CANCELLED)) return new CgReplyError(CgReplyError.CANCELLED, wire);
+        if (wire.equals(CgProtocolErrors.TIMEOUT)) return new CgReplyError(CgReplyError.TIMEOUT, wire);
+        if (wire.startsWith(CgProtocolErrors.HANDLER_FAILED + ": ")) {
+            return new CgReplyError(CgProtocolErrors.HANDLER_FAILED, wire.substring(CgProtocolErrors.HANDLER_FAILED.length() + 2));
+        }
+        return new CgReplyError(wire, "");
     }
 
     // ── Wiring, from CgNetwork ──────────────────────────────────────────────────────────────────
