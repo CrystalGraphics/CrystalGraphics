@@ -12,8 +12,9 @@ import java.util.Objects;
 import java.util.function.IntConsumer;
 
 /**
- * A world of plain shapes placed by id, with no blocks and no host: what a test, an arena or a mod's own hurtboxes
- * query. Every test is exact against the shapes themselves, not their boxes.
+ * A world of plain shapes placed by id, with no blocks and no host: what a test or an arena queries. Every test is
+ * exact against the shapes themselves, not their boxes. Shapes a host level's queries should meet are
+ * {@link CgHitbox#target() target} hitboxes instead.
  *
  * <pre>{@code
  * CgShapeWorld arena = CgCollisionWorld.shapes();
@@ -78,6 +79,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
         for (int i = 0; i < size; i++) {
             if (within == null || bounds[i].intersects(within)) s.add(ids[i], shapes[i], poses[i]);
         }
+        s.frozenTargets = CgFrozenTargets.of(this, within);
         s.share();
         return s;
     }

@@ -63,6 +63,20 @@ import java.util.function.IntPredicate;
  * slam.pose(pose).tick(world, deltaTicks);                      // never also start()ed
  * }</pre>
  *
+ * A shield its owner holds up, which hits nothing itself and stops what reaches it first: every query meets it,
+ * other hitboxes and rays included, as a {@link CgHit.Kind#HITBOX} hit standing for its owner.
+ *
+ * <pre>{@code
+ * static final CgHitPart SHIELD = CgHitPart.of("shield");
+ *
+ * CgHitbox.follow(player, CgEntityAttachments.HANDS_FORWARD).facing(CgHitbox.Facing.LOOK)
+ *         .part(SHIELD, CgBox.of(1.2, 1.4, 0.2)).target().passive()
+ *         .start(level);
+ *
+ * // a sword's swing meets the shield first, so the player behind it counts as hit and is not
+ * swing.onHit(h -> { if (h.kind() == CgHit.Kind.HITBOX) parried(h.entity()); else damage(h.entity(), 6f); });
+ * }</pre>
+ *
  * <ul>
  *   <li>Each target is hit once by default; {@link #rehit} lets it be hit again, {@link #maxHits} caps that, and
  *       {@link #maxTargets} stops new targets once that many are hit. A multipart entity is one target.</li>
@@ -72,6 +86,8 @@ import java.util.function.IntPredicate;
  *       only there. A followed entity gone stops it, and so does its level unloading.</li>
  *   <li>Configure it before it first ticks: parts and sizes are fixed from then. A hitbox runs once.</li>
  *   <li>The hit handed to a listener is valid during the call.</li>
+ *   <li>A {@link #target} is met by queries on the thread it ticks on, against its level, while it is active and
+ *       until it stops: an owner ticking one must stop it.</li>
  *   <li>Placement is from the followed entity's proportions on every side ({@link CgEntityAttachments#point(int,
  *       double[], double[])}), so server and client agree.</li>
  * </ul>
@@ -143,9 +159,16 @@ public final class CgHitbox {
     private Consumer<? super CgHit> onHit, onEnter;
     private IntConsumer onExit;
 
+    // ---- as a target
+    private boolean target;
+    /** Read by the routers that hand a hitbox's hits on: a passive one has none. */
+    boolean passive;
+
     // ---- running
     private CgCollisionWorld world;
     private boolean prepared, engine, stopped, hasPrev;
+    /** Whether {@link #nowX}, {@link #nowQ} and {@link #sizeNow} place it now: active, and placed at least once. */
+    private boolean posed;
     /** Ticks as usual, keeping its hit list and who is inside, and tells no listener: a late joiner catching up. */
     private boolean silent;
     private int epoch;
@@ -418,6 +441,34 @@ public final class CgHitbox {
         return this;
     }
 
+    // ---- as a target
+
+    /**
+     * Makes it met by queries, other hitboxes' included, while it is active: a shield, a ward, a weak spot. Each such
+     * hit is a {@link CgHit.Kind#HITBOX} whose {@link CgHit#entity()} is its owner (the entity it follows, else its
+     * {@link #source}), so a hitbox meeting it first counts its owner as hit.
+     *
+     * <ul>
+     *   <li>It needs an owner: its first tick throws without one.</li>
+     *   <li>Its owner's queries never meet it, nor those excepting its owner. Filters a query asks of an entity
+     *       ({@code living()}, {@code kinds}, {@code where}) are asked of its owner; {@code inflate} does not grow it.</li>
+     *   <li>A query asking {@code noHitboxes()} or {@code blocksOnly()} passes through it.</li>
+     *   <li>A snapshot holds it as it was when taken.</li>
+     * </ul>
+     */
+    public CgHitbox target() {
+        configurable();
+        target = true;
+        return this;
+    }
+
+    /** Hits nothing: it only moves and sizes, for queries to meet as a {@link #target}. Its listeners never hear. */
+    public CgHitbox passive() {
+        configurable();
+        passive = true;
+        return this;
+    }
+
     // ---- listeners
 
     /** Each hit its rules allow, nearest first. */
@@ -453,6 +504,11 @@ public final class CgHitbox {
         engine = true;
         epoch = world.blocks().levelEpoch();
         CgHitboxes.add(this);
+        if (target && activeFrom == 0) {
+            // met from the start, not from its first engine tick
+            posed = place();
+            if (posed && sizeKind != NO_SIZE) sizeNow = size(0);
+        }
         return this;
     }
 
@@ -502,23 +558,16 @@ public final class CgHitbox {
     }
 
     /**
-     * Each part as its last tick tested it, sized as it was then: the last it tested once it stops, and nothing before
-     * its first active tick. What a debug view draws. On its thread.
+     * Each part where its last tick placed it, sized as it was then: the last once it stops, and nothing before its
+     * first active tick. What a debug view draws. On its thread.
      *
      * <pre>{@code
      * hitbox.parts((part, shape, pose) -> CgCollisionDebug.shape(shape, pose, 0xFF40FF60));
      * }</pre>
      */
     public void parts(PartSink out) {
-        if (!hasPrev) return;
-        for (int p = 0; p < parts; p++) {
-            CgShape shape = shapes[p];
-            if (sizeKind == RADIUS) shape = sized[p].radius(sizeNow);
-            else if (sizeKind == SCALE) shape = sized[p].scale(sizeNow);
-            partOrigin(nowX, nowY, nowZ, nowQ, offsets[p * 3], offsets[p * 3 + 1], offsets[p * 3 + 2]);
-            drawPose.at(scratch.x, scratch.y, scratch.z).rotation((Quaterniondc) nowQ);
-            out.part(names[p], shape, drawPose);
-        }
+        if (!posed) return;
+        for (int p = 0; p < parts; p++) out.part(names[p], partShape(p), partPose(p, drawPose));
     }
 
     /**
@@ -539,7 +588,7 @@ public final class CgHitbox {
     void skip(double ticks) {
         if (!prepared) prepare();
         age += ticks;
-        hasPrev = false;
+        hasPrev = posed = false;
         if (age - activeFrom >= activeFor) stop();
     }
 
@@ -563,6 +612,38 @@ public final class CgHitbox {
         return entity >= 0;
     }
 
+    // ---- for the queries meeting a target
+
+    /** Whether queries in {@code world} meet it now. */
+    boolean metIn(CgCollisionWorld world) {
+        return posed && !stopped && this.world != null && this.world.sameLevel(world);
+    }
+
+    /** Whom it stands for: the entity it follows, else its source. */
+    int owner() {
+        return entity >= 0 ? entity : source;
+    }
+
+    /** Part {@code p}'s shape as last placed; the next call may change it. */
+    CgShape partShape(int p) {
+        if (sizeKind == RADIUS) return sized[p].radius(sizeNow);
+        if (sizeKind == SCALE) return sized[p].scale(sizeNow);
+        return shapes[p];
+    }
+
+    /** As {@link #partShape}, a copy of its own: what a snapshot keeps. */
+    CgShape frozenPartShape(int p) {
+        if (sizeKind == RADIUS) return CgResizable.of(shapes[p]).radius(sizeNow);
+        if (sizeKind == SCALE) return CgResizable.of(shapes[p]).scale(sizeNow);
+        return shapes[p];
+    }
+
+    /** Part {@code p}'s pose as last placed, into {@code out}. */
+    CgPose partPose(int p, CgPose out) {
+        partOrigin(nowX, nowY, nowZ, nowQ, offsets[p * 3], offsets[p * 3 + 1], offsets[p * 3 + 2]);
+        return out.at(scratch.x, scratch.y, scratch.z).rotation((Quaterniondc) nowQ);
+    }
+
     /** The engine's tick: stops with its level. */
     void engineTick() {
         if (epoch != 0 && world.blocks().levelEpoch() != epoch) {
@@ -575,6 +656,9 @@ public final class CgHitbox {
     private void prepare() {
         if (parts == 0) throw new IllegalStateException("a hitbox needs a part");
         if (facing != Facing.FIXED && entity < 0) throw new IllegalStateException(facing + " needs a followed entity");
+        if (target && owner() < 0) {
+            throw new IllegalStateException("a target stands for its owner: follow an entity or give it a source");
+        }
         if (sizeKind != NO_SIZE) {
             sized = new CgResizable[parts];
             for (int p = 0; p < parts; p++) {
@@ -585,6 +669,7 @@ public final class CgHitbox {
             }
         }
         prepared = true;
+        if (target) CgHitboxes.addTarget(this);
     }
 
     private void configurable() {
@@ -600,19 +685,20 @@ public final class CgHitbox {
             return;
         }
         if (active <= 0) {
-            hasPrev = false;
+            hasPrev = posed = false;
             return;
         }
         double now = sizeKind == NO_SIZE ? 0 : size(Math.min(active, activeFor));
         double before = sizeKind == NO_SIZE ? 0 : size(Math.max(0, active - ticks));
         sizeNow = now;
-        gather(before, now);
+        posed = true;
+        if (!passive) gather(before, now);
         prevX = nowX;
         prevY = nowY;
         prevZ = nowZ;
         prevQ.set(nowQ);
         hasPrev = true;
-        apply();
+        if (!passive) apply();
         Consumer<? super CgHitbox> w = watcher;
         if (w != null) w.accept(this);
         if (!stopped && active >= activeFor) stop();
@@ -718,7 +804,7 @@ public final class CgHitbox {
     }
 
     private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc q) {
-        CgQuery query = world.overlap(shape).at(px, py, pz).rotation(q).part(names[p]).unwatched();
+        CgQuery query = world.overlap(shape).at(px, py, pz).rotation(q).part(names[p]).unwatched().self(this);
         for (int i = 0; i < excepts; i++) query.except(except[i]);
         if (source >= 0) query.source(source);
         if (anything) query.anything();
@@ -732,7 +818,7 @@ public final class CgHitbox {
         int n = query.into(partHits);
         for (int i = 0; i < n; i++) {
             CgHit h = partHits.get(i);
-            if (!hasTarget(h.parent())) target().set(h);
+            if (!hasTarget(h.parent())) nextTarget().set(h);
         }
     }
 
@@ -743,7 +829,7 @@ public final class CgHitbox {
         return false;
     }
 
-    private CgHit target() {
+    private CgHit nextTarget() {
         if (targetCount == targets.length) {
             CgHit[] grown = Arrays.copyOf(targets, Math.max(8, targetCount * 2));
             for (int i = targetCount; i < grown.length; i++) grown[i] = new CgHit();

@@ -90,10 +90,14 @@ public final class CgHits {
         }
     }
 
-    /** Nearest first; a tie by what was hit, so the order never depends on how the host listed them. */
+    /**
+     * Nearest first; a tie by what was hit, so the order never depends on how the host listed them, and a target
+     * hitbox before its owner.
+     */
     private static boolean after(CgHit a, CgHit b) {
         if (a.distance != b.distance) return a.distance > b.distance;
         if (a.entity != b.entity) return a.entity > b.entity;
+        if (a.onHitbox != b.onHitbox) return b.onHitbox;
         if (a.blockX != b.blockX) return a.blockX > b.blockX;
         if (a.blockY != b.blockY) return a.blockY > b.blockY;
         return a.blockZ > b.blockZ;

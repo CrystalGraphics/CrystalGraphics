@@ -19,12 +19,16 @@ import java.util.Random;
 import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Hitboxes over entities alone, ticked by hand unless a test says otherwise. */
 public class CgHitboxTest {
 
-    private static final CgHitPart TIP = CgHitPart.of("tip"), BLADE = CgHitPart.of("blade");
+    private static final CgHitPart TIP = CgHitPart.of("tip"), BLADE = CgHitPart.of("blade"),
+            SHIELD = CgHitPart.of("shield");
 
     private static CgCollisionWorld world(Table table) {
         return CgCollisionWorld.of(CgWorldQuery.NONE, table);
@@ -148,6 +152,62 @@ public class CgHitboxTest {
         CgHitbox gone = CgHitbox.follow(99, CgEntityAttachments.FEET).part(null, CgSphere.of(1)).start(w);
         CgHitboxes.tickThread();
         assertTrue("its entity is gone", gone.stopped());
+    }
+
+    @Test
+    public void aShieldIsMetBeforeItsOwnerAndStandsForThem() {
+        // the player, 1, stands at z = 5 behind a shield at z = 4
+        CgCollisionWorld w = world(new Table().mob(1, 0, 5, KIND_MONSTER));
+        int[] heard = {0};
+        CgHitbox shield = CgHitbox.of(SHIELD, CgBox.of(1, 1, 0.1)).at(0, 0.9, 4).source(1).target().passive()
+                .onHit(h -> heard[0]++);
+        shield.tick(w, 1);
+        CgHit hit = new CgHit();
+
+        assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
+        assertEquals(CgHit.Kind.HITBOX, hit.kind());
+        assertEquals(1, hit.entity());
+        assertSame(shield, hit.hitbox());
+        assertSame(SHIELD, hit.hitboxPart());
+        assertEquals("its front face", 3.9, hit.z(), 1e-9);
+        assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).noHitboxes().first(hit));
+        assertEquals("passed through", CgHit.Kind.ENTITY, hit.kind());
+        assertFalse("its owner's own queries never meet it",
+                w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).source(1).any());
+
+        List<String> hits = new ArrayList<>();
+        CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 2).onHit(h -> hits.add(h.kind() + " " + h.entity())).tick(w, 1);
+        assertEquals("the shield, nearer, counts its owner as hit", Arrays.asList("HITBOX 1"), hits);
+
+        assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
+        CgHit sent = new CgSentHit().set(hit, -1).read(new CgHit(), null);
+        assertEquals("over the network, its owner", "HITBOX 1", sent.kind() + " " + sent.entity());
+        assertNull(sent.hitbox());
+
+        CgCollisionWorld frozen = w.snapshot(0, 0, 0, 16);
+        shield.stop();
+        assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
+        assertEquals("stopped, it is met no more", CgHit.Kind.ENTITY, hit.kind());
+        assertTrue(frozen.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
+        assertEquals("the snapshot holds it as it was", CgHit.Kind.HITBOX, hit.kind());
+        assertEquals("a passive hitbox hears nothing", 0, heard[0]);
+    }
+
+    @Test
+    public void aTargetNeverMeetsItselfAndNeedsAnOwner() {
+        CgCollisionWorld w = world(new Table().mob(2, 0, 0, KIND_MONSTER));
+        List<String> hits = new ArrayList<>();
+        CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).target()
+                .onHit(h -> hits.add(h.kind() + " " + h.entity()));
+        aura.tick(w, 1);
+        assertEquals("its owner's body, never its own", Arrays.asList("ENTITY 2"), hits);
+        aura.stop();
+        try {
+            CgHitbox.of(CgSphere.of(1)).target().tick(w, 1);
+            fail("a target with no owner");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("owner"));
+        }
     }
 
     @Test

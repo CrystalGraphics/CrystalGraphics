@@ -36,6 +36,7 @@ public final class CgHit {
      *     case ENTITY -> damage(hit.entity());
      *     case BLOCK -> chip(hit.blockX(), hit.blockY(), hit.blockZ());
      *     case FLUID -> splash(hit.x(), hit.y(), hit.z());
+     *     case HITBOX -> parry(hit.entity());       // a shield its owner holds up
      *     default -> { }                          // UNLOADED, BORDER, POINT: nothing there to act on
      * }
      * }</pre>
@@ -43,6 +44,8 @@ public final class CgHit {
     public enum Kind {
         /** An entity, or a part of one; in a {@code CgShapeWorld}, a shape, by its id. */
         ENTITY,
+        /** A {@link CgHitbox#target() target} hitbox: {@link #entity()} is its owner, {@link #hitbox()} which one. */
+        HITBOX,
         /** A block. */
         BLOCK,
         /** A fluid's surface, with {@code fluids()} asked. */
@@ -64,15 +67,19 @@ public final class CgHit {
     double distance, fraction;
     float exposure = Float.NaN;
     CgHitPart part;
+    boolean onHitbox;
+    CgHitbox hitbox;
+    CgHitPart hitboxPart;
 
     public Kind kind() {
+        if (onHitbox) return Kind.HITBOX;
         if (!block) return entity >= 0 ? Kind.ENTITY : Kind.POINT;
         if (unloaded) return Kind.UNLOADED;
         if (border) return Kind.BORDER;
         return fluid != CgWorldQuery.FLUID_NONE ? Kind.FLUID : Kind.BLOCK;
     }
 
-    /** The entity met, a part of a multipart one included; -1 for a block. */
+    /** The entity met, a part of a multipart one included, or the owner of the hitbox met; -1 for a block. */
     public int entity() {
         return entity;
     }
@@ -80,6 +87,16 @@ public final class CgHit {
     /** The whole entity: the Ender Dragon for one of its parts, else {@link #entity()}; -1 for a block. */
     public int parent() {
         return parent;
+    }
+
+    /** The target hitbox met; null for any other kind, and for a hit that crossed the network. */
+    public @Nullable CgHitbox hitbox() {
+        return hitbox;
+    }
+
+    /** Which part of the {@link #hitbox()} was met; null for its one unnamed part, and for any other kind. */
+    public @Nullable CgHitPart hitboxPart() {
+        return hitboxPart;
     }
 
     /** Whether a block was met rather than an entity. */
@@ -173,10 +190,11 @@ public final class CgHit {
     void reset() {
         entity = parent = -1;
         blockX = blockY = blockZ = 0;
-        block = unloaded = border = false;
+        block = unloaded = border = onHitbox = false;
         fluid = CgWorldQuery.FLUID_NONE;
         exposure = Float.NaN;
-        part = null;
+        part = hitboxPart = null;
+        hitbox = null;
     }
 
     /**
@@ -237,6 +255,13 @@ public final class CgHit {
         return setEntity(-1, -1, x, y, z, Float.NaN, part);
     }
 
+    /** A target hitbox's hit read back from the network: its owner, without the hitbox. */
+    CgHit setHitbox(int owner, double x, double y, double z, @Nullable CgHitPart part) {
+        setEntity(owner, owner, x, y, z, Float.NaN, part);
+        onHitbox = true;
+        return this;
+    }
+
     /** Copies {@code o} into this: a visitor's hit kept past the call. */
     public CgHit set(CgHit o) {
         entity = o.entity;
@@ -258,6 +283,9 @@ public final class CgHit {
         fraction = o.fraction;
         exposure = o.exposure;
         part = o.part;
+        onHitbox = o.onHitbox;
+        hitbox = o.hitbox;
+        hitboxPart = o.hitboxPart;
         return this;
     }
 
@@ -265,7 +293,8 @@ public final class CgHit {
     public String toString() {
         String what = block ? (unloaded ? "unloaded " : border ? "border " : fluid != CgWorldQuery.FLUID_NONE ? "fluid "
                 : "block ")
-                + blockX + "," + blockY + "," + blockZ : "entity " + entity + (parent != entity ? " of " + parent : "");
+                + blockX + "," + blockY + "," + blockZ
+                : onHitbox ? "hitbox of " + entity : "entity " + entity + (parent != entity ? " of " + parent : "");
         return "CgHit[" + what + " at " + distance + ", point " + x + "," + y + "," + z + "]";
     }
 }

@@ -1594,6 +1594,8 @@ com/crystalgraphics/collision/CgHit
   method public falloff (DD)F
   method public fluid ()I
   method public fraction ()D
+  method public hitbox ()Lcom/crystalgraphics/collision/CgHitbox;
+  method public hitboxPart ()Lcom/crystalgraphics/collision/CgHitPart;
   method public isBlock ()Z
   method public kind ()Lcom/crystalgraphics/collision/CgHit$Kind;
   method public normalX ()D
@@ -1620,6 +1622,7 @@ com/crystalgraphics/collision/CgHit$Kind
   field public,static,final BORDER Lcom/crystalgraphics/collision/CgHit$Kind;
   field public,static,final ENTITY Lcom/crystalgraphics/collision/CgHit$Kind;
   field public,static,final FLUID Lcom/crystalgraphics/collision/CgHit$Kind;
+  field public,static,final HITBOX Lcom/crystalgraphics/collision/CgHit$Kind;
   field public,static,final POINT Lcom/crystalgraphics/collision/CgHit$Kind;
   field public,static,final UNLOADED Lcom/crystalgraphics/collision/CgHit$Kind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/collision/CgHit$Kind;
@@ -1668,6 +1671,7 @@ com/crystalgraphics/collision/CgHitbox
   method public part (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgHitbox;
   method public part (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;DDD)Lcom/crystalgraphics/collision/CgHitbox;
   method public parts (Lcom/crystalgraphics/collision/CgHitbox$PartSink;)V
+  method public passive ()Lcom/crystalgraphics/collision/CgHitbox;
   method public pose (Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/CgHitbox;
   method public radius (DDD)Lcom/crystalgraphics/collision/CgHitbox;
   method public radius (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/collision/CgHitbox;
@@ -1681,6 +1685,7 @@ com/crystalgraphics/collision/CgHitbox
   method public start (Ljava/lang/Object;)Lcom/crystalgraphics/collision/CgHitbox;
   method public stop ()V
   method public stopped ()Z
+  method public target ()Lcom/crystalgraphics/collision/CgHitbox;
   method public tick (Lcom/crystalgraphics/collision/CgCollisionWorld;D)V
   method public toString ()Ljava/lang/String;
   method public visible ()Lcom/crystalgraphics/collision/CgHitbox;
@@ -1775,6 +1780,7 @@ com/crystalgraphics/collision/CgQuery
   method public kinds (I)Lcom/crystalgraphics/collision/CgQuery;
   method public living ()Lcom/crystalgraphics/collision/CgQuery;
   method public max (I)Lcom/crystalgraphics/collision/CgQuery;
+  method public noHitboxes ()Lcom/crystalgraphics/collision/CgQuery;
   method public part (Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/CgQuery;
   method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/collision/CgQuery;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/collision/CgQuery;

@@ -31,7 +31,7 @@ import java.util.function.IntConsumer;
  * CgCollisionWorld world = CgCollisionWorld.client(partialTick);
  * }</pre>
  *
- * Plain shapes, with no Minecraft at all (tests, an arena, a mod's own hurtboxes): {@link #shapes()}.
+ * Plain shapes, with no Minecraft at all (tests, an arena): {@link #shapes()}.
  *
  * Off the level's thread, a {@link #snapshot}: the blocks and entities in a box, copied now, which any number of threads
  * may query at once while the level moves on.
@@ -88,6 +88,10 @@ public class CgCollisionWorld {
     private Thread owner;
     /** Whether the first thread to query it owns it: a shape world. */
     boolean claims;
+    /** {@link #client}'s: the client's one level, whichever query object a host hands out for it. */
+    private boolean clientLevel;
+    /** A snapshot's targets, frozen; null for none, and for a live world. */
+    CgFrozenTargets frozenTargets;
 
     private final CgQuery[] queries = new CgQuery[MAX_DEPTH];
     private final CgCells sightCells = new CgCells();
@@ -127,6 +131,7 @@ public class CgCollisionWorld {
         if (c == null) {
             t.client = c = new CgCollisionWorld(CgWorldQuery.NONE, CgEntityQuery.NONE, 1f);
             c.owner = Thread.currentThread();
+            c.clientLevel = true;
         }
         c.world = CgPlatform.get(CgWorldQuery.SERVICE);
         c.entities = CgPlatform.get(CgEntityQuery.SERVICE);
@@ -177,6 +182,7 @@ public class CgCollisionWorld {
         checkThread();
         CgCollisionWorld s = new CgCollisionWorld(CgBlockSnapshot.of(world, bounds),
                 CgEntitySnapshot.of(entities, partialTick, bounds), partialTick);
+        s.frozenTargets = CgFrozenTargets.of(this, bounds);
         s.share();
         return s;
     }
@@ -399,12 +405,36 @@ public class CgCollisionWorld {
         world = snapshot.world;
         entities = snapshot.entities;
         partialTick = snapshot.partialTick;
+        frozenTargets = snapshot.frozenTargets;
     }
 
     /** Hands {@code visitor} every entity of {@code view} whose box touches {@code bounds}. */
     void candidates(CgQuery q, CgEntityQuery view, CgAABBc bounds, IntConsumer visitor) {
         view.within(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
                 visitor);
+    }
+
+    /** Hands {@code q} every target hitbox met in this world; it tests their parts against {@code bounds}. */
+    void targets(CgQuery q, CgEntityQuery view, CgAABBc bounds) {
+        if (frozen) {
+            if (frozenTargets != null) frozenTargets.scan(q, bounds);
+            return;
+        }
+        CgHitboxes set = CgHitboxes.thread();
+        for (int i = 0; i < set.targetCount; i++) {
+            CgHitbox t = set.targets[i];
+            if (t.metIn(this)) q.target(t, view, bounds);
+        }
+    }
+
+    /**
+     * Whether a hitbox ticking in {@code other} stands in this world's level: the same host level, or the client's
+     * one level however it was reached, or the same shape world.
+     */
+    boolean sameLevel(CgCollisionWorld other) {
+        if (other == this) return true;
+        if (!hasBlocks() || !other.hasBlocks()) return false;
+        return world == other.world && entities == other.entities || clientLevel || other.clientLevel;
     }
 
     boolean hasBlocks() {

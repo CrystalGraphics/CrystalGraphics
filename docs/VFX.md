@@ -623,8 +623,8 @@ Each `CgHit` says:
 
 | Field | Meaning |
 |---|---|
-| `kind()` | `ENTITY`, `BLOCK`, `FLUID`, `UNLOADED` (the edge of what is loaded), `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
-| `entity()`, `parent()` | the entity met, and the whole one for a part of a multipart entity; -1 otherwise |
+| `kind()` | `ENTITY`, `HITBOX` (a target hitbox, such as a shield: `entity()` is its owner), `BLOCK`, `FLUID`, `UNLOADED` (the edge of what is loaded), `BORDER` (the world border), `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
+| `entity()`, `parent()` | the entity met, and the whole one for a part of a multipart entity; a target hitbox's owner; -1 otherwise |
 | `blockX() blockY() blockZ()` | the block met |
 | `x() y() z()` | where |
 | `normalX() normalY() normalZ()`, `distance()` | from the query toward what it met, and how far it travelled; 0 on a confirmed hit |

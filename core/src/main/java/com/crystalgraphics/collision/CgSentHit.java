@@ -6,9 +6,9 @@ import com.crystalgraphics.net.object.CgNetWire;
 import javax.annotation.Nullable;
 
 /**
- * A hit as it crosses the network: what met it (an entity and its whole, a block, a fluid's surface, the edge of what
- * is loaded, the world border, or nothing at a point), the point, the exposure, and the part as an index into a list both sides hold.
- * What {@link CgHitboxType} and VFX cues send their server's hits as.
+ * A hit as it crosses the network: what met it (an entity and its whole, a target hitbox's owner, a block, a fluid's
+ * surface, the edge of what is loaded, the world border, or nothing at a point), the point, the exposure, and the part
+ * as an index into a list both sides hold. What {@link CgHitboxType} and VFX cues send their server's hits as.
  *
  * <pre>{@code
  * static final CgNetEvent<CgSentHit> HIT = CgNetEvent.of("mymod:hit", CgSentHit.wire());
@@ -21,13 +21,14 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>No normal or distance travels: what is read back has them at 0.</li>
+ *   <li>A target hitbox arrives as its owner, without {@link CgHit#hitbox()} or {@link CgHit#hitboxPart()}.</li>
  *   <li>About 20 bytes a hit, the point and exposure as floats.</li>
  *   <li>A wire reuses the one it reads into: copy what you keep past the listener.</li>
  * </ul>
  */
 public final class CgSentHit {
 
-    private static final int POINT = 0, ENTITY = 1, BLOCK = 2, FLUID = 3, UNLOADED = 4, BORDER = 5;
+    private static final int POINT = 0, ENTITY = 1, BLOCK = 2, FLUID = 3, UNLOADED = 4, BORDER = 5, HITBOX = 6;
 
     int kind, entity = -1, parent = -1, blockX, blockY, blockZ, fluid, part = -1;
     float x, y, z, exposure = Float.NaN;
@@ -40,6 +41,7 @@ public final class CgSentHit {
             case FLUID: kind = FLUID; break;
             case UNLOADED: kind = UNLOADED; break;
             case BORDER: kind = BORDER; break;
+            case HITBOX: kind = HITBOX; break;
             default: kind = POINT;
         }
         entity = hit.entity();
@@ -69,6 +71,7 @@ public final class CgSentHit {
             case UNLOADED: return into.setUnloaded(blockX, blockY, blockZ, x, y, z, part);
             case BORDER: return into.setBorder(blockX, blockY, blockZ, x, y, z, part);
             case ENTITY: return into.setEntity(entity, parent, x, y, z, exposure, part);
+            case HITBOX: return into.setHitbox(entity, x, y, z, part);
             default: return into.setPoint(x, y, z, part);
         }
     }
@@ -84,7 +87,7 @@ public final class CgSentHit {
         @Override
         public void write(CgSentHit s, Out out) {
             out.writeVarInt((s.part + 1) << 3 | s.kind);
-            if (s.kind == ENTITY) {
+            if (s.kind == ENTITY || s.kind == HITBOX) {
                 out.writeVarInt(s.entity);
                 out.writeZigZag((long) s.parent - s.entity);
             } else if (s.kind != POINT) {
@@ -109,7 +112,7 @@ public final class CgSentHit {
             long bx = 0, by = 0, bz = 0;
             s.entity = s.parent = -1;
             s.fluid = 0;
-            if (s.kind == ENTITY) {
+            if (s.kind == ENTITY || s.kind == HITBOX) {
                 s.entity = in.readVarInt();
                 s.parent = (int) (s.entity + in.readZigZag());
             } else if (s.kind != POINT) {
