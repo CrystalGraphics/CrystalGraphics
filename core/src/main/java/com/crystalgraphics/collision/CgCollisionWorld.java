@@ -60,11 +60,14 @@ import java.util.Objects;
  * keeps them in one shared mirror, so asking costs the tick nothing however many ask.
  *
  * <pre>{@code
- * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                              // the level's thread
- *         .then(area -> CgJob.run(() -> simulate(area)).then(hits -> hits.forEach(this::hurt)));
+ * // simulate(CgCollisionWorld area, List<Debris> pieces) returns the moved pieces: a List<Debris>
+ * List<Debris> copy = List.copyOf(pieces);
+ * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                   // the level's thread: CgReply<CgCollisionWorld>
+ *         .flatMap(area -> CgJob.run(() -> simulate(area, copy)))    // a worker queries the frozen area
+ *         .then(next -> pieces = next);                              // next: simulate's list, back here
  *
- * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);      // a simulation running every tick
- * CgCollisionWorld now = arena.latest();                                        // any thread: the newest tick's
+ * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);   // a simulation running every tick
+ * CgCollisionWorld now = arena.latest();                                     // any thread: the newest tick's
  * }</pre>
  *
  * Many queries in one tick share what they learn of the entities inside a {@link #batch}, as Unity's batched query
@@ -179,8 +182,12 @@ public class CgCollisionWorld {
      * there too.
      *
      * <pre>{@code
+     * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                   // a reply: the area arrives here, now or later
+     *         .flatMap(area -> CgJob.run(() -> simulate(area, copy)))    // area: frozen, for the worker
+     *         .then(next -> pieces = next);                              // next: what simulate returned
+     *
      * CgCollisionWorld.of(level).snapshot(x, y, z, 24)
-     *         .then(area -> CgJob.forEach(shards, s -> s.step(area)));    // every worker queries it together
+     *         .then(area -> CgJob.forEach(shards, s -> s.step(area)));    // every thread queries it together, now
      * }</pre>
      *
      * <ul>
@@ -217,8 +224,10 @@ public class CgCollisionWorld {
      *
      * <pre>{@code
      * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);
-     * CgJob.repeat(arena::latest).run(area -> step(area));    // each run, the newest tick's
-     * arena.close();
+     * arena.ready().then(() -> CgJob.repeat(arena::latest)      // each run reads the newest tick's world
+     *         .work(area -> simulate(area, pieces))             // a worker: returns the next List<Debris>
+     *         .then(next -> pieces = next));                    // back here; the next run starts after
+     * arena.close();                                            // when done, from any thread
      * }</pre>
      *
      * @throws IllegalArgumentException when the area alone is past {@code crystalgraphics.mirror.memory}

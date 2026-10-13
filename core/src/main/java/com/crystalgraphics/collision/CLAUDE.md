@@ -19,15 +19,21 @@ CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12).onHit(h -> dam
 | `collision.hit` | What a query or hitbox reports: `CgHit` (a mutable value, written through its where/what setters), `CgHits`, `CgHitPart`, `CgSentHit` (a hit on the wire) |
 | `collision.hitbox` | `CgHitbox` (a volume over time: parts, sizes, rules, listeners), `CgHitList`, `CgHitboxType` (a networked hitbox on every side), `CgHitboxes` (each thread's running and hittable hitboxes: the one seam to `collision`), `CgSwept` (a shape and its motion) |
 | `collision.entity` | `CgEntityTable` (entities by 16-block cell), `CgEntityCache` (a batch's, lazy), `CgEntitySnapshot` (a snapshot's, eager) |
-| `collision.block` | `CgBlockSnapshot` (a snapshot's blocks, palette per block), `CgBlockCells` (the cells a box covers as it moves, nearest first) |
+| `collision.block` | `CgBlockSnapshot` (the blocks of a world with no mirror, copied on the spot), `CgBlockCells` (the cells a box covers as it moves, nearest first) |
+| `collision.mirror` | `CgLevelMirror` (one per server level: the watched areas, kept from a write log replayed on a worker, published each tick as an immutable `CgMirrorVersion`), `CgMirrorHost` (the host slot), `CgMirrorColumn` (what the write hook calls), `CgMirrorShape`; inside, `MirrorSection`, `WriteLog`, `MirrorBatch`, `MirrorPalette`, `ShapeStore`, `MirrorBlocks` |
 | `collision.debug` | `CgCollisionShow` (`crystalgraphics.collision.show` and F3+B: records, serves a server's lines, asks for them), `CgCollisionDebug` (lines drawn on the next world frame), `CgRecentLines`, `CgLinePack`, `CgShapeLines` |
 
-`collision.entity` and `collision.block` are public only so the root can reach them: a mod never makes one.
+`collision.entity`, `collision.block` and `collision.mirror` are public only so the root and the hosts can reach them:
+a mod never makes one.
 
 ## Rules
 
 - **A world is its thread's**: `of(level)` and `client(...)` refuse a worker and a second thread. Workers read a
   snapshot, frozen, which every thread may query at once.
+- **The mirror's level-thread work is a constant per write and per entity in a watched area**: copying, shapes and
+  tables run on its worker, and first copies take a per-tick budget. Anything that scales with the area or with how many
+  ask belongs on the worker. `crystalgraphics.mirror.stats` logs each phase's cost; `CgMirrorConsistencyTest` is the
+  proof that every version is one tick exactly.
 - **A query is the thread's scratch** (`PerThread.queries`, four deep): never held, never two open at one depth.
 - **Hot paths allocate nothing**: a query, a hitbox tick, a hit, a batch, a snapshot's reads. Tests read
   `ThreadMXBean.getThreadAllocatedBytes`.
@@ -43,7 +49,8 @@ CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12).onHit(h -> dam
 
 ## Tests
 
-`CgCollisionWorldTest`, `CgSnapshotTest`, `entity.CgEntityCacheTest`, `hit.CgSentHitTest`, `debug.CgShapeLinesTest`,
+`CgCollisionWorldTest`, `CgSnapshotTest`, `mirror.CgLevelMirrorTest`, `mirror.CgMirrorConsistencyTest` (over
+`MirrorFakes`), `entity.CgEntityCacheTest`, `hit.CgSentHitTest`, `debug.CgShapeLinesTest`,
 `hitbox.CgHitboxTest`, `hitbox.CgHitboxTypeTest` (on `CgNetTestRig`), over `CollisionFakes`' yard. The VFX side:
 `CgVfxHitsTest`, `CgVfxAuthorityTest`, `CgVfxCueTest`. The harness's `collision-shapes` scene and `CgRenderDemo`'s
 `collision` draw `demo/collision/CgCollisionDemo`.

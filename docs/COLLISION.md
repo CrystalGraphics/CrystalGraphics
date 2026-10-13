@@ -126,7 +126,7 @@ Where each class lives is `collision/CLAUDE.md`, which loads itself for anyone e
 | **Hittable** | A hitbox that queries meet, as if it were an entity: a shield, a ward, a weak spot. | `CgHitbox.hittable()` |
 | **Hit list** | Who a hitbox has hit, and when: shared, so a combo hits each target once between its moves. | `CgHitList` |
 | **Hitbox type** | A hitbox the server starts that every client watching runs too. | `CgHitboxType` |
-| **Snapshot** | A world's blocks and entities in an area, copied now, which any thread may read. | `world.snapshot(...)` |
+| **Snapshot** | A world's blocks and entities in an area as they stood at the end of a server tick, which any thread may read. | `world.snapshot(...)`, `world.watch(...)` |
 | **Batch** | Many queries in one tick sharing what they learn of the entities. | `CgCollisionWorld.batch()` |
 | **Entity id** | How an entity is named here: Minecraft's `entity.getId()`. `level.getEntity(id)` turns it back. | `int` |
 
@@ -1194,26 +1194,74 @@ try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
 
 Work too heavy for a tick (a hundred debris pieces bouncing for a second, a search for safe ground) can run on a
 worker while the game moves on. A worker may not touch the level; it reads a **snapshot**: the blocks and entities in
-an area, copied now on the level's thread, which any number of threads may query at once.
+an area as they stood at the end of a server tick, which any number of threads may query at once.
+
+The work is a plain method that takes the snapshot and your own values, and returns new values:
 
 ```java
-// the level's thread: copy the area
-CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);
-List<Debris> pieces = List.copyOf(this.pieces);
+static final CgShape PEBBLE = CgSphere.of(0.1);
+record Debris(double x, double y, double z, double vx, double vy, double vz) { }
 
-// a worker: query the copy as if it were the level; back on this thread with the result
-CgJob.run(() -> simulate(area, pieces)).then(next -> this.pieces = next);
+// the worker's half: every piece moved one tick through the frozen area, into a new list
+static List<Debris> simulate(CgCollisionWorld area, List<Debris> pieces) {
+    List<Debris> next = new ArrayList<>(pieces.size());
+    CgHit hit = new CgHit();
+    for (Debris d : pieces) {
+        double speed = Math.sqrt(d.vx() * d.vx() + d.vy() * d.vy() + d.vz() * d.vz());
+        if (speed > 0 && area.cast(PEBBLE).at(d.x(), d.y(), d.z()).along(d.vx(), d.vy(), d.vz(), speed).blocksOnly().first(hit)) {
+            next.add(new Debris(hit.x(), hit.y(), hit.z(), 0, 0, 0));          // landed where it touched
+        } else {
+            next.add(new Debris(d.x() + d.vx(), d.y() + d.vy(), d.z() + d.vz(), d.vx(), d.vy() - 0.04, d.vz()));
+        }
+    }
+    return next;
+}
 ```
 
-- **Outside the snapshot there is nothing**, and every cell is loaded: a cast leaving it flies through air.
-- **It knows the entities in its box**, and the whole entities their parts belong to, where they were when it was
-  taken. Any other id reads as none.
-- **A snapshot holds hittable hitboxes as they were** when taken.
+The level's thread asks for the area, hands the work its own copy of the pieces, and keeps what comes back:
+
+```java
+List<Debris> copy = List.copyOf(pieces);                         // the worker's own: this field may change meanwhile
+
+CgCollisionWorld.of(level).snapshot(x, y, z, 24)                 // CgReply<CgCollisionWorld>
+        .flatMap(area -> CgJob.run(() -> simulate(area, copy)))  // area: the frozen world; simulate runs on a worker
+        .then(next -> pieces = next);                            // next: simulate's List<Debris>, on this thread
+```
+
+`snapshot` answers with a reply, not a world: at once when the area is already mirrored, else at the end of a later
+tick, once it is. `flatMap` starts the job when the area arrives; `then` hears the job's answer.
+
+**A simulation that runs every tick watches its area** instead of asking each time: the watch keeps it, and `latest()`
+is the newest tick's world.
+
+```java
+CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);   // once
+CgCollisionWorld area = arena.latest();                                   // any thread: the newest tick's, or null at first
+arena.move(next);                                                         // a boss walking: any thread
+arena.close();                                                            // when done
+```
+
+- **A server level keeps one mirror** of every area anyone asked for, updated as blocks change, so a hundred
+  simulations cost the tick what one does. What the tick pays: a few nanoseconds per block written in a watched area,
+  up to 0.25 ms a tick warming new areas, and about 0.5 µs per entity inside watched areas, read once at the tick's
+  end. Copying, shapes and tables run on a worker.
+- **A snapshot is one instant**: every block and entity as they stood at the end of the same server tick, never a mix.
+- **A cold area takes a few ticks** to warm: copying is spread over ticks (`crystalgraphics.mirror.baseBudget`, 250 µs a
+  level a tick), nearest first. `watch.latest()` meanwhile reads the columns not yet mirrored as unloaded, and
+  `watch.complete()` says when it is whole; `watch.ready()` is a reply for that moment.
+- **A one-off's area is kept** while it is asked for again, and let go 200 ticks after the last ask
+  (`crystalgraphics.mirror.idleTicks`). Mirrors share 64 MB (`crystalgraphics.mirror.memory`); past it the longest
+  idle one-offs go first, and a watch larger than that alone is refused.
+- **Outside the snapshot there is nothing**, and every cell is loaded: a cast leaving it flies through air. A column
+  inside it that is not loaded reads as unloaded.
+- **It knows the entities in its box**, and the whole entities their parts belong to, where they stood at the tick's
+  end. Any other id reads as none.
+- **A snapshot holds hittable hitboxes as they were** at the tick's end.
 - **Blocks in a snapshot answer as to no one** (`as(id)` is not kept): what scaffolding shows an entity depends on where
   it is when it asks.
-- **Copying is paid on the level's thread**, section by section: on Forge 1.20.1 about 4 ms for a radius of 32 at the
-  surface and 7 ms underground, 26 to 29 ms for a radius of 60. Copy only what the work reaches; past 128 blocks a
-  side (`CgBlockSnapshot.MAX_SIDE`) it throws.
+- **A world with no mirror copies on the spot**, on its thread, and its reply is settled already: a client's level, a
+  test's fakes, a level whose write hook did not apply. That copy costs the level's thread (on Forge 1.20.1 about 4 ms
+  for a radius of 32, 26 ms for 60) and stops at 128 blocks a side (`CgBlockSnapshot.MAX_SIDE`).
 - A snapshot of a snapshot is itself; `snapshot(bounds)` takes a box instead.
 
 Jobs, keys, repeating simulations and splitting work across threads are their own guide: [`JOBS.md`](JOBS.md).
@@ -1351,7 +1399,8 @@ Measured on a desktop, warm:
 | A 10-block ray through block cells | 259 ns |
 | A moving hitbox among 50 entities, a tick | 1.7 µs |
 | A hit sent over the network | about 24 bytes |
-| A snapshot, radius 32 / 60 (Forge 1.20.1, surface / underground) | 4.3 / 7.3 ms, 26 / 29 ms |
+| Snapshots and watches from a level's mirror, on the level's thread (Fabric 1.20.1, 100 watches and 20 snapshots a tick) | about 0.3 ms a tick, plus about 0.5 µs per entity in watched areas (4,000 entities: 2.4 ms) |
+| A snapshot with no mirror, copied on the spot, radius 32 / 60 (Forge 1.20.1, surface / underground) | 4.3 / 7.3 ms, 26 / 29 ms |
 
 Every query, hitbox tick and hit allocates nothing (measured: 50,000 hitbox ticks, 0 bytes).
 
@@ -1362,7 +1411,8 @@ Every query, hitbox tick and hit allocates nothing (measured: 50,000 hitbox tick
 | A query's cells | past 32,768 block cells a walk stops, warned once: a query over a volume no tick can afford |
 | `except(id)` | up to eight; a ninth throws |
 | Nested queries | four deep |
-| A snapshot | 128 blocks a side (`CgBlockSnapshot.MAX_SIDE`) |
+| A watch or snapshot | mirrors share 64 MB (`crystalgraphics.mirror.memory`): a single area past it is refused |
+| A snapshot with no mirror | 128 blocks a side (`CgBlockSnapshot.MAX_SIDE`) |
 | Batches | worth it past a few hundred queries a tick |
 
 ### Keeping it fast

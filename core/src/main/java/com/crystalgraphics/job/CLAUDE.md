@@ -6,8 +6,9 @@ plan `crystalgraphics/collision.md` §4.14; the policy (keys, debounce, lanes, r
 `core.async`, moved here so both projects share one pool.
 
 ```java
-CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);   // the level's thread: frozen
-CgJob.run(() -> simulate(area)).then(hits -> hits.forEach(this::hurt));     // a worker, then back here
+CgCollisionWorld.of(level).snapshot(x, y, z, 24)                           // the level's thread: a reply, frozen
+        .flatMap(area -> CgJob.run(() -> simulate(area, copy)))            // a worker
+        .then(next -> pieces = next);                                      // back here
 CgJob.keyed(doc, "reparse").debounce(300).run(ctx -> parse(text, ctx)).then(doc::setTree);
 CgJob.forEach(shards, s -> s.step(area));                                   // split now, returns when done
 ```

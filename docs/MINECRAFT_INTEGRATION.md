@@ -62,6 +62,7 @@ nearest first, hit once) is core's.
 | … its entity queries | `within` a box, each one's real box, flags, kind, parent, root vehicle | `LevelEntityQueryModern` | `LevelEntityQueryLegacy` | `LevelEntityQuery1710` |
 | `CgHostShapes` | Minecraft's boxes, block shapes and entities into `CgAABB`/`CgShape`, and boxes back (`CgAABB.of`, `set`, `toHost`, `CgShape.of`) | `HostShapesModern` (`AABB`, `VoxelShape`, `Entity`) | `HostShapesLegacy` (`AxisAlignedBB`, box lists, `Entity`) | `HostShapes1710` (the same) |
 | `CgHostDebug` | whether Minecraft's own hitbox view (F3+B) is on, which the collision show follows | `HostDebugModern` | `HostDebugLegacy` | `HostDebug1710` |
+| `CgMirrorHost` (`collision.mirror`) | a server level's loaded chunks without loading one, a section's states, each state's shape, and the write hook's column on a chunk: what a level's mirror keeps snapshots from | `MirrorHostModern` | `MirrorHostLegacy` | `MirrorHost1710` |
 
 `CgCollisionWorld.client(partialTick)` asks the client's frame services instead (`CgWorldQuery`, `CgEntityQuery`,
 the same classes the VFX engine reads), its entities interpolated to where the frame draws them.
@@ -79,6 +80,23 @@ the same classes the VFX engine reads), its entities interpolated to where the f
 | Flags a hit asks | `isSpectator()`, `isPickable()`, `isAttackable()`, `isInvulnerable()` or a player's abilities | `isSpectator()`, `canBeCollidedWith()`, `canBeAttackedWithItem()`, `isEntityInvulnerable(...)` | no spectators; `canBeCollidedWith()`, `canAttackWithItem()` |
 | An unloaded block | `isLoaded(pos)` before `getBlockState`: never loads one | `isBlockLoaded(pos)`: `getBlockState` would load a server chunk | `blockExists(x, y, z)` |
 | A snapshot's blocks | `copyBlocks` by section (`LevelChunkSection`'s states), a palette entry per distinct state | by section (`ExtendedBlockStorage`) | the same |
+
+**The level mirror** (`collision.mirror.CgLevelMirror`) keeps every area a server level's snapshots and watches ask
+for, so a snapshot costs the tick nothing. A host gives it a write hook, a mixin on the chunk, which logs each block
+write of a watched chunk before it lands and detaches the chunk when it unloads; the mirror replays the log on a
+worker. Both sides (`VariantMixins`' common list): an integrated server runs on the client.
+
+| Era | Write hook (`ChunkWriteHook`, HEAD) | Unload | Shapes |
+|---|---|---|---|
+| Modern 1.14.4–1.21.4 | `LevelChunk.setBlockState(BlockPos, BlockState, boolean)`, also as `m_6978_`, `func_177436_a`, `method_12010` | `setLoaded(boolean)` | each state's cached shape, on a worker; a block with a dynamic shape resolved where it stands, at the tick's end, and every tick if a block entity moves it |
+| Modern 1.21.5–26.3 | the same with an `int` flags argument | the same | the same |
+| Legacy 1.8.9–1.12.2 | `Chunk.setBlockState` (`func_177436_a`) | `onChunkUnload` (`func_76623_d`) | every block resolved where it stands (they read their neighbours): a written cell and its six neighbours at the tick's end, a new section within the per-tick budget |
+| 1.7.10 | `Chunk.func_150807_a` and `setBlockMetadata` | `onChunkUnload` | the same |
+
+- **No mirror where the hook did not apply**: a client's level, Forge 1.13.2 and 1.14.3 (no loaded-chunk lookup that
+  never loads), and Forge and NeoForge dev runs, which apply no CrystalGraphics mixin. There `snapshot` copies the area
+  on the spot, as `copyBlocks` below.
+- The mirror publishes at `CgNetwork.onServerTick`, the END phase on every loader.
 
 - **Entity ids are Minecraft's network ids** (`entity.getId()`); a host turns one back with the level's lookup, parts
   included as above.

@@ -37,15 +37,16 @@ CompletableFuture.supplyAsync(() -> simulate(level, pieces), POOL)              
 **Here.**
 
 ```java
-CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);   // the area, copied on this thread
+// List<Debris> simulate(CgCollisionWorld area, List<Debris> pieces): every piece moved one tick, a new list
 List<Debris> copy = List.copyOf(pieces);
 
-CgJob.keyed(this, "debris")                                  // a newer step replaces this one
-     .run(() -> simulate(area, copy))                        // a worker: reads only the copies
-     .then(next -> pieces = next);                           // back on this thread, at its next tick
+CgCollisionWorld.of(level).snapshot(x, y, z, 24)                       // the area, frozen at a tick's end
+        .flatMap(area -> CgJob.keyed(this, "debris")                   // a newer step replaces this one
+                .run(() -> simulate(area, copy)))                      // a worker: reads only the copies
+        .then(next -> pieces = next);                                  // next: simulate's list, back on this thread
 ```
 
-The world copied first so the worker never touches the level; the answer back on the server thread; cancelled when the
+The world frozen first so the worker never touches the level; the answer back on the server thread; cancelled when the
 world ends; a throw logged under its name; a newer ask replacing an older one; workers below the game's priority.
 
 ### What goes away
@@ -139,9 +140,10 @@ CgJob.keyed(document, "reparse")                     // a newer reparse of this 
 ### A simulation stepped again and again
 
 ```java
-CgJob.repeat(() -> CgCollisionWorld.of(level).snapshot(arena))   // this thread, before each run: fresh
-     .work(area -> debris.stepped(area))                         // a worker: returns the next state
-     .then(next -> debris = next)                                // this thread
+CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);   // the area, kept fresh every tick
+CgJob.repeat(arena::latest)                       // this thread, before each run: the newest tick's world
+     .work(area -> simulate(area, pieces))        // a worker: returns the next List<Debris>
+     .then(next -> pieces = next)                 // this thread
      .named("debris");
 ```
 
@@ -248,17 +250,20 @@ The work needs the world, and may not touch it. Hand it a copy.
 ### A snapshot of the blocks and entities
 
 ```java
-CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);   // this thread: the level, frozen
-CgJob.run(() -> {
-    CgHits hits = new CgHits();                                             // the worker's own
-    area.overlap(BLAST).at(x, y, z).living().into(hits);                    // query the copy as the level
-    return plan(hits);
-}).then(plan -> apply(plan));
+CgCollisionWorld.of(level).snapshot(x, y, z, 24)          // CgReply<CgCollisionWorld>: the area, frozen
+        .flatMap(area -> CgJob.run(() -> {                // area arrives here; the job runs on a worker
+            CgHits hits = new CgHits();                   // the worker's own
+            area.overlap(BLAST).at(x, y, z).living().into(hits);   // query the snapshot as the level
+            return hits;                                  // the job's answer: a CgHits
+        }))
+        .then(hits -> hits.forEach(h -> hurt(h.entity())));   // hits: what the work returned, on this thread
 ```
 
-A snapshot is a world any number of threads may query at once, frozen as it was: entities where they were, blocks as
-they were. Copying is paid on your thread (about 4 to 7 ms for a radius of 32 on Forge 1.20.1): copy only what the
-work reaches. The full story is [`COLLISION.md`](COLLISION.md) §12.
+A snapshot is a world any number of threads may query at once, frozen at the end of a server tick: entities where they
+stood, blocks as they were. It arrives as a reply: at once when the area is already mirrored, else at a later tick's
+end. A server level keeps one mirror for everyone who asks, so asking costs the tick next to nothing; a simulation that
+runs every tick watches its area instead ([§8](#8-repeating-jobs-a-simulation-beside-the-game)). The full story is
+[`COLLISION.md`](COLLISION.md) §12.
 
 ### Your own values
 
@@ -342,17 +347,22 @@ CgJob.lane(CgJobLane.BACKGROUND).keyed(this, "index").run(() -> indexRecipes()).
 A simulation that steps again and again, its state handed round the loop:
 
 ```java
-CgJob.Repeating<DebrisState> sim = CgJob.repeat(() -> CgCollisionWorld.of(level).snapshot(arena))   // read: this thread
-        .work(area -> state.stepped(area))                                                          // work: a worker
-        .then(next -> state = next)                                                                 // apply: this thread
+CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);
+
+CgJob.Repeating<List<Debris>> sim = CgJob.repeat(arena::latest)   // read: this thread, a CgCollisionWorld
+        .work(area -> simulate(area, pieces))                     // work: a worker, returns a List<Debris>
+        .then(next -> pieces = next)                              // apply: this thread, next is that list
         .named("debris");
 
-sim.cancel();                                          // when done
+sim.cancel();                                                     // when done
+arena.close();
 ```
 
-1. **`read`** runs on your thread before each run: copy what this step needs, fresh.
+1. **`read`** runs on your thread before each run: what this step needs, fresh. Here the watch's newest world.
 2. **`work`** runs on a worker with what `read` returned, and returns the next state.
 3. **`then`** runs on your thread with it.
+
+- **A `read` answering null skips the run** and is asked again next tick: a watch's `latest()` before its first tick.
 
 - **One run at a time, at most one a tick.** A step slower than a tick simply runs less often; the next begins after
   the last one's `then`.
@@ -635,7 +645,9 @@ Both are read at launch (`-Dcrystalgraphics.job.threads=4`; [`DEBUG_FLAGS.md`](D
   started at their first use: a server that never runs a job starts none.
 - **`drain()` and `forEach` allocate nothing.** `run` allocates its job and its reply: fine for an occasional job, not
   for one per tick. A per-tick job is a `repeat`.
-- **A snapshot is the usual cost** of handing work the world: size it to what the work reaches.
+- **Handing work the world costs the tick little**: a server level's snapshots come from one shared mirror
+  ([`COLLISION.md`](COLLISION.md) §12, §16). Size the area to what the work reaches all the same: the entities in it
+  are read each tick.
 
 ---
 
