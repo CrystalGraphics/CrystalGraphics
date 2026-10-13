@@ -1,6 +1,6 @@
 package com.crystalgraphics.collision;
 
-import com.crystalgraphics.collision.block.CgCells;
+import com.crystalgraphics.collision.block.CgBlockCells;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgHits;
@@ -86,7 +86,7 @@ public final class CgCollisionQuery {
     private final CgCastHit cast = new CgCastHit();
     private final CgHits hits = new CgHits();
     private final CgHit nearestBlock = new CgHit(), probe = new CgHit();
-    private final CgCells cells = new CgCells();
+    private final CgBlockCells cells = new CgBlockCells();
     private final Blocks blocks = new Blocks();
     private final Entities entities = new Entities();
     private final int[] except = new int[MAX_EXCEPT];
@@ -621,7 +621,7 @@ public final class CgCollisionQuery {
     }
 
     /** Each block cell the shape covers or sweeps, nearest first. */
-    private final class Blocks implements CgCells.Visitor {
+    private final class Blocks implements CgBlockCells.Visitor {
         @Override
         public boolean cell(int x, int y, int z) {
             CgWorldQuery w = world.world;

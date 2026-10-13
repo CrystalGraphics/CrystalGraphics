@@ -11,7 +11,7 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>Under every {@code CgCollisionQuery} and line of sight; one per thread, reused.
  */
-public final class CgCells {
+public final class CgBlockCells {
 
     /** What a walk visits. */
     public interface Visitor {
@@ -32,8 +32,8 @@ public final class CgCells {
     private final int[] cell = new int[3];
 
     /** The box at the start and its motion; then {@link #walk}. */
-    public CgCells set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double mx,
-                       double my, double mz) {
+    public CgBlockCells set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double mx,
+                            double my, double mz) {
         lo[0] = minX;
         lo[1] = minY;
         lo[2] = minZ;

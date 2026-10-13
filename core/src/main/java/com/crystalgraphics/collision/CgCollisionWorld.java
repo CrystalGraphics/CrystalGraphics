@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.block.CgBlockSnapshot;
-import com.crystalgraphics.collision.block.CgCells;
+import com.crystalgraphics.collision.block.CgBlockCells;
 import com.crystalgraphics.collision.entity.CgEntityCache;
 import com.crystalgraphics.collision.entity.CgEntitySnapshot;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -488,10 +488,10 @@ public class CgCollisionWorld {
     }
 
     /** A segment through the cells, stopping at the first collision box or unloaded cell. */
-    static final class Sight implements CgCells.Visitor {
+    static final class Sight implements CgBlockCells.Visitor {
         final CgAABB box = new CgAABB();
         final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
-        private final CgCells cells = new CgCells();
+        private final CgBlockCells cells = new CgBlockCells();
         private final CgAABB cellBox = new CgAABB();
         private float[] boxes = new float[6 * 8];
         private CgWorldQuery world;
