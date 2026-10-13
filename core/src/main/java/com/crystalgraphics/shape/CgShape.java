@@ -6,7 +6,6 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCompound;
 import com.crystalgraphics.shape.primitive.CgConvex;
-import com.crystalgraphics.shape.primitive.CgResizable;
 import org.joml.Vector3d;
 
 import java.util.Collections;
@@ -93,25 +92,6 @@ public abstract class CgShape {
 
     /** Whether the shape is its own convex hull, so that {@link #support} describes it exactly. */
     public abstract boolean isConvex();
-
-    /**
-     * A shape equal to this one that shares nothing mutable with it, of the same type: what
-     * {@link CgResizable} sizes in place without touching the shape it was given.
-     *
-     * <pre>{@code
-     * CgSphere mine = BLAST.copy();       // a CgSphere, no cast
-     * }</pre>
-     *
-     * A shape of your own answers its own type too:
-     *
-     * <pre>{@code
-     * @Override
-     * public MyShape copy() {
-     *     return new MyShape(size);
-     * }
-     * }</pre>
-     */
-    public abstract CgShape copy();
 
     /** Its box in its own space. */
     public CgAABB bounds(CgAABB out) {

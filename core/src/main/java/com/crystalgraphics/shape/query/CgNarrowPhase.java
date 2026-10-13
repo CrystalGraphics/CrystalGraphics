@@ -6,8 +6,6 @@ import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.shape.primitive.CgCompound;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
-import com.crystalgraphics.shape.query.convex.CgEpa;
-import com.crystalgraphics.shape.query.convex.CgGjk;
 import org.joml.Vector3d;
 
 /**

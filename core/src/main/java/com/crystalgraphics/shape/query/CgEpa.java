@@ -1,4 +1,4 @@
-package com.crystalgraphics.shape.query.convex;
+package com.crystalgraphics.shape.query;
 
 import org.joml.Vector3d;
 
@@ -30,7 +30,7 @@ import org.joml.Vector3d;
  *   <li>Not thread safe; one per thread, with its own {@link CgGjk}.</li>
  * </ul>
  */
-public final class CgEpa {
+final class CgEpa {
 
     /** Once the hull has this many points without holding the origin, the overlap is too shallow to measure. */
     private static final int MAX_POINTS_TO_INCLUDE_ORIGIN = 32;
@@ -45,7 +45,7 @@ public final class CgEpa {
     private int count;
     private final Vector3d w2a = new Vector3d(), w2b = new Vector3d();
 
-    public CgEpa(CgGjk gjk) {
+    CgEpa(CgGjk gjk) {
         this.gjk = gjk;
     }
 
@@ -60,7 +60,7 @@ public final class CgEpa {
      * @param outB                 on true, b's surface point farthest against it; {@code outA - outB} is the
      *                             penetration
      */
-    public boolean penetration(CgSupport a, CgSupport b, double collisionTolerance, double penetrationTolerance,
+    boolean penetration(CgSupport a, CgSupport b, double collisionTolerance, double penetrationTolerance,
                                Vector3d ioV, Vector3d outA, Vector3d outB) {
         return penetration(a, 0, a, b, 0, b, collisionTolerance, penetrationTolerance, ioV, outA, outB);
     }
@@ -69,7 +69,7 @@ public final class CgEpa {
      * {@link #penetration(CgSupport, CgSupport, double, double, Vector3d, Vector3d, Vector3d)} for shapes given as a
      * core grown by a radius, and whole.
      */
-    public boolean penetration(CgSupport aCore, double radiusA, CgSupport a, CgSupport bCore, double radiusB,
+    boolean penetration(CgSupport aCore, double radiusA, CgSupport a, CgSupport bCore, double radiusB,
                                CgSupport b, double collisionTolerance, double penetrationTolerance, Vector3d ioV,
                                Vector3d outA, Vector3d outB) {
         double sumRadius = radiusA + radiusB;

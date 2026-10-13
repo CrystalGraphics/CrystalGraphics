@@ -1,7 +1,6 @@
 package com.crystalgraphics.shape.primitive;
 
 import com.crystalgraphics.shape.CgPose;
-import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import org.joml.Vector3d;
 
@@ -66,7 +65,7 @@ public final class CgBox extends CgSizedShape {
     }
 
     @Override
-    public CgBox copy() {
+    CgBox copy() {
         return new CgBox(halfX, halfY, halfZ);
     }
 

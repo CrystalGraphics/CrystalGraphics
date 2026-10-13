@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape.primitive;
 
-import com.crystalgraphics.shape.CgShape;
 import org.joml.Vector3d;
 
 /**
@@ -93,7 +92,7 @@ public final class CgCapsule extends CgSizedShape {
     }
 
     @Override
-    public CgCapsule copy() {
+    CgCapsule copy() {
         return new CgCapsule(ax, ay, az, bx, by, bz, radius);
     }
 

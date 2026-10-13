@@ -158,7 +158,7 @@ public final class CgCollisionDemo {
 
     private boolean touchesGround(CgShape shape, CgPose at) {
         if (world == null) return CgShapes.overlaps(shape, at, FLOOR, floor.identity().at(ox, oy, oz));
-        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.rotation(rotation)).blocksToo().anything().unwatched()
+        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.getRotation(rotation)).blocksToo().anything().unwatched()
                 .first(worldHit)) {
             return false;
         }

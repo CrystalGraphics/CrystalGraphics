@@ -8,8 +8,8 @@ import com.crystalgraphics.shape.CgShape;
  */
 abstract class CgSizedShape extends CgShape {
 
-    @Override
-    public abstract CgSizedShape copy();
+    /** A shape equal to this one that shares nothing with it, for {@link CgResizable} to size. */
+    abstract CgSizedShape copy();
 
     /** Whether {@link #sweptRadius} applies. */
     boolean hasRadius() {

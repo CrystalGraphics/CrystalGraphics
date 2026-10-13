@@ -1,7 +1,6 @@
 package com.crystalgraphics.shape.primitive;
 
 import com.crystalgraphics.shape.CgPose;
-import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import org.joml.Vector3d;
 
@@ -81,7 +80,7 @@ public final class CgShell extends CgSizedShape {
     }
 
     @Override
-    public CgShell copy() {
+    CgShell copy() {
         return new CgShell(inner, outer, front);
     }
 

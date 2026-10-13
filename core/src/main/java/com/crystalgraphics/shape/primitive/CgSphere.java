@@ -1,7 +1,6 @@
 package com.crystalgraphics.shape.primitive;
 
 import com.crystalgraphics.shape.CgPose;
-import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import org.joml.Vector3d;
 
@@ -51,7 +50,7 @@ public final class CgSphere extends CgSizedShape {
     }
 
     @Override
-    public CgSphere copy() {
+    CgSphere copy() {
         return new CgSphere(radius);
     }
 

@@ -35,11 +35,6 @@ final class CgSwept extends CgShape {
     }
 
     @Override
-    public CgSwept copy() {
-        return new CgSwept().set(shape, mx, my, mz);
-    }
-
-    @Override
     public String toString() {
         return "CgSwept[" + shape + " along " + mx + ", " + my + ", " + mz + "]";
     }

@@ -165,20 +165,6 @@ public class CgShapeTest {
     }
 
     @Test
-    public void copiesAreTheirOwnTypeAndAlike() {
-        Vector3d a = new Vector3d(), b = new Vector3d();
-        for (Case c : cases()) {
-            CgShape copy = c.shape.copy();
-            assertTrue(c.name, copy != c.shape && copy.getClass() == c.shape.getClass());
-            c.shape.support(0.3, -1, 0.7, a);
-            copy.support(0.3, -1, 0.7, b);
-            assertEquals(c.name, 0, a.distance(b), 0);
-        }
-        CgBox box = CgBox.of(1, 2, 3).copy();
-        assertEquals(2, box.halfY(), 0);
-    }
-
-    @Test
     public void compoundCopiesItsPoses() {
         CgPose pose = new CgPose().at(5, 0, 0);
         CgCompound compound = CgCompound.builder().add(CgSphere.of(1), pose).build();

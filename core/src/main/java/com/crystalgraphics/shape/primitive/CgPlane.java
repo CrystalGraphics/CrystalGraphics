@@ -86,11 +86,6 @@ public final class CgPlane extends CgShape {
     }
 
     @Override
-    public CgPlane copy() {
-        return new CgPlane(nx, ny, nz, radius);
-    }
-
-    @Override
     public String toString() {
         return "CgPlane[" + nx + ", " + ny + ", " + nz + ", radius " + radius + "]";
     }

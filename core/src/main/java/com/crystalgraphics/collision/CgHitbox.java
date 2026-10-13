@@ -252,7 +252,7 @@ public final class CgHitbox {
 
     /** Turns local +Z to a yaw and pitch in radians, as {@link CgPose#facing}. */
     public CgHitbox facing(double yaw, double pitch) {
-        stepPose.facing(yaw, pitch).rotation(fixed);
+        stepPose.facing(yaw, pitch).getRotation(fixed);
         facing = Facing.FIXED;
         return this;
     }
@@ -278,7 +278,7 @@ public final class CgHitbox {
     /** At {@code pose}'s position and rotation: what an owner computing the placement sets before each tick. */
     public CgHitbox pose(CgPose pose) {
         at(pose.x, pose.y, pose.z);
-        pose.rotation(fixed);
+        pose.getRotation(fixed);
         facing = Facing.FIXED;
         return this;
     }
@@ -641,7 +641,7 @@ public final class CgHitbox {
     /** Part {@code p}'s pose as last placed, into {@code out}. */
     CgPose partPose(int p, CgPose out) {
         partOrigin(nowX, nowY, nowZ, nowQ, offsets[p * 3], offsets[p * 3 + 1], offsets[p * 3 + 2]);
-        return out.at(scratch.x, scratch.y, scratch.z).rotation((Quaterniondc) nowQ);
+        return out.at(scratch.x, scratch.y, scratch.z).rotation(nowQ);
     }
 
     /** The engine's tick: stops with its level. */
@@ -720,9 +720,9 @@ public final class CgHitbox {
         nowZ = at[2];
         if (facing == Facing.LOOK) {
             stepPose.facing(Math.toRadians(entityPose[CgEntityQuery.YAW]),
-                    Math.toRadians(entityPose[CgEntityQuery.PITCH])).rotation(nowQ);
+                    Math.toRadians(entityPose[CgEntityQuery.PITCH])).getRotation(nowQ);
         } else if (facing == Facing.BODY) {
-            stepPose.facing(Math.toRadians(entityPose[CgEntityQuery.BODY_YAW]), 0).rotation(nowQ);
+            stepPose.facing(Math.toRadians(entityPose[CgEntityQuery.BODY_YAW]), 0).getRotation(nowQ);
         } else {
             nowQ.set(fixed);
         }
@@ -769,7 +769,7 @@ public final class CgHitbox {
                         ox, oy, oz);
                 double cx = scratch.x, cy = scratch.y, cz = scratch.z;
                 if (shape.isConvex()) {
-                    stepPose.rotation((Quaterniondc) stepQ).unrotate(cx - lastX, cy - lastY, cz - lastZ, scratch);
+                    stepPose.rotation(stepQ).unrotate(cx - lastX, cy - lastY, cz - lastZ, scratch);
                     query(p, swept.set(shape, scratch.x, scratch.y, scratch.z), lastX, lastY, lastZ, stepQ);
                 } else {
                     query(p, shape, cx, cy, cz, stepQ);

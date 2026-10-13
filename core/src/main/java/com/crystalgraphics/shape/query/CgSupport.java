@@ -1,10 +1,10 @@
-package com.crystalgraphics.shape.query.convex;
+package com.crystalgraphics.shape.query;
 
 import org.joml.Vector3d;
 
 /**
  * A convex set by its support function, in the frame a query works in: what {@link CgGjk} and {@link CgEpa} test.
- * {@link CgPlacedSupport} puts a shape, a box or a point there.
+ * {@link CgPlaced} puts a shape, a box or a point there.
  *
  * <pre>{@code
  * CgSupport ball = (dx, dy, dz, out) -> {                     // a ball of radius 2 at (5, 0, 0)
@@ -18,7 +18,7 @@ import org.joml.Vector3d;
  *   <li>Answer into {@code out} and return it; allocate nothing.</li>
  * </ul>
  */
-public interface CgSupport {
+interface CgSupport {
 
     /** The point of the set farthest along {@code (dx, dy, dz)}. */
     Vector3d support(double dx, double dy, double dz, Vector3d out);

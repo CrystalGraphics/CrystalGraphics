@@ -28,7 +28,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/lib/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
 | **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/{CgVfxModule,CgVfxContacts}`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
 | **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
-| **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/`, `com/crystalgraphics/shape/query/convex/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
+| **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
 
 ## FreeType
 

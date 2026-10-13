@@ -179,7 +179,8 @@ public final class CgPose {
         return out.at(px, py, pz).rotation(nx, ny, nz, nw);
     }
 
-    public Quaterniond rotation(Quaterniond out) {
+    /** Its rotation, written into {@code out}; {@link #rotation(Quaterniondc)} sets it. */
+    public Quaterniond getRotation(Quaterniond out) {
         return out.set(qx, qy, qz, qw);
     }
 

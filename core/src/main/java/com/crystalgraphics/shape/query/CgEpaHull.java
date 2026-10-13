@@ -1,4 +1,4 @@
-package com.crystalgraphics.shape.query.convex;
+package com.crystalgraphics.shape.query;
 
 import org.joml.Vector3d;
 

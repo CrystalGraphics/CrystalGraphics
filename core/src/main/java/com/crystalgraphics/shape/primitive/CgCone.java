@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape.primitive;
 
-import com.crystalgraphics.shape.CgShape;
 import org.joml.Vector3d;
 
 /**
@@ -70,7 +69,7 @@ public final class CgCone extends CgSizedShape {
     }
 
     @Override
-    public CgCone copy() {
+    CgCone copy() {
         return new CgCone(range, halfAngle);
     }
 

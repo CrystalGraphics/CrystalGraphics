@@ -1,4 +1,4 @@
-package com.crystalgraphics.shape.query.convex;
+package com.crystalgraphics.shape.query;
 
 import org.joml.Vector3d;
 
@@ -23,10 +23,10 @@ import org.joml.Vector3d;
  *   <li>Each loop stops after {@link #MAX_ITERATIONS}, answering what it has; Jolt's has no cap.</li>
  * </ul>
  */
-public final class CgGjk {
+final class CgGjk {
 
     /** A cap Jolt does not have: a server tick must never spin on a degenerate pair. */
-    public static final int MAX_ITERATIONS = 128;
+    static final int MAX_ITERATIONS = 128;
 
     private static final double EPSILON = CgClosestPoint.EPSILON;
 
@@ -157,7 +157,7 @@ public final class CgGjk {
      *
      * @param tolerance how near the sets may come and still count as meeting
      */
-    public boolean intersects(CgSupport a, CgSupport b, double tolerance, Vector3d ioV) {
+    boolean intersects(CgSupport a, CgSupport b, double tolerance, Vector3d ioV) {
         double toleranceSq = tolerance * tolerance;
         count = 0;
         double prevLenSq = Double.MAX_VALUE;
@@ -192,7 +192,7 @@ public final class CgGjk {
      * @param ioV a non-zero vector to start from; on return the separating axis from a to b, its length the distance
      *            when the answer is below {@code MAX_VALUE}, or zero when they meet
      */
-    public double closestPoints(CgSupport a, CgSupport b, double tolerance, double maxDistanceSq, Vector3d ioV,
+    double closestPoints(CgSupport a, CgSupport b, double tolerance, double maxDistanceSq, Vector3d ioV,
                                 Vector3d outA, Vector3d outB) {
         double toleranceSq = tolerance * tolerance;
         count = 0;
@@ -236,7 +236,7 @@ public final class CgGjk {
      * The simplex {@link #closestPoints} ended on, into the first {@code n} entries of each array; answers {@code n}.
      * When it answered 0 the simplex holds the origin.
      */
-    public int simplex(Vector3d[] outY, Vector3d[] outP, Vector3d[] outQ) {
+    int simplex(Vector3d[] outY, Vector3d[] outP, Vector3d[] outQ) {
         for (int i = 0; i < count; i++) {
             outY[i].set(y[i]);
             outP[i].set(p[i]);
@@ -254,7 +254,7 @@ public final class CgGjk {
      * @param outAxis     from a to b along their separation; near zero (and the direction unreliable) when they already
      *                    overlap at lambda 0
      */
-    public double castShape(CgSupport a, double dx, double dy, double dz, double tolerance, CgSupport b,
+    double castShape(CgSupport a, double dx, double dy, double dz, double tolerance, CgSupport b,
                             double radiusA, double radiusB, double maxLambda, Vector3d outA, Vector3d outB,
                             Vector3d outAxis) {
         double toleranceSq = tolerance * tolerance;

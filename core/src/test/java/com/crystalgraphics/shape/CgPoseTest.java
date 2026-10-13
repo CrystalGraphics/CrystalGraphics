@@ -49,7 +49,7 @@ public class CgPoseTest {
     @Test
     public void rotationIsNormalizedAndKept() {
         CgPose pose = new CgPose().rotation(0, 2, 0, 2);
-        Quaterniond q = pose.rotation(new Quaterniond());
+        Quaterniond q = pose.getRotation(new Quaterniond());
         assertEquals(1, q.lengthSquared(), 1e-12);
         Vector3d v = pose.rotate(1, 0, 0, new Vector3d());      // 90 degrees about +Y: +X goes to -Z
         assertEquals(0, v.x, 1e-12);

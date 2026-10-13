@@ -199,7 +199,7 @@ public final class CgHitboxType {
         obj.moveTo(pose.x, pose.y, pose.z);
         Side side = side(obj);
         Quaterniond q = side == null ? new Quaterniond() : side.q;
-        pose.rotation(q);
+        pose.getRotation(q);
         obj.setFloat(QX, (float) q.x).setFloat(QY, (float) q.y).setFloat(QZ, (float) q.z).setFloat(QW, (float) q.w);
     }
 
@@ -268,7 +268,7 @@ public final class CgHitboxType {
 
         /** A fixed turn, as {@link CgPose#facing}: yaw and pitch in radians. */
         public Spawn facing(double yaw, double pitch) {
-            return rotation(new CgPose().facing(yaw, pitch).rotation(new Quaterniond()));
+            return rotation(new CgPose().facing(yaw, pitch).getRotation(new Quaterniond()));
         }
 
         public Spawn rotation(Quaterniondc q) {

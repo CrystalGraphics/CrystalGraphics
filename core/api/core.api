@@ -7000,6 +7000,7 @@ com/crystalgraphics/shape/CgPose
   method public <init> (Lcom/crystalgraphics/shape/CgPose;)V
   method public at (DDD)Lcom/crystalgraphics/shape/CgPose;
   method public facing (DD)Lcom/crystalgraphics/shape/CgPose;
+  method public getRotation (Lorg/joml/Quaterniond;)Lorg/joml/Quaterniond;
   method public identity ()Lcom/crystalgraphics/shape/CgPose;
   method public m00 ()D
   method public m01 ()D
@@ -7013,7 +7014,6 @@ com/crystalgraphics/shape/CgPose
   method public mul (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
   method public rotate (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public rotation (DDDD)Lcom/crystalgraphics/shape/CgPose;
-  method public rotation (Lorg/joml/Quaterniond;)Lorg/joml/Quaterniond;
   method public rotation (Lorg/joml/Quaterniondc;)Lcom/crystalgraphics/shape/CgPose;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/shape/CgPose;
   method public set (Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
@@ -7027,7 +7027,6 @@ com/crystalgraphics/shape/CgShape
   method protected <init> ()V
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
-  method public,abstract copy ()Lcom/crystalgraphics/shape/CgShape;
   method public,abstract isConvex ()Z
   method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/shape/CgShape;
@@ -7097,7 +7096,6 @@ com/crystalgraphics/shape/primitive/CgBox
   extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgBox;
   method public halfX ()D
   method public halfY ()D
   method public halfZ ()D
@@ -7110,7 +7108,6 @@ com/crystalgraphics/shape/primitive/CgCapsule
   extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public a (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public b (Lorg/joml/Vector3d;)Lorg/joml/Vector3d;
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCapsule;
   method public isConvex ()Z
   method public radius ()D
   method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
@@ -7120,7 +7117,6 @@ com/crystalgraphics/shape/primitive/CgCapsule
 com/crystalgraphics/shape/primitive/CgCompound
   access public,final
   extends com/crystalgraphics/shape/CgShape
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCompound;
   method public isConvex ()Z
   method public pose (ILcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/shape/CgPose;
   method public shape (I)Lcom/crystalgraphics/shape/CgShape;
@@ -7138,7 +7134,6 @@ com/crystalgraphics/shape/primitive/CgCompound$Builder
 com/crystalgraphics/shape/primitive/CgCone
   access public,final
   extends com/crystalgraphics/shape/primitive/CgSizedShape
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCone;
   method public halfAngle ()D
   method public isConvex ()Z
   method public range ()D
@@ -7148,7 +7143,6 @@ com/crystalgraphics/shape/primitive/CgCone
 com/crystalgraphics/shape/primitive/CgConvex
   access public,final
   extends com/crystalgraphics/shape/CgShape
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgConvex;
   method public isConvex ()Z
   method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
   method public toString ()Ljava/lang/String;
@@ -7161,7 +7155,6 @@ com/crystalgraphics/shape/primitive/CgConvex$Support
 com/crystalgraphics/shape/primitive/CgCylinder
   access public,final
   extends com/crystalgraphics/shape/primitive/CgSizedShape
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgCylinder;
   method public halfHeight ()D
   method public isConvex ()Z
   method public radius ()D
@@ -7172,7 +7165,6 @@ com/crystalgraphics/shape/primitive/CgPlane
   access public,final
   extends com/crystalgraphics/shape/CgShape
   field public,static,final DEFAULT_RADIUS D
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgPlane;
   method public isConvex ()Z
   method public nx ()D
   method public ny ()D
@@ -7196,7 +7188,6 @@ com/crystalgraphics/shape/primitive/CgResizable
 com/crystalgraphics/shape/primitive/CgRing
   access public,final
   extends com/crystalgraphics/shape/primitive/CgSizedShape
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgRing;
   method public halfHeight ()D
   method public inner ()D
   method public isConvex ()Z
@@ -7212,7 +7203,6 @@ com/crystalgraphics/shape/primitive/CgShell
   extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgShell;
   method public inner ()D
   method public isConvex ()Z
   method public isFront ()Z
@@ -7227,7 +7217,6 @@ com/crystalgraphics/shape/primitive/CgSphere
   extends com/crystalgraphics/shape/primitive/CgSizedShape
   method public bounds (Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
-  method public copy ()Lcom/crystalgraphics/shape/primitive/CgSphere;
   method public isConvex ()Z
   method public radius ()D
   method public support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
@@ -7261,25 +7250,6 @@ com/crystalgraphics/shape/query/CgShapes
   method public,static distance (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)D
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Z
   method public,static overlaps (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
-com/crystalgraphics/shape/query/convex/CgEpa
-  access public,final
-  extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/shape/query/convex/CgGjk;)V
-  method public penetration (Lcom/crystalgraphics/shape/query/convex/CgSupport;DLcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DLcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)Z
-  method public penetration (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)Z
-com/crystalgraphics/shape/query/convex/CgGjk
-  access public,final
-  extends java/lang/Object
-  field public,static,final MAX_ITERATIONS I
-  method public <init> ()V
-  method public castShape (Lcom/crystalgraphics/shape/query/convex/CgSupport;DDDDLcom/crystalgraphics/shape/query/convex/CgSupport;DDDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)D
-  method public closestPoints (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DDLorg/joml/Vector3d;Lorg/joml/Vector3d;Lorg/joml/Vector3d;)D
-  method public intersects (Lcom/crystalgraphics/shape/query/convex/CgSupport;Lcom/crystalgraphics/shape/query/convex/CgSupport;DLorg/joml/Vector3d;)Z
-  method public simplex ([Lorg/joml/Vector3d;[Lorg/joml/Vector3d;[Lorg/joml/Vector3d;)I
-com/crystalgraphics/shape/query/convex/CgSupport
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract support (DDDLorg/joml/Vector3d;)Lorg/joml/Vector3d;
 com/crystalgraphics/text/atlas/CgGlyphAtlas
   access public
   extends java/lang/Object

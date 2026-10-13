@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape.primitive;
 
-import com.crystalgraphics.shape.CgShape;
 import org.joml.Vector3d;
 
 /**
@@ -52,7 +51,7 @@ public final class CgCylinder extends CgSizedShape {
     }
 
     @Override
-    public CgCylinder copy() {
+    CgCylinder copy() {
         return new CgCylinder(radius, halfHeight);
     }
 

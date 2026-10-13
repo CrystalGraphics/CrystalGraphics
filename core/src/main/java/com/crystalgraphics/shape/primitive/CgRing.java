@@ -1,6 +1,5 @@
 package com.crystalgraphics.shape.primitive;
 
-import com.crystalgraphics.shape.CgShape;
 import org.joml.Vector3d;
 
 /**
@@ -74,7 +73,7 @@ public final class CgRing extends CgSizedShape {
     }
 
     @Override
-    public CgRing copy() {
+    CgRing copy() {
         return new CgRing(inner, outer, halfHeight, front);
     }
 

@@ -13,7 +13,6 @@ import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
-import com.crystalgraphics.shape.query.convex.CgGjk;
 import com.sun.management.ThreadMXBean;
 import org.joml.Vector3d;
 import org.junit.Test;

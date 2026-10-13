@@ -79,11 +79,6 @@ public final class CgConvex extends CgShape {
     }
 
     @Override
-    public CgConvex copy() {
-        return new CgConvex(points, support);
-    }
-
-    @Override
     public String toString() {
         return support != null ? "CgConvex[" + support + "]" : "CgConvex[" + points.length / 3 + " points]";
     }
