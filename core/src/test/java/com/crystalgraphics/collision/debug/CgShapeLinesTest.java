@@ -70,7 +70,7 @@ public class CgShapeLinesTest {
     @Test
     public void aHitboxShowsEachPartAsItsTickTestedIt() {
         CgHitbox hitbox = CgHitbox.of(CgShell.front(1)).at(3, 70, -2).radius(0, 10, 10);
-        CgCollisionWorld world = CgCollisionWorld.shapes();
+        CgCollisionWorld world = CgCollisionWorld.empty();
         for (int i = 0; i < 5; i++) hitbox.tick(world, 1);
         List<CgShape> shapes = new ArrayList<>();
         hitbox.parts((name, shape, pose) -> {
@@ -89,28 +89,28 @@ public class CgShapeLinesTest {
 
     @Test
     public void aHostWorldsQueriesAreShownUntilTheirHoldRunsOut() {
-        CgQueryLines lines = new CgQueryLines(1 << 12);
+        CgRecentLines lines = new CgRecentLines(1 << 12);
         CgCollisionWorld yard = CgCollisionWorld.of(new Yard(), new Table());
         CgShape ball = CgSphere.of(0.5);
         int[] heard = {0};
         CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> {
             heard[0]++;
-            lines.add(shape, pose, box, dx, dy, dz, length, level, nearest, 0);
+            lines.query(shape, pose, box, dx, dy, dz, length, level, nearest, 0);
         });
         try {
             assertTrue(yard.cast(ball).at(0.5, 5, 0.5).along(0, -1, 0, 10).blocksOnly().first(new CgHit()));
             CgHitbox.of(CgSphere.of(1)).at(0.5, 1, 0.5).tick(yard, 1);
-            CgCollisionWorld.shapes().cast(ball).at(0, 5, 0).along(0, -1, 0, 10).any();
+            CgCollisionWorld.empty().cast(ball).at(0, 5, 0).along(0, -1, 0, 10).any();
         } finally {
             CgQuery.watch(null);
         }
-        assertEquals("not the hitbox's query, nor the shape world's cast", 1, heard[0]);
+        assertEquals("not the hitbox's query, nor the empty world's cast", 1, heard[0]);
         List<Integer> colours = new ArrayList<>();
-        lines.drawTo(0, 100, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
-        assertTrue("its path, then where it stopped", colours.contains(CgQueryLines.PATH)
-                && colours.contains(CgQueryLines.HIT));
+        lines.drawTo(0, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
+        assertTrue("its path, then where it stopped", colours.contains(CgRecentLines.PATH)
+                && colours.contains(CgRecentLines.HIT));
         colours.clear();
-        lines.drawTo(101, 100, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
+        lines.drawTo(CgRecentLines.HOLD_NANOS, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
         assertTrue("gone after its hold", colours.isEmpty());
     }
 

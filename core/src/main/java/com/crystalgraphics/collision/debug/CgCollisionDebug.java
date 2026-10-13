@@ -15,7 +15,6 @@ import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 
 import java.util.Arrays;
-import java.util.Set;
 
 /**
  * Shapes and hitboxes drawn as lines in the world, for the next world frame only: call each frame you want them seen.
@@ -37,18 +36,15 @@ import java.util.Set;
 public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
-    /** A client's own hitboxes, and a server's, under {@link CgCollisionShow#SHOW}. */
-    static final int CLIENT = 0xFF40FF60, SERVER = 0xFFFF9030;
+    /** A server's hitboxes and queries, under {@link CgCollisionShow#SHOW}. */
+    static final int SERVER = 0xFFFF9030;
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
-    /** How long a query is drawn: past a game tick, so one asked each tick shows steadily. */
-    private static final long QUERY_HOLD_NANOS = 60_000_000L;
     private static final double MARK = 0.4;
 
     private static final Lines LINES = new Lines();
     private static final CgShapeLines SHAPES = new CgShapeLines();
-    private static final CgQueryLines QUERIES = new CgQueryLines(1 << 14);
-    private static final CgHitboxLinger LINGER = new CgHitboxLinger();
+    private static final CgRecentLines RECENT = new CgRecentLines(1 << 14);
     private static boolean shown;
     private static boolean installed;
     private static CgMesh mesh;
@@ -97,7 +93,7 @@ public final class CgCollisionDebug {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgCollisionShow.clientQueries(QUERIES);
+        CgCollisionShow.clientLines(RECENT);
         CgCollisionShow.install();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
         CgNetwork.onClientTick(CgCollisionDebug::ask);
@@ -122,13 +118,12 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        QUERIES.eye(view.x(), view.y(), view.z());
+        RECENT.eye(view.x(), view.y(), view.z());
         boolean showing = CgCollisionShow.showing();
         if (showing) {
             show();
         } else if (shown) {
-            LINGER.clear();
-            QUERIES.clear();
+            RECENT.clear();
         }
         shown = showing;
         if (LINES.count == 0) return;
@@ -143,12 +138,7 @@ public final class CgCollisionDebug {
     }
 
     private static void show() {
-        long now = System.nanoTime();
-        Set<CgHitbox> seen = CgCollisionShow.seen();
-        LINGER.take(seen, now);
-        for (CgHitbox hitbox : seen) hitbox(hitbox, CLIENT);
-        for (int i = 0, n = LINGER.expire(now); i < n; i++) hitbox(LINGER.get(i), CLIENT);
-        QUERIES.drawTo(now, QUERY_HOLD_NANOS, CgCollisionDebug::coloured);
+        RECENT.drawTo(System.nanoTime(), CgCollisionDebug::coloured);
         if (serverLines != null && System.nanoTime() - serverAt < SERVER_HOLD_NANOS) {
             colour = SERVER;
             CgLinePack.read(serverLines, LINES);

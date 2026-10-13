@@ -1572,9 +1572,9 @@ com/crystalgraphics/collision/CgCollisionWorld
   method public snapshot (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static batch ()Lcom/crystalgraphics/collision/CgCollisionWorld$Batch;
   method public,static client (F)Lcom/crystalgraphics/collision/CgCollisionWorld;
+  method public,static empty ()Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/collision/CgCollisionWorld;
-  method public,static shapes ()Lcom/crystalgraphics/collision/CgShapeWorld;
 com/crystalgraphics/collision/CgCollisionWorld$Batch
   access public,final
   extends java/lang/Object
@@ -1681,19 +1681,6 @@ com/crystalgraphics/collision/CgSentHit
   method public read (Lcom/crystalgraphics/collision/CgHit;Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/CgHit;
   method public set (Lcom/crystalgraphics/collision/CgHit;I)Lcom/crystalgraphics/collision/CgSentHit;
   method public,static wire ()Lcom/crystalgraphics/net/object/CgNetWire;
-com/crystalgraphics/collision/CgShapeWorld
-  access public,final
-  extends com/crystalgraphics/collision/CgCollisionWorld
-  method public add (ILcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/CgShapeWorld;
-  method public clear ()Lcom/crystalgraphics/collision/CgShapeWorld;
-  method public exposure (DDDI)F
-  method public lineOfSight (DDDI)Z
-  method public move (ILcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/CgShapeWorld;
-  method public remove (I)Z
-  method public size ()I
-  method public snapshot ()Lcom/crystalgraphics/collision/CgShapeWorld;
-  method public snapshot (DDDD)Lcom/crystalgraphics/collision/CgShapeWorld;
-  method public snapshot (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/CgShapeWorld;
 com/crystalgraphics/collision/debug/CgCollisionDebug
   access public,final
   extends java/lang/Object
@@ -1724,21 +1711,13 @@ com/crystalgraphics/collision/hitbox/CgHitbox
   method public activeFor (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public activeFrom (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public age ()D
-  method public allEntities ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public at (DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public except (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public exposure ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public facing (DD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public facing (Lcom/crystalgraphics/collision/hitbox/CgHitbox$Facing;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public hasListeners ()Z
   method public hitList (Lcom/crystalgraphics/collision/hitbox/CgHitList;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public hittable ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public inflate (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public itemsToo ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public kinds (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public living ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public maxHits (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public maxSweep (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public maxTargets (I)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public onEnter (Ljava/util/function/Consumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public onExit (Ljava/util/function/IntConsumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
@@ -1748,6 +1727,7 @@ com/crystalgraphics/collision/hitbox/CgHitbox
   method public parts (Lcom/crystalgraphics/collision/hitbox/CgHitbox$PartSink;)V
   method public passive ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public pose (Lcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
+  method public query (Ljava/util/function/Consumer;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public radius (DDD)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public radius (Lcom/crystalgraphics/easing/CgKeyframes;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public rehit (D)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
@@ -1762,8 +1742,6 @@ com/crystalgraphics/collision/hitbox/CgHitbox
   method public stopped ()Z
   method public tick (Lcom/crystalgraphics/collision/CgCollisionWorld;D)V
   method public toString ()Ljava/lang/String;
-  method public visible ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
-  method public where (Ljava/util/function/IntPredicate;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public,static follow (II)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public,static of (Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public,static of (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/hitbox/CgHitbox;
