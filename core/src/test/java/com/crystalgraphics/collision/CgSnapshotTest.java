@@ -2,6 +2,7 @@ package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.shape.CgPose;
@@ -20,7 +21,6 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
 
 /** Snapshots against the worlds they were taken of, and many threads querying one. */
 public class CgSnapshotTest {
@@ -154,50 +154,38 @@ public class CgSnapshotTest {
     }
 
     @Test
-    public void aShapeWorldSnapshotIsFrozenAndShared() throws InterruptedException {
-        CgShapeWorld arena = CgCollisionWorld.shapes();
+    public void anEmptyWorldsSnapshotFreezesItsHittablesForEveryThread() throws InterruptedException {
+        CgCollisionWorld arena = CgCollisionWorld.empty();
         CgPose pose = new CgPose();
-        for (int id = 0; id < 50; id++) arena.add(id, CgSphere.of(0.5), pose.at(id * 2, 0, 0));
-        CgShapeWorld frozen = arena.snapshot();
-        arena.move(0, pose.at(500, 0, 0));
-        assertEquals(2, frozen.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
-        assertEquals(1, arena.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
-        assertEquals(2, arena.snapshot(CgAABB.of(9, -1, -1, 13, 1, 1)).size());
+        CgHitbox[] props = new CgHitbox[50];
+        for (int id = 0; id < props.length; id++) {
+            props[id] = CgHitbox.of(CgSphere.of(0.5)).source(id).hittable().passive().pose(pose.at(id * 2, 0, 0));
+            props[id].tick(arena, 1);
+        }
         try {
-            frozen.add(99, CgSphere.of(1), pose);
-            fail("a snapshot is never edited");
-        } catch (IllegalStateException expected) {
-        }
+            CgCollisionWorld frozen = arena.snapshot(CgAABB.of(-10, -10, -10, 110, 10, 10));
+            props[0].pose(pose.at(500, 0, 0)).tick(arena, 1);
+            assertEquals(2, frozen.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
+            assertEquals(1, arena.overlap(CgSphere.of(1.5)).at(1, 0, 0).count());
+            assertEquals("only what touches its box", 2,
+                    arena.snapshot(CgAABB.of(9, -1, -1, 13, 1, 1)).overlap(CgSphere.of(100)).at(0, 0, 0).count());
 
-        int[] counts = new int[8];
-        Thread[] threads = new Thread[counts.length];
-        for (int t = 0; t < threads.length; t++) {
-            int mine = t;
-            threads[t] = new Thread(() -> {
-                for (int i = 0; i < 1000; i++) counts[mine] += frozen.overlap(CgSphere.of(1.5)).at(i % 100, 0, 0).count();
-            });
-            threads[t].start();
-        }
-        for (Thread t : threads) t.join();
-        for (int c : counts) assertEquals(counts[0], c);
-    }
-
-    @Test
-    public void aShapeWorldIsTheFirstQueryingThreadsAlone() throws InterruptedException {
-        CgShapeWorld arena = CgCollisionWorld.shapes();
-        arena.add(1, CgSphere.of(1), new CgPose());
-        arena.overlap(CgSphere.of(1)).count();
-        AtomicReference<Throwable> thrown = new AtomicReference<>();
-        Thread other = new Thread(() -> {
-            try {
-                arena.overlap(CgSphere.of(1)).count();
-            } catch (Throwable e) {
-                thrown.set(e);
+            int[] counts = new int[8];
+            Thread[] threads = new Thread[counts.length];
+            for (int t = 0; t < threads.length; t++) {
+                int mine = t;
+                threads[t] = new Thread(() -> {
+                    for (int i = 0; i < 1000; i++) {
+                        counts[mine] += frozen.overlap(CgSphere.of(1.5)).at(i % 100, 0, 0).count();
+                    }
+                });
+                threads[t].start();
             }
-        });
-        other.start();
-        other.join();
-        assertTrue(thrown.get() instanceof IllegalStateException);
+            for (Thread t : threads) t.join();
+            for (int c : counts) assertEquals(counts[0], c);
+        } finally {
+            for (CgHitbox p : props) p.stop();
+        }
     }
 
     @Test

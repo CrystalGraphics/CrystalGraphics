@@ -2,7 +2,7 @@ package com.crystalgraphics.demo.collision;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
-import com.crystalgraphics.collision.CgShapeWorld;
+import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.shape.CgPose;
@@ -47,6 +47,8 @@ import java.util.function.Consumer;
  *   <li>In front: a ring hitbox's front growing through six boxes, each flashing red as it is hit, and through the
  *       world's entities. Every entity within {@link #ENTITY_RANGE} is boxed yellow, and red for a moment once
  *       anything here hits it: a shape, the cast, a ray or the ring.</li>
+ *   <li>The props (the ring's boxes and the walls) are passive hittable hitboxes in an empty world of the demo's own,
+ *       each standing for its id.</li>
  *   <li>Render thread, once a frame. {@code seconds} is the frame clock: the hitbox ticks at 20 a second of it.</li>
  * </ul>
  */
@@ -91,7 +93,8 @@ public final class CgCollisionDemo {
     /** Prop ids in the demo's own world: the ring's boxes, then the walls. */
     private static final int WALL_ID = TARGETS;
 
-    private final CgShapeWorld props = CgCollisionWorld.shapes();
+    private final CgCollisionWorld props = CgCollisionWorld.empty();
+    private final CgHitbox[] targets = new CgHitbox[TARGETS], walls = new CgHitbox[WALLS_X.length];
     private final CgPose pose = new CgPose(), other = new CgPose(), floor = new CgPose();
     private final Quaterniond rotation = new Quaterniond();
     private final CgHit hit = new CgHit(), worldHit = new CgHit();
@@ -107,11 +110,6 @@ public final class CgCollisionDemo {
         if (!flashed(h.entity()) && world.entities().box(h.entity(), world.partialTick(), box)) drawBox(YELLOW);
     };
 
-    public CgCollisionDemo() {
-        for (int i = 0; i < TARGETS; i++) props.add(i, TARGET, pose.identity());
-        for (int w = 0; w < WALLS_X.length; w++) props.add(WALL_ID + w, WALL, pose.identity());
-    }
-
     /** Draws it standing at {@code x, y, z} this frame, against its props and {@code world} (null: a floor at y). */
     public void submit(@Nullable CgCollisionWorld world, double x, double y, double z, double seconds) {
         ticks = Double.isNaN(lastSeconds) ? 0 : Math.max(0, Math.min(10, (seconds - lastSeconds) * 20));
@@ -123,6 +121,10 @@ public final class CgCollisionDemo {
             clear();
         }
         this.world = world;
+        if (targets[0] == null) {
+            for (int i = 0; i < TARGETS; i++) targets[i] = prop(TARGET, i);
+            for (int w = 0; w < WALLS_X.length; w++) walls[w] = prop(WALL, WALL_ID + w);
+        }
         placeTargets();
         row(seconds);
         sweep(seconds);
@@ -131,11 +133,19 @@ public final class CgCollisionDemo {
         if (world != null) entities();
     }
 
-    /** Stops its hitboxes: the next submit starts them again. */
+    /** Stops its hitboxes and props: the next submit starts them again. */
     public void clear() {
         if (ring != null) ring.stop();
         if (worldRing != null) worldRing.stop();
         ring = worldRing = null;
+        for (int i = 0; i < TARGETS; i++) {
+            if (targets[i] != null) targets[i].stop();
+            targets[i] = null;
+        }
+        for (int w = 0; w < WALLS_X.length; w++) {
+            if (walls[w] != null) walls[w].stop();
+            walls[w] = null;
+        }
         Arrays.fill(flash, 0);
         Arrays.fill(flashedFor, 0);
     }
@@ -174,7 +184,7 @@ public final class CgCollisionDemo {
             // from standing on the ground to its bottom over the ball, never under the ground
             double rise = WALL.halfY() * (1 + Math.sin(seconds * (0.7 + 0.3 * w) + w * 2));
             other.identity().at(ox + WALLS_X[w], oy + WALL.halfY() + rise, z);
-            props.move(WALL_ID + w, other);
+            walls[w].pose(other).tick(props, 1);
             CgCollisionDebug.shape(WALL, other, YELLOW);
         }
         boolean met = props.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).allEntities().first(hit);
@@ -223,15 +233,16 @@ public final class CgCollisionDemo {
     private void placeTargets() {
         for (int i = 0; i < TARGETS; i++) {
             double angle = 2 * Math.PI * i / TARGETS, at = 2 + i * 1.2;
-            props.move(i, other.identity().at(ox + Math.cos(angle) * at, oy + 0.6, oz + RING_Z + Math.sin(angle) * at));
+            targets[i].pose(other.identity().at(ox + Math.cos(angle) * at, oy + 0.6, oz + RING_Z + Math.sin(angle) * at))
+                    .tick(props, 1);
         }
     }
 
     private void ring() {
         if (ring == null || ring.stopped()) {
             if (worldRing != null) worldRing.stop();
-            ring = grow().where(id -> id < TARGETS).onHit(h -> flash[h.entity()] = FLASH_TICKS);
-            worldRing = world == null ? null : grow().allEntities().onHit(h -> flashEntity(h.entity()));
+            ring = grow().query(q -> q.where(id -> id < TARGETS)).onHit(h -> flash[h.entity()] = FLASH_TICKS);
+            worldRing = world == null ? null : grow().query(CgQuery::allEntities).onHit(h -> flashEntity(h.entity()));
         }
         ring.tick(props, ticks);
         if (worldRing != null && world != null) worldRing.tick(world, ticks);
@@ -242,6 +253,11 @@ public final class CgCollisionDemo {
             CgCollisionDebug.shape(TARGET, other, flash[i] > 0 ? RED : GREY);
             flash[i] = Math.max(0, flash[i] - ticks);
         }
+    }
+
+    /** A prop standing for {@code id}: met by the demo's queries and hitboxes, hitting nothing itself. */
+    private static CgHitbox prop(CgShape shape, int id) {
+        return CgHitbox.of(shape).source(id).hittable().passive();
     }
 
     private CgHitbox grow() {

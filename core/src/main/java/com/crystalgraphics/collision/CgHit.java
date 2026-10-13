@@ -43,7 +43,7 @@ public final class CgHit {
      * }</pre>
      */
     public enum Kind {
-        /** An entity, or a part of one; in a {@code CgShapeWorld}, a shape, by its id. */
+        /** An entity, or a part of one. */
         ENTITY,
         /** A {@link CgHitbox#hittable() hittable} hitbox: {@link #entity()} is its owner, {@link #hitbox()} which one. */
         HITBOX,

@@ -2,6 +2,7 @@ package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
@@ -286,27 +287,40 @@ public class CgCollisionWorldTest {
     // ---- shapes, nesting
 
     @Test
-    public void aShapeWorldTestsTheShapesNotTheirBoxes() {
-        CgShapeWorld arena = CgCollisionWorld.shapes();
+    public void anEmptyWorldMeetsItsHittablesByTheirShapesNotTheirBoxes() {
+        CgCollisionWorld arena = CgCollisionWorld.empty();
         CgPose pose = new CgPose();
-        arena.add(1, CgSphere.of(1), pose.at(1.5, 0, 0));
-        arena.add(2, CgSphere.of(1), pose.at(1.6, 1.6, 0));
-        arena.add(3, CgSphere.of(0.5), pose.at(-3, 0, 0));
-        assertArrayEquals("2's box overlaps, its sphere does not", new int[]{1},
-                ids(arena.overlap(CgSphere.of(1)).at(0, 0, 0)));
-        assertEquals(0.5, hits.get(0).distance(), 1e-9);
-        assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
-        assertEquals(3, hit.entity());
-        assertEquals(6.5, hit.distance(), 1e-9);
-        assertEquals("toward the target", 1, hit.normalX(), 1e-9);
-        assertTrue(arena.cast(CgSphere.of(0.5)).at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
-        assertEquals(6, hit.distance(), 1e-6);
-        arena.move(3, pose.at(-3, 5, 0));
-        assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
-        assertEquals(1, hit.entity());
-        assertTrue(arena.remove(1));
-        assertFalse(arena.remove(1));
-        assertEquals(2, arena.size());
+        CgHitbox one = prop(arena, 1, CgSphere.of(1), pose.at(1.5, 0, 0));
+        CgHitbox two = prop(arena, 2, CgSphere.of(1), pose.at(1.6, 1.6, 0));
+        CgHitbox three = prop(arena, 3, CgSphere.of(0.5), pose.at(-3, 0, 0));
+        try {
+            assertArrayEquals("2's box overlaps, its sphere does not", new int[]{1},
+                    ids(arena.overlap(CgSphere.of(1)).at(0, 0, 0)));
+            assertEquals(0.5, hits.get(0).distance(), 1e-9);
+            assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
+            assertEquals(3, hit.entity());
+            assertEquals(CgHit.Kind.HITBOX, hit.kind());
+            assertEquals(6.5, hit.distance(), 1e-9);
+            assertEquals("toward the target", 1, hit.normalX(), 1e-9);
+            assertTrue(arena.cast(CgSphere.of(0.5)).at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
+            assertEquals(6, hit.distance(), 1e-6);
+            three.pose(pose.at(-3, 5, 0)).tick(arena, 1);
+            assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
+            assertEquals(1, hit.entity());
+            one.stop();
+            assertFalse("a stopped one is met no more", arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).any());
+        } finally {
+            one.stop();
+            two.stop();
+            three.stop();
+        }
+    }
+
+    /** A passive hittable hitbox standing for {@code id}, placed in {@code world}. */
+    private static CgHitbox prop(CgCollisionWorld world, int id, CgShape shape, CgPose at) {
+        CgHitbox h = CgHitbox.of(shape).source(id).hittable().passive().pose(at);
+        h.tick(world, 1);
+        return h;
     }
 
     @Test

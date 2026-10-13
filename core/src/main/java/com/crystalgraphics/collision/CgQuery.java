@@ -51,7 +51,7 @@ import java.util.function.IntPredicate;
  * }</pre>
  *
  * <ul>
- *   <li>The query is the world's own scratch, reset by the next query started on it: end one before starting the next,
+ *   <li>The query is its thread's scratch, reset by the next query started there: end one before starting the next,
  *       and never hold one. A query inside a visitor is fine, four deep.</li>
  *   <li>A cast or ray with blocks stops at the first block: that block is the last hit, and nothing beyond it is.</li>
  *   <li>An unloaded cell stops a cast or ray ({@link CgHit.Kind#UNLOADED}) and is left out of an overlap.</li>
@@ -72,7 +72,8 @@ public final class CgQuery {
 
     private static volatile @Nullable Watcher watcher;
 
-    private final CgCollisionWorld world;
+    private final CgCollisionWorld.PerThread thread;
+    private CgCollisionWorld world;
     private final CgPose pose = new CgPose();
     private final CgAABB queryBox = new CgAABB(), start = new CgAABB(), swept = new CgAABB(), target = new CgAABB();
     private final CgCastHit cast = new CgCastHit();
@@ -92,7 +93,7 @@ public final class CgQuery {
     private boolean entitiesOn, hitboxesOn, blocksOn, fluidsOn, borderOn, visible, exposure, items;
     /** The hitbox asking, which never meets itself, and whose queries the show leaves out: it draws its parts. */
     private CgHitbox self;
-    private final Meet meet = new Meet();
+    private final MeetLive meetLive = new MeetLive();
     private final CgAABB targetBox = new CgAABB();
     private int require, forbid, wholeRequire, kinds, excepts, source, as, max;
     private final double[] border = new double[4];
@@ -109,11 +110,12 @@ public final class CgQuery {
     private boolean stopAtFirst, done, partsSeen, blockFound;
     private int sourceRoot;
 
-    CgQuery(CgCollisionWorld world) {
-        this.world = world;
+    CgQuery(CgCollisionWorld.PerThread thread) {
+        this.thread = thread;
     }
 
-    CgQuery start(int mode, CgShape shape, CgAABBc box) {
+    CgQuery start(CgCollisionWorld world, int mode, CgShape shape, CgAABBc box) {
+        this.world = world;
         this.mode = mode;
         this.shape = shape;
         boxQuery = box != null;
@@ -344,7 +346,7 @@ public final class CgQuery {
 
     /**
      * Hands {@code watcher} every query a host's world runs from now on; null stops. One for the process: the
-     * collision show is it. A hitbox's queries and a {@link CgShapeWorld}'s are never handed over.
+     * collision show is it. A hitbox's queries and an empty world's are never handed over.
      *
      * <pre>{@code
      * CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> recorder.add(pose, nearest));
@@ -358,7 +360,7 @@ public final class CgQuery {
 
     /** Hands every hit to {@code visitor}, nearest first; the hit is valid during the call. */
     public void forEach(Consumer<? super CgHit> visitor) {
-        world.running++;
+        thread.depth++;
         try {
             run(false);
             for (int i = 0; i < hits.size(); i++) {
@@ -367,55 +369,55 @@ public final class CgQuery {
                 visitor.accept(h);
             }
         } finally {
-            world.running--;
+            thread.depth--;
         }
     }
 
     /** The nearest hit, copied into {@code out}; false, with {@code out} untouched, for none. */
     public boolean first(CgHit out) {
-        world.running++;
+        thread.depth++;
         try {
             run(false);
             if (hits.isEmpty()) return false;
             out.set(hits.get(0));
             return true;
         } finally {
-            world.running--;
+            thread.depth--;
         }
     }
 
     /** Whether anything is hit, stopping at the first. */
     public boolean any() {
-        world.running++;
+        thread.depth++;
         try {
             run(true);
             return !hits.isEmpty();
         } finally {
-            world.running--;
+            thread.depth--;
         }
     }
 
     /** How many hits. */
     public int count() {
-        world.running++;
+        thread.depth++;
         try {
             run(false);
             return hits.size();
         } finally {
-            world.running--;
+            thread.depth--;
         }
     }
 
     /** The hits, nearest first, into {@code out}, which is cleared first; how many. */
     public int into(CgHits out) {
-        world.running++;
+        thread.depth++;
         try {
             run(false);
             out.clear();
             for (int i = 0; i < hits.size(); i++) out.add().set(hits.get(i));
             return out.size();
         } finally {
-            world.running--;
+            thread.depth--;
         }
     }
 
@@ -453,7 +455,7 @@ public final class CgQuery {
             borderMaxX = (int) Math.ceil(border[2]);
             borderMaxZ = (int) Math.ceil(border[3]);
         }
-        if ((blocksOn || borderActive) && world.hasBlocks() && w.levelEpoch() != 0) {
+        if ((blocksOn || borderActive) && w.levelEpoch() != 0) {
             // a ray reads only the cells it crosses, as Minecraft's clip
             double low = mode == RAY ? start.minY : start.minY - TALL_SHAPE;
             cells.set(start.minX, low, start.minZ, start.maxX, start.maxY, start.maxZ, mx, my, mz)
@@ -465,11 +467,11 @@ public final class CgQuery {
         }
         if (entitiesOn && !done) {
             view = world.view();
-            sourceRoot = source < 0 ? -1 : world.rootOf(view, source);
+            sourceRoot = source < 0 ? -1 : view.rootVehicle(source);
             swept.set(start).union(start.minX + mx, start.minY + my, start.minZ + mz)
                     .union(start.maxX + mx, start.maxY + my, start.maxZ + mz).grow(inflate);
-            world.candidates(this, view, swept, entities);
-            if (hitboxesOn && !done) hittables(swept);
+            view.within(swept.minX, swept.minY, swept.minZ, swept.maxX, swept.maxY, swept.maxZ, entities);
+            if (hitboxesOn) hittables(swept);
         }
         hits.sort();
         hits.truncate(max);
@@ -483,38 +485,26 @@ public final class CgQuery {
             }
         }
         Watcher heard = watcher;
-        if (heard != null && self == null && !world.frozen && world.hasBlocks()) {
+        if (heard != null && self == null && !world.frozen && world.world != CgWorldQuery.NONE) {
             heard.ran(shape, pose, boxQuery ? queryBox : null, dirX, dirY, dirZ, length, world.world,
                     hits.isEmpty() ? null : hits.get(0));
         }
     }
 
-    /** A placed shape of a {@link CgShapeWorld}. */
-    void placed(int id, CgShape s, CgPose p) {
-        if (done || id == source || excepted(id)) return;
-        CgHit h = hits.add();
-        if (!placedGeometry(s, p, h) || h.distance > entityLimit || where != null && !where.test(id)) {
-            hits.removeLast();
-            return;
-        }
-        h.entity = h.parent = id;
-        h.kind = CgHit.Kind.ENTITY;
-        if (stopAtFirst) done = true;
-    }
-
     /** The hittable hitboxes in this world whose parts' boxes touch {@code within}: a snapshot's frozen ones. */
     private void hittables(CgAABBc within) {
+        if (done) return;
         if (world.frozen) {
             if (world.frozenHittables != null) world.frozenHittables.scan(this, within);
             return;
         }
-        meet.within = within;
-        CgHitboxes.hittables(meet, false);
-        meet.within = null;
+        meetLive.within = within;
+        CgHitboxes.hittables(meetLive, false);
+        meetLive.within = null;
     }
 
     /** Each live hittable hitbox this world's level holds, its owner asked of the view once. */
-    private final class Meet implements CgHitboxes.Hittables {
+    private final class MeetLive implements CgHitboxes.Hittables {
         CgAABBc within;
         private int owner, flags, kind, root;
 
@@ -522,44 +512,44 @@ public final class CgQuery {
         public boolean wants(CgHitbox hitbox, CgCollisionWorld tickedIn, int owner) {
             if (done || hitbox == self || !world.sameLevel(tickedIn)) return false;
             this.owner = owner;
-            flags = view.flags(owner);
+            flags = CgPartSet.flagsOf(view, owner);
             kind = view.kind(owner);
-            root = world.rootOf(view, owner);
+            root = view.rootVehicle(owner);
             return true;
         }
 
         @Override
         public void part(CgHitbox hitbox, @Nullable CgHitPart name, CgShape shape, CgPose pose) {
             if (!done && shape.bounds(pose, targetBox).intersects(within)) {
-                hittable(hitbox, name, shape, pose, owner, flags, kind, root);
+                meet(hitbox, name, shape, pose, owner, flags, kind, root);
             }
         }
     }
 
     /**
-     * One part of a hittable hitbox, its owner's flags, kind and root vehicle given: the filters an entity is asked are asked of
-     * the owner, except in a shape world, which has none to ask. A hitbox is hit once, by its nearest part.
+     * One part of a hittable hitbox, standing for {@code owner}: the filters an entity is asked are asked of the owner's
+     * flags, kind and root vehicle, unless it has none ({@link CgPartSet#NOT_AN_ENTITY}). A hitbox is hit once, by its
+     * nearest part.
      */
-    void hittable(CgHitbox t, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind, int root) {
-        if (done || t == self || owner == source || excepted(owner) || sourceRoot >= 0 && root == sourceRoot) return;
-        if (world.hasBlocks()) {
-            if ((flags & require) != require || (flags & forbid) != 0) return;
-            if ((flags & wholeRequire) != wholeRequire) return;
-            if (kinds != ALL_KINDS && (kinds & 1 << kind) == 0) return;
-        }
+    void meet(CgHitbox hitbox, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind,
+              int root) {
+        if (done || hitbox == self || owner == source || excepted(owner)
+                || sourceRoot >= 0 && root == sourceRoot) return;
+        if (flags != CgPartSet.NOT_AN_ENTITY && ((flags & require) != require || (flags & forbid) != 0
+                || (flags & wholeRequire) != wholeRequire || kinds != ALL_KINDS && (kinds & 1 << kind) == 0)) return;
         CgHit h = hits.add();
         if (!placedGeometry(s, p, h) || h.distance > entityLimit || where != null && !where.test(owner)
-                || visible && !world.clear(ox, oy, oz, p.x, p.y, p.z)) {
+                || visible && !thread.sight.clear(world.world, ox, oy, oz, p.x, p.y, p.z)) {
             hits.removeLast();
             return;
         }
         h.entity = h.parent = owner;
         h.kind = CgHit.Kind.HITBOX;
-        h.hitbox = t;
+        h.hitbox = hitbox;
         h.hitboxPart = name;
         for (int i = 0; i < hits.size() - 1; i++) {
             CgHit other = hits.get(i);
-            if (other.hitbox != t) continue;
+            if (other.hitbox != hitbox) continue;
             if (h.distance < other.distance) other.set(h);
             hits.removeLast();
             return;
@@ -614,7 +604,7 @@ public final class CgQuery {
             if ((whole & wholeRequire) != wholeRequire) return false;
             if (kinds != ALL_KINDS && (kinds & 1 << e.kind(parent)) == 0) return false;
             if (where != null && !where.test(id)) return false;
-            if (visible && !world.clear(ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
+            if (visible && !thread.sight.clear(world.world, ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
             h.entity = id;
             h.parent = parent;
             h.kind = CgHit.Kind.ENTITY;
