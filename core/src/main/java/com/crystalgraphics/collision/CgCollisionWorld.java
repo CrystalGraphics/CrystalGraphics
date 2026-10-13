@@ -1,5 +1,9 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.block.CgBlockSnapshot;
+import com.crystalgraphics.collision.block.CgCells;
+import com.crystalgraphics.collision.entity.CgEntityCache;
+import com.crystalgraphics.collision.entity.CgEntitySnapshot;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;

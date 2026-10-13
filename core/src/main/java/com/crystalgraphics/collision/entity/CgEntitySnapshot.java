@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.entity;
 
 import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
@@ -16,8 +16,10 @@ import java.util.function.IntConsumer;
  *       answers as none (flags 0, parent -1, no box).</li>
  *   <li>Boxes and poses are where the host read them at the snapshot's partial tick, whatever a caller asks.</li>
  * </ul>
+ *
+ * <p>Made by {@code CgCollisionWorld.snapshot}; a mod never makes one.
  */
-final class CgEntitySnapshot extends CgEntityTable {
+public final class CgEntitySnapshot extends CgEntityTable {
 
     /** An entity spanning more cells than this is tested by every walk instead of listed. */
     private static final int MAX_CELLS = 64;
@@ -33,7 +35,7 @@ final class CgEntitySnapshot extends CgEntityTable {
     }
 
     /** {@code host}'s entities touching {@code bounds}, read now at {@code partialTick}. The host's thread. */
-    static CgEntitySnapshot of(CgEntityQuery host, float partialTick, CgAABBc bounds) {
+    public static CgEntitySnapshot of(CgEntityQuery host, float partialTick, CgAABBc bounds) {
         CgEntitySnapshot s = new CgEntitySnapshot(host);
         double[] pose = new double[POSE_LENGTH];
         IntConsumer reader = id -> {

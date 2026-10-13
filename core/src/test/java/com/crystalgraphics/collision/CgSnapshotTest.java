@@ -2,6 +2,7 @@ package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.block.CgBlockSnapshot;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.service.CgBlockCopy;

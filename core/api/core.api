@@ -1681,6 +1681,44 @@ com/crystalgraphics/collision/CgSentHit
   method public read (Lcom/crystalgraphics/collision/CgHit;Lcom/crystalgraphics/collision/CgHitPart;)Lcom/crystalgraphics/collision/CgHit;
   method public set (Lcom/crystalgraphics/collision/CgHit;I)Lcom/crystalgraphics/collision/CgSentHit;
   method public,static wire ()Lcom/crystalgraphics/net/object/CgNetWire;
+com/crystalgraphics/collision/block/CgBlockSnapshot
+  access public,final
+  extends java/lang/Object
+  field public,static,final MAX_SIDE I
+  implements com/crystalgraphics/platform/service/CgWorldQuery
+  method public biomeColor (IIII)I
+  method public border ([D)Z
+  method public collisionBottom (III)F
+  method public collisionBoxes (III[F)I
+  method public collisionTop (III)F
+  method public fluidHeight (III)F
+  method public fluidKind (III)I
+  method public hardness (III)F
+  method public levelEpoch ()I
+  method public light (III)I
+  method public lightEmission (III)I
+  method public loaded (II)Z
+  method public mapColor (III)I
+  method public maxY ()I
+  method public minY ()I
+  method public precipitation (III)I
+  method public seaLevel ()I
+  method public spriteRect (III[F)Z
+  method public surface (III)I
+  method public surfaceY (III)I
+  method public tint (III)I
+  method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/block/CgBlockSnapshot;
+com/crystalgraphics/collision/block/CgCells
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public set (DDDDDDDDD)Lcom/crystalgraphics/collision/block/CgCells;
+  method public walk (IILcom/crystalgraphics/collision/block/CgCells$Visitor;)V
+com/crystalgraphics/collision/block/CgCells$Visitor
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract cell (III)Z
+  method public,abstract limit ()D
 com/crystalgraphics/collision/debug/CgCollisionDebug
   access public,final
   extends java/lang/Object
@@ -1696,6 +1734,41 @@ com/crystalgraphics/collision/debug/CgCollisionShow
   extends java/lang/Object
   field public,static,final SHOW Lcom/crystalgraphics/variable/CgVar$Bool;
   method public,static install ()V
+com/crystalgraphics/collision/entity/CgEntityCache
+  access public,final
+  extends com/crystalgraphics/collision/entity/CgEntityTable
+  method public <init> ()V
+  method public answersFor (Lcom/crystalgraphics/platform/service/CgEntityQuery;FI)Z
+  method public box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
+  method public cameraEntity ()I
+  method public flags (I)I
+  method public forget ()V
+  method public kind (I)I
+  method public localPlayer ()I
+  method public parent (I)I
+  method public pose (IF[D)Z
+  method public reset (Lcom/crystalgraphics/platform/service/CgEntityQuery;FI)V
+  method public rootVehicle (I)I
+  method public touch (I)V
+  method public warm ()Z
+  method public within (DDDDDDLjava/util/function/IntConsumer;)V
+com/crystalgraphics/collision/entity/CgEntitySnapshot
+  access public,final
+  extends com/crystalgraphics/collision/entity/CgEntityTable
+  method public box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
+  method public cameraEntity ()I
+  method public flags (I)I
+  method public kind (I)I
+  method public localPlayer ()I
+  method public parent (I)I
+  method public pose (IF[D)Z
+  method public rootVehicle (I)I
+  method public within (DDDDDDLjava/util/function/IntConsumer;)V
+  method public,static of (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
+com/crystalgraphics/collision/entity/CgEntityTable
+  access public,abstract
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/service/CgEntityQuery
 com/crystalgraphics/collision/hitbox/CgHitList
   access public,final
   extends java/lang/Object

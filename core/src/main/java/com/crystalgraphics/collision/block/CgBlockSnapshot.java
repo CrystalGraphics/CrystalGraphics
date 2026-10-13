@@ -1,5 +1,7 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.block;
 
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
@@ -18,11 +20,13 @@ import java.util.Arrays;
  *   <li>Outside its box there is nothing: no boxes, no fluid, and loaded, so sight passes. A column unloaded inside it
  *       is unloaded here too.</li>
  * </ul>
+ *
+ * <p>Made by {@link CgCollisionWorld#snapshot}; a mod never makes one.
  */
-final class CgBlockSnapshot implements CgWorldQuery {
+public final class CgBlockSnapshot implements CgWorldQuery {
 
     /** The most blocks a snapshot spans along an axis. */
-    static final int MAX_SIDE = 128;
+    public static final int MAX_SIDE = 128;
 
     private final int x0, y0, z0, sx, sy, sz, minY, maxY, epoch, seaLevel;
     private final boolean[] loaded;
@@ -66,7 +70,7 @@ final class CgBlockSnapshot implements CgWorldQuery {
     }
 
     /** {@code host}'s blocks touching {@code bounds}, read now. The host's thread. */
-    static CgBlockSnapshot of(CgWorldQuery host, CgAABBc bounds) {
+    public static CgBlockSnapshot of(CgWorldQuery host, CgAABBc bounds) {
         return new Builder(host, bounds).build();
     }
 

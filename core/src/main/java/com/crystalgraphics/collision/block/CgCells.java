@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.block;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -8,11 +8,13 @@ import org.apache.logging.log4j.Logger;
  * cross-section the box covers while it is in that slice. A ray is a box of no size; an overlap, a box that does not
  * move. Each cell is visited once, and the walk stops at the first slice the box reaches only past
  * {@link Visitor#limit}.
+ *
+ * <p>Under every {@code CgQuery} and line of sight; one per thread, reused.
  */
-final class CgCells {
+public final class CgCells {
 
     /** What a walk visits. */
-    interface Visitor {
+    public interface Visitor {
         /** Cell {@code (x, y, z)}; false stops the walk. */
         boolean cell(int x, int y, int z);
 
@@ -30,8 +32,8 @@ final class CgCells {
     private final int[] cell = new int[3];
 
     /** The box at the start and its motion; then {@link #walk}. */
-    CgCells set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double mx, double my,
-                double mz) {
+    public CgCells set(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, double mx,
+                       double my, double mz) {
         lo[0] = minX;
         lo[1] = minY;
         lo[2] = minZ;
@@ -45,7 +47,7 @@ final class CgCells {
     }
 
     /** Visits every cell from {@code minY} up to but not including {@code maxY}. */
-    void walk(int minY, int maxY, Visitor v) {
+    public void walk(int minY, int maxY, Visitor v) {
         int a = Math.abs(move[0]) >= Math.abs(move[1]) ? (Math.abs(move[0]) >= Math.abs(move[2]) ? 0 : 2)
                 : (Math.abs(move[1]) >= Math.abs(move[2]) ? 1 : 2);
         int b = (a + 1) % 3, c = (a + 2) % 3;

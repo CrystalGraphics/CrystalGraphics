@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.entity;
 
 import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
@@ -16,8 +16,10 @@ import java.util.function.IntConsumer;
  *   <li>How cells are filled is the subclass's: as they are asked ({@link CgEntityCache}) or all at once
  *       ({@link CgEntitySnapshot}).</li>
  * </ul>
+ *
+ * <p>Public only for those two: a mod never extends it.
  */
-abstract class CgEntityTable implements CgEntityQuery {
+public abstract class CgEntityTable implements CgEntityQuery {
 
     static final int SHIFT = 4, CELL = 1 << SHIFT;
     static final long NO_CELL = Long.MIN_VALUE;

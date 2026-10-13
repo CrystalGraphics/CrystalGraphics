@@ -1,5 +1,6 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.entity;
 
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.platform.service.CgBoxSink;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 
@@ -18,8 +19,10 @@ import java.util.function.IntConsumer;
  *   <li>An entity {@link #touch}ed is the host's again for the rest of the batch, and every query tests it wherever it
  *       now is: what a hit's listener damages, moves or kills is never answered as it was.</li>
  * </ul>
+ *
+ * <p>Kept per thread by {@link CgCollisionWorld#batch}; a mod never makes one.
  */
-final class CgEntityCache extends CgEntityTable {
+public final class CgEntityCache extends CgEntityTable {
 
     static final int MAX_CELLS = 512;
     /** Break-even, measured: 1,000 overlaps over 200 entities 29% faster batched, 100 slower (CgEntityCacheTest). */
@@ -41,7 +44,7 @@ final class CgEntityCache extends CgEntityTable {
     private final Probe probe = new Probe();
 
     /** Forgets everything, answering for {@code host} at {@code partialTick} from now on. */
-    void reset(CgEntityQuery host, float partialTick, int generation) {
+    public void reset(CgEntityQuery host, float partialTick, int generation) {
         this.host = host;
         this.partialTick = partialTick;
         this.generation = generation;
@@ -50,17 +53,17 @@ final class CgEntityCache extends CgEntityTable {
     }
 
     /** Forgets every entity and cell, still answering for the same batch. */
-    void forget() {
+    public void forget() {
         clearAll();
         touchedCount = 0;
     }
 
-    boolean answersFor(CgEntityQuery host, float partialTick, int generation) {
+    public boolean answersFor(CgEntityQuery host, float partialTick, int generation) {
         return this.generation == generation && this.host == host && this.partialTick == partialTick;
     }
 
     /** Hands {@code id} back to the host for the rest of the batch: it moved, died or changed. */
-    void touch(int id) {
+    public void touch(int id) {
         int e = entry(id);
         if (e < 0) e = add(id);
         if (stale[e]) return;
@@ -70,7 +73,7 @@ final class CgEntityCache extends CgEntityTable {
     }
 
     /** Counts one ask; whether the batch has asked enough to answer from the cache. */
-    boolean warm() {
+    public boolean warm() {
         return ++asked > CACHE_AFTER;
     }
 

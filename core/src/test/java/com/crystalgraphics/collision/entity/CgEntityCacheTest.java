@@ -1,5 +1,8 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.entity;
 
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHits;
+import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.shape.CgShape;
