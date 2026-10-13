@@ -1,5 +1,9 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hitbox;
 
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.CgSentHit;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -98,11 +102,12 @@ public class CgHitboxTest {
         Table t = new Table().mob(1, 1, 0, KIND_MONSTER).mob(2, 0, 1.5, KIND_MONSTER).mob(3, -2, 0, KIND_MONSTER);
         CgCollisionWorld w = world(t);
         int[] hits = {0};
-        CgHitbox aura = CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 0).rehit(5).maxHits(2).onHit(h -> hits[0]++);
+        CgHitList list = new CgHitList();
+        CgHitbox aura = CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 0).rehit(5).maxHits(2).hitList(list).onHit(h -> hits[0]++);
         for (int i = 0; i < 20; i++) aura.tick(w, 1);
         assertEquals("each at ticks 1 and 6", 6, hits[0]);
-        assertEquals(2, aura.hitList().count(3));
-        assertEquals(6.0, aura.hitList().lastHit(3), 0);
+        assertEquals(2, list.count(3));
+        assertEquals(6.0, list.lastHit(3), 0);
 
         List<Integer> pierced = new ArrayList<>();
         CgHitbox pierce = CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 0).maxTargets(2).onHit(h -> pierced.add(h.entity()));
@@ -159,7 +164,7 @@ public class CgHitboxTest {
         // the player, 1, stands at z = 5 behind a shield at z = 4
         CgCollisionWorld w = world(new Table().mob(1, 0, 5, KIND_MONSTER));
         int[] heard = {0};
-        CgHitbox shield = CgHitbox.of(SHIELD, CgBox.of(1, 1, 0.1)).at(0, 0.9, 4).source(1).target().passive()
+        CgHitbox shield = CgHitbox.of(SHIELD, CgBox.of(1, 1, 0.1)).at(0, 0.9, 4).source(1).hittable().passive()
                 .onHit(h -> heard[0]++);
         shield.tick(w, 1);
         CgHit hit = new CgHit();
@@ -194,16 +199,16 @@ public class CgHitboxTest {
     }
 
     @Test
-    public void aTargetNeverMeetsItselfAndNeedsAnOwner() {
+    public void aHittableHitboxNeverMeetsItselfAndNeedsAnOwner() {
         CgCollisionWorld w = world(new Table().mob(2, 0, 0, KIND_MONSTER));
         List<String> hits = new ArrayList<>();
-        CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).target()
+        CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).hittable()
                 .onHit(h -> hits.add(h.kind() + " " + h.entity()));
         aura.tick(w, 1);
         assertEquals("its owner's body, never its own", Arrays.asList("ENTITY 2"), hits);
         aura.stop();
         try {
-            CgHitbox.of(CgSphere.of(1)).target().tick(w, 1);
+            CgHitbox.of(CgSphere.of(1)).hittable().tick(w, 1);
             fail("a target with no owner");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("owner"));

@@ -40,7 +40,7 @@ import java.util.Arrays;
  *   <li>Circles take {@link #CIRCLE} segments. One instance a thread.</li>
  * </ul>
  */
-public final class CgShapeLines {
+final class CgShapeLines {
 
     /** Segments in a full circle. */
     public static final int CIRCLE = 24;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 
 import javax.annotation.Nullable;
@@ -13,8 +14,8 @@ import javax.annotation.Nullable;
  *
  * private final CgHit hit = new CgHit();                        // a field, reused
  * if (world.ray().at(eyeX, eyeY, eyeZ).along(lookX, lookY, lookZ, 64).blocksToo().first(hit)) {
- *     if (hit.isBlock()) chip(hit.blockX(), hit.blockY(), hit.blockZ());
- *     else strike(hit.entity());
+ *     if (hit.entity() >= 0) strike(hit.entity());
+ *     else if (hit.kind() == CgHit.Kind.BLOCK) chip(hit.blockX(), hit.blockY(), hit.blockZ());
  * }
  * }</pre>
  *
@@ -44,39 +45,42 @@ public final class CgHit {
     public enum Kind {
         /** An entity, or a part of one; in a {@code CgShapeWorld}, a shape, by its id. */
         ENTITY,
-        /** A {@link CgHitbox#target() target} hitbox: {@link #entity()} is its owner, {@link #hitbox()} which one. */
+        /** A {@link CgHitbox#hittable() hittable} hitbox: {@link #entity()} is its owner, {@link #hitbox()} which one. */
         HITBOX,
         /** A block. */
         BLOCK,
-        /** A fluid's surface, with {@code fluids()} asked. */
+        /** A fluid's surface, with the query's {@code fluids()} asked: {@link #fluid()} says which. */
         FLUID,
         /** The edge of what is loaded, where a cast or ray stopped. */
         UNLOADED,
-        /** The world border, with {@code border()} asked: the block cell beyond it. */
+        /** The world border, with the query's {@code border()} asked: the block is the cell beyond it. */
         BORDER,
         /** Nothing, only a point: where an effect reached the point it was aimed at, or burst in open air. */
-        POINT
+        POINT;
+
+        /**
+         * Whether it is terrain rather than an entity or a point: a block, a fluid, the border or the edge of what is
+         * loaded, each naming its cell in {@link #blockX()}.
+         */
+        public boolean isTerrain() {
+            return this == BLOCK || this == FLUID || this == UNLOADED || this == BORDER;
+        }
     }
 
     int entity = -1, parent = -1;
     int blockX, blockY, blockZ;
-    boolean block, unloaded, border;
+    Kind kind = Kind.POINT;
     int fluid;
     double x, y, z;
     double normalX, normalY, normalZ;
     double distance, fraction;
     float exposure = Float.NaN;
     CgHitPart part;
-    boolean onHitbox;
     CgHitbox hitbox;
     CgHitPart hitboxPart;
 
     public Kind kind() {
-        if (onHitbox) return Kind.HITBOX;
-        if (!block) return entity >= 0 ? Kind.ENTITY : Kind.POINT;
-        if (unloaded) return Kind.UNLOADED;
-        if (border) return Kind.BORDER;
-        return fluid != CgWorldQuery.FLUID_NONE ? Kind.FLUID : Kind.BLOCK;
+        return kind;
     }
 
     /** The entity met, a part of a multipart one included, or the owner of the hitbox met; -1 for a block. */
@@ -89,7 +93,7 @@ public final class CgHit {
         return parent;
     }
 
-    /** The target hitbox met; null for any other kind, and for a hit that crossed the network. */
+    /** The hittable hitbox met; null for any other kind, and for a hit that crossed the network. */
     public @Nullable CgHitbox hitbox() {
         return hitbox;
     }
@@ -99,11 +103,7 @@ public final class CgHit {
         return hitboxPart;
     }
 
-    /** Whether a block was met rather than an entity. */
-    public boolean isBlock() {
-        return block;
-    }
-
+    /** The block cell met, for a hit whose kind is {@link Kind#isTerrain()}. */
     public int blockX() {
         return blockX;
     }
@@ -116,17 +116,7 @@ public final class CgHit {
         return blockZ;
     }
 
-    /** Whether a cast or ray stopped at the edge of what is loaded, rather than at a block. */
-    public boolean unloaded() {
-        return unloaded;
-    }
-
-    /** Whether the world border was met, with {@code border()} asked: {@link #blockX()} is the cell beyond it. */
-    public boolean border() {
-        return border;
-    }
-
-    /** The fluid surface met ({@code CgWorldQuery.FLUID_WATER}, {@code FLUID_LAVA}), with {@code fluids()} asked. */
+    /** The fluid surface met, {@code CgWorldQuery.FLUID_WATER} or {@code FLUID_LAVA}, for a {@code FLUID} hit. */
     public int fluid() {
         return fluid;
     }
@@ -190,7 +180,7 @@ public final class CgHit {
     void reset() {
         entity = parent = -1;
         blockX = blockY = blockZ = 0;
-        block = unloaded = border = onHitbox = false;
+        kind = Kind.POINT;
         fluid = CgWorldQuery.FLUID_NONE;
         exposure = Float.NaN;
         part = hitboxPart = null;
@@ -206,6 +196,7 @@ public final class CgHit {
         reset();
         this.entity = entity;
         this.parent = parent;
+        kind = entity >= 0 ? Kind.ENTITY : Kind.POINT;
         this.x = x;
         this.y = y;
         this.z = z;
@@ -218,47 +209,45 @@ public final class CgHit {
     /** As {@link #setEntity}, for a block met at a point. */
     public CgHit setBlock(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
         setPoint(x, y, z, part);
-        block = true;
+        kind = Kind.BLOCK;
         this.blockX = blockX;
         this.blockY = blockY;
         this.blockZ = blockZ;
         return this;
     }
 
-    /** As {@link #setBlock}, for a fluid's surface: {@code fluid} is {@code CgWorldQuery.FLUID_WATER} or {@code FLUID_LAVA}. */
-    public CgHit setFluid(int blockX, int blockY, int blockZ, int fluid, double x, double y, double z,
-                          @Nullable CgHitPart part) {
+    CgHit setFluid(int blockX, int blockY, int blockZ, int fluid, double x, double y, double z,
+                   @Nullable CgHitPart part) {
         setBlock(blockX, blockY, blockZ, x, y, z, part);
+        kind = Kind.FLUID;
         this.fluid = fluid;
         return this;
     }
 
-    /** As {@link #setBlock}, for the edge of what is loaded. */
-    public CgHit setUnloaded(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
+    CgHit setUnloaded(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
         setBlock(blockX, blockY, blockZ, x, y, z, part);
-        unloaded = true;
+        kind = Kind.UNLOADED;
         return this;
     }
 
-    /** As {@link #setBlock}, for the world border: the block is the cell beyond it. */
-    public CgHit setBorder(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
+    CgHit setBorder(int blockX, int blockY, int blockZ, double x, double y, double z, @Nullable CgHitPart part) {
         setBlock(blockX, blockY, blockZ, x, y, z, part);
-        border = true;
+        kind = Kind.BORDER;
         return this;
     }
 
     /**
      * Makes this a hit of nothing at a point: where an effect reached the point it was aimed at, or burst in open air.
-     * {@link #entity()} is -1 and {@link #isBlock()} false.
+     * {@link #entity()} is -1 and its kind {@code POINT}.
      */
     public CgHit setPoint(double x, double y, double z, @Nullable CgHitPart part) {
         return setEntity(-1, -1, x, y, z, Float.NaN, part);
     }
 
-    /** A target hitbox's hit read back from the network: its owner, without the hitbox. */
+    /** A hittable hitbox's hit read back from the network: its owner, without the hitbox. */
     CgHit setHitbox(int owner, double x, double y, double z, @Nullable CgHitPart part) {
         setEntity(owner, owner, x, y, z, Float.NaN, part);
-        onHitbox = true;
+        kind = Kind.HITBOX;
         return this;
     }
 
@@ -269,9 +258,7 @@ public final class CgHit {
         blockX = o.blockX;
         blockY = o.blockY;
         blockZ = o.blockZ;
-        block = o.block;
-        unloaded = o.unloaded;
-        border = o.border;
+        kind = o.kind;
         fluid = o.fluid;
         x = o.x;
         y = o.y;
@@ -283,7 +270,6 @@ public final class CgHit {
         fraction = o.fraction;
         exposure = o.exposure;
         part = o.part;
-        onHitbox = o.onHitbox;
         hitbox = o.hitbox;
         hitboxPart = o.hitboxPart;
         return this;
@@ -291,10 +277,9 @@ public final class CgHit {
 
     @Override
     public String toString() {
-        String what = block ? (unloaded ? "unloaded " : border ? "border " : fluid != CgWorldQuery.FLUID_NONE ? "fluid "
-                : "block ")
-                + blockX + "," + blockY + "," + blockZ
-                : onHitbox ? "hitbox of " + entity : "entity " + entity + (parent != entity ? " of " + parent : "");
-        return "CgHit[" + what + " at " + distance + ", point " + x + "," + y + "," + z + "]";
+        String what = kind.isTerrain() ? blockX + "," + blockY + "," + blockZ
+                : kind == Kind.HITBOX ? "of " + entity
+                : kind == Kind.ENTITY ? entity + (parent != entity ? " of " + parent : "") : "";
+        return "CgHit[" + kind + " " + what + " at " + distance + ", point " + x + "," + y + "," + z + "]";
     }
 }

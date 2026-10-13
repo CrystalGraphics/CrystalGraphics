@@ -1,22 +1,22 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.CgHitbox;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
-import com.crystalgraphics.vfx.camera.CgCameraShake;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

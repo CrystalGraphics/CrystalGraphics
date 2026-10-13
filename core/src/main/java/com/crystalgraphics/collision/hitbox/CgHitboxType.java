@@ -1,5 +1,8 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hitbox;
 
+import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgSentHit;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetBehaviour;
@@ -210,12 +213,9 @@ public final class CgHitboxType {
         return side == null ? null : side.hitbox;
     }
 
+    /** The networked object type underneath: what a client's visible objects and the test rig are asked by. */
     public CgNetType type() {
         return type;
-    }
-
-    public String id() {
-        return type.name();
     }
 
     @Nullable
@@ -271,17 +271,14 @@ public final class CgHitboxType {
             return rotation(new CgPose().facing(yaw, pitch).getRotation(new Quaterniond()));
         }
 
+        /** A fixed turn. */
         public Spawn rotation(Quaterniondc q) {
             obj.setFloat(QX, (float) q.x()).setFloat(QY, (float) q.y()).setFloat(QZ, (float) q.z())
                     .setFloat(QW, (float) q.w());
             return facing(CgHitbox.Facing.FIXED);
         }
 
-        public Spawn owner(Object playerOrId) {
-            obj.owner(playerOrId);
-            return this;
-        }
-
+        /** One of its own fields, read by the factory on every side. */
         public <V> Spawn set(CgNetField<V> field, V value) {
             obj.set(field, value);
             return this;

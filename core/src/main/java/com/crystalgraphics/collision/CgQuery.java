@@ -1,5 +1,7 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.hitbox.CgHitboxes;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
@@ -39,7 +41,7 @@ import java.util.function.IntPredicate;
  * }</pre>
  *
  * Targets, by default, are what Minecraft's projectiles hit: alive, pickable, not a spectator. {@link #living},
- * {@link #items}, {@link #anything}, {@link #kinds}, {@link #solid} and {@link #where} change that.
+ * {@link #itemsToo}, {@link #allEntities}, {@link #kinds}, {@link #solid} and {@link #where} change that.
  *
  * An entity's own body moving, met as Minecraft's movement meets it: blocks as they show that entity, the world border,
  * and the entities it would stand on:
@@ -52,12 +54,11 @@ import java.util.function.IntPredicate;
  *   <li>The query is the world's own scratch, reset by the next query started on it: end one before starting the next,
  *       and never hold one. A query inside a visitor is fine, four deep.</li>
  *   <li>A cast or ray with blocks stops at the first block: that block is the last hit, and nothing beyond it is.</li>
- *   <li>An unloaded cell stops a cast or ray ({@link CgHit#unloaded()}) and is left out of an overlap.</li>
+ *   <li>An unloaded cell stops a cast or ray ({@link CgHit.Kind#UNLOADED}) and is left out of an overlap.</li>
  *   <li>A multipart entity is hit once, by its nearest part; {@link #living} and {@link #kinds} ask of the whole.</li>
- *   <li>A {@link CgHitbox#target() target} hitbox is met as an entity is, standing for its owner: a shield stops a
+ *   <li>A {@link CgHitbox#hittable() hittable} hitbox is met as an entity is, standing for its owner: a shield stops a
  *       ray before the player holding it. {@link #noHitboxes} passes through them.</li>
- *   <li>A host world's queries are drawn under {@code crystalgraphics.collision.show} and F3+B ({@link #watch});
- *       {@link #unwatched} leaves one out.</li>
+ *   <li>A host world's queries are drawn under {@code crystalgraphics.collision.show} and F3+B.</li>
  * </ul>
  */
 public final class CgQuery {
@@ -89,9 +90,9 @@ public final class CgQuery {
     private boolean boxQuery, along;
     private double dirX, dirY, dirZ, length;
     private boolean entitiesOn, hitboxesOn, blocksOn, fluidsOn, borderOn, visible, exposure, items;
-    /** The hitbox asking, which never meets itself. */
+    /** The hitbox asking, which never meets itself, and whose queries the show leaves out: it draws its parts. */
     private CgHitbox self;
-    private final CgPose targetPose = new CgPose();
+    private final Meet meet = new Meet();
     private final CgAABB targetBox = new CgAABB();
     private int require, forbid, wholeRequire, kinds, excepts, source, as, max;
     private final double[] border = new double[4];
@@ -101,7 +102,6 @@ public final class CgQuery {
     private IntPredicate where;
     private double inflate;
     private CgHitPart part;
-    private boolean unwatched;
 
     private double ox, oy, oz, invX, invY, invZ, entityLimit;
     /** The world's entities as this run reads them: {@link CgCollisionWorld#view}. */
@@ -123,7 +123,6 @@ public final class CgQuery {
         dirX = dirY = dirZ = length = 0;
         entitiesOn = hitboxesOn = true;
         blocksOn = fluidsOn = borderOn = visible = exposure = items = false;
-        self = null;
         require = TARGETS;
         forbid = CgEntityQuery.SPECTATOR;
         wholeRequire = 0;
@@ -134,7 +133,6 @@ public final class CgQuery {
         where = null;
         inflate = 0;
         part = null;
-        unwatched = false;
         return this;
     }
 
@@ -198,14 +196,14 @@ public final class CgQuery {
         return this;
     }
 
-    /** Blocks alone: no entity and no target hitbox. */
+    /** Blocks alone: no entity and no hittable hitbox. */
     public CgQuery blocksOnly() {
         blocksOn = true;
         entitiesOn = false;
         return this;
     }
 
-    /** Passes through {@link CgHitbox#target() target} hitboxes, meeting their owners' bodies alone. */
+    /** Passes through {@link CgHitbox#hittable() hittable} hitboxes, meeting their owners' bodies alone. */
     public CgQuery noHitboxes() {
         hitboxesOn = false;
         return this;
@@ -267,13 +265,13 @@ public final class CgQuery {
     }
 
     /** Dropped items too, which Minecraft's projectiles pass through. */
-    public CgQuery items() {
+    public CgQuery itemsToo() {
         items = true;
         return this;
     }
 
     /** Every entity, spectators and the dead included. */
-    public CgQuery anything() {
+    public CgQuery allEntities() {
         require = forbid = 0;
         return this;
     }
@@ -326,17 +324,6 @@ public final class CgQuery {
         return this;
     }
 
-    /** Left out of what {@link #watch} hears: for a query its owner draws its own way, as a hitbox draws its parts. */
-    public CgQuery unwatched() {
-        unwatched = true;
-        return this;
-    }
-
-    CgQuery self(CgHitbox hitbox) {
-        self = hitbox;
-        return this;
-    }
-
     // ---- watching
 
     /** Hears each query a host's world runs, as it ends, on the thread running it. */
@@ -356,11 +343,11 @@ public final class CgQuery {
     }
 
     /**
-     * Hands {@code watcher} every query a host's world runs from now on; null stops. One for the process:
-     * {@code crystalgraphics.collision.show} is it. A {@link CgShapeWorld}'s queries are never handed over.
+     * Hands {@code watcher} every query a host's world runs from now on; null stops. One for the process: the
+     * collision show is it. A hitbox's queries and a {@link CgShapeWorld}'s are never handed over.
      *
      * <pre>{@code
-     * CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> count++);
+     * CgQuery.watch((shape, pose, box, dx, dy, dz, length, level, nearest) -> recorder.add(pose, nearest));
      * }</pre>
      */
     public static void watch(@Nullable Watcher watcher) {
@@ -408,6 +395,7 @@ public final class CgQuery {
         }
     }
 
+    /** How many hits. */
     public int count() {
         world.running++;
         try {
@@ -437,6 +425,7 @@ public final class CgQuery {
         if (mode != OVERLAP && !along) throw new IllegalStateException("a cast or ray needs along(...)");
         this.stopAtFirst = stopAtFirst;
         done = partsSeen = blockFound = false;
+        self = CgHitboxes.gathering();
         hits.clear();
         if (boxQuery) {
             ox = queryBox.centerX();
@@ -480,7 +469,7 @@ public final class CgQuery {
             swept.set(start).union(start.minX + mx, start.minY + my, start.minZ + mz)
                     .union(start.maxX + mx, start.maxY + my, start.maxZ + mz).grow(inflate);
             world.candidates(this, view, swept, entities);
-            if (hitboxesOn && !done) world.targets(this, view, swept);
+            if (hitboxesOn && !done) hittables(swept);
         }
         hits.sort();
         hits.truncate(max);
@@ -490,11 +479,11 @@ public final class CgQuery {
         if (exposure) {
             for (int i = 0; i < hits.size(); i++) {
                 CgHit h = hits.get(i);
-                if (h.entity >= 0 && !h.onHitbox) h.exposure = world.exposure(ox, oy, oz, h.entity);
+                if (h.kind == CgHit.Kind.ENTITY) h.exposure = world.exposure(ox, oy, oz, h.entity);
             }
         }
         Watcher heard = watcher;
-        if (heard != null && !unwatched && !world.frozen && world.hasBlocks()) {
+        if (heard != null && self == null && !world.frozen && world.hasBlocks()) {
             heard.ran(shape, pose, boxQuery ? queryBox : null, dirX, dirY, dirZ, length, world.world,
                     hits.isEmpty() ? null : hits.get(0));
         }
@@ -509,27 +498,49 @@ public final class CgQuery {
             return;
         }
         h.entity = h.parent = id;
+        h.kind = CgHit.Kind.ENTITY;
         if (stopAtFirst) done = true;
     }
 
-    /** A live target's parts whose boxes touch {@code within}. */
-    void target(CgHitbox t, CgEntityQuery view, CgAABBc within) {
-        if (t == self) return;
-        int owner = t.owner();
-        int flags = view.flags(owner), kind = view.kind(owner), root = world.rootOf(view, owner);
-        for (int p = 0; p < t.partCount() && !done; p++) {
-            CgShape s = t.partShape(p);
-            if (s.bounds(t.partPose(p, targetPose), targetBox).intersects(within)) {
-                target(t, t.partName(p), s, targetPose, owner, flags, kind, root);
+    /** The hittable hitboxes in this world whose parts' boxes touch {@code within}: a snapshot's frozen ones. */
+    private void hittables(CgAABBc within) {
+        if (world.frozen) {
+            if (world.frozenHittables != null) world.frozenHittables.scan(this, within);
+            return;
+        }
+        meet.within = within;
+        CgHitboxes.hittables(meet, false);
+        meet.within = null;
+    }
+
+    /** Each live hittable hitbox this world's level holds, its owner asked of the view once. */
+    private final class Meet implements CgHitboxes.Hittables {
+        CgAABBc within;
+        private int owner, flags, kind, root;
+
+        @Override
+        public boolean wants(CgHitbox hitbox, CgCollisionWorld tickedIn, int owner) {
+            if (done || hitbox == self || !world.sameLevel(tickedIn)) return false;
+            this.owner = owner;
+            flags = view.flags(owner);
+            kind = view.kind(owner);
+            root = world.rootOf(view, owner);
+            return true;
+        }
+
+        @Override
+        public void part(CgHitbox hitbox, @Nullable CgHitPart name, CgShape shape, CgPose pose) {
+            if (!done && shape.bounds(pose, targetBox).intersects(within)) {
+                hittable(hitbox, name, shape, pose, owner, flags, kind, root);
             }
         }
     }
 
     /**
-     * One part of a target, its owner's flags, kind and root vehicle given: the filters an entity is asked are asked of
+     * One part of a hittable hitbox, its owner's flags, kind and root vehicle given: the filters an entity is asked are asked of
      * the owner, except in a shape world, which has none to ask. A hitbox is hit once, by its nearest part.
      */
-    void target(CgHitbox t, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind, int root) {
+    void hittable(CgHitbox t, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind, int root) {
         if (done || t == self || owner == source || excepted(owner) || sourceRoot >= 0 && root == sourceRoot) return;
         if (world.hasBlocks()) {
             if ((flags & require) != require || (flags & forbid) != 0) return;
@@ -543,7 +554,7 @@ public final class CgQuery {
             return;
         }
         h.entity = h.parent = owner;
-        h.onHitbox = true;
+        h.kind = CgHit.Kind.HITBOX;
         h.hitbox = t;
         h.hitboxPart = name;
         for (int i = 0; i < hits.size() - 1; i++) {
@@ -606,6 +617,7 @@ public final class CgQuery {
             if (visible && !world.clear(ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
             h.entity = id;
             h.parent = parent;
+            h.kind = CgHit.Kind.ENTITY;
             if (parent != id) partsSeen = true;
             return true;
         }
@@ -617,12 +629,12 @@ public final class CgQuery {
         public boolean cell(int x, int y, int z) {
             CgWorldQuery w = world.world;
             if (borderActive && (x < borderMinX || x >= borderMaxX || z < borderMinZ || z >= borderMaxZ)) {
-                block(x, y, z, x, y, z, x + 1, y + 1, z + 1, false, true, CgWorldQuery.FLUID_NONE);
+                block(x, y, z, x, y, z, x + 1, y + 1, z + 1, CgHit.Kind.BORDER, CgWorldQuery.FLUID_NONE);
                 return !done;
             }
             if (!blocksOn) return !done;
             if (!w.loaded(x, z)) {
-                if (mode != OVERLAP) block(x, y, z, x, y, z, x + 1, y + 1, z + 1, true, false, CgWorldQuery.FLUID_NONE);
+                if (mode != OVERLAP) block(x, y, z, x, y, z, x + 1, y + 1, z + 1, CgHit.Kind.UNLOADED, CgWorldQuery.FLUID_NONE);
                 return !done;
             }
             int n = w.collisionBoxes(x, y, z, as, boxes);
@@ -632,11 +644,11 @@ public final class CgQuery {
             }
             for (int i = 0; i < n * 6; i += 6) {
                 block(x, y, z, x + boxes[i], y + boxes[i + 1], z + boxes[i + 2], x + boxes[i + 3], y + boxes[i + 4],
-                        z + boxes[i + 5], false, false, CgWorldQuery.FLUID_NONE);
+                        z + boxes[i + 5], CgHit.Kind.BLOCK, CgWorldQuery.FLUID_NONE);
             }
             if (fluidsOn) {
                 float top = w.fluidHeight(x, y, z);
-                if (!Float.isNaN(top)) block(x, y, z, x, y, z, x + 1, y + top, z + 1, false, false, w.fluidKind(x, y, z));
+                if (!Float.isNaN(top)) block(x, y, z, x, y, z, x + 1, y + top, z + 1, CgHit.Kind.FLUID, w.fluidKind(x, y, z));
             }
             return !done;
         }
@@ -647,7 +659,7 @@ public final class CgQuery {
         }
 
         private void block(int cx, int cy, int cz, double minX, double minY, double minZ, double maxX, double maxY,
-                           double maxZ, boolean unloaded, boolean border, int fluid) {
+                           double maxZ, CgHit.Kind kind, int fluid) {
             target.set(minX, minY, minZ, maxX, maxY, maxZ);
             if (mode == OVERLAP) {
                 CgHit h = hits.add();
@@ -655,11 +667,11 @@ public final class CgQuery {
                     hits.removeLast();
                     return;
                 }
-                fill(h, cx, cy, cz, unloaded, border, fluid);
+                fill(h, cx, cy, cz, kind, fluid);
                 if (hits.size() > 1) {
                     // a block is hit once: its boxes come one after another
                     CgHit last = hits.get(hits.size() - 2);
-                    if (last.block && last.blockX == cx && last.blockY == cy && last.blockZ == cz
+                    if (last.kind.isTerrain() && last.blockX == cx && last.blockY == cy && last.blockZ == cz
                             && last.fluid == fluid) {
                         if (h.distance < last.distance) last.set(h);
                         hits.removeLast();
@@ -671,18 +683,16 @@ public final class CgQuery {
             probe.reset();
             if (!geometry(target, probe) || blockFound && probe.distance >= nearestBlock.distance) return;
             nearestBlock.set(probe);
-            fill(nearestBlock, cx, cy, cz, unloaded, border, fluid);
+            fill(nearestBlock, cx, cy, cz, kind, fluid);
             blockFound = true;
             if (stopAtFirst) done = true;
         }
 
-        private void fill(CgHit h, int cx, int cy, int cz, boolean unloaded, boolean border, int fluid) {
-            h.block = true;
+        private void fill(CgHit h, int cx, int cy, int cz, CgHit.Kind kind, int fluid) {
+            h.kind = kind;
             h.blockX = cx;
             h.blockY = cy;
             h.blockZ = cz;
-            h.unloaded = unloaded;
-            h.border = border;
             h.fluid = fluid;
         }
     }

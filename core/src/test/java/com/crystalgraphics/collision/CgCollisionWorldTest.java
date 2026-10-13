@@ -73,7 +73,7 @@ public class CgCollisionWorldTest {
     private int[] ids(CgQuery q) {
         int n = q.into(hits);
         int[] out = new int[n];
-        for (int i = 0; i < n; i++) out[i] = hits.get(i).isBlock() ? -1 : hits.entity(i);
+        for (int i = 0; i < n; i++) out[i] = hits.get(i).entity();
         return out;
     }
 
@@ -82,9 +82,9 @@ public class CgCollisionWorldTest {
     @Test
     public void aBlastFindsWhatAProjectileWouldNearestFirst() {
         assertArrayEquals(new int[]{1, 2, 31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40)));
-        assertEquals(1.7, hits.distance(0), 1e-9);
+        assertEquals(1.7, hits.get(0).distance(), 1e-9);
         assertEquals("the dragon's part, its dragon the parent", 30, hits.get(2).parent());
-        assertEquals(2 * Math.sqrt(2), hits.distance(2), 1e-9);
+        assertEquals(2 * Math.sqrt(2), hits.get(2).distance(), 1e-9);
         CgHit first = hits.get(0);
         assertEquals("the normal points at the target", 1, first.normalX(), 1e-9);
         assertEquals(1.7, first.x(), 1e-9);
@@ -98,9 +98,9 @@ public class CgCollisionWorldTest {
                 ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).living()));
         assertArrayEquals(new int[]{1, 2, 31, 4},
                 ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).kinds(1 << KIND_MONSTER)));
-        assertArrayEquals(new int[]{1, 10, 2, 31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).items()));
+        assertArrayEquals(new int[]{1, 10, 2, 31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).itemsToo()));
         assertArrayEquals("the dragon itself is nearer than its parts", new int[]{1, 9, 11, 30, 2, 3, 4},
-                ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).anything().kinds(~(1 << KIND_ITEM))));
+                ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).allEntities().kinds(~(1 << KIND_ITEM))));
         assertArrayEquals(new int[]{31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).except(1).except(2)));
         assertArrayEquals("excepting the dragon excepts its parts", new int[]{1, 2, 3, 4},
                 ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).except(30)));
@@ -108,7 +108,7 @@ public class CgCollisionWorldTest {
         assertArrayEquals(new int[]{1, 2, 31, 3},
                 ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).where(id -> id != 4)));
         assertEquals("without a source, the rider and the mount", 7, world.overlap(BLAST).at(CX, CY, CZ).into(hits));
-        assertEquals("both hold the blast's centre", 0, hits.distance(1), 0);
+        assertEquals("both hold the blast's centre", 0, hits.get(1).distance(), 0);
         assertArrayEquals("aim assist grows every box", new int[]{1, 2, 31, 3, 4},
                 ids(world.overlap(CgSphere.of(4.6)).at(CX, CY, CZ).source(40).inflate(0.2)));
         assertArrayEquals(new int[]{1, 2, 31, 3},
@@ -170,7 +170,7 @@ public class CgCollisionWorldTest {
     @Test
     public void aRayStopsAtTheFirstBlockAndNothingBeyondIt() {
         assertArrayEquals(new int[]{51, -1}, ids(world.ray().at(0.5, 0.75, 3).along(0, 0, 1, 10).blocksToo()));
-        assertEquals(0.7, hits.distance(0), 1e-9);
+        assertEquals(0.7, hits.get(0).distance(), 1e-9);
         assertEquals(1, hits.get(0).normalZ(), 0);
         assertArrayEquals("entities alone pass the stair", new int[]{51, 50},
                 ids(world.ray().at(0.5, 0.75, 3).along(0, 0, 1, 10)));
@@ -179,7 +179,7 @@ public class CgCollisionWorldTest {
     @Test
     public void unloadedCellsAndFluidsStopARayWhenAsked() {
         assertTrue(world.ray().at(98.5, 0.5, 0.5).along(1, 0, 0, 10).blocksOnly().first(hit));
-        assertTrue(hit.unloaded());
+        assertEquals(CgHit.Kind.UNLOADED, hit.kind());
         assertEquals(1.5, hit.distance(), 1e-9);
         assertTrue(world.ray().at(6.5, 3, 5.5).along(0, -1, 0, 10).fluids().first(hit));
         assertEquals(CgWorldQuery.FLUID_WATER, hit.fluid());
@@ -231,8 +231,8 @@ public class CgCollisionWorldTest {
     public void aCastMeetsTheFirstThingItsShapeTouches() {
         CgShape bolt = CgSphere.of(0.2);
         assertArrayEquals(new int[]{51, -1}, ids(world.cast(bolt).at(0.5, 0.75, 3).along(0, 0, 1, 10).blocksToo()));
-        assertEquals(0.5, hits.distance(0), 1e-6);
-        assertEquals("the step, by the bolt's edge", 2.3, hits.distance(1), 1e-6);
+        assertEquals(0.5, hits.get(0).distance(), 1e-6);
+        assertEquals("the step, by the bolt's edge", 2.3, hits.get(1).distance(), 1e-6);
         assertEquals(1, hits.get(1).normalZ(), 1e-6);
         assertTrue(world.cast(CgSphere.of(0.25)).at(2.5, 1.2, 5.5).along(1, 0, 0, 3).blocksOnly().first(hit));
         assertEquals("the fence's top half, from the cell above", 4.125 - 2.5, hit.distance(), 1e-6);
@@ -279,7 +279,7 @@ public class CgCollisionWorldTest {
         world.overlap(CgSphere.of(3)).at(15.5, 0.5, 0.5).exposure().into(hits);
         assertTrue(hits.isEmpty());
         world.overlap(CgSphere.of(11)).at(15.5, 0.5, 0.5).exposure().into(hits);
-        assertEquals(60, hits.entity(0));
+        assertEquals(60, hits.get(0).entity());
         assertEquals(0.4f, hits.get(0).exposure(), 1e-6f);
     }
 
@@ -294,7 +294,7 @@ public class CgCollisionWorldTest {
         arena.add(3, CgSphere.of(0.5), pose.at(-3, 0, 0));
         assertArrayEquals("2's box overlaps, its sphere does not", new int[]{1},
                 ids(arena.overlap(CgSphere.of(1)).at(0, 0, 0)));
-        assertEquals(0.5, hits.distance(0), 1e-9);
+        assertEquals(0.5, hits.get(0).distance(), 1e-9);
         assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
         assertEquals(3, hit.entity());
         assertEquals(6.5, hit.distance(), 1e-9);
@@ -313,7 +313,7 @@ public class CgCollisionWorldTest {
     public void queriesNestInsideAVisitorFourDeep() {
         int[] inner = new int[1];
         world.overlap(BLAST).at(CX, CY, CZ).source(40).forEach(h -> inner[0] += world.overlap(CgSphere.of(0.5))
-                .at(h.x(), h.y(), h.z()).anything().count());
+                .at(h.x(), h.y(), h.z()).allEntities().count());
         assertTrue(inner[0] >= 5);
         try {
             world.overlap(BLAST).at(CX, CY, CZ).forEach(a -> world.overlap(BLAST).at(CX, CY, CZ).forEach(

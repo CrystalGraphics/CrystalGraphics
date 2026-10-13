@@ -5,9 +5,9 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.CgHitbox;
 import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -25,20 +25,20 @@ import java.util.Set;
  * CgCollisionDebug.shape(CgSphere.of(2), pose.at(x, y, z), 0xFFFF4040);    // a red ball this frame
  * CgCollisionDebug.hitbox(slam, 0xFF40FF60);                               // each part as its last tick tested it
  * CgCollisionDebug.line(x, y, z, x, y + 3, z, 0xFFFFFFFF);
- * if (world.ray().at(x, y, z).along(0, -1, 0, 8).unwatched().first(hit)) CgCollisionDebug.mark(hit, 0xFFFF4040);
+ * if (world.ray().at(x, y, z).along(0, -1, 0, 8).first(hit)) CgCollisionDebug.mark(hit, 0xFFFF4040);
  * }</pre>
  *
  * <ul>
  *   <li>Render thread. Colours are ARGB.</li>
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
- *       draws too: mark a query drawn here {@code unwatched()}, or it is drawn twice.</li>
+ *       draws too, so a query drawn here as well is drawn twice.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
     /** A client's own hitboxes, and a server's, under {@link CgCollisionShow#SHOW}. */
-    public static final int CLIENT = 0xFF40FF60, SERVER = 0xFFFF9030;
+    static final int CLIENT = 0xFF40FF60, SERVER = 0xFFFF9030;
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
     /** How long a query is drawn: past a game tick, so one asked each tick shows steadily. */

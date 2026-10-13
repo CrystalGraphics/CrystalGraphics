@@ -1,11 +1,11 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.CollisionFakes.Table;
-import com.crystalgraphics.collision.CollisionFakes.Yard;
-import com.crystalgraphics.collision.CgHitbox;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.CollisionFakes.Table;
+import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -99,12 +99,12 @@ public class CgShapeLinesTest {
         });
         try {
             assertTrue(yard.cast(ball).at(0.5, 5, 0.5).along(0, -1, 0, 10).blocksOnly().first(new CgHit()));
-            yard.ray().at(0.5, 5, 0.5).along(0, -1, 0, 10).blocksOnly().unwatched().any();
+            CgHitbox.of(CgSphere.of(1)).at(0.5, 1, 0.5).tick(yard, 1);
             CgCollisionWorld.shapes().cast(ball).at(0, 5, 0).along(0, -1, 0, 10).any();
         } finally {
             CgQuery.watch(null);
         }
-        assertEquals("not the unwatched ray, nor the shape world's cast", 1, heard[0]);
+        assertEquals("not the hitbox's query, nor the shape world's cast", 1, heard[0]);
         List<Integer> colours = new ArrayList<>();
         lines.drawTo(0, 100, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
         assertTrue("its path, then where it stopped", colours.contains(CgQueryLines.PATH)

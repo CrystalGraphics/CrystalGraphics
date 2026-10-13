@@ -33,7 +33,7 @@ public class CgEntityCacheTest {
     private String answer(CgQuery q) {
         int n = q.into(hits);
         StringBuilder s = new StringBuilder();
-        for (int i = 0; i < n; i++) s.append(hits.entity(i)).append('@').append(Math.round(hits.distance(i) * 1e6)).append(' ');
+        for (int i = 0; i < n; i++) s.append(hits.get(i).entity()).append('@').append(Math.round(hits.get(i).distance() * 1e6)).append(' ');
         return s.toString();
     }
 

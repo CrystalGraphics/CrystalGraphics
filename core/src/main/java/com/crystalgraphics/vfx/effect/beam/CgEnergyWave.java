@@ -842,7 +842,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
             }
             // The burst, where the beam ended; its front then reaches each entity in turn.
             double bx = originX + stream.impactX(), by = originY + stream.impactY(), bz = originZ + stream.impactZ();
-            if (reported.isBlock()) {
+            if (reported.kind().isTerrain()) {
                 reported.setBlock(reported.blockX(), reported.blockY(), reported.blockZ(), bx, by, bz, PART_BURST);
             } else {
                 reported.setPoint(bx, by, bz, PART_BURST);
@@ -982,8 +982,8 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
         boolean found = world.cast(beam).at(x, y, z).along(aimX, aimY, aimZ, reach).source(following()).blocksToo()
                 .part(PART_BEAM).first(hit);
         // Stopped at the edge of what is loaded, it met nothing, and ends there.
-        aimMet = found && !hit.unloaded();
-        hitEntity = aimMet && !hit.isBlock() ? hit.entity() : -1;
+        aimMet = found && hit.kind() != CgHit.Kind.UNLOADED;
+        hitEntity = aimMet ? hit.entity() : -1;
         double distance = found ? hit.distance() : reach;
         endX = x + aimX / length * distance;
         endY = y + aimY / length * distance;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
@@ -14,7 +15,7 @@ import java.util.function.IntConsumer;
 /**
  * A world of plain shapes placed by id, with no blocks and no host: what a test or an arena queries. Every test is
  * exact against the shapes themselves, not their boxes. Shapes a host level's queries should meet are
- * {@link CgHitbox#target() target} hitboxes instead.
+ * {@link CgHitbox#hittable() hittable} hitboxes instead.
  *
  * <pre>{@code
  * CgShapeWorld arena = CgCollisionWorld.shapes();
@@ -79,7 +80,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
         for (int i = 0; i < size; i++) {
             if (within == null || bounds[i].intersects(within)) s.add(ids[i], shapes[i], poses[i]);
         }
-        s.frozenTargets = CgFrozenTargets.of(this, within);
+        s.frozenHittables = CgFrozenHittables.of(this, within);
         s.share();
         return s;
     }

@@ -1,10 +1,11 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.CgHitbox;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.hitbox.CgHitboxes;
 import com.crystalgraphics.net.CgAudience;
 import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
@@ -44,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>A client's own hitboxes are green and a server's orange: where the two part, a prediction is off. A
  *       client's queries are blue, and red where they stop and what they hit; a server's are all orange.</li>
  *   <li>A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape. A
- *       query a hitbox runs, or one marked {@link CgQuery#unwatched}, is left out, as are a {@code CgShapeWorld}'s.</li>
+ *       query a hitbox runs is left out, its parts drawn instead, as are a {@code CgShapeWorld}'s.</li>
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_SEGMENTS} segments a
  *       tick, while their client keeps asking.</li>
  *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and for half a second once stopped: a
@@ -58,9 +59,9 @@ public final class CgCollisionShow {
                     + " server's whose own is on.");
 
     /** How far from a player a server's hitboxes are sent. */
-    public static final double RANGE = 64;
+    static final double RANGE = 64;
     /** The most segments a server sends a player a tick. */
-    public static final int MAX_SEGMENTS = 4096;
+    static final int MAX_SEGMENTS = 4096;
     /** Client ticks between asks while showing: a server forgets a client after {@link #FORGET_AFTER}. */
     static final int ASK_EVERY = 100;
     static final long FORGET_AFTER = 3 * ASK_EVERY;
@@ -139,7 +140,7 @@ public final class CgCollisionShow {
 
     private static void follow() {
         boolean on = showing();
-        CgHitbox.watch(on ? CgCollisionShow::saw : null);
+        CgHitboxes.watch(on ? CgCollisionShow::saw : null);
         CgQuery.watch(on ? CgCollisionShow::ran : null);
     }
 
@@ -197,7 +198,7 @@ public final class CgCollisionShow {
     }
 
     private static void packHitbox(CgHitbox hitbox, CgWorldQuery level) {
-        CgCollisionWorld world = hitbox.world();
+        CgCollisionWorld world = CgHitboxes.world(hitbox);
         if (world != null && world.blocks() == level && !PACK.full()) hitbox.parts(CgCollisionShow::packPart);
     }
 

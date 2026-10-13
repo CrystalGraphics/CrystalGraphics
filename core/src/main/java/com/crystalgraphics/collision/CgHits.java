@@ -8,7 +8,10 @@ package com.crystalgraphics.collision;
  * private final CgHits hits = new CgHits();                    // a field, reused
  *
  * int n = world.overlap(BLAST).at(x, y, z).living().into(hits);
- * for (int i = 0; i < n; i++) damage(hits.entity(i), 10f * hits.get(i).falloff(2, 6));
+ * for (int i = 0; i < n; i++) {
+ *     CgHit h = hits.get(i);
+ *     damage(h.entity(), 10f * h.falloff(2, 6));
+ * }
  * }</pre>
  *
  * <ul>
@@ -32,17 +35,6 @@ public final class CgHits {
     public CgHit get(int i) {
         check(i);
         return hits[i];
-    }
-
-    /** The entity of hit {@code i}; -1 for a block. */
-    public int entity(int i) {
-        check(i);
-        return hits[i].entity;
-    }
-
-    public double distance(int i) {
-        check(i);
-        return hits[i].distance;
     }
 
     public void clear() {
@@ -91,13 +83,13 @@ public final class CgHits {
     }
 
     /**
-     * Nearest first; a tie by what was hit, so the order never depends on how the host listed them, and a target
+     * Nearest first; a tie by what was hit, so the order never depends on how the host listed them, and a hittable
      * hitbox before its owner.
      */
     private static boolean after(CgHit a, CgHit b) {
         if (a.distance != b.distance) return a.distance > b.distance;
         if (a.entity != b.entity) return a.entity > b.entity;
-        if (a.onHitbox != b.onHitbox) return b.onHitbox;
+        if ((a.kind == CgHit.Kind.HITBOX) != (b.kind == CgHit.Kind.HITBOX)) return b.kind == CgHit.Kind.HITBOX;
         if (a.blockX != b.blockX) return a.blockX > b.blockX;
         if (a.blockY != b.blockY) return a.blockY > b.blockY;
         return a.blockZ > b.blockZ;

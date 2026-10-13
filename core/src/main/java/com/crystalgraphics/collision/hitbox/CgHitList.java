@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hitbox;
 
 import java.util.Arrays;
 

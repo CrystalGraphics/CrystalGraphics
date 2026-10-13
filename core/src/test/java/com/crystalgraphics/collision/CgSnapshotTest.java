@@ -74,7 +74,7 @@ public class CgSnapshotTest {
         CgHit hit = new CgHit();
         assertTrue(sections.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4)).ray().at(95, 1, 0).along(1, 0, 0, 10)
                 .blocksOnly().first(hit));
-        assertTrue(hit.unloaded());
+        assertEquals(CgHit.Kind.UNLOADED, hit.kind());
     }
 
     /** The yard copied as a host copies sections: air left alone, each kind of block keyed, the fence where it stands. */
@@ -109,7 +109,7 @@ public class CgSnapshotTest {
         CgCollisionWorld snapshot = live.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4));
         CgHit hit = new CgHit();
         assertTrue(snapshot.ray().at(95, 1, 0).along(1, 0, 0, 10).blocksOnly().first(hit));
-        assertTrue(hit.unloaded());
+        assertEquals(CgHit.Kind.UNLOADED, hit.kind());
         assertEquals(100, hit.blockX());
         assertFalse("outside it, every cell is loaded air", snapshot.ray().at(200, 1, 0).along(1, 0, 0, 10).blocksOnly().any());
     }

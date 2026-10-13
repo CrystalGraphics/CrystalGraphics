@@ -209,7 +209,7 @@ public final class CgWorldProbe {
             // The block's real shapes, against the scan's spans.
             CgHit hit = new CgHit();
             boolean struck = CgCollisionWorld.of(world, CgEntityQuery.NONE).ray().at(px, py + eye, pz)
-                    .along(0, -1, 0, 80).blocksOnly().first(hit) && !hit.unloaded();
+                    .along(0, -1, 0, 80).blocksOnly().first(hit) && hit.kind() == CgHit.Kind.BLOCK;
             check("world.raycast", struck && Math.abs(hit.y() - ground) < 0.08,
                     String.format("ray hit %s at %.3f, ground %.3f", struck, hit.y(), ground));
             int by = floor(ground - 0.001);

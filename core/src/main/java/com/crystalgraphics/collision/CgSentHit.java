@@ -1,12 +1,13 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.hitbox.CgHitboxType;
 import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetWire;
 
 import javax.annotation.Nullable;
 
 /**
- * A hit as it crosses the network: what met it (an entity and its whole, a target hitbox's owner, a block, a fluid's
+ * A hit as it crosses the network: what met it (an entity and its whole, a hittable hitbox's owner, a block, a fluid's
  * surface, the edge of what is loaded, the world border, or nothing at a point), the point, the exposure, and the part
  * as an index into a list both sides hold. What {@link CgHitboxType} and VFX cues send their server's hits as.
  *
@@ -21,29 +22,22 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>No normal or distance travels: what is read back has them at 0.</li>
- *   <li>A target hitbox arrives as its owner, without {@link CgHit#hitbox()} or {@link CgHit#hitboxPart()}.</li>
+ *   <li>A hittable hitbox arrives as its owner, without {@link CgHit#hitbox()} or {@link CgHit#hitboxPart()}.</li>
  *   <li>About 20 bytes a hit, the point and exposure as floats.</li>
  *   <li>A wire reuses the one it reads into: copy what you keep past the listener.</li>
  * </ul>
  */
 public final class CgSentHit {
 
-    private static final int POINT = 0, ENTITY = 1, BLOCK = 2, FLUID = 3, UNLOADED = 4, BORDER = 5, HITBOX = 6;
+    private static final CgHit.Kind[] KINDS = CgHit.Kind.values();
 
-    int kind, entity = -1, parent = -1, blockX, blockY, blockZ, fluid, part = -1;
+    CgHit.Kind kind = CgHit.Kind.POINT;
+    int entity = -1, parent = -1, blockX, blockY, blockZ, fluid, part = -1;
     float x, y, z, exposure = Float.NaN;
 
     /** Fills this from {@code hit}, its part sent as {@code part}, -1 for none. */
     public CgSentHit set(CgHit hit, int part) {
-        switch (hit.kind()) {
-            case ENTITY: kind = ENTITY; break;
-            case BLOCK: kind = BLOCK; break;
-            case FLUID: kind = FLUID; break;
-            case UNLOADED: kind = UNLOADED; break;
-            case BORDER: kind = BORDER; break;
-            case HITBOX: kind = HITBOX; break;
-            default: kind = POINT;
-        }
+        kind = hit.kind();
         entity = hit.entity();
         parent = hit.parent();
         blockX = hit.blockX();
@@ -86,16 +80,16 @@ public final class CgSentHit {
 
         @Override
         public void write(CgSentHit s, Out out) {
-            out.writeVarInt((s.part + 1) << 3 | s.kind);
-            if (s.kind == ENTITY || s.kind == HITBOX) {
+            out.writeVarInt((s.part + 1) << 3 | s.kind.ordinal());
+            if (s.kind == CgHit.Kind.ENTITY || s.kind == CgHit.Kind.HITBOX) {
                 out.writeVarInt(s.entity);
                 out.writeZigZag((long) s.parent - s.entity);
-            } else if (s.kind != POINT) {
+            } else if (s.kind != CgHit.Kind.POINT) {
                 // Each block coordinate as its offset from the point, which lies on or beside it.
                 out.writeZigZag(s.blockX - (long) Math.floor(s.x));
                 out.writeZigZag(s.blockY - (long) Math.floor(s.y));
                 out.writeZigZag(s.blockZ - (long) Math.floor(s.z));
-                if (s.kind == FLUID) out.writeVarInt(s.fluid);
+                if (s.kind == CgHit.Kind.FLUID) out.writeVarInt(s.fluid);
             }
             out.writeFloat(s.x);
             out.writeFloat(s.y);
@@ -107,19 +101,19 @@ public final class CgSentHit {
         public CgSentHit read(In in) {
             CgSentHit s = read;
             int head = in.readVarInt();
-            s.kind = head & 7;
+            s.kind = KINDS[head & 7];
             s.part = (head >>> 3) - 1;
             long bx = 0, by = 0, bz = 0;
             s.entity = s.parent = -1;
             s.fluid = 0;
-            if (s.kind == ENTITY || s.kind == HITBOX) {
+            if (s.kind == CgHit.Kind.ENTITY || s.kind == CgHit.Kind.HITBOX) {
                 s.entity = in.readVarInt();
                 s.parent = (int) (s.entity + in.readZigZag());
-            } else if (s.kind != POINT) {
+            } else if (s.kind != CgHit.Kind.POINT) {
                 bx = in.readZigZag();
                 by = in.readZigZag();
                 bz = in.readZigZag();
-                if (s.kind == FLUID) s.fluid = in.readVarInt();
+                if (s.kind == CgHit.Kind.FLUID) s.fluid = in.readVarInt();
             }
             s.x = in.readFloat();
             s.y = in.readFloat();

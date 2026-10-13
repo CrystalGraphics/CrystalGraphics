@@ -1,10 +1,10 @@
 package com.crystalgraphics.demo.collision;
 
-import com.crystalgraphics.collision.debug.CgCollisionDebug;
-import com.crystalgraphics.collision.CgHitbox;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.collision.CgShapeWorld;
+import com.crystalgraphics.collision.debug.CgCollisionDebug;
+import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -158,7 +158,7 @@ public final class CgCollisionDemo {
 
     private boolean touchesGround(CgShape shape, CgPose at) {
         if (world == null) return CgShapes.overlaps(shape, at, FLOOR, floor.identity().at(ox, oy, oz));
-        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.getRotation(rotation)).blocksToo().anything().unwatched()
+        if (!world.overlap(shape).at(at.x, at.y, at.z).rotation(at.getRotation(rotation)).blocksToo().allEntities()
                 .first(worldHit)) {
             return false;
         }
@@ -177,9 +177,9 @@ public final class CgCollisionDemo {
             props.move(WALL_ID + w, other);
             CgCollisionDebug.shape(WALL, other, YELLOW);
         }
-        boolean met = props.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).anything().first(hit);
+        boolean met = props.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).allEntities().first(hit);
         if (world != null
-                && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksToo().anything().unwatched()
+                && world.cast(BALL).at(from, y, z).along(1, 0, 0, SWEEP_LENGTH).blocksToo().allEntities()
                 .first(worldHit)
                 && (!met || worldHit.distance() < hit.distance())) {
             hit.set(worldHit);
@@ -197,9 +197,9 @@ public final class CgCollisionDemo {
         double z = oz + SWEEP_Z, top = oy + RAY_FROM;
         for (int i = 0; i < RAYS; i++) {
             double x = ox + SWEEP_FROM + 2.5 * i;
-            boolean met = props.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).anything().first(hit);
+            boolean met = props.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).allEntities().first(hit);
             if (world != null
-                    && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksToo().anything().unwatched()
+                    && world.ray().at(x, top, z).along(0, -1, 0, RAY_LENGTH).blocksToo().allEntities()
                     .first(worldHit)
                     && (!met || worldHit.distance() < hit.distance())) {
                 hit.set(worldHit);
@@ -231,7 +231,7 @@ public final class CgCollisionDemo {
         if (ring == null || ring.stopped()) {
             if (worldRing != null) worldRing.stop();
             ring = grow().where(id -> id < TARGETS).onHit(h -> flash[h.entity()] = FLASH_TICKS);
-            worldRing = world == null ? null : grow().anything().onHit(h -> flashEntity(h.entity()));
+            worldRing = world == null ? null : grow().allEntities().onHit(h -> flashEntity(h.entity()));
         }
         ring.tick(props, ticks);
         if (worldRing != null && world != null) worldRing.tick(world, ticks);
@@ -270,7 +270,7 @@ public final class CgCollisionDemo {
     // ---- the world's entities
 
     private void entities() {
-        world.overlap(NEAR).at(ox, oy, oz).anything().unwatched().forEach(boxEntity);
+        world.overlap(NEAR).at(ox, oy, oz).allEntities().forEach(boxEntity);
         for (int i = 0; i < FLASHED; i++) {
             if (flashedFor[i] <= 0) continue;
             if (world.entities().box(flashedIds[i], world.partialTick(), box)) drawBox(RED);
