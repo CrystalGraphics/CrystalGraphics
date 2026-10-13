@@ -37,7 +37,9 @@ CompletableFuture.supplyAsync(() -> simulate(level, pieces), POOL)              
 **Here.**
 
 ```java
+// record Debris(double x, double y, double z, double vx, double vy, double vz): a piece and its velocity
 // List<Debris> simulate(CgCollisionWorld area, List<Debris> pieces): every piece moved one tick, a new list
+// (both written out in COLLISION.md §12)
 List<Debris> copy = List.copyOf(pieces);
 
 CgCollisionWorld.of(level).snapshot(x, y, z, 24)                       // the area, frozen at a tick's end
@@ -124,17 +126,21 @@ CgJob.forEach(items, each): your thread and the workers take items together; ret
 ### Work beside the game, its answer back here
 
 ```java
-CgJob.run(() -> findSafeGround(snapshot))            // a worker
-     .then(pos -> teleport(player, pos));            // this thread, at its next tick
+// int countWords(String text): a plain method, touching nothing of the game
+String text = book.text();                           // read here, on this thread
+
+CgJob.run(() -> countWords(text))                    // a worker runs it
+     .then(words -> status.set(words + " words"));   // words: what countWords returned, back on this thread
 ```
 
 ### A job that keeps being asked for: the last one wins
 
 ```java
+// SyntaxTree parse(String text, CgJobContext ctx): stops early when ctx says nobody wants it
 CgJob.keyed(document, "reparse")                     // a newer reparse of this document replaces this one
      .debounce(300)                                  // runs 300 ms after the last keystroke
      .run(ctx -> parse(text, ctx))                   // the work polls ctx to stop early
-     .then(tree -> document.setTree(tree));
+     .then(tree -> document.setTree(tree));          // tree: parse's SyntaxTree
 ```
 
 ### A simulation stepped again and again
@@ -150,6 +156,7 @@ CgJob.repeat(arena::latest)                       // this thread, before each ru
 ### A loop spread across every core, now
 
 ```java
+// Shard.step(CgCollisionWorld area): moves that shard's pieces; shards share nothing but the read-only area
 CgJob.forEach(shards, s -> s.step(area));            // returns once every shard has stepped
 ```
 
@@ -201,8 +208,11 @@ thread that starts jobs drains its own loop (`CgJob.drain()`) or a loop you made
 ## 4. Running a job
 
 ```java
-CgJob<Path> job = CgJob.run(() -> exportMap(snapshot))   // a Supplier: returns the answer
-     .then(path -> chat("Saved to " + path))             // the answer
+// Path exportMap(int[] colours): writes the colours as a PNG, returns where it went
+int[] colours = map.colours().clone();                   // a copy: the map may change while the worker writes
+
+CgJob<Path> job = CgJob.run(() -> exportMap(colours))    // a Supplier: returns the answer
+     .then(path -> chat("Saved to " + path))             // path: exportMap's Path
      .onError(e -> chat("Export failed: " + e.detail())) // failed, or cancelled
      .always(spinner::hide)                              // either way, after the others
      .named("map export");                               // what the log calls it
@@ -268,9 +278,10 @@ runs every tick watches its area instead ([§8](#8-repeating-jobs-a-simulation-b
 ### Your own values
 
 ```java
+// List<Debris> scatter(List<Debris> pieces, int seed): each piece given a random push, as a new list
 List<Debris> copy = List.copyOf(pieces);              // an immutable copy: the worker cannot see later changes
 int seed = level.random.nextInt();                    // plain values are copies already
-CgJob.run(() -> simulate(copy, seed)).then(next -> pieces = next);
+CgJob.run(() -> scatter(copy, seed)).then(next -> pieces = next);   // next: scatter's new list
 ```
 
 - **Return the next state**, never edit the one you handed over: your thread keeps drawing the old one until `then`.
@@ -296,7 +307,11 @@ CgJob.keyed(document, "reparse").run(ctx -> parse(text, ctx)).then(document::set
 ### Debounce: run once, after the last ask
 
 ```java
-CgJob.keyed(this, "path").debounce(250).run(() -> findPath(snapshot, target)).then(this::follow);
+// List<BlockPos> findPath(CgCollisionWorld area, BlockPos target): the steps from here to target, through the area
+CgCollisionWorld area = arena.latest();               // a watch's newest world (COLLISION.md §12)
+CgJob.keyed(this, "path").debounce(250)
+     .run(() -> findPath(area, target))
+     .then(steps -> follow(steps));                   // steps: findPath's list
 ```
 
 The job starts 250 ms after the last start of its key; each new start pushes it out. A burst of asks runs once.
@@ -517,7 +532,10 @@ if (e.is("CONFLICT")) reread((String) e.data());
 A network request whose answer is too heavy for the tick answers from a job:
 
 ```java
-STATS.onServer((peer, pos, reply) -> reply.from(CgJob.run(() -> scan(snapshotAt(pos)))));
+// Stats scan(CgCollisionWorld area): counts what stands around the machine
+STATS.onServer((peer, pos, reply) -> reply.from(
+        CgCollisionWorld.of(level).snapshot(pos.x(), pos.y(), pos.z(), 8)   // the area round the machine
+                .flatMap(area -> CgJob.run(() -> scan(area)))));            // the answer: scan's Stats, from a worker
 ```
 
 ### Making your own reply

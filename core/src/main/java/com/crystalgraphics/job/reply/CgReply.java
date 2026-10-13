@@ -58,9 +58,10 @@ public interface CgReply<T> {
      * The reply {@code next} makes of this one's value, as one reply: a job started on an answer that is not here yet.
      *
      * <pre>{@code
-     * CgCollisionWorld.of(level).snapshot(x, y, z, 24)            // CgReply<CgCollisionWorld>
-     *         .flatMap(area -> CgJob.run(() -> simulate(area)))   // CgReply<List<Debris>>: a worker steps the copy
-     *         .then(next -> pieces = next);                       // back on this thread
+     * // List<Debris> simulate(CgCollisionWorld area, List<Debris> pieces): every piece moved one tick
+     * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                   // CgReply<CgCollisionWorld>
+     *         .flatMap(area -> CgJob.run(() -> simulate(area, copy)))    // CgReply<List<Debris>>, run on a worker
+     *         .then(next -> pieces = next);                              // next: simulate's list, on this thread
      * }</pre>
      *
      * <ul>

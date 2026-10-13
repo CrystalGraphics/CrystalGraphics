@@ -32,8 +32,8 @@ import java.util.function.Supplier;
  * A job is a {@link CgReply}: it composes with other answers, and hears failure and cancellation.
  *
  * <pre>{@code
- * CgJob.run(() -> load(file))
- *      .then(editor::show)
+ * CgJob.run(() -> load(file))                     // String load(Path file)
+ *      .then(text -> editor.show(text))             // text: load's String
  *      .onError(e -> status.show(e.detail()))       // failed, or cancelled (e.is(CgReplyError.CANCELLED))
  *      .always(spinner::hide);
  * }</pre>
@@ -42,11 +42,12 @@ import java.util.function.Supplier;
  * asked for again (a reparse per keystroke) is keyed and debounced: the last one asked for wins.
  *
  * <pre>{@code
+ * // SyntaxTree parse(String text, CgJobContext ctx)
  * CgJob.keyed(document, "reparse")                  // a newer reparse of this document replaces this one
  *      .debounce(300)                               // starts 300 ms after the last keystroke
  *      .lane(CgJobLane.LATENCY)
  *      .run(ctx -> parse(text, ctx))                // ctx.throwIfCancelled() inside
- *      .then(tree -> document.setTree(tree));
+ *      .then(tree -> document.setTree(tree));       // tree: parse's SyntaxTree
  * }</pre>
  *
  * A simulation that runs again and again, its state handed round the loop: read fresh on this thread, stepped on a
@@ -63,7 +64,7 @@ import java.util.function.Supplier;
  * Work split across the threads, within this tick: returns once every item has run.
  *
  * <pre>{@code
- * CgJob.forEach(shards, s -> s.step(area));
+ * CgJob.forEach(shards, s -> s.step(area));        // Shard.step(CgCollisionWorld): each shard its own pieces
  * }</pre>
  *
  * <ul>
