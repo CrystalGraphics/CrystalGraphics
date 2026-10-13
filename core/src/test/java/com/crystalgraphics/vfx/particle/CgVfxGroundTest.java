@@ -87,7 +87,7 @@ public class CgVfxGroundTest {
         CgPlatform.provide(CgWorldQuery.SERVICE, CLIFF);
         CgVfxEmitter debris = CgVfxEmitter.builder("debris").capacity(1).burst(0f, 1).life(60f, 60f)
                 .launch(0f, 0f, 1f).speed(0f, 0f)
-                .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0f, 1f, 5f)).build();
+                .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0f, 1f, 5f).radius(0f)).build();
         CgVfxGround ground = new CgVfxGround(32).reset(0.0, 0.0, 0.0, 8.5f, -55f, 0.5f);
         CgVfxEmitterInstance run = new CgVfxEmitterInstance(debris, 0.5f);
         run.start(8.5f, -55f, 0.5f);
