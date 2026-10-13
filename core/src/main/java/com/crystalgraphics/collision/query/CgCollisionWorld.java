@@ -32,12 +32,24 @@ import java.util.function.IntConsumer;
  *
  * Plain shapes, with no Minecraft at all (tests, an arena, a mod's own hurtboxes): {@link #shapes()}.
  *
+ * Many queries in one tick share what they learn of the entities inside a {@link #batch}, as Unity's batched query
+ * commands do: past its first 160 asks, each 16-block cell is asked of the host once, and each entity's box and flags
+ * read once.
+ *
+ * <pre>{@code
+ * try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
+ *     for (Spell s : spells) world.overlap(s.shape).at(s.x, s.y, s.z).forEach(s::hit);
+ * }
+ * }</pre>
+ *
  * <ul>
  *   <li>A world is its thread's: {@link #of(Object)} and {@link #client} hand each thread its own, and nothing here is
  *       safe to share. Ask on the level's thread.</li>
  *   <li>{@link #of(Object)} reads entities where they are this tick; {@link #client} where the frame draws them.</li>
  *   <li>A query is the world's scratch: end one before starting the next (see {@link CgQuery}).</li>
  *   <li>An unloaded cell blocks line of sight; a block is never loaded to answer.</li>
+ *   <li>Inside a batch, entities may stay where the batch first found them: one moved, added or removed by a hit can be
+ *       seen as it was until the batch closes. Hitboxes the engine ticks, and effects, run in one already.</li>
  * </ul>
  */
 public class CgCollisionWorld {
@@ -48,6 +60,7 @@ public class CgCollisionWorld {
     private static final ThreadLocal<PerThread> PER_THREAD = ThreadLocal.withInitial(PerThread::new);
 
     CgWorldQuery world;
+    /** The host's: read through {@link #view}, which is the batch's cache while one is open. */
     CgEntityQuery entities;
     float partialTick;
     /** Queries running on this world: the depth the next one starts at. */
@@ -59,6 +72,7 @@ public class CgCollisionWorld {
     private final CgAABB box = new CgAABB();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     private float[] boxes = new float[6 * 8];
+    private CgEntityCache cache;
 
     CgCollisionWorld(CgWorldQuery world, CgEntityQuery entities, float partialTick) {
         this.world = world;
@@ -106,9 +120,48 @@ public class CgCollisionWorld {
         return world;
     }
 
-    /** The entities it asks: {@code CgEntityQuery.NONE} for a world of shapes. */
+    /** The entities it asks, through the batch's cache while one is open: {@code CgEntityQuery.NONE} for shapes. */
     public CgEntityQuery entities() {
-        return entities;
+        return view();
+    }
+
+    /**
+     * Opens this thread's batch, until {@link Batch#close}; batches nest, the outermost one deciding. Allocates nothing:
+     * the batch is the thread's own.
+     *
+     * <pre>{@code
+     * try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
+     *     for (CgHitbox h : mine) h.tick(world, 1);
+     * }
+     * }</pre>
+     */
+    public static Batch batch() {
+        Batch b = PER_THREAD.get().batch;
+        if (b.depth++ == 0) b.generation++;
+        return b;
+    }
+
+    /** A thread's open batch: {@link #batch()}. */
+    public static final class Batch implements AutoCloseable {
+        private int depth, generation;
+
+        private Batch() {
+        }
+
+        @Override
+        public void close() {
+            if (depth == 0) throw new IllegalStateException("closed more batches than were opened");
+            depth--;
+        }
+    }
+
+    /** The entities as queries read them: the batch's cache while one is open on this thread, else the host's. */
+    CgEntityQuery view() {
+        Batch b = PER_THREAD.get().batch;
+        if (b.depth == 0 || entities == CgEntityQuery.NONE) return entities;
+        if (cache == null) cache = new CgEntityCache();
+        if (!cache.answersFor(entities, partialTick, b.generation)) cache.reset(entities, partialTick, b.generation);
+        return cache.warm() ? cache : entities;
     }
 
     /** Where between ticks it reads entities: 1 at the tick's positions. */
@@ -138,7 +191,7 @@ public class CgCollisionWorld {
 
     /** Whether no block stands between the point and {@code target}'s eyes; false for no such entity. */
     public boolean lineOfSight(double x, double y, double z, int target) {
-        if (!entities.pose(target, partialTick, pose)) return false;
+        if (!view().pose(target, partialTick, pose)) return false;
         return clear(x, y, z, pose[CgEntityQuery.X], pose[CgEntityQuery.Y] + pose[CgEntityQuery.EYE_HEIGHT],
                 pose[CgEntityQuery.Z]);
     }
@@ -148,7 +201,7 @@ public class CgCollisionWorld {
      * over its box each looking back past blocks. 0 for no such entity.
      */
     public float exposure(double x, double y, double z, int target) {
-        if (!entities.box(target, partialTick, box)) return 0f;
+        if (!view().box(target, partialTick, box)) return 0f;
         // Explosion.getSeenPercent, 1.20.1
         double sx = 1.0 / ((box.maxX - box.minX) * 2.0 + 1.0);
         double sy = 1.0 / ((box.maxY - box.minY) * 2.0 + 1.0);
@@ -179,9 +232,9 @@ public class CgCollisionWorld {
         return q;
     }
 
-    /** Hands {@code visitor} every entity whose box touches {@code bounds}. */
-    void candidates(CgQuery q, CgAABBc bounds, IntConsumer visitor) {
-        entities.within(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
+    /** Hands {@code visitor} every entity of {@code view} whose box touches {@code bounds}. */
+    void candidates(CgQuery q, CgEntityQuery view, CgAABBc bounds, IntConsumer visitor) {
+        view.within(bounds.minX(), bounds.minY(), bounds.minZ(), bounds.maxX(), bounds.maxY(), bounds.maxZ(),
                 visitor);
     }
 
@@ -190,8 +243,8 @@ public class CgCollisionWorld {
     }
 
     /** What {@code id} rides at the bottom: a query's source, and everyone riding with it, are never hit. */
-    int rootOf(int id) {
-        return entities.rootVehicle(id);
+    int rootOf(CgEntityQuery view, int id) {
+        return view.rootVehicle(id);
     }
 
     /** Whether the segment between the points passes no collision box and no unloaded cell. */
@@ -249,6 +302,7 @@ public class CgCollisionWorld {
 
     private static final class PerThread {
         final CgCollisionWorld[] levels = new CgCollisionWorld[CACHED_LEVELS];
+        final Batch batch = new Batch();
         int next;
         CgCollisionWorld client;
     }

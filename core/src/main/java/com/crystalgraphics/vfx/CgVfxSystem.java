@@ -15,6 +15,7 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -357,7 +358,9 @@ public final class CgVfxSystem {
         int ticks = 0, step = PARTICLE_STEP.get();
         long budget = (long) (SIM_BUDGET_MS.get() * 1_000_000L), start = System.nanoTime();
         boolean overBudget = false;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim")) {
+        // one batch: every effect's queries and hitboxes this update share what they learn of the entities
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "vfx.sim");
+             CgCollisionWorld.Batch batch = CgCollisionWorld.batch()) {
             while (owed >= TICK && ticks < MAX_TICKS && !overBudget) {
                 try (CgTrace.Zone tick = CgTrace.zone(CgVfxTrace.CHANNEL, TICK_ZONE)) {
                     air.tick(simulated);

@@ -117,7 +117,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
     }
 
     @Override
-    void candidates(CgQuery q, CgAABBc within, IntConsumer visitor) {
+    void candidates(CgQuery q, CgEntityQuery view, CgAABBc within, IntConsumer visitor) {
         for (int i = 0; i < size; i++) {
             if (bounds[i].intersects(within)) q.placed(ids[i], shapes[i], poses[i]);
         }
@@ -129,7 +129,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
     }
 
     @Override
-    int rootOf(int id) {
+    int rootOf(CgEntityQuery view, int id) {
         return id;
     }
 

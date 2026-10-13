@@ -84,10 +84,19 @@ public final class CgHits {
             for (int i = gap; i < size; i++) {
                 CgHit h = hits[i];
                 int j = i;
-                for (; j >= gap && hits[j - gap].distance > h.distance; j -= gap) hits[j] = hits[j - gap];
+                for (; j >= gap && after(hits[j - gap], h); j -= gap) hits[j] = hits[j - gap];
                 hits[j] = h;
             }
         }
+    }
+
+    /** Nearest first; a tie by what was hit, so the order never depends on how the host listed them. */
+    private static boolean after(CgHit a, CgHit b) {
+        if (a.distance != b.distance) return a.distance > b.distance;
+        if (a.entity != b.entity) return a.entity > b.entity;
+        if (a.blockX != b.blockX) return a.blockX > b.blockX;
+        if (a.blockY != b.blockY) return a.blockY > b.blockY;
+        return a.blockZ > b.blockZ;
     }
 
     private void check(int i) {

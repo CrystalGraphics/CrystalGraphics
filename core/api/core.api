@@ -1725,10 +1725,16 @@ com/crystalgraphics/collision/query/CgCollisionWorld
   method public overlap (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public partialTick ()F
   method public ray ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public,static batch ()Lcom/crystalgraphics/collision/query/CgCollisionWorld$Batch;
   method public,static client (F)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public,static shapes ()Lcom/crystalgraphics/collision/query/CgShapeWorld;
+com/crystalgraphics/collision/query/CgCollisionWorld$Batch
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public close ()V
 com/crystalgraphics/collision/query/CgHit
   access public,final
   extends java/lang/Object

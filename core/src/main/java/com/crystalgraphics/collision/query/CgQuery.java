@@ -88,6 +88,8 @@ public final class CgQuery {
     private boolean unwatched;
 
     private double ox, oy, oz, invX, invY, invZ, entityLimit;
+    /** The world's entities as this run reads them: {@link CgCollisionWorld#view}. */
+    private CgEntityQuery view;
     private boolean stopAtFirst, done, partsSeen, blockFound;
     private int sourceRoot;
 
@@ -406,10 +408,11 @@ public final class CgQuery {
             }
         }
         if (entitiesOn && !done) {
-            sourceRoot = source < 0 ? -1 : world.rootOf(source);
+            view = world.view();
+            sourceRoot = source < 0 ? -1 : world.rootOf(view, source);
             swept.set(start).union(start.minX + mx, start.minY + my, start.minZ + mz)
                     .union(start.maxX + mx, start.maxY + my, start.maxZ + mz).grow(inflate);
-            world.candidates(this, swept, entities);
+            world.candidates(this, view, swept, entities);
         }
         hits.sort();
         hits.truncate(max);
@@ -453,7 +456,7 @@ public final class CgQuery {
         @Override
         public void accept(int id) {
             if (done || excepted(id)) return;
-            CgEntityQuery e = world.entities;
+            CgEntityQuery e = view;
             int f = e.flags(id);
             if ((f & require) != require || (f & forbid) != 0) {
                 if (!items || (f & CgEntityQuery.ALIVE) == 0 || e.kind(id) != CgEntityQuery.KIND_ITEM) return;

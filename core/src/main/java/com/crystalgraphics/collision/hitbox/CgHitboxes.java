@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.hitbox;
 
+import com.crystalgraphics.collision.query.CgCollisionWorld;
 import com.crystalgraphics.net.CgNetwork;
 
 /**
@@ -44,8 +45,10 @@ final class CgHitboxes {
 
     private void tick() {
         int n = size;
-        for (int i = 0; i < n; i++) {
-            if (!hitboxes[i].stopped()) hitboxes[i].engineTick();
+        try (CgCollisionWorld.Batch batch = CgCollisionWorld.batch()) {
+            for (int i = 0; i < n; i++) {
+                if (!hitboxes[i].stopped()) hitboxes[i].engineTick();
+            }
         }
         int kept = 0;
         for (int i = 0; i < size; i++) {
