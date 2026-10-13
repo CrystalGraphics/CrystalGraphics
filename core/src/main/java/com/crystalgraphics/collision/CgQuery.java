@@ -67,6 +67,9 @@ import java.util.function.IntPredicate;
  */
 public final class CgQuery {
 
+    /** The flags of a hittable's owner in a world with no entities, which entity filters let through. */
+    static final int NOT_AN_ENTITY = -1;
+
     static final int OVERLAP = 0, CAST = 1, RAY = 2;
     private static final int MAX_EXCEPT = 8;
     private static final int ALL_KINDS = -1;
@@ -516,7 +519,7 @@ public final class CgQuery {
         public boolean wants(CgHitbox hitbox, CgCollisionWorld tickedIn, int owner) {
             if (done || hitbox == self || !world.sameLevel(tickedIn)) return false;
             this.owner = owner;
-            flags = CgPartSet.flagsOf(view, owner);
+            flags = flagsOf(view, owner);
             kind = view.kind(owner);
             root = view.rootVehicle(owner);
             return true;
@@ -532,14 +535,19 @@ public final class CgQuery {
 
     /**
      * One part of a hittable hitbox, standing for {@code owner}: the filters an entity is asked are asked of the owner's
-     * flags, kind and root vehicle, unless it has none ({@link CgPartSet#NOT_AN_ENTITY}). A hitbox is hit once, by its
+     * flags, kind and root vehicle, unless it has none ({@link #NOT_AN_ENTITY}). A hitbox is hit once, by its
      * nearest part.
      */
+    /** An entity's flags as a part's: none to filter by where the world has no entities. */
+    static int flagsOf(CgEntityQuery view, int id) {
+        return view == CgEntityQuery.NONE ? NOT_AN_ENTITY : view.flags(id);
+    }
+
     void meet(CgHitbox hitbox, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind,
               int root) {
         if (done || hitbox == self || owner == source || excepted(owner)
                 || sourceRoot >= 0 && root == sourceRoot) return;
-        if (flags != CgPartSet.NOT_AN_ENTITY && ((flags & require) != require || (flags & forbid) != 0
+        if (flags != NOT_AN_ENTITY && ((flags & require) != require || (flags & forbid) != 0
                 || (flags & wholeRequire) != wholeRequire || kinds != ALL_KINDS && (kinds & 1 << kind) == 0)) return;
         CgHit h = hits.add();
         if (!placedGeometry(s, p, h) || h.distance() > entityLimit || where != null && !where.test(owner)
