@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hit;
 
 /**
  * One part of something that strikes on its own, as an effect's beam and its blast do: each hit names its part

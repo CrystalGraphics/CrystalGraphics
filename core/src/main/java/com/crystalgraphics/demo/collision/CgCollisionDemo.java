@@ -1,9 +1,9 @@
 package com.crystalgraphics.demo.collision;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.collision.CgQuery;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
+import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;

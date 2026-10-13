@@ -1,6 +1,9 @@
 package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.block.CgCells;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitPart;
+import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.collision.hitbox.CgHitboxes;
 import com.crystalgraphics.platform.service.CgEntityQuery;
@@ -463,7 +466,7 @@ public final class CgQuery {
                     .walk(w.minY(), w.maxY(), blocks);
             if (blockFound) {
                 hits.add().set(nearestBlock);
-                entityLimit = nearestBlock.distance;
+                entityLimit = nearestBlock.distance();
             }
         }
         if (entitiesOn && !done) {
@@ -477,12 +480,12 @@ public final class CgQuery {
         hits.sort();
         hits.truncate(max);
         if (part != null) {
-            for (int i = 0; i < hits.size(); i++) hits.get(i).part = part;
+            for (int i = 0; i < hits.size(); i++) hits.get(i).setPart(part);
         }
         if (exposure) {
             for (int i = 0; i < hits.size(); i++) {
                 CgHit h = hits.get(i);
-                if (h.kind == CgHit.Kind.ENTITY) h.exposure = world.exposure(ox, oy, oz, h.entity);
+                if (h.kind() == CgHit.Kind.ENTITY) h.setExposure(world.exposure(ox, oy, oz, h.entity()));
             }
         }
         Watcher heard = watcher;
@@ -539,19 +542,16 @@ public final class CgQuery {
         if (flags != CgPartSet.NOT_AN_ENTITY && ((flags & require) != require || (flags & forbid) != 0
                 || (flags & wholeRequire) != wholeRequire || kinds != ALL_KINDS && (kinds & 1 << kind) == 0)) return;
         CgHit h = hits.add();
-        if (!placedGeometry(s, p, h) || h.distance > entityLimit || where != null && !where.test(owner)
+        if (!placedGeometry(s, p, h) || h.distance() > entityLimit || where != null && !where.test(owner)
                 || visible && !thread.sight.clear(world.world, ox, oy, oz, p.x, p.y, p.z)) {
             hits.removeLast();
             return;
         }
-        h.entity = h.parent = owner;
-        h.kind = CgHit.Kind.HITBOX;
-        h.hitbox = hitbox;
-        h.hitboxPart = name;
+        h.setHitbox(owner, hitbox, name);
         for (int i = 0; i < hits.size() - 1; i++) {
             CgHit other = hits.get(i);
-            if (other.hitbox != hitbox) continue;
-            if (h.distance < other.distance) other.set(h);
+            if (other.hitbox() != hitbox) continue;
+            if (h.distance() < other.distance()) other.set(h);
             hits.removeLast();
             return;
         }
@@ -579,7 +579,7 @@ public final class CgQuery {
             if (!e.box(id, world.partialTick, target)) return;
             if (inflate > 0) target.grow(inflate);
             CgHit h = hits.add();
-            if (!geometry(target, h) || h.distance > entityLimit || !wanted(e, id, f, h)) {
+            if (!geometry(target, h) || h.distance() > entityLimit || !wanted(e, id, f, h)) {
                 hits.removeLast();
                 return;
             }
@@ -587,8 +587,8 @@ public final class CgQuery {
                 // a multipart entity is hit once: keep its nearest part
                 for (int i = 0; i < hits.size() - 1; i++) {
                     CgHit other = hits.get(i);
-                    if (other.parent != h.parent) continue;
-                    if (h.distance < other.distance) other.set(h);
+                    if (other.parent() != h.parent()) continue;
+                    if (h.distance() < other.distance()) other.set(h);
                     hits.removeLast();
                     return;
                 }
@@ -606,9 +606,7 @@ public final class CgQuery {
             if (kinds != ALL_KINDS && (kinds & 1 << e.kind(parent)) == 0) return false;
             if (where != null && !where.test(id)) return false;
             if (visible && !thread.sight.clear(world.world, ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
-            h.entity = id;
-            h.parent = parent;
-            h.kind = CgHit.Kind.ENTITY;
+            h.setEntity(id, parent);
             if (parent != id) partsSeen = true;
             return true;
         }
@@ -646,7 +644,7 @@ public final class CgQuery {
 
         @Override
         public double limit() {
-            return blockFound ? nearestBlock.fraction : Double.POSITIVE_INFINITY;
+            return blockFound ? nearestBlock.fraction() : Double.POSITIVE_INFINITY;
         }
 
         private void block(int cx, int cy, int cz, double minX, double minY, double minZ, double maxX, double maxY,
@@ -662,9 +660,9 @@ public final class CgQuery {
                 if (hits.size() > 1) {
                     // a block is hit once: its boxes come one after another
                     CgHit last = hits.get(hits.size() - 2);
-                    if (last.kind.isTerrain() && last.blockX == cx && last.blockY == cy && last.blockZ == cz
-                            && last.fluid == fluid) {
-                        if (h.distance < last.distance) last.set(h);
+                    if (last.kind().isTerrain() && last.blockX() == cx && last.blockY() == cy && last.blockZ() == cz
+                            && last.fluid() == fluid) {
+                        if (h.distance() < last.distance()) last.set(h);
                         hits.removeLast();
                     }
                 }
@@ -672,7 +670,7 @@ public final class CgQuery {
                 return;
             }
             probe.reset();
-            if (!geometry(target, probe) || blockFound && probe.distance >= nearestBlock.distance) return;
+            if (!geometry(target, probe) || blockFound && probe.distance() >= nearestBlock.distance()) return;
             nearestBlock.set(probe);
             fill(nearestBlock, cx, cy, cz, kind, fluid);
             blockFound = true;
@@ -680,11 +678,19 @@ public final class CgQuery {
         }
 
         private void fill(CgHit h, int cx, int cy, int cz, CgHit.Kind kind, int fluid) {
-            h.kind = kind;
-            h.blockX = cx;
-            h.blockY = cy;
-            h.blockZ = cz;
-            h.fluid = fluid;
+            switch (kind) {
+                case FLUID:
+                    h.setFluid(cx, cy, cz, fluid);
+                    break;
+                case UNLOADED:
+                    h.setUnloaded(cx, cy, cz);
+                    break;
+                case BORDER:
+                    h.setBorder(cx, cy, cz);
+                    break;
+                default:
+                    h.setBlock(cx, cy, cz);
+            }
         }
     }
 
@@ -706,24 +712,19 @@ public final class CgQuery {
             default: {
                 double t = b.rayHit(ox, oy, oz, invX, invY, invZ, length);
                 if (t == Double.POSITIVE_INFINITY) return false;
-                h.x = ox + dirX * t;
-                h.y = oy + dirY * t;
-                h.z = oz + dirZ * t;
-                h.distance = t;
-                h.fraction = length == 0 ? 0 : t / length;
+                double fraction = length == 0 ? 0 : t / length;
                 if (t == 0) {
-                    h.normalX = dirX;
-                    h.normalY = dirY;
-                    h.normalZ = dirZ;
+                    h.setPlace(ox, oy, oz, dirX, dirY, dirZ, 0, fraction);
                     return true;
                 }
                 // the face it entered by: the slab entered last
                 double tx = dirX == 0 ? Double.NEGATIVE_INFINITY : ((dirX > 0 ? b.minX : b.maxX) - ox) * invX;
                 double ty = dirY == 0 ? Double.NEGATIVE_INFINITY : ((dirY > 0 ? b.minY : b.maxY) - oy) * invY;
                 double tz = dirZ == 0 ? Double.NEGATIVE_INFINITY : ((dirZ > 0 ? b.minZ : b.maxZ) - oz) * invZ;
-                h.normalX = tx >= ty && tx >= tz ? Math.signum(dirX) : 0;
-                h.normalY = h.normalX == 0 && ty >= tz ? Math.signum(dirY) : 0;
-                h.normalZ = h.normalX == 0 && h.normalY == 0 ? Math.signum(dirZ) : 0;
+                double nx = tx >= ty && tx >= tz ? Math.signum(dirX) : 0;
+                double ny = nx == 0 && ty >= tz ? Math.signum(dirY) : 0;
+                double nz = nx == 0 && ny == 0 ? Math.signum(dirZ) : 0;
+                h.setPlace(ox + dirX * t, oy + dirY * t, oz + dirZ * t, nx, ny, nz, t, fraction);
                 return true;
             }
         }
@@ -756,39 +757,23 @@ public final class CgQuery {
 
     /** An overlap's hit at a point of the target; the normal toward its centre when the origin is inside. */
     private boolean pointHit(CgHit h, double px, double py, double pz, double cx, double cy, double cz) {
-        h.x = px;
-        h.y = py;
-        h.z = pz;
         double dx = px - ox, dy = py - oy, dz = pz - oz;
-        double d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        h.distance = d;
-        h.fraction = 0;
+        double distance = Math.sqrt(dx * dx + dy * dy + dz * dz), d = distance;
         if (d == 0) {
             dx = cx - ox;
             dy = cy - oy;
             dz = cz - oz;
             d = Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
-        if (d == 0) {
-            h.normalX = h.normalY = h.normalZ = 0;
-        } else {
-            h.normalX = dx / d;
-            h.normalY = dy / d;
-            h.normalZ = dz / d;
-        }
+        if (d == 0) h.setPlace(px, py, pz, 0, 0, 0, distance, 0);
+        else h.setPlace(px, py, pz, dx / d, dy / d, dz / d, distance, 0);
         return true;
     }
 
     /** From {@link #cast}, whose normal faces the query: the hit's points away from it. */
     private void castHit(CgHit h) {
-        h.x = cast.point.x;
-        h.y = cast.point.y;
-        h.z = cast.point.z;
-        h.normalX = -cast.normal.x;
-        h.normalY = -cast.normal.y;
-        h.normalZ = -cast.normal.z;
-        h.distance = cast.distance;
-        h.fraction = cast.fraction;
+        h.setPlace(cast.point.x, cast.point.y, cast.point.z, -cast.normal.x, -cast.normal.y, -cast.normal.z,
+                cast.distance, cast.fraction);
     }
 
     private static double clamp(double v, double lo, double hi) {

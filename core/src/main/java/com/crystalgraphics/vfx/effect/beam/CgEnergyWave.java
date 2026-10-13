@@ -1,10 +1,11 @@
 package com.crystalgraphics.vfx.effect.beam;
 
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.render.post.volume.CgImpact;
 import com.crystalgraphics.render.post.volume.CgImpactFrame;
@@ -20,21 +21,20 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
+import com.crystalgraphics.vfx.camera.CgCameraShakes;
+import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
-import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.net.CgVfxCue;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import com.crystalgraphics.vfx.sim.CgVfxStream;
-import com.crystalgraphics.vfx.camera.CgCameraShake;
-import com.crystalgraphics.vfx.camera.CgCameraShakes;
-import com.crystalgraphics.net.object.CgNetField;
-import com.crystalgraphics.vfx.net.CgVfxCue;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -843,7 +843,8 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
             // The burst, where the beam ended; its front then reaches each entity in turn.
             double bx = originX + stream.impactX(), by = originY + stream.impactY(), bz = originZ + stream.impactZ();
             if (reported.kind().isTerrain()) {
-                reported.setBlock(reported.blockX(), reported.blockY(), reported.blockZ(), bx, by, bz, PART_BURST);
+                int cx = reported.blockX(), cy = reported.blockY(), cz = reported.blockZ();
+                reported.setPoint(bx, by, bz, PART_BURST).setBlock(cx, cy, cz);
             } else {
                 reported.setPoint(bx, by, bz, PART_BURST);
             }
@@ -1030,7 +1031,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
         if (now != null && (now != struck || entity != struckEntity)) {
             double x = originX + stream.impactX(), y = originY + stream.impactY(), z = originZ + stream.impactZ();
             if (collides) reported.set(hit);
-            else if (now == CgHit.Kind.ENTITY) reported.setEntity(entity, entity, x, y, z, Float.NaN, PART_BEAM);
+            else if (now == CgHit.Kind.ENTITY) reported.setPoint(x, y, z, PART_BEAM).setEntity(entity, entity);
             else reported.setPoint(x, y, z, PART_BEAM);
             hit(reported);
         }

@@ -1,8 +1,8 @@
 package com.crystalgraphics.vfx.net;
 
-import com.crystalgraphics.collision.CgSentHit;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgSentHit;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;

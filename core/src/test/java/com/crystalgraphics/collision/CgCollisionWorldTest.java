@@ -2,6 +2,8 @@ package com.crystalgraphics.collision;
 
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;

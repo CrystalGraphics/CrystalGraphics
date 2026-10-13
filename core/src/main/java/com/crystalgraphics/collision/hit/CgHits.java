@@ -1,4 +1,6 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hit;
+
+import com.crystalgraphics.collision.CgQuery;
 
 /**
  * Hits kept past the query that found them, nearest first: what {@link CgQuery#into} fills. Reused; filling it again
@@ -16,6 +18,7 @@ package com.crystalgraphics.collision;
  *
  * <ul>
  *   <li>{@link #get} hands out the hit it holds, not a copy: it changes when this is filled again.</li>
+ *   <li>{@link #add}, {@link #sort} and the rest fill one by hand, as a query does: hits gathered from several.</li>
  * </ul>
  */
 public final class CgHits {
@@ -42,7 +45,7 @@ public final class CgHits {
     }
 
     /** A cleared hit at the end, to fill. */
-    CgHit add() {
+    public CgHit add() {
         if (size == hits.length) {
             CgHit[] grown = new CgHit[Math.max(8, size * 2)];
             System.arraycopy(hits, 0, grown, 0, size);
@@ -55,23 +58,25 @@ public final class CgHits {
     }
 
     /** Takes back the last {@link #add}. */
-    void removeLast() {
+    public void removeLast() {
         size--;
     }
 
     /** Drops hit {@code i}, keeping the order. */
-    void remove(int i) {
+    public void remove(int i) {
+        check(i);
         CgHit gone = hits[i];
         System.arraycopy(hits, i + 1, hits, i, size - i - 1);
         hits[--size] = gone;
     }
 
-    void truncate(int n) {
+    /** Keeps the first {@code n}. */
+    public void truncate(int n) {
         if (n < size) size = n;
     }
 
     /** Nearest first; a shell sort, which allocates nothing. */
-    void sort() {
+    public void sort() {
         for (int gap = size / 2; gap > 0; gap = gap == 2 ? 1 : gap * 5 / 11) {
             for (int i = gap; i < size; i++) {
                 CgHit h = hits[i];
@@ -87,12 +92,13 @@ public final class CgHits {
      * hitbox before its owner.
      */
     private static boolean after(CgHit a, CgHit b) {
-        if (a.distance != b.distance) return a.distance > b.distance;
-        if (a.entity != b.entity) return a.entity > b.entity;
-        if ((a.kind == CgHit.Kind.HITBOX) != (b.kind == CgHit.Kind.HITBOX)) return b.kind == CgHit.Kind.HITBOX;
-        if (a.blockX != b.blockX) return a.blockX > b.blockX;
-        if (a.blockY != b.blockY) return a.blockY > b.blockY;
-        return a.blockZ > b.blockZ;
+        if (a.distance() != b.distance()) return a.distance() > b.distance();
+        if (a.entity() != b.entity()) return a.entity() > b.entity();
+        boolean aBox = a.kind() == CgHit.Kind.HITBOX, bBox = b.kind() == CgHit.Kind.HITBOX;
+        if (aBox != bBox) return bBox;
+        if (a.blockX() != b.blockX()) return a.blockX() > b.blockX();
+        if (a.blockY() != b.blockY()) return a.blockY() > b.blockY();
+        return a.blockZ() > b.blockZ();
     }
 
     private void check(int i) {

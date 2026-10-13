@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hit;
 
 import com.crystalgraphics.collision.hitbox.CgHitboxType;
 import com.crystalgraphics.net.object.CgNetEvent;
@@ -59,14 +59,15 @@ public final class CgSentHit {
 
     /** Writes this into {@code into}, its part {@code part}: the one this side holds at {@link #part()}. */
     public CgHit read(CgHit into, @Nullable CgHitPart part) {
+        into.setPoint(x, y, z, part);
         switch (kind) {
-            case BLOCK: return into.setBlock(blockX, blockY, blockZ, x, y, z, part);
-            case FLUID: return into.setFluid(blockX, blockY, blockZ, fluid, x, y, z, part);
-            case UNLOADED: return into.setUnloaded(blockX, blockY, blockZ, x, y, z, part);
-            case BORDER: return into.setBorder(blockX, blockY, blockZ, x, y, z, part);
-            case ENTITY: return into.setEntity(entity, parent, x, y, z, exposure, part);
-            case HITBOX: return into.setHitbox(entity, x, y, z, part);
-            default: return into.setPoint(x, y, z, part);
+            case BLOCK: return into.setBlock(blockX, blockY, blockZ);
+            case FLUID: return into.setFluid(blockX, blockY, blockZ, fluid);
+            case UNLOADED: return into.setUnloaded(blockX, blockY, blockZ);
+            case BORDER: return into.setBorder(blockX, blockY, blockZ);
+            case ENTITY: return into.setEntity(entity, parent).setExposure(exposure);
+            case HITBOX: return into.setHitbox(entity, null, null);
+            default: return into;
         }
     }
 

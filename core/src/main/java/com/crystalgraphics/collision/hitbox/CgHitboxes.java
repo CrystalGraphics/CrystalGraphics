@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.hitbox;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;

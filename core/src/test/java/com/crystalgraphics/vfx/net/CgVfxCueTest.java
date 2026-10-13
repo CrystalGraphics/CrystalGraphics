@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.net;
 
-import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;
@@ -11,10 +11,10 @@ import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
-import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxLook;

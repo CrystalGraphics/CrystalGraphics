@@ -1,4 +1,4 @@
-package com.crystalgraphics.collision;
+package com.crystalgraphics.collision.hit;
 
 import com.crystalgraphics.net.object.CgNetWire;
 import com.crystalgraphics.platform.service.CgWorldQuery;
@@ -21,12 +21,12 @@ public class CgSentHitTest {
     public void aHitCrossesTheWireAsItsKindPointAndPart() {
         CgNetWire<CgSentHit> wire = CgSentHit.wire();
         List<String> read = new ArrayList<>();
-        CgHit[] hits = {new CgHit().setEntity(2001, 2000, 1.5, 64, -3.25, 0.5f, ARC),
-                new CgHit().setBlock(-4, 63, 9, -3.5, 64, 9.5, BOLT), new CgHit().setPoint(8, 0, 0, null),
-                new CgHit().setFluid(2, 62, 2, CgWorldQuery.FLUID_LAVA, 2.5, 62.9, 2.5, BOLT),
-                new CgHit().setUnloaded(100, 70, 0, 100, 70.5, 0.5, null),
-                new CgHit().setBorder(11, 64, -20, 11, 64.5, -19.5, ARC),
-                new CgHit().setHitbox(3001, 4, 65, 0, BOLT)};
+        CgHit[] hits = {new CgHit().setPoint(1.5, 64, -3.25, ARC).setEntity(2001, 2000).setExposure(0.5f),
+                new CgHit().setPoint(-3.5, 64, 9.5, BOLT).setBlock(-4, 63, 9), new CgHit().setPoint(8, 0, 0, null),
+                new CgHit().setPoint(2.5, 62.9, 2.5, BOLT).setFluid(2, 62, 2, CgWorldQuery.FLUID_LAVA),
+                new CgHit().setPoint(100, 70.5, 0.5, null).setUnloaded(100, 70, 0),
+                new CgHit().setPoint(11, 64.5, -19.5, ARC).setBorder(11, 64, -20),
+                new CgHit().setPoint(4, 65, 0, BOLT).setHitbox(3001, null, null)};
         for (CgHit h : hits) {
             CgSentHit sent = new CgSentHit().set(h, PARTS.indexOf(h.part()));
             Tape tape = new Tape();

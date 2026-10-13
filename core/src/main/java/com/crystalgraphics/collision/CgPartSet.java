@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision;
 
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.collision.hitbox.CgHitboxes;
 import com.crystalgraphics.platform.service.CgEntityQuery;

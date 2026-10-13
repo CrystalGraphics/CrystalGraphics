@@ -1,8 +1,8 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.CgHit;
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CgQuery;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;

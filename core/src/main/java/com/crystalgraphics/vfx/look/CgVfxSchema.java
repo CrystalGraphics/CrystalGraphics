@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
-import com.crystalgraphics.collision.CgHitPart;
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.vfx.camera.CgCameraShake;

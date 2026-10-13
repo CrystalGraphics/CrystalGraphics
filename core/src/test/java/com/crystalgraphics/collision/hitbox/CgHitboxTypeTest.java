@@ -1,11 +1,11 @@
 package com.crystalgraphics.collision.hitbox;
 
-import com.crystalgraphics.collision.CgHit;
-import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.CgQuery;
-import com.crystalgraphics.collision.CgSentHit;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitPart;
+import com.crystalgraphics.collision.hit.CgSentHit;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
@@ -227,7 +227,7 @@ public class CgHitboxTypeTest {
     public void aHitEmitsWithoutAllocating() {
         try (CgNetTestRig rig = rig(1)) {
             CgNetObject wave = SWING.spawn(rig.at(0, 0.9, 30)).start();
-            CgSentHit sent = new CgSentHit().set(new CgHit().setEntity(2001, 2001, 1.5, 0, 0, Float.NaN, null), -1);
+            CgSentHit sent = new CgSentHit().set(new CgHit().setPoint(1.5, 0, 0, null).setEntity(2001, 2001), -1);
             for (int t = 0; t < 20; t++) {
                 for (int i = 0; i < 50; i++) wave.emit(CgHitboxType.HIT, sent);
                 rig.tick(1);

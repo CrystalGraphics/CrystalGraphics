@@ -1,8 +1,7 @@
 package com.crystalgraphics.probe;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHit;
-import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -18,10 +17,11 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
-import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

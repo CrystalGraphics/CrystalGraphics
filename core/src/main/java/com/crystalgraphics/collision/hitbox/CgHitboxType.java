@@ -1,8 +1,8 @@
 package com.crystalgraphics.collision.hitbox;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.collision.CgHit;
-import com.crystalgraphics.collision.CgSentHit;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgSentHit;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetBehaviour;

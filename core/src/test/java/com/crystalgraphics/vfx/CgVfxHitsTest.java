@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.collision.CgHitPart;
-import com.crystalgraphics.collision.CgHit;
+import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -30,8 +30,8 @@ public class CgVfxHitsTest {
 
         @Override
         protected void tick(float dt) {
-            hit(struck.setEntity(7, 7, 12, 1, 0, Float.NaN, PART_BOLT));
-            hit(struck.setBlock(3, 0, 4, 3.5, 1, 4.5, PART_ARC));
+            hit(struck.setPoint(12, 1, 0, PART_BOLT).setEntity(7, 7));
+            hit(struck.setPoint(3.5, 1, 4.5, PART_ARC).setBlock(3, 0, 4));
         }
 
         @Override
