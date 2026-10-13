@@ -13,15 +13,15 @@ import javax.annotation.Nullable;
 import java.util.Arrays;
 
 /**
- * What {@link CgCollisionShow} saw lately, as world-space segments each kept until it expires: every world query as
- * it ended, and every hitbox each time it ticked. Written at once, since a query's shape may be resized the moment
- * after. Queries and hitboxes run on any thread.
+ * What {@link CgCollisionShow} saw lately, as world-space segments and triangles each kept until it expires: every
+ * world query as it ended, and every hitbox each time it ticked. Written at once, since a query's shape may be
+ * resized the moment after. Queries and hitboxes run on any thread.
  *
  * <ul>
  *   <li>A cast is its shape where it starts and where it stops, joined by its path; a ray its path; an overlap its
  *       shape; the nearest hit a cross on the surface and its normal.</li>
- *   <li>A hitbox is its parts as that tick tested them, kept a little past a game tick so one ticking each tick shows
- *       steadily, and {@link #LINGER_NANOS} once it stops: a blast's front lives a few ticks.</li>
+ *   <li>A hitbox is its parts as that tick tested them, their edges and their faces, kept a little past a game tick
+ *       so one ticking each tick shows steadily and one that has stopped is gone with it.</li>
  * </ul>
  */
 final class CgRecentLines implements CgShapeLines.Sink {
@@ -32,14 +32,15 @@ final class CgRecentLines implements CgShapeLines.Sink {
     static final int HITBOX = 0xFF40FF60;
     /** How long a query or a hitbox's tick is kept: past a game tick, so one each tick shows steadily. */
     static final long HOLD_NANOS = 60_000_000L;
-    static final long LINGER_NANOS = 500_000_000L;
     private static final double MARK = 0.4;
 
     private final CgShapeLines shapes = new CgShapeLines();
     private final CgPose end = new CgPose();
     private final CgHitbox.PartSink parts = this::part;
     private final int max;
-    private double[] points = new double[6 * 256];
+    /** Nine a record: a segment's two ends, or a face's three corners. */
+    private double[] points = new double[9 * 256];
+    private boolean[] faces = new boolean[256];
     private int[] colours = new int[256];
     /** Each segment's hitbox's own {@link CgHitbox#showColour()}, which a server's pack carries; 0 for none. */
     private int[] shows = new int[256];
@@ -51,7 +52,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private long until;
     private CgWorldQuery level;
 
-    /** Keeps at most {@code max} segments; past that, lines are dropped until some expire. */
+    /** Keeps at most {@code max} segments and triangles; past that, they are dropped until some expire. */
     CgRecentLines(int max) {
         this.max = max;
     }
@@ -93,10 +94,10 @@ final class CgRecentLines implements CgShapeLines.Sink {
         this.level = null;
     }
 
-    /** Writes a hitbox's parts as its last tick tested them; kept {@link #LINGER_NANOS} once it has stopped. */
+    /** Writes a hitbox's parts as its last tick tested them, edges and faces, kept {@link #HOLD_NANOS}. */
     synchronized void hitbox(CgHitbox hitbox, CgWorldQuery level, long now) {
         this.level = level;
-        until = now + (hitbox.stopped() ? LINGER_NANOS : HOLD_NANOS);
+        until = now + HOLD_NANOS;
         show = hitbox.showColour();
         colour = show != 0 ? show : HITBOX;
         hitbox.parts(parts);
@@ -105,36 +106,66 @@ final class CgRecentLines implements CgShapeLines.Sink {
 
     private void part(@Nullable CgHitPart name, CgShape shape, CgPose pose) {
         shapes.write(shape, pose, this);
+        shapes.faces(shape, pose, this);
     }
 
     @Override
     public void line(double ax, double ay, double az, double bx, double by, double bz) {
-        if (count == max) return;
-        if (count == colours.length) {
-            int grown = Math.min(max, count * 2);
-            points = Arrays.copyOf(points, grown * 6);
-            colours = Arrays.copyOf(colours, grown);
-            shows = Arrays.copyOf(shows, grown);
-            expires = Arrays.copyOf(expires, grown);
-            levels = Arrays.copyOf(levels, grown);
-        }
-        int at = count * 6;
+        int at = record(false);
+        if (at < 0) return;
         points[at] = ax;
         points[at + 1] = ay;
         points[at + 2] = az;
         points[at + 3] = bx;
         points[at + 4] = by;
         points[at + 5] = bz;
+    }
+
+    @Override
+    public void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
+            double cz) {
+        int at = record(true);
+        if (at < 0) return;
+        points[at] = ax;
+        points[at + 1] = ay;
+        points[at + 2] = az;
+        points[at + 3] = bx;
+        points[at + 4] = by;
+        points[at + 5] = bz;
+        points[at + 6] = cx;
+        points[at + 7] = cy;
+        points[at + 8] = cz;
+    }
+
+    /** Books the next record as what is being written; where its points go, or -1 when full. */
+    private int record(boolean face) {
+        if (count == max) return -1;
+        if (count == colours.length) {
+            int grown = Math.min(max, count * 2);
+            points = Arrays.copyOf(points, grown * 9);
+            faces = Arrays.copyOf(faces, grown);
+            colours = Arrays.copyOf(colours, grown);
+            shows = Arrays.copyOf(shows, grown);
+            expires = Arrays.copyOf(expires, grown);
+            levels = Arrays.copyOf(levels, grown);
+        }
+        faces[count] = face;
         colours[count] = colour;
         shows[count] = show;
         expires[count] = until;
-        levels[count++] = level;
+        levels[count] = level;
+        return count++ * 9;
     }
 
-    /** Where {@link #drawTo} puts each segment. */
+    /** Where {@link #drawTo} puts each segment and each face's triangle. */
     @FunctionalInterface
     interface Out {
         void line(int argb, double ax, double ay, double az, double bx, double by, double bz);
+
+        /** A triangle of a hitbox's face, in its edges' colour; an out of lines alone leaves it. */
+        default void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
+                double cy, double cz) {
+        }
     }
 
     /** Drops what has expired by {@code now}. */
@@ -143,7 +174,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
         for (int i = 0; i < count; i++) {
             if (expires[i] - now <= 0) continue;
             if (kept != i) {
-                System.arraycopy(points, i * 6, points, kept * 6, 6);
+                System.arraycopy(points, i * 9, points, kept * 9, 9);
+                faces[kept] = faces[i];
                 colours[kept] = colours[i];
                 shows[kept] = shows[i];
                 expires[kept] = expires[i];
@@ -159,21 +191,31 @@ final class CgRecentLines implements CgShapeLines.Sink {
     synchronized void drawTo(long now, Out out) {
         expire(now);
         for (int i = 0; i < count; i++) {
-            int at = i * 6;
-            out.line(colours[i], points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
-                    points[at + 5]);
+            int at = i * 9;
+            if (faces[i]) {
+                out.triangle(colours[i], points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
+                        points[at + 5], points[at + 6], points[at + 7], points[at + 8]);
+            } else {
+                out.line(colours[i], points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
+                        points[at + 5]);
+            }
         }
     }
 
-    /** Hands {@code pack} each segment of {@code level} that starts within {@code range} of a point, in its show colour. */
+    /** Hands {@code pack} what of {@code level} starts within {@code range} of a point, in its show colour. */
     synchronized void packTo(CgWorldQuery level, double x, double y, double z, double range, CgLinePack pack) {
         double r2 = range * range;
         for (int i = 0; i < count && !pack.full(); i++) {
-            int at = i * 6;
+            int at = i * 9;
             double ex = points[at] - x, ey = points[at + 1] - y, ez = points[at + 2] - z;
             if (levels[i] != level || ex * ex + ey * ey + ez * ez > r2) continue;
             pack.colour(shows[i]);
-            pack.line(points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4], points[at + 5]);
+            if (faces[i]) {
+                pack.triangle(points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
+                        points[at + 5], points[at + 6], points[at + 7], points[at + 8]);
+            } else {
+                pack.line(points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4], points[at + 5]);
+            }
         }
     }
 

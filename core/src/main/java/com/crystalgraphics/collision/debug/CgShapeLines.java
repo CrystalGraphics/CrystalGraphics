@@ -25,6 +25,12 @@ import java.util.Arrays;
  * lines.write(CgSphere.of(2), pose.at(x, y, z), (ax, ay, az, bx, by, bz) -> draw(ax, ay, az, bx, by, bz));
  * }</pre>
  *
+ * Its faces too, as triangles, for a view that fills a shape in:
+ *
+ * <pre>{@code
+ * lines.faces(CgSphere.of(2), pose.at(x, y, z), sink);          // into the sink's triangle(...)
+ * }</pre>
+ *
  * Given where the eye is, a ball also draws its outline as the eye sees it, as Unity's sphere gizmo does, so it reads
  * as a ball however its circles turn:
  *
@@ -38,6 +44,8 @@ import java.util.Arrays;
  *       draws both its walls, a compound each child, a plane a disc of at most {@link #PLANE_SHOWN} with its normal.
  *       Any other shape draws its support around its three axes.</li>
  *   <li>Circles take {@link #CIRCLE} segments. One instance a thread.</li>
+ *   <li>Faces are the shape's whole surface: a round one turned in {@link #FACE_SIDES} sides, a ball in
+ *       {@link #FACE_BANDS} bands pole to pole. Any other shape's are its support over a ball of directions.</li>
  * </ul>
  */
 final class CgShapeLines {
@@ -46,11 +54,27 @@ final class CgShapeLines {
     public static final int CIRCLE = 24;
     /** How far a plane's disc is drawn from its origin: its own radius is usually Jolt's 1000. */
     public static final double PLANE_SHOWN = 4;
+    /** Flat sides round a face's circle, and bands over a ball from pole to pole. */
+    public static final int FACE_SIDES = 16, FACE_BANDS = 8;
 
-    /** Where {@link #write} puts each segment, in world space. */
+    private static final double[] COS = new double[FACE_SIDES + 1], SIN = new double[FACE_SIDES + 1];
+
+    static {
+        for (int i = 0; i <= FACE_SIDES; i++) {
+            COS[i] = Math.cos(2 * Math.PI * i / FACE_SIDES);
+            SIN[i] = Math.sin(2 * Math.PI * i / FACE_SIDES);
+        }
+    }
+
+    /** Where {@link #write} puts each segment and {@link #faces} each triangle, in world space. */
     @FunctionalInterface
     public interface Sink {
         void line(double ax, double ay, double az, double bx, double by, double bz);
+
+        /** A triangle of a shape's surface; a sink of lines alone leaves it. */
+        default void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
+                double cz) {
+        }
     }
 
     private CgPose[] poses = {new CgPose()};
@@ -58,6 +82,11 @@ final class CgShapeLines {
     private final Vector3d a = new Vector3d(), b = new Vector3d(), u = new Vector3d(), v = new Vector3d();
     private final Vector3d local = new Vector3d();
     private Sink out;
+    /** A surface of revolution's outline, as pairs: how far from its axis, how far along it. */
+    private final double[] profile = new double[2 * (2 * FACE_BANDS + 8)];
+    private int profiled;
+    /** A support surface's last row of points and the one being written. */
+    private double[] rowBefore = new double[3 * (FACE_SIDES + 1)], row = new double[3 * (FACE_SIDES + 1)];
     private double eyeX = Double.NaN, eyeY, eyeZ;
 
     /** Where the eye is, in the world: each ball written from now on draws its outline from there too. */
@@ -111,6 +140,18 @@ final class CgShapeLines {
         poses[0].set(pose);
         try {
             shape(shape);
+        } finally {
+            this.out = null;
+        }
+    }
+
+    /** Writes the surface of {@code shape} placed at {@code pose} into {@code out}, as triangles. */
+    public void faces(CgShape shape, CgPose pose, Sink out) {
+        this.out = out;
+        depth = 0;
+        poses[0].set(pose);
+        try {
+            surface(shape);
         } finally {
             this.out = null;
         }
@@ -217,6 +258,10 @@ final class CgShapeLines {
     }
 
     private void compound(CgCompound compound) {
+        compound(compound, false);
+    }
+
+    private void compound(CgCompound compound, boolean faces) {
         if (depth + 1 == poses.length) {
             poses = Arrays.copyOf(poses, poses.length * 2);
             for (int i = depth + 1; i < poses.length; i++) poses[i] = new CgPose();
@@ -226,11 +271,171 @@ final class CgShapeLines {
         try {
             for (int i = 0; i < compound.size(); i++) {
                 parent.mul(compound.pose(i, child), child);
-                shape(compound.shape(i));
+                if (faces) surface(compound.shape(i));
+                else shape(compound.shape(i));
             }
         } finally {
             depth--;
         }
+    }
+
+    private void surface(CgShape shape) {
+        if (shape instanceof CgBox) {
+            boxFaces((CgBox) shape);
+        } else if (shape instanceof CgSphere) {
+            ball(0, 0, 0, ((CgSphere) shape).radius());
+        } else if (shape instanceof CgCapsule) {
+            capsuleFaces((CgCapsule) shape);
+        } else if (shape instanceof CgCylinder) {
+            ringFaces(0, ((CgCylinder) shape).radius(), ((CgCylinder) shape).halfHeight());
+        } else if (shape instanceof CgCone) {
+            coneFaces(((CgCone) shape).range(), ((CgCone) shape).halfAngle());
+        } else if (shape instanceof CgShell) {
+            ball(0, 0, 0, ((CgShell) shape).outer());
+            if (((CgShell) shape).inner() > 0) ball(0, 0, 0, ((CgShell) shape).inner());
+        } else if (shape instanceof CgRing) {
+            ringFaces(((CgRing) shape).inner(), ((CgRing) shape).outer(), ((CgRing) shape).halfHeight());
+        } else if (shape instanceof CgPlane) {
+            planeFaces((CgPlane) shape);
+        } else if (shape instanceof CgCompound) {
+            compound((CgCompound) shape, true);
+        } else {
+            supportFaces(shape);
+        }
+    }
+
+    private void boxFaces(CgBox box) {
+        double x = box.halfX(), y = box.halfY(), z = box.halfZ();
+        for (int s = -1; s <= 1; s += 2) {
+            quad(s * x, -y, -z, s * x, y, -z, s * x, y, z, s * x, -y, z);
+            quad(-x, s * y, -z, x, s * y, -z, x, s * y, z, -x, s * y, z);
+            quad(-x, -y, s * z, x, -y, s * z, x, y, s * z, -x, y, s * z);
+        }
+    }
+
+    /** A ball of radius {@code r} about a local point. */
+    private void ball(double cx, double cy, double cz, double r) {
+        profiled = 0;
+        profileArc(0, r, 0, Math.PI);
+        lathe(cx, cy, cz, 1, 0, 0, 0, 1, 0, 0, 0, 1);
+    }
+
+    private void capsuleFaces(CgCapsule capsule) {
+        double r = capsule.radius();
+        capsule.a(a);
+        capsule.b(b);
+        double ax = a.x, ay = a.y, az = a.z;
+        double wx = b.x - ax, wy = b.y - ay, wz = b.z - az;
+        double length = Math.sqrt(wx * wx + wy * wy + wz * wz);
+        if (length < 1e-9) {
+            ball(ax, ay, az, r);
+            return;
+        }
+        wx /= length;
+        wy /= length;
+        wz /= length;
+        basis(wx, wy, wz);
+        // the cap over b down to its rim, then a's rim to its cap: the side joins the two rims
+        profiled = 0;
+        profileArc(length, r, 0, Math.PI / 2);
+        profileArc(0, r, Math.PI / 2, Math.PI);
+        lathe(ax, ay, az, u.x, u.y, u.z, v.x, v.y, v.z, wx, wy, wz);
+    }
+
+    /** An upright ring's walls and its two ends; a cylinder with no {@code inner}. */
+    private void ringFaces(double inner, double outer, double h) {
+        profiled = 0;
+        profile(inner, h);
+        profile(outer, h);
+        profile(outer, -h);
+        profile(inner, -h);
+        if (inner > 0) profile(inner, h);
+        lathe(0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0);
+    }
+
+    private void coneFaces(double range, double halfAngle) {
+        profiled = 0;
+        profile(0, 0);
+        profileArc(0, range, halfAngle, 0);
+        lathe(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1);
+    }
+
+    private void planeFaces(CgPlane plane) {
+        double nx = plane.nx(), ny = plane.ny(), nz = plane.nz();
+        basis(nx, ny, nz);
+        profiled = 0;
+        profile(0, 0);
+        profile(Math.min(plane.radius(), PLANE_SHOWN), 0);
+        lathe(0, 0, 0, u.x, u.y, u.z, v.x, v.y, v.z, nx, ny, nz);
+    }
+
+    /** The farthest point along each direction of a ball of them, joined band by band: a hull's skin. */
+    private void supportFaces(CgShape shape) {
+        for (int band = 0; band <= FACE_BANDS; band++) {
+            double t = Math.PI * band / FACE_BANDS, round = Math.sin(t), up = Math.cos(t);
+            for (int i = 0; i <= FACE_SIDES; i++) {
+                shape.support(round * COS[i], up, round * SIN[i], a);
+                row[i * 3] = a.x;
+                row[i * 3 + 1] = a.y;
+                row[i * 3 + 2] = a.z;
+            }
+            if (band > 0) {
+                for (int i = 0; i < FACE_SIDES; i++) {
+                    int p = i * 3, q = p + 3;
+                    quad(rowBefore[p], rowBefore[p + 1], rowBefore[p + 2], row[p], row[p + 1], row[p + 2],
+                            row[q], row[q + 1], row[q + 2], rowBefore[q], rowBefore[q + 1], rowBefore[q + 2]);
+                }
+            }
+            double[] swap = rowBefore;
+            rowBefore = row;
+            row = swap;
+        }
+    }
+
+    /** Adds a point to {@link #profile}: {@code r} from the axis, {@code along} it. */
+    private void profile(double r, double along) {
+        profile[profiled * 2] = r;
+        profile[profiled * 2 + 1] = along;
+        profiled++;
+    }
+
+    /** Adds an arc of a circle of radius {@code r}, centred {@code centre} along the axis, by its angle from it. */
+    private void profileArc(double centre, double r, double from, double to) {
+        int steps = Math.max(1, (int) Math.ceil(FACE_BANDS * Math.abs(to - from) / Math.PI));
+        for (int i = 0; i <= steps; i++) {
+            double t = from + (to - from) * i / steps;
+            profile(r * Math.sin(t), centre + r * Math.cos(t));
+        }
+    }
+
+    /** Turns {@link #profile} about the axis W through a local point, U and V square to it: its surface. */
+    private void lathe(double cx, double cy, double cz, double ux, double uy, double uz, double vx, double vy,
+            double vz, double wx, double wy, double wz) {
+        for (int p = 0; p + 1 < profiled; p++) {
+            double r0 = profile[p * 2], h0 = profile[p * 2 + 1], r1 = profile[p * 2 + 2], h1 = profile[p * 2 + 3];
+            double x0 = cx + h0 * wx, y0 = cy + h0 * wy, z0 = cz + h0 * wz;
+            double x1 = cx + h1 * wx, y1 = cy + h1 * wy, z1 = cz + h1 * wz;
+            for (int i = 0; i < FACE_SIDES; i++) {
+                double ix = COS[i] * ux + SIN[i] * vx, iy = COS[i] * uy + SIN[i] * vy, iz = COS[i] * uz + SIN[i] * vz;
+                double jx = COS[i + 1] * ux + SIN[i + 1] * vx, jy = COS[i + 1] * uy + SIN[i + 1] * vy;
+                double jz = COS[i + 1] * uz + SIN[i + 1] * vz;
+                // a point on the axis has no width: its half of the quad is left out
+                if (r1 > 1e-9) {
+                    triangle(x0 + r0 * ix, y0 + r0 * iy, z0 + r0 * iz, x1 + r1 * ix, y1 + r1 * iy, z1 + r1 * iz,
+                            x1 + r1 * jx, y1 + r1 * jy, z1 + r1 * jz);
+                }
+                if (r0 > 1e-9) {
+                    triangle(x0 + r0 * ix, y0 + r0 * iy, z0 + r0 * iz, x1 + r1 * jx, y1 + r1 * jy, z1 + r1 * jz,
+                            x0 + r0 * jx, y0 + r0 * jy, z0 + r0 * jz);
+                }
+            }
+        }
+    }
+
+    private void quad(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
+            double cz, double dx, double dy, double dz) {
+        triangle(ax, ay, az, bx, by, bz, cx, cy, cz);
+        triangle(ax, ay, az, cx, cy, cz, dx, dy, dz);
     }
 
     /** A ball of radius {@code r} about a local point. */
@@ -306,5 +511,20 @@ final class CgShapeLines {
         double wby = pose.m10() * bx + pose.m11() * by + pose.m12() * bz + pose.y;
         double wbz = pose.m20() * bx + pose.m21() * by + pose.m22() * bz + pose.z;
         out.line(wax, way, waz, wbx, wby, wbz);
+    }
+
+    /** A triangle in the current shape's space, out in the world. */
+    private void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
+            double cz) {
+        CgPose pose = poses[depth];
+        out.triangle(pose.m00() * ax + pose.m01() * ay + pose.m02() * az + pose.x,
+                pose.m10() * ax + pose.m11() * ay + pose.m12() * az + pose.y,
+                pose.m20() * ax + pose.m21() * ay + pose.m22() * az + pose.z,
+                pose.m00() * bx + pose.m01() * by + pose.m02() * bz + pose.x,
+                pose.m10() * bx + pose.m11() * by + pose.m12() * bz + pose.y,
+                pose.m20() * bx + pose.m21() * by + pose.m22() * bz + pose.z,
+                pose.m00() * cx + pose.m01() * cy + pose.m02() * cz + pose.x,
+                pose.m10() * cx + pose.m11() * cy + pose.m12() * cz + pose.y,
+                pose.m20() * cx + pose.m21() * cy + pose.m22() * cz + pose.z);
     }
 }

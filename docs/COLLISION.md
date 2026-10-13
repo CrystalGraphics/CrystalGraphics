@@ -1335,6 +1335,7 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 
 ```
 -Dcrystalgraphics.collision.show=true        // or from the console, or CgCollisionShow.SHOW.set(true)
+-Dcrystalgraphics.collision.style=wireframe  // hitboxes as their edges alone; transparent, the default, fills them in
 ```
 
 | You see | Colour |
@@ -1347,8 +1348,10 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 - **Where green and orange part, a prediction is off**: the client's copy is not where the server's is.
 - A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape.
 - A query a hitbox runs is left out: its parts are drawn instead. Queries on an empty world are not drawn.
-- Hitboxes are drawn as their last tick tested them, and for half a second once stopped: a blast's front lives a few
-  ticks.
+- `crystalgraphics.collision.style` is how each client draws hitboxes: `transparent` (the default) fills their faces
+  in see-through under solid edges, `wireframe` draws the edges alone. A player's setting, kept in their settings file.
+- Hitboxes are drawn as their last tick tested them, and are gone a tick or two
+  after their last: one that lives a tick shows for about that.
 - The server sends a player what is within 64 blocks of them while their client is showing, recording only while
   someone is. `crystalgraphics.collision.serve=false` keeps a server's own to itself unless its
   `crystalgraphics.collision.show` is on.
