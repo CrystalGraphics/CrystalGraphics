@@ -1,13 +1,16 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
@@ -49,6 +52,7 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     private final WeakReference<Level> bound;
     private Level seen;
     private int epoch;
+    private float[] copyBoxes = new float[6 * 16];
     //? if >=1.14.3 {
     private final BoxesInto boxesInto = new BoxesInto();
     //?}
@@ -91,7 +95,11 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     public int collisionBoxes(int x, int y, int z, float[] out) {
         Level level = level();
         if (level == null) return 0;
-        VoxelShape shape = state(level, x, y, z).getCollisionShape(level, pos);
+        return boxesOf(state(level, x, y, z).getCollisionShape(level, pos), out);
+    }
+
+    /** A shape's boxes into {@code out}, as {@link #collisionBoxes} answers. */
+    private int boxesOf(VoxelShape shape, float[] out) {
         if (shape.isEmpty()) return 0;
         //? if >=1.14.3 {
         boxesInto.out = out;
@@ -140,7 +148,11 @@ public class LevelWorldQueryModern implements CgWorldQuery {
         Level level = level();
         if (level == null) return Float.NaN;
         FluidState fluid = fluid(level, x, y, z);
-        if (fluid.isEmpty()) return Float.NaN;
+        return fluid.isEmpty() ? Float.NaN : heightOf(fluid, level);
+    }
+
+    /** A fluid's height at {@link #pos}. */
+    private float heightOf(FluidState fluid, Level level) {
         //? if >=1.14 {
         return fluid.getHeight(level, pos);
         //?} else {
@@ -151,11 +163,79 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     @Override
     public int fluidKind(int x, int y, int z) {
         Level level = level();
-        if (level == null) return FLUID_NONE;
-        FluidState fluid = fluid(level, x, y, z);
+        return level == null ? FLUID_NONE : kindOf(fluid(level, x, y, z));
+    }
+
+    private static int kindOf(FluidState fluid) {
         if (fluid.isEmpty()) return FLUID_NONE;
         if (fluid.getType().isSame(Fluids.WATER)) return FLUID_WATER;
         return fluid.getType().isSame(Fluids.LAVA) ? FLUID_LAVA : FLUID_NONE;
+    }
+
+    /**
+     * From the chunks' sections. A block whose collision shape follows from its state alone, the shapes vanilla caches
+     * per state ({@code BlockBehaviour.initCache}), is described once per state; a fluid's height also follows from
+     * whether the same fluid is above ({@code FlowingFluid.getHeight}), so that is in its key.
+     */
+    @Override
+    public boolean copyBlocks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, CgBlockCopy into) {
+        Level level = level();
+        if (level == null) return true;
+        int bottomSection = minY() >> 4;
+        for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+            for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                if (!level.isLoaded(pos.set(cx << 4, level.getSeaLevel(), cz << 4))) continue;
+                int x0 = Math.max(minX, cx << 4), x1 = Math.min(maxX, (cx << 4) + 15);
+                int z0 = Math.max(minZ, cz << 4), z1 = Math.min(maxZ, (cz << 4) + 15);
+                for (int x = x0; x <= x1; x++) {
+                    for (int z = z0; z <= z1; z++) into.loaded(x, z);
+                }
+                LevelChunkSection[] sections = level.getChunkAt(pos).getSections();
+                for (int sy = minY >> 4; sy <= maxY >> 4; sy++) {
+                    int i = sy - bottomSection;
+                    if (i < 0 || i >= sections.length) continue;
+                    LevelChunkSection section = sections[i];
+                    //? if >=1.18.2 {
+                    if (section == null || section.hasOnlyAir()) continue;
+                    //?} else {
+                    /*if (section == null || section.isEmpty()) continue;
+                    *///?}
+                    int y0 = Math.max(minY, sy << 4), y1 = Math.min(maxY, (sy << 4) + 15);
+                    for (int x = x0; x <= x1; x++) {
+                        for (int z = z0; z <= z1; z++) {
+                            for (int y = y0; y <= y1; y++) copyBlock(level, section, x, y, z, into);
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private void copyBlock(Level level, LevelChunkSection section, int x, int y, int z, CgBlockCopy into) {
+        BlockState state = section.getBlockState(x & 15, y & 15, z & 15);
+        if (state.isAir()) return;
+        FluidState fluid = state.getFluidState();
+        int kind = kindOf(fluid);
+        int key = CgBlockCopy.NO_KEY;
+        if (!state.getBlock().hasDynamicShape()) {
+            boolean sameAbove = kind != FLUID_NONE && fluid.getType().isSame((y & 15) < 15
+                    ? section.getFluidState(x & 15, (y & 15) + 1, z & 15).getType()
+                    : level.getFluidState(pos.set(x, y + 1, z)).getType());
+            key = Block.getId(state) << 1 | (sameAbove ? 1 : 0);
+        }
+        int entry = key < 0 ? -1 : into.entry(key);
+        if (entry < 0) {
+            pos.set(x, y, z);
+            VoxelShape shape = state.getCollisionShape(level, pos);
+            int n = boxesOf(shape, copyBoxes);
+            if (n * 6 > copyBoxes.length) {
+                copyBoxes = new float[n * 6];
+                boxesOf(shape, copyBoxes);
+            }
+            entry = into.add(key, copyBoxes, n, kind, kind == FLUID_NONE ? Float.NaN : heightOf(fluid, level));
+        }
+        if (entry != CgBlockCopy.AIR) into.set(x, y, z, entry);
     }
 
     @Override

@@ -138,6 +138,19 @@ public interface CgWorldQuery {
     /** Whether the column at block {@code (x, z)} is loaded on the client. */
     boolean loaded(int x, int z);
 
+    /**
+     * Copies the blocks from {@code (minX, minY, minZ)} to {@code (maxX, maxY, maxZ)} inclusive into {@code into}, read
+     * from the host's sections: what a collision snapshot is made from. Answers false where the host has no faster way
+     * than {@link #collisionBoxes} and {@link #fluidKind} block by block, which the caller then reads. The level's thread.
+     *
+     * <pre>{@code
+     * if (!world.copyBlocks(x0, y0, z0, x1, y1, z1, copy)) readEachBlock(world, copy);
+     * }</pre>
+     */
+    default boolean copyBlocks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, CgBlockCopy into) {
+        return false;
+    }
+
     /** The lowest block y the level holds. */
     int minY();
 

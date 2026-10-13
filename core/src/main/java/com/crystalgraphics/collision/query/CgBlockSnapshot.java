@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.query;
 
+import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
@@ -131,8 +132,11 @@ final class CgBlockSnapshot implements CgWorldQuery {
     @Override public int light(int x, int y, int z) { return NONE.light(x, y, z); }
     @Override public int mapColor(int x, int y, int z) { return NONE.mapColor(x, y, z); }
 
-    /** Reads the host block by block into a palette; entry 0 is empty air, entry 1 a full cube. */
-    private static final class Builder {
+    /**
+     * Copies the host into a palette, from its sections where it can ({@link CgWorldQuery#copyBlocks}) and block by
+     * block where it cannot; entry 0 is empty air, entry 1 a full cube.
+     */
+    private static final class Builder implements CgBlockCopy {
         final int x0, y0, z0, sx, sy, sz, minY, maxY, epoch, seaLevel;
         final boolean[] loaded;
         final char[] cells;
@@ -142,6 +146,9 @@ final class CgBlockSnapshot implements CgWorldQuery {
         float[] fluidTop = new float[64];
         int entries;
         private int[] table = new int[256];
+        // the host's keys: keys[s] is key + 1, keyEntries[s] its entry
+        private int[] keys = new int[256], keyEntries = new int[256];
+        private int keyCount;
         private final float[] read = new float[6 * 16];
         private final CgWorldQuery host;
 
@@ -172,6 +179,9 @@ final class CgBlockSnapshot implements CgWorldQuery {
         }
 
         CgBlockSnapshot build() {
+            if (host.copyBlocks(x0, y0, z0, x0 + sx - 1, y0 + sy - 1, z0 + sz - 1, this)) {
+                return new CgBlockSnapshot(this, entries);
+            }
             float[] boxesRead = read;
             for (int dx = 0; dx < sx; dx++) {
                 for (int dz = 0; dz < sz; dz++) {
@@ -192,6 +202,49 @@ final class CgBlockSnapshot implements CgWorldQuery {
                 }
             }
             return new CgBlockSnapshot(this, entries);
+        }
+
+        @Override
+        public int entry(int key) {
+            int mask = keys.length - 1;
+            for (int s = (key * 0x9E3779B9 >>> 8) & mask; ; s = (s + 1) & mask) {
+                if (keys[s] == 0) return -1;
+                if (keys[s] == key + 1) return keyEntries[s];
+            }
+        }
+
+        @Override
+        public int add(int key, float[] boxes, int count, int fluidKind, float fluidHeight) {
+            int entry = find(boxes, count, fluidKind, fluidKind == FLUID_NONE ? Float.NaN : fluidHeight);
+            if (key < 0) return entry;
+            if (++keyCount * 2 > keys.length) {
+                int[] oldKeys = keys, oldEntries = keyEntries;
+                keys = new int[oldKeys.length * 2];
+                keyEntries = new int[oldKeys.length * 2];
+                for (int s = 0; s < oldKeys.length; s++) {
+                    if (oldKeys[s] != 0) putKey(oldKeys[s], oldEntries[s]);
+                }
+            }
+            putKey(key + 1, entry);
+            return entry;
+        }
+
+        private void putKey(int stored, int entry) {
+            int mask = keys.length - 1;
+            int s = ((stored - 1) * 0x9E3779B9 >>> 8) & mask;
+            while (keys[s] != 0 && keys[s] != stored) s = (s + 1) & mask;
+            keys[s] = stored;
+            keyEntries[s] = entry;
+        }
+
+        @Override
+        public void set(int x, int y, int z, int entry) {
+            cells[((x - x0) * sz + (z - z0)) * sy + (y - y0)] = (char) entry;
+        }
+
+        @Override
+        public void loaded(int x, int z) {
+            loaded[(x - x0) * sz + (z - z0)] = true;
         }
 
         /** The palette entry holding exactly these boxes and fluid, added if new. */

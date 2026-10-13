@@ -1,12 +1,15 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
+import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
+import net.minecraft.init.Blocks;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 //? if >=1.9 {
 import net.minecraft.block.SoundType;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -38,12 +41,18 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class LevelWorldQueryLegacy implements CgWorldQuery {
 
     private static final AtomicInteger EPOCHS = new AtomicInteger();
+    //? if >=1.10 {
+    private static final Block AIR = Blocks.AIR;
+    //?} else {
+    /*private static final Block AIR = Blocks.air;
+    *///?}
 
     // A block adds only its own boxes, so one mask covering the world serves every cell.
     private static final AxisAlignedBB EVERYWHERE = new AxisAlignedBB(-3.0E7, -1.0E4, -3.0E7, 3.0E7, 1.0E4, 3.0E7);
 
     private final BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
     private final List<AxisAlignedBB> boxes = new ArrayList<>();
+    private float[] copyBoxes = new float[6 * 16];
     /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
     private final WeakReference<World> bound;
     private World seen;
@@ -74,10 +83,17 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
 
     /** The block's collision boxes in world space, into {@link #boxes}; none where it is not loaded. */
     private List<AxisAlignedBB> boxes(World world, int x, int y, int z) {
-        boxes.clear();
         BlockPos p = loadedAt(world, x, y, z);
-        if (p == null) return boxes;
-        IBlockState state = world.getBlockState(p);
+        if (p == null) {
+            boxes.clear();
+            return boxes;
+        }
+        return boxes(world, p, world.getBlockState(p));
+    }
+
+    /** {@code state}'s collision boxes at {@code p} in world space, into {@link #boxes}. */
+    private List<AxisAlignedBB> boxes(World world, BlockPos p, IBlockState state) {
+        boxes.clear();
         //? if >=1.12 {
         state.addCollisionBoxToList(world, p, EVERYWHERE, boxes, null, false);
         //?} elif >=1.9 {
@@ -115,8 +131,11 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
     @Override
     public int collisionBoxes(int x, int y, int z, float[] out) {
         World world = world();
-        if (world == null) return 0;
-        List<AxisAlignedBB> list = boxes(world, x, y, z);
+        return world == null ? 0 : local(boxes(world, x, y, z), x, y, z, out);
+    }
+
+    /** World-space boxes as block-local ones into {@code out}, as {@link #collisionBoxes} answers. */
+    private static int local(List<AxisAlignedBB> list, int x, int y, int z, float[] out) {
         int fit = Math.min(list.size(), out.length / 6);
         for (int i = 0; i < fit; i++) {
             AxisAlignedBB b = list.get(i);
@@ -165,6 +184,52 @@ public class LevelWorldQueryLegacy implements CgWorldQuery {
         World world = world();
         BlockPos p = world == null ? null : loadedAt(world, x, y, z);
         return p == null ? FLUID_NONE : fluidOf(material(world.getBlockState(p)));
+    }
+
+    /**
+     * From the chunks' storage, skipping air. Every other block is described where it stands: its collision boxes come
+     * from its actual state, which reads its neighbours (a fence's arms), so no key serves two blocks.
+     */
+    @Override
+    public boolean copyBlocks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, CgBlockCopy into) {
+        World world = world();
+        if (world == null) return true;
+        for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+            for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                if (!world.isBlockLoaded(at(cx << 4, world.getSeaLevel(), cz << 4))) continue;
+                int x0 = Math.max(minX, cx << 4), x1 = Math.min(maxX, (cx << 4) + 15);
+                int z0 = Math.max(minZ, cz << 4), z1 = Math.min(maxZ, (cz << 4) + 15);
+                for (int x = x0; x <= x1; x++) {
+                    for (int z = z0; z <= z1; z++) into.loaded(x, z);
+                }
+                //? if >=1.12 {
+                ExtendedBlockStorage[] storage = world.getChunk(cx, cz).getBlockStorageArray();
+                //?} else {
+                /*ExtendedBlockStorage[] storage = world.getChunkFromChunkCoords(cx, cz).getBlockStorageArray();
+                *///?}
+                for (int sy = Math.max(0, minY >> 4); sy <= Math.min(storage.length - 1, maxY >> 4); sy++) {
+                    ExtendedBlockStorage section = storage[sy];
+                    if (section == null || section.isEmpty()) continue;
+                    int y0 = Math.max(minY, sy << 4), y1 = Math.min(maxY, (sy << 4) + 15);
+                    for (int x = x0; x <= x1; x++) {
+                        for (int z = z0; z <= z1; z++) {
+                            for (int y = y0; y <= y1; y++) {
+                                IBlockState state = section.get(x & 15, y & 15, z & 15);
+                                if (state.getBlock() == AIR) continue;
+                                List<AxisAlignedBB> list = boxes(world, at(x, y, z), state);
+                                if (list.size() * 6 > copyBoxes.length) copyBoxes = new float[list.size() * 6];
+                                int n = local(list, x, y, z, copyBoxes);
+                                int kind = fluidOf(material(state));
+                                float height = kind == FLUID_NONE ? Float.NaN : fluidHeight(x, y, z);
+                                int entry = into.add(CgBlockCopy.NO_KEY, copyBoxes, n, kind, height);
+                                if (entry != CgBlockCopy.AIR) into.set(x, y, z, entry);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     @Override

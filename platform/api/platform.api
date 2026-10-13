@@ -3021,6 +3021,15 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
+com/crystalgraphics/platform/service/CgBlockCopy
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final AIR I
+  field public,static,final NO_KEY I
+  method public,abstract add (I[FIIF)I
+  method public,abstract entry (I)I
+  method public,abstract loaded (II)V
+  method public,abstract set (IIII)V
 com/crystalgraphics/platform/service/CgBoxSink
   access public,abstract,interface
   extends java/lang/Object
@@ -3279,6 +3288,7 @@ com/crystalgraphics/platform/service/CgWorldQuery
   field public,static,final SURFACE_STONE I
   field public,static,final SURFACE_WOOD I
   field public,static,final SURFACE_WOOL I
+  method public copyBlocks (IIIIIILcom/crystalgraphics/platform/service/CgBlockCopy;)Z
   method public,abstract biomeColor (IIII)I
   method public,abstract collisionBottom (III)F
   method public,abstract collisionBoxes (III[F)I

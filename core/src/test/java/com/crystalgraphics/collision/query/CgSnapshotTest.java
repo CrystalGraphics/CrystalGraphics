@@ -3,11 +3,15 @@ package com.crystalgraphics.collision.query;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -61,6 +65,43 @@ public class CgSnapshotTest {
     public void aSnapshotAnswersAsItsWorldDid() {
         CgCollisionWorld snapshot = live.snapshot(0, 0, 0, 60);
         assertArrayEquals(ask(live), ask(snapshot));
+    }
+
+    @Test
+    public void aSnapshotCopiedFromSectionsAnswersAsOneReadBlockByBlock() {
+        CgCollisionWorld sections = CgCollisionWorld.of(new SectionYard(), table);
+        assertArrayEquals(ask(live), ask(sections.snapshot(0, 0, 0, 60)));
+        CgHit hit = new CgHit();
+        assertTrue(sections.snapshot(CgAABB.of(90, -2, -4, 110, 4, 4)).ray().at(95, 1, 0).along(1, 0, 0, 10)
+                .blocksOnly().first(hit));
+        assertTrue(hit.unloaded());
+    }
+
+    /** The yard copied as a host copies sections: air left alone, each kind of block keyed, the fence where it stands. */
+    private static final class SectionYard extends Yard {
+        @Override
+        public boolean copyBlocks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, CgBlockCopy into) {
+            Map<String, Integer> keys = new HashMap<>();
+            float[] boxes = new float[6 * 4];
+            for (int x = minX; x <= maxX; x++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    if (!loaded(x, z)) continue;
+                    into.loaded(x, z);
+                    for (int y = minY; y <= maxY; y++) {
+                        int n = collisionBoxes(x, y, z, boxes), kind = fluidKind(x, y, z);
+                        if (n == 0 && kind == FLUID_NONE) continue;
+                        float height = fluidHeight(x, y, z);
+                        boolean fence = x == 4 && y == 0 && z == 5;
+                        String what = Arrays.toString(Arrays.copyOf(boxes, n * 6)) + kind + height;
+                        int key = fence ? CgBlockCopy.NO_KEY : keys.computeIfAbsent(what, w -> keys.size() * 1000);
+                        int entry = key < 0 ? -1 : into.entry(key);
+                        if (entry < 0) entry = into.add(key, boxes, n, kind, height);
+                        into.set(x, y, z, entry);
+                    }
+                }
+            }
+            return true;
+        }
     }
 
     @Test

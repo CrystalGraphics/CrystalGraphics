@@ -22,7 +22,7 @@ public final class CollisionFakes {
     }
 
     /** Ground below y = 0. Along z = 5: a stair at x 0, a slab at 2, a fence at 4, water at 6. A wall at x = 24. */
-    public static final class Yard implements CgWorldQuery {
+    public static class Yard implements CgWorldQuery {
         @Override public int collisionBoxes(int x, int y, int z, float[] out) {
             if (y < 0) return box(out, 0, 0, 0, 0, 1, 1, 1);
             if (x == 24 && y == 0 && z >= -5 && z <= 5) return box(out, 0, 0, 0, 0, 1, 1, 1);

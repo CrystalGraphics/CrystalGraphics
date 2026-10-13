@@ -1,13 +1,16 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
+import com.crystalgraphics.platform.service.CgBlockCopy;
 import com.crystalgraphics.platform.service.CgWorldQuery;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
+import net.minecraft.init.Blocks;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.BiomeGenBase;
+import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -34,6 +37,7 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     private static final AxisAlignedBB EVERYWHERE = AxisAlignedBB.getBoundingBox(-3.0E7, -1.0E4, -3.0E7, 3.0E7, 1.0E4, 3.0E7);
 
     private final List<AxisAlignedBB> boxes = new ArrayList<AxisAlignedBB>();
+    private float[] copyBoxes = new float[6 * 16];
     /** Weak: the host's cache maps the level to this, and would otherwise keep it forever. */
     private final WeakReference<World> bound;
     private World seen;
@@ -88,8 +92,11 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     @Override
     public int collisionBoxes(int x, int y, int z, float[] out) {
         World world = world();
-        if (world == null) return 0;
-        List<AxisAlignedBB> list = boxes(world, x, y, z);
+        return world == null ? 0 : local(boxes(world, x, y, z), x, y, z, out);
+    }
+
+    /** World-space boxes as block-local ones into {@code out}, as {@link #collisionBoxes} answers. */
+    private static int local(List<AxisAlignedBB> list, int x, int y, int z, float[] out) {
         int fit = Math.min(list.size(), out.length / 6);
         for (int i = 0; i < fit; i++) {
             AxisAlignedBB b = list.get(i);
@@ -124,6 +131,49 @@ public class LevelWorldQuery1710 implements CgWorldQuery {
     public int fluidKind(int x, int y, int z) {
         World world = world();
         return absent(world, x, y, z) ? FLUID_NONE : fluidOf(world.getBlock(x, y, z).getMaterial());
+    }
+
+    /**
+     * From the chunks' storage, skipping air. Every other block is described where it stands: its collision boxes may
+     * read its neighbours (a fence's arms) and its metadata, so no key serves two blocks.
+     */
+    @Override
+    public boolean copyBlocks(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, CgBlockCopy into) {
+        World world = world();
+        if (world == null) return true;
+        for (int cx = minX >> 4; cx <= maxX >> 4; cx++) {
+            for (int cz = minZ >> 4; cz <= maxZ >> 4; cz++) {
+                if (!world.blockExists(cx << 4, SEA_LEVEL, cz << 4)) continue;
+                int x0 = Math.max(minX, cx << 4), x1 = Math.min(maxX, (cx << 4) + 15);
+                int z0 = Math.max(minZ, cz << 4), z1 = Math.min(maxZ, (cz << 4) + 15);
+                for (int x = x0; x <= x1; x++) {
+                    for (int z = z0; z <= z1; z++) into.loaded(x, z);
+                }
+                ExtendedBlockStorage[] storage = world.getChunkFromChunkCoords(cx, cz).getBlockStorageArray();
+                for (int sy = Math.max(0, minY >> 4); sy <= Math.min(storage.length - 1, maxY >> 4); sy++) {
+                    ExtendedBlockStorage section = storage[sy];
+                    if (section == null || section.isEmpty()) continue;
+                    int y0 = Math.max(minY, sy << 4), y1 = Math.min(maxY, (sy << 4) + 15);
+                    for (int x = x0; x <= x1; x++) {
+                        for (int z = z0; z <= z1; z++) {
+                            for (int y = y0; y <= y1; y++) {
+                                Block block = section.getBlockByExtId(x & 15, y & 15, z & 15);
+                                if (block == Blocks.air) continue;
+                                boxes.clear();
+                                block.addCollisionBoxesToList(world, x, y, z, EVERYWHERE, boxes, null);
+                                if (boxes.size() * 6 > copyBoxes.length) copyBoxes = new float[boxes.size() * 6];
+                                int n = local(boxes, x, y, z, copyBoxes);
+                                int kind = fluidOf(block.getMaterial());
+                                float height = kind == FLUID_NONE ? Float.NaN : fluidHeight(x, y, z);
+                                int entry = into.add(CgBlockCopy.NO_KEY, copyBoxes, n, kind, height);
+                                if (entry != CgBlockCopy.AIR) into.set(x, y, z, entry);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     @Override
