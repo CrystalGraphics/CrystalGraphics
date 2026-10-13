@@ -2,8 +2,8 @@ package com.crystalgraphics.collision.block;
 
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.platform.service.CgBlockCopy;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBlockCopy;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 import java.util.Arrays;

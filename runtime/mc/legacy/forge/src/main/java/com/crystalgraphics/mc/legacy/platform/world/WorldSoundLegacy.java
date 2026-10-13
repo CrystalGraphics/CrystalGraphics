@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldSound;
+import com.crystalgraphics.platform.world.CgWorldSound;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.ISound;
 import net.minecraft.client.audio.PositionedSoundRecord;

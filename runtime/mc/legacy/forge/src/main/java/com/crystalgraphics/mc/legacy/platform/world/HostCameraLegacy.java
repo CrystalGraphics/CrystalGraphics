@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.world.CgHostCamera;
 import net.minecraftforge.client.event.EntityViewRenderEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 

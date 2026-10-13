@@ -1,6 +1,5 @@
 package com.crystalgraphics.net;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -10,10 +9,12 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
+import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -37,7 +38,7 @@ public class CgAudienceTest {
         }
     }
 
-    private static final class Players implements CgServerPlayers {
+    private static final class Levels extends CollisionFakes.Levels {
         @Override
         public String dimension(Object handle) {
             return handle instanceof Body ? ((Body) handle).dimension : null;
@@ -54,47 +55,20 @@ public class CgAudienceTest {
         }
 
         @Override
+        public boolean alive(Object entity) {
+            return entity instanceof Body;
+        }
+    }
+
+    private static final class Players extends CollisionFakes.Players {
+        @Override
         public UUID playerId(Object entity) {
             return entity instanceof Body ? ((Body) entity).id : null;
         }
 
         @Override
-        public int entityId(Object entity) {
-            return -1;
-        }
-
-        @Override
-        public boolean alive(Object entity) {
-            return entity instanceof Body;
-        }
-
-        @Override
-        public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
-        }
-
-        @Override
         public void trackingEntity(Object entity, Consumer<UUID> out) {
             ((Body) entity).tracking.forEach(out);
-        }
-
-        @Override
-        public Path saveDirectory(Object handle) {
-            return null;
-        }
-
-        @Override
-        public Object level(Object handle, String dimension) {
-            return null;
-        }
-
-        @Override
-        public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
-            return false;
-        }
-
-        @Override
-        public Object entity(Object level, int entityId) {
-            return null;
         }
     }
 
@@ -118,12 +92,14 @@ public class CgAudienceTest {
         for (Body body : Arrays.asList(home, near, nether)) {
             CgNetwork.playerJoined(body.id, body.dimension, () -> body);
         }
-        CgPlatform.provide(CgServerPlayers.SERVICE, new Players());
+        CgPlatform.provide(CgLevels.SERVICE, new Levels());
+        CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
     }
 
     @After
     public void tearDown() {
-        CgPlatform.provide(CgServerPlayers.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
     }
@@ -158,7 +134,8 @@ public class CgAudienceTest {
 
     @Test
     public void withoutAHostOnlyIdsReachAnyone() {
-        CgPlatform.provide(CgServerPlayers.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
         assertEquals(ids(), reached(CgAudience.near(home, 0, 64, 0, 1000)));
         assertEquals(ids(), reached(CgAudience.dimension("minecraft:overworld")));
         assertEquals(ids(home, near, nether), reached(CgAudience.all()));

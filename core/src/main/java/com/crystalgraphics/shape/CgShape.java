@@ -1,7 +1,7 @@
 package com.crystalgraphics.shape;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCompound;

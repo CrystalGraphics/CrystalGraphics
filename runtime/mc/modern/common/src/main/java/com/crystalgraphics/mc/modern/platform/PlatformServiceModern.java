@@ -17,33 +17,30 @@ import com.crystalgraphics.mc.modern.platform.service.ReloadService;
 import com.crystalgraphics.mc.modern.platform.service.RenderingService;
 import com.crystalgraphics.mc.modern.platform.service.ResourceService;
 import com.crystalgraphics.mc.modern.platform.service.SoundService;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.CgPlatformService;
-import com.crystalgraphics.platform.service.CgCursorService;
-import com.crystalgraphics.platform.service.CgWorldQuery;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgGameDirectory;
-import com.crystalgraphics.platform.service.CgHostCamera;
-import com.crystalgraphics.platform.service.CgHostDebug;
-import com.crystalgraphics.platform.service.CgModelSpace;
-import com.crystalgraphics.platform.service.CgWorldSound;
-import com.crystalgraphics.platform.service.CgWorldEvents;
-import com.crystalgraphics.platform.service.CgWorldStimulus;
-import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
-import com.crystalgraphics.mc.modern.platform.world.WorldQueryModern;
-import com.crystalgraphics.mc.modern.platform.world.EntityQueryModern;
+import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
 import com.crystalgraphics.mc.modern.platform.world.WorldSoundModern;
+import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.gl.CgGLBackend;
 import com.crystalgraphics.platform.gl.CgGLContext;
 import com.crystalgraphics.platform.gl.tracked.CgTrackedGLContext;
+import com.crystalgraphics.platform.service.CgCursorService;
+import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgInputService;
 import com.crystalgraphics.platform.service.CgLifecycleService;
 import com.crystalgraphics.platform.service.CgReloadService;
 import com.crystalgraphics.platform.service.CgRenderingService;
 import com.crystalgraphics.platform.service.CgResourceService;
 import com.crystalgraphics.platform.service.CgSoundService;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgHostDebug;
+import com.crystalgraphics.platform.world.CgModelSpace;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldSound;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 import net.minecraft.client.Minecraft;
 //? if >=26.2 {
@@ -121,9 +118,8 @@ public final class PlatformServiceModern implements CgPlatformService {
                 HostStateModern.install();
             }
 
-            // The world and entity queries: client only for the same reason as the cursor below (they read the client level).
-            CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryModern());
-            CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
+            // The client's halves of the levels and players: client only, as the cursor below (they read the client level).
+            ClientModern.install();
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCameraModern());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
             CgPlatform.provide(CgModelSpace.SERVICE, HostViewModern::modelSpace);

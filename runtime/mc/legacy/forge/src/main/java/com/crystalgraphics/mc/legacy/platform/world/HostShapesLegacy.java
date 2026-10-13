@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgHostShapes;
 import net.minecraft.entity.Entity;
 //? if >=1.9 {
 import net.minecraft.util.math.AxisAlignedBB;
@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * {@link CgHostShapes} over {@code AxisAlignedBB} and entities on Forge 1.8.9 to 1.12.2. Server-safe; provided beside
- * {@link LevelQueriesLegacy}. A block's shape is the {@code List} of boxes its collision call fills.
+ * {@link LevelsLegacy}. A block's shape is the {@code List} of boxes its collision call fills.
  */
 public final class HostShapesLegacy implements CgHostShapes {
 

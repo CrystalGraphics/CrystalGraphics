@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.world;
 
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;

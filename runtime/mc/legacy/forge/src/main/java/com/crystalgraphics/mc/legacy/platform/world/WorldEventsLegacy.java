@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.minecraft.block.Block;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.multiplayer.WorldClient;

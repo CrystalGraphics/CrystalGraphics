@@ -1,8 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.Test;
 
 import java.util.function.IntConsumer;
@@ -43,7 +45,7 @@ public class CgVfxEntityBoxesTest {
     @Test
     public void theLivingNearestFirstInTheCamerasBlockFrame() {
         Line line = new Line();
-        CgPlatform.provide(CgEntityQuery.SERVICE, line);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, line));
         try {
             CgVfxEntityBoxes.around(0.25, 65.5, 0.75, 0f);
             CgVfxEntityBoxes.gather();
@@ -61,7 +63,7 @@ public class CgVfxEntityBoxesTest {
             assertEquals("not placed again: nothing gathered", 0, CgVfxEntityBoxes.count());
             assertEquals(1, line.asked);
         } finally {
-            CgPlatform.provide(CgEntityQuery.SERVICE, null);
+            CgPlatform.provide(CgLevels.SERVICE, null);
         }
     }
 
@@ -89,7 +91,7 @@ public class CgVfxEntityBoxesTest {
                 for (int id = many.length - 1; id >= 1; id--) visitor.accept(id);   // farthest first
             }
         };
-        CgPlatform.provide(CgEntityQuery.SERVICE, crowd);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, crowd));
         try {
             CgVfxEntityBoxes.around(0, 0, 0, 0f);
             CgVfxEntityBoxes.gather();
@@ -97,7 +99,7 @@ public class CgVfxEntityBoxesTest {
             int[] w = CgVfxEntityBoxes.words();
             for (int i = 0; i < CgVfxEntityBoxes.MAX; i++) assertEquals(i + 1, w[i * 8 + 3]);
         } finally {
-            CgPlatform.provide(CgEntityQuery.SERVICE, null);
+            CgPlatform.provide(CgLevels.SERVICE, null);
         }
     }
 }

@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldSound;
+import com.crystalgraphics.platform.world.CgWorldSound;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;

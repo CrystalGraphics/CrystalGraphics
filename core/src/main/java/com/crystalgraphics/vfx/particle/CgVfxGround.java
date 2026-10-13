@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.world.CgWorldQueries;
 
 import java.util.Arrays;
 
@@ -76,7 +76,7 @@ public final class CgVfxGround {
 
     /** Scans up to {@code budget} columns particles have asked about; forgets them all when the level changes. */
     public void fill(int budget) {
-        CgWorldQuery query = CgPlatform.get(CgWorldQuery.SERVICE);
+        CgWorldQuery query = CgWorldQueries.client();
         int now = query.levelEpoch();
         world = now != 0;
         if (now != epoch) {

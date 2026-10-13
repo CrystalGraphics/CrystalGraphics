@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldStimulus;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.server.integrated.IntegratedServer;
 

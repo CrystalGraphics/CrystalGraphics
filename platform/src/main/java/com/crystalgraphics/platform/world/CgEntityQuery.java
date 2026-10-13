@@ -1,18 +1,18 @@
-package com.crystalgraphics.platform.service;
+package com.crystalgraphics.platform.world;
 
-import com.crystalgraphics.platform.CgService;
-
+import java.util.UUID;
 import java.util.function.IntConsumer;
 
 /**
- * Answers questions about the host's entities on the client: where one is this frame, how it is posed and moving, what
+ * Answers questions about one of the host's levels' entities: where one is this frame, how it is posed and moving, what
  * kind it is, and which are inside a box. What an effect needs to fire from a player's hands, wrap an aura round them,
  * follow a mob, or stop a beam on whatever it hits. Entities are named by int ids, which mean one entity for as long as
- * {@link CgWorldQuery#levelEpoch} stays the same; {@code com.crystalgraphics.world.CgEntityAttachments} turns a pose into
- * hand, head and feet points, once, for every host.
+ * {@link CgWorldQuery#levelEpoch} stays the same; {@link #entity(int)} turns one back into the host's own object.
+ * {@code com.crystalgraphics.world.CgEntityAttachments} turns a pose into hand, head and feet points, once, for every
+ * host.
  *
  * <pre>{@code
- * CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+ * CgEntityQuery entities = CgEntityQueries.client();             // the client's level; CgEntityQueries.of(level) for any
  * double[] pose = new double[CgEntityQuery.POSE_LENGTH];         // once, and reused
  * int me = entities.localPlayer();
  * if (me >= 0 && entities.pose(me, partialTick, pose)) aimFrom(pose[CgEntityQuery.X], pose[CgEntityQuery.Y], ...);
@@ -21,17 +21,15 @@ import java.util.function.IntConsumer;
  * entities.within(minX, minY, minZ, maxX, maxY, maxZ, hitEntity);
  * entities.box(id, partialTick, box);                            // its real box, into a reused CgAABB
  * int whole = entities.parent(id);                               // the dragon, for one of its parts
- *
- * // a host, once, on a client only
- * CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQueryModern());
+ * Entity mob = entities.entity(id);                              // the host's own entity, or null
  * }</pre>
  *
  * <ul>
  *   <li>Positions are absolute world coordinates, interpolated by the {@code partialTick} given: the frame's
  *       ({@code CgHostFrame.partialTick()}) puts an effect where the entity is drawn.</li>
- *   <li>Render thread only, like {@link CgWorldQuery}. Nothing here hands out a Minecraft object; only
- *       {@link #within} may allocate, the iterator over the host's entity list.</li>
- *   <li>{@link #NONE} answers -1, false and nothing: the harness, a dedicated server, no level.</li>
+ *   <li>Its level's thread only, like {@link CgWorldQuery}. Only {@link #entity(int)} and {@link #entity(UUID)} hand
+ *       out a host object, and only {@link #within} may allocate, the iterator over the host's entity list.</li>
+ *   <li>{@link #NONE} answers -1, false, null and nothing: the harness, no level.</li>
  * </ul>
  */
 public interface CgEntityQuery {
@@ -70,7 +68,24 @@ public interface CgEntityQuery {
                                      IntConsumer visitor) { }
     };
 
-    CgService<CgEntityQuery> SERVICE = CgService.of("crystalgraphics:entity_query", NONE);
+    /**
+     * The host's entity with network id {@code id} in this level, a multipart entity's part included: Minecraft's
+     * {@code Entity}, cast at the call site; null when there is none. A snapshot throws: it is read off the level's
+     * thread, where no host object may be touched.
+     *
+     * <pre>{@code
+     * Entity e = entities.entity(hit.entityId());
+     * if (e instanceof LivingEntity living) living.hurt(source, 4f);
+     * }</pre>
+     */
+    default <V> V entity(int id) {
+        return null;
+    }
+
+    /** The host's entity with this UUID in this level: {@link #entity(int)} by the id that outlives a reload. */
+    default <V> V entity(UUID id) {
+        return null;
+    }
 
     /** The player at this client's keyboard; -1 for none. */
     int localPlayer();

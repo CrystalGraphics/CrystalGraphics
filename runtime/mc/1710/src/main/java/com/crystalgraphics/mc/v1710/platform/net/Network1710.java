@@ -6,14 +6,15 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.v1710.platform.world.HostShapes1710;
-import com.crystalgraphics.mc.v1710.platform.world.LevelQueries1710;
+import com.crystalgraphics.mc.v1710.platform.world.Levels1710;
 import com.crystalgraphics.mc.v1710.platform.world.MirrorHost1710;
+import com.crystalgraphics.mc.v1710.platform.world.PlayerQuery1710;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostShapes;
-import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgProcessExit;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -44,8 +45,8 @@ public final class Network1710 {
         installed = true;
         CgNetwork.install(NetworkChannel1710.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
-        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayers1710());
-        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueries1710());
+        CgPlatform.provide(CgLevels.SERVICE, Levels1710.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
         // FML traps a mod's own Runtime.halt.

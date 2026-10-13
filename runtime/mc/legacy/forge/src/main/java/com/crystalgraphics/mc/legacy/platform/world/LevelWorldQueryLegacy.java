@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgBlockCopy;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBlockCopy;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@link CgWorldQuery} over one level on Forge 1.8.9 to 1.12.2, a server's included. Server-safe;
- * {@link LevelQueriesLegacy} hands one out per level, and the client's {@link WorldQueryLegacy} extends it with the
+ * {@link LevelsLegacy} hands one out per level, and the client's {@link WorldQueryLegacy} extends it with the
  * tint, biome colours and sprite, which this answers 0 and false. The level's thread; reuses one mutable position and
  * one box list.
  *

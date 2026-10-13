@@ -3,7 +3,7 @@ package com.crystalgraphics.collision.mirror;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgLevelQueries;
+import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.junit.After;
@@ -41,14 +41,14 @@ public class CgMirrorConsistencyTest {
     @Before
     public void setUp() {
         CgPlatform.provide(CgMirrorHost.SERVICE, host);
-        CgPlatform.provide(CgLevelQueries.SERVICE, new Queries(new CollisionFakes.Table()));
+        CgPlatform.provide(CgLevels.SERVICE, new Queries(new CollisionFakes.Table()));
     }
 
     @After
     public void tearDown() {
         CgLevelMirror.clearAll();
         CgPlatform.provide(CgMirrorHost.SERVICE, null);
-        CgPlatform.provide(CgLevelQueries.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
     }
 
     @Test

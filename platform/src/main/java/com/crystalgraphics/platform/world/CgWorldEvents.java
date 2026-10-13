@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.service;
+package com.crystalgraphics.platform.world;
 
 import com.crystalgraphics.variable.CgVar;
 

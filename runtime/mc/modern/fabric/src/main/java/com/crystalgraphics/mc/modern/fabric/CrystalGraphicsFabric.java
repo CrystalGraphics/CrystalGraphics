@@ -1,12 +1,12 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
-import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.shared.VariantEntry;
-import com.crystalgraphics.platform.service.CgHostCamera;
-import com.crystalgraphics.platform.service.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;

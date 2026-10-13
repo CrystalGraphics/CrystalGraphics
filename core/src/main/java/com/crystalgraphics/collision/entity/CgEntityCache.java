@@ -1,10 +1,11 @@
 package com.crystalgraphics.collision.entity;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 
 import java.util.Arrays;
+import java.util.UUID;
 import java.util.function.IntConsumer;
 
 /**
@@ -148,6 +149,16 @@ public final class CgEntityCache extends CgEntityTable {
     public int rootVehicle(int id) {
         int e = fresh(id);
         return e < 0 ? host.rootVehicle(id) : roots[e];
+    }
+
+    @Override
+    public <V> V entity(int id) {
+        return host.entity(id);
+    }
+
+    @Override
+    public <V> V entity(UUID id) {
+        return host.entity(id);
     }
 
     @Override

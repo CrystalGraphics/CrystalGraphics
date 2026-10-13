@@ -1,4 +1,4 @@
-package com.crystalgraphics.platform.service;
+package com.crystalgraphics.platform.world;
 
 /**
  * Where a host copies a box of its blocks: what {@link CgWorldQuery#copyBlocks} writes into. Each block is a palette

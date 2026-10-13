@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.hit;
 
 import com.crystalgraphics.net.object.CgNetWire;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.Test;
 
 import java.util.ArrayDeque;
@@ -33,7 +33,7 @@ public class CgSentHitTest {
             wire.write(sent, tape);
             CgSentHit back = wire.read(tape);
             CgHit got = back.read(new CgHit(), back.part() < 0 ? null : PARTS.get(back.part()));
-            read.add(got.kind() + " " + got.entity() + "/" + got.parent() + " " + got.blockX() + "," + got.blockY() + ","
+            read.add(got.kind() + " " + got.entityId() + "/" + got.parentId() + " " + got.blockX() + "," + got.blockY() + ","
                     + got.blockZ() + " " + got.x() + " " + got.part() + (got.fluid() != 0 ? " fluid " + got.fluid() : ""));
         }
         assertEquals(List.of("ENTITY 2001/2000 0,0,0 1.5 arc", "BLOCK -1/-1 -4,63,9 -3.5 bolt",

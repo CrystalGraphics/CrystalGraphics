@@ -10,12 +10,11 @@ import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
 import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 
@@ -246,7 +245,7 @@ public final class CgHitboxType {
 
         /** Server: whose it is, an entity: never hit, with its vehicle and passengers, and it ends with them. */
         public Spawn source(Object entity) {
-            return source(CgPlatform.get(CgServerPlayers.SERVICE).entityId(entity));
+            return source(CgEntityQueries.idOf(entity));
         }
 
         /** Whose it is, by network id. */

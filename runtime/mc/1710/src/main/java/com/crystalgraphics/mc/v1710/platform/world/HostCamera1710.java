@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.world.CgHostCamera;
 import org.lwjgl.opengl.GL11;
 
 /**

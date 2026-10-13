@@ -1,16 +1,15 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
-import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
-import com.crystalgraphics.mc.modern.platform.ResourceIds;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
+import com.crystalgraphics.mc.modern.platform.ResourceIds;
+import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
-import com.crystalgraphics.platform.service.CgHostCamera;
-import com.crystalgraphics.platform.service.CgWorldEvents;
 import com.crystalgraphics.mc.shared.CrashVariant;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import java.util.function.BiConsumer;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldEvents;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,6 +18,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import java.util.function.BiConsumer;
 //? if >=1.21.7 {
 /*import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.client.network.event.RegisterClientPayloadHandlersEvent;
@@ -40,16 +40,16 @@ import net.neoforged.neoforge.network.NetworkEvent;
 import net.neoforged.neoforge.network.NetworkRegistry;
 import net.neoforged.neoforge.network.simple.SimpleChannel;
 //?}
-import com.mojang.logging.LogUtils;
 import com.crystalgraphics.mc.shared.VariantEntry;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
+import com.mojang.logging.LogUtils;
 import net.minecraft.server.packs.resources.PreparableReloadListener.PreparationBarrier;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.packs.resources.ResourceManager;
 //? if >=1.21.9 {
 /*import net.minecraft.client.Minecraft;
 *///?}
-import net.neoforged.bus.api.IEventBus;
 import com.crystalgraphics.mc.shared.FmlSide;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.loading.FMLLoader;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ViewportEvent;

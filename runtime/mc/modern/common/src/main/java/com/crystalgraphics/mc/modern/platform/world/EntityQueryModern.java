@@ -1,6 +1,10 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import net.minecraft.client.Minecraft;
+//? if >=1.15 <1.21.5 {
+import net.minecraft.client.multiplayer.ClientLevel;
+import java.util.UUID;
+//?}
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 
@@ -39,4 +43,18 @@ public final class EntityQueryModern extends LevelEntityQueryModern {
         Entity camera = Minecraft.getInstance().getCameraEntity();
         return camera == null ? -1 : camera.getId();
     }
+    //? if >=1.15 <1.21.5 {
+
+    /** The client level has no lookup by UUID before 1.21.5: its rendered entities, walked. */
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V> V entity(UUID id) {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null || id == null) return null;
+        for (Entity e : level.entitiesForRendering()) {
+            if (id.equals(e.getUUID())) return (V) e;
+        }
+        return null;
+    }
+    //?}
 }

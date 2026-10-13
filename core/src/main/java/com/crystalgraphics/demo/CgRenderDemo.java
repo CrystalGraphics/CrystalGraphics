@@ -1,6 +1,5 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
 import com.crystalgraphics.api.font.CgGenericFamily;
@@ -19,7 +18,6 @@ import com.crystalgraphics.platform.gl.state.CgGlScope;
 import com.crystalgraphics.platform.gl.state.CgGlState;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.service.CgInputService;
-import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.bloom.CgBloom;
@@ -31,6 +29,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceReport;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -453,7 +452,7 @@ public final class CgRenderDemo {
             LOGGER.info("[CgRenderDemo] scene {}", kinds[current].name());
         }
         // Again after a jump: the first world frames can see the default spawn, before the server places the player.
-        int epoch = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch();
+        int epoch = CgWorldQueries.client().levelEpoch();
         if (!anchored || jumped(view) || epoch != levelEpoch) {
             levelEpoch = epoch;
             anchor(view);

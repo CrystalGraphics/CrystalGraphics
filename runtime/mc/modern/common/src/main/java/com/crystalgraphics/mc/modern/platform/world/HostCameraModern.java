@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgHostCamera;
+import com.crystalgraphics.platform.world.CgHostCamera;
 
 /**
  * {@link CgHostCamera} for the modern hosts: holds the last offset core gave and adds it where each loader sets its

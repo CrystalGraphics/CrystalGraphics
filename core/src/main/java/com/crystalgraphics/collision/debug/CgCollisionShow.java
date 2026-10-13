@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.debug;
 
-import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgCollisionQuery;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.collision.hitbox.CgHitboxes;
@@ -10,15 +10,15 @@ import com.crystalgraphics.net.CgMessage;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostDebug;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgServerPlayers;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgHostDebug;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgWorldQueries;
 
 import javax.annotation.Nullable;
 import java.util.Iterator;
@@ -200,8 +200,6 @@ public final class CgCollisionShow {
         }
         SERVER_LINES.expire(System.nanoTime());
         long now = CgNetwork.serverTicks();
-        CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
-        CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
         for (Iterator<Watcher> it = WATCHERS.values().iterator(); it.hasNext(); ) {
             Watcher w = it.next();
             if (now - w.asked > FORGET_AFTER) {
@@ -209,8 +207,8 @@ public final class CgCollisionShow {
                 continue;
             }
             Object player = w.peer.player();
-            if (player == null || !players.position(player, AT)) continue;
-            CgWorldQuery level = levels.world(player);
+            if (player == null || !CgEntityQueries.position(player, AT)) continue;
+            CgWorldQuery level = CgWorldQueries.of(player);
             PACK.begin(Math.floor(AT[0]), Math.floor(AT[1]), Math.floor(AT[2]), MAX_SEGMENTS);
             SERVER_LINES.packTo(level, AT[0], AT[1], AT[2], RANGE, PACK);
             LINES.send(CgAudience.player(w.peer.id()), PACK.finish());

@@ -1,12 +1,13 @@
 package com.crystalgraphics.collision.entity;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.IntConsumer;
 
 /**
@@ -208,6 +209,19 @@ public final class CgEntitySnapshot extends CgEntityTable {
     public int rootVehicle(int id) {
         int e = entry(id);
         return e < 0 ? -1 : roots[e];
+    }
+
+    /** Throws: a snapshot is read off its level's thread, where no host object may be touched. Keep the id. */
+    @Override
+    public <V> V entity(int id) {
+        throw new IllegalStateException("a snapshot holds entity ids, not entities: look entity " + id
+                + " up on the level's thread, with CgEntityQueries.of(level).entity(id)");
+    }
+
+    @Override
+    public <V> V entity(UUID id) {
+        throw new IllegalStateException("a snapshot holds entity ids, not entities: look entity " + id
+                + " up on the level's thread, with CgEntityQueries.of(level).entity(id)");
     }
 
     @Override

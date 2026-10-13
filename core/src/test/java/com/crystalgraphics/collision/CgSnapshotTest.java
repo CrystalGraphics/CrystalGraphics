@@ -6,7 +6,7 @@ import com.crystalgraphics.collision.block.CgBlockSnapshot;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.job.CgJob;
-import com.crystalgraphics.platform.service.CgBlockCopy;
+import com.crystalgraphics.platform.world.CgBlockCopy;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -18,11 +18,12 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /** Snapshots against the worlds they were taken of, and many threads querying one. */
 public class CgSnapshotTest {
@@ -153,6 +154,22 @@ public class CgSnapshotTest {
         assertEquals(0, live.overlap(CgSphere.of(2)).at(60, 1, 60).count());
         assertEquals("an entity it never held is unknown to it", 0, snapshot.entities().flags(3));
         assertTrue(snapshot.snapshot(0, 0, 0, 1).result() == snapshot);
+    }
+
+    @Test
+    public void aHitHandsOutItsEntityLiveAndRefusesToFromASnapshot() {
+        table.mob(500, 60, 60, KIND_MONSTER);
+        CgHit hit = new CgHit();
+        assertTrue(live.overlap(CgSphere.of(2)).at(60, 1, 60).first(hit));
+        assertEquals("mob 500", hit.<String>entity());
+        CgCollisionWorld snapshot = live.snapshot(60, 0, 60, 8).result();
+        assertTrue(snapshot.overlap(CgSphere.of(2)).at(60, 1, 60).first(hit));
+        assertEquals(500, hit.entityId());
+        try {
+            hit.entity();
+            fail("a snapshot's hit touched a host object");
+        } catch (IllegalStateException expected) {
+        }
     }
 
     @Test

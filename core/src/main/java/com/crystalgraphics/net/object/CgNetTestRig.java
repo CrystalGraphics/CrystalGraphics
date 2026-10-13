@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 import javax.annotation.Nullable;
 
@@ -20,7 +21,11 @@ import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
 /**
  * A server and any number of clients in one JVM, for testing networked objects without Minecraft: real connections,
@@ -72,6 +77,7 @@ public final class CgNetTestRig implements AutoCloseable {
     private final List<Client> clients = new ArrayList<>();
     private final List<Entity> entities = new ArrayList<>();
     private final Set<Long> unloaded = new HashSet<>();
+    private final Levels levels = new Levels();
     private final CgConnections clientConnections = new CgConnections("client", MAX_FRAME_BYTES, true);
     private final ArrayDeque<Packet> toClients = new ArrayDeque<>();
     private final ArrayDeque<Packet> toServer = new ArrayDeque<>();
@@ -101,7 +107,8 @@ public final class CgNetTestRig implements AutoCloseable {
         CgNetTestRig rig = new CgNetTestRig();
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
-        CgPlatform.provide(CgServerPlayers.SERVICE, rig.new Players());
+        CgPlatform.provide(CgLevels.SERVICE, rig.levels);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, rig.new Players());
         CgNetwork.install(rig.new Channel(), player -> ((Client) player).id);
         CgNetwork.serverStarting(null);
         for (int i = 0; i < clients; i++) rig.clients.add(rig.new Client(i));
@@ -113,6 +120,22 @@ public final class CgNetTestRig implements AutoCloseable {
     public CgNetTestRig latencyTicks(int ticks) {
         if (ticks < 0) throw new IllegalArgumentException("latency: " + ticks);
         latency = ticks;
+        return this;
+    }
+
+    /**
+     * What its levels hold, for collision: every rig level answers these blocks and entities, the client's included.
+     * Nothing unless given. An id the rig knows (its {@link #entity entities}, its clients) is the rig's.
+     *
+     * <pre>{@code
+     * try (CgNetTestRig rig = CgNetTestRig.of(2).world(new Yard(), table)) {
+     *     SLAM.spawn(rig.at(0, 1, 0)).start();     // its hitbox hits the table's mobs, on the server and each client
+     * }
+     * }</pre>
+     */
+    public CgNetTestRig world(CgWorldQuery blocks, CgEntityQuery entities) {
+        levels.blocks = blocks;
+        levels.entities = entities;
         return this;
     }
 
@@ -203,7 +226,8 @@ public final class CgNetTestRig implements AutoCloseable {
         clientConnections.closeAll("rig closed");
         CgNetwork.resetForTesting();
         CgProtocols.resetForTesting();
-        CgPlatform.provide(CgServerPlayers.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
         CgPlatform.provide(CgNetworkChannel.SERVICE, null);
     }
 
@@ -379,7 +403,88 @@ public final class CgNetTestRig implements AutoCloseable {
         }
     }
 
-    private final class Players implements CgServerPlayers {
+    private final class Players implements CgPlayerQuery {
+        private final double[] at = new double[3];
+
+        @Override
+        public UUID playerId(Object entity) {
+            return entity instanceof Client ? ((Client) entity).id : null;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <V> V player(UUID id) {
+            for (Client client : clients) if (client.connected && client.id.equals(id)) return (V) client;
+            return null;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <V> V player(int entityId) {
+            Client client = entityId >= 1 && entityId <= clients.size() ? clients.get(entityId - 1) : null;
+            return client != null && client.connected ? (V) client : null;
+        }
+
+        @Override
+        public <V> V localPlayer() {
+            return null;
+        }
+
+        @Override
+        public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
+            if (!DIMENSION.equals(level) || unloaded.contains(chunkKey(chunkX, chunkZ))) return;
+            for (Client client : clients) {
+                if (!client.connected || !DIMENSION.equals(client.dimension)) continue;
+                int dx = ((int) Math.floor(client.x) >> 4) - chunkX, dz = ((int) Math.floor(client.z) >> 4) - chunkZ;
+                if (Math.max(Math.abs(dx), Math.abs(dz)) <= VIEW_DISTANCE) out.accept(client.id);
+            }
+        }
+
+        @Override
+        public void trackingEntity(Object entity, Consumer<UUID> out) {
+            if (!levels.position(entity, at)) return;
+            String dimension = levels.dimension(entity);
+            double x = at[0], z = at[2];
+            for (Client client : clients) {
+                if (!client.connected || client == entity || !client.dimension.equals(dimension)) continue;
+                double dx = client.x - x, dz = client.z - z;
+                if (dx * dx + dz * dz <= TRACKING_RANGE * TRACKING_RANGE) out.accept(client.id);
+            }
+        }
+    }
+
+    /** A rig level is its dimension's id: no blocks, and entities found by id. */
+    private final class Levels implements CgLevels {
+        CgWorldQuery blocks = CgWorldQuery.NONE;
+        CgEntityQuery entities = CgEntityQuery.NONE;
+        final CgEntityQuery client = new LevelEntities(DIMENSION);
+
+        @Override
+        public CgWorldQuery world(Object level) {
+            return dimension(level) == null ? CgWorldQuery.NONE : blocks;
+        }
+
+        @Override
+        public CgEntityQuery entities(Object level) {
+            String dimension = dimension(level);
+            return dimension == null ? CgEntityQuery.NONE : new LevelEntities(dimension);
+        }
+
+        @Override
+        public CgWorldQuery clientWorld() {
+            return blocks;
+        }
+
+        @Override
+        public CgEntityQuery clientEntities() {
+            return client;
+        }
+
+        @Override
+        public Object clientLevel() {
+            return null;
+        }
+
         @Override
         public String dimension(Object handle) {
             if (handle instanceof Client) return ((Client) handle).dimension;
@@ -405,11 +510,6 @@ public final class CgNetTestRig implements AutoCloseable {
         }
 
         @Override
-        public UUID playerId(Object entity) {
-            return entity instanceof Client ? ((Client) entity).id : null;
-        }
-
-        @Override
         public int entityId(Object entity) {
             if (entity instanceof Entity) return ((Entity) entity).id;
             return entity instanceof Client ? clients.indexOf(entity) + 1 : -1;
@@ -422,31 +522,6 @@ public final class CgNetTestRig implements AutoCloseable {
         }
 
         @Override
-        public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
-            if (!DIMENSION.equals(level) || unloaded.contains(chunkKey(chunkX, chunkZ))) return;
-            for (Client client : clients) {
-                if (!client.connected || !DIMENSION.equals(client.dimension)) continue;
-                int dx = ((int) Math.floor(client.x) >> 4) - chunkX, dz = ((int) Math.floor(client.z) >> 4) - chunkZ;
-                if (Math.max(Math.abs(dx), Math.abs(dz)) <= VIEW_DISTANCE) out.accept(client.id);
-            }
-        }
-
-        @Override
-        public void trackingEntity(Object entity, Consumer<UUID> out) {
-            if (!position(entity, at)) return;
-            String dimension = dimension(entity);
-            double x = at[0], z = at[2];
-            for (Client client : clients) {
-                if (!client.connected || client == entity || !client.dimension.equals(dimension)) continue;
-                double dx = client.x - x, dz = client.z - z;
-                if (dx * dx + dz * dz <= TRACKING_RANGE * TRACKING_RANGE) out.accept(client.id);
-            }
-        }
-
-        private final double[] at = new double[3];
-
-        /** A rig level is its dimension's id. */
-        @Override
         public Object level(Object handle, String dimension) {
             return dimension;
         }
@@ -457,15 +532,42 @@ public final class CgNetTestRig implements AutoCloseable {
         }
 
         @Override
-        public Object entity(Object level, int entityId) {
-            for (Entity entity : entities) if (entity.id == entityId && entity.dimension.equals(level)) return entity;
-            Client client = entityId >= 1 && entityId <= clients.size() ? clients.get(entityId - 1) : null;
-            return client != null && client.dimension.equals(level) ? client : null;
-        }
-
-        @Override
         public Path saveDirectory(Object handle) {
             return saveDirectory;
+        }
+    }
+
+    /**
+     * A rig level's entities: by id, the rig's entities, then clients (id = index + 1), then what {@link #world} gave;
+     * every other question is {@link #world}'s.
+     */
+    private final class LevelEntities implements CgEntityQuery {
+        private final String dimension;
+
+        LevelEntities(String dimension) {
+            this.dimension = dimension;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <V> V entity(int id) {
+            for (Entity entity : entities) if (entity.id == id && entity.dimension.equals(dimension)) return (V) entity;
+            Client client = id >= 1 && id <= clients.size() ? clients.get(id - 1) : null;
+            if (client != null && client.dimension.equals(dimension)) return (V) client;
+            return levels.entities.entity(id);
+        }
+
+        @Override public int localPlayer() { return levels.entities.localPlayer(); }
+        @Override public int cameraEntity() { return levels.entities.cameraEntity(); }
+        @Override public boolean pose(int id, float partialTick, double[] out) { return levels.entities.pose(id, partialTick, out); }
+        @Override public int flags(int id) { return levels.entities.flags(id); }
+        @Override public int kind(int id) { return levels.entities.kind(id); }
+        @Override public boolean box(int id, float partialTick, CgBoxSink out) { return levels.entities.box(id, partialTick, out); }
+        @Override public int parent(int id) { return levels.entities.parent(id); }
+        @Override public int rootVehicle(int id) { return levels.entities.rootVehicle(id); }
+        @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+                                     IntConsumer visitor) {
+            levels.entities.within(minX, minY, minZ, maxX, maxY, maxZ, visitor);
         }
     }
 }

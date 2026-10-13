@@ -1,9 +1,9 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.world.CgEntityAttachments;
 import org.junit.Test;
@@ -91,7 +91,7 @@ public class CgVfxAuthorityTest {
         wave.aim(1f, 0f, 0f);
         CgVfxAuthority run = new CgVfxAuthority(wave, CgCollisionWorld.of(FLOOR, new Crowd()));
         List<String> heard = new ArrayList<>();
-        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entity()));
+        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
 
         for (int t = 0; t < 200; t++) run.advance(0.05f);
         assertEquals("through its caster, onto the zombie, once", List.of("beam ENTITY 2"), heard);

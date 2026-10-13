@@ -73,6 +73,8 @@ public final class CgNetwork {
 
     /** Server ticks since this process started a server: what an age on the wire is measured in. */
     private static volatile long serverTicks;
+    /** The threads the server and the client last ticked on, each written from its own: what {@link #side()} reads. */
+    private static volatile Thread serverThread, clientThread;
 
     @Nullable
     private static volatile CgNetworkChannel channel;
@@ -82,6 +84,33 @@ public final class CgNetwork {
     private static volatile CgConnections server;
     @Nullable
     private static volatile CgConnections client;
+
+    /** Which half of the game code runs on: {@link #side()}. */
+    public enum Side {
+        CLIENT,
+        SERVER
+    }
+
+    /**
+     * The side the calling code runs on: {@link Side#SERVER} on the server's thread, a singleplayer game's included;
+     * {@link Side#CLIENT} on the client's. What a call answering for either side asks first.
+     *
+     * <pre>{@code
+     * if (CgNetwork.side() == CgNetwork.Side.SERVER) damage(target);
+     * else sparks(target);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A dedicated server is {@link Side#SERVER} on every thread; a client is {@link Side#CLIENT} on every thread
+     *       but the integrated server's, once its first tick has run (the title screen's).</li>
+     *   <li>A worker has no side of its own: decide on the game thread and hand the work what it needs.</li>
+     * </ul>
+     */
+    public static Side side() {
+        Thread now = Thread.currentThread();
+        if (now == serverThread) return Side.SERVER;
+        return clientThread != null ? Side.CLIENT : Side.SERVER;
+    }
 
     private CgNetwork() {
     }
@@ -289,15 +318,17 @@ public final class CgNetwork {
 
     /**
      * The server is starting: persisted networked objects are loaded, before any mod's own start handler or player.
-     * {@code server} is anything the host's {@code CgServerPlayers.saveDirectory} accepts.
+     * {@code server} is anything {@code CgWorldQueries.saveDirectory} accepts.
      */
     public static void serverStarting(@Nullable Object server) {
+        serverThread = Thread.currentThread();
         CgNetObjects.serverStarting(server);
     }
 
     public static void serverTick() {
         CgConnections table = server;
         if (table == null) return;
+        serverThread = Thread.currentThread();
         serverTicks++;
         // Indexed: a copy-on-write list's iterator is an allocation every tick.
         for (int i = 0; i < SERVER_TICK.size(); i++) {
@@ -322,6 +353,7 @@ public final class CgNetwork {
     }
 
     public static void clientTick() {
+        clientThread = Thread.currentThread();
         CgConnections table = client;
         if (table == null) return;
         for (int i = 0; i < CLIENT_TICK.size(); i++) {
@@ -416,6 +448,7 @@ public final class CgNetwork {
         SERVER_TICK.clear();
         CLIENT_TICK.clear();
         serverTicks = 0;
+        serverThread = clientThread = null;
         channel = null;
         idOf = null;
         server = null;

@@ -4,7 +4,7 @@ import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABBc;

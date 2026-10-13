@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.mirror;
 
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
 import javax.annotation.Nullable;

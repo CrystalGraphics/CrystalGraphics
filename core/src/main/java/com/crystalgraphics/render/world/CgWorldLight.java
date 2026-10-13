@@ -1,10 +1,10 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.world.CgWorldQueries;
 
 import java.util.Arrays;
 
@@ -47,7 +47,7 @@ public final class CgWorldLight {
 
     /** The light at absolute {@code (x, y, z)}, {@code block | sky << 4}. */
     public static int at(double x, double y, double z) {
-        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+        CgWorldQuery world = CgWorldQueries.client();
         if (world.levelEpoch() == 0) return FULL;
         int bx = (int) Math.floor(x), by = (int) Math.floor(y), bz = (int) Math.floor(z);
         long now = CgFrameRing.frame();

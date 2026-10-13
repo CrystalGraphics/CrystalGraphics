@@ -4,9 +4,9 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.sun.management.ThreadMXBean;
@@ -36,7 +36,7 @@ public class CgLevelMirrorTest {
     @Before
     public void setUp() {
         CgPlatform.provide(CgMirrorHost.SERVICE, host);
-        CgPlatform.provide(CgLevelQueries.SERVICE, new Queries(entities));
+        CgPlatform.provide(CgLevels.SERVICE, new Queries(entities));
         level = new Level(false);
     }
 
@@ -44,7 +44,7 @@ public class CgLevelMirrorTest {
     public void tearDown() {
         CgLevelMirror.clearAll();
         CgPlatform.provide(CgMirrorHost.SERVICE, null);
-        CgPlatform.provide(CgLevelQueries.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
     }
 
     /** Fills 2 x 2 columns with a random yard. */

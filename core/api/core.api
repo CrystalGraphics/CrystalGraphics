@@ -1590,15 +1590,15 @@ com/crystalgraphics/collision/CgCollisionQuery
 com/crystalgraphics/collision/CgCollisionQuery$Watcher
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract ran (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;DDDDLcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/collision/hit/CgHit;)V
+  method public,abstract ran (Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;Lcom/crystalgraphics/shape/bounds/CgAABBc;DDDDLcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/collision/hit/CgHit;)V
 com/crystalgraphics/collision/CgCollisionWorld
   access public
   extends java/lang/Object
-  method public blocks ()Lcom/crystalgraphics/platform/service/CgWorldQuery;
+  method public blocks ()Lcom/crystalgraphics/platform/world/CgWorldQuery;
   method public cast (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgCollisionQuery;
   method public changed ()V
   method public changed (I)V
-  method public entities ()Lcom/crystalgraphics/platform/service/CgEntityQuery;
+  method public entities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public exposure (DDDI)F
   method public lineOfSight (DDDI)Z
   method public overlap (Lcom/crystalgraphics/shape/CgShape;)Lcom/crystalgraphics/collision/CgCollisionQuery;
@@ -1611,7 +1611,7 @@ com/crystalgraphics/collision/CgCollisionWorld
   method public,static batch ()Lcom/crystalgraphics/collision/CgCollisionWorld$Batch;
   method public,static client (F)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static empty ()Lcom/crystalgraphics/collision/CgCollisionWorld;
-  method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)Lcom/crystalgraphics/collision/CgCollisionWorld;
+  method public,static of (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/collision/CgCollisionWorld;
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/collision/CgCollisionWorld;
 com/crystalgraphics/collision/CgCollisionWorld$Batch
   access public,final
@@ -1642,7 +1642,7 @@ com/crystalgraphics/collision/block/CgBlockSnapshot
   access public,final
   extends java/lang/Object
   field public,static,final MAX_SIDE I
-  implements com/crystalgraphics/platform/service/CgWorldQuery
+  implements com/crystalgraphics/platform/world/CgWorldQuery
   method public biomeColor (IIII)I
   method public border ([D)Z
   method public collisionBottom (III)F
@@ -1664,7 +1664,7 @@ com/crystalgraphics/collision/block/CgBlockSnapshot
   method public surface (III)I
   method public surfaceY (III)I
   method public tint (III)I
-  method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/block/CgBlockSnapshot;
+  method public,static of (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/block/CgBlockSnapshot;
 com/crystalgraphics/collision/debug/CgCollisionDebug
   access public,final
   extends java/lang/Object
@@ -1684,16 +1684,18 @@ com/crystalgraphics/collision/entity/CgEntityCache
   access public,final
   extends com/crystalgraphics/collision/entity/CgEntityTable
   method public <init> ()V
-  method public answersFor (Lcom/crystalgraphics/platform/service/CgEntityQuery;FI)Z
-  method public box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
+  method public answersFor (Lcom/crystalgraphics/platform/world/CgEntityQuery;FI)Z
+  method public box (IFLcom/crystalgraphics/platform/world/CgBoxSink;)Z
   method public cameraEntity ()I
+  method public entity (I)Ljava/lang/Object;
+  method public entity (Ljava/util/UUID;)Ljava/lang/Object;
   method public flags (I)I
   method public forget ()V
   method public kind (I)I
   method public localPlayer ()I
   method public parent (I)I
   method public pose (IF[D)Z
-  method public reset (Lcom/crystalgraphics/platform/service/CgEntityQuery;FI)V
+  method public reset (Lcom/crystalgraphics/platform/world/CgEntityQuery;FI)V
   method public rootVehicle (I)I
   method public touch (I)V
   method public warm ()Z
@@ -1701,8 +1703,10 @@ com/crystalgraphics/collision/entity/CgEntityCache
 com/crystalgraphics/collision/entity/CgEntitySnapshot
   access public,final
   extends com/crystalgraphics/collision/entity/CgEntityTable
-  method public box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
+  method public box (IFLcom/crystalgraphics/platform/world/CgBoxSink;)Z
   method public cameraEntity ()I
+  method public entity (I)Ljava/lang/Object;
+  method public entity (Ljava/util/UUID;)Ljava/lang/Object;
   method public flags (I)I
   method public index ()Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
   method public kind (I)I
@@ -1712,13 +1716,13 @@ com/crystalgraphics/collision/entity/CgEntitySnapshot
   method public rootVehicle (I)I
   method public size ()I
   method public within (DDDDDDLjava/util/function/IntConsumer;)V
-  method public,static capture (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLjava/util/List;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
-  method public,static capture (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLjava/util/List;I)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
-  method public,static of (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
+  method public,static capture (Lcom/crystalgraphics/platform/world/CgEntityQuery;FLjava/util/List;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
+  method public,static capture (Lcom/crystalgraphics/platform/world/CgEntityQuery;FLjava/util/List;I)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
+  method public,static of (Lcom/crystalgraphics/platform/world/CgEntityQuery;FLcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
 com/crystalgraphics/collision/entity/CgEntityTable
   access public,abstract
   extends java/lang/Object
-  implements com/crystalgraphics/platform/service/CgEntityQuery
+  implements com/crystalgraphics/platform/world/CgEntityQuery
 com/crystalgraphics/collision/hit/CgHit
   access public,final
   extends java/lang/Object
@@ -1727,18 +1731,21 @@ com/crystalgraphics/collision/hit/CgHit
   method public blockY ()I
   method public blockZ ()I
   method public distance ()D
-  method public entity ()I
+  method public entity ()Ljava/lang/Object;
+  method public entityId ()I
   method public exposure ()F
   method public falloff (DD)F
   method public fluid ()I
   method public fraction ()D
+  method public from (Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/collision/hit/CgHit;
   method public hitbox ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public hitboxPart ()Lcom/crystalgraphics/collision/hit/CgHitPart;
   method public kind ()Lcom/crystalgraphics/collision/hit/CgHit$Kind;
   method public normalX ()D
   method public normalY ()D
   method public normalZ ()D
-  method public parent ()I
+  method public parent ()Ljava/lang/Object;
+  method public parentId ()I
   method public part ()Lcom/crystalgraphics/collision/hit/CgHitPart;
   method public reset ()Lcom/crystalgraphics/collision/hit/CgHit;
   method public set (Lcom/crystalgraphics/collision/hit/CgHit;)Lcom/crystalgraphics/collision/hit/CgHit;
@@ -1915,7 +1922,7 @@ com/crystalgraphics/collision/mirror/CgLevelMirror
   method public asked (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/mirror/CgLevelMirror$Watch;
   method public version ()Lcom/crystalgraphics/collision/mirror/CgMirrorVersion;
   method public watch (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/mirror/CgLevelMirror$Watch;
-  method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;Lcom/crystalgraphics/collision/mirror/CgLevelMirror$Freezer;)Lcom/crystalgraphics/collision/mirror/CgLevelMirror;
+  method public,static of (Ljava/lang/Object;Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;Lcom/crystalgraphics/collision/mirror/CgLevelMirror$Freezer;)Lcom/crystalgraphics/collision/mirror/CgLevelMirror;
 com/crystalgraphics/collision/mirror/CgLevelMirror$Freezer
   access public,abstract,interface
   extends java/lang/Object
@@ -1962,9 +1969,9 @@ com/crystalgraphics/collision/mirror/CgMirrorShape
 com/crystalgraphics/collision/mirror/CgMirrorVersion
   access public,final
   extends java/lang/Object
-  method public blocks (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/platform/service/CgWorldQuery;
+  method public blocks (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
   method public complete (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Z
-  method public entities ()Lcom/crystalgraphics/platform/service/CgEntityQuery;
+  method public entities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public epoch ()J
   method public frozen ()Ljava/lang/Object;
 com/crystalgraphics/compute/CgCompute
@@ -4517,7 +4524,15 @@ com/crystalgraphics/net/CgNetwork
   method public,static serverTickAllocated ()J
   method public,static serverTickNanos ()J
   method public,static serverTicks ()J
+  method public,static side ()Lcom/crystalgraphics/net/CgNetwork$Side;
   method public,static version (Ljava/lang/String;)I
+com/crystalgraphics/net/CgNetwork$Side
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIENT Lcom/crystalgraphics/net/CgNetwork$Side;
+  field public,static,final SERVER Lcom/crystalgraphics/net/CgNetwork$Side;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/net/CgNetwork$Side;
+  method public,static values ()[Lcom/crystalgraphics/net/CgNetwork$Side;
 com/crystalgraphics/net/CgPeer
   access public,final
   extends java/lang/Object
@@ -4740,6 +4755,7 @@ com/crystalgraphics/net/object/CgNetTestRig
   method public saveTo (Ljava/nio/file/Path;)Lcom/crystalgraphics/net/object/CgNetTestRig;
   method public tick (I)Lcom/crystalgraphics/net/object/CgNetTestRig;
   method public unloadChunk (II)Lcom/crystalgraphics/net/object/CgNetTestRig;
+  method public world (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/net/object/CgNetTestRig;
   method public,static of (I)Lcom/crystalgraphics/net/object/CgNetTestRig;
 com/crystalgraphics/net/object/CgNetTestRig$Client
   access public,final
@@ -7159,7 +7175,7 @@ com/crystalgraphics/shape/bounds/CgAABB
   field public minX D
   field public minY D
   field public minZ D
-  implements com/crystalgraphics/platform/service/CgBoxSink
+  implements com/crystalgraphics/platform/world/CgBoxSink
   implements com/crystalgraphics/shape/bounds/CgAABBc
   method public <init> ()V
   method public <init> (DDDDDD)V
@@ -8339,7 +8355,8 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final follow (I)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final follow (II)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final followKeepingOffset (II)Lcom/crystalgraphics/vfx/CgVfxEffect;
-  method public,final following ()I
+  method public,final following ()Ljava/lang/Object;
+  method public,final followingId ()I
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam;)F
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam;I)F
   method public,final ground (D)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -8860,7 +8877,8 @@ com/crystalgraphics/vfx/net/CgVfxCue$Play
   method public follow (ILjava/lang/String;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Play;
   method public follow (Ljava/lang/Object;I)Lcom/crystalgraphics/vfx/net/CgVfxCue$Play;
   method public follow (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/vfx/net/CgVfxCue$Play;
-  method public following ()I
+  method public following ()Ljava/lang/Object;
+  method public followingId ()I
   method public get (Lcom/crystalgraphics/net/object/CgNetField;)Ljava/lang/Object;
   method public getBool (Lcom/crystalgraphics/net/object/CgNetField;)Z
   method public getDouble (Lcom/crystalgraphics/net/object/CgNetField;)D
@@ -9923,8 +9941,14 @@ com/crystalgraphics/vfx/world/CgVfxVoxels
   method public,static fluidKind (B)I
   method public,static light (B)I
   method public,static octants (B)I
-  method public,static octants (Lcom/crystalgraphics/platform/service/CgWorldQuery;III[F)I
-  method public,static pack (Lcom/crystalgraphics/platform/service/CgWorldQuery;IIILjava/nio/ByteBuffer;[F)Z
+  method public,static octants (Lcom/crystalgraphics/platform/world/CgWorldQuery;III[F)I
+  method public,static pack (Lcom/crystalgraphics/platform/world/CgWorldQuery;IIILjava/nio/ByteBuffer;[F)Z
+com/crystalgraphics/world/CgCamera
+  access public,final
+  extends java/lang/Object
+  method public,static applied ()I
+  method public,static capabilities ()I
+  method public,static offset (FFFFFFF)V
 com/crystalgraphics/world/CgEntityAttachments
   access public,final
   extends java/lang/Object
@@ -9958,11 +9982,39 @@ com/crystalgraphics/world/CgEntityAttachments$Registration
   extends java/lang/Object
   implements java/lang/AutoCloseable
   method public,abstract close ()V
+com/crystalgraphics/world/CgEntityQueries
+  access public,final
+  extends java/lang/Object
+  method public,static alive (Ljava/lang/Object;)Z
+  method public,static client ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static idOf (Ljava/lang/Object;)I
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static position (Ljava/lang/Object;[D)Z
+com/crystalgraphics/world/CgPlayers
+  access public,final
+  extends java/lang/Object
+  method public,static idOf (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,static local ()Ljava/lang/Object;
+  method public,static player (I)Ljava/lang/Object;
+  method public,static player (Ljava/util/UUID;)Ljava/lang/Object;
+  method public,static trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
+  method public,static trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
+com/crystalgraphics/world/CgSounds
+  access public,final
+  extends java/lang/Object
+  method public,static play (Ljava/lang/String;DDDFF)V
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object
   method public,static ceilingAbove (DDDI)D
-  method public,static ceilingAbove (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDI)D
+  method public,static ceilingAbove (Lcom/crystalgraphics/platform/world/CgWorldQuery;DDDI)D
+  method public,static chunkLoaded (Ljava/lang/Object;II)Z
+  method public,static client ()Lcom/crystalgraphics/platform/world/CgWorldQuery;
+  method public,static clientLevel ()Ljava/lang/Object;
+  method public,static dimension (Ljava/lang/Object;)Ljava/lang/String;
   method public,static groundBelow (DDDI)D
-  method public,static groundBelow (Lcom/crystalgraphics/platform/service/CgWorldQuery;DDDI)D
+  method public,static groundBelow (Lcom/crystalgraphics/platform/world/CgWorldQuery;DDDI)D
   method public,static groundUnder (DDDI)D
+  method public,static level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
+  method public,static saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;

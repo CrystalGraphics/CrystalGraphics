@@ -1,12 +1,12 @@
 package com.crystalgraphics.collision.hitbox;
 
-import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgCollisionQuery;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgSentHit;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
 import com.crystalgraphics.shape.primitive.CgRing;
@@ -21,7 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -47,7 +47,7 @@ public class CgHitboxTest {
         List<Double> when = new ArrayList<>();
         CgHitbox wave = CgHitbox.of(CgRing.front(1.2, 0.6)).at(0, 0.9, 0).radius(0, 12, 12).activeFor(12);
         wave.onHit(h -> {
-            hits.add(h.entity());
+            hits.add(h.entityId());
             when.add(wave.age());
         });
         for (int i = 0; i < 20; i++) wave.tick(w, 1);
@@ -75,7 +75,7 @@ public class CgHitboxTest {
         CgCollisionWorld w = world(t);
         List<Integer> hits = new ArrayList<>();
         CgHitbox swing = CgHitbox.follow(1, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK)
-                .part(TIP, CgSphere.of(0.35), 0, 0, 1.1).source(1).onHit(h -> hits.add(h.entity()));
+                .part(TIP, CgSphere.of(0.35), 0, 0, 1.1).source(1).onHit(h -> hits.add(h.entityId()));
         swing.tick(w, 1);
         t.look(1, 170, 0);
         swing.tick(w, 1);
@@ -92,7 +92,7 @@ public class CgHitboxTest {
                 .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)
                 .part(BLADE, CgCapsule.of(0.5, 0.3), 0, 0, 0.5)
                 .source(1)
-                .onHit(h -> hits.add(h.entity() + " " + h.part().name()));
+                .onHit(h -> hits.add(h.entityId() + " " + h.part().name()));
         for (int i = 0; i < 5; i++) swing.tick(w, 1);
         hits.sort(null);
         assertEquals(Arrays.asList("2 tip", "3 blade"), hits);
@@ -111,7 +111,7 @@ public class CgHitboxTest {
         assertEquals(6.0, list.lastHit(3), 0);
 
         List<Integer> pierced = new ArrayList<>();
-        CgHitbox pierce = CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 0).maxTargets(2).onHit(h -> pierced.add(h.entity()));
+        CgHitbox pierce = CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 0).maxTargets(2).onHit(h -> pierced.add(h.entityId()));
         for (int i = 0; i < 3; i++) pierce.tick(w, 1);
         assertEquals("the two nearest", Arrays.asList(1, 2), pierced);
 
@@ -128,7 +128,7 @@ public class CgHitboxTest {
         CgCollisionWorld w = world(t);
         List<String> events = new ArrayList<>();
         CgHitbox zone = CgHitbox.of(CgBox.of(2, 1, 2)).at(0, 1, 0)
-                .onEnter(h -> events.add("in " + h.entity())).onExit(id -> events.add("out " + id));
+                .onEnter(h -> events.add("in " + h.entityId())).onExit(id -> events.add("out " + id));
         zone.tick(w, 1);
         t.move(1, 0, 0, 0);
         zone.tick(w, 1);
@@ -172,7 +172,7 @@ public class CgHitboxTest {
 
         assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
         assertEquals(CgHit.Kind.HITBOX, hit.kind());
-        assertEquals(1, hit.entity());
+        assertEquals(1, hit.entityId());
         assertSame(shield, hit.hitbox());
         assertSame(SHIELD, hit.hitboxPart());
         assertEquals("its front face", 3.9, hit.z(), 1e-9);
@@ -182,12 +182,12 @@ public class CgHitboxTest {
                 w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).source(1).any());
 
         List<String> hits = new ArrayList<>();
-        CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 2).onHit(h -> hits.add(h.kind() + " " + h.entity())).tick(w, 1);
+        CgHitbox.of(CgSphere.of(3)).at(0, 0.9, 2).onHit(h -> hits.add(h.kind() + " " + h.entityId())).tick(w, 1);
         assertEquals("the shield, nearer, counts its owner as hit", Arrays.asList("HITBOX 1"), hits);
 
         assertTrue(w.ray().at(0, 0.9, 0).along(0, 0, 1, 10).first(hit));
         CgHit sent = new CgSentHit().set(hit, -1).read(new CgHit(), null);
-        assertEquals("over the network, its owner", "HITBOX 1", sent.kind() + " " + sent.entity());
+        assertEquals("over the network, its owner", "HITBOX 1", sent.kind() + " " + sent.entityId());
         assertNull(sent.hitbox());
 
         CgCollisionWorld frozen = w.snapshot(0, 0, 0, 16).result();
@@ -204,7 +204,7 @@ public class CgHitboxTest {
         CgCollisionWorld w = world(new Table().mob(2, 0, 0, KIND_MONSTER));
         List<String> hits = new ArrayList<>();
         CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).hittable()
-                .onHit(h -> hits.add(h.kind() + " " + h.entity()));
+                .onHit(h -> hits.add(h.kind() + " " + h.entityId()));
         aura.tick(w, 1);
         assertEquals("its owner's body, never its own", Arrays.asList("ENTITY 2"), hits);
         aura.stop();

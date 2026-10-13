@@ -1,7 +1,5 @@
 package com.crystalgraphics.vfx.camera;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostCamera;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
@@ -9,6 +7,7 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.world.CgCamera;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
@@ -174,7 +173,7 @@ final class CgShakeRuntime {
                 pRoll += side * a * PUNCH_ANGLE * 0.6f;
             }
         }
-        CgPlatform.get(CgHostCamera.SERVICE).offset(
+        CgCamera.offset(
                 px + SHIFT * s * bands(t, 3), py + SHIFT * s * bands(t, 4), pz + SHIFT * s * bands(t, 5),
                 pYaw + YAW * s * bands(t, 0), pPitch + PITCH * s * bands(t, 1), pRoll + ROLL * s * bands(t * 0.7f, 2),
                 1f + fov * fovEffects);

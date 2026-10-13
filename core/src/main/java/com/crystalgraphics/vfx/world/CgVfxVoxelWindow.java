@@ -6,9 +6,8 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgWorldEvents;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -20,6 +19,7 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
+import com.crystalgraphics.world.CgWorldQueries;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -247,7 +247,7 @@ public final class CgVfxVoxelWindow {
     public void record(CgRecording recording, CgHostView view) {
         frame++;
         if (frame - usedAt > IDLE_FRAMES) return;
-        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+        CgWorldQuery world = CgWorldQueries.client();
         int now = world.levelEpoch();
         if (now != epoch) {
             epoch = now;

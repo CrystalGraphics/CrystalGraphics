@@ -2,8 +2,8 @@ package com.crystalgraphics.world;
 
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgModelSpace;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgModelSpace;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -200,7 +200,7 @@ public final class CgEntityAttachments {
         Vector3f at = UNBASE.transformPosition(pose.transformPosition(x, y, z, SCRATCH));
         double wx = CAMERA[0] + at.x, wy = CAMERA[1] + at.y, wz = CAMERA[2] + at.z;
         // Drawn somewhere other than the world this frame: the inventory's figure, a shadow pass.
-        CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+        CgEntityQuery entities = CgEntityQueries.client();
         if (!entities.pose(entity, CgRenderStage.WORLD_OPAQUE.host().partialTick(), GUARD_POSE)) return;
         double reach = 2.0 * Math.max(GUARD_POSE[CgEntityQuery.HEIGHT], GUARD_POSE[CgEntityQuery.WIDTH]) + 2.0;
         double dx = wx - GUARD_POSE[CgEntityQuery.X], dy = wy - GUARD_POSE[CgEntityQuery.Y], dz = wz - GUARD_POSE[CgEntityQuery.Z];

@@ -1,8 +1,8 @@
 package com.crystalgraphics.shape;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.sun.management.ThreadMXBean;
 import org.junit.AfterClass;

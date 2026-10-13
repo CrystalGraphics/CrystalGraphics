@@ -1,22 +1,19 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
 import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.collision.CgCollisionWorld;
-import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -24,6 +21,7 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
@@ -40,6 +38,8 @@ import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
 import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -476,7 +476,7 @@ public final class CgVfxSystem {
             CgVfxEffect effect = effects.get(i);
             if (effect.followEntity < 0 || effect.state() == CgVfxEffect.State.DEAD) continue;
             if (entities == null) {
-                entities = CgPlatform.get(CgEntityQuery.SERVICE);
+                entities = CgEntityQueries.client();
                 partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
             }
             if (entities.pose(effect.followEntity, partialTick, pose)) {
@@ -710,7 +710,7 @@ public final class CgVfxSystem {
             }
             writeAlpha = alpha;
             // The host's light is read on the render thread alone; with no level every record is fully lit.
-            writeLit = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch() != 0;
+            writeLit = CgWorldQueries.client().levelEpoch() != 0;
             try (CgTrace.Zone fill = CgTrace.zone(CgVfxTrace.CHANNEL, FILL_ZONE)) {
                 if (total >= PARALLEL_RECORDS) {
                     CgJob.forEach(emitters, writeEach);

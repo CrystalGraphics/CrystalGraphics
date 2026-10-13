@@ -6,7 +6,7 @@ import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.net.object.CgNetField;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.post.volume.CgImpact;
 import com.crystalgraphics.render.post.volume.CgImpactFrame;
 import com.crystalgraphics.render.post.volume.CgImpactSequence;
@@ -178,7 +178,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
      * blast, once for each entity within {@link #blastRadius()}, as its shock front reaches it.
      *
      * <pre>{@code
-     * wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.entity() >= 0) stagger(h.entity()); })
+     * wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.entityId() >= 0) stagger(h.entity()); })
      *     .onHit(CgEnergyWave.PART_BURST, h -> crater(h.x(), h.y(), h.z(), wave.blastRadius()))
      *     .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
      * }</pre>
@@ -884,7 +884,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
         float within = ticks * (1f - (float) Math.cbrt(1.0 - 1.0 / SHOCK_REACH));
         hitbox(PART_BLAST, CgShell.front(2f * get(RADIUS))).at(x, y, z)
                 .radius(CgKeyframes.start(0f, 0f).to(ticks, reach * SHOCK_REACH, CgEasings.OUT_CUBIC).build())
-                .activeFor(within).source(following());
+                .activeFor(within).source(followingId());
     }
 
     /** How far the blast's shock front has come, in blocks, {@code since} seconds after the burst. */
@@ -980,11 +980,11 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
         float reach = get(MAX_LENGTH), radius = get(RADIUS);
         if (beam == null || beam.radius() != radius) beam = CgSphere.of(radius);
         CgCollisionWorld world = world();
-        boolean found = world.cast(beam).at(x, y, z).along(aimX, aimY, aimZ, reach).source(following()).blocksToo()
+        boolean found = world.cast(beam).at(x, y, z).along(aimX, aimY, aimZ, reach).source(followingId()).blocksToo()
                 .part(PART_BEAM).first(hit);
         // Stopped at the edge of what is loaded, it met nothing, and ends there.
         aimMet = found && hit.kind() != CgHit.Kind.UNLOADED;
-        hitEntity = aimMet ? hit.entity() : -1;
+        hitEntity = aimMet ? hit.entityId() : -1;
         double distance = found ? hit.distance() : reach;
         endX = x + aimX / length * distance;
         endY = y + aimY / length * distance;
@@ -1014,7 +1014,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
                 + String.format(" at %.2f %.2f %.2f", endX, endY, endZ);
         LOGGER.info(String.format("[CgVfx] a wave on the server, age %.3f: from %.2f %.2f %.2f along %.3f %.3f %.3f,"
                         + " reach %.1f, radius %.2f, source %d: met %s; world %s, entities %s; listed:%s", age, x, y, z,
-                aimX, aimY, aimZ, reach, radius, following(), met, world.blocks().getClass().getSimpleName(),
+                aimX, aimY, aimZ, reach, radius, followingId(), met, world.blocks().getClass().getSimpleName(),
                 entities.getClass().getSimpleName(), listed.length() == 0 ? " none" : listed));
     }
 
@@ -1031,7 +1031,7 @@ public final class CgEnergyWave extends CgVfxEffect implements CgVfxCue.Live, Cg
         if (now != null && (now != struck || entity != struckEntity)) {
             double x = originX + stream.impactX(), y = originY + stream.impactY(), z = originZ + stream.impactZ();
             if (collides) reported.set(hit);
-            else if (now == CgHit.Kind.ENTITY) reported.setPoint(x, y, z, PART_BEAM).setEntity(entity, entity);
+            else if (now == CgHit.Kind.ENTITY) reported.setPoint(x, y, z, PART_BEAM).setEntity(entity, entity).from(world().entities());
             else reported.setPoint(x, y, z, PART_BEAM);
             hit(reported);
         }

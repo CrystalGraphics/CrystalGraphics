@@ -27,8 +27,9 @@ import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgProcessExit;
-import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * A live stress run of the whole network stack: a real server and its clients, through phases that load objects,
@@ -257,11 +258,10 @@ public final class CgNetStress {
                 return;
             }
             if (ticks < SETTLE) return;
-            CgServerPlayers hosts = CgPlatform.get(CgServerPlayers.SERVICE);
             for (UUID id : ids) names.put(id, ((CgPeer) CgNetwork.forPlayer(id).peer()).name());
             Object first = ((CgPeer) CgNetwork.forPlayer(ids.get(0)).peer()).player();
-            dimension = hosts.dimension(first);
-            hosts.position(first, at);
+            dimension = CgWorldQueries.dimension(first);
+            CgEntityQueries.position(first, at);
             for (UUID id : ids) MANA.of(id).setFloat(HEAT, 1);
             tracker = TRACKER.spawn(CgAnchor.global()).start();
             for (int i = 0; i < 4000; i++) live.add(SMALL.spawn(near(128)).start());

@@ -3,6 +3,7 @@ package com.crystalgraphics.collision.hit;
 import com.crystalgraphics.collision.hitbox.CgHitboxType;
 import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetWire;
+import com.crystalgraphics.world.CgEntityQueries;
 
 import javax.annotation.Nullable;
 
@@ -38,8 +39,8 @@ public final class CgSentHit {
     /** Fills this from {@code hit}, its part sent as {@code part}, -1 for none. */
     public CgSentHit set(CgHit hit, int part) {
         kind = hit.kind();
-        entity = hit.entity();
-        parent = hit.parent();
+        entity = hit.entityId();
+        parent = hit.parentId();
         blockX = hit.blockX();
         blockY = hit.blockY();
         blockZ = hit.blockZ();
@@ -57,7 +58,10 @@ public final class CgSentHit {
         return part;
     }
 
-    /** Writes this into {@code into}, its part {@code part}: the one this side holds at {@link #part()}. */
+    /**
+     * Writes this into {@code into}, its part {@code part}: the one this side holds at {@link #part()}. Its entity
+     * resolves in the client's level, where a hit sent to viewers arrives.
+     */
     public CgHit read(CgHit into, @Nullable CgHitPart part) {
         into.setPoint(x, y, z, part);
         switch (kind) {
@@ -65,8 +69,8 @@ public final class CgSentHit {
             case FLUID: return into.setFluid(blockX, blockY, blockZ, fluid);
             case UNLOADED: return into.setUnloaded(blockX, blockY, blockZ);
             case BORDER: return into.setBorder(blockX, blockY, blockZ);
-            case ENTITY: return into.setEntity(entity, parent).setExposure(exposure);
-            case HITBOX: return into.setHitbox(entity, null, null);
+            case ENTITY: return into.setEntity(entity, parent).setExposure(exposure).from(CgEntityQueries.client());
+            case HITBOX: return into.setHitbox(entity, null, null).from(CgEntityQueries.client());
             default: return into;
         }
     }

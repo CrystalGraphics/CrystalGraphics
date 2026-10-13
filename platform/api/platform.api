@@ -3021,19 +3021,6 @@ com/crystalgraphics/platform/input/CgSystemInput$Mouse$Event
 com/crystalgraphics/platform/input/CgSystemInput$MultiClickInterval
   access public,final
   extends java/lang/Object
-com/crystalgraphics/platform/service/CgBlockCopy
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final AIR I
-  field public,static,final NO_KEY I
-  method public,abstract add (I[FIIF)I
-  method public,abstract entry (I)I
-  method public,abstract loaded (II)V
-  method public,abstract set (IIII)V
-com/crystalgraphics/platform/service/CgBoxSink
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract set (DDDDDD)Lcom/crystalgraphics/platform/service/CgBoxSink;
 com/crystalgraphics/platform/service/CgCacheDirectory
   access public,final
   extends java/lang/Object
@@ -3062,100 +3049,12 @@ com/crystalgraphics/platform/service/CgCursorService$Image
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;[IIIII)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
   method public,static standard (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
-com/crystalgraphics/platform/service/CgEntityQuery
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final ALIVE I
-  field public,static,final ATTACKABLE I
-  field public,static,final BODY_YAW I
-  field public,static,final EYE_HEIGHT I
-  field public,static,final GLIDING I
-  field public,static,final HEAD_YAW I
-  field public,static,final HEIGHT I
-  field public,static,final INVISIBLE I
-  field public,static,final INVULNERABLE I
-  field public,static,final IN_WATER I
-  field public,static,final KIND_ANIMAL I
-  field public,static,final KIND_ITEM I
-  field public,static,final KIND_MONSTER I
-  field public,static,final KIND_OTHER I
-  field public,static,final KIND_PLAYER I
-  field public,static,final KIND_PROJECTILE I
-  field public,static,final KIND_VEHICLE I
-  field public,static,final LIMB_SWING I
-  field public,static,final LIMB_SWING_AMOUNT I
-  field public,static,final LIVING I
-  field public,static,final LOCAL_PLAYER I
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgEntityQuery;
-  field public,static,final ON_FIRE I
-  field public,static,final ON_GROUND I
-  field public,static,final PICKABLE I
-  field public,static,final PITCH I
-  field public,static,final PLAYER I
-  field public,static,final POSE_LENGTH I
-  field public,static,final ROW_BOXED I
-  field public,static,final ROW_FLAGS I
-  field public,static,final ROW_KIND I
-  field public,static,final ROW_LENGTH I
-  field public,static,final ROW_PARENT I
-  field public,static,final ROW_POSED I
-  field public,static,final ROW_ROOT I
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  field public,static,final SNEAKING I
-  field public,static,final SOLID I
-  field public,static,final SPECTATOR I
-  field public,static,final SPRINTING I
-  field public,static,final SWIMMING I
-  field public,static,final VELOCITY_X I
-  field public,static,final VELOCITY_Y I
-  field public,static,final VELOCITY_Z I
-  field public,static,final WIDTH I
-  field public,static,final X I
-  field public,static,final Y I
-  field public,static,final YAW I
-  field public,static,final Z I
-  method public row (IF[ILcom/crystalgraphics/platform/service/CgBoxSink;[D)I
-  method public,abstract box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
-  method public,abstract cameraEntity ()I
-  method public,abstract flags (I)I
-  method public,abstract kind (I)I
-  method public,abstract localPlayer ()I
-  method public,abstract parent (I)I
-  method public,abstract pose (IF[D)Z
-  method public,abstract rootVehicle (I)I
-  method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
 com/crystalgraphics/platform/service/CgGameDirectory
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/service/CgGameDirectory;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract get ()Ljava/nio/file/Path;
-com/crystalgraphics/platform/service/CgHostCamera
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final FOV I
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostCamera;
-  field public,static,final ROLL I
-  field public,static,final ROTATION I
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public applied ()I
-  method public capabilities ()I
-  method public,abstract offset (FFFFFFF)V
-com/crystalgraphics/platform/service/CgHostDebug
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostDebug;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract hitboxes ()Z
-com/crystalgraphics/platform/service/CgHostShapes
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostShapes;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract box (Ljava/lang/Object;Lcom/crystalgraphics/platform/service/CgBoxSink;)V
-  method public,abstract boxes (Ljava/lang/Object;[D)I
-  method public,abstract immutable (Ljava/lang/Object;)Z
-  method public,abstract toHost (DDDDDD)Ljava/lang/Object;
 com/crystalgraphics/platform/service/CgInputService
   access public,abstract,interface
   extends java/lang/Object
@@ -3167,13 +3066,6 @@ com/crystalgraphics/platform/service/CgInputService
   method public,abstract setClipboard (Ljava/lang/String;)V
   method public,abstract translateKeyboardCodes (I)I
   method public,abstract translateMouseCodes (I)I
-com/crystalgraphics/platform/service/CgLevelQueries
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgLevelQueries;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract entities (Ljava/lang/Object;)Lcom/crystalgraphics/platform/service/CgEntityQuery;
-  method public,abstract world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/service/CgWorldQuery;
 com/crystalgraphics/platform/service/CgLifecycleService
   access public,abstract,interface
   extends java/lang/Object
@@ -3181,12 +3073,6 @@ com/crystalgraphics/platform/service/CgLifecycleService
   method public,abstract onContextInit (II)V
   method public,abstract onFrameRendered ()V
   method public,abstract onResize (II)V
-com/crystalgraphics/platform/service/CgModelSpace
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgModelSpace;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract frame ([D[F)Z
 com/crystalgraphics/platform/service/CgNetworkChannel
   access public,abstract,interface
   extends java/lang/Object
@@ -3217,28 +3103,149 @@ com/crystalgraphics/platform/service/CgResourceService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract openStream (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
-com/crystalgraphics/platform/service/CgServerPlayers
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgServerPlayers;
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
-  method public,abstract alive (Ljava/lang/Object;)Z
-  method public,abstract chunkLoaded (Ljava/lang/Object;II)Z
-  method public,abstract dimension (Ljava/lang/Object;)Ljava/lang/String;
-  method public,abstract entity (Ljava/lang/Object;I)Ljava/lang/Object;
-  method public,abstract entityId (Ljava/lang/Object;)I
-  method public,abstract level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
-  method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
-  method public,abstract position (Ljava/lang/Object;[D)Z
-  method public,abstract saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
-  method public,abstract trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
-  method public,abstract trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
-  method public,static dimensionId (I)Ljava/lang/String;
 com/crystalgraphics/platform/service/CgSoundService
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract play (Ljava/lang/String;)V
-com/crystalgraphics/platform/service/CgWorldEvents
+com/crystalgraphics/platform/world/CgBlockCopy
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final AIR I
+  field public,static,final NO_KEY I
+  method public,abstract add (I[FIIF)I
+  method public,abstract entry (I)I
+  method public,abstract loaded (II)V
+  method public,abstract set (IIII)V
+com/crystalgraphics/platform/world/CgBoxSink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract set (DDDDDD)Lcom/crystalgraphics/platform/world/CgBoxSink;
+com/crystalgraphics/platform/world/CgEntityQuery
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final ALIVE I
+  field public,static,final ATTACKABLE I
+  field public,static,final BODY_YAW I
+  field public,static,final EYE_HEIGHT I
+  field public,static,final GLIDING I
+  field public,static,final HEAD_YAW I
+  field public,static,final HEIGHT I
+  field public,static,final INVISIBLE I
+  field public,static,final INVULNERABLE I
+  field public,static,final IN_WATER I
+  field public,static,final KIND_ANIMAL I
+  field public,static,final KIND_ITEM I
+  field public,static,final KIND_MONSTER I
+  field public,static,final KIND_OTHER I
+  field public,static,final KIND_PLAYER I
+  field public,static,final KIND_PROJECTILE I
+  field public,static,final KIND_VEHICLE I
+  field public,static,final LIMB_SWING I
+  field public,static,final LIMB_SWING_AMOUNT I
+  field public,static,final LIVING I
+  field public,static,final LOCAL_PLAYER I
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  field public,static,final ON_FIRE I
+  field public,static,final ON_GROUND I
+  field public,static,final PICKABLE I
+  field public,static,final PITCH I
+  field public,static,final PLAYER I
+  field public,static,final POSE_LENGTH I
+  field public,static,final ROW_BOXED I
+  field public,static,final ROW_FLAGS I
+  field public,static,final ROW_KIND I
+  field public,static,final ROW_LENGTH I
+  field public,static,final ROW_PARENT I
+  field public,static,final ROW_POSED I
+  field public,static,final ROW_ROOT I
+  field public,static,final SNEAKING I
+  field public,static,final SOLID I
+  field public,static,final SPECTATOR I
+  field public,static,final SPRINTING I
+  field public,static,final SWIMMING I
+  field public,static,final VELOCITY_X I
+  field public,static,final VELOCITY_Y I
+  field public,static,final VELOCITY_Z I
+  field public,static,final WIDTH I
+  field public,static,final X I
+  field public,static,final Y I
+  field public,static,final YAW I
+  field public,static,final Z I
+  method public entity (I)Ljava/lang/Object;
+  method public entity (Ljava/util/UUID;)Ljava/lang/Object;
+  method public row (IF[ILcom/crystalgraphics/platform/world/CgBoxSink;[D)I
+  method public,abstract box (IFLcom/crystalgraphics/platform/world/CgBoxSink;)Z
+  method public,abstract cameraEntity ()I
+  method public,abstract flags (I)I
+  method public,abstract kind (I)I
+  method public,abstract localPlayer ()I
+  method public,abstract parent (I)I
+  method public,abstract pose (IF[D)Z
+  method public,abstract rootVehicle (I)I
+  method public,abstract within (DDDDDDLjava/util/function/IntConsumer;)V
+com/crystalgraphics/platform/world/CgHostCamera
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final FOV I
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostCamera;
+  field public,static,final ROLL I
+  field public,static,final ROTATION I
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public applied ()I
+  method public capabilities ()I
+  method public,abstract offset (FFFFFFF)V
+com/crystalgraphics/platform/world/CgHostDebug
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostDebug;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract hitboxes ()Z
+com/crystalgraphics/platform/world/CgHostShapes
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgHostShapes;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract box (Ljava/lang/Object;Lcom/crystalgraphics/platform/world/CgBoxSink;)V
+  method public,abstract boxes (Ljava/lang/Object;[D)I
+  method public,abstract immutable (Ljava/lang/Object;)Z
+  method public,abstract toHost (DDDDDD)Ljava/lang/Object;
+com/crystalgraphics/platform/world/CgLevels
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgLevels;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract alive (Ljava/lang/Object;)Z
+  method public,abstract chunkLoaded (Ljava/lang/Object;II)Z
+  method public,abstract clientEntities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,abstract clientLevel ()Ljava/lang/Object;
+  method public,abstract clientWorld ()Lcom/crystalgraphics/platform/world/CgWorldQuery;
+  method public,abstract dimension (Ljava/lang/Object;)Ljava/lang/String;
+  method public,abstract entities (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,abstract entityId (Ljava/lang/Object;)I
+  method public,abstract level (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+  method public,abstract position (Ljava/lang/Object;[D)Z
+  method public,abstract saveDirectory (Ljava/lang/Object;)Ljava/nio/file/Path;
+  method public,abstract world (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgWorldQuery;
+  method public,static dimensionId (I)Ljava/lang/String;
+  method public,static single (Lcom/crystalgraphics/platform/world/CgWorldQuery;Lcom/crystalgraphics/platform/world/CgEntityQuery;)Lcom/crystalgraphics/platform/world/CgLevels;
+com/crystalgraphics/platform/world/CgModelSpace
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgModelSpace;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract frame ([D[F)Z
+com/crystalgraphics/platform/world/CgPlayerQuery
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgPlayerQuery;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract localPlayer ()Ljava/lang/Object;
+  method public,abstract player (I)Ljava/lang/Object;
+  method public,abstract player (Ljava/util/UUID;)Ljava/lang/Object;
+  method public,abstract playerId (Ljava/lang/Object;)Ljava/util/UUID;
+  method public,abstract trackingChunk (Ljava/lang/Object;IILjava/util/function/Consumer;)V
+  method public,abstract trackingEntity (Ljava/lang/Object;Ljava/util/function/Consumer;)V
+com/crystalgraphics/platform/world/CgWorldEvents
   access public,final
   extends java/lang/Object
   field public,static,final BLOCK_BROKEN I
@@ -3254,9 +3261,9 @@ com/crystalgraphics/platform/service/CgWorldEvents
   method public,static entityHurt (IDDD)V
   method public,static explosion (DDDF)V
   method public,static lightning (DDD)V
-  method public,static listen (Lcom/crystalgraphics/platform/service/CgWorldEvents$Listener;)V
-  method public,static stopListening (Lcom/crystalgraphics/platform/service/CgWorldEvents$Listener;)V
-com/crystalgraphics/platform/service/CgWorldEvents$Listener
+  method public,static listen (Lcom/crystalgraphics/platform/world/CgWorldEvents$Listener;)V
+  method public,static stopListening (Lcom/crystalgraphics/platform/world/CgWorldEvents$Listener;)V
+com/crystalgraphics/platform/world/CgWorldEvents$Listener
   access public,abstract,interface
   extends java/lang/Object
   method public blockBroken (IIIII)V
@@ -3264,7 +3271,7 @@ com/crystalgraphics/platform/service/CgWorldEvents$Listener
   method public entityHurt (IDDD)V
   method public explosion (DDDF)V
   method public lightning (DDD)V
-com/crystalgraphics/platform/service/CgWorldQuery
+com/crystalgraphics/platform/world/CgWorldQuery
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final BIOME_FOG I
@@ -3279,11 +3286,10 @@ com/crystalgraphics/platform/service/CgWorldQuery
   field public,static,final HEIGHT_NO_LEAVES I
   field public,static,final HEIGHT_OCEAN_FLOOR I
   field public,static,final HEIGHT_TOP I
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldQuery;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldQuery;
   field public,static,final PRECIPITATION_NONE I
   field public,static,final PRECIPITATION_RAIN I
   field public,static,final PRECIPITATION_SNOW I
-  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   field public,static,final SURFACE_DIRT I
   field public,static,final SURFACE_GLASS I
   field public,static,final SURFACE_GRAVEL I
@@ -3299,7 +3305,7 @@ com/crystalgraphics/platform/service/CgWorldQuery
   field public,static,final SURFACE_WOOL I
   method public border ([D)Z
   method public collisionBoxes (IIII[F)I
-  method public copyBlocks (IIIIIILcom/crystalgraphics/platform/service/CgBlockCopy;)Z
+  method public copyBlocks (IIIIIILcom/crystalgraphics/platform/world/CgBlockCopy;)Z
   method public,abstract biomeColor (IIII)I
   method public,abstract collisionBottom (III)F
   method public,abstract collisionBoxes (III[F)I
@@ -3322,16 +3328,16 @@ com/crystalgraphics/platform/service/CgWorldQuery
   method public,abstract tint (III)I
   method public,static blockLight (I)I
   method public,static skyLight (I)I
-com/crystalgraphics/platform/service/CgWorldSound
+com/crystalgraphics/platform/world/CgWorldSound
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldSound;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldSound;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract play (Ljava/lang/String;DDDFF)V
-com/crystalgraphics/platform/service/CgWorldStimulus
+com/crystalgraphics/platform/world/CgWorldStimulus
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgWorldStimulus;
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public,abstract breakBlock (III)Z
   method public,abstract explode (DDD)Z

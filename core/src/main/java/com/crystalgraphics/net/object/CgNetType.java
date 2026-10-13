@@ -18,9 +18,8 @@ import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.CgPeer;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.trace.CgTraceNames;
+import com.crystalgraphics.world.CgPlayers;
 
 /**
  * A kind of networked object: its fields, who sees it, whether it persists, and what it is on a client. Declared once,
@@ -353,7 +352,7 @@ public final class CgNetType {
     public CgNetObject of(Object playerOrEntity) {
         Objects.requireNonNull(playerOrEntity, "playerOrEntity");
         UUID player = playerOrEntity instanceof UUID ? (UUID) playerOrEntity
-                : CgPlatform.get(CgServerPlayers.SERVICE).playerId(playerOrEntity);
+                : CgPlayers.idOf(playerOrEntity);
         return holder(player != null ? player : playerOrEntity, player != null ? CgAnchor.player(player) : null, playerOrEntity);
     }
 

@@ -93,7 +93,7 @@ public final class CgHits {
      */
     private static boolean after(CgHit a, CgHit b) {
         if (a.distance() != b.distance()) return a.distance() > b.distance();
-        if (a.entity() != b.entity()) return a.entity() > b.entity();
+        if (a.entityId() != b.entityId()) return a.entityId() > b.entityId();
         boolean aBox = a.kind() == CgHit.Kind.HITBOX, bBox = b.kind() == CgHit.Kind.HITBOX;
         if (aBox != bBox) return bBox;
         if (a.blockX() != b.blockX()) return a.blockX() > b.blockX();

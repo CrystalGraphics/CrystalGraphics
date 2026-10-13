@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.IEntityMultiPart;
@@ -14,6 +14,7 @@ import net.minecraft.entity.passive.EntityAnimal;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldServer;
 //? if >=1.12 {
 import net.minecraft.entity.MultiPartEntityPart;
 //?} else {
@@ -28,11 +29,12 @@ import net.minecraft.util.math.AxisAlignedBB;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.IntConsumer;
 
 /**
  * {@link CgEntityQuery} over one level on Forge 1.8.9 to 1.12.2, a server's included. Server-safe;
- * {@link LevelQueriesLegacy} hands one out per level, and the client's {@link EntityQueryLegacy} extends it with its
+ * {@link LevelsLegacy} hands one out per level, and the client's {@link EntityQueryLegacy} extends it with its
  * local and camera entity. The level's thread.
  *
  * <ul>
@@ -78,7 +80,27 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
         return -1;
     }
 
-    Entity entity(int id) {
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V> V entity(int id) {
+        return (V) find(id);
+    }
+
+    /** The entity with this UUID in its level: the server's own lookup, a client's loaded list walked. */
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V> V entity(UUID id) {
+        World world = world();
+        if (world == null || id == null) return null;
+        if (world instanceof WorldServer) return (V) ((WorldServer) world).getEntityFromUuid(id);
+        for (Object e : world.loadedEntityList) {
+            if (id.equals(((Entity) e).getUniqueID())) return (V) e;
+        }
+        return null;
+    }
+
+    /** The entity or part with network id {@code id} in its level; null for none. */
+    Entity find(int id) {
         World world = world();
         if (world == null || id < 0) return null;
         Entity e = world.getEntityByID(id);
@@ -128,7 +150,7 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     @Override
     public boolean pose(int id, float partialTick, double[] out) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return false;
         out[X] = e.lastTickPosX + (e.posX - e.lastTickPosX) * partialTick;
         out[Y] = e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTick;
@@ -164,7 +186,7 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     @Override
     public boolean box(int id, float partialTick, CgBoxSink out) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return false;
         // the box where it is drawn: moved back by what the tick has yet to cover
         double dx = (e.lastTickPosX - e.posX) * (1 - partialTick), dy = (e.lastTickPosY - e.posY) * (1 - partialTick);
@@ -176,13 +198,13 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     @Override
     public int parent(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         return e == null ? -1 : parentOf(e).getEntityId();
     }
 
     @Override
     public int rootVehicle(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return -1;
         //? if >=1.10 {
         return e.getLowestRidingEntity().getEntityId();
@@ -194,7 +216,7 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     @Override
     public int flags(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return 0;
         int f = 0;
         if (e.isEntityAlive()) f |= ALIVE;
@@ -234,7 +256,7 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
 
     @Override
     public int kind(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e instanceof EntityPlayer) return KIND_PLAYER;
         if (e instanceof IMob) return KIND_MONSTER;
         if (e instanceof EntityAnimal) return KIND_ANIMAL;

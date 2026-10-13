@@ -1,11 +1,12 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgBlockCopy;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBlockCopy;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -17,7 +18,6 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.shapes.VoxelShape;
-import net.minecraft.world.level.LightLayer;
 //? if >=1.14.3 {
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@link CgWorldQuery} over one level, 1.13.2 to 26.3, a server's included: what each block and column is, read where
- * each version keeps it. Server-safe; {@link LevelQueriesModern} hands one out per level, and the client's
+ * each version keeps it. Server-safe; {@link LevelsModern} hands one out per level, and the client's
  * {@link WorldQueryModern} extends it with what only a client has (tint, biome colours, sprites), which this answers 0
  * and false. The level's thread; reuses one mutable position and one box consumer, so it allocates nothing but
  * {@link #collisionBoxes}'s box list on 1.13.2, whose consumer interface is obfuscated.

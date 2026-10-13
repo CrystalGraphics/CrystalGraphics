@@ -43,7 +43,7 @@ public class CgVfxHitsTest {
     public void anEffectsHitsReachItsListenersByPart() {
         List<String> heard = new ArrayList<>();
         Striker striker = new Striker();
-        striker.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entity()))
+        striker.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()))
                 .onHit(PART_ARC, h -> heard.add("arc alone at " + h.blockX() + "," + h.blockZ()));
         striker.tick(0f);
         assertEquals(List.of("bolt ENTITY 7", "arc BLOCK -1", "arc alone at 3,4"), heard);

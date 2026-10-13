@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldEvents;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.block.Block;

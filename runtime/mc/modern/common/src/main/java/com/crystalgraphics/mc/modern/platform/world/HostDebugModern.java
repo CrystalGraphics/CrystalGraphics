@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgHostDebug;
+import com.crystalgraphics.platform.world.CgHostDebug;
 
 import net.minecraft.client.Minecraft;
 //? if >=1.21.10 {

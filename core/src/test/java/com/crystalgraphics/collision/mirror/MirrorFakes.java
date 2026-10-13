@@ -1,8 +1,8 @@
 package com.crystalgraphics.collision.mirror;
 
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.collision.CollisionFakes;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -230,8 +230,8 @@ final class MirrorFakes {
         boolean positional;
     }
 
-    /** {@code CgLevelQueries} over fake levels, so {@code CgCollisionWorld.of(level)} reaches one. */
-    static final class Queries implements CgLevelQueries {
+    /** Fake levels' queries, so {@code CgCollisionWorld.of(level)} reaches one. */
+    static final class Queries extends CollisionFakes.Levels {
         final CgEntityQuery entities;
 
         Queries(CgEntityQuery entities) {

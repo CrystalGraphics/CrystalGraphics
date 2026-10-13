@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldEvents;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import net.minecraft.client.Minecraft;

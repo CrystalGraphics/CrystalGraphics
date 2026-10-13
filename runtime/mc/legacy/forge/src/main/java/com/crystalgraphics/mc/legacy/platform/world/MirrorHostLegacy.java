@@ -3,9 +3,7 @@ package com.crystalgraphics.mc.legacy.platform.world;
 import com.crystalgraphics.collision.mirror.CgMirrorColumn;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.collision.mirror.CgMirrorShape;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import net.minecraft.init.Blocks;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
@@ -84,7 +82,7 @@ public final class MirrorHostLegacy implements CgMirrorHost {
 
     @Override
     public void resolveAt(Object level, int x, int y, int z, CgMirrorShape out) {
-        CgWorldQuery world = CgPlatform.get(CgLevelQueries.SERVICE).world(level);
+        CgWorldQuery world = LevelsLegacy.INSTANCE.world(level);
         out.clear().positional();
         int n = world.collisionBoxes(x, y, z, boxes);
         if (n * 6 > boxes.length) {

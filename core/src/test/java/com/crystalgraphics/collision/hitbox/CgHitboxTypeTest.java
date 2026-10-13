@@ -12,17 +12,12 @@ import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.net.object.CgNetTestRig;
 import com.crystalgraphics.net.object.CgNetType;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.primitive.CgCapsule;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.sun.management.ThreadMXBean;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -32,7 +27,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
@@ -70,9 +65,9 @@ public class CgHitboxTypeTest {
 
     static {
         for (CgHitboxType type : new CgHitboxType[]{WAVE, SLOW, SWING}) {
-            type.onHit((obj, h) -> SERVER.add(new Heard(obj, h.entity(), h.part())))
-                    .onPredictedHit((obj, h) -> PREDICTED.add(new Heard(obj, h.entity(), h.part())))
-                    .onConfirmedHit((obj, h) -> CONFIRMED.add(new Heard(obj, h.entity(), h.part())));
+            type.onHit((obj, h) -> SERVER.add(new Heard(obj, h.entityId(), h.part())))
+                    .onPredictedHit((obj, h) -> PREDICTED.add(new Heard(obj, h.entityId(), h.part())))
+                    .onConfirmedHit((obj, h) -> CONFIRMED.add(new Heard(obj, h.entityId(), h.part())));
         }
         WAVE.acceptPredictionsFrom((peer, obj) -> true);
     }
@@ -88,23 +83,11 @@ public class CgHitboxTypeTest {
         SERVER.clear();
         PREDICTED.clear();
         CONFIRMED.clear();
-        CgWorldQuery blocks = new Yard();
-        CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
-            @Override public CgWorldQuery world(Object level) { return blocks; }
-            @Override public CgEntityQuery entities(Object level) { return table; }
-        });
-        CgPlatform.provide(CgEntityQuery.SERVICE, table);
     }
 
-    @After
-    public void tearDown() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, null);
-        CgPlatform.provide(CgEntityQuery.SERVICE, null);
-    }
-
-    /** A rig whose clients have finished joining, as players have long before anything is cast at them. */
-    private static CgNetTestRig rig(int clients) {
-        return CgNetTestRig.of(clients).tick(3);
+    /** A rig over the yard and its mobs, whose clients have finished joining, as players have long before anything is cast at them. */
+    private CgNetTestRig rig(int clients) {
+        return CgNetTestRig.of(clients).world(new Yard(), table).tick(3);
     }
 
     private static List<Integer> heard(List<Heard> list, CgNetObject obj) {

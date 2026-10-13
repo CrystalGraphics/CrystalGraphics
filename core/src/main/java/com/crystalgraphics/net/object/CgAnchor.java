@@ -5,8 +5,9 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * Where a networked object lives, which decides who sees it by default and what ends it.
@@ -120,11 +121,10 @@ public final class CgAnchor {
 
     /** On {@code entity}, a loader entity in a server level. */
     public static CgAnchor on(Object entity) {
-        CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
-        int id = players.entityId(Objects.requireNonNull(entity, "entity"));
+        int id = CgEntityQueries.idOf(Objects.requireNonNull(entity, "entity"));
         if (id < 0) throw new IllegalArgumentException("not an entity: " + entity);
         double[] at = new double[3];
-        players.position(entity, at);
+        CgEntityQueries.position(entity, at);
         return new CgAnchor(Kind.ENTITY, dimensionOf(entity), at[0], at[1], at[2], entity, null, 0, 0, id);
     }
 
@@ -136,7 +136,7 @@ public final class CgAnchor {
     /** On a player: a player entity, or a profile id, online or not. */
     public static CgAnchor player(Object playerOrId) {
         UUID id = playerOrId instanceof UUID ? (UUID) playerOrId
-                : CgPlatform.get(CgServerPlayers.SERVICE).playerId(Objects.requireNonNull(playerOrId, "playerOrId"));
+                : CgPlayers.idOf(Objects.requireNonNull(playerOrId, "playerOrId"));
         if (id == null) throw new IllegalArgumentException("not a player: " + playerOrId);
         return new CgAnchor(Kind.PLAYER, null, 0, 0, 0, null, id, 0, 0, -1);
     }
@@ -160,7 +160,7 @@ public final class CgAnchor {
     private static String dimensionOf(Object levelOrDimension) {
         Objects.requireNonNull(levelOrDimension, "levelOrDimension");
         if (levelOrDimension instanceof String) return (String) levelOrDimension;
-        String dimension = CgPlatform.get(CgServerPlayers.SERVICE).dimension(levelOrDimension);
+        String dimension = CgWorldQueries.dimension(levelOrDimension);
         if (dimension == null) {
             throw new IllegalArgumentException("not a level, an entity or a dimension id: " + levelOrDimension);
         }
@@ -171,8 +171,7 @@ public final class CgAnchor {
     @Nullable
     private static Object levelOf(Object levelOrDimension, String dimension) {
         if (levelOrDimension instanceof String) return null;
-        CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
-        return players.entityId(levelOrDimension) < 0 ? levelOrDimension : players.level(levelOrDimension, dimension);
+        return CgEntityQueries.idOf(levelOrDimension) < 0 ? levelOrDimension : CgWorldQueries.level(levelOrDimension, dimension);
     }
 
     public Kind kind() {

@@ -1,7 +1,7 @@
 package com.crystalgraphics.demo.collision;
 
-import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CgCollisionQuery;
+import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
@@ -107,7 +107,7 @@ public final class CgCollisionDemo {
     private double lastSeconds = Double.NaN, ticks;
     private @Nullable CgCollisionWorld world;
     private final Consumer<CgHit> boxEntity = h -> {
-        if (!flashed(h.entity()) && world.entities().box(h.entity(), world.partialTick(), box)) drawBox(YELLOW);
+        if (!flashed(h.entityId()) && world.entities().box(h.entityId(), world.partialTick(), box)) drawBox(YELLOW);
     };
 
     /** Draws it standing at {@code x, y, z} this frame, against its props and {@code world} (null: a floor at y). */
@@ -172,7 +172,7 @@ public final class CgCollisionDemo {
                 .first(worldHit)) {
             return false;
         }
-        if (worldHit.entity() >= 0) flashEntity(worldHit.entity());
+        if (worldHit.entityId() >= 0) flashEntity(worldHit.entityId());
         return true;
     }
 
@@ -194,7 +194,7 @@ public final class CgCollisionDemo {
                 && (!met || worldHit.distance() < hit.distance())) {
             hit.set(worldHit);
             met = true;
-            if (hit.entity() >= 0) flashEntity(hit.entity());
+            if (hit.entityId() >= 0) flashEntity(hit.entityId());
         }
         double end = from + (met ? hit.distance() : SWEEP_LENGTH);
         CgCollisionDebug.shape(BALL, pose.identity().at(from, y, z), WHITE);
@@ -214,7 +214,7 @@ public final class CgCollisionDemo {
                     && (!met || worldHit.distance() < hit.distance())) {
                 hit.set(worldHit);
                 met = true;
-                if (hit.entity() >= 0) flashEntity(hit.entity());
+                if (hit.entityId() >= 0) flashEntity(hit.entityId());
             }
             if (met) {
                 CgCollisionDebug.line(x, top, z, x, hit.y(), z, CYAN);
@@ -241,9 +241,9 @@ public final class CgCollisionDemo {
     private void ring() {
         if (ring == null || ring.stopped()) {
             if (worldRing != null) worldRing.stop();
-            ring = grow().query(q -> q.where(id -> id < TARGETS)).onHit(h -> flash[h.entity()] = FLASH_TICKS);
+            ring = grow().query(q -> q.where(id -> id < TARGETS)).onHit(h -> flash[h.entityId()] = FLASH_TICKS);
             worldRing = world == null ? null
-                    : grow().query(CgCollisionQuery::allEntities).onHit(h -> flashEntity(h.entity()));
+                    : grow().query(CgCollisionQuery::allEntities).onHit(h -> flashEntity(h.entityId()));
         }
         ring.tick(props, ticks);
         if (worldRing != null && world != null) worldRing.tick(world, ticks);

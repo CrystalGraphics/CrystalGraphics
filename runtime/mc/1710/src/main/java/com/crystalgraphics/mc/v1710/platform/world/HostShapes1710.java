@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgHostShapes;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.AxisAlignedBB;
 
@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * {@link CgHostShapes} over {@code AxisAlignedBB} and entities on Minecraft 1.7.10. Server-safe; provided beside
- * {@link LevelQueries1710}. A block's shape is the {@code List} of boxes its collision call fills; a box here is
+ * {@link Levels1710}. A block's shape is the {@code List} of boxes its collision call fills; a box here is
  * mutable, so nothing converted from one is kept.
  */
 public final class HostShapes1710 implements CgHostShapes {

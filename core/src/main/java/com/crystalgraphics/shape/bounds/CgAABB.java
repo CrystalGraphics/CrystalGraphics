@@ -1,8 +1,8 @@
 package com.crystalgraphics.shape.bounds;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgHostShapes;
 
 /**
  * An axis-aligned box, mutable and reused: the one bounds type for drawing, shapes and world queries. Hand out

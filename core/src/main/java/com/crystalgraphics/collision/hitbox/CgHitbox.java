@@ -6,7 +6,7 @@ import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgResizable;
@@ -753,13 +753,13 @@ public final class CgHitbox {
         int n = q.into(partHits);
         for (int i = 0; i < n; i++) {
             CgHit h = partHits.get(i);
-            if (!h.kind().isTerrain() && !hasTarget(h.parent())) nextTarget().set(h);
+            if (!h.kind().isTerrain() && !hasTarget(h.parentId())) nextTarget().set(h);
         }
     }
 
     private boolean hasTarget(int whole) {
         for (int i = 0; i < targetCount; i++) {
-            if (targets[i].parent() == whole) return true;
+            if (targets[i].parentId() == whole) return true;
         }
         return false;
     }
@@ -793,7 +793,7 @@ public final class CgHitbox {
         }
         for (int i = 0; i < targetCount && !stopped; i++) {
             CgHit h = targets[i];
-            int whole = h.parent();
+            int whole = h.parentId();
             if (zone && enters(whole) && onEnter != null && !silent) {
                 handed(h);
                 onEnter.accept(h);
@@ -818,8 +818,8 @@ public final class CgHitbox {
 
     /** A hit about to reach a listener: what it damages or moves is the host's again for the rest of the batch. */
     private void handed(CgHit h) {
-        world.changed(h.entity());
-        if (h.parent() != h.entity()) world.changed(h.parent());
+        world.changed(h.entityId());
+        if (h.parentId() != h.entityId()) world.changed(h.parentId());
     }
 
     /** Marks {@code whole} inside this tick; whether it was outside before. */

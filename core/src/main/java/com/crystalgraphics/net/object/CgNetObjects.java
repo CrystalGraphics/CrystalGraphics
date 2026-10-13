@@ -26,16 +26,17 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.serialization.CgBinaryFormat;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * The networked objects of this process: the server's, and what each connection's client sees. {@link CgNetwork} drives
@@ -309,8 +310,7 @@ public final class CgNetObjects {
         started = true;
         startedServer = server;
         tick = CgNetwork.serverTicks();
-        CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
-        Path world = players.saveDirectory(server);
+        Path world = CgWorldQueries.saveDirectory(server);
         if (world == null) return;
         for (CgNetType type : CgNetType.REGISTERED) if (type.persisted) load(type, world);
     }
@@ -319,7 +319,7 @@ public final class CgNetObjects {
     static void declaredLate(CgNetType type) {
         if (!started) return;
         LOGGER.warn("[cg-net] {} was declared after the server started; declare types at mod init", type.name);
-        Path world = CgPlatform.get(CgServerPlayers.SERVICE).saveDirectory(startedServer);
+        Path world = CgWorldQueries.saveDirectory(startedServer);
         if (world != null) load(type, world);
     }
 
@@ -347,10 +347,9 @@ public final class CgNetObjects {
         }
         if (!LIVE.isEmpty() || !FIRED.isEmpty() || refusals) {
             refusals = false;
-            CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
-            for (int v = 0; v < VIEWERS.size(); v++) VIEWERS.get(v).refresh(players, AT);
-            sendLive(players);
-            sendFired(players);
+            for (int v = 0; v < VIEWERS.size(); v++) VIEWERS.get(v).refresh(AT);
+            sendLive();
+            sendFired();
             for (int v = 0; v < VIEWERS.size(); v++) VIEWERS.get(v).flush();
         }
         trace(types);
@@ -394,13 +393,13 @@ public final class CgNetObjects {
     }
 
     /** Follows anchors, runs server behaviours, then sends: a behaviour's changes leave the tick it makes them. */
-    private static void sendLive(CgServerPlayers players) {
+    private static void sendLive() {
         int followed = LIVE.size();
         for (int i = 0; i < followed; i++) {
             CgNetObject obj = LIVE.get(i);
             if (obj.spawnTick < 0) obj.spawnTick = tick;
             if (obj.isLive() && obj.lifetime > 0 && tick - obj.spawnTick >= obj.lifetime) obj.despawn();
-            if (obj.isLive() || obj.isStopping()) follow(obj, players);
+            if (obj.isLive() || obj.isStopping()) follow(obj);
         }
         for (int i = 0; i < followed; i++) {
             CgNetObject obj = LIVE.get(i);
@@ -414,7 +413,7 @@ public final class CgNetObjects {
             if (i >= followed) {
                 // Started by a behaviour this tick.
                 if (obj.spawnTick < 0) obj.spawnTick = tick;
-                if (obj.isLive()) follow(obj, players);
+                if (obj.isLive()) follow(obj);
             }
             if (obj.isEnding()) {
                 for (int v = 0; v < VIEWERS.size(); v++) {
@@ -433,21 +432,21 @@ public final class CgNetObjects {
                 continue;
             }
             if (obj.anyDirty || obj.moved) markUnsaved(obj.type);
-            send(obj, players);
+            send(obj);
             obj.clearDirty();
             LIVE.set(keep++, obj);
         }
         for (int i = LIVE.size() - 1; i >= keep; i--) LIVE.remove(i);
     }
 
-    private static void sendFired(CgServerPlayers players) {
+    private static void sendFired() {
         for (int i = 0; i < FIRED.size(); i++) {
             CgNetObject obj = FIRED.get(i);
             obj.spawnTick = tick;
-            follow(obj, players);
+            follow(obj);
             if (!obj.isLive()) continue;
             beginObject();
-            audience(obj, players);
+            audience(obj);
             obj.type.tickLive++;
             for (int v = 0; v < VIEWERS.size(); v++) {
                 Viewer viewer = VIEWERS.get(v);
@@ -462,10 +461,10 @@ public final class CgNetObjects {
         FIRED.clear();
     }
 
-    private static void send(CgNetObject obj, CgServerPlayers players) {
+    private static void send(CgNetObject obj) {
         beginObject();
         boolean stopping = obj.isStopping();
-        if (!stopping) audience(obj, players);
+        if (!stopping) audience(obj);
         obj.type.tickLive++;
         for (int v = 0; v < VIEWERS.size(); v++) {
             Viewer viewer = VIEWERS.get(v);
@@ -570,15 +569,15 @@ public final class CgNetObjects {
      * Follows an object's anchor: an entity's place, a player's entity and dimension, whether a chunk is loaded. Ends
      * one whose holder has gone.
      */
-    private static void follow(CgNetObject obj, CgServerPlayers players) {
+    private static void follow(CgNetObject obj) {
         switch (obj.kind) {
             case ENTITY: {
                 Object entity = obj.holder;
-                if (!players.alive(entity) || !obj.dimension.equals(players.dimension(entity))) {
+                if (!CgEntityQueries.alive(entity) || !obj.dimension.equals(CgWorldQueries.dimension(entity))) {
                     obj.despawn();
                     return;
                 }
-                if (players.position(entity, AT)) obj.place(AT[0], AT[1], AT[2]);
+                if (CgEntityQueries.position(entity, AT)) obj.place(AT[0], AT[1], AT[2]);
                 return;
             }
             case PLAYER: {
@@ -588,50 +587,50 @@ public final class CgNetObjects {
                     obj.kill();
                     return;
                 }
-                if (player != null && !obj.type.copyOnDeath && !players.alive(player)) {
+                if (player != null && !obj.type.copyOnDeath && !CgEntityQueries.alive(player)) {
                     obj.despawn();
                     return;
                 }
                 obj.holder = player;
                 obj.dormant = player == null;
                 if (player == null) return;
-                String dimension = players.dimension(player);
-                int entityId = players.entityId(player);
+                String dimension = CgWorldQueries.dimension(player);
+                int entityId = CgEntityQueries.idOf(player);
                 if (entityId != obj.entityId || !dimension.equals(obj.dimension)) {
                     obj.entityId = entityId;
                     obj.dimension = dimension;
                     obj.moved = true;
                 }
-                if (players.position(player, AT)) obj.place(AT[0], AT[1], AT[2]);
+                if (CgEntityQueries.position(player, AT)) obj.place(AT[0], AT[1], AT[2]);
                 return;
             }
             case CHUNK:
-                if (obj.holder == null) obj.holder = players.level(startedServer, obj.dimension);
-                obj.dormant = obj.holder == null || !players.chunkLoaded(obj.holder, obj.chunkX, obj.chunkZ);
+                if (obj.holder == null) obj.holder = CgWorldQueries.level(startedServer, obj.dimension);
+                obj.dormant = obj.holder == null || !CgWorldQueries.chunkLoaded(obj.holder, obj.chunkX, obj.chunkZ);
                 return;
             default:
         }
     }
 
     /** Marks the viewers the host says have an object's entity or chunk loaded, for {@link #sees}. */
-    private static void audience(CgNetObject obj, CgServerPlayers players) {
+    private static void audience(CgNetObject obj) {
         if (obj.dormant || obj.type.visibleTo != null) return;
         switch (obj.kind) {
             case ENTITY: {
                 generation++;
-                players.trackingEntity(obj.holder, MARK);
-                UUID self = players.playerId(obj.holder);
+                CgPlayers.trackingEntity(obj.holder, MARK);
+                UUID self = CgPlayers.idOf(obj.holder);
                 if (self != null) MARK.accept(self);
                 return;
             }
             case PLAYER:
                 if (!obj.type.visibleToTrackers || obj.holder == null) return;
                 generation++;
-                players.trackingEntity(obj.holder, MARK);
+                CgPlayers.trackingEntity(obj.holder, MARK);
                 return;
             case CHUNK:
                 generation++;
-                players.trackingChunk(obj.holder, obj.chunkX, obj.chunkZ, MARK);
+                CgPlayers.trackingChunk(obj.holder, obj.chunkX, obj.chunkZ, MARK);
                 return;
             default:
         }
@@ -834,12 +833,11 @@ public final class CgNetObjects {
         }
         CgNetType type = CgNetType.named(name);
         CgNetObject obj = null;
-        CgServerPlayers players = CgPlatform.get(CgServerPlayers.SERVICE);
         Object player = viewer.peer.player();
-        String dimension = player == null ? null : players.dimension(player);
+        String dimension = player == null ? null : CgWorldQueries.dimension(player);
         if (type != null && type.acceptPredictions != null && !type.perHolder && dimension != null
                 && viewer.speaks(type) && viewer.take(type, PREDICTIONS_PER_SECOND, PREDICTIONS_PER_SECOND)) {
-            CgAnchor anchor = resolve(players, player, dimension, kind, x, y, z, entityId);
+            CgAnchor anchor = resolve(player, dimension, kind, x, y, z, entityId);
             if (anchor != null) obj = type.create(anchor);
         }
         int count = in.readVarInt();
@@ -879,15 +877,15 @@ public final class CgNetObjects {
 
     /** A predicted anchor in the predicting player's dimension; null where the server cannot find it. */
     @Nullable
-    private static CgAnchor resolve(CgServerPlayers players, Object player, String dimension, int kind, double x, double y,
+    private static CgAnchor resolve(Object player, String dimension, int kind, double x, double y,
                                     double z, int entityId) {
         if (kind == CgAnchor.Kind.POINT.ordinal()) return CgAnchor.at(dimension, x, y, z);
         if (kind == CgAnchor.Kind.DIMENSION.ordinal()) return CgAnchor.dimension(dimension);
         if (kind == CgAnchor.Kind.GLOBAL.ordinal()) return CgAnchor.global();
         if (kind != CgAnchor.Kind.ENTITY.ordinal()) return null;
-        Object level = players.level(player, dimension);
-        Object entity = level == null ? null : players.entity(level, entityId);
-        return entity == null || !players.alive(entity) ? null : CgAnchor.on(entity);
+        Object level = CgWorldQueries.level(player, dimension);
+        Object entity = level == null ? null : CgEntityQueries.of(level).entity(entityId);
+        return entity == null || !CgEntityQueries.alive(entity) ? null : CgAnchor.on(entity);
     }
 
     /** One player's place and frame. Server thread. */
@@ -922,7 +920,7 @@ public final class CgNetObjects {
             this.slot = slot;
         }
 
-        void refresh(CgServerPlayers players, double[] at) {
+        void refresh(double[] at) {
             frame.clear();
             for (int r = 0; r < refusedCount; r++) {
                 begin();
@@ -945,8 +943,8 @@ public final class CgNetObjects {
             spawned = 0;
             ready = !connection.isClosed() && CgNetwork.helloKnown(connection);
             Object player = peer.player();
-            if (player != null && players.position(player, at)) {
-                dimension = players.dimension(player);
+            if (player != null && CgEntityQueries.position(player, at)) {
+                dimension = CgWorldQueries.dimension(player);
                 x = at[0];
                 y = at[1];
                 z = at[2];
@@ -1130,7 +1128,7 @@ public final class CgNetObjects {
     }
 
     private static void save() {
-        Path world = CgPlatform.get(CgServerPlayers.SERVICE).saveDirectory(startedServer);
+        Path world = CgWorldQueries.saveDirectory(startedServer);
         if (world == null) return;
         for (CgNetType type : CgNetType.REGISTERED) {
             if (!type.persisted || type.index >= unsaved.length || !unsaved[type.index]) continue;

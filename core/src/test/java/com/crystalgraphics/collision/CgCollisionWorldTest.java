@@ -5,7 +5,7 @@ import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -17,17 +17,17 @@ import org.junit.Test;
 import java.lang.management.ManagementFactory;
 import java.util.Random;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.ALIVE;
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_ITEM;
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_OTHER;
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_PLAYER;
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_VEHICLE;
-import static com.crystalgraphics.platform.service.CgEntityQuery.LIVING;
-import static com.crystalgraphics.platform.service.CgEntityQuery.PICKABLE;
-import static com.crystalgraphics.platform.service.CgEntityQuery.PLAYER;
-import static com.crystalgraphics.platform.service.CgEntityQuery.SOLID;
-import static com.crystalgraphics.platform.service.CgEntityQuery.SPECTATOR;
+import static com.crystalgraphics.platform.world.CgEntityQuery.ALIVE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_ITEM;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_OTHER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_PLAYER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_VEHICLE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.LIVING;
+import static com.crystalgraphics.platform.world.CgEntityQuery.PICKABLE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.PLAYER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.SOLID;
+import static com.crystalgraphics.platform.world.CgEntityQuery.SPECTATOR;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -76,7 +76,7 @@ public class CgCollisionWorldTest {
     private int[] ids(CgCollisionQuery q) {
         int n = q.into(hits);
         int[] out = new int[n];
-        for (int i = 0; i < n; i++) out[i] = hits.get(i).entity();
+        for (int i = 0; i < n; i++) out[i] = hits.get(i).entityId();
         return out;
     }
 
@@ -86,7 +86,7 @@ public class CgCollisionWorldTest {
     public void aBlastFindsWhatAProjectileWouldNearestFirst() {
         assertArrayEquals(new int[]{1, 2, 31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40)));
         assertEquals(1.7, hits.get(0).distance(), 1e-9);
-        assertEquals("the dragon's part, its dragon the parent", 30, hits.get(2).parent());
+        assertEquals("the dragon's part, its dragon the parent", 30, hits.get(2).parentId());
         assertEquals(2 * Math.sqrt(2), hits.get(2).distance(), 1e-9);
         CgHit first = hits.get(0);
         assertEquals("the normal points at the target", 1, first.normalX(), 1e-9);
@@ -282,7 +282,7 @@ public class CgCollisionWorldTest {
         world.overlap(CgSphere.of(3)).at(15.5, 0.5, 0.5).exposure().into(hits);
         assertTrue(hits.isEmpty());
         world.overlap(CgSphere.of(11)).at(15.5, 0.5, 0.5).exposure().into(hits);
-        assertEquals(60, hits.get(0).entity());
+        assertEquals(60, hits.get(0).entityId());
         assertEquals(0.4f, hits.get(0).exposure(), 1e-6f);
     }
 
@@ -300,7 +300,7 @@ public class CgCollisionWorldTest {
                     ids(arena.overlap(CgSphere.of(1)).at(0, 0, 0)));
             assertEquals(0.5, hits.get(0).distance(), 1e-9);
             assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
-            assertEquals(3, hit.entity());
+            assertEquals(3, hit.entityId());
             assertEquals(CgHit.Kind.HITBOX, hit.kind());
             assertEquals(6.5, hit.distance(), 1e-9);
             assertEquals("toward the target", 1, hit.normalX(), 1e-9);
@@ -308,7 +308,7 @@ public class CgCollisionWorldTest {
             assertEquals(6, hit.distance(), 1e-6);
             three.pose(pose.at(-3, 5, 0)).tick(arena, 1);
             assertTrue(arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).first(hit));
-            assertEquals(1, hit.entity());
+            assertEquals(1, hit.entityId());
             one.stop();
             assertFalse("a stopped one is met no more", arena.ray().at(-10, 0, 0).along(1, 0, 0, 20).any());
         } finally {

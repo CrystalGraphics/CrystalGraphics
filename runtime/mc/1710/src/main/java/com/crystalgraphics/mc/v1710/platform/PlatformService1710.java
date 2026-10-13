@@ -1,29 +1,33 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
+import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
+import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
+import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
+import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
 import com.crystalgraphics.mc.v1710.platform.service.*;
 import cpw.mods.fml.common.FMLCommonHandler;
-import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
-import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
-import com.crystalgraphics.mc.v1710.platform.gl.GLBackend1710;
-import com.crystalgraphics.lwjgl2.Lwjgl2InputService;
-import com.crystalgraphics.lwjgl2.Lwjgl2GLContext;
 
+import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
+import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
+import com.crystalgraphics.mc.v1710.platform.world.Client1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
+import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
+import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.CgService;
-import com.crystalgraphics.platform.service.*;
 import com.crystalgraphics.platform.gl.*;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
 import com.crystalgraphics.platform.gl.state.CgGlState;
-import com.crystalgraphics.mc.v1710.platform.state.AngelicaStateProvider;
-import com.crystalgraphics.mc.v1710.platform.state.RawDriverProvider1710;
-import com.crystalgraphics.mc.v1710.platform.world.EntityQuery1710;
-import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
-import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
-import com.crystalgraphics.mc.v1710.platform.world.HostDebug1710;
-import com.crystalgraphics.mc.v1710.platform.world.WorldQuery1710;
-import com.crystalgraphics.mc.v1710.platform.world.WorldSound1710;
-import com.crystalgraphics.mc.v1710.platform.world.WorldStimulus1710;
+import com.crystalgraphics.platform.service.*;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgHostDebug;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldSound;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 
 /**
  * Complete MC 1.7.10 platform bundle. Implements {@link CgPlatformService} by composing
@@ -128,9 +132,8 @@ public final class PlatformService1710 implements CgPlatformService {
         // server that never fills it is the supported case rather than a degraded one.
         if (FMLCommonHandler.instance().getSide().isClient()) {
             CgPlatform.provide(CgCursorService.SERVICE, new Lwjgl2CursorService());
-            // The world slots, client only for the same reason.
-            CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQuery1710());
-            CgPlatform.provide(CgEntityQuery.SERVICE, new EntityQuery1710());
+            // The client's levels and player, client only for the same reason.
+            Client1710.install();
             CgPlatform.provide(CgHostCamera.SERVICE, new HostCamera1710());
             CgPlatform.provide(CgHostDebug.SERVICE, new HostDebug1710());
             CgPlatform.provide(CgWorldSound.SERVICE, new WorldSound1710());

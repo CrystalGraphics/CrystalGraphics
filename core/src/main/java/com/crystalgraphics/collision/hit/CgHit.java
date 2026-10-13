@@ -2,20 +2,22 @@ package com.crystalgraphics.collision.hit;
 
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
 import javax.annotation.Nullable;
 
 /**
  * One thing a query met: an entity or a block, where, and how far from the query. A visitor's hit is the query's own,
- * valid during the call; {@link CgCollisionQuery#first} copies into one you hold.
+ * valid during the call; {@link CgCollisionQuery#first} copies into one you hold. An entity is named by its network id
+ * ({@link #entityId()}) and handed out as the host's own ({@link #entity()}).
  *
  * <pre>{@code
- * world.overlap(BLAST).at(x, y, z).forEach(h -> damage(h.entity(), 10f * h.falloff(2, 6)));
+ * world.overlap(BLAST).at(x, y, z).forEach(h -> damage(h.entity(), 10f * h.falloff(2, 6)));   // damage(Entity, float)
  *
  * private final CgHit hit = new CgHit();                        // a field, reused
  * if (world.ray().at(eyeX, eyeY, eyeZ).along(lookX, lookY, lookZ, 64).blocksToo().first(hit)) {
- *     if (hit.entity() >= 0) strike(hit.entity());
+ *     if (hit.entityId() >= 0) strike(hit.entity());
  *     else if (hit.kind() == CgHit.Kind.BLOCK) chip(hit.blockX(), hit.blockY(), hit.blockZ());
  * }
  * }</pre>
@@ -26,18 +28,20 @@ import javax.annotation.Nullable;
  *   <li>For an overlap the point is the target's nearest to the query's origin and the distance is to it, 0 when the
  *       origin is inside; for a cast or a ray, where it was first touched and how far the query travelled.</li>
  *   <li>A multipart entity is hit once: {@link #entity()} is its nearest part, {@link #parent()} the whole.</li>
+ *   <li>Ids are what crosses threads and the network; an entity object is asked on the hit's world's thread.</li>
  * </ul>
  *
  * Filled by hand, as an effect reports where it burst or a hit is read back from the network: where, then what.
  *
  * <pre>{@code
  * hit(burst.setPoint(bx, by, bz, PART_BURST));                     // nothing there: a point
- * hit(struck.setPoint(x, y, z, PART_BOLT).setEntity(id, id));       // an entity met at a point
+ * hit(struck.setPoint(x, y, z, PART_BOLT).setEntity(id, id).from(entities));   // an entity met at a point
  * hit.setPlace(x, y, z, nx, ny, nz, distance, fraction);            // where alone, as a query writes it
  * }</pre>
  *
  * <ul>
  *   <li>{@link #setPoint} clears what was met and the normal; a {@code set} of what was met keeps the place.</li>
+ *   <li>{@link #from} after the {@code set}: the setter clears it.</li>
  * </ul>
  */
 public final class CgHit {
@@ -91,19 +95,52 @@ public final class CgHit {
     private CgHitPart part;
     private CgHitbox hitbox;
     private CgHitPart hitboxPart;
+    private CgEntityQuery from = CgEntityQuery.NONE;
 
     public Kind kind() {
         return kind;
     }
 
-    /** The entity met, a part of a multipart one included, or the owner of the hitbox met; -1 for a block. */
-    public int entity() {
+    /** The network id of the entity met, a part of a multipart one included, or the hitbox's owner; -1 for a block. */
+    public int entityId() {
         return entity;
     }
 
-    /** The whole entity: the Ender Dragon for one of its parts, else {@link #entity()}; -1 for a block. */
-    public int parent() {
+    /** The whole entity's id: the Ender Dragon's for one of its parts, else {@link #entityId()}; -1 for a block. */
+    public int parentId() {
         return parent;
+    }
+
+    /**
+     * The host's entity met ({@code Entity}, cast where it is asked), found through the world the hit came from; null
+     * for a block, or an entity gone since. Asked on that world's thread.
+     *
+     * <pre>{@code
+     * world.overlap(BLAST).at(x, y, z).living().forEach(h -> {
+     *     LivingEntity mob = h.entity();
+     *     if (mob != null) mob.hurt(level.damageSources().magic(), 10f * h.falloff(2, 6));
+     * });
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A hit from a snapshot throws, as every host object asked off the level's thread does: keep
+     *       {@link #entityId()} and look it up on that thread.</li>
+     *   <li>A hit filled by hand resolves only once {@link #from} names its world.</li>
+     * </ul>
+     */
+    public <V> V entity() {
+        return entity < 0 ? null : from.entity(entity);
+    }
+
+    /** The host's whole entity: the Ender Dragon for one of its parts, else {@link #entity()}. */
+    public <V> V parent() {
+        return parent < 0 ? null : from.entity(parent);
+    }
+
+    /** The entities its ids are of, which {@link #entity()} asks; reset by every setter of what was met. */
+    public CgHit from(CgEntityQuery entities) {
+        from = entities;
+        return this;
     }
 
     /** The hittable hitbox met; null for any other kind, and for a hit that crossed the network. */
@@ -286,6 +323,7 @@ public final class CgHit {
         fluid = CgWorldQuery.FLUID_NONE;
         hitbox = null;
         hitboxPart = null;
+        from = CgEntityQuery.NONE;
     }
 
     /** Copies {@code o} into this: a visitor's hit kept past the call. */
@@ -309,6 +347,7 @@ public final class CgHit {
         part = o.part;
         hitbox = o.hitbox;
         hitboxPart = o.hitboxPart;
+        from = o.from;
         return this;
     }
 

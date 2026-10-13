@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Animal;
@@ -25,7 +25,7 @@ import net.minecraft.world.phys.Vec3;
 *///?} elif >=1.14 {
 import net.minecraft.world.entity.boss.EnderDragonPart;
 //?}
-//? if >=1.17 {
+//? if >=1.14 {
 import net.minecraft.server.level.ServerLevel;
 //?}
 //? if >=1.19.3 {
@@ -36,11 +36,12 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
 
 /**
- * {@link CgEntityQuery} over one level, 1.13.2 to 26.3, a server's included. Server-safe; {@link LevelQueriesModern}
+ * {@link CgEntityQuery} over one level, 1.13.2 to 26.3, a server's included. Server-safe; {@link LevelsModern}
  * hands one out per level, and the client's {@link EntityQueryModern} extends it with its local and camera entity. The
  * level's thread.
  *
@@ -96,7 +97,32 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         return -1;
     }
 
-    Entity entity(int id) {
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V> V entity(int id) {
+        return (V) find(id);
+    }
+
+    /**
+     * The entity with this UUID in its level: Minecraft's own lookup on a 1.14.3+ server and on any 1.21.5+ level; a
+     * client before 1.21.5 is {@link EntityQueryModern}'s. 1.13.2 answers null: its server level is unmapped.
+     */
+    @SuppressWarnings("unchecked")
+    @Override
+    public <V> V entity(UUID id) {
+        Level level = level();
+        if (level == null || id == null) return null;
+        //? if >=1.21.5 {
+        /*return (V) level.getEntity(id);
+        *///?} elif >=1.14 {
+        return level instanceof ServerLevel ? (V) ((ServerLevel) level).getEntity(id) : null;
+        //?} else {
+        /*return null;
+        *///?}
+    }
+
+    /** The entity or part with network id {@code id} in its level; null for none. */
+    Entity find(int id) {
         Level level = level();
         if (level == null || id < 0) return null;
         Entity e = level.getEntity(id);
@@ -144,7 +170,7 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     @Override
     public boolean pose(int id, float partialTick, double[] out) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return false;
         poseOf(e, partialTick, out);
         return true;
@@ -153,7 +179,7 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     /** Every answer at once, from one look-up: what a snapshot's capture reads for each of thousands. */
     @Override
     public int row(int id, float partialTick, int[] facts, CgBoxSink box, double[] pose) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) {
             facts[ROW_FLAGS] = 0;
             facts[ROW_KIND] = KIND_OTHER;
@@ -223,7 +249,7 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     @Override
     public boolean box(int id, float partialTick, CgBoxSink out) {
-        Entity e = entity(id);
+        Entity e = find(id);
         if (e == null) return false;
         boxOf(e, partialTick, out);
         return true;
@@ -244,19 +270,19 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     @Override
     public int parent(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         return e == null ? -1 : parentOf(e).getId();
     }
 
     @Override
     public int rootVehicle(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         return e == null ? -1 : e.getRootVehicle().getId();
     }
 
     @Override
     public int flags(int id) {
-        Entity e = entity(id);
+        Entity e = find(id);
         return e == null ? 0 : flagsOf(e);
     }
 
@@ -311,7 +337,7 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     @Override
     public int kind(int id) {
-        return kindOf(entity(id));
+        return kindOf(find(id));
     }
 
     private static int kindOf(Entity e) {

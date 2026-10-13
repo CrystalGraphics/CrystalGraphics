@@ -1,7 +1,9 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.After;
 import org.junit.Test;
 
@@ -36,7 +38,7 @@ public class CgVfxGroundTest {
 
     @After
     public void noWorld() {
-        CgPlatform.provide(CgWorldQuery.SERVICE, CgWorldQuery.NONE);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, CgEntityQuery.NONE));
     }
 
     /** The field, centred on a burst at world (0.5, -59.5, 0.5), seen from an effect whose origin is (0, -50, 0). */
@@ -46,7 +48,7 @@ public class CgVfxGroundTest {
 
     @Test
     public void aColumnIsScannedOnceAParticleAsksAndThenAnswered() {
-        CgPlatform.provide(CgWorldQuery.SERVICE, CLIFF);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CLIFF, CgEntityQuery.NONE));
         CgVfxGround ground = burst();
         ground.fill(CgVfxGround.FILL_PER_TICK);
         assertTrue("not scanned yet: no floor, never the fixed height", Float.isNaN(ground.floor(2.5f, -5f, -5f, 0.5f, -3f)));
@@ -56,7 +58,7 @@ public class CgVfxGroundTest {
 
     @Test
     public void debrisOverTheCliffFallsIntoTheRavine() {
-        CgPlatform.provide(CgWorldQuery.SERVICE, CLIFF);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CLIFF, CgEntityQuery.NONE));
         CgVfxGround ground = burst();
         ground.fill(1);
         ground.floor(8.5f, -5f, -5f, 0.5f, Float.NaN);
@@ -66,7 +68,7 @@ public class CgVfxGroundTest {
 
     @Test
     public void aParticleCannotTunnelThroughTheFloorInOneTick() {
-        CgPlatform.provide(CgWorldQuery.SERVICE, CLIFF);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CLIFF, CgEntityQuery.NONE));
         CgVfxGround ground = burst();
         ground.fill(1);
         ground.floor(2.5f, -5f, -5f, 0.5f, Float.NaN);
@@ -84,7 +86,7 @@ public class CgVfxGroundTest {
 
     @Test
     public void particlesLandOnTheRavineFloorThroughTheGroundModule() {
-        CgPlatform.provide(CgWorldQuery.SERVICE, CLIFF);
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CLIFF, CgEntityQuery.NONE));
         CgVfxEmitter debris = CgVfxEmitter.builder("debris").capacity(1).burst(0f, 1).life(60f, 60f)
                 .launch(0f, 0f, 1f).speed(0f, 0f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0f, 1f, 5f).radius(0f)).build();

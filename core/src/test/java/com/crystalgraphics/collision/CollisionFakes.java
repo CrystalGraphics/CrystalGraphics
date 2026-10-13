@@ -1,24 +1,55 @@
 package com.crystalgraphics.collision;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.ALIVE;
-import static com.crystalgraphics.platform.service.CgEntityQuery.LIVING;
-import static com.crystalgraphics.platform.service.CgEntityQuery.PICKABLE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.ALIVE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.LIVING;
+import static com.crystalgraphics.platform.world.CgEntityQuery.PICKABLE;
 
 /** A world's blocks and entities for collision tests, answered from code. */
 public final class CollisionFakes {
 
     private CollisionFakes() {
+    }
+
+    /** Levels answering nothing: a test overrides what it fakes, {@link #world} and {@link #entities} most often. */
+    public static class Levels implements CgLevels {
+        @Override public CgWorldQuery world(Object level) { return CgWorldQuery.NONE; }
+        @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
+        @Override public CgWorldQuery clientWorld() { return CgWorldQuery.NONE; }
+        @Override public CgEntityQuery clientEntities() { return CgEntityQuery.NONE; }
+        @Override public Object clientLevel() { return null; }
+        @Override public String dimension(Object handle) { return null; }
+        @Override public Object level(Object handle, String dimension) { return null; }
+        @Override public boolean chunkLoaded(Object level, int chunkX, int chunkZ) { return false; }
+        @Override public Path saveDirectory(Object handle) { return null; }
+        @Override public int entityId(Object entity) { return -1; }
+        @Override public boolean position(Object entity, double[] out) { return false; }
+        @Override public boolean alive(Object entity) { return false; }
+    }
+
+    /** Players answering nobody: a test overrides what it fakes. */
+    public static class Players implements CgPlayerQuery {
+        @Override public UUID playerId(Object entity) { return null; }
+        @Override public <V> V player(UUID id) { return null; }
+        @Override public <V> V player(int entityId) { return null; }
+        @Override public <V> V localPlayer() { return null; }
+        @Override public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) { }
+        @Override public void trackingEntity(Object entity, Consumer<UUID> out) { }
     }
 
     /** Ground below y = 0. Along z = 5: a stair at x 0, a slab at 2, a fence at 4, water at 6. A wall at x = 24. */
@@ -91,6 +122,13 @@ public final class CollisionFakes {
             grown[ids.length] = id;
             ids = grown;
             return this;
+        }
+
+        /** A known entity is the text {@code "mob <id>"}: what a host's own object stands for here. */
+        @SuppressWarnings("unchecked")
+        @Override
+        public <V> V entity(int id) {
+            return id >= 0 && id < rows.size() && rows.get(id) != null ? (V) ("mob " + id) : null;
         }
 
         public Table mob(int id, double x, double z, int kind) {

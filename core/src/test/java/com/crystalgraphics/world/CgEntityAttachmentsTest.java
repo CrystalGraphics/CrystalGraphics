@@ -1,9 +1,11 @@
 package com.crystalgraphics.world;
 
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgModelSpace;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgModelSpace;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.Test;
@@ -110,7 +112,7 @@ public class CgEntityAttachmentsTest {
             base.get(b);
             return true;
         });
-        CgPlatform.provide(CgEntityQuery.SERVICE, new OnePlayer(player(0, 0)));
+        CgPlatform.provide(CgLevels.SERVICE, CgLevels.single(CgWorldQuery.NONE, new OnePlayer(player(0, 0))));
         try {
             int grip = CgEntityAttachments.declare("test:grip", CgEntityAttachments.RIGHT_HAND);
             Matrix4f pose = new Matrix4f(base).translate((float) (10 - camera[0]), (float) (64 - camera[1]), (float) (-5 - camera[2]))
@@ -127,7 +129,7 @@ public class CgEntityAttachmentsTest {
             assertEquals("drawn elsewhere: dropped", 64 + 1.62, CgEntityAttachments.point(7, far, 0f, player(0, 0), at)[1], 1e-9);
         } finally {
             CgPlatform.provide(CgModelSpace.SERVICE, null);
-            CgPlatform.provide(CgEntityQuery.SERVICE, null);
+            CgPlatform.provide(CgLevels.SERVICE, null);
         }
     }
 

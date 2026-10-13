@@ -2,12 +2,12 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
+import com.crystalgraphics.world.CgWorldQueries;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -97,7 +97,7 @@ public final class CgVfx {
 
     /** Clears the world's system when the level changed; when there is none any more, what waits to play too. */
     private static void followLevel() {
-        int now = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch();
+        int now = CgWorldQueries.client().levelEpoch();
         if (now == epoch) return;
         epoch = now;
         world.clear();
@@ -108,6 +108,6 @@ public final class CgVfx {
 
     /** Whether a play into the world system can ever start: not on a dedicated server, which has no context. */
     static boolean mayPlay() {
-        return CgPlatform.get(CgWorldQuery.SERVICE) != CgWorldQuery.NONE || CgGraphicsLifecycle.isInitialized();
+        return CgWorldQueries.client() != CgWorldQuery.NONE || CgGraphicsLifecycle.isInitialized();
     }
 }

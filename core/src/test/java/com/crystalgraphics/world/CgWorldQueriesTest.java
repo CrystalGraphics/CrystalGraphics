@@ -1,6 +1,6 @@
 package com.crystalgraphics.world;
 
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

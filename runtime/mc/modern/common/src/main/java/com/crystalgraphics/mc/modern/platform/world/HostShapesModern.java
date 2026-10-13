@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgHostShapes;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgHostShapes;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * {@link CgHostShapes} over {@code AABB}, {@code VoxelShape} and entities, 1.13.2 to 26.3. Server-safe; provided
- * beside {@link LevelQueriesModern}. A block shape's boxes come from {@code toAabbs()}, a list per call, which
+ * beside {@link LevelsModern}. A block shape's boxes come from {@code toAabbs()}, a list per call, which
  * {@code CgShape.of} pays once per shape.
  */
 public final class HostShapesModern implements CgHostShapes {

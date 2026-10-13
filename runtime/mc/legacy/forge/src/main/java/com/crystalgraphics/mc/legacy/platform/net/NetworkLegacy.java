@@ -6,14 +6,15 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.mc.legacy.platform.world.HostShapesLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.LevelQueriesLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.LevelsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.MirrorHostLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.PlayerQueryLegacy;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostShapes;
-import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgProcessExit;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -44,8 +45,8 @@ public final class NetworkLegacy {
         installed = true;
         CgNetwork.install(NetworkChannelLegacy.create(),
                 player -> player instanceof EntityPlayer ? idOf((EntityPlayer) player) : null);
-        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersLegacy());
-        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesLegacy());
+        CgPlatform.provide(CgLevels.SERVICE, LevelsLegacy.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryLegacy.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesLegacy());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostLegacy());
         // FML traps a mod's own Runtime.halt.

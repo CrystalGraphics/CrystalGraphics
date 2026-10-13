@@ -6,13 +6,12 @@ import com.crystalgraphics.collision.hit.CgSentHit;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfxAuthority;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -52,9 +51,8 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
         } finally {
             play.authoritative = false;
         }
-        CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
         Object level = play.obj.level();
-        if (levels.world(level) == CgWorldQuery.NONE && LEVELLESS.add(play.id())) {
+        if (CgWorldQueries.of(level) == CgWorldQuery.NONE && LEVELLESS.add(play.id())) {
             LOGGER.warn("[CgVfx] {}'s authority tests no world: at() was given a {}, neither a level nor an entity in one,"
                     + " so it strikes nothing", play.id(), play.level.getClass().getName());
         }

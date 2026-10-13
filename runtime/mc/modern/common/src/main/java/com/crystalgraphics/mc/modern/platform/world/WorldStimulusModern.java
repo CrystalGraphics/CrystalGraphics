@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldStimulus;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
 //? if >=1.14 {
 import net.minecraft.client.server.IntegratedServer;

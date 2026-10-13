@@ -12,14 +12,14 @@ import com.crystalgraphics.collision.mirror.CgLevelMirror;
 import com.crystalgraphics.collision.mirror.CgMirrorVersion;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.reply.CgReply;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgWorldQueries;
 
 import javax.annotation.Nullable;
 import java.lang.ref.WeakReference;
@@ -52,7 +52,7 @@ import java.util.Objects;
  * CgCollisionWorld arena = CgCollisionWorld.empty();
  * CgHitbox wall = CgHitbox.of(WALL).source(WALL_ID).hittable().passive();
  * wall.pose(pose.at(4, 0, 0)).tick(arena, 1);                   // placed, and met from now on
- * arena.ray().at(0, 1, 0).along(1, 0, 0, 10).first(hit);        // hit.entity() == WALL_ID
+ * arena.ray().at(0, 1, 0).along(1, 0, 0, 10).first(hit);        // hit.entityId() == WALL_ID
  * }</pre>
  *
  * Off the level's thread, a {@link #snapshot} or a {@link #watch}: the blocks and entities in a box as they stood at the
@@ -124,13 +124,12 @@ public class CgCollisionWorld {
     /** A level of the host's, a server's or a client's, with its entities where they are this tick. */
     public static CgCollisionWorld of(Object level) {
         refuseWorker("CgCollisionWorld.of(level)");
-        CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
-        CgWorldQuery w = levels.world(level);
+        CgWorldQuery w = CgWorldQueries.of(level);
         PerThread t = PER_THREAD.get();
         for (CgCollisionWorld known : t.levels) {
             if (known != null && known.world == w) return known;
         }
-        CgCollisionWorld made = new CgCollisionWorld(w, levels.entities(level), 1f);
+        CgCollisionWorld made = new CgCollisionWorld(w, CgEntityQueries.of(level), 1f);
         made.owner = Thread.currentThread();
         made.level = new WeakReference<>(level);
         t.levels[t.nextLevel] = made;
@@ -148,8 +147,8 @@ public class CgCollisionWorld {
             c.owner = Thread.currentThread();
             c.clientLevel = true;
         }
-        c.world = CgPlatform.get(CgWorldQuery.SERVICE);
-        c.entities = CgPlatform.get(CgEntityQuery.SERVICE);
+        c.world = CgWorldQueries.client();
+        c.entities = CgEntityQueries.client();
         c.partialTick = partialTick;
         return c;
     }
@@ -406,8 +405,8 @@ public class CgCollisionWorld {
 
     /** A hit about to reach user code: its entity, and the whole it is part of, are the host's again. */
     void handed(CgHit h) {
-        changed(h.entity());
-        if (h.parent() != h.entity()) changed(h.parent());
+        changed(h.entityId());
+        if (h.parentId() != h.entityId()) changed(h.parentId());
     }
 
     /** The cache of this thread's open batch, if it holds anything yet. */

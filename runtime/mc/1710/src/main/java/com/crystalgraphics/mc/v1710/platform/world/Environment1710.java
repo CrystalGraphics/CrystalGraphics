@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostView;
 import net.minecraft.client.Minecraft;

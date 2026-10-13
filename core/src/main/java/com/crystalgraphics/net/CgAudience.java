@@ -4,8 +4,9 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * Which players a server-side send reaches. Each answers profile ids; {@link CgMessage#send} turns them into
@@ -23,8 +24,8 @@ import com.crystalgraphics.platform.service.CgServerPlayers;
  *   <li>A level, entity or player is the loader's own object, passed as {@code Object}. Where a dimension is asked
  *       for, its id string ({@code "minecraft:overworld"}) serves as well.</li>
  *   <li>Evaluated at send time, on the server thread: build one once and send through it as often as needed.</li>
- *   <li>Everything but {@link #player}, {@link #all} and {@link #except} asks {@link CgServerPlayers}; where no host
- *       fills it they reach nobody.</li>
+ *   <li>Everything but {@link #player}, {@link #all} and {@link #except} asks the host's players ({@link CgPlayers})
+ *       and levels; where no host fills them they reach nobody.</li>
  * </ul>
  */
 @FunctionalInterface
@@ -48,12 +49,11 @@ public interface CgAudience {
     static CgAudience dimension(Object levelOrId) {
         Objects.requireNonNull(levelOrId, "levelOrId");
         return out -> {
-            CgServerPlayers players = players();
-            String dimension = dimensionOf(players, levelOrId);
+            String dimension = dimensionOf(levelOrId);
             if (dimension == null) return;
             CgNetwork.forEachPeer(peer -> {
                 Object player = peer.player();
-                if (player != null && dimension.equals(players.dimension(player))) out.accept(peer.id());
+                if (player != null && dimension.equals(CgWorldQueries.dimension(player))) out.accept(peer.id());
             });
         };
     }
@@ -63,13 +63,12 @@ public interface CgAudience {
         Objects.requireNonNull(levelOrId, "levelOrId");
         double limit = radius * radius;
         return out -> {
-            CgServerPlayers players = players();
-            String dimension = dimensionOf(players, levelOrId);
+            String dimension = dimensionOf(levelOrId);
             if (dimension == null) return;
             double[] at = new double[3];
             CgNetwork.forEachPeer(peer -> {
                 Object player = peer.player();
-                if (player == null || !dimension.equals(players.dimension(player)) || !players.position(player, at)) {
+                if (player == null || !dimension.equals(CgWorldQueries.dimension(player)) || !CgEntityQueries.position(player, at)) {
                     return;
                 }
                 double dx = at[0] - x, dy = at[1] - y, dz = at[2] - z;
@@ -81,24 +80,23 @@ public interface CgAudience {
     /** Every player whose client has {@code entity} loaded, never the entity itself. */
     static CgAudience tracking(Object entity) {
         Objects.requireNonNull(entity, "entity");
-        return out -> players().trackingEntity(entity, out);
+        return out -> CgPlayers.trackingEntity(entity, out);
     }
 
     /** {@link #tracking(Object)}, and the entity too when it is a player. */
     static CgAudience trackingAndSelf(Object entity) {
         Objects.requireNonNull(entity, "entity");
         return out -> {
-            CgServerPlayers players = players();
-            UUID self = players.playerId(entity);
+            UUID self = CgPlayers.idOf(entity);
             if (self != null) out.accept(self);
-            players.trackingEntity(entity, out);
+            CgPlayers.trackingEntity(entity, out);
         };
     }
 
     /** Every player whose client has chunk ({@code chunkX}, {@code chunkZ}) of {@code level} loaded. */
     static CgAudience tracking(Object level, int chunkX, int chunkZ) {
         Objects.requireNonNull(level, "level");
-        return out -> players().trackingChunk(level, chunkX, chunkZ, out);
+        return out -> CgPlayers.trackingChunk(level, chunkX, chunkZ, out);
     }
 
     /** {@code audience} without one player: the one who caused it and has already shown it. */
@@ -110,11 +108,7 @@ public interface CgAudience {
         });
     }
 
-    private static CgServerPlayers players() {
-        return CgPlatform.get(CgServerPlayers.SERVICE);
-    }
-
-    private static String dimensionOf(CgServerPlayers players, Object levelOrId) {
-        return levelOrId instanceof String ? (String) levelOrId : players.dimension(levelOrId);
+    private static String dimensionOf(Object levelOrId) {
+        return levelOrId instanceof String ? (String) levelOrId : CgWorldQueries.dimension(levelOrId);
     }
 }

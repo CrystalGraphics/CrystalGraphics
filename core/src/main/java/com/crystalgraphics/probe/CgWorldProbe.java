@@ -3,13 +3,12 @@ package com.crystalgraphics.probe;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgGameDirectory;
-import com.crystalgraphics.platform.service.CgHostCamera;
-import com.crystalgraphics.platform.service.CgWorldEvents;
-import com.crystalgraphics.platform.service.CgWorldQuery;
-import com.crystalgraphics.platform.service.CgWorldSound;
-import com.crystalgraphics.platform.service.CgWorldStimulus;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgHostCamera;
+import com.crystalgraphics.platform.world.CgWorldEvents;
+import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostTextures;
@@ -22,6 +21,9 @@ import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
+import com.crystalgraphics.world.CgCamera;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgSounds;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -107,7 +109,7 @@ public final class CgWorldProbe {
     private static void frame(CgStageFrame stage) {
         if (phase == Phase.DONE) return;
         CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
-        CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+        CgEntityQuery entities = CgEntityQueries.client();
         long now = System.nanoTime();
         switch (phase) {
             case WAITING:
@@ -131,7 +133,7 @@ public final class CgWorldProbe {
                 if (cameraStep == 0) {
                     checkTurn(host);
                     if (has(CgHostCamera.ROLL)) {
-                        CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, ROLL, 1f);
+                        CgCamera.offset(0f, 0f, 0f, 0f, 0f, ROLL, 1f);
                         cameraStep = 1;
                         cameraFrames = 0;
                         break;
@@ -139,7 +141,7 @@ public final class CgWorldProbe {
                 } else {
                     checkRoll(host);
                 }
-                if (cameraBits != 0) CgPlatform.get(CgHostCamera.SERVICE).offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
+                if (cameraBits != 0) CgCamera.offset(0f, 0f, 0f, 0f, 0f, 0f, 1f);
                 startEvents(now);
                 break;
             case EVENTS:
@@ -157,8 +159,8 @@ public final class CgWorldProbe {
     // ── The checks made on one frame ─────────────────────────────────────────────
 
     private static void staticChecks(CgHostFrame host) {
-        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
-        CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+        CgWorldQuery world = CgWorldQueries.client();
+        CgEntityQuery entities = CgEntityQueries.client();
         CgHostView view = host.view();
         CgHostEnvironment env = host.environment();
 
@@ -259,7 +261,7 @@ public final class CgWorldProbe {
 
         boolean played = true;
         try {
-            CgPlatform.get(CgWorldSound.SERVICE).play("minecraft:ui.button.click", px, py, pz, 0.2f, 1f);
+            CgSounds.play("minecraft:ui.button.click", px, py, pz, 0.2f, 1f);
         } catch (RuntimeException e) {
             played = false;
             LOGGER.warn("world probe sound threw", e);
@@ -324,8 +326,7 @@ public final class CgWorldProbe {
     // ── The camera offset ────────────────────────────────────────────────────────
 
     private static void startCamera(CgHostFrame host, long now) {
-        CgHostCamera camera = CgPlatform.get(CgHostCamera.SERVICE);
-        cameraBits = camera.capabilities();
+        cameraBits = CgCamera.capabilities();
         if (CgCameraShake.active()) {
             skip("camera", "a shake owns the camera");
             cameraBits = 0;
@@ -334,7 +335,7 @@ public final class CgWorldProbe {
         } else {
             baseFov = host.environment().fov();
             baseView.set(host.view().view());
-            camera.offset(0f, 0f, 0f, has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
+            CgCamera.offset(0f, 0f, 0f, has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f);
         }
         cameraStep = 0;
         cameraFrames = 0;
@@ -345,7 +346,7 @@ public final class CgWorldProbe {
     // whatever the player's pitch. A host may turn about the view's vertical or the world's; both pass.
     private static void checkTurn(CgHostFrame host) {
         if (cameraBits == 0) return;
-        int applied = CgPlatform.get(CgHostCamera.SERVICE).applied();
+        int applied = CgCamera.applied();
         if (has(CgHostCamera.FOV)) {
             float ratio = host.environment().fov() / baseFov;
             check("camera.fov", Math.abs(ratio - FOV_SCALE) < 0.03f, String.format("fov %.2f to %.2f, ratio %.3f, %s",
@@ -371,7 +372,7 @@ public final class CgWorldProbe {
         float degrees = (float) Math.toDegrees(turn.angle);
         check("camera.roll", Math.abs(degrees - ROLL) < 1.5f && Math.abs(turn.z) > 0.98f, String.format(
                 "rolled %.2f degrees about an axis %.3f along the view, %s", degrees, Math.abs(turn.z),
-                ran(CgPlatform.get(CgHostCamera.SERVICE).applied(), CgHostCamera.ROLL)));
+                ran(CgCamera.applied(), CgHostCamera.ROLL)));
     }
 
     /** The rotation from the base view to this one, in view space: an axis there and an angle. */
@@ -392,11 +393,11 @@ public final class CgWorldProbe {
     // ── World events, caused on the server ───────────────────────────────────────
 
     private static void startEvents(long now) {
-        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+        CgWorldQuery world = CgWorldQueries.client();
         CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);
         double px = pose[CgEntityQuery.X], py = pose[CgEntityQuery.Y], pz = pose[CgEntityQuery.Z];
         events.reset(CgWorldEvents.declared());
-        events.player = CgPlatform.get(CgEntityQuery.SERVICE).localPlayer();
+        events.player = CgEntityQueries.client().localPlayer();
         CgWorldEvents.listen(events);
 
         events.lightningX = px + 20;
@@ -443,7 +444,7 @@ public final class CgWorldProbe {
     private static void finish(CgHostFrame host) {
         CgWorldEvents.stopListening(events);
         events.report();
-        CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+        CgWorldQuery world = CgWorldQueries.client();
         CgHostEnvironment env = host.environment();
         if (env.paused()) {
             skip("env.time-advances", "the game is paused");
@@ -549,7 +550,7 @@ public final class CgWorldProbe {
 
         /** Once a frame in the event phase: the client's own entities round the blast and the bolt. */
         void watch() {
-            CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+            CgEntityQuery entities = CgEntityQueries.client();
             if (blastSkipped == null) {
                 entities.within(blastX - 3, blastY - 3, blastZ - 3, blastX + 3, blastY + 3, blastZ + 3, id -> {
                     int flags = entities.flags(id);
@@ -568,7 +569,7 @@ public final class CgWorldProbe {
 
         /** What a missed pig left: the nearest living thing the client holds round the blast now. */
         private String livingNearBlast() {
-            CgEntityQuery entities = CgPlatform.get(CgEntityQuery.SERVICE);
+            CgEntityQuery entities = CgEntityQueries.client();
             int[] count = new int[1], nearest = {-1};
             double[] best = {Double.MAX_VALUE};
             entities.within(blastX - 48, blastY - 48, blastZ - 48, blastX + 48, blastY + 48, blastZ + 48, id -> {

@@ -5,15 +5,16 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
-import com.crystalgraphics.mc.modern.platform.world.LevelQueriesModern;
+import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
+import com.crystalgraphics.mc.modern.platform.world.PlayerQueryModern;
+import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgHostShapes;
-import com.crystalgraphics.platform.service.CgLevelQueries;
-import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
+import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -31,8 +32,8 @@ public final class NetworkModern {
     /** Mod init, both sides. */
     public static void install(CgNetworkChannel channel) {
         CgNetwork.install(channel, player -> player instanceof ServerPlayer ? idOf((ServerPlayer) player) : null);
-        CgPlatform.provide(CgServerPlayers.SERVICE, new ServerPlayersModern());
-        CgPlatform.provide(CgLevelQueries.SERVICE, new LevelQueriesModern());
+        CgPlatform.provide(CgLevels.SERVICE, LevelsModern.INSTANCE);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
     }
@@ -51,6 +52,7 @@ public final class NetworkModern {
     }
 
     public static void serverStarting(MinecraftServer server) {
+        PlayerQueryModern.INSTANCE.server(server);
         CgNetwork.serverStarting(server);
     }
 
@@ -60,6 +62,7 @@ public final class NetworkModern {
 
     public static void serverStopping() {
         CgNetwork.closeAll("server stopping");
+        PlayerQueryModern.INSTANCE.server(null);
     }
 
     public static void clientConnected() {

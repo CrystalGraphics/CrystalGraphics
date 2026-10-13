@@ -6,8 +6,8 @@ import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.collision.hitbox.CgHitboxes;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -488,7 +488,7 @@ public final class CgCollisionQuery {
         if (exposure) {
             for (int i = 0; i < hits.size(); i++) {
                 CgHit h = hits.get(i);
-                if (h.kind() == CgHit.Kind.ENTITY) h.setExposure(world.exposure(ox, oy, oz, h.entity()));
+                if (h.kind() == CgHit.Kind.ENTITY) h.setExposure(world.exposure(ox, oy, oz, h.entityId()));
             }
         }
         Watcher heard = watcher;
@@ -555,7 +555,7 @@ public final class CgCollisionQuery {
             hits.removeLast();
             return;
         }
-        h.setHitbox(owner, hitbox, name);
+        h.setHitbox(owner, hitbox, name).from(world.entities);
         for (int i = 0; i < hits.size() - 1; i++) {
             CgHit other = hits.get(i);
             if (other.hitbox() != hitbox) continue;
@@ -595,7 +595,7 @@ public final class CgCollisionQuery {
                 // a multipart entity is hit once: keep its nearest part
                 for (int i = 0; i < hits.size() - 1; i++) {
                     CgHit other = hits.get(i);
-                    if (other.parent() != h.parent()) continue;
+                    if (other.parentId() != h.parentId()) continue;
                     if (h.distance() < other.distance()) other.set(h);
                     hits.removeLast();
                     return;
@@ -614,7 +614,7 @@ public final class CgCollisionQuery {
             if (kinds != ALL_KINDS && (kinds & 1 << e.kind(parent)) == 0) return false;
             if (where != null && !where.test(id)) return false;
             if (visible && !thread.sight.clear(world.world, ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
-            h.setEntity(id, parent);
+            h.setEntity(id, parent).from(world.entities);
             if (parent != id) partsSeen = true;
             return true;
         }

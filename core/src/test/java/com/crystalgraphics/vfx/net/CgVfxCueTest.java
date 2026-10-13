@@ -1,16 +1,16 @@
 package com.crystalgraphics.vfx.net;
 
+import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
-import com.crystalgraphics.platform.service.CgLevelQueries;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
-import com.crystalgraphics.platform.service.CgServerPlayers;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgLevels;
+import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxAuthorityTest;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
+import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -137,7 +137,15 @@ public class CgVfxCueTest {
     /** The overworld's server level. */
     private static final Object OVERWORLD = new Object();
 
-    private final class Players implements CgServerPlayers {
+    private final class Levels extends CollisionFakes.Levels {
+        /** Each level's blocks: none until a test gives some. */
+        Function<Object, CgWorldQuery> blocks = level -> CgWorldQuery.NONE;
+
+        @Override
+        public CgWorldQuery world(Object level) {
+            return blocks.apply(level);
+        }
+
         @Override
         public String dimension(Object handle) {
             return handle instanceof Body || handle == OVERWORLD ? "minecraft:overworld" : null;
@@ -153,11 +161,6 @@ public class CgVfxCueTest {
         }
 
         @Override
-        public UUID playerId(Object entity) {
-            return entity instanceof Body ? ((Body) entity).id : null;
-        }
-
-        @Override
         public int entityId(Object entity) {
             return entity instanceof Body ? 7 : -1;
         }
@@ -165,14 +168,6 @@ public class CgVfxCueTest {
         @Override
         public boolean alive(Object entity) {
             return entity instanceof Body && ((Body) entity).alive;
-        }
-
-        @Override
-        public void trackingChunk(Object level, int chunkX, int chunkZ, Consumer<UUID> out) {
-        }
-
-        @Override
-        public void trackingEntity(Object entity, Consumer<UUID> out) {
         }
 
         @Override
@@ -185,14 +180,12 @@ public class CgVfxCueTest {
             return "minecraft:overworld".equals(dimension) ? OVERWORLD : null;
         }
 
-        @Override
-        public boolean chunkLoaded(Object level, int chunkX, int chunkZ) {
-            return false;
-        }
+    }
 
+    private static final class Players extends CollisionFakes.Players {
         @Override
-        public Object entity(Object level, int entityId) {
-            return null;
+        public UUID playerId(Object entity) {
+            return entity instanceof Body ? ((Body) entity).id : null;
         }
     }
 
@@ -206,15 +199,11 @@ public class CgVfxCueTest {
         @Override public boolean isAvailable() { return true; }
     }
 
-    private static final CgLevelQueries FLOOR_EVERYWHERE = new CgLevelQueries() {
-        @Override public CgWorldQuery world(Object level) { return CgVfxAuthorityTest.FLOOR; }
-        @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
-    };
-
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
 
     private final Body body = new Body();
+    private final Levels levels = new Levels();
 
     @Before
     public void setUp() {
@@ -225,7 +214,8 @@ public class CgVfxCueTest {
         CONFIRMED.clear();
         WAVE_CUES.clear();
         WAVES.clear();
-        CgPlatform.provide(CgServerPlayers.SERVICE, new Players());
+        CgPlatform.provide(CgLevels.SERVICE, levels);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, new Players());
         CgNetwork.install(new Loopback(), player -> ((Body) player).id);
         CgNetwork.serverStarting(null);
         CgVfxCueClient.install();
@@ -234,8 +224,8 @@ public class CgVfxCueTest {
     @After
     public void tearDown() {
         reset();
-        CgPlatform.provide(CgServerPlayers.SERVICE, null);
-        CgPlatform.provide(CgLevelQueries.SERVICE, null);
+        CgPlatform.provide(CgLevels.SERVICE, null);
+        CgPlatform.provide(CgPlayerQuery.SERVICE, null);
     }
 
     private static void reset() {
@@ -285,7 +275,7 @@ public class CgVfxCueTest {
         SPARK.at(body, 0, 64, 0).follow(body, "crystalgraphics:hands_forward").keepOffset().send();
         settle();
 
-        assertEquals(7, CUES.get(0).following());
+        assertEquals(7, CUES.get(0).followingId());
         assertEquals("crystalgraphics:hands_forward", CUES.get(0).point());
         assertTrue(CUES.get(0).keepsOffset());
     }
@@ -384,10 +374,7 @@ public class CgVfxCueTest {
 
     @Test
     public void anAuthorityDecidesWhereItEndsAndHearsWhatItStrikes() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, new CgLevelQueries() {
-            @Override public CgWorldQuery world(Object level) { return level == OVERWORLD ? CgVfxAuthorityTest.FLOOR : CgWorldQuery.NONE; }
-            @Override public CgEntityQuery entities(Object level) { return CgEntityQuery.NONE; }
-        });
+        levels.blocks = level -> level == OVERWORLD ? CgVfxAuthorityTest.FLOOR : CgWorldQuery.NONE;
         join();
         List<String> heard = new ArrayList<>();
         CgVfxCue.Playing playing = SEEKER.at(body, 2, 64, 3).toward(0, -1, 0).start();
@@ -411,7 +398,7 @@ public class CgVfxCueTest {
 
     @Test
     public void anAuthoritativeWaveIsDrivenOnTheServerLikeALocalOne() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, FLOOR_EVERYWHERE);
+        levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(0, 0, 1).start();
         CgEnergyWave beam = playing.effect();
@@ -437,7 +424,7 @@ public class CgVfxCueTest {
 
     @Test
     public void whatTheServerSetsOnItsEffectReachesEveryViewer() {
-        CgPlatform.provide(CgLevelQueries.SERVICE, FLOOR_EVERYWHERE);
+        levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
         join();
         CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(1, 0, 0).set(CgEnergyWave.RADIUS, 0.5f).start();
         CgEnergyWave beam = playing.effect();
@@ -466,7 +453,7 @@ public class CgVfxCueTest {
         CgVfxSystem vfx = new CgVfxSystem();
         CgEnergyWave wave = CgVfx.owner("cue_test", vfx).play(CgEnergyWave.fromCue(CgEnergyWave.kamehameha(), cue));
         List<String> heard = new ArrayList<>();
-        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entity()));
+        wave.onHit(h -> heard.add(h.part() + " " + h.kind() + " " + h.entityId()));
         for (int f = 0; f <= 600; f++) vfx.update(f / 60.0);
 
         assertEquals(List.of("beam ENTITY 42"), heard);

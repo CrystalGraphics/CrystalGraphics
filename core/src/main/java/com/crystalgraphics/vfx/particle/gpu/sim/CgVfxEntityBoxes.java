@@ -1,12 +1,12 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.world.CgEntityQueries;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -100,7 +100,7 @@ final class CgVfxEntityBoxes {
         private CgEntityQuery entities;
 
         void run() {
-            entities = CgPlatform.get(CgEntityQuery.SERVICE);
+            entities = CgEntityQueries.client();
             entities.within(cameraX - REACH, cameraY - REACH, cameraZ - REACH, cameraX + REACH, cameraY + REACH,
                     cameraZ + REACH, this);
             entities = null;

@@ -14,7 +14,7 @@ import org.junit.Test;
 import java.lang.management.ManagementFactory;
 import java.util.Random;
 
-import static com.crystalgraphics.platform.service.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
@@ -36,7 +36,7 @@ public class CgEntityCacheTest {
     private String answer(CgCollisionQuery q) {
         int n = q.into(hits);
         StringBuilder s = new StringBuilder();
-        for (int i = 0; i < n; i++) s.append(hits.get(i).entity()).append('@').append(Math.round(hits.get(i).distance() * 1e6)).append(' ');
+        for (int i = 0; i < n; i++) s.append(hits.get(i).entityId()).append('@').append(Math.round(hits.get(i).distance() * 1e6)).append(' ');
         return s.toString();
     }
 
@@ -88,10 +88,10 @@ public class CgEntityCacheTest {
         try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
             warm();
             assertEquals(1, world.overlap(BALL).at(140, 1, 140).count());
-            world.overlap(BALL).at(100, 1, 100).forEach(h -> table.move(h.entity(), 140, 0, 141));
+            world.overlap(BALL).at(100, 1, 100).forEach(h -> table.move(h.entityId(), 140, 0, 141));
             assertEquals("found where the hit moved it", 2, world.overlap(BALL).at(140, 1, 140).count());
             assertEquals("and gone from where it was", 0, world.overlap(BALL).at(100, 1, 100).count());
-            world.overlap(BALL).at(140, 1, 140).forEach(h -> table.kill(h.entity()));
+            world.overlap(BALL).at(140, 1, 140).forEach(h -> table.kill(h.entityId()));
             assertEquals("a kill is seen at once", 0, world.overlap(BALL).at(140, 1, 140).count());
         }
     }

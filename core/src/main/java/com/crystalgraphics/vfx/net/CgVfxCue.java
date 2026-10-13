@@ -9,8 +9,6 @@ import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
@@ -18,6 +16,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -284,7 +283,7 @@ public final class CgVfxCue {
         if (player == null || policy == null) return false;
         Play play = Play.read(this, proposed);
         double[] at = new double[3];
-        if (!CgPlatform.get(CgServerPlayers.SERVICE).position(player, at)) return false;
+        if (!CgEntityQueries.position(player, at)) return false;
         double dx = at[0] - play.x, dy = at[1] - play.y, dz = at[2] - play.z;
         return dx * dx + dy * dy + dz * dz <= (double) range * range && policy.allow(player, play);
     }
@@ -311,7 +310,7 @@ public final class CgVfxCue {
      */
     public Play on(Object entity, int point) {
         double[] at = new double[3];
-        if (!CgPlatform.get(CgServerPlayers.SERVICE).position(entity, at)) {
+        if (!CgEntityQueries.position(entity, at)) {
             throw new IllegalArgumentException("not an entity: " + entity);
         }
         return at(entity, at[0], at[1], at[2]).follow(entity, point);
@@ -598,7 +597,7 @@ public final class CgVfxCue {
          * each client from the entity as drawn. It is then seen by the players tracking it, and ends with it.
          */
         public Play follow(Object entity, @Nullable String point) {
-            int entityId = CgPlatform.get(CgServerPlayers.SERVICE).entityId(entity);
+            int entityId = CgEntityQueries.idOf(entity);
             if (entityId < 0) throw new IllegalArgumentException("not an entity: " + entity);
             followEntity = entity;
             followId = entityId;
@@ -835,8 +834,24 @@ public final class CgVfxCue {
         }
 
         /** The entity it follows by network id, or -1. */
-        public int following() {
+        public int followingId() {
             return followId;
+        }
+
+        /**
+         * The host's entity it follows, cast where it is asked: on the server the one it was given, on a client the one of
+         * {@link #followingId()} in the client's level; null for none, or one not loaded.
+         */
+        @Nullable
+        public <V> V following() {
+            if (followEntity != null) return cast(followEntity);
+            if (followId < 0) return null;
+            return level != null ? CgEntityQueries.of(level).entity(followId) : CgEntityQueries.client().entity(followId);
+        }
+
+        @SuppressWarnings("unchecked")
+        private static <V> V cast(Object o) {
+            return (V) o;
         }
 
         /** The attachment point it follows at, or null for the feet. */

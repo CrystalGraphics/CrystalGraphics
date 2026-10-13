@@ -1,15 +1,14 @@
-package com.crystalgraphics.platform.service;
-
-import com.crystalgraphics.platform.CgService;
+package com.crystalgraphics.platform.world;
 
 /**
- * Answers small questions about the host's world at a block or a column: its collision, its fluid, its light, what it
- * is made of, its colours and its biome. What an effect needs to land debris on the ground, bounce it off a wall, stop a
- * beam, raise sand rather than snow, and tint dust like the ground it rose from. A host answers per block; {@code com.crystalgraphics.world.CgWorldQueries} composes the scans and the
- * raycast from these, once, for every host.
+ * Answers small questions about one of the host's levels at a block or a column: its collision, its fluid, its light,
+ * what it is made of, its colours and its biome. What an effect needs to land debris on the ground, bounce it off a wall,
+ * stop a beam, raise sand rather than snow, and tint dust like the ground it rose from. A host answers per block;
+ * {@code com.crystalgraphics.world.CgWorldQueries} hands one out per level and composes the scans and the raycast from
+ * these, once, for every host.
  *
  * <pre>{@code
- * CgWorldQuery world = CgPlatform.get(CgWorldQuery.SERVICE);
+ * CgWorldQuery world = CgWorldQueries.client();       // the client's level; CgWorldQueries.of(level) for any other
  * if (world.levelEpoch() != 0) {
  *     float top = world.collisionTop(x, y, z);        // NaN: nothing to stand on in this block
  *     if (!Float.isNaN(top)) floor = y + top;
@@ -20,14 +19,14 @@ import com.crystalgraphics.platform.CgService;
  * float[] boxes = new float[6 * 8];                    // once, and reused
  * int n = Math.min(world.collisionBoxes(x, y, z, boxes), 8);
  *
- * // a host, once, on a client only
- * CgPlatform.provide(CgWorldQuery.SERVICE, new WorldQueryModern());
+ * // a host hands one out per level through CgLevels
  * }</pre>
  *
  * <ul>
  *   <li>Coordinates are absolute block coordinates: {@code Math.floor} of a world position, never camera-relative.</li>
- *   <li>Render thread only, where every host keeps its client level. A simulation on a worker reads a snapshot.</li>
- *   <li>{@link #NONE} answers NaN, false or 0: the harness, a dedicated server, a client with no level. An unloaded
+ *   <li>Its level's thread only: the render thread for the client's, the server thread for a server's. A simulation
+ *       on a worker reads a snapshot.</li>
+ *   <li>{@link #NONE} answers NaN, false or 0: the harness, a client with no level. An unloaded
  *       chunk answers the same as no level, so check {@link #loaded} before reading a missing floor as open air.</li>
  *   <li>The int answers ({@link #minY}, {@link #light}, ...) mean something only while {@link #levelEpoch} is not 0.</li>
  *   <li>Implementations allocate nothing and never throw: a block they cannot answer for answers as {@link #NONE}.</li>
@@ -74,8 +73,6 @@ public interface CgWorldQuery {
         @Override public int seaLevel() { return 0; }
         @Override public int levelEpoch() { return 0; }
     };
-
-    CgService<CgWorldQuery> SERVICE = CgService.of("crystalgraphics:world_query", NONE);
 
     /**
      * The top of the block's collision shape, 0 to 1 within the block: 1 for a full block, 0.5 for a bottom slab,

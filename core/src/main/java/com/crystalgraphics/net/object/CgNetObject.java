@@ -6,8 +6,9 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.platform.service.CgServerPlayers;
+import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgPlayers;
+import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * One networked object, on the server or as a client sees it: its type, where it is, its owner and its fields.
@@ -125,7 +126,7 @@ public final class CgNetObject {
         owner = anchor.player;
         chunkX = anchor.chunkX;
         chunkZ = anchor.chunkZ;
-        if (kind == CgAnchor.Kind.ENTITY) entityId = CgPlatform.get(CgServerPlayers.SERVICE).entityId(holder);
+        if (kind == CgAnchor.Kind.ENTITY) entityId = CgEntityQueries.idOf(holder);
     }
 
     CgNetObject(CgNetType type, boolean server) {
@@ -151,7 +152,7 @@ public final class CgNetObject {
         if (playerOrId instanceof UUID) {
             owner = (UUID) playerOrId;
         } else {
-            owner = CgPlatform.get(CgServerPlayers.SERVICE).playerId(Objects.requireNonNull(playerOrId, "playerOrId"));
+            owner = CgPlayers.idOf(Objects.requireNonNull(playerOrId, "playerOrId"));
             if (owner == null) throw new IllegalArgumentException("not a player: " + playerOrId);
         }
         return this;
@@ -249,19 +250,35 @@ public final class CgNetObject {
         return entityId;
     }
 
-    /** Server: the entity it is on, or the player it follows (null while that player is away); else null. */
+    /**
+     * The host's entity it is anchored on, cast to the type the caller names: on the server the entity, or the player it
+     * follows (null while that player is away); on a client the entity of {@link #entityId()} in the client's level,
+     * null while it is not loaded. Null for other anchors.
+     *
+     * <pre>{@code
+     * LivingEntity wearer = aura.entity();
+     * if (wearer != null) wearer.addEffect(GLOW);
+     * }</pre>
+     */
     @Nullable
-    public Object entity() {
-        return kind == CgAnchor.Kind.ENTITY || kind == CgAnchor.Kind.PLAYER ? holder : null;
+    public <V> V entity() {
+        if (kind != CgAnchor.Kind.ENTITY && kind != CgAnchor.Kind.PLAYER) return null;
+        if (server) return cast(holder);
+        return entityId < 0 ? null : CgEntityQueries.client().entity(entityId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <V> V cast(Object o) {
+        return (V) o;
     }
 
     /**
-     * Server: the level it is in, as the loader knows it: what {@code CgLevelQueries} takes for its blocks and
-     * entities. Null for a global object, a player away, and a dimension the server has no level for.
+     * Server: the level it is in, as the loader knows it: what the world facades take for its blocks and entities.
+     * Null for a global object, a player away, and a dimension the server has no level for.
      *
      * <pre>{@code
-     * CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
-     * CgWorldQuery world = levels.world(obj.level());     // NONE where it is null
+     * CgWorldQuery world = CgWorldQueries.of(obj.level());     // NONE where it is null
+     * CgCollisionWorld.of(obj.level()).ray()...
      * }</pre>
      */
     @Nullable
@@ -279,7 +296,7 @@ public final class CgNetObject {
         }
         if (dimension == null) return null;
         if (!dimension.equals(levelDimension)) {
-            level = CgPlatform.get(CgServerPlayers.SERVICE).level(holder != null ? holder : CgNetObjects.server(), dimension);
+            level = CgWorldQueries.level(holder != null ? holder : CgNetObjects.server(), dimension);
             levelDimension = level == null ? null : dimension;
         }
         return level;

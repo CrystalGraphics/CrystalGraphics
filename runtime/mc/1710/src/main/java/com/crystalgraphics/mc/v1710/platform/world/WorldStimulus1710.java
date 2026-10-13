@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgWorldStimulus;
+import com.crystalgraphics.platform.world.CgWorldStimulus;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;

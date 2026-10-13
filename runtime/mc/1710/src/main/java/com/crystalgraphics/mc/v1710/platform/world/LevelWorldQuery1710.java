@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
-import com.crystalgraphics.platform.service.CgBlockCopy;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgBlockCopy;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockLiquid;
 import net.minecraft.block.material.Material;
@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@link CgWorldQuery} over one level on Minecraft 1.7.10, a server's included, where a block is a {@link Block} and a
- * metadata nibble. Server-safe; {@link LevelQueries1710} hands one out per level, and the client's
+ * metadata nibble. Server-safe; {@link Levels1710} hands one out per level, and the client's
  * {@link WorldQuery1710} extends it with the tint, biome colours and sprite, which this answers 0 and false. The
  * level's thread; reuses one box list.
  *

@@ -3,7 +3,7 @@ package com.crystalgraphics.mc.modern.platform.world;
 import com.crystalgraphics.collision.mirror.CgMirrorColumn;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.collision.mirror.CgMirrorShape;
-import com.crystalgraphics.platform.service.CgWorldQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.EntityBlock;

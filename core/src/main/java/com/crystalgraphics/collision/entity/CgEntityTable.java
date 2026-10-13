@@ -1,7 +1,7 @@
 package com.crystalgraphics.collision.entity;
 
-import com.crystalgraphics.platform.service.CgBoxSink;
-import com.crystalgraphics.platform.service.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityQuery;
 
 import java.util.Arrays;
 import java.util.function.IntConsumer;

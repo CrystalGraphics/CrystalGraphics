@@ -241,9 +241,14 @@ public abstract class CgVfxEffect {
         return follow(entity, 0);
     }
 
-    /** The entity it follows, or -1. */
-    public final int following() {
+    /** The entity it follows by network id, or -1. */
+    public final int followingId() {
         return followEntity;
+    }
+
+    /** The host's entity it follows, cast where it is asked, found in its {@link #world()}; null for none. */
+    public final <V> V following() {
+        return followEntity < 0 ? null : world().entities().entity(followEntity);
     }
 
     /**
@@ -287,7 +292,7 @@ public abstract class CgVfxEffect {
      * entities where this frame draws them.
      *
      * <pre>{@code
-     * if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(following()).blocksToo().first(hit)) ...
+     * if (world().cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(followingId()).blocksToo().first(hit)) ...
      * }</pre>
      *
      * Ask during {@link #tick}, and end each query before the next ({@code CgCollisionQuery}).
@@ -305,7 +310,7 @@ public abstract class CgVfxEffect {
      * <pre>{@code
      * // in tick, as the blast bursts: a front 2 thick running 10 blocks out over 8 ticks
      * hitbox(PART_BLAST, CgShell.front(2)).at(originX + x, originY + y, originZ + z).radius(0, 10, 8).activeFor(8)
-     *         .source(following());
+     *         .source(followingId());
      * }</pre>
      *
      * <ul>
@@ -363,7 +368,7 @@ public abstract class CgVfxEffect {
      * saying which part of it struck.
      *
      * <pre>{@code
-     * owner.play(new CgEnergyWave(look, x, y, z).collide()).onHit(h -> { if (h.entity() >= 0) flash(h.entity()); });
+     * owner.play(new CgEnergyWave(look, x, y, z).collide()).onHit(h -> { if (h.entityId() >= 0) flash(h.entity()); });
      * }</pre>
      *
      * <ul>
