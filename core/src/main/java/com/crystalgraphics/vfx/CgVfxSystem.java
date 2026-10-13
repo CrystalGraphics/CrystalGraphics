@@ -16,6 +16,7 @@ import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.collision.query.CgCollisionWorld;
+import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -46,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.function.IntConsumer;
 
 /**
  * Plays {@link CgVfxEffect}s: simulates them on a fixed tick, draws them into a world each frame, and owns what they
@@ -68,7 +70,7 @@ import java.util.List;
  *   <li>GPU particles step when {@code WORLD_OPAQUE} records: while the world is not drawn every effect holds, once half
  *       a second of steps waits ({@code vfx.ticks.held}).</li>
  *   <li>Each tick steps every effect in order, then runs their particle emitters on several threads, one effect a
- *       thread ({@code -Dcrystalgraphics.vfx.threads}, one per core by default).</li>
+ *       thread ({@link CgJob#forEach}; {@code -Dcrystalgraphics.job.forEachThreads}).</li>
  *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture and the particle
  *       buffer hold only the last upload.</li>
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
@@ -233,10 +235,9 @@ public final class CgVfxSystem {
     private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
     private int particleRecords;
     private final CgVfxAir air = new CgVfxAir();
-    private final CgVfxWorkers workers = new CgVfxWorkers();
     /** The effects that queued emitter ticks this tick: what the workers run. */
     private final List<CgVfxEffect> emitting = new ArrayList<>();
-    private final CgVfxWorkers.Job tickEach = i -> {
+    private final IntConsumer tickEach = i -> {
         CgVfxEffect effect = emitting.get(i);
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, EFFECT_EMITTERS_ZONE)) {
             effect.tickEmitters();
@@ -248,7 +249,7 @@ public final class CgVfxSystem {
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
     private float timeScale = 1f;
-    private final CgVfxWorkers.Job writeEach = this::writeRecords;
+    private final IntConsumer writeEach = this::writeRecords;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
     private boolean stepsOnGpu, rangePrepared;
     /** This frame's particle records, filled by {@link #writeEach}; each emitter's first record in {@link #bases}. */
@@ -388,10 +389,10 @@ public final class CgVfxSystem {
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
                         if (cpuParticles >= PARALLEL_PARTICLES || emitting.size() >= PARALLEL_EFFECTS) {
                             try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
-                                workers.run(emitting.size(), tickEach);
+                                CgJob.forEach(emitting.size(), tickEach);
                             }
                         } else {
-                            for (int i = 0; i < emitting.size(); i++) tickEach.run(i);
+                            for (int i = 0; i < emitting.size(); i++) tickEach.accept(i);
                         }
                         try (CgTrace.Zone admitting = CgTrace.zone(CgVfxTrace.CHANNEL, ADMIT_ZONE)) {
                             for (int i = 0; i < emitting.size(); i++) {
@@ -712,7 +713,7 @@ public final class CgVfxSystem {
             writeLit = CgPlatform.get(CgWorldQuery.SERVICE).levelEpoch() != 0;
             try (CgTrace.Zone fill = CgTrace.zone(CgVfxTrace.CHANNEL, FILL_ZONE)) {
                 if (total >= PARALLEL_RECORDS) {
-                    workers.run(emitters, writeEach);
+                    CgJob.forEach(emitters, writeEach);
                 } else {
                     for (int k = 0; k < emitters; k++) writeRecords(k);
                 }

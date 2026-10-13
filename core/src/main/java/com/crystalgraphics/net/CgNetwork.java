@@ -69,6 +69,7 @@ public final class CgNetwork {
     private static final List<Consumer<CgPeer>> CLOSED = new CopyOnWriteArrayList<>();
     private static final List<Runnable> SERVER_TICK = new CopyOnWriteArrayList<>();
     private static final List<Runnable> CLIENT_TICK = new CopyOnWriteArrayList<>();
+    private static final List<Runnable> SESSION_END = new CopyOnWriteArrayList<>();
 
     /** Server ticks since this process started a server: what an age on the wire is measured in. */
     private static volatile long serverTicks;
@@ -168,6 +169,14 @@ public final class CgNetwork {
         CLIENT_TICK.add(listener);
     }
 
+    /**
+     * Runs {@code listener} when this process leaves its world: the client disconnects, or the server stops. On the
+     * thread that left; state kept per world elsewhere is dropped here. At init.
+     */
+    public static void onSessionEnd(Runnable listener) {
+        SESSION_END.add(listener);
+    }
+
     /** Server ticks counted since this process first ticked a server; a server thread's clock. */
     public static long serverTicks() {
         return serverTicks;
@@ -248,6 +257,17 @@ public final class CgNetwork {
         CgConnections table = client;
         if (table != null && table.close(CLIENT, "disconnected")) {
             LOGGER.info("[cg-net] client connection closed");
+        }
+        sessionEnded();
+    }
+
+    private static void sessionEnded() {
+        for (int i = 0; i < SESSION_END.size(); i++) {
+            try {
+                SESSION_END.get(i).run();
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] a session-end listener failed", failed);
+            }
         }
     }
 
@@ -344,6 +364,7 @@ public final class CgNetwork {
         if (s != null) s.closeAll(reason);
         if (c != null) c.closeAll(reason);
         CgNetObjects.serverStopped();
+        sessionEnded();
         if (had > 0) LOGGER.info("[cg-net] closed {} connection(s): {}", had, reason);
     }
 

@@ -106,6 +106,13 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.hotReload` | true, false | `true` | Watch each resource override root's assets/ and reload what an edited file reaches at the next frame. Read at launch. |
 
+## `crystalgraphics.job`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.job.forEachThreads` | 0 to 256 | `0` | Threads CgJob.forEach and effects' emitters run on, the caller one of them; 0 for two fewer than the cores, 1 for all on the caller. Read at launch. |
+| `crystalgraphics.job.threads` | 0 to 256 | `0` | Threads jobs' work runs on; 0 for half the cores past two, at least one. Read at launch. |
+
 ## `crystalgraphics.material`
 
 | Variable | Takes | Default | |
@@ -225,7 +232,6 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.vfx.sim` | cpu, gpu | `gpu` | Where effects' particles simulate; V switches it in any harness scene with a 3D camera. cpu is the Java path, kept as the comparison until it is removed. |
 | `crystalgraphics.vfx.simBudgetMs` | 0.0 to 1000.0 | `12.0` | Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down. |
 | `crystalgraphics.vfx.skip` | text | empty | Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU time is spent on, one profile per group (body_light,haze). |
-| `crystalgraphics.vfx.threads` | 0 to 256 | `0` | Threads effects' emitters tick on, the render thread one of them; 0 for two fewer than the cores, 1 for all on the render thread. Read at launch. |
 | `crystalgraphics.vfx.traceAuthority` | true, false | `false` | Logs each cast a server's wave makes for its beam: from where, along what, what it met, and every entity its level lists along the first 32 blocks. |
 
 ## `crystalgraphics.vulkan`

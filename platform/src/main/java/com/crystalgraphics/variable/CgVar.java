@@ -32,8 +32,8 @@ import java.util.function.Consumer;
  * and logged, never half-applied.</p>
  *
  * <pre>{@code
- * static final CgVar.Int THREADS = CgVar.integer("crystalgraphics.vfx.threads", 0, 0, 256, CgVar.DEV | CgVar.RESTART,
- *         "Threads the CPU path runs emitters on; 0 for one a core.");
+ * static final CgVar.Int THREADS = CgVar.integer("crystalgraphics.job.threads", 0, 0, 256, CgVar.DEV | CgVar.RESTART,
+ *         "Threads jobs' work runs on; 0 for half the cores past two.");
  * }</pre>
  *
  * <ul>
