@@ -10,6 +10,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.Executor;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
@@ -165,6 +166,11 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
             return this;
         }
 
+        public Builder keyed(CgJobKey key) {
+            this.key = Objects.requireNonNull(key, "key");
+            return this;
+        }
+
         public Builder lane(CgJobLane lane) {
             this.lane = Objects.requireNonNull(lane, "lane");
             return this;
@@ -284,6 +290,11 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
         return reply.error();
     }
 
+    /** Whether its work is on a worker now: still true for a cancelled job whose work has not yet returned. Any thread. */
+    public boolean isRunning() {
+        return state == RUNNING || inFlight() && state != QUEUED;
+    }
+
     /** The work's latest progress, or null if it reported none. Any thread. */
     @Nullable
     public CgProgressState progress() {
@@ -313,6 +324,43 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
     /** {@link #forEach(int, IntConsumer)} over a list's items. */
     public static <E> void forEach(List<? extends E> items, Consumer<? super E> each) {
         CgWorkers.mine().run(items, Objects.requireNonNull(each, "each"));
+    }
+
+    /**
+     * The job pool as an {@link Executor}, for work that reports nothing back: a cache warmed, a file written. Its
+     * tasks queue in {@code lane} beside every job's.
+     *
+     * <pre>{@code
+     * CgJob.executor(CgJobLane.BACKGROUND).execute(() -> sheet.parseEveryValue());
+     * }</pre>
+     *
+     * A task that throws is logged. Anything whose result the caller needs is a {@link #run} job instead.
+     */
+    public static Executor executor(CgJobLane lane) {
+        return EXECUTORS[lane.ordinal()];
+    }
+
+    private static final Executor[] EXECUTORS = new Executor[CgJobLane.values().length];
+
+    static {
+        for (CgJobLane lane : CgJobLane.values()) EXECUTORS[lane.ordinal()] = task -> CgJobPool.submit(new Task(lane, task));
+    }
+
+    /** One {@link #executor} task in the pool's queue. */
+    private static final class Task extends CgJobQueue.Entry {
+        private final Runnable task;
+
+        Task(CgJobLane lane, Runnable task) {
+            this.lane = lane;
+            this.task = Objects.requireNonNull(task, "task");
+        }
+
+        @Override
+        void runQueued() {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.ASYNC, "job.task")) {
+                task.run();
+            }
+        }
     }
 
     /** Drains the {@linkplain CgJobLoop#current() current} loop. Minecraft's server and client threads call it every tick. */

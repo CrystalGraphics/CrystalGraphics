@@ -4080,6 +4080,7 @@ com/crystalgraphics/job/CgJob
   method public error ()Lcom/crystalgraphics/job/reply/CgReplyError;
   method public failed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
   method public isDone ()Z
+  method public isRunning ()Z
   method public map (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
   method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob;
   method public onError (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
@@ -4089,6 +4090,7 @@ com/crystalgraphics/job/CgJob
   method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
   method public toString ()Ljava/lang/String;
   method public,static drain ()V
+  method public,static executor (Lcom/crystalgraphics/job/CgJobLane;)Ljava/util/concurrent/Executor;
   method public,static forEach (ILjava/util/function/IntConsumer;)V
   method public,static forEach (Ljava/util/List;Ljava/util/function/Consumer;)V
   method public,static isWorkerThread ()Z
@@ -4103,6 +4105,7 @@ com/crystalgraphics/job/CgJob$Builder
   access public,final
   extends java/lang/Object
   method public debounce (J)Lcom/crystalgraphics/job/CgJob$Builder;
+  method public keyed (Lcom/crystalgraphics/job/CgJobKey;)Lcom/crystalgraphics/job/CgJob$Builder;
   method public keyed (Ljava/lang/Object;Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Builder;
   method public lane (Lcom/crystalgraphics/job/CgJobLane;)Lcom/crystalgraphics/job/CgJob$Builder;
   method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob$Builder;
@@ -4417,6 +4420,7 @@ com/crystalgraphics/net/CgRequest$Direction
 com/crystalgraphics/net/CgRequest$Reply
   access public,abstract,interface
   extends java/lang/Object
+  method public from (Lcom/crystalgraphics/job/reply/CgReply;)V
   method public,abstract fail (Ljava/lang/String;)V
   method public,abstract ok (Ljava/lang/Object;)V
 com/crystalgraphics/net/CgRequest$ServerHandler

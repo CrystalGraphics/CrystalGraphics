@@ -14,7 +14,7 @@ CgJob.forEach(shards, s -> s.step(area));                                   // s
 
 | File | Owns |
 |---|---|
-| `CgJob` | The API: `run` (`Supplier`, `Runnable`, or `Work` taking a `CgJobContext`), `keyed`/`lane`/`on` builders with `debounce`, the reply (`then`, `onError`, `always`, `map`, `failed`, `cancel`), `progress`; `repeat(read).work(fn)` → `Repeating`; static `forEach`, `drain`, `isWorkerThread` |
+| `CgJob` | The API: `run` (`Supplier`, `Runnable`, or `Work` taking a `CgJobContext`), `keyed`/`lane`/`on` builders with `debounce`, the reply (`then`, `onError`, `always`, `map`, `failed`, `cancel`), `progress`, `isRunning`; `repeat(read).work(fn)` → `Repeating`; static `forEach`, `executor(lane)` (the pool for work that reports nothing back), `drain`, `isWorkerThread` |
 | `CgJobBase` | The state a job moves through, shared by `CgJob` and `Repeating`: the worker's run, the drain's step, cancel and supersede |
 | `CgJobLoop` | Where jobs report back: pending jobs stepped in start order at `drain`, each key's latest job. Every thread has its own (ended with the game session); `create` makes one for a sequence or a test, `enter` makes it current. Hooks Minecraft's server and client ticks when first loaded |
 | `CgJobContext` | Handed to `Work`: `isCancelled`, `throwIfCancelled`, `progress` |

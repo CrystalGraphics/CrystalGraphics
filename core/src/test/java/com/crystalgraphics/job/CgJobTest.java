@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
@@ -133,6 +134,18 @@ public class CgJobTest {
         until(job::isDone);
         assertTrue(String.valueOf(heard.get()), heard.get() instanceof IllegalStateException);
         assertFalse(CgJob.isWorkerThread());
+    }
+
+    @Test
+    public void anExecutorTaskRunsOnAWorker() throws InterruptedException {
+        CountDownLatch ran = new CountDownLatch(1);
+        AtomicReference<Boolean> onWorker = new AtomicReference<>();
+        CgJob.executor(CgJobLane.BACKGROUND).execute(() -> {
+            onWorker.set(CgJob.isWorkerThread());
+            ran.countDown();
+        });
+        assertTrue(ran.await(10, TimeUnit.SECONDS));
+        assertTrue(onWorker.get());
     }
 
     @Test
