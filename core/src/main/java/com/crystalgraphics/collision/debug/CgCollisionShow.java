@@ -61,22 +61,35 @@ public final class CgCollisionShow {
     /** Client ticks between asks while showing: a server forgets a client after {@link #FORGET_AFTER}. */
     static final int ASK_EVERY = 100;
     static final long FORGET_AFTER = 3 * ASK_EVERY;
+    /** A server's hitboxes and queries. */
+    static final int SERVER = 0xFFFF9030;
+    /** How long a server's last lines are drawn without a newer pack. */
+    private static final long SERVER_HOLD_NANOS = 500_000_000L;
 
     static final CgMessage<Boolean> ASK = CgMessage.toServer("crystalgraphics:collision/show", CgCodecs.BOOL);
     static final CgMessage<byte[]> LINES = CgMessage.toClients("crystalgraphics:collision/lines", CgCodecs.BYTES);
 
-    private static final Map<UUID, Watcher> WATCHERS = new ConcurrentHashMap<>();
     private static boolean installed;
-    /** The client's host hitbox view, from its tick; false on a dedicated server. */
-    private static volatile boolean host;
 
     // Server thread.
+    private static final Map<UUID, Watcher> WATCHERS = new ConcurrentHashMap<>();
     private static final CgLinePack PACK = new CgLinePack();
     private static final double[] AT = new double[3];
     private static final CgRecentLines SERVER_LINES = new CgRecentLines(MAX_SEGMENTS);
     /** Whose queries and hitboxes are a server's: an integrated server runs beside its client. */
     private static volatile Thread serverThread;
-    private static volatile @Nullable CgRecentLines clientLines;
+
+    // Client.
+    private static final CgRecentLines CLIENT_LINES = new CgRecentLines(1 << 14);
+    private static volatile boolean client;
+    /** The client's host hitbox view, from its tick; false on a dedicated server. */
+    private static volatile boolean host;
+    private static boolean asked;
+    private static int sinceAsked;
+    private static volatile byte[] serverLines;
+    private static volatile long serverAt;
+    /** Render thread: whether the last frame showed, so the frame it stops clears. */
+    private static boolean shown;
 
     private CgCollisionShow() {
     }
@@ -90,10 +103,7 @@ public final class CgCollisionShow {
         }
     }
 
-    /**
-     * Declares the messages and serves them on a server. From {@code CgNetwork.install} and
-     * {@link CgCollisionDebug#install}; once.
-     */
+    /** Declares the messages and serves them on a server. From {@code CgNetwork.install}; once. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
@@ -104,22 +114,37 @@ public final class CgCollisionShow {
         CgNetwork.onPeerClosed(peer -> WATCHERS.remove(peer.id()));
     }
 
-    /** Where a client keeps what it sees: from {@link CgCollisionDebug#install}. */
-    static void clientLines(CgRecentLines into) {
-        clientLines = into;
+    /** The client half: records this process's lines, asks a server for its own. From {@link CgCollisionDebug#install}. */
+    static synchronized void installClient() {
+        install();
+        if (client) return;
+        client = true;
+        CgNetwork.onClientTick(CgCollisionShow::ask);
+        LINES.onReceive(pack -> {
+            serverLines = pack;
+            serverAt = System.nanoTime();
+        });
+    }
+
+    /** Hands {@code out} what is shown now, the eye where the frame's camera is. Render thread, each world frame. */
+    static void drawTo(double eyeX, double eyeY, double eyeZ, CgRecentLines.Out out) {
+        // for what is written before the next frame: the outline lags the camera by a frame
+        CLIENT_LINES.eye(eyeX, eyeY, eyeZ);
+        boolean showing = showing();
+        if (showing) {
+            long now = System.nanoTime();
+            CLIENT_LINES.drawTo(now, out);
+            byte[] pack = serverLines;
+            if (pack != null && now - serverAt < SERVER_HOLD_NANOS) CgLinePack.read(pack, SERVER, out);
+        } else if (shown) {
+            CLIENT_LINES.clear();
+        }
+        shown = showing;
     }
 
     /** Whether hitboxes are shown in this process: the variable, or the client's host view. */
-    static boolean showing() {
+    private static boolean showing() {
         return SHOW.get() || host;
-    }
-
-    /** Takes the host's hitbox view. Client thread, each tick. */
-    static void followHost() {
-        boolean now = CgPlatform.get(CgHostDebug.SERVICE).hitboxes();
-        if (now == host) return;
-        host = now;
-        follow();
     }
 
     private static void follow() {
@@ -134,16 +159,29 @@ public final class CgCollisionShow {
         if (into != null) into.query(shape, pose, box, dx, dy, dz, length, level, nearest, System.nanoTime());
     }
 
-    private static void saw(CgHitbox hitbox) {
+    private static void saw(CgHitbox hitbox, CgCollisionWorld world) {
         CgRecentLines into = lines();
-        CgCollisionWorld world = CgHitboxes.world(hitbox);
-        if (into != null && world != null) into.hitbox(hitbox, world.blocks(), System.nanoTime());
+        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime());
     }
 
     /** Where this thread's queries and hitboxes are kept: a server's only while a player watches. */
     private static @Nullable CgRecentLines lines() {
-        if (Thread.currentThread() != serverThread) return clientLines;
+        if (Thread.currentThread() != serverThread) return client ? CLIENT_LINES : null;
         return WATCHERS.isEmpty() ? null : SERVER_LINES;
+    }
+
+    /** Follows the host's view, and keeps the server told while showing and once when it stops. Client thread. */
+    private static void ask() {
+        boolean view = CgPlatform.get(CgHostDebug.SERVICE).hitboxes();
+        if (view != host) {
+            host = view;
+            follow();
+        }
+        boolean on = showing();
+        if (on == asked && (!on || ++sinceAsked < ASK_EVERY)) return;
+        ASK.sendToServer(on);
+        asked = on;
+        sinceAsked = 0;
     }
 
     private static void asked(CgPeer peer, Boolean on) {

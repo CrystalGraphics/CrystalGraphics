@@ -7,7 +7,6 @@ import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 
 import javax.annotation.Nullable;
-import java.util.function.Consumer;
 
 /**
  * Each thread's started hitboxes and hittable ones: what the engine ticks after the level's tick (a server's on the server
@@ -27,8 +26,15 @@ public final class CgHitboxes {
         void part(CgHitbox hitbox, @Nullable CgHitPart name, CgShape shape, CgPose pose);
     }
 
+    /** What {@link #watch} hands each tick. */
+    @FunctionalInterface
+    public interface Watcher {
+        /** {@code hitbox} has ticked in {@code world}, after its hits; on the thread ticking it. */
+        void ticked(CgHitbox hitbox, CgCollisionWorld world);
+    }
+
     private static final ThreadLocal<CgHitboxes> ACTIVE = ThreadLocal.withInitial(CgHitboxes::new);
-    private static volatile @Nullable Consumer<? super CgHitbox> watcher;
+    private static volatile @Nullable Watcher watcher;
     private static boolean hooked;
 
     private CgHitbox[] hitboxes = new CgHitbox[16];
@@ -63,17 +69,9 @@ public final class CgHitboxes {
         return ACTIVE.get().gathering;
     }
 
-    /**
-     * Hands {@code watcher} every hitbox each time it ticks, on the thread ticking it, after its hits; null stops. One
-     * watcher for the process: the collision show.
-     */
-    public static void watch(@Nullable Consumer<? super CgHitbox> watcher) {
+    /** Hands {@code watcher} every hitbox each time it ticks; null stops. One watcher for the process: the collision show. */
+    public static void watch(@Nullable Watcher watcher) {
         CgHitboxes.watcher = watcher;
-    }
-
-    /** The world {@code hitbox} last ticked in; null before its first tick or start. */
-    public static @Nullable CgCollisionWorld world(CgHitbox hitbox) {
-        return hitbox.world();
     }
 
     static void add(CgHitbox hitbox) {
@@ -96,9 +94,9 @@ public final class CgHitboxes {
         ACTIVE.get().gathering = hitbox;
     }
 
-    static void ticked(CgHitbox hitbox) {
-        Consumer<? super CgHitbox> w = watcher;
-        if (w != null) w.accept(hitbox);
+    static void ticked(CgHitbox hitbox, CgCollisionWorld world) {
+        Watcher w = watcher;
+        if (w != null) w.ticked(hitbox, world);
     }
 
     /** Ticks this thread's hitboxes once. Those started during the pass first tick on the next. */

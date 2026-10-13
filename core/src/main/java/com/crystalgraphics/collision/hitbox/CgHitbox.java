@@ -635,7 +635,7 @@ public final class CgHitbox {
         hasPrev = true;
         if (!passive) apply();
         if (!stopped && active >= activeFor) stop();
-        CgHitboxes.ticked(this);
+        CgHitboxes.ticked(this, world);
     }
 
     /** Where it is this tick, into {@link #nowX} and {@link #nowQ}; false for a followed entity gone. */

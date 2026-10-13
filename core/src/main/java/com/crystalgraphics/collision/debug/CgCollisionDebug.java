@@ -8,7 +8,6 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.collision.CgHit;
 import com.crystalgraphics.collision.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
-import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
@@ -36,26 +35,14 @@ import java.util.Arrays;
 public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
-    /** A server's hitboxes and queries, under {@link CgCollisionShow#SHOW}. */
-    static final int SERVER = 0xFFFF9030;
-    /** How long a server's last lines are drawn without a newer pack. */
-    private static final long SERVER_HOLD_NANOS = 500_000_000L;
     private static final double MARK = 0.4;
 
     private static final Lines LINES = new Lines();
     private static final CgShapeLines SHAPES = new CgShapeLines();
-    private static final CgRecentLines RECENT = new CgRecentLines(1 << 14);
-    private static boolean shown;
     private static boolean installed;
     private static CgMesh mesh;
     private static CgMaterial material;
     private static int colour;
-
-    // the show variable's client half
-    private static boolean asked;
-    private static int sinceAsked;
-    private static byte[] serverLines;
-    private static long serverAt;
 
     private CgCollisionDebug() {
     }
@@ -89,18 +76,12 @@ public final class CgCollisionDebug {
         CgShapeLines.mark(x, y, z, nx, ny, nz, MARK, LINES);
     }
 
-    /** Draws what was queued each world frame, and the show variable's. Once, with the world renderer. */
+    /** Draws what was queued each world frame, and the show's. Once, with the world renderer. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        CgCollisionShow.clientLines(RECENT);
-        CgCollisionShow.install();
+        CgCollisionShow.installClient();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
-        CgNetwork.onClientTick(CgCollisionDebug::ask);
-        CgCollisionShow.LINES.onReceive(pack -> {
-            serverLines = pack;
-            serverAt = System.nanoTime();
-        });
     }
 
     /** Frees the mesh and material with the context. */
@@ -118,14 +99,7 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        RECENT.eye(view.x(), view.y(), view.z());
-        boolean showing = CgCollisionShow.showing();
-        if (showing) {
-            show();
-        } else if (shown) {
-            RECENT.clear();
-        }
-        shown = showing;
+        CgCollisionShow.drawTo(view.x(), view.y(), view.z(), CgCollisionDebug::coloured);
         if (LINES.count == 0) return;
         if (mesh == null) {
             mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, LINES));
@@ -137,27 +111,9 @@ public final class CgCollisionDebug {
         LINES.count = 0;
     }
 
-    private static void show() {
-        RECENT.drawTo(System.nanoTime(), CgCollisionDebug::coloured);
-        if (serverLines != null && System.nanoTime() - serverAt < SERVER_HOLD_NANOS) {
-            colour = SERVER;
-            CgLinePack.read(serverLines, LINES);
-        }
-    }
-
     private static void coloured(int argb, double ax, double ay, double az, double bx, double by, double bz) {
         colour = argb;
         LINES.line(ax, ay, az, bx, by, bz);
-    }
-
-    /** Follows the host's view, and keeps the server told while showing and once when it stops. Client thread. */
-    private static void ask() {
-        CgCollisionShow.followHost();
-        boolean on = CgCollisionShow.showing();
-        if (on == asked && (!on || ++sinceAsked < CgCollisionShow.ASK_EVERY)) return;
-        CgCollisionShow.ASK.sendToServer(on);
-        asked = on;
-        sinceAsked = 0;
     }
 
     private static void write(CgMeshWriter m, Lines lines) {

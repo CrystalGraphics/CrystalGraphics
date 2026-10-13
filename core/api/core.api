@@ -1799,13 +1799,16 @@ com/crystalgraphics/collision/hitbox/CgHitboxes
   extends java/lang/Object
   method public,static gathering ()Lcom/crystalgraphics/collision/hitbox/CgHitbox;
   method public,static hittables (Lcom/crystalgraphics/collision/hitbox/CgHitboxes$Hittables;Z)V
-  method public,static watch (Ljava/util/function/Consumer;)V
-  method public,static world (Lcom/crystalgraphics/collision/hitbox/CgHitbox;)Lcom/crystalgraphics/collision/CgCollisionWorld;
+  method public,static watch (Lcom/crystalgraphics/collision/hitbox/CgHitboxes$Watcher;)V
 com/crystalgraphics/collision/hitbox/CgHitboxes$Hittables
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract part (Lcom/crystalgraphics/collision/hitbox/CgHitbox;Lcom/crystalgraphics/collision/CgHitPart;Lcom/crystalgraphics/shape/CgShape;Lcom/crystalgraphics/shape/CgPose;)V
   method public,abstract wants (Lcom/crystalgraphics/collision/hitbox/CgHitbox;Lcom/crystalgraphics/collision/CgCollisionWorld;I)Z
+com/crystalgraphics/collision/hitbox/CgHitboxes$Watcher
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract ticked (Lcom/crystalgraphics/collision/hitbox/CgHitbox;Lcom/crystalgraphics/collision/CgCollisionWorld;)V
 com/crystalgraphics/compute/CgCompute
   access public,final
   extends java/lang/Object

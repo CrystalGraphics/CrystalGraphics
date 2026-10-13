@@ -56,14 +56,14 @@ final class CgLinePack implements CgShapeLines.Sink {
         return out.array();
     }
 
-    /** Hands {@code out} each segment of a pack, back in world space; how many there were. */
-    static int read(byte[] pack, CgShapeLines.Sink out) {
+    /** Hands {@code out} each segment of a pack in {@code argb}, back in world space; how many there were. */
+    static int read(byte[] pack, int argb, CgRecentLines.Out out) {
         ByteBuffer in = ByteBuffer.wrap(pack);
         if (in.remaining() < HEADER) return 0;
         double ox = in.getDouble(), oy = in.getDouble(), oz = in.getDouble();
         int count = Math.min(in.getInt(), in.remaining() / SEGMENT);
         for (int i = 0; i < count; i++) {
-            out.line(ox + in.getShort() * UNIT, oy + in.getShort() * UNIT, oz + in.getShort() * UNIT,
+            out.line(argb, ox + in.getShort() * UNIT, oy + in.getShort() * UNIT, oz + in.getShort() * UNIT,
                     ox + in.getShort() * UNIT, oy + in.getShort() * UNIT, oz + in.getShort() * UNIT);
         }
         return count;

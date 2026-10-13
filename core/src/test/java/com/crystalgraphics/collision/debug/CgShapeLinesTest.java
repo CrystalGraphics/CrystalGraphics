@@ -123,8 +123,8 @@ public class CgShapeLinesTest {
         pack.line(0, 0, 0, 1, 1, 1);
         assertTrue(pack.full());
         List<double[]> read = new ArrayList<>();
-        assertEquals(2, CgLinePack.read(pack.finish(),
-                (ax, ay, az, bx, by, bz) -> read.add(new double[]{ax, ay, az, bx, by, bz})));
+        assertEquals(2, CgLinePack.read(pack.finish(), 0,
+                (argb, ax, ay, az, bx, by, bz) -> read.add(new double[]{ax, ay, az, bx, by, bz})));
         double[] first = {101.25, 64.5, -310, 90, 70, -300.001};
         for (int i = 0; i < 6; i++) assertEquals(first[i], read.get(0)[i], CgLinePack.UNIT / 2);
         assertEquals(-300 + CgLinePack.REACH, read.get(1)[5], CgLinePack.UNIT / 2);
