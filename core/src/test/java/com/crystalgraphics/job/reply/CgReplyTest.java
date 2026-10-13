@@ -47,6 +47,34 @@ public class CgReplyTest {
     }
 
     @Test
+    public void flatMapSettlesWithTheNextReplyAndCancelsBoth() {
+        CgPendingReply<Integer> first = new CgPendingReply<>(null);
+        CgPendingReply<String> second = new CgPendingReply<>(null);
+        CgReply<String> joined = first.flatMap(n -> {
+            assertEquals(Integer.valueOf(2), n);
+            return second;
+        });
+        first.resolve(2);
+        assertFalse(joined.isDone());
+        second.resolve("two");
+        assertEquals("two", joined.result());
+
+        CgPendingReply<Integer> again = new CgPendingReply<>(null);
+        AtomicInteger told = new AtomicInteger();
+        CgPendingReply<String> made = new CgPendingReply<>(told::incrementAndGet);
+        CgReply<String> cancelled = again.flatMap(n -> made);
+        again.resolve(1);
+        cancelled.cancel();
+        assertEquals("the reply next made is told", 1, told.get());
+        assertTrue(cancelled.error().is(CgReplyError.CANCELLED));
+
+        CgReply<String> thrown = CgReply.of(1).flatMap(n -> {
+            throw new IllegalStateException("no");
+        });
+        assertTrue(thrown.error().is(CgReplyError.FAILED));
+    }
+
+    @Test
     public void bothAndAllWaitForEveryOneAndFailWithTheFirst() {
         CgPendingReply<Integer> a = new CgPendingReply<>(null);
         CgPendingReply<String> b = new CgPendingReply<>(null);

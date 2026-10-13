@@ -109,6 +109,18 @@ public class CgJobTest {
     }
 
     @Test
+    public void aRepeatReadingNullSkipsTheRunUntilThereIsSomething() throws InterruptedException {
+        AtomicInteger reads = new AtomicInteger(), worked = new AtomicInteger();
+        CgJob.Repeating<Integer> job = CgJob.repeat(() -> reads.incrementAndGet() < 3 ? null : 7)
+                .work(n -> worked.addAndGet(n)).failed(e -> { throw new AssertionError(e); });
+        until(() -> worked.get() > 0);
+        job.cancel();
+        CgJob.drain();
+        assertTrue("two empty reads, then a run: " + reads.get(), reads.get() >= 3);
+        assertEquals(0, worked.get() % 7);
+    }
+
+    @Test
     public void aFailureIsHeardAndEndsARepeatingJob() throws InterruptedException {
         AtomicReference<Throwable> heard = new AtomicReference<>();
         CgJob<Object> once = CgJob.run(() -> {

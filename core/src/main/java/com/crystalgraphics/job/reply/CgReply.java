@@ -54,6 +54,42 @@ public interface CgReply<T> {
     /** A view over this reply's value. Cancelling the view cancels this reply. */
     <U> CgReply<U> map(Function<? super T, ? extends U> mapper);
 
+    /**
+     * The reply {@code next} makes of this one's value, as one reply: a job started on an answer that is not here yet.
+     *
+     * <pre>{@code
+     * CgCollisionWorld.of(level).snapshot(x, y, z, 24)            // CgReply<CgCollisionWorld>
+     *         .flatMap(area -> CgJob.run(() -> simulate(area)))   // CgReply<List<Debris>>: a worker steps the copy
+     *         .then(next -> pieces = next);                       // back on this thread
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code next} runs where this reply's listeners run, with its value; a throw fails the result.</li>
+     *   <li>Cancelling the result cancels this reply, and the one {@code next} made once there is one.</li>
+     * </ul>
+     */
+    default <U> CgReply<U> flatMap(Function<? super T, ? extends CgReply<? extends U>> next) {
+        Objects.requireNonNull(next, "next");
+        List<CgReply<?>> made = new ArrayList<>(1);
+        CgPendingReply<U> joined = new CgPendingReply<>(() -> {
+            cancel();
+            for (CgReply<?> r : made) r.cancel();
+        });
+        onError(joined::fail).then(value -> {
+            if (joined.isDone()) return;
+            CgReply<? extends U> r;
+            try {
+                r = next.apply(value);
+            } catch (RuntimeException e) {
+                joined.fail(CgReplyError.failed(e));
+                return;
+            }
+            made.add(r);
+            r.onError(joined::fail).then(joined::resolve);
+        });
+        return joined;
+    }
+
     /** Stops caring and tells whoever produces the answer; settles with {@link CgReplyError#CANCELLED}. */
     void cancel();
 

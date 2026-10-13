@@ -21,11 +21,12 @@ import java.util.function.Supplier;
  * for a tick, run beside the game, its result applied by the game's own thread.
  *
  * <pre>{@code
- * CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);   // this thread: blocks and entities, frozen
- * List<Shard> shards = copyOf(this.shards);
+ * // List<Debris> simulate(CgCollisionWorld area, List<Debris> pieces): every piece moved one tick, a new list
+ * List<Debris> copy = List.copyOf(pieces);          // the worker's own copy
  *
- * CgJob.run(() -> simulate(area, shards))           // a worker
- *      .then(hits -> hits.forEach(this::hurt));     // back on this thread, at its next tick
+ * CgCollisionWorld.of(level).snapshot(x, y, z, 24)                   // the area: blocks and entities, frozen
+ *         .flatMap(area -> CgJob.run(() -> simulate(area, copy)))    // a worker runs simulate
+ *         .then(next -> pieces = next);                              // next: simulate's list, back on this thread
  * }</pre>
  *
  * A job is a {@link CgReply}: it composes with other answers, and hears failure and cancellation.
@@ -52,9 +53,10 @@ import java.util.function.Supplier;
  * worker, kept when it comes back. One run at a time, at most one a tick.
  *
  * <pre>{@code
- * CgJob.repeat(() -> CgCollisionWorld.of(level).snapshot(arena))   // this thread, before each run
- *      .work(area -> debris.stepped(area))                          // a worker: returns the next state
- *      .then(next -> debris = next)                                 // this thread
+ * CgCollisionWorld.Watch arena = CgCollisionWorld.of(level).watch(ARENA);   // kept fresh every tick
+ * CgJob.repeat(arena::latest)                       // this thread, before each run: the newest tick's world
+ *      .work(area -> simulate(area, pieces))        // a worker: returns the next List<Debris>
+ *      .then(next -> pieces = next)                 // this thread
  *      .named("debris");
  * }</pre>
  *
@@ -434,7 +436,8 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
 
     /**
      * A job run again and again: {@code read} on this thread, then the work on a worker, then {@code then} here, from
-     * the next tick until it is cancelled or fails.
+     * the next tick until it is cancelled or fails. A {@code read} answering null skips the run, and is asked again
+     * next tick: a watch's {@code latest()} before its first tick.
      */
     public static <S> Repeat<S> repeat(Supplier<? extends S> read) {
         return new Repeat<>(Objects.requireNonNull(read, "read"));
@@ -516,11 +519,12 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
         boolean read() {
             try {
                 input = read.get();
-                return true;
             } catch (RuntimeException e) {
                 report(e);
                 return false;
             }
+            // nothing to work on yet (a watch before its first tick): read again at the next drain
+            return input == null || submitFrom(READING);
         }
 
         @Override
@@ -536,7 +540,7 @@ public final class CgJob<T> extends CgJobBase implements CgReply<T> {
                     return false;
                 }
             }
-            return againFrom(DONE) && read() && submitFrom(READING);
+            return againFrom(DONE) && read();
         }
 
         @Override

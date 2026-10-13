@@ -58,9 +58,9 @@ abstract class CgJobBase extends CgJobQueue.Entry {
     /** At the drain, once {@link #CANCELLED}. Ends the job. */
     abstract void deliverCancelled();
 
-    /** For a repeating job, its read before each run; whether to submit. */
+    /** For a repeating job, its read before each run, which submits the work when there is any; whether to keep it. */
     boolean read() {
-        return true;
+        return submitFrom(READING);
     }
 
     /** Tells the running work to stop. */
@@ -137,7 +137,7 @@ abstract class CgJobBase extends CgJobQueue.Entry {
                 blocker = null;
                 return submitFrom(WAITING);
             case READING:
-                return read() && submitFrom(READING);
+                return read();
             case QUEUED:
             case RUNNING:
                 return true;
