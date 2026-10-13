@@ -97,6 +97,9 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
   never loads), and Forge and NeoForge dev runs, which apply no CrystalGraphics mixin. There `snapshot` copies the area
   on the spot, as `copyBlocks` below.
 - The mirror publishes at `CgNetwork.onServerTick`, the END phase on every loader.
+- **A write past the hook** (a mod setting a section's states directly) is found by an audit that compares each
+  mirrored column with its chunk about once a minute, a few columns a tick, and the section is copied again. Legacy
+  and 1.7.10, which resolve every block where it stands, are not audited.
 
 - **Entity ids are Minecraft's network ids** (`entity.getId()`); a host turns one back with the level's lookup, parts
   included as above.

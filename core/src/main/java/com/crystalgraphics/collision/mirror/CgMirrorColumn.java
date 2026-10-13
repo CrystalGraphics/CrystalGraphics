@@ -45,8 +45,9 @@ public final class CgMirrorColumn {
     }
 
     /**
-     * Block {@code (x, y, z)} is about to become {@code state}. {@code dynamic} when that state's shape changes with no
-     * write: a modern block with a dynamic shape, a legacy moving piston.
+     * Block {@code (x, y, z)} is about to become {@code state}. {@code dynamic} when its shape may depend on where it
+     * stands (a modern block with a dynamic shape, a legacy moving piston): it is resolved at the tick's end, and every
+     * tick after while {@link CgMirrorHost#resolveAt} says it moves on its own.
      */
     public void write(int x, int y, int z, @Nullable Object state, boolean dynamic) {
         int i = (y >> 4) - mirror.minSection;

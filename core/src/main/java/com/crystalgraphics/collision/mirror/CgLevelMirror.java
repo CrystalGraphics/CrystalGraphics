@@ -21,6 +21,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -63,10 +64,13 @@ public final class CgLevelMirror {
     static final CgVar.Bool VERIFY = CgVar.bool("crystalgraphics.mirror.verify", false, CgVar.DEV,
             "Compares every level mirror version against a copy taken at its tick, logging any difference: test servers only");
     static final CgVar.Bool STATS = CgVar.bool("crystalgraphics.mirror.stats", false, CgVar.DEV,
-            "Logs each level mirror's cost every 100 server ticks: level-thread and worker time, sections, writes");
+            "Logs each level mirror's cost every 100 server ticks: level-thread time by phase (average and worst), worker time, "
+                    + "sections, first copies, resolved cells, entities");
 
     /** A section's cells, for the memory budget. */
     private static final int SECTION_BYTES = 4096 * 2 + 256;
+    /** Ticks in which every mirrored column is audited once against its chunk: about a minute. */
+    private static final int AUDIT_TICKS = 1200;
     /** Columns a publish looks for a missing chunk in, at most. */
     private static final int LOOKS_PER_PUBLISH = 64;
 
@@ -108,6 +112,10 @@ public final class CgLevelMirror {
     private final List<Watch> readyWaiting = new ArrayList<>();
     private final List<CgAABBc> regions = new ArrayList<>();
     private boolean regionsStale;
+    /** Columns in audit order, from {@link #auditAt}; rebuilt when the columns change. */
+    private final List<CgMirrorColumn> auditOrder = new ArrayList<>();
+    private boolean auditStale;
+    private int auditAt;
     private int lastEntities;
     private double regionsMinY, regionsMaxY;
     private int wantedSections;
@@ -118,7 +126,7 @@ public final class CgLevelMirror {
     private final MirrorPalette palette;
     private final HashMap<Long, MirrorSection[]> workerColumns = new HashMap<>();
     private final HashMap<Long, CgMirrorVersion.ColumnData> table = new HashMap<>();
-    private final HashMap<Long, Boolean> unloadedTable = new HashMap<>();
+    private final HashSet<Long> unloadedTable = new HashSet<>();
     private Object[] states = new Object[4096];
     private int[] found = new int[16];
 
@@ -126,6 +134,8 @@ public final class CgLevelMirror {
     private final ConcurrentLinkedQueue<MirrorBatch> batches = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean working = new AtomicBoolean();
     private volatile CgMirrorVersion version;
+    /** Sections the worker found differing from their chunk: written past the hook, so copied again. */
+    private final ConcurrentLinkedQueue<MirrorSection> mismatched = new ConcurrentLinkedQueue<>();
     /** Positional cells the worker found in first copies, for the level thread to resolve from then on. */
     private final ConcurrentLinkedQueue<Found> discovered = new ConcurrentLinkedQueue<>();
 
@@ -260,7 +270,7 @@ public final class CgLevelMirror {
                     if (delta < 0) continue;
                     c = new CgMirrorColumn(this, cx, cz, sectionCount);
                     columns.put(k, c);
-                    regionsStale = true;
+                    regionsStale = auditStale = true;
                 }
                 for (int s = w.s0; s <= w.s1; s++) {
                     if (delta > 0) {
@@ -280,7 +290,7 @@ public final class CgLevelMirror {
                     if (c.chunk != null) host.attach(c.chunk, null);
                     columns.remove(k);
                     droppedColumns.add(k);
-                    regionsStale = true;
+                    regionsStale = auditStale = true;
                 }
             }
         }
@@ -367,6 +377,8 @@ public final class CgLevelMirror {
         long started = System.nanoTime();
         Runnable command;
         while ((command = commands.poll()) != null) command.run();
+        MirrorSection differing;
+        while ((differing = mismatched.poll()) != null) resync(differing);
         closeIdle();
         generation++;
         long t = phase(0, started);
@@ -389,9 +401,10 @@ public final class CgLevelMirror {
         resolvePositional(lvl, b);
         t = phase(1, t);
         takeCopies(lvl, b);
-        t = phase(2, t);
         // a worker behind would queue a copy of every section a tick
         if (VERIFY.get() && batches.isEmpty()) verifyCopies(b);
+        else audit(b);
+        t = phase(2, t);
 
         if (!watches.isEmpty()) {
             CgAABB union = new CgAABB();
@@ -601,6 +614,28 @@ public final class CgLevelMirror {
         }
     }
 
+    /**
+     * A few columns a tick, in turn, copied for the worker to compare: what catches a write that bypassed the hook (a mod
+     * setting a section's states directly). A section that differs is copied again.
+     */
+    private void audit(MirrorBatch b) {
+        if (positionalOnly || columns.isEmpty()) return;
+        if (auditStale) {
+            auditOrder.clear();
+            auditOrder.addAll(columns.values());
+            auditStale = false;
+            auditAt = 0;
+        }
+        for (int n = (auditOrder.size() + AUDIT_TICKS - 1) / AUDIT_TICKS; n > 0; n--) {
+            if (auditAt >= auditOrder.size()) auditAt = 0;
+            CgMirrorColumn c = auditOrder.get(auditAt++);
+            if (c.chunk == null) continue;
+            for (MirrorSection s : c.sections) {
+                if (s != null && s.based && !s.resync) b.verify(s, host.copy(c.chunk, s.index));
+            }
+        }
+    }
+
     /** Settles each {@link Watch#ready} whose watch the newest version completes. */
     private void settleReady() {
         CgMirrorVersion v = version;
@@ -666,7 +701,7 @@ public final class CgLevelMirror {
             out.append(s == null ? "-" : (s.based ? "b" : "") + (s.resync ? "r" : "") + (s.ready ? "R" : "")
                     + (waiting.contains(s) ? "w" : "")).append(' ');
         }
-        out.append("]; worker unloaded ").append(unloadedTable.containsKey(k)).append(", data ").append(table.get(k) != null);
+        out.append("]; worker unloaded ").append(unloadedTable.contains(k)).append(", data ").append(table.get(k) != null);
         return out.toString();
     }
 
@@ -689,7 +724,7 @@ public final class CgLevelMirror {
             changed.put(b.dropped[i], Boolean.TRUE);
         }
         for (int i = 0; i < b.unloadedCount; i++) {
-            unloadedTable.put(b.unloaded[i], Boolean.TRUE);
+            unloadedTable.add(b.unloaded[i]);
             changed.put(b.unloaded[i], Boolean.TRUE);
         }
         for (int i = 0; i < b.baseCount; i++) {
@@ -774,7 +809,7 @@ public final class CgLevelMirror {
     /** The column {@code k} as the next version holds it. */
     private void rebuild(Long k) {
         MirrorSection[] col = workerColumns.get(k);
-        boolean unloaded = unloadedTable.containsKey(k);
+        boolean unloaded = unloadedTable.contains(k);
         if (col == null && !unloaded) {
             table.remove(k);
             return;
@@ -807,9 +842,11 @@ public final class CgLevelMirror {
                 if (entry >= 0 && entry != s.get(cell)) differ++;
             }
             Arrays.fill(states, null);
-            if (differ > 0 && VERIFY_DIFFERENCES.getAndAdd(differ) < 20) {
-                LOGGER.error("[cg-mirror] section ({}, {}, {}) differs from its tick in {} cells", s.column.chunkX,
-                        minSection + s.index, s.column.chunkZ, differ);
+            if (differ == 0) continue;
+            mismatched.add(s);
+            if (VERIFY_DIFFERENCES.getAndAdd(differ) < 20) {
+                LOGGER.warn("[cg-mirror] section ({}, {}, {}) differs from its chunk in {} cells, written past the hook: "
+                        + "copying it again", s.column.chunkX, minSection + s.index, s.column.chunkZ, differ);
             }
         }
     }

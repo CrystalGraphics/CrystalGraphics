@@ -149,6 +149,19 @@ public class CgLevelMirrorTest {
     }
 
     @Test
+    public void aWritePastTheHookIsFoundByTheAuditAndCopiedAgain() throws InterruptedException {
+        yard(3);
+        CgCollisionWorld.Watch watch = CgCollisionWorld.of(level).watch(AREA);
+        tick();
+        tick();
+        // a mod setting a section's states directly: the hook never hears it
+        level.load(1, 1).sections[2][0] = STONE;
+        for (int t = 0; t < 10 && differences(watch.latest().blocks(), level, AREA) > 0; t++) tick();
+        assertEquals(described(watch.latest().blocks(), level, AREA), 0, differences(watch.latest().blocks(), level, AREA));
+        watch.close();
+    }
+
+    @Test
     public void aDynamicShapeFollowsItsBlockWithNoWrite() throws InterruptedException {
         yard(3);
         level.set(3, 50, 3, DYNAMIC);

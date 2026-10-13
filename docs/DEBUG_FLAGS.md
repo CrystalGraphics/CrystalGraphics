@@ -134,7 +134,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.mirror.baseBudget` | 0 to 1000000 | `250` | Microseconds of each server tick a level mirror may spend copying sections it starts mirroring |
 | `crystalgraphics.mirror.idleTicks` | 1 to 72000 | `200` | Server ticks a level mirror keeps an area a snapshot asked for once nothing asks again |
 | `crystalgraphics.mirror.memory` | 1 to 65536 | `64` | Megabytes of sections the level mirrors may hold; past it, snapshots' idle areas go first |
-| `crystalgraphics.mirror.stats` | true, false | `false` | Logs each level mirror's cost every 100 server ticks: level-thread and worker time, sections, writes |
+| `crystalgraphics.mirror.stats` | true, false | `false` | Logs each level mirror's cost every 100 server ticks: level-thread time by phase (average and worst), worker time, sections, first copies, resolved cells, entities |
 | `crystalgraphics.mirror.verify` | true, false | `false` | Compares every level mirror version against a copy taken at its tick, logging any difference: test servers only |
 
 ## `crystalgraphics.net`
