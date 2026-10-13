@@ -4,7 +4,9 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 
+import com.crystalgraphics.job.reply.CgPendingReply;
 import com.crystalgraphics.job.reply.CgReplyError;
+import com.crystalgraphics.net.protocol.CgProtocolErrors;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.serialization.CgCodecs;
@@ -100,6 +102,30 @@ public class CgRequestTest {
 
         assertNull(answer.get());
         assertEquals("no such player", error.get());
+    }
+
+    @Test
+    public void aHandlerAnswersFromAReplyLater() {
+        CgRequest<String, String> greet = CgRequest.toServer("test:greet", CgCodecs.STRING, CgCodecs.STRING);
+        CgPendingReply<String> work = new CgPendingReply<>(null);
+        greet.onServer((peer, name, reply) -> reply.from(work));
+        connect();
+        settle();
+
+        greet.ask("Alex").then(answer::set).onError(e -> error.set(e.code()));
+        settle();
+        assertNull("not answered before the work settles", answer.get());
+        work.resolve("done");
+        settle();
+        assertEquals("done", answer.get());
+
+        CgPendingReply<String> failing = new CgPendingReply<>(null);
+        greet.onServer((peer, name, reply) -> reply.from(failing));
+        greet.ask("Alex").onError(e -> error.set(e.code() + "|" + e.detail()));
+        settle();
+        failing.fail(CgReplyError.failed(new IllegalStateException("boom")));
+        settle();
+        assertEquals(CgProtocolErrors.HANDLER_FAILED + "|java.lang.IllegalStateException: boom", error.get());
     }
 
     @Test

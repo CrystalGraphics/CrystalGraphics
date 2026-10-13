@@ -146,6 +146,20 @@ public final class CgRequest<A, R> {
         void ok(R value);
 
         void fail(String error);
+
+        /**
+         * Answers with what {@code answer} settles to: work too heavy for the tick, run as a job.
+         *
+         * <pre>{@code
+         * STATS.onServer((peer, pos, reply) -> reply.from(CgJob.run(() -> scan(snapshotAt(pos)))));
+         * }</pre>
+         *
+         * A failure answers with its code, or {@link CgProtocolErrors#HANDLER_FAILED} and what was thrown.
+         */
+        default void from(CgReply<? extends R> answer) {
+            answer.then(this::ok).onError(error -> fail(error.cause() != null
+                    ? CgProtocolErrors.HANDLER_FAILED + ": " + error.cause() : error.code()));
+        }
     }
 
     /** The server's handler, told which player asked. */
