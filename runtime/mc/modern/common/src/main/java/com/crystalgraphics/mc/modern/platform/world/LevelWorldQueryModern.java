@@ -11,20 +11,26 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.minecraft.world.level.LightLayer;
+//? if >=1.14.3 {
+import net.minecraft.world.phys.shapes.Shapes;
+//?} else {
+/*import net.minecraft.world.phys.AABB;
+*///?}
 
 import java.lang.ref.WeakReference;
-import java.util.List;
+//? if <1.14.3 {
+/*import java.util.List;
+*///?}
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * {@link CgWorldQuery} over one level, 1.13.2 to 26.3, a server's included: what each block and column is, read where
  * each version keeps it. Server-safe; {@link LevelQueriesModern} hands one out per level, and the client's
  * {@link WorldQueryModern} extends it with what only a client has (tint, biome colours, sprites), which this answers 0
- * and false. The level's thread; reuses one mutable position, so it allocates nothing but {@link #collisionBoxes}'s
- * box list.
+ * and false. The level's thread; reuses one mutable position and one box consumer, so it allocates nothing but
+ * {@link #collisionBoxes}'s box list on 1.13.2, whose consumer interface is obfuscated.
  *
  * <ul>
  *   <li>A block or fluid in a chunk that is not loaded reads as air: a server's level would load the chunk to answer.</li>
@@ -43,6 +49,9 @@ public class LevelWorldQueryModern implements CgWorldQuery {
     private final WeakReference<Level> bound;
     private Level seen;
     private int epoch;
+    //? if >=1.14.3 {
+    private final BoxesInto boxesInto = new BoxesInto();
+    //?}
 
     LevelWorldQueryModern(Level bound) {
         this.bound = new WeakReference<>(bound);
@@ -84,7 +93,14 @@ public class LevelWorldQueryModern implements CgWorldQuery {
         if (level == null) return 0;
         VoxelShape shape = state(level, x, y, z).getCollisionShape(level, pos);
         if (shape.isEmpty()) return 0;
-        List<AABB> boxes = shape.toAabbs();
+        //? if >=1.14.3 {
+        boxesInto.out = out;
+        boxesInto.count = 0;
+        shape.forAllBoxes(boxesInto);
+        boxesInto.out = null;
+        return boxesInto.count;
+        //?} else {
+        /*List<AABB> boxes = shape.toAabbs();
         int fit = Math.min(boxes.size(), out.length / 6);
         for (int i = 0; i < fit; i++) {
             AABB b = boxes.get(i);
@@ -96,7 +112,28 @@ public class LevelWorldQueryModern implements CgWorldQuery {
             out[i * 6 + 5] = (float) b.maxZ;
         }
         return boxes.size();
+        *///?}
     }
+
+    //? if >=1.14.3 {
+    /** A shape's boxes into the caller's array, counting those that do not fit, as {@code collisionBoxes} answers. */
+    private static final class BoxesInto implements Shapes.DoubleLineConsumer {
+        float[] out;
+        int count;
+
+        @Override
+        public void consume(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+            int at = count++ * 6;
+            if (at + 6 > out.length) return;
+            out[at] = (float) minX;
+            out[at + 1] = (float) minY;
+            out[at + 2] = (float) minZ;
+            out[at + 3] = (float) maxX;
+            out[at + 4] = (float) maxY;
+            out[at + 5] = (float) maxZ;
+        }
+    }
+    //?}
 
     @Override
     public float fluidHeight(int x, int y, int z) {
