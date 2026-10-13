@@ -1,11 +1,14 @@
-package com.crystalgraphics.collision.debug;
+package com.crystalgraphics.collision.hitbox;
 
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
+import com.crystalgraphics.collision.debug.CgCollisionShow;
+import com.crystalgraphics.collision.debug.CgLinePack;
+import com.crystalgraphics.collision.debug.CgRecentLines;
+import com.crystalgraphics.collision.debug.CgShapeLines;
 import com.crystalgraphics.collision.hit.CgHit;
-import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
