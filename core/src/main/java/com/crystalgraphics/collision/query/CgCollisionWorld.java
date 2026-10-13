@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.query;
 
+import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgEntityQuery;
 import com.crystalgraphics.platform.service.CgLevelQueries;
@@ -32,6 +33,14 @@ import java.util.function.IntConsumer;
  *
  * Plain shapes, with no Minecraft at all (tests, an arena, a mod's own hurtboxes): {@link #shapes()}.
  *
+ * Off the level's thread, a {@link #snapshot}: the blocks and entities in a box, copied now, which any number of threads
+ * may query at once while the level moves on.
+ *
+ * <pre>{@code
+ * CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);    // the level's thread
+ * CgJob.run(() -> simulate(area)).then(hits -> hits.forEach(this::hurt));      // queried on a worker
+ * }</pre>
+ *
  * Many queries in one tick share what they learn of the entities inside a {@link #batch}, as Unity's batched query
  * commands do: past its first 160 asks, each 16-block cell is asked of the host once, and each entity's box and flags
  * read once.
@@ -43,8 +52,8 @@ import java.util.function.IntConsumer;
  * }</pre>
  *
  * <ul>
- *   <li>A world is its thread's: {@link #of(Object)} and {@link #client} hand each thread its own, and nothing here is
- *       safe to share. Ask on the level's thread.</li>
+ *   <li>A world is its thread's: {@link #of(Object)} and {@link #client} hand each thread its own, and asking one on
+ *       another thread throws. Ask on the level's thread; a worker asks a {@link #snapshot}.</li>
  *   <li>{@link #of(Object)} reads entities where they are this tick; {@link #client} where the frame draws them.</li>
  *   <li>A query is the world's scratch: end one before starting the next (see {@link CgQuery}).</li>
  *   <li>An unloaded cell blocks line of sight; a block is never loaded to answer.</li>
@@ -59,6 +68,8 @@ public class CgCollisionWorld {
     /** How deep queries may nest, one inside another's visitor. */
     static final int MAX_DEPTH = 4;
     private static final int CACHED_LEVELS = 8;
+    /** Snapshots a thread keeps a lane for; each lane holds its snapshot until replaced. */
+    private static final int LANES = 4;
     private static final ThreadLocal<PerThread> PER_THREAD = ThreadLocal.withInitial(PerThread::new);
 
     CgWorldQuery world;
@@ -67,6 +78,16 @@ public class CgCollisionWorld {
     float partialTick;
     /** Queries running on this world: the depth the next one starts at. */
     int running;
+    /** A snapshot or one of its lanes: nothing it reads changes, so there is no batch and nothing is watched. */
+    boolean frozen;
+    /** A snapshot: its queries run on the calling thread's lane. */
+    private boolean shared;
+    /** On a lane, the snapshot it answers for. */
+    private CgCollisionWorld source;
+    /** The thread whose world this is; null for one any thread may ask. */
+    private Thread owner;
+    /** Whether the first thread to query it owns it: a shape world. */
+    boolean claims;
 
     private final CgQuery[] queries = new CgQuery[MAX_DEPTH];
     private final CgCells sightCells = new CgCells();
@@ -84,6 +105,7 @@ public class CgCollisionWorld {
 
     /** A level of the host's, a server's or a client's, with its entities where they are this tick. */
     public static CgCollisionWorld of(Object level) {
+        refuseWorker("CgCollisionWorld.of(level)");
         CgLevelQueries levels = CgPlatform.get(CgLevelQueries.SERVICE);
         CgWorldQuery w = levels.world(level);
         PerThread t = PER_THREAD.get();
@@ -91,6 +113,7 @@ public class CgCollisionWorld {
             if (known != null && known.world == w) return known;
         }
         CgCollisionWorld made = new CgCollisionWorld(w, levels.entities(level), 1f);
+        made.owner = Thread.currentThread();
         t.levels[t.next] = made;
         t.next = (t.next + 1) % CACHED_LEVELS;
         return made;
@@ -98,16 +121,23 @@ public class CgCollisionWorld {
 
     /** The client's level, its entities where the frame draws them: {@code partialTick} between ticks, 1 at one. */
     public static CgCollisionWorld client(float partialTick) {
+        refuseWorker("CgCollisionWorld.client(partialTick)");
         PerThread t = PER_THREAD.get();
         CgCollisionWorld c = t.client;
-        if (c == null) t.client = c = new CgCollisionWorld(CgWorldQuery.NONE, CgEntityQuery.NONE, 1f);
+        if (c == null) {
+            t.client = c = new CgCollisionWorld(CgWorldQuery.NONE, CgEntityQuery.NONE, 1f);
+            c.owner = Thread.currentThread();
+        }
         c.world = CgPlatform.get(CgWorldQuery.SERVICE);
         c.entities = CgPlatform.get(CgEntityQuery.SERVICE);
         c.partialTick = partialTick;
         return c;
     }
 
-    /** Whatever answers the two queries, a test's fakes included, at the tick's positions. A new world each call. */
+    /**
+     * Whatever answers the two queries, a test's fakes included, at the tick's positions. A new world each call, which
+     * any thread may ask if the queries allow it.
+     */
     public static CgCollisionWorld of(CgWorldQuery world, CgEntityQuery entities) {
         return new CgCollisionWorld(Objects.requireNonNull(world), Objects.requireNonNull(entities), 1f);
     }
@@ -115,6 +145,46 @@ public class CgCollisionWorld {
     /** An empty world of plain placed shapes, filled by its owner. */
     public static CgShapeWorld shapes() {
         return new CgShapeWorld();
+    }
+
+    /**
+     * The blocks and entities touching {@code radius} of a point, copied now: a world any number of threads may query
+     * at once, frozen as it was. On the thread this world belongs to.
+     *
+     * <pre>{@code
+     * CgCollisionWorld area = CgCollisionWorld.of(level).snapshot(x, y, z, 24);
+     * CgJob.forEach(shards, s -> s.step(area));    // every worker queries it together
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Outside the box it holds nothing, and every cell is loaded: a cast leaving it flies on through air.</li>
+     *   <li>It knows only the entities in the box, and whole entities their parts belong to. Another reads as
+     *       none: flags 0, no box, no pose.</li>
+     *   <li>Entities are where this world reads them ({@link #partialTick}), whatever a query asks later.</li>
+     *   <li>Copying is the host's calls for every block: on Forge 1.20.1 about 2 ms for a radius of 8, 16 ms for 24 and
+     *       45 ms for 32. Snapshot only what the work reaches; past 128 blocks a side it throws.</li>
+     *   <li>A snapshot of a snapshot is itself.</li>
+     * </ul>
+     */
+    public CgCollisionWorld snapshot(double x, double y, double z, double radius) {
+        return snapshot(new CgAABB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
+    }
+
+    /** The blocks and entities touching {@code bounds}, copied now: {@link #snapshot(double, double, double, double)}. */
+    public CgCollisionWorld snapshot(CgAABBc bounds) {
+        Objects.requireNonNull(bounds);
+        if (frozen) return this;
+        checkThread();
+        CgCollisionWorld s = new CgCollisionWorld(CgBlockSnapshot.of(world, bounds),
+                CgEntitySnapshot.of(entities, partialTick, bounds), partialTick);
+        s.share();
+        return s;
+    }
+
+    /** Freezes a new snapshot, its queries run on each thread's lane. */
+    void share() {
+        frozen = true;
+        shared = true;
     }
 
     /** The blocks it asks: {@code CgWorldQuery.NONE} for a world of shapes. */
@@ -171,13 +241,14 @@ public class CgCollisionWorld {
      * }</pre>
      */
     public void changed(int entity) {
-        if (entity < 0) return;
+        if (entity < 0 || frozen) return;
         CgEntityCache c = batchCache();
         if (c != null) c.touch(entity);
     }
 
     /** Tells this thread's open batch that every entity may have changed, or one was added: it reads them again. */
     public void changed() {
+        if (frozen) return;
         CgEntityCache c = batchCache();
         if (c != null) c.forget();
     }
@@ -196,8 +267,9 @@ public class CgCollisionWorld {
 
     /** The entities as queries read them: the batch's cache while one is open on this thread, else the host's. */
     CgEntityQuery view() {
+        if (frozen || entities == CgEntityQuery.NONE) return entities;
         Batch b = PER_THREAD.get().batch;
-        if (b.depth == 0 || entities == CgEntityQuery.NONE) return entities;
+        if (b.depth == 0) return entities;
         if (cache == null) cache = new CgEntityCache();
         if (!cache.answersFor(entities, partialTick, b.generation)) cache.reset(entities, partialTick, b.generation);
         return cache.warm() ? cache : entities;
@@ -210,26 +282,31 @@ public class CgCollisionWorld {
 
     /** What {@code shape} overlaps, placed by {@link CgQuery#at} and {@link CgQuery#facing}. */
     public CgQuery overlap(CgShape shape) {
+        if (shared) return lane().overlap(shape);
         return next().start(CgQuery.OVERLAP, Objects.requireNonNull(shape), null);
     }
 
     /** What a box overlaps, absolute in the world: an entity's own box, a region. */
     public CgQuery overlap(CgAABBc box) {
+        if (shared) return lane().overlap(box);
         return next().start(CgQuery.OVERLAP, null, Objects.requireNonNull(box));
     }
 
     /** What {@code shape} first meets moving {@link CgQuery#along} a line. */
     public CgQuery cast(CgShape shape) {
+        if (shared) return lane().cast(shape);
         return next().start(CgQuery.CAST, Objects.requireNonNull(shape), null);
     }
 
     /** What a ray first meets, from {@link CgQuery#at} {@link CgQuery#along} a line. */
     public CgQuery ray() {
+        if (shared) return lane().ray();
         return next().start(CgQuery.RAY, null, null);
     }
 
     /** Whether no block stands between the point and {@code target}'s eyes; false for no such entity. */
     public boolean lineOfSight(double x, double y, double z, int target) {
+        if (shared) return lane().lineOfSight(x, y, z, target);
         if (!view().pose(target, partialTick, pose)) return false;
         return clear(x, y, z, pose[CgEntityQuery.X], pose[CgEntityQuery.Y] + pose[CgEntityQuery.EYE_HEIGHT],
                 pose[CgEntityQuery.Z]);
@@ -240,6 +317,7 @@ public class CgCollisionWorld {
      * over its box each looking back past blocks. 0 for no such entity.
      */
     public float exposure(double x, double y, double z, int target) {
+        if (shared) return lane().exposure(x, y, z, target);
         if (!view().box(target, partialTick, box)) return 0f;
         // Explosion.getSeenPercent, 1.20.1
         double sx = 1.0 / ((box.maxX - box.minX) * 2.0 + 1.0);
@@ -265,10 +343,62 @@ public class CgCollisionWorld {
     // ---- what a query asks of the world
 
     private CgQuery next() {
+        checkThread();
         if (running == MAX_DEPTH) throw new IllegalStateException("queries nest " + MAX_DEPTH + " deep at most");
         CgQuery q = queries[running];
         if (q == null) queries[running] = q = new CgQuery(this);
         return q;
+    }
+
+    void checkThread() {
+        if (frozen) return;
+        Thread me = Thread.currentThread();
+        if (owner == null) {
+            if (claims) owner = me;
+        } else if (owner != me) {
+            throw new IllegalStateException("this world belongs to " + owner.getName() + "; on another thread, query a "
+                    + "snapshot taken on it: world.snapshot(x, y, z, radius)");
+        }
+    }
+
+    private static void refuseWorker(String call) {
+        if (CgJob.isWorkerThread()) {
+            throw new IllegalStateException(call + " on a job's worker: the level is its own thread's. Take a snapshot "
+                    + "there and hand it to the job: CgCollisionWorld.of(level).snapshot(x, y, z, radius)");
+        }
+    }
+
+    /** This thread's lane over this snapshot: a world of its own over the same frozen data. */
+    private CgCollisionWorld lane() {
+        PerThread t = PER_THREAD.get();
+        CgCollisionWorld[] lanes = t.lanes;
+        for (CgCollisionWorld l : lanes) {
+            if (l != null && l.source == this) return l;
+        }
+        int slot = t.nextLane;
+        t.nextLane = (slot + 1) % LANES;
+        CgCollisionWorld l = lanes[slot];
+        // a lane still running a query keeps it, out of the cache
+        if (l == null || l.running > 0 || l.getClass() != getClass()) {
+            l = blank();
+            l.frozen = true;
+            lanes[slot] = l;
+        }
+        l.answerFor(this);
+        return l;
+    }
+
+    /** An empty world of this class, to be a lane. */
+    CgCollisionWorld blank() {
+        return new CgCollisionWorld(CgWorldQuery.NONE, CgEntityQuery.NONE, 1f);
+    }
+
+    /** Makes this lane answer for {@code snapshot}. */
+    void answerFor(CgCollisionWorld snapshot) {
+        source = snapshot;
+        world = snapshot.world;
+        entities = snapshot.entities;
+        partialTick = snapshot.partialTick;
     }
 
     /** Hands {@code visitor} every entity of {@code view} whose box touches {@code bounds}. */
@@ -341,8 +471,9 @@ public class CgCollisionWorld {
 
     private static final class PerThread {
         final CgCollisionWorld[] levels = new CgCollisionWorld[CACHED_LEVELS];
+        final CgCollisionWorld[] lanes = new CgCollisionWorld[LANES];
         final Batch batch = new Batch();
-        int next;
+        int next, nextLane;
         CgCollisionWorld client;
     }
 }

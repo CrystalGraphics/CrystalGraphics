@@ -430,7 +430,7 @@ public final class CgQuery {
             }
         }
         Watcher heard = watcher;
-        if (heard != null && !unwatched && world.hasBlocks()) {
+        if (heard != null && !unwatched && !world.frozen && world.hasBlocks()) {
             heard.ran(shape, pose, boxQuery ? queryBox : null, dirX, dirY, dirZ, length, world.world,
                     hits.isEmpty() ? null : hits.get(0));
         }

@@ -1727,6 +1727,8 @@ com/crystalgraphics/collision/query/CgCollisionWorld
   method public overlap (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/query/CgQuery;
   method public partialTick ()F
   method public ray ()Lcom/crystalgraphics/collision/query/CgQuery;
+  method public snapshot (DDDD)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
+  method public snapshot (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public,static batch ()Lcom/crystalgraphics/collision/query/CgCollisionWorld$Batch;
   method public,static client (F)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
   method public,static of (Lcom/crystalgraphics/platform/service/CgWorldQuery;Lcom/crystalgraphics/platform/service/CgEntityQuery;)Lcom/crystalgraphics/collision/query/CgCollisionWorld;
@@ -1830,6 +1832,9 @@ com/crystalgraphics/collision/query/CgShapeWorld
   method public move (ILcom/crystalgraphics/shape/CgPose;)Lcom/crystalgraphics/collision/query/CgShapeWorld;
   method public remove (I)Z
   method public size ()I
+  method public snapshot ()Lcom/crystalgraphics/collision/query/CgShapeWorld;
+  method public snapshot (DDDD)Lcom/crystalgraphics/collision/query/CgShapeWorld;
+  method public snapshot (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/query/CgShapeWorld;
 com/crystalgraphics/compute/CgCompute
   access public,final
   extends java/lang/Object
@@ -4066,6 +4071,26 @@ com/crystalgraphics/gpu/CgUploads$Tier
   field public,static,final UNPACK Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/gpu/CgUploads$Tier;
   method public,static values ()[Lcom/crystalgraphics/gpu/CgUploads$Tier;
+com/crystalgraphics/job/CgJob
+  access public,final
+  extends java/lang/Object
+  method public cancel ()V
+  method public failed (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
+  method public isDone ()Z
+  method public named (Ljava/lang/String;)Lcom/crystalgraphics/job/CgJob;
+  method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
+  method public then (Ljava/util/function/Consumer;)Lcom/crystalgraphics/job/CgJob;
+  method public,static drain ()V
+  method public,static forEach (ILjava/util/function/IntConsumer;)V
+  method public,static forEach (Ljava/util/List;Ljava/util/function/Consumer;)V
+  method public,static isWorkerThread ()Z
+  method public,static repeat (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/CgJob$Repeat;
+  method public,static run (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/CgJob;
+  method public,static run (Ljava/util/function/Supplier;)Lcom/crystalgraphics/job/CgJob;
+com/crystalgraphics/job/CgJob$Repeat
+  access public,final
+  extends java/lang/Object
+  method public work (Ljava/util/function/Function;)Lcom/crystalgraphics/job/CgJob;
 com/crystalgraphics/net/CgAudience
   access public,abstract,interface
   extends java/lang/Object
@@ -4133,6 +4158,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static onClientTick (Ljava/lang/Runnable;)V
   method public,static onPeerClosed (Ljava/util/function/Consumer;)V
   method public,static onServerTick (Ljava/lang/Runnable;)V
+  method public,static onSessionEnd (Ljava/lang/Runnable;)V
   method public,static openConnections ()I
   method public,static playerJoined (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
   method public,static playerLeft (Ljava/util/UUID;)V

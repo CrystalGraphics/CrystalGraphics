@@ -7,6 +7,7 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
 import java.util.function.IntConsumer;
 
@@ -24,7 +25,16 @@ import java.util.function.IntConsumer;
  * arena.remove(2);
  * }</pre>
  *
+ * Queried from many threads at once, a {@link #snapshot()}: a frozen copy, which the owner keeps editing past.
+ *
+ * <pre>{@code
+ * CgShapeWorld frozen = arena.snapshot();
+ * CgJob.forEach(shards, s -> s.step(frozen));
+ * }</pre>
+ *
  * <ul>
+ *   <li>A shape world is the first thread's to query it; another thread asking it throws. Hand a worker a
+ *       snapshot.</li>
  *   <li>Only {@link CgQuery#except}, {@link CgQuery#source}, {@link CgQuery#where} and {@link CgQuery#max} filter here:
  *       there are no entity flags, kinds or boxes to inflate, and every shape is in sight.</li>
  *   <li>A cast meets convex shapes and compounds of them; an overlap and a ray meet any (see {@code CgShapes}).</li>
@@ -41,6 +51,55 @@ public final class CgShapeWorld extends CgCollisionWorld {
 
     CgShapeWorld() {
         super(CgWorldQuery.NONE, CgEntityQuery.NONE, 1f);
+        claims = true;
+    }
+
+    /** Every shape placed, copied now: a world any number of threads may query at once, never edited. */
+    public CgShapeWorld snapshot() {
+        return frozenCopy(null);
+    }
+
+    /** The shapes whose boxes touch {@code bounds}, copied now: {@link #snapshot()}. */
+    @Override
+    public CgShapeWorld snapshot(CgAABBc bounds) {
+        return frozenCopy(Objects.requireNonNull(bounds));
+    }
+
+    /** The shapes whose boxes touch {@code radius} of a point, copied now: {@link #snapshot()}. */
+    @Override
+    public CgShapeWorld snapshot(double x, double y, double z, double radius) {
+        return snapshot(new CgAABB(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
+    }
+
+    private CgShapeWorld frozenCopy(@Nullable CgAABBc within) {
+        if (frozen) return this;
+        checkThread();
+        CgShapeWorld s = new CgShapeWorld();
+        for (int i = 0; i < size; i++) {
+            if (within == null || bounds[i].intersects(within)) s.add(ids[i], shapes[i], poses[i]);
+        }
+        s.share();
+        return s;
+    }
+
+    @Override
+    CgCollisionWorld blank() {
+        return new CgShapeWorld();
+    }
+
+    @Override
+    void answerFor(CgCollisionWorld snapshot) {
+        super.answerFor(snapshot);
+        CgShapeWorld s = (CgShapeWorld) snapshot;
+        ids = s.ids;
+        shapes = s.shapes;
+        poses = s.poses;
+        bounds = s.bounds;
+        size = s.size;
+    }
+
+    private void refuseFrozen() {
+        if (frozen) throw new IllegalStateException("a snapshot never changes: edit the world it was taken of");
     }
 
     /**
@@ -49,6 +108,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
      * @throws IllegalArgumentException for an id already placed
      */
     public CgShapeWorld add(int id, CgShape shape, CgPose pose) {
+        refuseFrozen();
         Objects.requireNonNull(shape);
         if (indexOf(id) >= 0) throw new IllegalArgumentException("shape " + id + " is already placed");
         if (size == ids.length) grow();
@@ -70,6 +130,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
      * @throws IllegalArgumentException for an id not placed
      */
     public CgShapeWorld move(int id, CgPose pose) {
+        refuseFrozen();
         int i = indexOf(id);
         if (i < 0) throw new IllegalArgumentException("shape " + id + " is not placed");
         poses[i].set(pose);
@@ -79,6 +140,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
 
     /** Takes {@code id} away; false when it was not placed. */
     public boolean remove(int id) {
+        refuseFrozen();
         int i = indexOf(id);
         if (i < 0) return false;
         int last = --size;
@@ -95,6 +157,7 @@ public final class CgShapeWorld extends CgCollisionWorld {
     }
 
     public CgShapeWorld clear() {
+        refuseFrozen();
         for (int i = 0; i < size; i++) shapes[i] = null;
         size = 0;
         return this;
