@@ -148,6 +148,22 @@ public final class CgAABB implements CgAABBc, CgBoxSink {
         return set(minX - dx, minY - dy, minZ - dz, maxX + dx, maxY + dy, maxZ + dz);
     }
 
+    /**
+     * Stretches the box toward one side by {@code (dx, dy, dz)}: Minecraft's {@code expandTowards}, the space a box
+     * covers moving that far. An empty box stays empty.
+     *
+     * <pre>{@code
+     * below.set(entity).expandTowards(0, -0.5, 0);                  // the body and half a block under it
+     * }</pre>
+     */
+    public CgAABB expandTowards(double dx, double dy, double dz) {
+        if (isEmpty()) return this;
+        if (dx < 0) minX += dx; else maxX += dx;
+        if (dy < 0) minY += dy; else maxY += dy;
+        if (dz < 0) minZ += dz; else maxZ += dz;
+        return this;
+    }
+
     public CgAABB translate(double dx, double dy, double dz) {
         return set(minX + dx, minY + dy, minZ + dz, maxX + dx, maxY + dy, maxZ + dz);
     }

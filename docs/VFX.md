@@ -204,6 +204,8 @@ VFX.play(new HitSpark(look, hitX, hitY, hitZ).followKeepingOffset(targetId, CgEn
 
   A mark wins over a registered `Provider`, which wins over the fallback's proportions (`RIGHT_HAND` above). Marking
   a built-in point moves every effect already following it.
+- **A point at a share of the body's height**, scaling with it on every side:
+  `CgEntityAttachments.declareAtHeight("mymod:strike", 0.7)`.
 
 ### Starting part-way through
 

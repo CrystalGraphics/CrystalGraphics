@@ -69,6 +69,14 @@ public final class CgHitboxes {
         return ACTIVE.get().gathering;
     }
 
+    /**
+     * The eyes of the entity {@code hitbox} follows, where its last tick placed it, into {@code out[0..2]}: where its
+     * queries' {@code visible()} looks from. False, {@code out} untouched, for one following nobody.
+     */
+    public static boolean followerEyes(CgHitbox hitbox, double[] out) {
+        return hitbox.followerEyes(out);
+    }
+
     /** Hands {@code watcher} every hitbox each time it ticks; null stops. One watcher for the process: the collision show. */
     public static void watch(@Nullable Watcher watcher) {
         CgHitboxes.watcher = watcher;

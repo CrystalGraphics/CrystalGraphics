@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 import static com.crystalgraphics.platform.world.CgEntityQuery.ALIVE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.ATTACKABLE;
 import static com.crystalgraphics.platform.world.CgEntityQuery.LIVING;
 import static com.crystalgraphics.platform.world.CgEntityQuery.PICKABLE;
 
@@ -132,7 +133,7 @@ public final class CollisionFakes {
         }
 
         public Table mob(int id, double x, double z, int kind) {
-            return add(id, x, 0, z, 0.3, 1.8, ALIVE | LIVING | PICKABLE, kind, id, id);
+            return add(id, x, 0, z, 0.3, 1.8, ALIVE | LIVING | PICKABLE | ATTACKABLE, kind, id, id);
         }
 
         /** Moves {@code id}'s feet to {@code (x, y, z)}. */

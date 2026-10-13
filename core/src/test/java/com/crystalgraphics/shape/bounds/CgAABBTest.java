@@ -31,6 +31,16 @@ public class CgAABBTest {
     }
 
     @Test
+    public void expandTowardsStretchesOneSideOnly() {
+        CgAABB box = CgAABB.of(0, 0, 0, 1, 2, 1).expandTowards(0, -0.5, 3);
+        assertEquals(-0.5, box.minY, 0);
+        assertEquals(2, box.maxY, 0);
+        assertEquals(0, box.minZ, 0);
+        assertEquals(4, box.maxZ, 0);
+        assertTrue(new CgAABB().expandTowards(1, 1, 1).isEmpty());
+    }
+
+    @Test
     public void containsIntersectsAndDistance() {
         CgAABB box = CgAABB.of(-1, -1, -1, 1, 1, 1);
         assertTrue(box.contains(1, 1, 1));

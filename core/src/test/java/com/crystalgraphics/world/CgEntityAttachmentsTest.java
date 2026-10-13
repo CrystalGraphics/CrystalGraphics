@@ -60,6 +60,17 @@ public class CgEntityAttachmentsTest {
     }
 
     @Test
+    public void aPointAtAHeightScalesWithTheBody() {
+        int strike = CgEntityAttachments.declareAtHeight("test:strike", 0.7);
+        assertEquals(strike, CgEntityAttachments.declareAtHeight("test:strike", 0.2));
+        double[] pose = player(0, 0), at = new double[3];
+        assertEquals(64 + 1.8 * 0.7, CgEntityAttachments.point(strike, pose, at)[1], 1e-9);
+        pose[CgEntityQuery.HEIGHT] = 3.6;
+        assertEquals("twice as tall, twice as high", 64 + 3.6 * 0.7, CgEntityAttachments.point(strike, pose, at)[1], 1e-9);
+        assertEquals("on the body's axis", pose[CgEntityQuery.X], at[0], 0);
+    }
+
+    @Test
     public void aDeclaredPointIsAnsweredByItsProviderElseItsFallback() {
         int palm = CgEntityAttachments.declare("test:palm", CgEntityAttachments.CHEST);
         assertEquals(palm, CgEntityAttachments.declare("test:palm", CgEntityAttachments.FEET));

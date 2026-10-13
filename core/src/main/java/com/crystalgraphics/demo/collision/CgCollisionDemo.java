@@ -241,7 +241,7 @@ public final class CgCollisionDemo {
     private void ring() {
         if (ring == null || ring.stopped()) {
             if (worldRing != null) worldRing.stop();
-            ring = grow().query(q -> q.where(id -> id < TARGETS)).onHit(h -> flash[h.entityId()] = FLASH_TICKS);
+            ring = grow().query(q -> q.whereId(id -> id < TARGETS)).onHit(h -> flash[h.entityId()] = FLASH_TICKS);
             worldRing = world == null ? null
                     : grow().query(CgCollisionQuery::allEntities).onHit(h -> flashEntity(h.entityId()));
         }

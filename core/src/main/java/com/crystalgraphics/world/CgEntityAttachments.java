@@ -98,8 +98,8 @@ public final class CgEntityAttachments {
     private static volatile Provider[] providers = new Provider[0];
     private static final Map<String, Integer> IDS = new HashMap<>();
     private static final List<String> NAMES = new ArrayList<>();
-    // Each declared point's built-in fallback, by id - BUILT_IN.
-    private static volatile int[] fallbacks = new int[0];
+    // Each declared point's fallback, by id - BUILT_IN: a built-in point as -1 - point, else a share of the height.
+    private static volatile double[] fallbacks = new double[0];
 
     // Marks, render thread only: an open-addressed table keyed by entity and point.
     private static long[] markKeys = new long[64], markFrames = new long[64];
@@ -135,12 +135,34 @@ public final class CgEntityAttachments {
      */
     public static synchronized int declare(String name, int fallback) {
         if (fallback < 0 || fallback >= BUILT_IN) throw new IllegalArgumentException("not a built-in point: " + fallback);
+        return declared(name, -1 - fallback);
+    }
+
+    /**
+     * The id of the point named {@code name}, declaring it on first use on the body's axis at {@code share} of its
+     * height when nothing marks or answers it: 0 the feet, 1 the top, past 1 above the head. Placed from each side's
+     * own pose, so a server and its clients agree, and a scaled body's point scales with it.
+     *
+     * <pre>{@code
+     * static final int STRIKE = CgEntityAttachments.declareAtHeight("mymod:strike", 0.7);
+     *
+     * CgHitbox.follow(attacker, STRIKE).facingOnce(CgHitbox.Facing.LOOK_LEVEL).part(BLOW, SWING, 0, 0, 1.5)...;
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a negative or non-finite share
+     */
+    public static synchronized int declareAtHeight(String name, double share) {
+        if (!(share >= 0) || Double.isInfinite(share)) throw new IllegalArgumentException("height share " + share);
+        return declared(name, share);
+    }
+
+    private static int declared(String name, double fallback) {
         Integer known = IDS.get(name);
         if (known != null) return known;
         int id = NAMES.size();
         IDS.put(name, id);
         NAMES.add(name);
-        int[] grown = Arrays.copyOf(fallbacks, id - BUILT_IN + 1);
+        double[] grown = Arrays.copyOf(fallbacks, id - BUILT_IN + 1);
         grown[id - BUILT_IN] = fallback;
         fallbacks = grown;
         return id;
@@ -246,12 +268,14 @@ public final class CgEntityAttachments {
 
     /** The attachment point {@code which} of the entity posed by {@code pose}, from its proportions alone, into {@code out}. */
     public static double[] point(int which, double[] pose, double[] out) {
-        if (which >= BUILT_IN) {
-            int[] declared = fallbacks;
-            which = which - BUILT_IN < declared.length ? declared[which - BUILT_IN] : FEET;
-        }
         double x = pose[CgEntityQuery.X], y = pose[CgEntityQuery.Y], z = pose[CgEntityQuery.Z];
         double h = pose[CgEntityQuery.HEIGHT];
+        if (which >= BUILT_IN) {
+            double[] declared = fallbacks;
+            double fallback = which - BUILT_IN < declared.length ? declared[which - BUILT_IN] : -1 - FEET;
+            if (fallback >= 0) return set(out, x, y + h * fallback, z);
+            which = (int) (-1 - fallback);
+        }
         switch (which) {
             case FEET: return set(out, x, y, z);
             case CENTRE: return set(out, x, y + h * 0.5, z);

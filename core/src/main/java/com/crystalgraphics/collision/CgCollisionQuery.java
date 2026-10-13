@@ -14,6 +14,7 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.shape.query.CgCastHit;
 import com.crystalgraphics.shape.query.CgShapes;
+import com.crystalgraphics.world.CgEntityQueries;
 import org.joml.Quaterniondc;
 import org.joml.Quaternionfc;
 
@@ -21,6 +22,7 @@ import javax.annotation.Nullable;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
+import java.util.function.Predicate;
 
 /**
  * One question to a {@link CgCollisionWorld}, read left to right: a shape, where it is, what it may hit, and what to do
@@ -45,7 +47,14 @@ import java.util.function.IntPredicate;
  * }</pre>
  *
  * Targets, by default, are what Minecraft's projectiles hit: alive, pickable, not a spectator. {@link #living},
- * {@link #itemsToo}, {@link #allEntities}, {@link #kinds}, {@link #solid} and {@link #where} change that.
+ * {@link #attackable}, {@link #itemsToo}, {@link #allEntities}, {@link #kinds}, {@link #solid} and {@link #where}
+ * change that.
+ *
+ * <pre>{@code
+ * world.overlap(AURA).at(x, y, z).source(caster).attackable().visible()
+ *         .where((Entity e) -> !e.isAlliedTo(caster))              // handed Minecraft's entity
+ *         .forEach(h -> curse(h.entity()));
+ * }</pre>
  *
  * An entity's own body moving, met as Minecraft's movement meets it: blocks as they show that entity, the world border,
  * and the entities it would stand on:
@@ -107,11 +116,18 @@ public final class CgCollisionQuery {
     /** The cells beyond the border, while a run meets it: x below {@code borderMinX} or from {@code borderMaxX} on. */
     private boolean borderActive;
     private int borderMinX, borderMinZ, borderMaxX, borderMaxZ;
-    private IntPredicate where;
+    private IntPredicate whereId;
+    private Predicate<Object> where;
     private double inflate;
     private CgHitPart part;
+    /** Where {@link #visible} looks from, when {@link #visibleFrom} said. */
+    private boolean sightGiven;
+    private double givenX, givenY, givenZ;
 
     private double ox, oy, oz, invX, invY, invZ, entityLimit;
+    /** Where this run's sight starts: {@link #visibleFrom}, an asking hitbox's follower's eyes, else the origin. */
+    private double sightX, sightY, sightZ;
+    private final double[] sightPose = new double[CgEntityQuery.POSE_LENGTH];
     /** The world's entities as this run reads them: {@link CgCollisionWorld#view}. */
     private CgEntityQuery view;
     private boolean stopAtFirst, done, partsSeen, blockFound;
@@ -139,7 +155,9 @@ public final class CgCollisionQuery {
         excepts = 0;
         source = as = -1;
         max = Integer.MAX_VALUE;
+        whereId = null;
         where = null;
+        sightGiven = false;
         inflate = 0;
         part = null;
         return this;
@@ -235,10 +253,20 @@ public final class CgCollisionQuery {
         return this;
     }
 
+    /** As {@link #except(int)}, by Minecraft's entity. */
+    public CgCollisionQuery except(Object entity) {
+        return except(CgEntityQueries.requireId(entity));
+    }
+
     /** Whose query it is: never hits them, their parts, or anyone riding with them, as Minecraft's projectiles. */
     public CgCollisionQuery source(int id) {
         source = id;
         return this;
+    }
+
+    /** As {@link #source(int)}, by Minecraft's entity. */
+    public CgCollisionQuery source(Object entity) {
+        return source(CgEntityQueries.requireId(entity));
     }
 
     /**
@@ -250,6 +278,11 @@ public final class CgCollisionQuery {
     public CgCollisionQuery as(int id) {
         as = id;
         return this;
+    }
+
+    /** As {@link #as(int)}, by Minecraft's entity. */
+    public CgCollisionQuery as(Object entity) {
+        return as(CgEntityQueries.requireId(entity));
     }
 
     /**
@@ -264,6 +297,12 @@ public final class CgCollisionQuery {
     /** Living entities only: a dragon's part by its dragon. */
     public CgCollisionQuery living() {
         wholeRequire |= CgEntityQuery.LIVING;
+        return this;
+    }
+
+    /** Only what a melee attack may hit, as Minecraft's {@code isAttackable}: no items, orbs or arrows. */
+    public CgCollisionQuery attackable() {
+        wholeRequire |= CgEntityQuery.ATTACKABLE;
         return this;
     }
 
@@ -291,9 +330,31 @@ public final class CgCollisionQuery {
         return this;
     }
 
-    /** Only entities {@code test} accepts: teams, PvP, anything the engine does not decide. */
-    public CgCollisionQuery where(IntPredicate test) {
-        where = test;
+    /**
+     * Only entities {@code test} accepts, handed Minecraft's entity: teams, PvP, anything the engine does not decide.
+     * Asked of the whole entity, a dragon for its parts, and only of one the shape already meets.
+     *
+     * <pre>{@code
+     * q.where((Entity e) -> !e.isAlliedTo(caster));
+     * q.where(this::canHit);                                   // boolean canHit(Entity target)
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Every candidate is handed as {@code V}: take Minecraft's {@code Entity} and narrow inside, since a
+     *       narrower type ({@code LivingEntity}) is cast to and throws on the first item or boat.</li>
+     *   <li>An entity the level no longer holds is refused without asking.</li>
+     *   <li>A snapshot holds no entities, only ids: its queries take {@link #whereId}.</li>
+     * </ul>
+     */
+    @SuppressWarnings("unchecked")
+    public <V> CgCollisionQuery where(Predicate<? super V> test) {
+        where = (Predicate<Object>) test;
+        return this;
+    }
+
+    /** As {@link #where}, by network id: what a snapshot's queries and a worker take. */
+    public CgCollisionQuery whereId(IntPredicate test) {
+        whereId = test;
         return this;
     }
 
@@ -315,9 +376,22 @@ public final class CgCollisionQuery {
         return this;
     }
 
-    /** Only entities the query's origin sees: the centre of their box, past no block. */
+    /**
+     * Only entities seen past no block, as {@link CgCollisionWorld#lineOfSight} sees them: to their eyes, from the
+     * query's origin. A hitbox following an entity looks from that entity's eyes instead, so a swing reaching past a
+     * wall hits nothing behind it.
+     */
     public CgCollisionQuery visible() {
         visible = true;
+        return this;
+    }
+
+    /** As {@link #visible}, looking from {@code (x, y, z)}: a turret's sensor rather than its barrel. */
+    public CgCollisionQuery visibleFrom(double x, double y, double z) {
+        visible = sightGiven = true;
+        givenX = x;
+        givenY = y;
+        givenZ = z;
         return this;
     }
 
@@ -448,6 +522,7 @@ public final class CgCollisionQuery {
             if (shape == null) start.set(ox, oy, oz, ox, oy, oz);
             else shape.bounds(pose, start);
         }
+        if (visible) sightFrom();
         double mx = dirX * length, my = dirY * length, mz = dirZ * length;
         invX = 1 / dirX;
         invY = 1 / dirY;
@@ -498,6 +573,38 @@ public final class CgCollisionQuery {
         }
     }
 
+    /** Where this run's sight starts: as said, else the eyes of the entity an asking hitbox follows, else the origin. */
+    private void sightFrom() {
+        if (sightGiven) {
+            sightX = givenX;
+            sightY = givenY;
+            sightZ = givenZ;
+        } else if (self != null && CgHitboxes.followerEyes(self, sightPose)) {
+            sightX = sightPose[0];
+            sightY = sightPose[1];
+            sightZ = sightPose[2];
+        } else {
+            sightX = ox;
+            sightY = oy;
+            sightZ = oz;
+        }
+    }
+
+    /** Whether no block stands between this run's sight and {@code id}'s eyes. */
+    private boolean seen(int id) {
+        if (!view.pose(id, world.partialTick, sightPose)) return false;
+        return thread.sight.clear(world.world, sightX, sightY, sightZ, sightPose[CgEntityQuery.X],
+                sightPose[CgEntityQuery.Y] + sightPose[CgEntityQuery.EYE_HEIGHT], sightPose[CgEntityQuery.Z]);
+    }
+
+    /** {@link #whereId} and {@link #where}, asked of the whole entity {@code whole}; the second only of a real one. */
+    private boolean accepts(int whole, boolean entity) {
+        if (whereId != null && !whereId.test(whole)) return false;
+        if (where == null || !entity) return true;
+        Object e = view.entity(whole);
+        return e != null && where.test(e);
+    }
+
     /** The hittable hitboxes in this world whose parts' boxes touch {@code within}: a snapshot's frozen ones. */
     private void hittables(CgAABBc within) {
         if (done) return;
@@ -533,16 +640,16 @@ public final class CgCollisionQuery {
         }
     }
 
-    /**
-     * One part of a hittable hitbox, standing for {@code owner}: the filters an entity is asked are asked of the owner's
-     * flags, kind and root vehicle, unless it has none ({@link #NOT_AN_ENTITY}). A hitbox is hit once, by its
-     * nearest part.
-     */
     /** An entity's flags as a part's: none to filter by where the world has no entities. */
     static int flagsOf(CgEntityQuery view, int id) {
         return view == CgEntityQuery.NONE ? NOT_AN_ENTITY : view.flags(id);
     }
 
+    /**
+     * One part of a hittable hitbox, standing for {@code owner}: the filters an entity is asked are asked of the owner's
+     * flags, kind and root vehicle, unless it has none ({@link #NOT_AN_ENTITY}). A hitbox is hit once, by its
+     * nearest part.
+     */
     void meet(CgHitbox hitbox, @Nullable CgHitPart name, CgShape s, CgPose p, int owner, int flags, int kind,
               int root) {
         if (done || hitbox == self || owner == source || excepted(owner)
@@ -550,8 +657,8 @@ public final class CgCollisionQuery {
         if (flags != NOT_AN_ENTITY && ((flags & require) != require || (flags & forbid) != 0
                 || (flags & wholeRequire) != wholeRequire || kinds != ALL_KINDS && (kinds & 1 << kind) == 0)) return;
         CgHit h = hits.add();
-        if (!placedGeometry(s, p, h) || h.distance() > entityLimit || where != null && !where.test(owner)
-                || visible && !thread.sight.clear(world.world, ox, oy, oz, p.x, p.y, p.z)) {
+        if (!placedGeometry(s, p, h) || h.distance() > entityLimit || !accepts(owner, flags != NOT_AN_ENTITY)
+                || visible && !thread.sight.clear(world.world, sightX, sightY, sightZ, p.x, p.y, p.z)) {
             hits.removeLast();
             return;
         }
@@ -612,8 +719,7 @@ public final class CgCollisionQuery {
             int whole = parent == id ? f : e.flags(parent);
             if ((whole & wholeRequire) != wholeRequire) return false;
             if (kinds != ALL_KINDS && (kinds & 1 << e.kind(parent)) == 0) return false;
-            if (where != null && !where.test(id)) return false;
-            if (visible && !thread.sight.clear(world.world, ox, oy, oz, target.centerX(), target.centerY(), target.centerZ())) return false;
+            if (!accepts(parent, true) || visible && !seen(id)) return false;
             h.setEntity(id, parent).from(world.entities);
             if (parent != id) partsSeen = true;
             return true;

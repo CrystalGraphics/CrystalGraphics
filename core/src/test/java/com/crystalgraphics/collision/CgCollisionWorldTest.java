@@ -15,9 +15,12 @@ import com.sun.management.ThreadMXBean;
 import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 import static com.crystalgraphics.platform.world.CgEntityQuery.ALIVE;
+import static com.crystalgraphics.platform.world.CgEntityQuery.ATTACKABLE;
 import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_ITEM;
 import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
 import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_OTHER;
@@ -58,7 +61,7 @@ public class CgCollisionWorldTest {
                 .add(9, 0, 0, -17.95, 0.3, 1.8, LIVING | PICKABLE, KIND_MONSTER, 9, 9)
                 .add(10, -2, 0, -20, 0.125, 0.25, ALIVE, KIND_ITEM, 10, 10)
                 .add(11, 0, 0, -22.2, 0.3, 1.8, ALIVE | LIVING | PICKABLE | PLAYER | SPECTATOR, KIND_PLAYER, 11, 11)
-                .add(30, 3, 0, -17, 1.5, 3, ALIVE | LIVING, KIND_MONSTER, 30, 30)
+                .add(30, 3, 0, -17, 1.5, 3, ALIVE | LIVING | ATTACKABLE, KIND_MONSTER, 30, 30)
                 .add(31, 2.5, 0, -17.5, 0.5, 1, ALIVE | PICKABLE, KIND_OTHER, 30, 31)
                 .add(32, 3.5, 0, -16.5, 0.5, 1, ALIVE | PICKABLE, KIND_OTHER, 30, 32)
                 .add(40, 0, 0.5, -20, 0.3, 1.8, ALIVE | LIVING | PICKABLE | PLAYER, KIND_PLAYER, 40, 41)
@@ -109,13 +112,41 @@ public class CgCollisionWorldTest {
                 ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).except(30)));
         assertArrayEquals(new int[]{1, 2}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).max(2)));
         assertArrayEquals(new int[]{1, 2, 31, 3},
-                ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).where(id -> id != 4)));
+                ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).whereId(id -> id != 4)));
         assertEquals("without a source, the rider and the mount", 7, world.overlap(BLAST).at(CX, CY, CZ).into(hits));
         assertEquals("both hold the blast's centre", 0, hits.get(1).distance(), 0);
         assertArrayEquals("aim assist grows every box", new int[]{1, 2, 31, 3, 4},
                 ids(world.overlap(CgSphere.of(4.6)).at(CX, CY, CZ).source(40).inflate(0.2)));
         assertArrayEquals(new int[]{1, 2, 31, 3},
                 ids(world.overlap(CgSphere.of(4.6)).at(CX, CY, CZ).source(40)));
+    }
+
+    @Test
+    public void attackableLeavesOutWhatAMeleeAttackCannotHit() {
+        assertArrayEquals("the boat and the item are not attackable; the dragon's part is, as its dragon",
+                new int[]{1, 2, 31, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).itemsToo().attackable()));
+    }
+
+    @Test
+    public void whereIsHandedTheWholeEntity() {
+        List<String> asked = new ArrayList<>();
+        assertArrayEquals(new int[]{1, 31, 3, 4}, ids(world.overlap(BLAST).at(CX, CY, CZ).source(40)
+                .where((String e) -> asked.add(e) && !e.equals("mob 2"))));
+        assertTrue("a part is asked as its dragon", asked.contains("mob 30"));
+        assertFalse(asked.contains("mob 31"));
+        assertArrayEquals("refusing the dragon refuses its parts", new int[]{1, 2, 3, 4},
+                ids(world.overlap(BLAST).at(CX, CY, CZ).source(40).where((String e) -> !e.equals("mob 30"))));
+    }
+
+    @Test
+    public void visibleLooksToTheEyesPastBlocks() {
+        // mob 60 stands behind the wall at x = 24, a block high
+        CgShape near = CgSphere.of(4);
+        assertArrayEquals(new int[]{60}, ids(world.overlap(near).at(22.5, 0.3, 0.5)));
+        assertArrayEquals("from low down the wall hides its eyes", new int[0],
+                ids(world.overlap(near).at(22.5, 0.3, 0.5).visible()));
+        assertArrayEquals("seen from above the wall", new int[]{60},
+                ids(world.overlap(near).at(22.5, 0.3, 0.5).visibleFrom(22.5, 3, 0.5)));
     }
 
     @Test

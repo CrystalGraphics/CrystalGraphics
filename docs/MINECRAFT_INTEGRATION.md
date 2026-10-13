@@ -113,8 +113,8 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
 - **The collision show** (`crystalgraphics.collision.show`, or F3+B through `CgHostDebug`) rides the channel: a
   client asks (`crystalgraphics:collision/show`) and the server packs its hitboxes and queries within 64 blocks of
   that player (`CgEntityQueries.position` for where they are, `CgWorldQueries.of` for their level) into
-  `crystalgraphics:collision/lines`. An integrated server follows its player's F3+B; a dedicated one only its own
-  variable.
+  `crystalgraphics:collision/lines`, recording only while someone asks. `crystalgraphics.collision.serve=false`
+  keeps a server's lines to itself unless its own `crystalgraphics.collision.show` is on.
 - **Proven**: `checkAllTargets` for every host; the section copy against block-by-block reads in `serverSmoke` on
   Forge 1.20.1, Forge 1.16.5 and 1.7.10 (0 differing blocks, radius 8 to 60). A dragon part, a painting's offset box
   and a ring hitbox in a live level still want a dev client (the plan's S10).

@@ -3,6 +3,7 @@ package com.crystalgraphics.collision.hitbox;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes.Table;
+import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgSentHit;
@@ -21,7 +22,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
+import static com.crystalgraphics.platform.world.CgEntityQuery.ALIVE;
 import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
+import static com.crystalgraphics.platform.world.CgEntityQuery.LIVING;
+import static com.crystalgraphics.platform.world.CgEntityQuery.PICKABLE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -37,6 +41,63 @@ public class CgHitboxTest {
 
     private static CgCollisionWorld world(Table table) {
         return CgCollisionWorld.of(CgWorldQuery.NONE, table);
+    }
+
+    @Test
+    public void aFollowedHitboxNeverHitsWhomItFollows() {
+        Table t = new Table().mob(1, 0, 0, KIND_MONSTER).mob(2, 0, 1, KIND_MONSTER);
+        List<Integer> hits = new ArrayList<>();
+        CgHitbox.follow(1, CgEntityAttachments.CENTRE).part(TIP, CgSphere.of(2)).onHit(h -> hits.add(h.entityId()))
+                .tick(world(t), 1);
+        assertEquals(Arrays.asList(2), hits);
+    }
+
+    @Test
+    public void facingOnceHoldsTheFacingOfItsFirstTick() {
+        // mob 1 looks along +z pitched down, then turns toward +x (Minecraft's yaw -90), where mob 3 stands
+        Table t = new Table().mob(1, 0, 0, KIND_MONSTER).mob(2, 0, 2, KIND_MONSTER).mob(3, 2, 0, KIND_MONSTER)
+                .look(1, 0, 45);
+        CgCollisionWorld w = world(t);
+        List<Integer> held = new ArrayList<>(), turned = new ArrayList<>();
+        CgHitbox once = CgHitbox.follow(1, CgEntityAttachments.CENTRE).facingOnce(CgHitbox.Facing.LOOK_LEVEL)
+                .part(TIP, CgSphere.of(0.35), 0, 0, 2).onHit(h -> held.add(h.entityId()));
+        CgHitbox tracking = CgHitbox.follow(1, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK_LEVEL)
+                .part(TIP, CgSphere.of(0.35), 0, 0, 2).onHit(h -> turned.add(h.entityId()));
+        once.tick(w, 1);
+        tracking.tick(w, 1);
+        t.look(1, -90, 45);
+        once.tick(w, 1);
+        tracking.tick(w, 1);
+        assertEquals("level though the look is pitched, and held as it turns", Arrays.asList(2), held);
+        assertEquals(Arrays.asList(2, 3), turned);
+    }
+
+    @Test
+    public void aSwingSeesFromItsAttackersEyesSoAWallStopsIt() {
+        // a short attacker against the yard's wall at x = 24, a block high, its blow reaching past it onto mob 60
+        Table t = new Table().add(70, 23.5, 0, 0.5, 0.3, 0.6, ALIVE | LIVING | PICKABLE, KIND_MONSTER, 70, 70)
+                .mob(60, 25.5, 0.5, KIND_MONSTER).look(70, -90, 0);
+        CgCollisionWorld w = CgCollisionWorld.of(new Yard(), t);
+        List<Integer> blind = new ArrayList<>(), seen = new ArrayList<>();
+        CgHitbox.follow(70, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK_LEVEL)
+                .part(TIP, CgBox.of(0.4, 0.4, 1), 0, 0, 2).onHit(h -> blind.add(h.entityId())).tick(w, 1);
+        CgHitbox.follow(70, CgEntityAttachments.CENTRE).facing(CgHitbox.Facing.LOOK_LEVEL)
+                .part(TIP, CgBox.of(0.4, 0.4, 1), 0, 0, 2).query(CgCollisionQuery::visible)
+                .onHit(h -> seen.add(h.entityId())).tick(w, 1);
+        assertEquals("the box reaches past the wall", Arrays.asList(60), blind);
+        assertEquals("but its attacker cannot see the mob", Arrays.asList(), seen);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void followingSomethingThatIsNotAnEntityThrows() {
+        CgHitbox.follow("not an entity", CgEntityAttachments.CENTRE);
+    }
+
+    @Test
+    public void aShowColourIsTakenOpaque() {
+        assertEquals(0xFFFF0000, CgHitbox.of(CgSphere.of(1)).showColour(0xFF0000).showColour());
+        assertEquals(0x80FF0000, CgHitbox.of(CgSphere.of(1)).showColour(0x80FF0000).showColour());
+        assertEquals("none: the side's own", 0, CgHitbox.of(CgSphere.of(1)).showColour());
     }
 
     @Test
@@ -203,7 +264,8 @@ public class CgHitboxTest {
     public void aHittableHitboxNeverMeetsItselfAndNeedsAnOwner() {
         CgCollisionWorld w = world(new Table().mob(2, 0, 0, KIND_MONSTER));
         List<String> hits = new ArrayList<>();
-        CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).hittable()
+        // another source, so the body it follows is fair game
+        CgHitbox aura = CgHitbox.follow(2, CgEntityAttachments.CENTRE).part(null, CgSphere.of(1)).hittable().source(9)
                 .onHit(h -> hits.add(h.kind() + " " + h.entityId()));
         aura.tick(w, 1);
         assertEquals("its owner's body, never its own", Arrays.asList("ENTITY 2"), hits);

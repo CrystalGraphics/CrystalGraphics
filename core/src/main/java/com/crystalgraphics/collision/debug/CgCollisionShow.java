@@ -29,17 +29,21 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * {@code crystalgraphics.collision.show}: every live hitbox and every world query drawn as lines, as Minecraft's F3+B
  * draws entity boxes and PhysX's visual debugger draws scene queries. A client draws the hitboxes it ticks and the
- * queries it runs itself, and those of a server whose own variable is on (an integrated server shares its client's).
+ * queries it runs itself, and the server's.
  *
  * <pre>{@code
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
+ * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
  * }</pre>
  *
  * <ul>
- *   <li>The host's own hitbox view shows them too ({@link CgHostDebug}: F3+B in Minecraft), and an integrated server
- *       takes its owner's as its own switch. A dedicated server sends only while its variable is on.</li>
+ *   <li>The host's own hitbox view shows them too ({@link CgHostDebug}: F3+B in Minecraft).</li>
+ *   <li>A server sends its lines to any player whose client is showing, recording only while one is, unless
+ *       {@link #SERVE} is off; then only while its own {@link #SHOW} is on (an integrated server's follows its
+ *       owner's view).</li>
  *   <li>A client's own hitboxes are green and a server's orange: where the two part, a prediction is off. A
- *       client's queries are blue, and red where they stop and what they hit; a server's are all orange.</li>
+ *       client's queries are blue, and red where they stop and what they hit; a server's are all orange. A hitbox
+ *       with a {@link CgHitbox#showColour(int) show colour} is drawn in it on every side.</li>
  *   <li>A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape. A
  *       query a hitbox runs is left out, its parts drawn instead, as are an empty world's.</li>
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_SEGMENTS} segments a
@@ -51,8 +55,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class CgCollisionShow {
 
     public static final CgVar.Bool SHOW = CgVar.bool("crystalgraphics.collision.show", false, CgVar.DEV,
-            "Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's, and a"
-                    + " server's whose own is on.");
+            "Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's and the"
+                    + " server's.");
+    public static final CgVar.Bool SERVE = CgVar.bool("crystalgraphics.collision.serve", true, CgVar.SAVED,
+            "Lets a server send its hitboxes and queries to any player showing them (F3+B), recording only while one"
+                    + " is. Off, it sends only while its own collision.show is on.");
 
     /** How far from a player a server's hitboxes are sent. */
     static final double RANGE = 64;
@@ -108,10 +115,14 @@ public final class CgCollisionShow {
         if (installed) return;
         installed = true;
         SHOW.onChange(on -> follow());
+        SERVE.onChange(on -> follow());
         follow();
         ASK.onReceiveFrom(CgCollisionShow::asked);
         CgNetwork.onServerTick(CgCollisionShow::serve);
-        CgNetwork.onPeerClosed(peer -> WATCHERS.remove(peer.id()));
+        CgNetwork.onPeerClosed(peer -> {
+            WATCHERS.remove(peer.id());
+            follow();
+        });
     }
 
     /** The client half: records this process's lines, asks a server for its own. From {@link CgCollisionDebug#install}. */
@@ -147,8 +158,14 @@ public final class CgCollisionShow {
         return SHOW.get() || host;
     }
 
+    /** Whether this process's server sends its lines to the players asking. */
+    private static boolean serving() {
+        return SERVE.get() || showing();
+    }
+
+    /** Records while this process shows, or while its server serves someone asking. */
     private static void follow() {
-        boolean on = showing();
+        boolean on = showing() || SERVE.get() && !WATCHERS.isEmpty();
         CgHitboxes.watch(on ? CgCollisionShow::saw : null);
         CgCollisionQuery.watch(on ? CgCollisionShow::ran : null);
     }
@@ -185,16 +202,14 @@ public final class CgCollisionShow {
     }
 
     private static void asked(CgPeer peer, Boolean on) {
-        if (!on) {
-            WATCHERS.remove(peer.id());
-            return;
-        }
-        WATCHERS.computeIfAbsent(peer.id(), id -> new Watcher(peer)).asked = CgNetwork.serverTicks();
+        if (on) WATCHERS.computeIfAbsent(peer.id(), id -> new Watcher(peer)).asked = CgNetwork.serverTicks();
+        else WATCHERS.remove(peer.id());
+        follow();
     }
 
     private static void serve() {
         serverThread = Thread.currentThread();
-        if (WATCHERS.isEmpty() || !showing()) {
+        if (WATCHERS.isEmpty() || !serving()) {
             SERVER_LINES.clear();
             return;
         }
@@ -204,6 +219,7 @@ public final class CgCollisionShow {
             Watcher w = it.next();
             if (now - w.asked > FORGET_AFTER) {
                 it.remove();
+                if (WATCHERS.isEmpty()) follow();
                 continue;
             }
             Object player = w.peer.player();

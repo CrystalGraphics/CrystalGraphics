@@ -41,6 +41,17 @@ public final class CgEntityQueries {
         return CgWorldQueries.levels().entityId(entity);
     }
 
+    /**
+     * As {@link #idOf}, for a call that takes an entity where it takes an id: {@code query.source(player)}.
+     *
+     * @throws IllegalArgumentException for null or an object that is not an entity
+     */
+    public static int requireId(Object entity) {
+        int id = entity == null ? -1 : idOf(entity);
+        if (id < 0) throw new IllegalArgumentException("not an entity: " + entity);
+        return id;
+    }
+
     /** An entity's absolute position into {@code out[0..2]}. False, with {@code out} untouched, for a non-entity. */
     public static boolean position(Object entity, double[] out) {
         return CgWorldQueries.levels().position(entity, out);

@@ -13,6 +13,7 @@ import com.crystalgraphics.shape.primitive.CgResizable;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.world.CgEntityAttachments;
+import com.crystalgraphics.world.CgEntityQueries;
 import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 import org.joml.Quaternionfc;
@@ -46,8 +47,21 @@ import java.util.function.IntConsumer;
  * CgHitbox.follow(player, CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(5)
  *         .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)
  *         .part(BLADE, CgCapsule.of(0.5, 0.3))
- *         .source(player)
- *         .onHit(h -> damage(h.entity(), h.part() == TIP ? 9f : 5f))
+ *         .onHit(h -> damage(h.entity(), h.part() == TIP ? 9f : 5f))     // never the player it follows
+ *         .start(level);
+ * }</pre>
+ *
+ * A blow aimed where its attacker looked as it began, from a point of the body's own proportions, drawn under F3+B in
+ * what its hits do:
+ *
+ * <pre>{@code
+ * static final int STRIKE = CgEntityAttachments.declareAtHeight("mymod:strike", 0.7);
+ *
+ * CgHitbox.follow(attacker, STRIKE).facingOnce(CgHitbox.Facing.LOOK_LEVEL).activeFor(1).maxTargets(3)
+ *         .part(BLOW, CgBox.of(0.75, 0.75, 1.5), 0, 0, 1.5)          // 3 deep, from the strike point forward
+ *         .query(q -> q.attackable().visible().where(this::canHit))  // seen from the attacker's eyes
+ *         .showColour(0xFF4040)
+ *         .onHit(this::land)
  *         .start(level);
  * }</pre>
  *
@@ -83,6 +97,7 @@ import java.util.function.IntConsumer;
  * }</pre>
  *
  * <ul>
+ *   <li>A followed hitbox's {@link #source} is the entity it follows unless given, so it never hits them.</li>
  *   <li>Each target is hit once by default; {@link #rehit} lets it be hit again, {@link #maxHits} caps that, and
  *       {@link #maxTargets} stops new targets once that many are hit. A multipart entity is one target.</li>
  *   <li>Time is game ticks: {@link #activeFrom}, {@link #activeFor}, the sizes and {@link #rehit}. Open-ended until
@@ -106,6 +121,8 @@ public final class CgHitbox {
         FIXED,
         /** Where the followed entity looks. */
         LOOK,
+        /** Where the followed entity looks, held level: a cleave that ignores the pitch. */
+        LOOK_LEVEL,
         /** Where the followed entity's body faces, level. */
         BODY
     }
@@ -142,7 +159,10 @@ public final class CgHitbox {
     private double x, y, z;
     private int entity = -1, point;
     private Facing facing = Facing.FIXED;
+    /** {@link #facingOnce}: the facing taken at the first placement, held in {@link #fixed} once {@code held}. */
+    private boolean once, held;
     private final Quaterniond fixed = new Quaterniond();
+    private int showColour;
 
     // ---- size and time
     private int sizeKind = NO_SIZE;
@@ -200,9 +220,17 @@ public final class CgHitbox {
         return new CgHitbox().part(part, shape);
     }
 
-    /** A hitbox on point {@code point} of {@code entity} (a {@link CgEntityAttachments} point), its parts to add. */
+    /**
+     * A hitbox on point {@code point} of {@code entity} (a {@link CgEntityAttachments} point), its parts to add. Its
+     * {@link #source} is that entity unless given: a hitbox on someone never hits them.
+     */
     public static CgHitbox follow(int entity, int point) {
         return new CgHitbox().on(entity, point);
+    }
+
+    /** As {@link #follow(int, int)}, on Minecraft's entity. */
+    public static CgHitbox follow(Object entity, int point) {
+        return follow(CgEntityQueries.requireId(entity), point);
     }
 
     // ---- parts
@@ -246,33 +274,53 @@ public final class CgHitbox {
     /** Turns local +Z to a yaw and pitch in radians, as {@link CgPose#facing}. */
     public CgHitbox facing(double yaw, double pitch) {
         stepPose.facing(yaw, pitch).getRotation(fixed);
-        facing = Facing.FIXED;
+        return fixed();
+    }
+
+    /** Turns with the followed entity each tick; any but {@link Facing#FIXED} needs one. */
+    public CgHitbox facing(Facing facing) {
+        this.facing = Objects.requireNonNull(facing, "facing");
+        once = false;
         return this;
     }
 
-    /** {@link Facing#LOOK} and {@link Facing#BODY} need a followed entity. */
-    public CgHitbox facing(Facing facing) {
-        this.facing = Objects.requireNonNull(facing, "facing");
+    /**
+     * Turns as {@link #facing(Facing)} does at its first tick (its start, for a started one), then holds that: a
+     * swing aimed where its attacker looked as it began, which turning after cannot drag round.
+     *
+     * <pre>{@code
+     * CgHitbox.follow(attacker, STRIKE).facingOnce(CgHitbox.Facing.LOOK_LEVEL).part(BLOW, SWING, 0, 0, 1.5)...;
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for {@link Facing#FIXED}, which is held already
+     */
+    public CgHitbox facingOnce(Facing facing) {
+        if (facing == Facing.FIXED) throw new IllegalArgumentException("facingOnce(FIXED): a fixed facing is held already");
+        facing(facing);
+        once = true;
         return this;
     }
 
     public CgHitbox rotation(Quaterniondc q) {
         fixed.set(q).normalize();
-        facing = Facing.FIXED;
-        return this;
+        return fixed();
     }
 
     public CgHitbox rotation(Quaternionfc q) {
         fixed.set(q.x(), q.y(), q.z(), q.w()).normalize();
-        facing = Facing.FIXED;
-        return this;
+        return fixed();
     }
 
     /** At {@code pose}'s position and rotation: what an owner computing the placement sets before each tick. */
     public CgHitbox pose(CgPose pose) {
         at(pose.x, pose.y, pose.z);
         pose.getRotation(fixed);
+        return fixed();
+    }
+
+    private CgHitbox fixed() {
         facing = Facing.FIXED;
+        once = false;
         return this;
     }
 
@@ -336,10 +384,18 @@ public final class CgHitbox {
 
     // ---- what it may hit
 
-    /** Whose hitbox it is: never hits them, their parts, or anyone riding with them; a hittable one stands for them. */
+    /**
+     * Whose hitbox it is: never hits them, their parts, or anyone riding with them; a hittable one stands for them. The
+     * entity it {@link #follow follows}, unless given.
+     */
     public CgHitbox source(int id) {
         source = id;
         return this;
+    }
+
+    /** As {@link #source(int)}, by Minecraft's entity. */
+    public CgHitbox source(Object entity) {
+        return source(CgEntityQueries.requireId(entity));
     }
 
     /**
@@ -431,6 +487,26 @@ public final class CgHitbox {
     public CgHitbox onExit(IntConsumer listener) {
         onExit = listener;
         return this;
+    }
+
+    // ---- seeing it
+
+    /**
+     * Draws it in {@code argb} under the collision show (F3+B), on every side, in place of the side's own green or
+     * orange: what its hits mean, at a glance. An alpha of 0 is taken as opaque, so {@code 0xFF0000} is red.
+     *
+     * <pre>{@code
+     * swing.showColour(unblockable ? 0xFF2020 : 0x20A0FF);
+     * }</pre>
+     */
+    public CgHitbox showColour(int argb) {
+        showColour = argb >>> 24 == 0 ? argb | 0xFF000000 : argb;
+        return this;
+    }
+
+    /** Its {@link #showColour(int)}; 0 for the side's own. */
+    public int showColour() {
+        return showColour;
     }
 
     // ---- running
@@ -559,6 +635,15 @@ public final class CgHitbox {
         return entity >= 0 ? entity : source;
     }
 
+    /** The followed entity's eyes as its last tick placed it, into {@code out[0..2]}; false following nobody. */
+    boolean followerEyes(double[] out) {
+        if (entity < 0 || !posed) return false;
+        out[0] = entityPose[CgEntityQuery.X];
+        out[1] = entityPose[CgEntityQuery.Y] + entityPose[CgEntityQuery.EYE_HEIGHT];
+        out[2] = entityPose[CgEntityQuery.Z];
+        return true;
+    }
+
     /** Part {@code p}'s shape as last placed; the next call may change it. */
     CgShape partShape(int p) {
         if (sizeKind == RADIUS) return sized[p].radius(sizeNow);
@@ -652,13 +737,16 @@ public final class CgHitbox {
         nowX = at[0];
         nowY = at[1];
         nowZ = at[2];
-        if (facing == Facing.LOOK) {
-            stepPose.facing(Math.toRadians(entityPose[CgEntityQuery.YAW]),
-                    Math.toRadians(entityPose[CgEntityQuery.PITCH])).getRotation(nowQ);
-        } else if (facing == Facing.BODY) {
-            stepPose.facing(Math.toRadians(entityPose[CgEntityQuery.BODY_YAW]), 0).getRotation(nowQ);
-        } else {
+        if (held || facing == Facing.FIXED) {
             nowQ.set(fixed);
+            return true;
+        }
+        double yaw = Math.toRadians(entityPose[facing == Facing.BODY ? CgEntityQuery.BODY_YAW : CgEntityQuery.YAW]);
+        double pitch = facing == Facing.LOOK ? Math.toRadians(entityPose[CgEntityQuery.PITCH]) : 0;
+        stepPose.facing(yaw, pitch).getRotation(nowQ);
+        if (once) {
+            fixed.set(nowQ);
+            held = true;
         }
         return true;
     }
@@ -748,7 +836,8 @@ public final class CgHitbox {
 
     private void query(int p, CgShape shape, double px, double py, double pz, Quaterniondc rotation) {
         CgCollisionQuery q = world.overlap(shape).at(px, py, pz).rotation(rotation).part(names[p]);
-        if (source >= 0) q.source(source);
+        int whose = source >= 0 ? source : entity;
+        if (whose >= 0) q.source(whose);
         if (query != null) query.accept(q);
         int n = q.into(partHits);
         for (int i = 0; i < n; i++) {

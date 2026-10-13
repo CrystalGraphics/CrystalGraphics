@@ -396,6 +396,11 @@ public class CgCollisionWorld {
         if (c != null) c.touch(entity);
     }
 
+    /** As {@link #changed(int)}, by Minecraft's entity. */
+    public void changed(Object entity) {
+        changed(CgEntityQueries.requireId(entity));
+    }
+
     /** Tells this thread's open batch that every entity may have changed, or one was added: it reads them again. */
     public void changed() {
         if (frozen) return;
@@ -457,6 +462,16 @@ public class CgCollisionWorld {
         if (!view().pose(target, partialTick, s.pose)) return false;
         return s.clear(world, x, y, z, s.pose[CgEntityQuery.X], s.pose[CgEntityQuery.Y] + s.pose[CgEntityQuery.EYE_HEIGHT],
                 s.pose[CgEntityQuery.Z]);
+    }
+
+    /** As {@link #lineOfSight(double, double, double, int)}, to Minecraft's entity. */
+    public boolean lineOfSight(double x, double y, double z, Object target) {
+        return lineOfSight(x, y, z, CgEntityQueries.requireId(target));
+    }
+
+    /** As {@link #exposure(double, double, double, int)}, of Minecraft's entity. */
+    public float exposure(double x, double y, double z, Object target) {
+        return exposure(x, y, z, CgEntityQueries.requireId(target));
     }
 
     /**
@@ -526,7 +541,6 @@ public class CgCollisionWorld {
         return world == other.world && entities == other.entities || clientLevel || other.clientLevel;
     }
 
-    /** A thread's queries, one per depth, its line-of-sight scratch, its batch and the worlds it was handed. */
     /**
      * A snapshot's hittable hitboxes, frozen: each part's shape, a copy of its pose, its box, and its owner's flags, kind
      * and root vehicle as they were. Candidates are found by a scan of the boxes.
@@ -615,6 +629,7 @@ public class CgCollisionWorld {
         }
     }
 
+    /** A thread's queries, one per depth, its line-of-sight scratch, its batch and the worlds it was handed. */
     static final class PerThread {
         final CgCollisionQuery[] queries = new CgCollisionQuery[MAX_DEPTH];
         /** Queries running on this thread: the depth the next one starts at. */

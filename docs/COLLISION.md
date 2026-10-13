@@ -55,10 +55,10 @@ static final CgShape BOLT = CgSphere.of(0.25);
 private final CgHit hit = new CgHit();
 
 CgCollisionWorld world = CgCollisionWorld.of(level);
-world.overlap(BLAST).at(x, y, z).source(caster.getId()).living().exposure()
+world.overlap(BLAST).at(x, y, z).source(caster).living().exposure()
         .forEach(h -> damage(h.entity(), 10f * h.exposure() * h.falloff(2, 6)));
 
-if (world.cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(caster.getId()).blocksToo().first(hit)) strike(hit);
+if (world.cast(BOLT).at(x, y, z).along(dx, dy, dz, 64).source(caster).blocksToo().first(hit)) strike(hit);
 ```
 
 The ball is a ball, measured to the nearest point of each body; the dragon is hit once, by its nearest part; the bolt
@@ -128,7 +128,7 @@ Where each class lives is `collision/CLAUDE.md`, which loads itself for anyone e
 | **Hitbox type** | A hitbox the server starts that every client watching runs too. | `CgHitboxType` |
 | **Snapshot** | A world's blocks and entities in an area as they stood at the end of a server tick, which any thread may read. | `world.snapshot(...)`, `world.watch(...)` |
 | **Batch** | Many queries in one tick sharing what they learn of the entities. | `CgCollisionWorld.batch()` |
-| **Entity id** | How an entity is named here: Minecraft's `entity.getId()`. A hit hands out both: `entityId()`, and the entity itself, `entity()`. | `int` |
+| **Entity id** | How an entity is named here: Minecraft's `entity.getId()`. Every call that takes one takes the entity too (`source(caster)`), and a hit hands out both: `entityId()`, and the entity itself, `entity()`. | `int` |
 
 How they fit together:
 
@@ -155,7 +155,7 @@ static final CgShape BLAST = CgSphere.of(6);                     // once, as a c
 
 // server, when it goes off
 CgCollisionWorld.of(level).overlap(BLAST).at(x, y, z)
-        .source(caster.getId())                                  // never the caster, their mount or passengers
+        .source(caster)                                  // never the caster, their mount or passengers
         .living()                                                // mobs and players, a dragon by its whole
         .forEach(h -> {
             LivingEntity e = h.entity();                         // Minecraft's entity, or null if it went
@@ -170,7 +170,7 @@ static final CgShape BOLT = CgSphere.of(0.25);
 private final CgHit hit = new CgHit();                           // a field, reused
 
 if (CgCollisionWorld.of(level).cast(BOLT).at(x, y, z).along(dx, dy, dz, 3)   // 3 blocks this tick
-        .source(shooter.getId()).blocksToo().first(hit)) {
+        .source(shooter).blocksToo().first(hit)) {
     if (hit.kind() == CgHit.Kind.ENTITY) strike(hit.entity());
     else explodeAt(hit.x(), hit.y(), hit.z());                   // a block: its real shape, a stair's step included
 }
@@ -181,11 +181,10 @@ if (CgCollisionWorld.of(level).cast(BOLT).at(x, y, z).along(dx, dy, dz, 3)   // 
 ```java
 static final CgHitPart TIP = CgHitPart.of("tip"), BLADE = CgHitPart.of("blade");
 
-CgHitbox.follow(player.getId(), CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK)
+CgHitbox.follow(player, CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK)
         .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)                 // listed first: wins when both touch
         .part(BLADE, CgCapsule.of(0.5, 0.3))
         .activeFor(5)                                            // five game ticks
-        .source(player.getId())
         .onHit(h -> damage(h.entity(), h.part() == TIP ? 9f : 5f))   // each mob once
         .start(level);
 ```
@@ -195,7 +194,7 @@ CgHitbox.follow(player.getId(), CgEntityAttachments.RIGHT_HAND_FORWARD).facing(C
 ```java
 CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z)                  // a front 1.2 blocks thick
         .radius(0, 12, 12)                                       // out to 12 blocks over 12 ticks
-        .source(caster.getId())
+        .source(caster)
         .query(q -> q.living().exposure())                       // only the living; how much each is behind cover
         .onHit(h -> damage(h.entity(), 8f * h.exposure()))       // each once, as the front reaches it
         .start(level);
@@ -238,7 +237,7 @@ turning red), never for what is true. [§10](#10-hitboxes-on-every-side-hitbox-t
 | Angles | radians. `facing(yaw, pitch)` follows Minecraft's directions (yaw 0 faces +Z, pitch down is positive): `facing(Math.toRadians(player.getYRot()), Math.toRadians(player.getXRot()))` |
 | A shape's own axes | +Z forward, +Y up. A cone points along +Z; a capsule from `of` lies along Z |
 | Hitbox time | game ticks, fractional allowed: `activeFor(5)` is a quarter of a second |
-| Entities | ids: `entity.getId()`; `-1` means none. A hit's `entity()` is Minecraft's entity, asked on the level's thread |
+| Entities | the entity, or its id (`entity.getId()`, `-1` for none) where a call takes one. A hit's `entity()` is Minecraft's entity, asked on the level's thread |
 
 ### Nothing allocated
 
@@ -378,6 +377,7 @@ private final CgAABB box = new CgAABB();                         // empty, not a
 box.set(minX, minY, minZ, maxX, maxY, maxZ);
 box.setCenterHalf(cx, cy, cz, hx, hy, hz);
 box.grow(0.3).translate(0, 1, 0);
+box.set(entity).expandTowards(0, -0.5, 0);                       // the body and half a block under it: Minecraft's name
 box.empty(); for (...) box.union(px, py, pz);                    // grown over points from empty
 BLAST.bounds(pose.at(x, y, z), box);                             // a shape's box in the world, exact for turned shapes
 
@@ -432,7 +432,7 @@ CgCollisionWorld world = CgCollisionWorld.of(level);
 
 world.overlap(CLEAVE)                                  // start: what this cone overlaps
      .at(eyeX, eyeY, eyeZ).facing(yaw, pitch)          // place it
-     .source(player.getId()).living()                  // what it may hit
+     .source(player).living()                  // what it may hit
      .forEach(h -> damage(h.entity(), 6f));            // end: every hit, nearest first
 ```
 
@@ -476,15 +476,18 @@ Everything below changes that, in any order.
 | `fluids()` | fluids as boxes up to their surface, blocks included: a cast or ray stops at water |
 | `border()` | the world border too, as a moving entity meets it: every cell beyond it is solid |
 | `living()` | living entities only; a dragon's part by its dragon |
+| `attackable()` | only what a melee attack may hit, as Minecraft's `isAttackable`: no items, orbs or arrows |
 | `solid()` | only what Minecraft stops other entities at: boats, minecarts, shulkers |
 | `itemsToo()` | dropped items as well, which projectiles pass through |
 | `allEntities()` | every entity, spectators and the dead included |
 | `kinds(mask)` | only these kinds: `1 << CgEntityQuery.KIND_MONSTER \| 1 << CgEntityQuery.KIND_PLAYER`, asked of the whole entity |
-| `where(id -> ...)` | only entities your test accepts: teams, PvP, anything the engine does not decide |
+| `where((Entity e) -> ...)` | only entities your test accepts, handed Minecraft's entity (the whole: a dragon for its parts): teams, PvP, anything the engine does not decide |
+| `whereId(id -> ...)` | the same by id: what a snapshot's queries take |
 | `except(id)` | never `id` or its parts; up to eight |
 | `source(id)` | whose query it is: never them, their parts, or anyone riding with them |
 | `noHitboxes()` | passes through hittable hitboxes, meeting their owners' bodies ([§9](#9-shields-wards-and-weak-spots-hittable-hitboxes)) |
-| `visible()` | only entities the origin can see: the centre of their box, past no block |
+| `visible()` | only entities seen past no block, to their eyes, as `lineOfSight` sees them: from the origin, or from the eyes of the entity a hitbox follows |
+| `visibleFrom(x, y, z)` | the same, looking from that point |
 | `inflate(d)` | grows every entity's box by `d` a side: Minecraft's arrows use 0.3, aim assist more |
 | `max(n)` | at most the `n` nearest |
 
@@ -510,7 +513,7 @@ What it reports beyond the hit itself:
   movement asks them:
 
   ```java
-  world.cast(body).at(x, y, z).along(vx, vy, vz, 1).as(mob.getId()).blocksToo().border().solid().first(hit);
+  world.cast(body).at(x, y, z).along(vx, vy, vz, 1).as(mob).blocksToo().border().solid().first(hit);
   ```
 
 - **The border** is met only when asked (`border()`), and only while the query's origin is inside it: projectiles and
@@ -521,8 +524,8 @@ What it reports beyond the hit itself:
 Two quick questions that need no query:
 
 ```java
-boolean seen = world.lineOfSight(x, y, z, target.getId());      // no block between the point and target's eyes
-float exposed = world.exposure(x, y, z, target.getId());        // how much of target the point sees, 0 to 1
+boolean seen = world.lineOfSight(x, y, z, target);              // no block between the point and target's eyes
+float exposed = world.exposure(x, y, z, target);                // how much of target the point sees, 0 to 1
 ```
 
 Both are false and 0 for an entity that is not there. An unloaded cell blocks sight.
@@ -659,7 +662,7 @@ said; `hit` and `hits` are fields (`new CgHit()`, `new CgHits()`).
 ```java
 static final CgShape BLAST = CgSphere.of(8);
 
-world.overlap(BLAST).at(x, y, z).source(caster.getId()).living().exposure().forEach(h -> {
+world.overlap(BLAST).at(x, y, z).source(caster).living().exposure().forEach(h -> {
     float damage = 20f * h.falloff(2, 8) * h.exposure();          // weaker with distance, none behind full cover
     if (damage <= 0) return;
     LivingEntity e = h.entity();
@@ -676,7 +679,7 @@ static final CgShape CLEAVE = CgCone.of(4, Math.toRadians(50));     // 4 blocks,
 
 double yaw = Math.toRadians(player.getYRot());
 world.overlap(CLEAVE).at(player.getX(), player.getEyeY(), player.getZ()).facing(yaw, 0)   // level, ignoring pitch
-        .source(player.getId()).living().visible()                  // nobody behind a wall
+        .source(player).living().visible()                  // nobody behind a wall
         .forEach(h -> damage(h.entity(), 7f));
 ```
 
@@ -684,7 +687,7 @@ world.overlap(CLEAVE).at(player.getX(), player.getEyeY(), player.getZ()).facing(
 
 ```java
 int n = world.ray().at(eyeX, eyeY, eyeZ).along(lookX, lookY, lookZ, 64)
-        .source(shooter.getId()).blocksToo()                        // stops at the first block
+        .source(shooter).blocksToo()                        // stops at the first block
         .into(hits);
 int pierced = 0;
 for (int i = 0; i < n && pierced < 3; i++) {
@@ -747,7 +750,7 @@ Teams and PvP are your game's to decide; `where` asks you:
 
 ```java
 world.overlap(AURA).at(x, y, z).living()
-        .where(id -> { Entity e = level.getEntity(id); return e != null && !e.isAlliedTo(caster); })
+        .where((Entity e) -> !e.isAlliedTo(caster))                 // handed the entity; take Entity, narrow inside
         .forEach(h -> curse(h.entity()));
 
 world.overlap(BLAST).at(x, y, z).kinds(1 << CgEntityQuery.KIND_MONSTER).forEach(...);   // monsters only
@@ -764,8 +767,8 @@ if (world.ray().at(eyeX, eyeY, eyeZ).along(lookX, lookY, lookZ, 32).source(me).l
 ### An AI that only attacks what it can see
 
 ```java
-boolean canSee = world.lineOfSight(mob.getX(), mob.getEyeY(), mob.getZ(), target.getId());
-float cover = world.exposure(bomb.x, bomb.y, bomb.z, target.getId());   // 0.3: mostly behind something
+boolean canSee = world.lineOfSight(mob.getX(), mob.getEyeY(), mob.getZ(), target);
+float cover = world.exposure(bomb.x, bomb.y, bomb.z, target);           // 0.3: mostly behind something
 ```
 
 ### Pull everything in, then blast it
@@ -781,7 +784,7 @@ world.overlap(VORTEX).at(x, y, z).living().forEach(h -> pull(h.entity(), -h.norm
 ```java
 static final CgShape BEAM = CgCapsule.between(0, 0, 0, 0, 0, 30, 0.5);   // 30 blocks along +Z from the origin
 
-world.overlap(BEAM).at(muzzleX, muzzleY, muzzleZ).facing(yaw, pitch).source(caster.getId()).living()
+world.overlap(BEAM).at(muzzleX, muzzleY, muzzleZ).facing(yaw, pitch).source(caster).living()
         .forEach(h -> burn(h.entity()));
 // a beam that stops at the first wall is a cast instead:
 world.cast(CgSphere.of(0.5)).at(muzzleX, muzzleY, muzzleZ).along(lookX, lookY, lookZ, 30).blocksOnly().first(hit);
@@ -808,7 +811,7 @@ are hits: each target once by default.
 CgHitbox.of(CgShell.front(2)).at(x, y, z)          // a shape, placed
         .radius(0, 10, 8)                          // its size over time
         .activeFor(8)                              // how long it lives, in game ticks
-        .source(caster.getId())                    // whose it is
+        .source(caster)                    // whose it is
         .query(q -> q.living())                    // what it may hit, as a query says it
         .onHit(h -> damage(h.entity(), 6f))        // what to do: each target once
         .start(level);                             // the engine ticks it on the level's thread
@@ -846,21 +849,35 @@ Game ticks, fractional allowed:
 | Call | Places it |
 |---|---|
 | `at(x, y, z)` | fixed at a point |
-| `follow(entityId, point)` | on an attachment point of an entity, moving with it every tick |
+| `follow(entity, point)` | on an attachment point of an entity, moving with it every tick; that entity is its `source` unless given |
 | `facing(yaw, pitch)`, `rotation(q)` | a fixed turn, as a pose's |
 | `facing(Facing.LOOK)` | where the followed entity looks |
+| `facing(Facing.LOOK_LEVEL)` | where the followed entity looks, held level: a cleave that ignores the pitch |
 | `facing(Facing.BODY)` | where the followed entity's body faces, level |
+| `facingOnce(Facing...)` | as `facing`, taken at its first tick and held: a swing turning after cannot drag round |
 | `pose(pose)` | at a pose you compute, set before each tick (an owner-ticked hitbox) |
 
 Attachment points (`CgEntityAttachments`): `FEET`, `CENTRE`, `CHEST`, `HEAD`, `EYES`, `RIGHT_HAND`, `LEFT_HAND`,
-`RIGHT_HAND_FORWARD`, `LEFT_HAND_FORWARD`, `HANDS_FORWARD`, and points your mod declares (`docs/VFX.md` §4). A hitbox
-places itself from the entity's proportions on every side, so a server and its clients agree where it is.
+`RIGHT_HAND_FORWARD`, `LEFT_HAND_FORWARD`, `HANDS_FORWARD`, and points your mod declares (`docs/VFX.md` §4), among
+them a point at a share of the body's height. A hitbox places itself from the entity's proportions on every side, so a
+server and its clients agree where it is.
 
 ```java
-CgHitbox.follow(player.getId(), CgEntityAttachments.CHEST)          // an aura round the player
+static final int STRIKE = CgEntityAttachments.declareAtHeight("mymod:strike", 0.7);   // seven tenths up, scaling
+
+// a blow 3 deep from the strike point, aimed where the attacker looked as it began
+CgHitbox.follow(attacker, STRIKE).facingOnce(CgHitbox.Facing.LOOK_LEVEL).activeFor(1).maxTargets(3)
+        .part(BLOW, CgBox.of(0.75, 0.75, 1.5), 0, 0, 1.5)
+        .query(q -> q.attackable().visible())                    // seen from the attacker's eyes, not the box's middle
+        .onHit(h -> damage(h.entity(), 6f))
+        .start(level);
+```
+
+```java
+CgHitbox.follow(player, CgEntityAttachments.CHEST)                  // an aura round the player
         .part(AURA, CgSphere.of(3))
         .rehit(20)                                                  // each target once a second
-        .source(player.getId()).onHit(h -> burn(h.entity()))
+        .onHit(h -> burn(h.entity()))
         .start(level);
 ```
 
@@ -872,10 +889,9 @@ A hitbox of one shape: `CgHitbox.of(shape)` (its hits have no part) or `CgHitbox
 ```java
 static final CgHitPart TIP = CgHitPart.of("tip"), BLADE = CgHitPart.of("blade");
 
-CgHitbox.follow(player.getId(), CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(5)
+CgHitbox.follow(player, CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(5)
         .part(TIP, CgSphere.of(0.35), 0, 0, 1.1)        // offset in the hitbox's own space, +Z forward
         .part(BLADE, CgCapsule.of(0.5, 0.3))            // at its origin
-        .source(player.getId())
         .onHit(h -> damage(h.entity(), h.part() == TIP ? 9f : 5f))
         .start(level);
 ```
@@ -908,22 +924,22 @@ CgHitbox.of(CgSphere.of(1)).at(x, y, z)
 | `maxHits(n)` | at most `n` hits on one target, with `rehit` |
 | `maxTargets(n)` | no new target once `n` have been hit, nearest first: a pierce count |
 | `hitList(list)` | its hits kept in a `CgHitList` shared with other hitboxes |
-| `source(id)` | never its owner, their parts, or anyone riding with them |
+| `source(entity)` | never its owner, their parts, or anyone riding with them; the entity it follows unless given |
 | `query(q -> ...)` | what it may hit, as a query says it ([§5](#what-a-query-may-hit)) |
 
 ```java
 // a flamethrower: each target burned twice a second, at most six times
-CgHitbox.follow(player.getId(), CgEntityAttachments.HANDS_FORWARD).facing(CgHitbox.Facing.LOOK)
+CgHitbox.follow(player, CgEntityAttachments.HANDS_FORWARD).facing(CgHitbox.Facing.LOOK)
         .part(FLAME, CgCone.of(6, Math.toRadians(20)))
         .rehit(10).maxHits(6)
-        .source(player.getId()).query(q -> q.living().visible())
+        .query(q -> q.living().visible())
         .onHit(h -> burn(h.entity()))
         .start(level);
 
 // a spear thrust that pierces the three nearest
-CgHitbox.follow(player.getId(), CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(4)
+CgHitbox.follow(player, CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK).activeFor(4)
         .part(SPEAR, CgCapsule.between(0, 0, 0, 0, 0, 3, 0.25)).maxTargets(3)
-        .source(player.getId()).onHit(h -> damage(h.entity(), 7f))
+        .onHit(h -> damage(h.entity(), 7f))
         .start(level);
 
 // a combo: three moves, each mob hit once between them
@@ -993,7 +1009,7 @@ player as hit, through the shield, as a `HITBOX` hit.
 ```java
 static final CgHitPart SHIELD = CgHitPart.of("shield");
 
-CgHitbox shield = CgHitbox.follow(player.getId(), CgEntityAttachments.HANDS_FORWARD).facing(CgHitbox.Facing.LOOK)
+CgHitbox shield = CgHitbox.follow(player, CgEntityAttachments.HANDS_FORWARD).facing(CgHitbox.Facing.LOOK)
         .part(SHIELD, CgBox.of(0.6, 0.7, 0.1))
         .hittable()                                   // queries meet it
         .passive()                                    // it hits nothing itself
@@ -1023,7 +1039,7 @@ Rules:
 A weak spot: a hittable hitbox on a boss's head that doubles damage.
 
 ```java
-CgHitbox.follow(boss.getId(), CgEntityAttachments.HEAD).part(WEAK, CgSphere.of(0.6)).hittable().passive().start(level);
+CgHitbox.follow(boss, CgEntityAttachments.HEAD).part(WEAK, CgSphere.of(0.6)).hittable().passive().start(level);
 
 arrowQuery.forEach(h -> damage(h.entity(), h.kind() == CgHit.Kind.HITBOX && h.hitboxPart() == WEAK ? 2 * dmg : dmg));
 ```
@@ -1186,7 +1202,7 @@ try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
   try (CgCollisionWorld.Batch ignored = CgCollisionWorld.batch()) {
       world.overlap(PULL).at(x, y, z).forEach(h -> pull(h.entity()));   // re-read already
       teleport(bystander);
-      world.changed(bystander.getId());
+      world.changed(bystander);
       world.overlap(BLAST).at(x, y, z).forEach(this::hurt);              // sees the bystander where it went
   }
   ```
@@ -1326,14 +1342,16 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 | This client's hitboxes | green |
 | This client's queries | blue, red where they stop and what they hit (a cross and the normal) |
 | The server's hitboxes and queries | orange |
+| A hitbox given `showColour(argb)` | that colour, on every side: what its hits mean at a glance |
 
 - **Where green and orange part, a prediction is off**: the client's copy is not where the server's is.
 - A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape.
 - A query a hitbox runs is left out: its parts are drawn instead. Queries on an empty world are not drawn.
 - Hitboxes are drawn as their last tick tested them, and for half a second once stopped: a blast's front lives a few
   ticks.
-- The server sends a player what is within 64 blocks of them, while their client is showing; a dedicated server only
-  while its own `crystalgraphics.collision.show` is on. An integrated server follows its player's F3+B.
+- The server sends a player what is within 64 blocks of them while their client is showing, recording only while
+  someone is. `crystalgraphics.collision.serve=false` keeps a server's own to itself unless its
+  `crystalgraphics.collision.show` is on.
 
 ### Drawing your own
 

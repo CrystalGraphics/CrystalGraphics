@@ -17,6 +17,7 @@ import org.joml.Vector3d;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -128,6 +129,22 @@ public class CgShapeLinesTest {
         double[] first = {101.25, 64.5, -310, 90, 70, -300.001};
         for (int i = 0; i < 6; i++) assertEquals(first[i], read.get(0)[i], CgLinePack.UNIT / 2);
         assertEquals(-300 + CgLinePack.REACH, read.get(1)[5], CgLinePack.UNIT / 2);
+    }
+
+    @Test
+    public void aPackCarriesEachHitboxsShowColourAndLeavesTheRestToTheReader() {
+        CgLinePack pack = new CgLinePack();
+        pack.begin(0, 0, 0, 16);
+        pack.line(0, 0, 0, 1, 0, 0);
+        pack.colour(0xFFFF0000);
+        pack.line(0, 0, 0, 0, 1, 0);
+        pack.line(0, 0, 0, 0, 0, 1);
+        pack.colour(0);
+        pack.line(1, 1, 1, 2, 2, 2);
+        List<Integer> colours = new ArrayList<>();
+        assertEquals(4, CgLinePack.read(pack.finish(), CgCollisionShow.SERVER,
+                (argb, ax, ay, az, bx, by, bz) -> colours.add(argb)));
+        assertEquals(Arrays.asList(CgCollisionShow.SERVER, 0xFFFF0000, 0xFFFF0000, CgCollisionShow.SERVER), colours);
     }
 
     private static List<double[]> ends(CgShape shape, CgPose pose) {

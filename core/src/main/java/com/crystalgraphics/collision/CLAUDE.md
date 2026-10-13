@@ -43,7 +43,9 @@ a mod never makes one.
   live from `CgHitboxes` or frozen in a snapshot.
 - **`CgHitboxes` is the only seam** between `hitbox` and `collision`: no hitbox internal is public.
 - **Defaults are Minecraft's**: a query's targets are its projectiles' (alive, pickable, not a spectator); `source`
-  skips the root vehicle; blocks answer as to no one unless `as(id)`.
+  skips the root vehicle; blocks answer as to no one unless `as(id)`; `visible()` is `lineOfSight`'s question, to the
+  eyes. A followed hitbox's source is what it follows, and its sight starts at that entity's eyes.
+- **Every call taking an entity id takes the entity too**, through `CgEntityQueries.requireId`.
 - **The show draws what a host's world runs**: a hitbox's own queries and an empty world's are left out.
 - **No renderer, GL or VFX type** outside `collision.debug` (`ShapeImportDirectionTest`): a dedicated server loads it.
 

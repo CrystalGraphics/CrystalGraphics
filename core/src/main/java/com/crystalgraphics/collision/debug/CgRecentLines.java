@@ -41,11 +41,13 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private final int max;
     private double[] points = new double[6 * 256];
     private int[] colours = new int[256];
+    /** Each segment's hitbox's own {@link CgHitbox#showColour()}, which a server's pack carries; 0 for none. */
+    private int[] shows = new int[256];
     private long[] expires = new long[256];
     private CgWorldQuery[] levels = new CgWorldQuery[256];
     private int count;
     // what is being written
-    private int colour;
+    private int colour, show;
     private long until;
     private CgWorldQuery level;
 
@@ -63,6 +65,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
                             double dz, double length, CgWorldQuery level, @Nullable CgHit nearest, long now) {
         this.level = level;
         until = now + HOLD_NANOS;
+        show = 0;
         int stopped = nearest == null ? PATH : HIT;
         double reach = nearest == null ? length : nearest.distance();
         if (box != null) {
@@ -94,7 +97,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
     synchronized void hitbox(CgHitbox hitbox, CgWorldQuery level, long now) {
         this.level = level;
         until = now + (hitbox.stopped() ? LINGER_NANOS : HOLD_NANOS);
-        colour = HITBOX;
+        show = hitbox.showColour();
+        colour = show != 0 ? show : HITBOX;
         hitbox.parts(parts);
         this.level = null;
     }
@@ -110,6 +114,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
             int grown = Math.min(max, count * 2);
             points = Arrays.copyOf(points, grown * 6);
             colours = Arrays.copyOf(colours, grown);
+            shows = Arrays.copyOf(shows, grown);
             expires = Arrays.copyOf(expires, grown);
             levels = Arrays.copyOf(levels, grown);
         }
@@ -121,6 +126,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
         points[at + 4] = by;
         points[at + 5] = bz;
         colours[count] = colour;
+        shows[count] = show;
         expires[count] = until;
         levels[count++] = level;
     }
@@ -139,6 +145,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
             if (kept != i) {
                 System.arraycopy(points, i * 6, points, kept * 6, 6);
                 colours[kept] = colours[i];
+                shows[kept] = shows[i];
                 expires[kept] = expires[i];
                 levels[kept] = levels[i];
             }
@@ -158,13 +165,14 @@ final class CgRecentLines implements CgShapeLines.Sink {
         }
     }
 
-    /** Hands {@code pack} each segment of {@code level} that starts within {@code range} of a point. */
+    /** Hands {@code pack} each segment of {@code level} that starts within {@code range} of a point, in its show colour. */
     synchronized void packTo(CgWorldQuery level, double x, double y, double z, double range, CgLinePack pack) {
         double r2 = range * range;
         for (int i = 0; i < count && !pack.full(); i++) {
             int at = i * 6;
             double ex = points[at] - x, ey = points[at + 1] - y, ez = points[at + 2] - z;
             if (levels[i] != level || ex * ex + ey * ey + ez * ez > r2) continue;
+            pack.colour(shows[i]);
             pack.line(points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4], points[at + 5]);
         }
     }

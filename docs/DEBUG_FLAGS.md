@@ -50,7 +50,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
-| `crystalgraphics.collision.show` | true, false | `false` | Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's, and a server's whose own is on. |
+| `crystalgraphics.collision.show` | true, false | `false` | Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's and the server's. |
 
 ## `crystalgraphics.compute`
 
