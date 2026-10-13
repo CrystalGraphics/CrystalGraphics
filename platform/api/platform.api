@@ -3093,6 +3093,13 @@ com/crystalgraphics/platform/service/CgEntityQuery
   field public,static,final PITCH I
   field public,static,final PLAYER I
   field public,static,final POSE_LENGTH I
+  field public,static,final ROW_BOXED I
+  field public,static,final ROW_FLAGS I
+  field public,static,final ROW_KIND I
+  field public,static,final ROW_LENGTH I
+  field public,static,final ROW_PARENT I
+  field public,static,final ROW_POSED I
+  field public,static,final ROW_ROOT I
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   field public,static,final SNEAKING I
   field public,static,final SOLID I
@@ -3107,6 +3114,7 @@ com/crystalgraphics/platform/service/CgEntityQuery
   field public,static,final Y I
   field public,static,final YAW I
   field public,static,final Z I
+  method public row (IF[ILcom/crystalgraphics/platform/service/CgBoxSink;[D)I
   method public,abstract box (IFLcom/crystalgraphics/platform/service/CgBoxSink;)Z
   method public,abstract cameraEntity ()I
   method public,abstract flags (I)I

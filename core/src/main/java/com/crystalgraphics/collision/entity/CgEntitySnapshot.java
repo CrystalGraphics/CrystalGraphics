@@ -51,13 +51,21 @@ public final class CgEntitySnapshot extends CgEntityTable {
      * }</pre>
      */
     public static CgEntitySnapshot capture(CgEntityQuery host, float partialTick, List<? extends CgAABBc> regions) {
+        return capture(host, partialTick, regions, 0);
+    }
+
+    /** {@link #capture}, sized for {@code expected} entities: a capture each tick passes the last one's {@link #size}. */
+    public static CgEntitySnapshot capture(CgEntityQuery host, float partialTick, List<? extends CgAABBc> regions,
+                                           int expected) {
         CgEntitySnapshot s = new CgEntitySnapshot(host);
+        s.reserve(expected);
         double[] pose = new double[POSE_LENGTH];
         IntConsumer reader = id -> {
             if (id < 0 || s.entry(id) >= 0) return;
-            int e = s.read(host, partialTick, id);
+            int got = s.readRow(host, partialTick, id, pose);
+            int e = s.count - 1;
             // NaN at X marks no pose
-            if (host.pose(id, partialTick, pose)) System.arraycopy(pose, 0, s.poses, e * POSE_LENGTH, POSE_LENGTH);
+            if ((got & ROW_POSED) != 0) System.arraycopy(pose, 0, s.poses, e * POSE_LENGTH, POSE_LENGTH);
             else s.poses[e * POSE_LENGTH] = Double.NaN;
         };
         for (int i = 0; i < regions.size(); i++) {
@@ -147,7 +155,7 @@ public final class CgEntitySnapshot extends CgEntityTable {
     }
 
     /** Entities held, for the measurements. */
-    int size() {
+    public int size() {
         return count;
     }
 

@@ -40,6 +40,7 @@ public abstract class CgEntityTable implements CgEntityQuery {
     int memberCount;
 
     private final BoxInto boxInto = new BoxInto();
+    private final int[] facts = new int[ROW_LENGTH];
 
     CgEntityTable() {
         Arrays.fill(cellKeys, NO_CELL);
@@ -78,16 +79,35 @@ public abstract class CgEntityTable implements CgEntityQuery {
 
     /** Reads {@code id} from {@code host} into a new entry; its index. */
     int read(CgEntityQuery host, float partialTick, int id) {
-        if (count == ids.length) growEntries();
-        if ((count + 1) * 2 > idKeys.length) growIds();
-        int e = count++;
-        ids[e] = id;
+        int e = add(id);
         flags[e] = host.flags(id);
         kinds[e] = host.kind(id);
         parents[e] = host.parent(id);
         roots[e] = host.rootVehicle(id);
         boxInto.at = e * 6;
         boxed[e] = host.box(id, partialTick, boxInto);
+        return e;
+    }
+
+    /** {@link #read} in one {@link CgEntityQuery#row} call, its pose into {@code pose}: the row's bits. The new entry is the last. */
+    int readRow(CgEntityQuery host, float partialTick, int id, double[] pose) {
+        int e = add(id);
+        boxInto.at = e * 6;
+        int got = host.row(id, partialTick, facts, boxInto, pose);
+        flags[e] = facts[ROW_FLAGS];
+        kinds[e] = facts[ROW_KIND];
+        parents[e] = facts[ROW_PARENT];
+        roots[e] = facts[ROW_ROOT];
+        boxed[e] = (got & ROW_BOXED) != 0;
+        return got;
+    }
+
+    /** A new entry for {@code id}, listed by id; its index. */
+    private int add(int id) {
+        if (count == ids.length) growEntries();
+        if ((count + 1) * 2 > idKeys.length) growIds();
+        int e = count++;
+        ids[e] = id;
         int mask = idKeys.length - 1, s = slot(id, mask);
         while (idKeys[s] != 0) s = (s + 1) & mask;
         idKeys[s] = id + 1;
@@ -172,6 +192,22 @@ public abstract class CgEntityTable implements CgEntityQuery {
 
     private static int slot(int id, int mask) {
         return (id * 0x9E3779B9 >>> 7) & mask;
+    }
+
+    /** Room for {@code entries} with no growing, before the first is read: a capture sized from the last one's. */
+    final void reserve(int entries) {
+        if (count > 0 || entries <= ids.length) return;
+        int size = Integer.highestOneBit(entries - 1) << 1;
+        ids = new int[size];
+        flags = new int[size];
+        kinds = new int[size];
+        parents = new int[size];
+        roots = new int[size];
+        boxed = new boolean[size];
+        boxes = new double[size * 6];
+        grown(size);
+        idKeys = new int[size * 2];
+        idValues = new int[size * 2];
     }
 
     private void growEntries() {

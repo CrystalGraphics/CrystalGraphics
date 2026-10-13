@@ -1710,8 +1710,10 @@ com/crystalgraphics/collision/entity/CgEntitySnapshot
   method public parent (I)I
   method public pose (IF[D)Z
   method public rootVehicle (I)I
+  method public size ()I
   method public within (DDDDDDLjava/util/function/IntConsumer;)V
   method public,static capture (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLjava/util/List;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
+  method public,static capture (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLjava/util/List;I)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
   method public,static of (Lcom/crystalgraphics/platform/service/CgEntityQuery;FLcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/collision/entity/CgEntitySnapshot;
 com/crystalgraphics/collision/entity/CgEntityTable
   access public,abstract
@@ -4388,6 +4390,7 @@ com/crystalgraphics/job/reply/CgPendingStream
 com/crystalgraphics/job/reply/CgReply
   access public,abstract,interface
   extends java/lang/Object
+  method public flatMap (Ljava/util/function/Function;)Lcom/crystalgraphics/job/reply/CgReply;
   method public then (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
   method public,abstract always (Ljava/lang/Runnable;)Lcom/crystalgraphics/job/reply/CgReply;
   method public,abstract cancel ()V

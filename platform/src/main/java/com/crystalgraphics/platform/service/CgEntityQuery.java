@@ -107,6 +107,30 @@ public interface CgEntityQuery {
     /** What entity {@code id} rides at the bottom of the stack: itself when riding nothing; -1 for no such entity. */
     int rootVehicle(int id);
 
+    /** {@link #row}'s facts, by index, and the bits it answers. */
+    int ROW_FLAGS = 0, ROW_KIND = 1, ROW_PARENT = 2, ROW_ROOT = 3, ROW_LENGTH = 4, ROW_BOXED = 1, ROW_POSED = 2;
+
+    /**
+     * Every answer above about entity {@code id} at once: what a snapshot keeps of each entity it holds, read for
+     * thousands a tick. A host overrides it to find the entity once.
+     *
+     * <pre>{@code
+     * int[] facts = new int[CgEntityQuery.ROW_LENGTH];
+     * int got = entities.row(id, 1f, facts, box, pose);
+     * boolean living = (facts[CgEntityQuery.ROW_FLAGS] & CgEntityQuery.LIVING) != 0;
+     * if ((got & CgEntityQuery.ROW_BOXED) != 0) ...   // box written, as box(id, ...) writes it
+     * }</pre>
+     *
+     * @return {@link #ROW_BOXED} when {@code box} was written, {@link #ROW_POSED} when {@code pose} was
+     */
+    default int row(int id, float partialTick, int[] facts, CgBoxSink box, double[] pose) {
+        facts[ROW_FLAGS] = flags(id);
+        facts[ROW_KIND] = kind(id);
+        facts[ROW_PARENT] = parent(id);
+        facts[ROW_ROOT] = rootVehicle(id);
+        return (box(id, partialTick, box) ? ROW_BOXED : 0) | (pose(id, partialTick, pose) ? ROW_POSED : 0);
+    }
+
     /**
      * Hands {@code visitor} the id of every entity whose box touches the box given, in absolute world coordinates.
      * Parts of a multipart entity come as their own ids, which {@link #pose}, {@link #box} and {@link #parent} answer.

@@ -146,6 +146,30 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     public boolean pose(int id, float partialTick, double[] out) {
         Entity e = entity(id);
         if (e == null) return false;
+        poseOf(e, partialTick, out);
+        return true;
+    }
+
+    /** Every answer at once, from one look-up: what a snapshot's capture reads for each of thousands. */
+    @Override
+    public int row(int id, float partialTick, int[] facts, CgBoxSink box, double[] pose) {
+        Entity e = entity(id);
+        if (e == null) {
+            facts[ROW_FLAGS] = 0;
+            facts[ROW_KIND] = KIND_OTHER;
+            facts[ROW_PARENT] = facts[ROW_ROOT] = -1;
+            return 0;
+        }
+        facts[ROW_FLAGS] = flagsOf(e);
+        facts[ROW_KIND] = kindOf(e);
+        facts[ROW_PARENT] = parentOf(e).getId();
+        facts[ROW_ROOT] = e.getRootVehicle().getId();
+        boxOf(e, partialTick, box);
+        poseOf(e, partialTick, pose);
+        return ROW_BOXED | ROW_POSED;
+    }
+
+    private static void poseOf(Entity e, float partialTick, double[] out) {
         //? if >=1.15 {
         double x = e.getX(), y = e.getY(), z = e.getZ();
         //?} else {
@@ -188,7 +212,6 @@ public class LevelEntityQueryModern implements CgEntityQuery {
             out[BODY_YAW] = out[HEAD_YAW] = out[YAW];
             out[LIMB_SWING] = out[LIMB_SWING_AMOUNT] = 0.0;
         }
-        return true;
     }
 
     /** From {@code from} to {@code to} degrees by {@code t}, the short way round. */
@@ -202,6 +225,11 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     public boolean box(int id, float partialTick, CgBoxSink out) {
         Entity e = entity(id);
         if (e == null) return false;
+        boxOf(e, partialTick, out);
+        return true;
+    }
+
+    private static void boxOf(Entity e, float partialTick, CgBoxSink out) {
         //? if >=1.15 {
         double x = e.getX(), y = e.getY(), z = e.getZ();
         //?} else {
@@ -212,7 +240,6 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         double dz = (e.zo - z) * (1 - partialTick);
         AABB b = e.getBoundingBox();
         out.set(b.minX + dx, b.minY + dy, b.minZ + dz, b.maxX + dx, b.maxY + dy, b.maxZ + dz);
-        return true;
     }
 
     @Override
@@ -230,7 +257,10 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     @Override
     public int flags(int id) {
         Entity e = entity(id);
-        if (e == null) return 0;
+        return e == null ? 0 : flagsOf(e);
+    }
+
+    private int flagsOf(Entity e) {
         int f = 0;
         if (e.isAlive()) f |= ALIVE;
         if (e instanceof LivingEntity) {
@@ -281,7 +311,10 @@ public class LevelEntityQueryModern implements CgEntityQuery {
 
     @Override
     public int kind(int id) {
-        Entity e = entity(id);
+        return kindOf(entity(id));
+    }
+
+    private static int kindOf(Entity e) {
         if (e instanceof Player) return KIND_PLAYER;
         if (e instanceof Enemy) return KIND_MONSTER;
         if (e instanceof Animal) return KIND_ANIMAL;
