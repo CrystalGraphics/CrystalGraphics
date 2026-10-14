@@ -17,8 +17,10 @@ import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.trace.CgTraceNames;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgPlayers;
 
 /**
@@ -354,6 +356,30 @@ public final class CgNetType {
         UUID player = playerOrEntity instanceof UUID ? (UUID) playerOrEntity
                 : CgPlayers.idOf(playerOrEntity);
         return holder(player != null ? player : playerOrEntity, player != null ? CgAnchor.player(player) : null, playerOrEntity);
+    }
+
+    /**
+     * A per-holder type's object for a player (an entity or a profile id) or an entity, if it has one; never made.
+     * On the server thread, the object {@link #of} would answer; on a client, this client's copy of it, or null while it
+     * does not see it.
+     *
+     * <pre>{@code
+     * CHARACTER.find(Minecraft.getInstance().player).send(INPUT, match);   // client: command your own
+     * CgNetObject other = CHARACTER.find(entity);                          // client: one you see, or null
+     * if (CHARACTER.find(player) == null) welcome(player);                 // server: asks, makes nothing
+     * }</pre>
+     */
+    @Nullable
+    public CgNetObject find(Object playerOrEntity) {
+        Objects.requireNonNull(playerOrEntity, "playerOrEntity");
+        if (!perHolder) throw new IllegalStateException(name + " is not per holder: find answers per-holder types");
+        if (CgNetwork.side() == CgNetwork.Side.SERVER) {
+            UUID player = playerOrEntity instanceof UUID ? (UUID) playerOrEntity : CgPlayers.idOf(playerOrEntity);
+            CgNetObject obj = holders.get(player != null ? player : playerOrEntity);
+            return obj != null && !obj.isRemoved() ? obj : null;
+        }
+        Object entity = playerOrEntity instanceof UUID ? CgPlayers.player((UUID) playerOrEntity) : playerOrEntity;
+        return entity == null ? null : CgNetObjects.clientHolder(this, CgEntityQueries.idOf(entity));
     }
 
     /** A per-holder type's object for a chunk, started if it was absent. Server thread. */

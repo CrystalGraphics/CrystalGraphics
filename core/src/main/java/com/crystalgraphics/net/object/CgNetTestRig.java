@@ -289,6 +289,13 @@ public final class CgNetTestRig implements AutoCloseable {
             return objects == null ? null : objects.find(id);
         }
 
+        /** This client's per-holder object of {@code type} on entity {@code entityId}, as {@link CgNetType#find} answers. */
+        @Nullable
+        public CgNetObject find(CgNetType type, int entityId) {
+            ClientObjects objects = objects();
+            return objects == null ? null : objects.holder(type, entityId);
+        }
+
         /** A prediction from this client, as {@link CgNetType#predict} makes one in a game. */
         public CgNetObject predict(CgNetType type, CgAnchor anchor) {
             ClientObjects objects = objects();

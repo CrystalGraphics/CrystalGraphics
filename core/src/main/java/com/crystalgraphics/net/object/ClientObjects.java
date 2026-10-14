@@ -56,6 +56,8 @@ final class ClientObjects {
     private int nextKey;
 
     private final IdTable objects = new IdTable();
+    /** Per-holder objects riding an entity, by local type index, keyed by entity id + 1 (an id may be 0). */
+    private IdTable[] holders = new IdTable[8];
     /** Despawned gracefully, or fired: ticking until their behaviour is done. */
     private final List<CgNetObject> ending = new ArrayList<>();
     /** By the server's type index, as its frames name them. */
@@ -87,6 +89,26 @@ final class ClientObjects {
     @Nullable
     CgNetObject find(int id) {
         return objects.get(id);
+    }
+
+    /** The per-holder object of {@code type} riding entity {@code entityId}, or null: {@link CgNetType#find}. */
+    @Nullable
+    CgNetObject holder(CgNetType type, int entityId) {
+        IdTable table = type.index < holders.length ? holders[type.index] : null;
+        return table == null || entityId < 0 ? null : table.get(entityId + 1);
+    }
+
+    private void held(CgNetObject obj) {
+        if (!obj.type.perHolder || obj.entityId < 0 || obj.kind != CgAnchor.Kind.ENTITY && obj.kind != CgAnchor.Kind.PLAYER) return;
+        if (obj.type.index >= holders.length) holders = Arrays.copyOf(holders, obj.type.index + 8);
+        IdTable table = holders[obj.type.index];
+        if (table == null) holders[obj.type.index] = table = new IdTable();
+        table.put(obj.entityId + 1, obj);
+    }
+
+    private void unheld(CgNetObject obj) {
+        IdTable table = obj.type.index < holders.length ? holders[obj.type.index] : null;
+        if (table != null && obj.entityId >= 0 && table.get(obj.entityId + 1) == obj) table.remove(obj.entityId + 1);
     }
 
     int size() {
@@ -221,6 +243,7 @@ final class ClientObjects {
 
         CgNetObject previous = obj.transientSpawn ? null : objects.put(id, obj);
         if (previous != null) end(previous, true);
+        if (!obj.transientSpawn) held(obj);
         Function<CgNetObject, CgNetBehaviour> factory = obj.type.client;
         if (factory != null) {
             try {
@@ -297,9 +320,11 @@ final class ClientObjects {
         int kind = in.readByte();
         if (kind >= CgAnchor.Kind.values().length) throw new CgCodecException("unknown anchor " + kind);
         CgAnchor.Kind anchor = CgAnchor.Kind.values()[kind];
+        if (obj != null) unheld(obj);
         readPlace(in, anchor, obj);
         String dimension = anchor == CgAnchor.Kind.PLAYER ? in.readString() : null;
         if (obj == null) return;
+        held(obj);
         if (dimension != null) obj.dimension = dimension;
         if (obj.behaviour != null) {
             try {
@@ -438,6 +463,7 @@ final class ClientObjects {
     // ── Ending and ticking ──────────────────────────────────────────────────────────────────────
 
     private void end(CgNetObject obj, boolean killed) {
+        unheld(obj);
         obj.killed = killed;
         obj.removed();
         gate.discard(obj);
@@ -623,6 +649,7 @@ final class ClientObjects {
         }
         objects.clear();
         pending.clear();
+        Arrays.fill(holders, null);
         for (CgNetObject obj : all) end(obj, true);
         ending.clear();
     }

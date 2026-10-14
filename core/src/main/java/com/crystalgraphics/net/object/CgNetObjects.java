@@ -177,6 +177,14 @@ public final class CgNetObjects {
         return connection.attachment(ClientObjects.class, ClientObjects::new).visible(type);
     }
 
+    /** Client: this client's per-holder object of {@code type} riding entity {@code entityId}, or null. */
+    @Nullable
+    static CgNetObject clientHolder(CgNetType type, int entityId) {
+        CgProtocolConnection<Object> connection = CgNetwork.client();
+        if (connection == null || !connection.hasAttachment(ClientObjects.class)) return null;
+        return connection.attachment(ClientObjects.class, ClientObjects::new).holder(type, entityId);
+    }
+
     /** This process's client, for a prediction. */
     static ClientObjects client() {
         CgProtocolConnection<Object> connection = CgNetwork.client();

@@ -11,6 +11,7 @@ import org.junit.rules.TemporaryFolder;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -26,6 +27,7 @@ public class CgNetAnchorsTest {
     static final CgNetType MANA = CgNetType.define("test:mana").fields(CURRENT).perHolder().persisted().copyOnDeath().build();
     static final CgNetType WARD = CgNetType.define("test:ward").fields(CURRENT).persisted().build();
     static final CgNetType WARDS = CgNetType.define("test:wards").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType GUARD = CgNetType.define("test:guard").fields(CURRENT).perHolder().build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -54,6 +56,24 @@ public class CgNetAnchorsTest {
 
     private int sees(int client, CgNetType type) {
         return rig.client(client).visible(type).size();
+    }
+
+    @Test
+    public void findAnswersAHoldersObjectOnEitherSideAndMakesNothing() {
+        CgNetTestRig.Entity zombie = rig.entity(10, 64, 0);
+        assertNull("the server's find makes nothing", GUARD.find(zombie));
+        CgNetObject mana = MANA.of(rig.client(0).id());
+        CgNetObject guard = GUARD.of(zombie);
+        assertSame(mana, MANA.find(rig.client(0).id()));
+        assertSame(guard, GUARD.find(zombie));
+        rig.tick(1);
+        assertEquals("a client finds its own by its player's entity", mana.id(), rig.client(0).find(MANA, 1).id());
+        assertEquals("and an entity's it sees", guard.id(), rig.client(1).find(GUARD, zombie.id()).id());
+        assertNull("another player's own it does not see", rig.client(1).find(MANA, 1));
+
+        zombie.kill();
+        rig.tick(1);
+        assertNull("gone with its entity", rig.client(1).find(GUARD, zombie.id()));
     }
 
     @Test
