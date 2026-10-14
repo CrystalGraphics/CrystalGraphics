@@ -56,7 +56,7 @@ mostly push: a `CgMessage` unless the asker needs the answer.
 CrystalGraphics' binary format, compressed, in core, with no host involved. NBT comes in only where Minecraft owns the
 container (an entity's, block entity's or item's saved data), and there `CgFormats.toNbt`/`fromNbt` turn any codec's
 value into the running version's real tags and back, so `/data` reads it. Using it from a mod:
-[`docs/NETWORKING.md` § 14](NETWORKING.md#14-saving-your-own-data-and-nbt).
+[`docs/SERIALIZATION.md` § 7](SERIALIZATION.md#7-minecrafts-nbt).
 
 ```java
 tag.put("character", CgFormats.toNbt(Character.CODEC, character));             // typed as put takes it

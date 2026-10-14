@@ -63,6 +63,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/COLLISION.md`](COLLISION.md) | Questions about space: shapes, world queries (overlap, cast, ray), hits, hitboxes over time, shields, hitboxes on every side, snapshots, exact tests, the debug view, recipes |
 | [`docs/JOBS.md`](JOBS.md) | Work off the game's thread: jobs handed back at the next tick, keys and debounce, lanes, repeating simulations, `forEach` across cores, cancelling, progress, replies |
 | [`docs/NETWORKING.md`](NETWORKING.md) | Sending between server and clients: messages, requests, and networked objects (state mirrored to whoever sees it, per-player data, events, commands, server behaviours, prediction, saving, the test rig) |
+| [`docs/SERIALIZATION.md`](SERIALIZATION.md) | Codecs and where their values go: writing one, mutable objects, decoding into a live object, files in binary, JSON and YAML, Minecraft's NBT, changing a saved shape |
 | **[`docs/GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md)** | **Building a rendering pipeline on compute**: kernels writing records and counts, indirect and multi-draw draws, GPU culling and levels, and the design production engines follow |
 | **[`docs/PROFILING.md`](PROFILING.md)** | **Measuring anything**: the trace engine, the one-run rule, the harness and game runs, reading a report, what is instrumented. CrystalGUI adds `docs/CGUI_PROFILING.md`; the `profiling` skill is the checklist |
 | [`docs/DEBUG_FLAGS.md`](DEBUG_FLAGS.md) | Every engine switch, generated from the variable registry (`CgVar`, platform's `com.crystalgraphics.variable`): its sources, declaring a new one, and the table |
@@ -160,6 +161,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 |---|---|
 | `vfx/CLAUDE.md` | The VFX engine: effects, looks, particles on the GPU, cues; imports `docs/VFX.md` |
 | `net/CLAUDE.md` | Messages, requests, connections and networked objects; imports `docs/NETWORKING.md` |
+| `serialization/CLAUDE.md` | Codecs and decoding into a live object; `format`: files in binary, JSON and YAML, and the NBT bridge (`format.file`, `format.nbt`); imports `docs/SERIALIZATION.md` |
 | `job/CLAUDE.md` | Work off the caller's thread: `CgJob` handed back at its loop's drain, keyed and debounced, by lane; `CgJobLoop`; `forEach` across threads; `CgReply` answers and `CgProgress`; imports `docs/JOBS.md` |
 | `collision/CLAUDE.md` | Worlds and queries, hits, hitboxes and hitbox types, the entity and block tables behind snapshots and batches, the debug show; imports `docs/COLLISION.md` |
 | `shape/CLAUDE.md` | Shapes, poses, boxes and the exact tests between them (Jolt's GJK and EPA); imports `docs/COLLISION.md` |

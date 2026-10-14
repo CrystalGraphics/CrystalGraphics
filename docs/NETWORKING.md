@@ -350,70 +350,14 @@ An audience is worked out when you send. Build one once and send through it as o
 
 ### Your own data: a codec
 
-A built-in value has a codec ready: `CgCodecs.INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL`, `STRING`, `UUID`, `BYTES`,
-and `CgCodecs.enumOf(MyEnum.class)`, `listOf(codec)`, `mapOf(keyCodec, valueCodec)`. A record of your own gets a codec
-written once beside it, a key per component, as `Purge` and `Ping` above do. The same codec saves it too
-([§14](#14-saving-your-own-data-and-nbt)).
+A built-in value has a codec ready (`CgCodecs.INT`, `STRING`, `UUID`, `listOf`, `mapOf`, `enumOf`, ...), and a record of
+your own gets one written once beside it, as `Purge` and `Ping` above do. The same codec saves the value to a file
+or to NBT. Writing codecs, `dispatch` for one of several kinds, `CgCodecs.object` for a mutable class, and decoding
+into an object that already exists: **[`docs/SERIALIZATION.md`](SERIALIZATION.md)**.
 
-- **One of several kinds** (a skill that is a beam, a dash or a buff, each with its own fields) is `dispatch`: a
-  key names the kind, and each kind's codec reads the rest.
-
-  ```java
-  static final CgCodec<Skill> CODEC = CgCodecs.dispatch("kind", CgCodecs.STRING,
-          Skill::kind,                       // which kind a value is
-          kind -> switch (kind) {            // and the codec for each
-              case "beam" -> Beam.CODEC;
-              case "dash" -> Dash.CODEC;
-              default -> null;               // an unknown kind fails, naming it
-          });
-  ```
-
-- **A component that is usually its default** can be left out: the builder's `optional(key, codec, value, fallback)`
-  writes nothing when `value` equals `fallback`, and the reader's `optional(key, codec, fallback)` reads it back.
-
-  ```java
-  // encode: a full purge is rare, so most sends carry no "f" at all
-  .optional("f", CgCodecs.BOOL, p.full(), false)
-  // decode
-  r.optional("f", CgCodecs.BOOL, false)
-  ```
-- **A record inside a record** uses the inner record's codec as a field's: `.field("s", Stats.CODEC, value)`.
 - **Short keys keep messages small**: the key travels with every send.
 - **Encode and decode must use the same keys and codecs**: a key read that was never written throws on the
   receiving side.
-
-### A mutable object: `CgCodecs.object`
-
-A class whose instances live on (settings, a handler, a machine's state) declares each field once, with how to read
-and set it. That one declaration encodes, decodes, and **decodes into an object that already exists**, so everything
-holding it sees the new data:
-
-```java
-public final class Settings {
-    float volume = 1f;
-    final List<String> muted = new ArrayList<>();
-
-    public static final CgObjectCodec<Settings> CODEC = CgCodecs.object(Settings::new)
-            .optional("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v, 1f)   // 1 is not written
-            .into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)                  // refilled in place
-            .build();
-}
-
-Settings fresh = CgFormats.read(file, Settings.CODEC);       // Settings::new, then filled
-CgFormats.read(file, Settings.CODEC, live);              // live refreshed; live.muted is the same list
-```
-
-- **`field(key, codec, get, set)`** sets the decoded value, updating the held one in place when its codec can (a
-  nested object codec, a list, a map). **`into(key, codec, get)`** is for a final member: always updated in place.
-- **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
-  otherwise. A partial file is a patch. A field holding null is not written.
-- **An object made elsewhere** (a registry, a constructor with arguments) uses `CgCodecs.object(Machine.class)`:
-  no factory, so it only decodes into an object you pass, `CODEC.decode(ops, in, machine)`.
-- **A subclass** starts with `.extend(Parent.CODEC)`: the parent's keys, written flat beside its own.
-- Any codec decodes into: `listOf` refills the same list, `mapOf` keeps its entries by key, `dispatch` updates a value
-  of the same kind. Strings, numbers, records and enums cannot change, so the new value replaces the old.
-- A codec error part-way leaves the object with the fields read before it. A damaged file throws before anything
-  is touched.
 
 ### Versions
 
@@ -927,43 +871,21 @@ the server stops and every five minutes, and come back when it starts again, bef
 
 ## 14. Saving your own data, and NBT
 
-### Files of your own: no NBT needed
+Data that is not a networked object saves with the codec it is sent with, and needs no NBT code of your own. The
+whole of it is **[`docs/SERIALIZATION.md`](SERIALIZATION.md)**:
 
-Data that is not a networked object saves with the codec it is sent with. `CgFormats` writes it to a file of your
-own, compressed, in the same binary format the wire uses:
-
-```java
-Path file = worldDir.resolve("mymod/players/" + uuid + ".dat");
-CgFormats.write(file, PlayerData.CODEC, data);                 // makes the folders; replaces the file whole
-PlayerData data = CgFormats.read(file, PlayerData.CODEC);      // null when there is no file yet
-CgFormats.read(file, PlayerData.CODEC, live);              // into a live object: no file leaves it as it is
-```
-
-A crash mid-save leaves the last save, never half of one: the file is written beside itself and moved over the old.
-Reading into a live object needs a codec that updates one in place ([§4](#a-mutable-object-cgcodecsobject)); any
-other codec gives back a new value.
-
-### When Minecraft wants NBT
-
-Minecraft's own containers (an entity's saved data, a block entity's, an item's) take only its tags. `CgFormats`
-turns any codec's value into them and back, on every version, so you still write no NBT code:
+| You want to | Read |
+|---|---|
+| save a file of your own (binary, compressed) | [§6 Files](SERIALIZATION.md#6-files-binary-json-and-yaml) |
+| write a config people edit (YAML, JSON) | [§6 Files](SERIALIZATION.md#6-files-binary-json-and-yaml) |
+| store a value in an entity's, block entity's or item's NBT | [§7 Minecraft's NBT](SERIALIZATION.md#7-minecrafts-nbt) |
+| reload into an object other code holds | [§5 Decoding into a live object](SERIALIZATION.md#5-decoding-into-a-live-object) |
 
 ```java
-// saving
-tag.put("character", CgFormats.toNbt(Character.CODEC, character));   // typed as put takes it
-// loading
-Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
-// loading into the entity's live character
-CgFormats.fromNbt(Character.CODEC, tag.get("character"), this.character);
+CgFormats.write(file, PlayerData.CODEC, data);                         // a file of your own
+tag.put("character", CgFormats.toNbt(Character.CODEC, character));     // Minecraft's NBT
+CgFormats.YAML.read(config, Settings.CODEC, live);                     // a config, into the live settings
 ```
-
-- A map becomes a compound, a list a list tag, a number the tag of its width, `BYTES` a byte array; a boolean is a
-  byte, as in Minecraft's own `NbtOps`.
-- NBT's rules apply: map keys must encode as text (`mapOf(CgCodecs.STRING, …)`, or a codec writing a string), and a
-  list holds one kind of value.
-- `CgFormats.nbt()` is the same format as a `CgDynamicOps`, for a codec read or written by hand.
-- NBT exists only inside Minecraft: in a test or the harness, `toNbt` throws, naming the `crystalgraphics:host_formats`
-  slot. Test the codec with `CgFormats.write`/`read`, or `CgPlainOps`.
 
 ---
 
