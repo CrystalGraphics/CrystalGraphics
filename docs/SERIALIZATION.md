@@ -1,7 +1,7 @@
 # Serialization — the guide
 
 CrystalGraphics turns your data into bytes, text or Minecraft's tags and back, with one description of it: a
-**codec**. The same codec sends a value over the network, saves it to a file of your own, writes it as JSON or YAML
+**codec**. The same codec sends a value over the network, saves it to a file of your own, writes it as JSON, TOML or YAML
 for a person to edit, and stores it inside an entity's NBT, on every version and loader. You never write NBT code,
 and you never keep two serializations of one value in step.
 
@@ -51,7 +51,7 @@ public final class Character {
 
 tag.put("Character", CgFormats.toNbt(Character.CODEC, character));           // inside an entity's NBT
 CgFormats.fromNbt(Character.CODEC, tag.get("Character"), character);       // loaded into the live one
-CgFormats.YAML.write(file, Character.CODEC, character);                    // a file a person edits
+CgFormats.TOML.write(file, Character.CODEC, character);                    // a file a person edits
 CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC);   // the wire
 ```
 
@@ -63,7 +63,7 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 | **Every port rewrites the NBT code** | `getInt`, `getAllKeys`, `NBTTagCompound`, `func_150296_c`: renamed across versions | your codec never names a tag; each version's spelling is CrystalGraphics' |
 | **Keys typed twice** | the save writes `"Level"`, the load reads `"level"`, nothing notices | `CgCodecs.object` declares each field once, for both directions |
 | **A reload breaks references** | a new object is made, and every screen holding the old one shows stale data | decode into the live object: everything holding it sees the new values |
-| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFormats.YAML` or `JSON` with the same codec; missing keys keep their defaults, and a person's comments survive the mod writing the file |
+| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFormats.TOML`, `YAML` or `JSON` with the same codec; missing keys keep their defaults, and a person's comments survive the mod writing the file |
 | **An old save after a change** | a migration written by hand, or saves that stop loading | `CgCodecs.versioned`: each old version's steps run before today's codec reads it |
 | **A crash mid-save** | half a file, and a corrupted world folder | written beside the old file, then moved over it in one step |
 | **Testing** | launch the game to see whether a save loads | a codec runs in a plain JUnit test, NBT included (`CgTestTags`) |
@@ -75,7 +75,7 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 3. [Writing a codec](#3-writing-a-codec)
 4. [A mutable object: `CgCodecs.object`](#4-a-mutable-object-cgcodecsobject)
 5. [Decoding into a live object](#5-decoding-into-a-live-object)
-6. [Files: binary, JSON and YAML](#6-files-binary-json-and-yaml)
+6. [Files: binary, JSON, TOML and YAML](#6-files-binary-json-toml-and-yaml)
 7. [Minecraft's NBT](#7-minecrafts-nbt)
 8. [Formats by hand: `CgDynamicOps`](#8-formats-by-hand-cgdynamicops)
 9. [Changing a saved shape](#9-changing-a-saved-shape)
@@ -93,12 +93,12 @@ takes a codec from this page.
 |---|---|---|
 | **Codec** | How a value of one Java type is written and read. Says what keys it has and each one's codec; nothing about bytes or files. | `CgCodec`, `CgCodecs` |
 | **Record codec** | A record's codec, declared as its keys and its constructor. | `CgCodecs.record` |
-| **Format** | What the value becomes: the wire's plain tree, JSON, YAML, NBT. A codec works with every one. | `CgDynamicOps` |
+| **Format** | What the value becomes: the wire's plain tree, JSON, TOML, YAML, NBT. A codec works with every one. | `CgDynamicOps` |
 | **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgFormats.nbt()` |
 | **Tree** | A value in a format before it is bytes: maps, lists, strings, numbers. | — |
 | **Object codec** | A codec for a mutable class, each field declared once with how to read and set it. | `CgObjectCodec` |
 | **Target** | An object that already exists, decoded into in place instead of making a new one. | `decode(ops, in, target)` |
-| **File format** | Where a tree is stored: a compressed binary file, a JSON file, a YAML file. | `CgFormats.BINARY`, `JSON`, `YAML` |
+| **File format** | Where a tree is stored: a compressed binary file, a JSON, TOML or YAML file. | `CgFormats.BINARY`, `JSON`, `TOML`, `YAML` |
 
 How they fit together:
 
@@ -106,6 +106,7 @@ How they fit together:
           your value ──── CgCodec ────▶ a tree in some format ────▶ bytes, text, or tags
                                          CgPlainOps   (the wire, binary files)
                                          CgJsonOps    (JSON)
+                                         plain + TOML (TOML)
                                          plain + YAML (YAML)
                                          CgFormats.nbt() (Minecraft's tags)
 ```
@@ -141,9 +142,9 @@ public final class Settings {
             .build();
 }
 
-Path file = configDir.resolve("mymod.yml");
-Settings settings = CgFormats.YAML.read(file, Settings.CODEC);   // null on first run
-if (settings == null) CgFormats.YAML.write(file, Settings.CODEC, settings = new Settings());
+Path file = configDir.resolve("mymod.toml");
+Settings settings = CgFormats.TOML.read(file, Settings.CODEC);   // null on first run
+if (settings == null) CgFormats.TOML.write(file, Settings.CODEC, settings = new Settings());
 ```
 
 ### Inside an entity's NBT
@@ -169,11 +170,11 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 | Codec | Type | Note |
 |---|---|---|
 | `CgCodecs.STRING`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL` | the boxed primitives | |
-| `CgCodecs.BYTES` | `byte[]` | one tag on the wire and in NBT; Base64 in JSON, `!!binary` in YAML |
+| `CgCodecs.BYTES` | `byte[]` | one tag on the wire and in NBT; Base64 in JSON and TOML, `!!binary` in YAML |
 | `CgCodecs.UUID` | `UUID` | two longs |
 | `CgCodecs.enumOf(Kind.class)` | an enum | by constant name, never ordinal: inserting a constant does not re-point old saves |
 | `CgCodecs.listOf(codec)` | `List<A>` | |
-| `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; JSON, YAML and NBT take only text keys |
+| `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; JSON, TOML, YAML and NBT take only text keys |
 | `CgCodecs.xmap(base, from, to)` | anything | one codec in terms of another |
 | `CgCodecs.record(...)` | a record | its keys and its constructor, below |
 | `CgCodecs.dispatch(...)` | one of several kinds | below |
@@ -229,7 +230,7 @@ make the class mutable and use `CgCodecs.object` (§4).
 - **Keys are written in declaration order**, so a value always encodes to the same bytes.
 - **Keys the codec does not declare are ignored**, so a save with a key you since removed still loads.
 - **A required value that is null throws when written**, naming the key: declare it `optionalField(..., null)` instead.
-- **A key's comment** goes in a YAML file above it: `.comment("Master volume, 0 to 1.")` on the key (§6).
+- **A key's comment** goes in a TOML or YAML file above it: `.comment("Master volume, 0 to 1.")` on the key (§6).
 - **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
 
 ### Record, object, or by hand?
@@ -324,7 +325,7 @@ public final class Character {
 | `optional(key, codec, get, set, omitWhen)` | a field usually at its default | as `field`; nothing is written for `omitWhen` |
 | `into(key, codec, get)` | a final member the object owns | always updated in place; a codec that cannot (a string, a record) throws, naming the key |
 | `extend(Parent.CODEC)` | a subclass | the parent's keys first, flat beside its own |
-| `.comment(text)` | the field just declared | written above its key in a YAML file (§6) |
+| `.comment(text)` | the field just declared | written above its key in a TOML or YAML file (§6) |
 
 - **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
   for a target. A partial file is a patch.
@@ -394,28 +395,41 @@ Every way in has the target form: `CgFormats.read(file, codec, target)`, `CgForm
 
 ---
 
-## 6. Files: binary, JSON and YAML
+## 6. Files: binary, JSON, TOML and YAML
 
 | Format | Use it for | What it is |
 |---|---|---|
 | `CgFormats.BINARY` | your mod's own data: player files, caches, anything a person does not open | the wire's binary format, gzipped. Smallest and fastest |
 | `CgFormats.JSON` | data packs, exports, files a tool reads | pretty-printed JSON, through Gson (every Minecraft ships it) |
-| `CgFormats.YAML` | config files people edit | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
+| `CgFormats.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
+| `CgFormats.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
+
+**Which for a config?** TOML. Players already know it from every other mod's config, a stray space cannot break it,
+and its values say their type: `language = "no"` is text, where YAML reads an unquoted `no` as `false`.
 
 ```java
 CgFormats.write(file, Data.CODEC, data);                  // BINARY, the shorthand
 Data data = CgFormats.read(file, Data.CODEC);             // null when there is no file
 CgFormats.read(file, Data.CODEC, live);                   // into a live object; no file leaves it as it is
 
-CgFormats.YAML.write(config, Settings.CODEC, settings);
+CgFormats.TOML.write(config, Settings.CODEC, settings);
 CgFormats.JSON.read(export, Settings.CODEC);
-CgFormats.of(file).read(file, Settings.CODEC);            // by name: .json, .yml/.yaml, anything else binary
+CgFormats.of(file).read(file, Settings.CODEC);            // by name: .json, .toml, .yml/.yaml, anything else binary
 
-String text = CgFormats.YAML.toText(Settings.CODEC, settings);    // text, not a file
-Settings back = CgFormats.YAML.fromText(Settings.CODEC, text);
+String text = CgFormats.TOML.toText(Settings.CODEC, settings);    // text, not a file
+Settings back = CgFormats.TOML.fromText(Settings.CODEC, text);
 ```
 
-A YAML file as `Settings` writes it, which a person may then edit, comment and cut down:
+One value in each, as `Settings` writes it, which a person may then edit, comment and cut down:
+
+```toml
+# mymod.toml
+volume = 0.5
+muted = ["vegeta"]
+
+[skills]
+kamehameha = 3
+```
 
 ```yaml
 # mymod.yml
@@ -429,18 +443,21 @@ skills:
 - **A write replaces the file whole**: it is written beside the old one and moved over it, so a crash mid-save leaves
   the last save. The folders are made.
 - **A read parses the whole file before decoding.** A file that is not its format, or holds what the codec cannot
-  read, throws `CgCodecException`.
+  read, throws `CgCodecException`, naming the line for TOML.
 - **Missing keys keep their defaults**, with an object codec: a hand-written file need hold only what it changes.
 - **Comments survive** a rewrite: below.
-- **Map keys are text** in JSON and YAML. Bytes are Base64 in JSON and `!!binary` in YAML.
+- **Map keys are text** in JSON, TOML and YAML. Bytes are Base64 in JSON and TOML, `!!binary` in YAML.
+- **A TOML file is a table at its top**: a codec whose value is a map (a record, an object, `mapOf`). A map becomes a
+  `[section]`, a list of maps `[[sections]]`, anything inside a list is written inline. TOML has no null: a null
+  field is not written. A date or time a person types reads as its text.
 - **A YAML file builds maps, lists and scalars only**: a `!!java.io.File`-style tag is refused, never instantiated.
 - **SnakeYAML is relocated inside CrystalGraphics' jar.** Never import `org.yaml` in your mod: in game it is not at
-  that name. Use `CgFormats.YAML`.
+  that name. Use `CgFormats.YAML`. TOML needs no library.
 
 ### A config file people edit, with comments
 
 A config file explains itself when the codec says what each key means. Put `.comment(text)` after a field (or on a
-record key); the comment is written above that key in YAML.
+record key); the comment is written above that key in TOML and YAML.
 
 ```java
 public final class ModConfig {
@@ -459,34 +476,37 @@ public final class ModConfig {
 }
 
 // at startup: load what is there, then write it back, so a new key appears with its comment
-Path file = configDir.resolve("mymod.yml");
-ModConfig config = CgFormats.YAML.read(file, ModConfig.CODEC, new ModConfig());
-CgFormats.YAML.write(file, ModConfig.CODEC, config);
+Path file = configDir.resolve("mymod.toml");
+ModConfig config = CgFormats.TOML.read(file, ModConfig.CODEC, new ModConfig());
+CgFormats.TOML.write(file, ModConfig.CODEC, config);
 ```
 
 The first run writes:
 
-```yaml
+```toml
 # Master volume, 0 to 1.
-volume: 1.0
+volume = 1.0
+
 # Particles per effect, in percent.
 # Lower it on a slow computer.
-particles: 100
+particles = 100
+
 # Players whose effects you never see.
-muted: []
+muted = []
 ```
 
 A player then edits it, and writes their own notes:
 
-```yaml
+```toml
 # Master volume, 0 to 1.
-volume: 0.4        # quieter at night
+volume = 0.4        # quieter at night
+
 # Particles per effect, in percent.
 # Lower it on a slow computer.
-particles: 50
+particles = 50
+
 # my friends spam beams
-muted:
-  - vegeta
+muted = ["vegeta"]
 ```
 
 The next time the mod writes the file, **everything the player wrote stays**: `quieter at night` beside its value,
@@ -498,11 +518,13 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 | Your update removes a key | it disappears, and so does any comment on it |
 | A player wrote a comment on a key | theirs is kept; yours is not added beside it |
 | You change a key's comment in an update | files that already have the old text keep it: once written, a comment is the file's |
-| The file is not valid YAML | it is replaced; its comments cannot be read, so they go |
+| The file is not valid TOML (or YAML) | it is replaced; its comments cannot be read, so they go |
 
-- **Comments live in YAML only.** JSON has none; binary files and NBT have none.
+- **Comments live in TOML and YAML.** JSON has none; binary files and NBT have none.
 - **Nested keys** take their own comments: a record key's `.comment(...)` inside a nested record lands above that key,
-  indented.
+  under its `[section]` in TOML, indented in YAML. A comment on the nested record's own key goes above its header.
+- **A comment inside a multi-line array** is not kept: a person's comments are kept above and beside keys and
+  section headers, and at the end of the file.
 - **Read before you write**, as above: a mod that writes a fresh `ModConfig` over the file throws the player's values
   away (their comments stay, on keys that still exist).
 
@@ -678,7 +700,7 @@ try {
 }
 ```
 
-- **Steps run in whatever format the save was read from**: one step serves binary files, JSON, YAML and NBT.
+- **Steps run in whatever format the save was read from**: one step serves binary files, JSON, TOML, YAML and NBT.
 - **A step on a key the save lacks does nothing**, so one step serves saves that never had the key.
 - **The version key is `"_v"`**; `CgCodecs.versioned("version", 3, CODEC)` names another.
 - **Versioned codecs are for saves.** A value sent over the network is read by the same build that sent it, or by a
@@ -755,8 +777,9 @@ number, add one step from the old number, and never change a step once it has sh
 
 ### My config's comments are gone. Why?
 
-Comments live in YAML: a `.json` or binary file has none. In YAML, a comment is kept when its key is still written;
-a key you removed takes its comment with it, and a file that was not valid YAML is replaced whole.
+Comments live in TOML and YAML: a `.json` or binary file has none. A comment is kept when its key is still written;
+a key you removed takes its comment with it, a comment inside a multi-line array is not kept, and a file that would
+not parse is replaced whole.
 
 ### Why not Mojang's `Codec`?
 
@@ -773,7 +796,7 @@ is saved, and it cannot reach NBT or the wire. A codec says exactly what is stor
 ### NBT or a file of my own?
 
 NBT only where Minecraft owns the container: an entity's, a block entity's or an item's data. Anything your mod
-owns (per-player data, caches, configs) is a file: `BINARY` for data, `YAML` for what people edit.
+owns (per-player data, caches, configs) is a file: `BINARY` for data, `TOML` for configs people edit.
 
 ### Is decoding into an object like Jackson's `readerForUpdating`?
 

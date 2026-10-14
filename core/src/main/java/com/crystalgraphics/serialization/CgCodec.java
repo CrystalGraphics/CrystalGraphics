@@ -60,9 +60,10 @@ public interface CgCodec<A> {
     }
 
     /**
-     * What a text format that keeps comments ({@code CgFormats.YAML}) writes above each key, by dotted path:
-     * {@code "volume"}, {@code "audio.volume"}. None unless the codec declares some, as {@code object(...).comment(text)}
-     * and {@code field(...).comment(text)} do.
+     * What a text format that keeps comments ({@code CgFormats.TOML}, {@code YAML}) writes above each key, by dotted
+     * path: {@code "volume"}, {@code "audio.volume"}. None unless the codec declares some, as
+     * {@code object(...).comment(text)} and {@code field(...).comment(text)} do. {@code ""} is a TOML file's header,
+     * above its first key.
      */
     default Map<String, String> comments() {
         return Collections.emptyMap();

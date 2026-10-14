@@ -6,8 +6,8 @@ for storage, a `CgFormat`. **Using it: `docs/SERIALIZATION.md`, the guide**, imp
 | Package | Owns |
 |---|---|
 | `serialization` | The codec vocabulary: `CgCodec` (`encode`, `decode`, `decode(ops, in, target)` into a live object, `comments()`), `CgCodecs` (primitives, `listOf`, `mapOf`, `dispatch`, `xmap`, `record`, `versioned`, the map builder and reader, `object`), `CgRecordCodec` and `CgRecordField` (a record's keys and constructor), `CgObjectCodec` (a mutable class's fields declared once), `CgVersionedCodec` and `CgTreeEdit` (an old save migrated by steps), `CgDynamicOps`, `CgPlainOps` (the plain tree the wire and files use), `CgBinaryFormat` (that tree as bytes), `CgContentHash`, `CgStateMap`, `CgCodecException` |
-| `serialization.format` | What a mod calls to store a value: `CgFormats` (`BINARY`, `JSON`, `YAML`, `of(file)`, and the NBT bridge `toNbt`/`fromNbt`/`nbt()`), `CgFormat` (files), `CgTextFormat` (files and text), `CgJsonOps` (Gson's tree) |
-| `serialization.format.file` | Each file format: `BinaryFileFormat` (gzipped `CgBinaryFormat`), `JsonFileFormat` (Gson), `YamlFileFormat` (SnakeYAML), over `FileFormat`, which writes beside and moves over, and reads whole before decoding |
+| `serialization.format` | What a mod calls to store a value: `CgFormats` (`BINARY`, `JSON`, `TOML`, `YAML`, `of(file)`, and the NBT bridge `toNbt`/`fromNbt`/`nbt()`), `CgFormat` (files), `CgTextFormat` (files and text), `CgJsonOps` (Gson's tree) |
+| `serialization.format.file` | Each file format: `BinaryFileFormat` (gzipped `CgBinaryFormat`), `JsonFileFormat` (Gson), `TomlFileFormat` (TOML 1.0: `TomlReader`, ported from Jackson's, and `TomlWriter`), `YamlFileFormat` (SnakeYAML), over `FileFormat`, which writes beside and moves over, and reads whole before decoding |
 | `serialization.format.nbt` | The NBT bridge's slot, `CgHostFormats` (each era's tag primitives: `HostFormatsModern`, `HostFormatsLegacy`, `HostFormats1710`), `HostTagOps`, NBT's rules over them, and `CgTestTags`, tags and SNBT for a unit test |
 
 ## Rules
@@ -20,7 +20,7 @@ for storage, a `CgFormat`. **Using it: `docs/SERIALIZATION.md`, the guide**, imp
   inherits the default, a new value; never answer a half-new mix.
 - **A new format** is a `FileFormat` (bytes) or `TextFileFormat` (text) in `format.file`, a constant on `CgFormats`,
   and a case in `CgFormats.of`.
-- **A codec that wraps another forwards its `comments()`**, as `xmap` and `versioned` do, or a YAML file loses them.
+- **A codec that wraps another forwards its `comments()`**, as `xmap` and `versioned` do, or a TOML or YAML file loses them.
 - **NBT's rules live in `HostTagOps`, once**; a host answers only the primitives, and decides nothing.
 
 ---

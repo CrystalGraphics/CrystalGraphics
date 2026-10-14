@@ -6,6 +6,7 @@ import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.serialization.format.file.BinaryFileFormat;
 import com.crystalgraphics.serialization.format.file.JsonFileFormat;
+import com.crystalgraphics.serialization.format.file.TomlFileFormat;
 import com.crystalgraphics.serialization.format.file.YamlFileFormat;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import com.crystalgraphics.serialization.format.nbt.HostTagOps;
@@ -17,7 +18,7 @@ import java.util.Locale;
 
 /**
  * Where a codec's value lives when it is not on the wire: a file of the mod's own, in CrystalGraphics' binary format,
- * JSON or YAML, or Minecraft's tags where Minecraft owns the container. A mod saves with the codecs it sends with, and
+ * JSON, TOML or YAML, or Minecraft's tags where Minecraft owns the container. A mod saves with the codecs it sends with, and
  * needs no NBT of its own.
  *
  * <pre>{@code
@@ -25,7 +26,7 @@ import java.util.Locale;
  * PlayerData data = CgFormats.read(file, PlayerData.CODEC);       // null when there is no file yet
  * CgFormats.read(file, PlayerData.CODEC, live);                   // into a live object
  *
- * CgFormats.YAML.write(config, Settings.CODEC, settings);         // a file people edit
+ * CgFormats.TOML.write(config, Settings.CODEC, settings);         // a config file people edit
  * Settings s = CgFormats.of(config).read(config, Settings.CODEC); // the format from the extension
  * }</pre>
  *
@@ -38,7 +39,7 @@ import java.util.Locale;
  *
  * <ul>
  *   <li>A file is written whole beside itself then moved over the old one: a crash mid-save leaves the last save.</li>
- *   <li>Every format takes any codec. JSON, YAML and NBT take only text map keys; NBT's lists hold one kind of value
+ *   <li>Every format takes any codec. JSON, TOML, YAML and NBT take only text map keys; TOML's top is a map; NBT's lists hold one kind of value
  *       and its booleans are bytes.</li>
  *   <li>{@link #toNbt}, {@link #fromNbt} and {@link #nbt} need a host: in a test or the harness they throw, naming the
  *       {@link CgHostFormats} slot.</li>
@@ -55,14 +56,18 @@ public final class CgFormats {
     /** YAML in block style: SnakeYAML, carried by CrystalGraphics. */
     public static final CgTextFormat YAML = new LazyTextFormat("YAML", "SnakeYAML", () -> new YamlFileFormat());
 
+    /** TOML 1.0, Forge's and NeoForge's config format: tables of keys, a value's text says its type. */
+    public static final CgTextFormat TOML = new TomlFileFormat();
+
     private CgFormats() {
     }
 
-    /** The format a file's extension names: {@code .json}, {@code .yml} or {@code .yaml}, anything else binary. */
+    /** The format a file's extension names: {@code .json}, {@code .yml}, {@code .yaml} or {@code .toml}, anything else binary. */
     public static CgFormat of(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         if (name.endsWith(".json")) return JSON;
         if (name.endsWith(".yml") || name.endsWith(".yaml")) return YAML;
+        if (name.endsWith(".toml")) return TOML;
         return BINARY;
     }
 
