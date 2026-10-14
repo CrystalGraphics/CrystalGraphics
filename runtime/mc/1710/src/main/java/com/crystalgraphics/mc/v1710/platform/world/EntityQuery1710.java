@@ -60,7 +60,9 @@ public final class EntityQuery1710 extends LevelEntityQuery1710 {
 
     private static boolean touches(Entity e, double minX, double minY, double minZ, double maxX, double maxY,
                                    double maxZ) {
-        AxisAlignedBB b = e.boundingBox;
-        return b.maxX > minX && b.minX < maxX && b.maxY > minY && b.minY < maxY && b.maxZ > minZ && b.minZ < maxZ;
+        AxisAlignedBB b = e.boundingBox;   // its corners in either order: HostShapes1710.set
+        return Math.max(b.minX, b.maxX) > minX && Math.min(b.minX, b.maxX) < maxX
+                && Math.max(b.minY, b.maxY) > minY && Math.min(b.minY, b.maxY) < maxY
+                && Math.max(b.minZ, b.maxZ) > minZ && Math.min(b.minZ, b.maxZ) < maxZ;
     }
 }

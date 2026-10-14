@@ -146,8 +146,8 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         out[VELOCITY_X] = e.motionX;
         out[VELOCITY_Y] = e.motionY;
         out[VELOCITY_Z] = e.motionZ;
-        out[WIDTH] = e.boundingBox.maxX - e.boundingBox.minX;
-        out[HEIGHT] = e.boundingBox.maxY - e.boundingBox.minY;
+        out[WIDTH] = Math.abs(e.boundingBox.maxX - e.boundingBox.minX);
+        out[HEIGHT] = Math.abs(e.boundingBox.maxY - e.boundingBox.minY);
         out[EYE_HEIGHT] = eyeHeight(e);
         out[YAW] = angle(e.prevRotationYaw, e.rotationYaw, partialTick);
         out[PITCH] = e.prevRotationPitch + (e.rotationPitch - e.prevRotationPitch) * partialTick;
@@ -186,8 +186,7 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         // the box where it is drawn: moved back by what the tick has yet to cover
         double dx = (e.lastTickPosX - e.posX) * (1 - partialTick), dy = (e.lastTickPosY - e.posY) * (1 - partialTick);
         double dz = (e.lastTickPosZ - e.posZ) * (1 - partialTick);
-        AxisAlignedBB b = e.boundingBox;
-        out.set(b.minX + dx, b.minY + dy, b.minZ + dz, b.maxX + dx, b.maxY + dy, b.maxZ + dz);
+        HostShapes1710.set(e.boundingBox, dx, dy, dz, out);
         return true;
     }
 
