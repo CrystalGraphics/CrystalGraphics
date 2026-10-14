@@ -11,6 +11,7 @@ import java.util.function.Function;
  * CgCodecs.field("name", CgCodecs.STRING, Spell::name)                  // required: missing throws, naming it
  * CgCodecs.optionalField("cost", CgCodecs.INT, Spell::cost, 0)          // 0 is not written, and absent reads 0
  * CgCodecs.fieldOr("exposed", CgCodecs.BOOL, Prop::exposed, true)      // always written; absent reads true
+ * CgCodecs.comment("Ki it takes.").field("cost", CgCodecs.INT, Spell::cost)   // written above cost in TOML, YAML
  * }</pre>
  *
  * @param <R> the record
@@ -46,14 +47,8 @@ public final class CgRecordField<R, F> {
         this.comment = comment;
     }
 
-    /**
-     * This key, with {@code text} written above it where a format keeps comments (YAML). A line each, for a {@code \n}.
-     *
-     * <pre>{@code
-     * CgCodecs.optionalField("volume", CgCodecs.FLOAT, Settings::volume, 1f).comment("Master volume, 0 to 1.")
-     * }</pre>
-     */
-    public CgRecordField<R, F> comment(String text) {
+    /** This key with {@code text} above it: what {@code CgCodecs.comment(text).field(...)} makes. */
+    CgRecordField<R, F> withComment(String text) {
         return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text);
     }
 

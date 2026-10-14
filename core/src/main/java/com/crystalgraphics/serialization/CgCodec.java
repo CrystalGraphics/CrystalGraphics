@@ -1,8 +1,6 @@
 package com.crystalgraphics.serialization;
 
 import javax.annotation.Nullable;
-import java.util.Collections;
-import java.util.Map;
 
 /**
  * How a value of type {@code A} is written and read, in any format: the wire, CrystalGraphics' binary files, NBT, JSON.
@@ -32,6 +30,7 @@ import java.util.Map;
  * <ul>
  *   <li>{@link #decode} throws {@link CgCodecException} on input it cannot read; it never answers null for a failure.</li>
  *   <li>Encode and decode must use the same keys: a key read that was never written throws on the reading side.</li>
+ *   <li>Comments are constants of the codec, and only a TOML or YAML file writes them: the wire never carries one.</li>
  * </ul>
  *
  * @param <A> the value type
@@ -60,12 +59,21 @@ public interface CgCodec<A> {
     }
 
     /**
-     * What a text format that keeps comments ({@code CgFormats.TOML}, {@code YAML}) writes above each key, by dotted
-     * path: {@code "volume"}, {@code "audio.volume"}. None unless the codec declares some, as
-     * {@code object(...).comment(text)} and {@code field(...).comment(text)} do. {@code ""} is a TOML file's header,
-     * above its first key.
+     * This codec, with {@code text} about the value as a whole: a TOML or YAML file's header when the value is the
+     * file, above its {@code [section]} when it is nested. A line each, for a {@code \n}. Its keys' comments go before
+     * each key: {@code builder.comment(text).field(...)}.
+     *
+     * <pre>{@code
+     * static final CgObjectCodec<ModConfig> CODEC = CgCodecs.object(ModConfig::new)
+     *         .comment("Master volume, 0 to 1.")
+     *         .field("volume", CgCodecs.FLOAT, c -> c.volume, (c, v) -> c.volume = v)
+     *         .build()
+     *         .comment("mymod settings. Edit while the game is closed.");
+     * }</pre>
+     *
+     * A value that is not a map has nowhere to put it, and the comment is dropped.
      */
-    default Map<String, String> comments() {
-        return Collections.emptyMap();
+    default CgCodec<A> comment(String text) {
+        return CgCodecs.commented(this, text);
     }
 }

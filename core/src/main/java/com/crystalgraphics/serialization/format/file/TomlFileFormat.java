@@ -8,7 +8,6 @@ import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
 
 import javax.annotation.Nullable;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -47,7 +46,7 @@ public final class TomlFileFormat extends TextFileFormat<Object> {
 
     @Override
     String print(Object tree) {
-        return TomlWriter.write(tree, Collections.emptyMap(), null);
+        return TomlWriter.write(tree, OPS, null);
     }
 
     @Override
@@ -66,6 +65,7 @@ public final class TomlFileFormat extends TextFileFormat<Object> {
                 theirs = null;   // replaced whole; its comments cannot be placed
             }
         }
-        return TomlWriter.write(codec.encode(OPS, value), codec.comments(), theirs);
+        CommentedOps ours = new CommentedOps(OPS);
+        return TomlWriter.write(codec.encode(ours, value), ours, theirs);
     }
 }

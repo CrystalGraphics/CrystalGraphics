@@ -1,6 +1,7 @@
 package com.crystalgraphics.serialization.format.file;
 
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.CgDynamicOps;
 
 import javax.annotation.Nullable;
 import java.math.BigDecimal;
@@ -17,22 +18,27 @@ import java.util.Map;
 final class TomlWriter {
 
     private final StringBuilder out = new StringBuilder();
-    private final Map<String, String> ours;
+    /** Where each map's own comments are: the ops it was encoded with. */
+    private final CgDynamicOps<Object> ours;
     @Nullable
     private final TomlReader.Comments theirs;
 
-    private TomlWriter(Map<String, String> ours, @Nullable TomlReader.Comments theirs) {
+    private TomlWriter(CgDynamicOps<Object> ours, @Nullable TomlReader.Comments theirs) {
         this.ours = ours;
         this.theirs = theirs;
     }
 
-    /** @throws CgCodecException where {@code tree} is not a table, or holds what TOML cannot: a null, a non-text key */
-    static String write(Object tree, Map<String, String> ours, @Nullable TomlReader.Comments theirs) {
+    /**
+     * {@code tree}, with the comments {@code ours} made its maps with.
+     *
+     * @throws CgCodecException where {@code tree} is not a table, or holds what TOML cannot: a null, a non-text key
+     */
+    static String write(Object tree, CgDynamicOps<Object> ours, @Nullable TomlReader.Comments theirs) {
         if (!(tree instanceof Map)) throw new CgCodecException("TOML holds a table at its top; this value is " + kind(tree));
         TomlWriter w = new TomlWriter(ours, theirs);
-        w.comment("", "");
+        w.comment(ours.commentsOf(tree).get(null), "");
         if (w.out.length() > 0) w.out.append('\n');
-        w.table((Map<?, ?>) tree, "", "", "", null, true);
+        w.table((Map<?, ?>) tree, "", "", null, null);
         if (theirs != null && !theirs.end.isEmpty()) {
             if (w.out.length() > 0) w.out.append('\n');
             for (String line : theirs.end) w.out.append('#').append(line).append('\n');
@@ -41,20 +47,19 @@ final class TomlWriter {
     }
 
     /**
-     * @param dotted   the key path as the codec's comments name it
      * @param path     {@link TomlReader#path}: where a person's comments were read
      * @param header   {@code [a.b]} or {@code [[a]]}, null for the top
-     * @param ourComment false for an array of tables' later elements: the codec's comment goes above the first
+     * @param about    the codec's comment above that header
      */
-    private void table(Map<?, ?> map, String dotted, String path, String tomlKey, @Nullable String header,
-                       boolean ourComment) {
+    private void table(Map<?, ?> map, String path, String tomlKey, @Nullable String header, @Nullable String about) {
         if (header != null) {
             if (out.length() > 0 && !(out.length() > 1 && out.charAt(out.length() - 2) == '\n')) out.append('\n');
-            comment(ourComment ? dotted : null, path);
+            comment(about, path);
             out.append(header);
             after(path);
             out.append('\n');
         }
+        Map<String, String> notes = ours.commentsOf(map);
         List<Map.Entry<?, ?>> tables = new ArrayList<>();
         List<Map.Entry<?, ?>> arrays = new ArrayList<>();
         boolean first = true;
@@ -68,10 +73,11 @@ final class TomlWriter {
             } else {
                 String key = key(e.getKey());
                 String p = TomlReader.path(path, key);
+                String note = notes.get(key);
                 // A commented key gets a blank line above it, the first in its table excepted.
-                if (!first && hasComment(dot(dotted, key), p)) out.append('\n');
+                if (!first && (note != null || theirsAbove(p) != null)) out.append('\n');
                 first = false;
-                comment(dot(dotted, key), p);
+                comment(note, p);
                 out.append(quoteKey(key)).append(" = ");
                 inline(value);
                 after(p);
@@ -81,17 +87,26 @@ final class TomlWriter {
         for (Map.Entry<?, ?> e : tables) {
             String key = key(e.getKey());
             String sub = join(tomlKey, quoteKey(key));
-            table((Map<?, ?>) e.getValue(), dot(dotted, key), TomlReader.path(path, key), sub, "[" + sub + "]", true);
+            Map<?, ?> inner = (Map<?, ?>) e.getValue();
+            table(inner, TomlReader.path(path, key), sub, "[" + sub + "]", aboutTable(notes.get(key), inner));
         }
         for (Map.Entry<?, ?> e : arrays) {
             String key = key(e.getKey());
             String sub = join(tomlKey, quoteKey(key));
             List<?> list = (List<?>) e.getValue();
             for (int i = 0; i < list.size(); i++) {
-                table((Map<?, ?>) list.get(i), dot(dotted, key), TomlReader.path(TomlReader.path(path, key), "#" + i),
-                        sub, "[[" + sub + "]]", i == 0);
+                Map<?, ?> element = (Map<?, ?>) list.get(i);
+                // The key's comment goes above the first element only.
+                table(element, TomlReader.path(TomlReader.path(path, key), "#" + i), sub, "[[" + sub + "]]",
+                        aboutTable(i == 0 ? notes.get(key) : null, element));
             }
         }
+    }
+
+    /** Above a table's header: its key's comment, else the table's own. */
+    @Nullable
+    private String aboutTable(@Nullable String keyNote, Map<?, ?> table) {
+        return keyNote != null ? keyNote : ours.commentsOf(table).get(null);
     }
 
     private void inline(Object value) {
@@ -161,18 +176,13 @@ final class TomlWriter {
         out.append('"');
     }
 
-    private boolean hasComment(String dotted, String path) {
-        return theirsAbove(path) != null || ours.containsKey(dotted);
-    }
-
-    /** {@code ourKey} null: a later element of an array of tables, which takes only a person's comment. */
-    private void comment(@Nullable String ourKey, String path) {
+    /** A person's comment at {@code path} where they wrote one, else {@code text}, the codec's. */
+    private void comment(@Nullable String text, String path) {
         List<String> mine = theirsAbove(path);
         if (mine != null) {
             for (String line : mine) out.append('#').append(line).append('\n');
             return;
         }
-        String text = ourKey == null ? null : ours.get(ourKey);
         if (text == null) return;
         for (String line : text.split("\n", -1)) out.append(line.isEmpty() ? "#" : "# " + line).append('\n');
     }
@@ -211,10 +221,6 @@ final class TomlWriter {
         String quoted = out.substring(mark);
         out.setLength(mark);
         return quoted;
-    }
-
-    private static String dot(String dotted, String key) {
-        return dotted.isEmpty() ? key : dotted + "." + key;
     }
 
     private static String join(String tomlKey, String part) {

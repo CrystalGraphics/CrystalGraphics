@@ -33,7 +33,7 @@ import java.util.Map;
  * {@link CgFormats#YAML}: SnakeYAML over the plain tree, block style. {@link SafeConstructor} only: a file builds maps,
  * lists and scalars, never a class it names.
  *
- * <p>Comments: a codec's own ({@link CgCodec#comments}) are written above their keys, and a person's, in the file being
+ * <p>Comments: a codec's own, made with its maps, are written above their keys, and a person's, in the file being
  * replaced, are carried to the same key path; theirs win. A comment on a key no longer written is dropped.</p>
  */
 public final class YamlFileFormat extends TextFileFormat<Object> {
@@ -59,13 +59,12 @@ public final class YamlFileFormat extends TextFileFormat<Object> {
 
     @Override
     <V> String text(CgCodec<V> codec, V value, @Nullable String previous) {
-        Map<String, String> ours = codec.comments();
+        CommentedOps ours = new CommentedOps(ops());
+        Object tree = codec.encode(ours, value);
         Node old = previous == null ? null : composed(previous);
-        Object tree = codec.encode(ops(), value);
-        if (ours.isEmpty() && old == null) return print(tree);
         Yaml yaml = yaml();
         Node now = yaml.represent(tree);
-        comment(now, old, ours, "");
+        comment(now, tree, old, ours, ours.commentsOf(tree).get(null));
         if (old != null) now.setEndComments(old.getEndComments());
         StringWriter out = new StringWriter();
         yaml.serialize(now, out);
@@ -82,35 +81,55 @@ public final class YamlFileFormat extends TextFileFormat<Object> {
         }
     }
 
-    private static void comment(Node now, @Nullable Node old, Map<String, String> ours, String path) {
-        if (now instanceof MappingNode) {
+    /**
+     * Comments onto {@code now}, the node {@code tree} became: a person's from {@code old} where they wrote one, else
+     * the codec's from the maps {@code ours} made. {@code header} goes above the first key, then a blank line.
+     */
+    private static void comment(Node now, Object tree, @Nullable Node old, CommentedOps ours, @Nullable String header) {
+        if (now instanceof MappingNode && tree instanceof Map) {
+            Map<?, ?> values = (Map<?, ?>) tree;
+            Map<String, String> notes = ours.commentsOf(tree);
             Map<String, NodeTuple> before = new HashMap<>();
             if (old instanceof MappingNode) {
                 for (NodeTuple t : ((MappingNode) old).getValue()) {
                     if (t.getKeyNode() instanceof ScalarNode) before.put(((ScalarNode) t.getKeyNode()).getValue(), t);
                 }
             }
+            boolean first = true;
             for (NodeTuple t : ((MappingNode) now).getValue()) {
                 if (!(t.getKeyNode() instanceof ScalarNode)) continue;
                 String key = ((ScalarNode) t.getKeyNode()).getValue();
-                String at = path.isEmpty() ? key : path + "." + key;
+                Object value = values.get(key);
                 NodeTuple was = before.get(key);
                 List<CommentLine> theirs = was == null ? null : was.getKeyNode().getBlockComments();
-                if (theirs != null && !theirs.isEmpty()) t.getKeyNode().setBlockComments(theirs);
-                else if (ours.containsKey(at)) t.getKeyNode().setBlockComments(lines(ours.get(at)));
-                if (was != null) {
-                    t.getValueNode().setInLineComments(was.getValueNode().getInLineComments());
-                    comment(t.getValueNode(), was.getValueNode(), ours, at);
+                if (theirs != null && !theirs.isEmpty()) {
+                    t.getKeyNode().setBlockComments(theirs);
                 } else {
-                    comment(t.getValueNode(), null, ours, at);
+                    List<CommentLine> mine = new ArrayList<>();
+                    if (first && header != null) {
+                        mine.addAll(lines(header));
+                        mine.add(new CommentLine(null, null, "", CommentType.BLANK_LINE));
+                    }
+                    String note = notes.get(key);
+                    if (note == null && value != null) note = ours.commentsOf(value).get(null);
+                    if (note != null) mine.addAll(lines(note));
+                    if (!mine.isEmpty()) t.getKeyNode().setBlockComments(mine);
                 }
+                first = false;
+                if (was != null) t.getValueNode().setInLineComments(was.getValueNode().getInLineComments());
+                if (value != null) comment(t.getValueNode(), value, was == null ? null : was.getValueNode(), ours, null);
             }
-        } else if (now instanceof SequenceNode && old instanceof SequenceNode) {
-            List<Node> was = ((SequenceNode) old).getValue();
+        } else if (now instanceof SequenceNode && tree instanceof List) {
+            List<?> values = (List<?>) tree;
             List<Node> is = ((SequenceNode) now).getValue();
-            for (int i = 0; i < Math.min(was.size(), is.size()); i++) {
-                is.get(i).setBlockComments(was.get(i).getBlockComments());
-                is.get(i).setInLineComments(was.get(i).getInLineComments());
+            List<Node> was = old instanceof SequenceNode ? ((SequenceNode) old).getValue() : null;
+            for (int i = 0; i < Math.min(is.size(), values.size()); i++) {
+                Node then = was != null && i < was.size() ? was.get(i) : null;
+                if (then != null) {
+                    is.get(i).setBlockComments(then.getBlockComments());
+                    is.get(i).setInLineComments(then.getInLineComments());
+                }
+                if (values.get(i) != null) comment(is.get(i), values.get(i), then, ours, null);
             }
         }
     }

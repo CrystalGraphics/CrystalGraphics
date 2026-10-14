@@ -3,6 +3,7 @@ package com.crystalgraphics.serialization;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -283,11 +284,6 @@ public final class CgCodecs {
             public <T> B decode(CgDynamicOps<T> ops, T input) {
                 return from.apply(base.decode(ops, input));
             }
-
-            @Override
-            public Map<String, String> comments() {
-                return base.comments();
-            }
         };
     }
 
@@ -344,6 +340,44 @@ public final class CgCodecs {
     public static <R, F> CgRecordField<R, F> fieldOr(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
                                                      F fallback) {
         return new CgRecordField<>(key, codec, get, false, true, fallback);
+    }
+
+    /**
+     * A {@link #record} key with {@code text} above it, where a format keeps comments (TOML, YAML); a line each, for a
+     * {@code \n}. The comment comes first, the key after.
+     *
+     * <pre>{@code
+     * CgCodecs.record(
+     *         CgCodecs.comment("Master volume, 0 to 1.").field("volume", CgCodecs.FLOAT, Audio::volume),
+     *         CgCodecs.field("subtitles", CgCodecs.BOOL, Audio::subtitles),
+     *         Audio::new);
+     * }</pre>
+     */
+    public static Commented comment(String text) {
+        return new Commented(text);
+    }
+
+    /** {@link #comment}'s key: {@code field}, {@code optionalField} and {@code fieldOr}, each with the comment. */
+    public static final class Commented {
+        private final String text;
+
+        private Commented(String text) {
+            this.text = text;
+        }
+
+        public <R, F> CgRecordField<R, F> field(String key, CgCodec<F> codec, Function<? super R, ? extends F> get) {
+            return CgCodecs.<R, F>field(key, codec, get).withComment(text);
+        }
+
+        public <R, F> CgRecordField<R, F> optionalField(String key, CgCodec<F> codec,
+                                                        Function<? super R, ? extends F> get, @Nullable F fallback) {
+            return CgCodecs.<R, F>optionalField(key, codec, get, fallback).withComment(text);
+        }
+
+        public <R, F> CgRecordField<R, F> fieldOr(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
+                                                  F fallback) {
+            return CgCodecs.<R, F>fieldOr(key, codec, get, fallback).withComment(text);
+        }
     }
 
     /**
@@ -440,6 +474,29 @@ public final class CgCodecs {
         return new CgVersionedCodec<>(key, current, codec, new TreeMap<>());
     }
 
+    // ── Comments ────────────────────────────────────────────────────────────
+
+    /** What {@link CgCodec#comment} makes: {@code codec}, its maps described by {@code text}. */
+    static <A> CgCodec<A> commented(CgCodec<A> codec, String text) {
+        Map<String, String> about = Collections.singletonMap(null, text);
+        return new CgCodec<A>() {
+            @Override
+            public <T> T encode(CgDynamicOps<T> ops, A input) {
+                return ops.withComments(codec.encode(ops, input), about);
+            }
+
+            @Override
+            public <T> A decode(CgDynamicOps<T> ops, T input) {
+                return codec.decode(ops, input);
+            }
+
+            @Override
+            public <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
+                return codec.decode(ops, input, target);
+            }
+        };
+    }
+
     // ── Maps by hand ────────────────────────────────────────────────────────
 
     /** Starts building a map-shaped encoding. Field order is insertion order — see
@@ -463,40 +520,77 @@ public final class CgCodecs {
      *
      * <p>Absent optionals are <b>omitted</b> rather than written as null, so the common node stays
      * small and, again, so the encoding is a function of the value alone.</p>
+     *
+     * <p>A comment goes just before the key it describes, and a TOML or YAML file writes it above that key:</p>
+     *
+     * <pre>{@code
+     * CgCodecs.map(ops)
+     *         .comment("Master volume, 0 to 1.").field("volume", CgCodecs.FLOAT, volume)
+     *         .comment("Gone with its key when null.").optional("theme", CgCodecs.STRING, theme, null)
+     *         .build();
+     * }</pre>
+     *
+     * A comment about the whole value goes on the codec: {@link CgCodec#comment}.
      */
     public static final class MapCodecBuilder<T> {
         private final CgDynamicOps<T> ops;
         private final Map<T, T> entries = new LinkedHashMap<>();
+        @Nullable
+        private Map<String, String> comments;
+        /** The comment for the next key. */
+        @Nullable
+        private String pending;
 
         private MapCodecBuilder(CgDynamicOps<T> ops) {
             this.ops = ops;
         }
 
         public <A> MapCodecBuilder<T> field(String name, CgCodec<A> codec, A value) {
-            entries.put(ops.createString(name), codec.encode(ops, value));
-            return this;
+            return raw(name, codec.encode(ops, value));
         }
 
         /** Writes nothing when {@code value} equals {@code omitWhen} — including when both are null. */
         public <A> MapCodecBuilder<T> optional(String name, CgCodec<A> codec, A value, A omitWhen) {
-            if (Objects.equals(value, omitWhen)) return this;
+            if (Objects.equals(value, omitWhen)) return omitted();
             return field(name, codec, value);
         }
 
         /** Writes nothing when the list is empty. */
         public <A> MapCodecBuilder<T> optionalList(String name, CgCodec<A> elementCodec, List<A> value) {
-            if (value == null || value.isEmpty()) return this;
+            if (value == null || value.isEmpty()) return omitted();
             return field(name, listOf(elementCodec), value);
         }
 
         /** A pre-encoded value, for nesting one codec's output inside another. */
         public MapCodecBuilder<T> raw(String name, T encoded) {
             entries.put(ops.createString(name), encoded);
+            if (pending != null) {
+                if (comments == null) comments = new LinkedHashMap<>();
+                comments.put(name, pending);
+                pending = null;
+            }
             return this;
         }
 
+        private MapCodecBuilder<T> omitted() {
+            pending = null;
+            return this;
+        }
+
+        /**
+         * {@code text} above the key written next, a line each for a {@code \n}. Null writes none; so does a key the
+         * next call omits.
+         */
+        public MapCodecBuilder<T> comment(@Nullable String text) {
+            pending = text;
+            return this;
+        }
+
+        /** @throws IllegalStateException where a comment has no key after it */
         public T build() {
-            return ops.createMap(entries);
+            if (pending != null) throw new IllegalStateException("comment() goes before the key it describes");
+            T made = ops.createMap(entries);
+            return comments == null ? made : ops.withComments(made, comments);
         }
     }
 

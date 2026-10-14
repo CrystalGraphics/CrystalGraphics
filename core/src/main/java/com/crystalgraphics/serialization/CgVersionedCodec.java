@@ -56,20 +56,18 @@ public final class CgVersionedCodec<A> implements CgCodec<A> {
 
     @Override
     public <T> T encode(CgDynamicOps<T> ops, A input) {
+        T body = codec.encode(ops, input);
         Map<T, T> out = new LinkedHashMap<>();
         out.put(ops.createString(key), ops.createNumber(current));
-        out.putAll(ops.getMapValue(codec.encode(ops, input)));
-        return ops.createMap(out);
+        out.putAll(ops.getMapValue(body));
+        T made = ops.createMap(out);
+        Map<String, String> comments = ops.commentsOf(body);
+        return comments.isEmpty() ? made : ops.withComments(made, comments);
     }
 
     @Override
     public <T> A decode(CgDynamicOps<T> ops, T input) {
         return codec.decode(ops, migrated(ops, input));
-    }
-
-    @Override
-    public Map<String, String> comments() {
-        return codec.comments();
     }
 
     @Override

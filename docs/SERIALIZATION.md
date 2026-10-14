@@ -230,7 +230,8 @@ make the class mutable and use `CgCodecs.object` (§4).
 - **Keys are written in declaration order**, so a value always encodes to the same bytes.
 - **Keys the codec does not declare are ignored**, so a save with a key you since removed still loads.
 - **A required value that is null throws when written**, naming the key: declare it `optionalField(..., null)` instead.
-- **A key's comment** goes in a TOML or YAML file above it: `.comment("Master volume, 0 to 1.")` on the key (§6).
+- **A key's comment** goes in a TOML or YAML file above it, written before the key:
+  `CgCodecs.comment("Master volume, 0 to 1.").field("volume", ...)` (§6).
 - **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
 
 ### Record, object, or by hand?
@@ -325,7 +326,7 @@ public final class Character {
 | `optional(key, codec, get, set, omitWhen)` | a field usually at its default | as `field`; nothing is written for `omitWhen` |
 | `into(key, codec, get)` | a final member the object owns | always updated in place; a codec that cannot (a string, a record) throws, naming the key |
 | `extend(Parent.CODEC)` | a subclass | the parent's keys first, flat beside its own |
-| `.comment(text)` | the field just declared | written above its key in a TOML or YAML file (§6) |
+| `.comment(text)` | the field declared next | written above its key in a TOML or YAML file (§6) |
 
 - **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
   for a target. A partial file is a patch.
@@ -456,8 +457,9 @@ skills:
 
 ### A config file people edit, with comments
 
-A config file explains itself when the codec says what each key means. Put `.comment(text)` after a field (or on a
-record key); the comment is written above that key in TOML and YAML.
+A config file explains itself when the codec says what each key means. Put `.comment(text)` before a field; it is
+written above that key in TOML and YAML. A comment on the codec itself, `.comment(text)` after `build()`, is about the
+whole value: the file's header.
 
 ```java
 public final class ModConfig {
@@ -466,13 +468,14 @@ public final class ModConfig {
     final List<String> muted = new ArrayList<>();
 
     public static final CgObjectCodec<ModConfig> CODEC = CgCodecs.object(ModConfig::new)
-            .field("volume", CgCodecs.FLOAT, c -> c.volume, (c, v) -> c.volume = v)
             .comment("Master volume, 0 to 1.")
-            .field("particles", CgCodecs.INT, c -> c.particles, (c, v) -> c.particles = v)
+            .field("volume", CgCodecs.FLOAT, c -> c.volume, (c, v) -> c.volume = v)
             .comment("Particles per effect, in percent.\nLower it on a slow computer.")      // two lines
-            .into("muted", CgCodecs.listOf(CgCodecs.STRING), c -> c.muted)
+            .field("particles", CgCodecs.INT, c -> c.particles, (c, v) -> c.particles = v)
             .comment("Players whose effects you never see.")
-            .build();
+            .into("muted", CgCodecs.listOf(CgCodecs.STRING), c -> c.muted)
+            .build()
+            .comment("mymod settings. Edit them while the game is closed.");               // the header
 }
 
 // at startup: load what is there, then write it back, so a new key appears with its comment
@@ -484,6 +487,8 @@ CgFormats.TOML.write(file, ModConfig.CODEC, config);
 The first run writes:
 
 ```toml
+# mymod settings. Edit them while the game is closed.
+
 # Master volume, 0 to 1.
 volume = 1.0
 
@@ -521,8 +526,15 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 | The file is not valid TOML (or YAML) | it is replaced; its comments cannot be read, so they go |
 
 - **Comments live in TOML and YAML.** JSON has none; binary files and NBT have none.
-- **Nested keys** take their own comments: a record key's `.comment(...)` inside a nested record lands above that key,
-  under its `[section]` in TOML, indented in YAML. A comment on the nested record's own key goes above its header.
+- **Nested keys** take their own comments: a nested record's key comment lands above that key, under its `[section]`
+  in TOML, indented in YAML. The comment on the key holding it goes above the `[section]`; failing that, the nested
+  codec's own (`Audio.CODEC.comment("Sound.")`). Keys inside list elements take theirs too.
+- **A record's keys** take theirs the same way round: `CgCodecs.comment(text).field(...)`, or `.optionalField` and
+  `.fieldOr` after it.
+- **By hand**, the map builder does the same: `CgCodecs.map(ops).comment(text).field(...)`. A comment with no key after
+  it throws at `build()`; one before an optional that writes nothing is dropped with it.
+- **Comments never reach the wire.** They are constants of the codec: the wire, binary files, NBT and JSON ignore
+  them, and only a TOML or YAML file writes them.
 - **A comment inside a multi-line array** is not kept: a person's comments are kept above and beside keys and
   section headers, and at the end of the file.
 - **Read before you write**, as above: a mod that writes a fresh `ModConfig` over the file throws the player's values

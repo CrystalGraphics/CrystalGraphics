@@ -2,6 +2,7 @@ package com.crystalgraphics.serialization;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,15 +63,21 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     private final String name;
     private final List<Field<A, ?>> fields;
     private final Map<String, Field<A, ?>> byKey;
+    /** The object's own comment by null and each field's by its key: one map, handed to every encode. */
+    private final Map<String, String> comments;
 
-    private CgObjectCodec(@Nullable Supplier<A> make, String name, List<Field<A, ?>> fields) {
+    private CgObjectCodec(@Nullable Supplier<A> make, String name, List<Field<A, ?>> fields, @Nullable String about) {
         this.make = make;
         this.name = name;
         this.fields = fields;
         this.byKey = new HashMap<>(fields.size() * 2);
+        Map<String, String> notes = new LinkedHashMap<>();
+        if (about != null) notes.put(null, about);
         for (Field<A, ?> f : fields) {
             if (byKey.put(f.key, f) != null) throw new IllegalArgumentException(name + " declares '" + f.key + "' twice");
+            if (f.comment != null) notes.put(f.key, f.comment);
         }
+        this.comments = Collections.unmodifiableMap(notes);
     }
 
     static <A> Builder<A> builder(@Nullable Supplier<A> make, String name) {
@@ -81,19 +88,14 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     public <T> T encode(CgDynamicOps<T> ops, A input) {
         Map<T, T> entries = new LinkedHashMap<>(fields.size() * 2);
         for (Field<A, ?> f : fields) f.write(ops, input, entries);
-        return ops.createMap(entries);
+        T made = ops.createMap(entries);
+        return comments.isEmpty() ? made : ops.withComments(made, comments);
     }
 
+    /** This codec, with {@code text} about the object as a whole: see {@link CgCodec#comment}. */
     @Override
-    public Map<String, String> comments() {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (Field<A, ?> f : fields) {
-            if (f.comment != null) out.put(f.key, f.comment);
-            for (Map.Entry<String, String> nested : f.codec.comments().entrySet()) {
-                out.put(f.key + "." + nested.getKey(), nested.getValue());
-            }
-        }
-        return out;
+    public CgObjectCodec<A> comment(String text) {
+        return new CgObjectCodec<>(make, name, fields, text);
     }
 
     @Override
@@ -120,6 +122,9 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         private final Supplier<A> make;
         private final String name;
         private final List<Field<A, ?>> fields = new ArrayList<>();
+        /** The comment for the next field. */
+        @Nullable
+        private String pending;
 
         private Builder(@Nullable Supplier<A> make, String name) {
             this.make = make;
@@ -138,6 +143,7 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
          */
         @SuppressWarnings("unchecked")
         public Builder<A> extend(CgObjectCodec<? super A> parent) {
+            if (pending != null) throw new IllegalStateException("comment() goes before a field, not before extend()");
             for (Field<?, ?> f : parent.fields) fields.add((Field<A, ?>) f);
             return this;
         }
@@ -151,40 +157,47 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
          */
         public <F> Builder<A> field(String key, CgCodec<F> codec, Function<? super A, ? extends F> get,
                                     BiConsumer<? super A, ? super F> set) {
-            fields.add(new Field<>(key, codec, get, set, false, null));
-            return this;
+            return add(new Field<>(key, codec, get, set, false, null));
         }
 
         /** As {@link #field}, writing nothing when the value equals {@code omitWhen}. */
         public <F> Builder<A> optional(String key, CgCodec<F> codec, Function<? super A, ? extends F> get,
                                        BiConsumer<? super A, ? super F> set, @Nullable F omitWhen) {
-            fields.add(new Field<>(key, codec, get, set, true, omitWhen));
-            return this;
+            return add(new Field<>(key, codec, get, set, true, omitWhen));
         }
 
         /** A member the object holds for good (a final list, an owned object), always updated in place. */
         public <F> Builder<A> into(String key, CgCodec<F> codec, Function<? super A, ? extends F> get) {
-            fields.add(new Field<>(key, codec, get, null, false, null));
+            return add(new Field<>(key, codec, get, null, false, null));
+        }
+
+        private <F> Builder<A> add(Field<A, F> field) {
+            fields.add(pending == null ? field : field.withComment(pending));
+            pending = null;
             return this;
         }
 
         /**
-         * {@code text} written above the field declared just before, where a format keeps comments (YAML). A line
-         * each, for a {@code \n}.
+         * {@code text} above the field declared next, where a format keeps comments (TOML, YAML); a line each, for a
+         * {@code \n}. The object's own comment goes on the built codec: {@code build().comment(text)}.
          *
          * <pre>{@code
-         * .field("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v).comment("Master volume, 0 to 1.")
+         * CgCodecs.object(ModConfig::new)
+         *         .comment("Master volume, 0 to 1.")
+         *         .field("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v)
+         *         .build()
+         *         .comment("mymod's settings. Edit them while the game is closed.");   // the file's header
          * }</pre>
          */
         public Builder<A> comment(String text) {
-            if (fields.isEmpty()) throw new IllegalStateException("comment() follows the field it describes");
-            int last = fields.size() - 1;
-            fields.set(last, fields.get(last).withComment(text));
+            pending = text;
             return this;
         }
 
+        /** @throws IllegalStateException where a comment has no field after it */
         public CgObjectCodec<A> build() {
-            return new CgObjectCodec<>(make, name, new ArrayList<>(fields));
+            if (pending != null) throw new IllegalStateException("comment() goes before the field it describes");
+            return new CgObjectCodec<>(make, name, new ArrayList<>(fields), null);
         }
     }
 

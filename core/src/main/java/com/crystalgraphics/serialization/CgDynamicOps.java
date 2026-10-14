@@ -1,6 +1,7 @@
 package com.crystalgraphics.serialization;
 
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -37,6 +38,21 @@ public interface CgDynamicOps<T> {
      * values (e.g. JSON object keys are strings, which are already representable as {@code T} via
      * {@link #createString}). */
     T createMap(Map<T, T> entries);
+
+    /**
+     * {@code map}, just made, with comments: above a key, by that key's name; about the map itself, by {@code null} (a
+     * file's header, at its top). Only a format that writes comments (TOML, YAML) keeps them; the wire, binary files,
+     * NBT and JSON answer {@code map} untouched, which is the default. A codec's comments are constants: it passes the
+     * same map to every encode.
+     */
+    default T withComments(T map, Map<String, String> comments) {
+        return map;
+    }
+
+    /** The comments {@code map} was made with, for a codec that makes a new map from it; none in most formats. */
+    default Map<String, String> commentsOf(T map) {
+        return Collections.emptyMap();
+    }
 
     /**
      * A block of raw bytes.

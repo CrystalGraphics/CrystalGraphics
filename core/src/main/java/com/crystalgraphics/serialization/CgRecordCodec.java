@@ -1,5 +1,7 @@
 package com.crystalgraphics.serialization;
 
+import javax.annotation.Nullable;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -33,42 +35,42 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
 
     private final CgRecordField<R, ?>[] fields;
     private final Function<Object[], R> make;
+    /** The record's own comment by null and each key's by its name: one map, handed to every encode. */
+    private final Map<String, String> comments;
 
     @SafeVarargs
     CgRecordCodec(Function<Object[], R> make, CgRecordField<R, ?>... fields) {
+        this(make, fields, null);
+    }
+
+    private CgRecordCodec(Function<Object[], R> make, CgRecordField<R, ?>[] fields, @Nullable String about) {
         this.make = make;
         this.fields = fields;
+        Map<String, String> byKey = new LinkedHashMap<>();
+        if (about != null) byKey.put(null, about);
         for (int i = 0; i < fields.length; i++) {
             for (int j = 0; j < i; j++) {
                 if (fields[i].key.equals(fields[j].key)) {
                     throw new IllegalArgumentException("a record codec declares '" + fields[i].key + "' twice");
                 }
             }
+            if (fields[i].comment != null) byKey.put(fields[i].key, fields[i].comment);
         }
+        this.comments = Collections.unmodifiableMap(byKey);
     }
 
+    /** This codec, with {@code text} about the record as a whole: see {@link CgCodec#comment}. */
     @Override
-    public Map<String, String> comments() {
-        return commentsOf(fields);
-    }
-
-    /** Each key's own comment, and its codec's under its key: {@code "audio.volume"}. */
-    static Map<String, String> commentsOf(CgRecordField<?, ?>[] fields) {
-        Map<String, String> out = new LinkedHashMap<>();
-        for (CgRecordField<?, ?> f : fields) {
-            if (f.comment != null) out.put(f.key, f.comment);
-            for (Map.Entry<String, String> nested : f.codec.comments().entrySet()) {
-                out.put(f.key + "." + nested.getKey(), nested.getValue());
-            }
-        }
-        return out;
+    public CgRecordCodec<R> comment(String text) {
+        return new CgRecordCodec<>(make, fields, text);
     }
 
     @Override
     public <T> T encode(CgDynamicOps<T> ops, R input) {
         Map<T, T> entries = new LinkedHashMap<>(fields.length * 2);
         for (CgRecordField<R, ?> f : fields) write(ops, f, input, entries);
-        return ops.createMap(entries);
+        T made = ops.createMap(entries);
+        return comments.isEmpty() ? made : ops.withComments(made, comments);
     }
 
     private static <T, R, F> void write(CgDynamicOps<T> ops, CgRecordField<R, F> f, R input, Map<T, T> entries) {

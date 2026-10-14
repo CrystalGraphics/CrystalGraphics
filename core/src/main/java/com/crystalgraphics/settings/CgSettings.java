@@ -4,7 +4,9 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
+import com.crystalgraphics.serialization.CgPlainOps;
 import com.crystalgraphics.serialization.format.CgFormats;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -59,12 +61,9 @@ public final class CgSettings {
 
     private final String name;
     private final List<CgSetting> settings = new ArrayList<>();
-    private final FileCodec codec = new FileCodec();
-    /** What the file holds and nothing declares, by section ({@code ""} its top) and key, as the format read it. */
+    private final CgCodec<CgSettings> codec;
+    /** What the file holds and nothing declares, by section ({@code ""} its top) and key, as plain values. */
     private final Map<String, Map<String, Object>> unknown = new LinkedHashMap<>();
-    /** The format that read {@link #unknown}: only it can write those values back. */
-    @Nullable
-    private CgDynamicOps<Object> unknownOps;
     private Path path;
     private volatile boolean loaded;
     private boolean dirty, warned;
@@ -73,6 +72,8 @@ public final class CgSettings {
 
     private CgSettings(String name) {
         this.name = name;
+        this.codec = new FileCodec().comment(name + " settings: edited here or in the settings screen, read while the"
+                + " game runs.\nA value that cannot be read keeps its default and is rewritten.");
     }
 
     /** The settings file {@code config/<name>.toml}. One per name; ask once and keep it. */
@@ -136,7 +137,7 @@ public final class CgSettings {
         settings.add(setting);
         Map<String, Object> section = unknown.get(setting.section());
         Object raw = section == null ? null : section.remove(setting.key());
-        if (raw != null) readInto(setting, unknownOps, raw);
+        if (raw != null) readInto(setting, CgPlainOps.INSTANCE, raw);
         return setting;
     }
 
@@ -222,10 +223,6 @@ public final class CgSettings {
         return out;
     }
 
-    private static String dotted(String section, String key) {
-        return section.isEmpty() ? key : section + "." + key;
-    }
-
     private FileTime modified() {
         try {
             return Files.getLastModifiedTime(path());
@@ -245,26 +242,46 @@ public final class CgSettings {
 
         @Override
         public <T> T encode(CgDynamicOps<T> ops, CgSettings file) {
-            Map<T, T> top = new LinkedHashMap<>();
+            CgCodecs.MapCodecBuilder<T> top = CgCodecs.map(ops);
             for (String section : sections()) {
-                Map<T, T> keys = section.isEmpty() ? top : new LinkedHashMap<>();
+                CgCodecs.MapCodecBuilder<T> keys = section.isEmpty() ? top : CgCodecs.map(ops);
                 for (CgSetting setting : settings) {
-                    if (setting.section().equals(section)) keys.put(ops.createString(setting.key()), setting.encode(ops));
+                    if (!setting.section().equals(section)) continue;
+                    keys.comment(setting.label() + ": " + setting.description() + "\n" + setting.hint())
+                            .raw(setting.key(), setting.encode(ops));
                 }
                 kept(ops, unknown.get(section), keys);
-                if (!section.isEmpty()) top.put(ops.createString(section), ops.createMap(keys));
+                if (!section.isEmpty()) top.raw(section, keys.build());
             }
             kept(ops, unknown.get(""), top);
-            return ops.createMap(top);
+            return top.build();
         }
 
-        @SuppressWarnings("unchecked")
-        private <T> void kept(CgDynamicOps<T> ops, @Nullable Map<String, Object> values, Map<T, T> into) {
-            if (values == null || ops != (Object) unknownOps) return;
-            for (Map.Entry<String, Object> e : values.entrySet()) {
-                T key = ops.createString(e.getKey());
-                if (!into.containsKey(key)) into.put(key, (T) e.getValue());
+        /** What the file held and nothing declares, back as it was read. */
+        private <T> void kept(CgDynamicOps<T> ops, @Nullable Map<String, Object> values, CgCodecs.MapCodecBuilder<T> into) {
+            if (values == null) return;
+            for (Map.Entry<String, Object> e : values.entrySet()) into.comment(UNKNOWN).raw(e.getKey(), plain(ops, e.getValue()));
+        }
+
+        /** A plain value, as TOML reads one, in {@code ops}. */
+        private <T> T plain(CgDynamicOps<T> ops, Object value) {
+            if (value instanceof Map) {
+                Map<T, T> out = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) {
+                    out.put(ops.createString(String.valueOf(e.getKey())), plain(ops, e.getValue()));
+                }
+                return ops.createMap(out);
             }
+            if (value instanceof List) {
+                List<T> out = new ArrayList<>();
+                for (Object element : (List<?>) value) out.add(plain(ops, element));
+                return ops.createList(out);
+            }
+            if (value instanceof String) return ops.createString((String) value);
+            if (value instanceof Boolean) return ops.createBoolean((Boolean) value);
+            if (value instanceof Number) return ops.createNumber((Number) value);
+            if (value instanceof byte[]) return ops.createBytes((byte[]) value);
+            throw new CgCodecException("not a value a settings file holds: " + value);
         }
 
         @Override
@@ -293,8 +310,8 @@ public final class CgSettings {
                 if (raw != null) readInto(setting, ops, raw);
                 else dirty = true;   // a key the file lacks is written back in
             }
+            // The file is TOML: its values are plain Java ones.
             unknown.clear();
-            unknownOps = (CgDynamicOps<Object>) ops;
             sections.put("", top);
             for (Map.Entry<String, Map<String, T>> e : sections.entrySet()) {
                 if (!e.getValue().isEmpty()) unknown.put(e.getKey(), new LinkedHashMap<>((Map<String, Object>) e.getValue()));
@@ -305,21 +322,6 @@ public final class CgSettings {
         private <T> Map<String, T> byName(CgDynamicOps<T> ops, T table) {
             Map<String, T> out = new LinkedHashMap<>();
             for (Map.Entry<T, T> e : ops.getMapValue(table).entrySet()) out.put(ops.getStringValue(e.getKey()), e.getValue());
-            return out;
-        }
-
-        @Override
-        public Map<String, String> comments() {
-            Map<String, String> out = new LinkedHashMap<>();
-            out.put("", name + " settings: edited here or in the settings screen, read while the game runs.\n"
-                    + "A value that cannot be read keeps its default and is rewritten.");
-            for (CgSetting setting : settings) {
-                out.put(dotted(setting.section(), setting.key()),
-                        setting.label() + ": " + setting.description() + "\n" + setting.hint());
-            }
-            for (Map.Entry<String, Map<String, Object>> section : unknown.entrySet()) {
-                for (String key : section.getValue().keySet()) out.put(dotted(section.getKey(), key), UNKNOWN);
-            }
             return out;
         }
     }

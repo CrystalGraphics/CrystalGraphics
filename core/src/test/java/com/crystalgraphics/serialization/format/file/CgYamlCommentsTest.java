@@ -25,7 +25,7 @@ public class CgYamlCommentsTest {
 
     record Audio(float volume, boolean subtitles) {
         static final CgCodec<Audio> CODEC = CgCodecs.record(
-                CgCodecs.field("volume", CgCodecs.FLOAT, Audio::volume).comment("Master volume, 0 to 1."),
+                CgCodecs.comment("Master volume, 0 to 1.").field("volume", CgCodecs.FLOAT, Audio::volume),
                 CgCodecs.field("subtitles", CgCodecs.BOOL, Audio::subtitles),
                 Audio::new);
     }
@@ -36,7 +36,7 @@ public class CgYamlCommentsTest {
         int legacy;
 
         static final CgObjectCodec<Settings> CODEC = CgCodecs.object(Settings::new)
-                .field("audio", Audio.CODEC, s -> s.audio, (s, v) -> s.audio = v).comment("Sound.\nAll of it.")
+                .comment("Sound.\nAll of it.").field("audio", Audio.CODEC, s -> s.audio, (s, v) -> s.audio = v)
                 .into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)
                 .build();
     }
@@ -44,8 +44,8 @@ public class CgYamlCommentsTest {
     static class More extends Settings {
         int extra;
         static final CgObjectCodec<More> CODEC = CgCodecs.object(More::new)
-                .extend(Settings.CODEC).comment("Only on More.")
-                .field("extra", CgCodecs.INT, m -> m.extra, (m, v) -> m.extra = v)
+                .extend(Settings.CODEC)
+                .comment("Only on More.").field("extra", CgCodecs.INT, m -> m.extra, (m, v) -> m.extra = v)
                 .build();
     }
 
@@ -104,8 +104,25 @@ public class CgYamlCommentsTest {
 
     @Test
     public void aSubclassCommentLeavesItsParentAlone() {
-        assertEquals("Only on More.", More.CODEC.comments().get("muted"));
-        assertFalse(Settings.CODEC.comments().containsKey("muted"));
-        assertEquals("Master volume, 0 to 1.", Settings.CODEC.comments().get("audio.volume"));
+        assertTrue(CgFormats.YAML.toText(More.CODEC, new More()).contains("# Only on More.\nextra:"));
+        assertFalse(CgFormats.YAML.toText(Settings.CODEC, new Settings()).contains("Only on More."));
+    }
+
+    @Test
+    public void theCodecsOwnCommentIsTheFilesHeader() {
+        CgObjectCodec<Settings> headed = CgCodecs.object(Settings::new)
+                .comment("Players you never see.").into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)
+                .build()
+                .comment("mymod settings.");
+        String text = CgFormats.YAML.toText(headed, settings(1f, "vegeta"));
+        assertTrue(text, text.startsWith("# mymod settings.\n\n# Players you never see.\nmuted:"));
+    }
+
+    @Test
+    public void aCommentInsideAListElementIsWritten() {
+        CgCodec<List<Audio>> holder = CgCodecs.record(
+                CgCodecs.field("tracks", CgCodecs.listOf(Audio.CODEC), (List<Audio> l) -> l), l -> l);
+        String text = CgFormats.YAML.toText(holder, Arrays.asList(new Audio(0.5f, true)));
+        assertTrue(text, text.contains("# Master volume, 0 to 1."));
     }
 }
