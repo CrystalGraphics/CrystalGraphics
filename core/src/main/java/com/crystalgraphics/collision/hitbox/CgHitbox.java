@@ -164,6 +164,7 @@ public final class CgHitbox {
     private final Quaterniond fixed = new Quaterniond();
     private int showColour;
     private double showLinger = -1;
+    private float showFill = -1;
 
     // ---- size and time
     private int sizeKind = NO_SIZE;
@@ -528,6 +529,26 @@ public final class CgHitbox {
     /** Its {@link #showLinger(double)} in ticks; negative for the show's own setting. */
     public double showLinger() {
         return showLinger;
+    }
+
+    /**
+     * How strongly the collision show fills it in: the share of its colour's alpha its faces take, 0 for its edges
+     * alone. A quarter unless set; a player drawing wireframe sees its edges alone whatever it says.
+     *
+     * <pre>{@code
+     * slam.showFill(0.5f);                                     // filled at half its colour's alpha
+     * probe.showFill(0);                                       // edges only, for every player
+     * }</pre>
+     */
+    public CgHitbox showFill(float alpha) {
+        if (!(alpha >= 0 && alpha <= 1)) throw new IllegalArgumentException("fill alpha outside 0..1: " + alpha);
+        showFill = alpha;
+        return this;
+    }
+
+    /** Its {@link #showFill(float)}; negative for the show's own. */
+    public float showFill() {
+        return showFill;
     }
 
     // ---- running

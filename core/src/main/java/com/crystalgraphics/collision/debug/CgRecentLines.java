@@ -33,6 +33,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
     static final int HITBOX = 0xFF40FF60;
     /** How long a query or a hitbox's tick is kept: past a game tick, so one each tick shows steadily. */
     static final long HOLD_NANOS = 60_000_000L;
+    /** How much of its colour's alpha a hitbox's faces take unless it says ({@link CgHitbox#showFill(float)}). */
+    static final float FILL = 0.25f;
     private static final double MARK = 0.4;
 
     private final CgShapeLines shapes = new CgShapeLines();
@@ -48,10 +50,12 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private long[] expires = new long[256];
     /** How long before it expires a record starts fading; 0 for never. */
     private long[] fades = new long[256];
+    /** How much of its colour's alpha a face takes, of 255; 255 for a segment. */
+    private int[] fills = new int[256];
     private CgWorldQuery[] levels = new CgWorldQuery[256];
     private int count, lineCount, faceCount;
     // what is being written
-    private int colour, show;
+    private int colour, show, fill, faceColour;
     private long until, fade;
     private CgWorldQuery level;
 
@@ -108,13 +112,26 @@ final class CgRecentLines implements CgShapeLines.Sink {
         until = now + HOLD_NANOS + fade;
         show = hitbox.showColour();
         colour = show != 0 ? show : HITBOX;
+        fill = fillOf(hitbox);
+        faceColour = scaled(colour, fill);
         hitbox.parts(parts);
         this.level = null;
     }
 
     private void part(@Nullable CgHitPart name, CgShape shape, CgPose pose) {
         shapes.write(shape, pose, this);
-        shapes.faces(shape, pose, this);
+        if (fill > 0) shapes.faces(shape, pose, this);
+    }
+
+    /** A hitbox's {@link CgHitbox#showFill(float)} of 255, {@link #FILL} unless it says. */
+    static int fillOf(CgHitbox hitbox) {
+        float own = hitbox.showFill();
+        return Math.round((own < 0 ? FILL : own) * 255);
+    }
+
+    /** {@code argb} with its alpha times {@code of255} of 255. */
+    static int scaled(int argb, int of255) {
+        return ((argb >>> 24) * of255 / 255) << 24 | argb & 0xFFFFFF;
     }
 
     @Override
@@ -156,15 +173,17 @@ final class CgRecentLines implements CgShapeLines.Sink {
             shows = Arrays.copyOf(shows, grown);
             expires = Arrays.copyOf(expires, grown);
             fades = Arrays.copyOf(fades, grown);
+            fills = Arrays.copyOf(fills, grown);
             levels = Arrays.copyOf(levels, grown);
         }
         if (face) faceCount++;
         else lineCount++;
         faces[count] = face;
-        colours[count] = colour;
+        colours[count] = face ? faceColour : colour;
         shows[count] = show;
         expires[count] = until;
         fades[count] = fade;
+        fills[count] = face ? fill : 255;
         levels[count] = level;
         return count++ * 9;
     }
@@ -193,6 +212,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
                 shows[kept] = shows[i];
                 expires[kept] = expires[i];
                 fades[kept] = fades[i];
+                fills[kept] = fills[i];
                 levels[kept] = levels[i];
             }
             if (faces[kept]) faceCount++;
@@ -250,11 +270,15 @@ final class CgRecentLines implements CgShapeLines.Sink {
         }
     }
 
-    /** Record {@code i}'s colour in a pack: its show colour, or once fading, explicit and in eighths of alpha. */
+    /**
+     * Record {@code i}'s colour in a pack: a segment's show colour, 0 for the reader's own; a face's, or a fading
+     * one's, explicit, with its fill, a fading one's alpha in eighths.
+     */
     private int packed(int i, int fallback, long now) {
-        int argb = shows[i] != 0 ? shows[i] : fallback;
+        int argb = scaled(shows[i] != 0 ? shows[i] : fallback, fills[i]);
         int faded = faded(argb, i, now);
-        if (faded == argb) return shows[i];
+        // a face's fill travels in its colour
+        if (faded == argb) return fills[i] == 255 ? shows[i] : argb;
         int eighths = Math.max(1, ((faded >>> 24) * 8 + 254) / 255);
         return (eighths * 255 / 8) << 24 | argb & 0xFFFFFF;
     }

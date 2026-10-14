@@ -31,9 +31,10 @@ import java.util.Arrays;
  *   <li>Render thread. Colours are ARGB.</li>
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
  *       draws too, so a query drawn here as well is drawn twice.</li>
- *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at
- *       {@link #FACE_ALPHA} of their colour, so each reads as the space it tests with what is behind it still seen;
- *       not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are lines under both.</li>
+ *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at a quarter of their
+ *       colour's alpha or a hitbox's {@link CgHitbox#showFill(float) fill}, so each reads as the space it tests
+ *       with what is behind it still seen; not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are
+ *       lines under both.</li>
  *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces turned away, the
  *       lines, then the faces turned toward the eye, each far to near, so a face tints the edges behind it.</li>
  * </ul>
@@ -42,10 +43,8 @@ public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
     private static final double MARK = 0.4;
-    /** How much of a shown hitbox's faces show over what is behind them; its edges are drawn as they are. */
-    static final float FACE_ALPHA = 0.25f;
 
-    private static final Batch LINES = new Batch(2, 1f), FACES = new Batch(3, FACE_ALPHA);
+    private static final Batch LINES = new Batch(2), FACES = new Batch(3);
     private static final CgShapeLines SHAPES = new CgShapeLines();
     private static final CgRecentLines.Out SHOWN = new CgRecentLines.Out() {
         @Override
@@ -66,21 +65,23 @@ public final class CgCollisionDebug {
     /** Whether faces are drawn: {@link CgCollisionShow#STYLE}, read once a frame. */
     private static boolean faces;
     private static CgMaterial material;
-    private static int colour;
+    private static int colour, fill;
 
     private CgCollisionDebug() {
     }
 
     /** Draws {@code shape} at {@code pose} on the next world frame. */
     public static void shape(CgShape shape, CgPose pose, int argb) {
-        colour = argb;
-        SHAPES.write(shape, pose, LINES);
-        if (faces) SHAPES.faces(shape, pose, FACES);
+        shape(shape, pose, argb, Math.round(CgRecentLines.FILL * 255));
     }
 
-    /** Draws each part of {@code hitbox} as its last tick tested it on the next world frame; the last, once stopped. */
+    /**
+     * Draws each part of {@code hitbox} as its last tick tested it on the next world frame, the last once stopped;
+     * filled by its {@link CgHitbox#showFill(float)}.
+     */
     public static void hitbox(CgHitbox hitbox, int argb) {
         colour = argb;
+        fill = CgRecentLines.fillOf(hitbox);
         hitbox.parts(CgCollisionDebug::part);
     }
 
@@ -118,7 +119,16 @@ public final class CgCollisionDebug {
     }
 
     private static void part(CgHitPart name, CgShape shape, CgPose pose) {
-        shape(shape, pose, colour);
+        shape(shape, pose, colour, fill);
+    }
+
+    private static void shape(CgShape shape, CgPose pose, int argb, int of255) {
+        colour = argb;
+        SHAPES.write(shape, pose, LINES);
+        if (!faces || of255 == 0) return;
+        colour = CgRecentLines.scaled(argb, of255);
+        SHAPES.faces(shape, pose, FACES);
+        colour = argb;
     }
 
     private static void frame(CgHostView view) {
@@ -137,7 +147,7 @@ public final class CgCollisionDebug {
             int i = batch.sorted ? batch.order[k] : k, at = i * batch.corners * 3;
             int argb = batch.colours[i];
             float r = (argb >>> 16 & 0xFF) / 255f, g = (argb >>> 8 & 0xFF) / 255f, b = (argb & 0xFF) / 255f;
-            float a = (argb >>> 24) / 255f * batch.alpha;
+            float a = (argb >>> 24) / 255f;
             // the colour rides in the normal, its alpha in u: collision_lines.shader reads them back
             for (int c = 0; c < batch.corners; c++, at += 3) {
                 m.vertex().position(p[at], p[at + 1], p[at + 2]).uv(a, 0f).normal(r, g, b).end();
@@ -153,8 +163,6 @@ public final class CgCollisionDebug {
     private static final class Batch implements CgShapeLines.Sink {
         /** Points a record: two a segment, three a triangle. */
         final int corners;
-        /** What each record's own alpha is drawn at. */
-        final float alpha;
         float[] points;
         int[] colours = new int[512];
         int count;
@@ -169,9 +177,8 @@ public final class CgCollisionDebug {
         /** The lines, or the back faces; and the front faces. */
         private CgMesh mesh, frontMesh;
 
-        Batch(int corners, float alpha) {
+        Batch(int corners) {
             this.corners = corners;
-            this.alpha = alpha;
             points = new float[corners * 3 * 512];
         }
 

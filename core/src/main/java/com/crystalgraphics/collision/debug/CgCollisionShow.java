@@ -52,7 +52,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *       triangles a tick, edges before faces, while their client keeps asking; faces only to a client drawing
  *       them.</li>
  *   <li>{@link #STYLE} is each client's own: {@link Style#TRANSPARENT} fills a hitbox's faces in under its edges,
- *       {@link Style#WIREFRAME} draws the edges alone. Queries are lines under both.</li>
+ *       at its {@link CgHitbox#showFill(float) fill}, {@link Style#WIREFRAME} draws the edges alone. Queries are
+ *       lines under both.</li>
  *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and only while active: one that
  *       stops is gone with its last tick, unless its {@link CgHitbox#showLinger(double) linger} or {@link #LINGER}
  *       keeps it, fading. A server's lingers by its own setting.</li>

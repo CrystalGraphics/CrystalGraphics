@@ -1352,6 +1352,12 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 - `crystalgraphics.collision.style` is how each client draws hitboxes, and the shapes `CgCollisionDebug` draws:
   `transparent` (the default) fills their faces in see-through under solid edges, `wireframe` draws the edges alone.
   A player's setting, kept in their settings file.
+- A hitbox's faces take a quarter of its colour's alpha; `showFill(alpha)` sets its own, 0 for its edges alone. A
+  player drawing wireframe still sees edges alone.
+
+  ```java
+  CgHitbox.follow(attacker, STRIKE).showColour(0xFF4040).showFill(0.5f)...   // red, filled at half strength
+  ```
 - Hitboxes are drawn as their last tick tested them, and only while active: what is drawn could still hit. A blow too
   short to see can linger, fading, so it reads as over: `showLinger(ticks)` on the hitbox, or
   `crystalgraphics.collision.linger` milliseconds for every hitbox that sets none. The server's linger by its own

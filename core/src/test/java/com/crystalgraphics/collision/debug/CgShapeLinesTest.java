@@ -277,11 +277,12 @@ public class CgShapeLinesTest {
         lines.drawTo(CgRecentLines.HOLD_NANOS - 1, drawn);
         assertEquals("its edges", 12, drawn.lines);
         assertEquals("its faces", 12, drawn.faces);
-        assertEquals("whole through its hold", 0xFFFF4040, drawn.argb);
+        assertEquals("whole through its hold", 0xFFFF4040, drawn.line);
+        assertEquals("its faces at a quarter", 0x40FF4040, drawn.face);
         lines.drawTo(CgRecentLines.HOLD_NANOS + linger / 2, drawn.reset());
         assertEquals(24, drawn.lines + drawn.faces);
-        assertEquals("half faded", 0x7F, drawn.argb >>> 24, 1);
-        assertEquals(0xFF4040, drawn.argb & 0xFFFFFF);
+        assertEquals("half faded", 0x7F, drawn.line >>> 24, 1);
+        assertEquals(0xFF4040, drawn.line & 0xFFFFFF);
         lines.drawTo(CgRecentLines.HOLD_NANOS + linger, drawn.reset());
         assertEquals("gone after its linger", 0, drawn.lines + drawn.faces);
     }
@@ -371,8 +372,35 @@ public class CgShapeLinesTest {
         assertEquals(12, drawn.lines);
         assertEquals(0, drawn.faces);
         assertEquals("the server's colour, in eighths of alpha", CgCollisionShow.SERVER & 0xFFFFFF,
-                drawn.argb & 0xFFFFFF);
-        assertEquals(4 * 255 / 8, drawn.argb >>> 24);
+                drawn.line & 0xFFFFFF);
+        assertEquals(4 * 255 / 8, drawn.line >>> 24);
+    }
+
+    @Test
+    public void aHitboxsFillIsItsOwnAndTravelsInItsFacesColour() {
+        CgRecentLines lines = new CgRecentLines(1 << 12);
+        CgHitbox edges = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(0, 1, 0).showFill(0);
+        CgHitbox half = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(4, 1, 0).showFill(0.5f).showColour(0x2060FF);
+        CgHitbox plain = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(8, 1, 0);
+        Tally drawn = new Tally();
+        for (CgHitbox h : new CgHitbox[]{edges, half, plain}) h.tick(YARD, 1);
+        lines.hitbox(edges, YARD.blocks(), 0, 0);
+        lines.drawTo(0, drawn);
+        assertEquals("edges alone", 12, drawn.lines);
+        assertEquals(0, drawn.faces);
+        lines.hitbox(half, YARD.blocks(), 0, 0);
+        lines.drawTo(0, drawn.reset());
+        assertEquals("half its colour's alpha", 0x802060FF, drawn.face);
+
+        CgRecentLines server = new CgRecentLines(1 << 12);
+        server.hitbox(plain, YARD.blocks(), 0, 0);
+        CgLinePack pack = new CgLinePack();
+        pack.begin(0, 0, 0, 1 << 12);
+        server.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
+        CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, drawn.reset());
+        assertEquals("edges in the reader's colour", CgCollisionShow.SERVER, drawn.line);
+        assertEquals("faces carry their quarter", 0x40000000 | CgCollisionShow.SERVER & 0xFFFFFF, drawn.face);
+        assertThrows(IllegalArgumentException.class, () -> plain.showFill(1.5f));
     }
 
     /** A blow of one tick, stopped in it. */
@@ -383,25 +411,25 @@ public class CgShapeLinesTest {
         return blow;
     }
 
-    /** How many of each were drawn, and the last one's colour. */
+    /** How many of each were drawn, and the last line's and face's colours. */
     private static final class Tally implements CgRecentLines.Out {
-        int lines, faces, argb;
+        int lines, faces, line, face;
 
         Tally reset() {
-            lines = faces = argb = 0;
+            lines = faces = line = face = 0;
             return this;
         }
 
         @Override
         public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
-            this.argb = argb;
+            line = argb;
             lines++;
         }
 
         @Override
         public void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
                 double cy, double cz) {
-            this.argb = argb;
+            face = argb;
             faces++;
         }
     }
