@@ -147,7 +147,8 @@ public final class CgCollisionDebug {
 
     /**
      * The frame's segments, or its triangles, as floats from the first one's start, which the draw stands at in
-     * doubles. Triangles are drawn back to front from the eye: they blend over one another and write no depth.
+     * doubles. Triangles blend over one another and write no depth, so they draw back faces first, each set far to
+     * near.
      */
     private static final class Batch implements CgShapeLines.Sink {
         /** Points a record: two a segment, three a triangle. */
@@ -225,7 +226,10 @@ public final class CgCollisionDebug {
             count = 0;
         }
 
-        /** {@link #order} far to near by each triangle's middle: an LSD radix sort on its distance's float bits. */
+        /**
+         * {@link #order}: back faces then front faces, each far to near by its middle. An LSD radix sort on the
+         * facing bit over its distance's float bits.
+         */
         private void sortFrom(double ex, double ey, double ez) {
             if (order.length < count) {
                 order = new int[colours.length];
@@ -238,8 +242,15 @@ public final class CgCollisionDebug {
                 double dx = (points[at] + points[at + 3] + points[at + 6]) / 3 + cx;
                 double dy = (points[at + 1] + points[at + 4] + points[at + 7]) / 3 + cy;
                 double dz = (points[at + 2] + points[at + 5] + points[at + 8]) / 3 + cz;
-                // a non-negative float's bits order as it does; flipped, ascending is far to near
-                keys[i] = Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
+                // faces wind outward (CgShapeLines), so a back face's normal points away from the eye: every back
+                // face draws before every front one, as two culled passes would, and each set far to near. A
+                // non-negative float's bits order as it does; flipped, ascending is far to near
+                double ux = points[at + 3] - points[at], uy = points[at + 4] - points[at + 1];
+                double uz = points[at + 5] - points[at + 2], vx = points[at + 6] - points[at];
+                double vy = points[at + 7] - points[at + 1], vz = points[at + 8] - points[at + 2];
+                double facing = (uy * vz - uz * vy) * dx + (uz * vx - ux * vz) * dy + (ux * vy - uy * vx) * dz;
+                int front = facing < 0 ? Integer.MIN_VALUE : 0;
+                keys[i] = front | Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
                 order[i] = i;
             }
             for (int shift = 0; shift < 32; shift += 8) {

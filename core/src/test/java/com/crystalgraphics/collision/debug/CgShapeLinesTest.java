@@ -191,6 +191,38 @@ public class CgShapeLinesTest {
     }
 
     @Test
+    public void everyClosedShapesFacesWindOutward() {
+        double pi = Math.PI, capsuleLength = Math.sqrt(1 + 4 + 0.25);
+        Object[][] volumes = {
+                {CgSphere.of(2), 4 / 3.0 * pi * 8},
+                {CgBox.of(1, 2, 3), 48.0},
+                {CgCapsule.between(0, 0, 0, 1, 2, 0.5, 0.4), pi * 0.16 * capsuleLength + 4 / 3.0 * pi * 0.064},
+                {CgCylinder.of(1, 2), pi * 4},
+                {CgCone.of(4, Math.toRadians(35)), 2 * pi / 3 * 64 * (1 - Math.cos(Math.toRadians(35)))},
+                {CgCone.of(3, Math.toRadians(120)), 2 * pi / 3 * 27 * (1 - Math.cos(Math.toRadians(120)))},
+                {CgShell.of(1, 2), 4 / 3.0 * pi * 7},
+                {CgRing.of(1, 2, 0.5), pi * 3},
+                {WEDGE, 2.0},
+                {CgCompound.builder().add(CgSphere.of(1), 0, 0, 2).add(CgBox.of(1, 1, 1)).build(), 4 / 3.0 * pi + 8},
+        };
+        CgPose pose = new CgPose().at(3, 70, -8).facing(1.1, -0.4);
+        for (Object[] row : volumes) {
+            CgShape shape = (CgShape) row[0];
+            double expected = (Double) row[1];
+            List<double[]> c = corners(shape, pose);
+            double signed = 0;
+            for (int i = 0; i < c.size(); i += 3) {
+                double[] a = c.get(i), b = c.get(i + 1), d = c.get(i + 2);
+                double ax = a[0] - pose.x, ay = a[1] - pose.y, az = a[2] - pose.z;
+                double bx = b[0] - pose.x, by = b[1] - pose.y, bz = b[2] - pose.z;
+                double dx = d[0] - pose.x, dy = d[1] - pose.y, dz = d[2] - pose.z;
+                signed += (ax * (by * dz - bz * dy) + ay * (bz * dx - bx * dz) + az * (bx * dy - by * dx)) / 6;
+            }
+            assertEquals(shape + " encloses its volume, faces out", expected, signed, expected * 0.05);
+        }
+    }
+
+    @Test
     public void aHullsFacesAreItsOwnEachOnce() {
         assertEquals("a prism's two ends and three sides", 8 + 2 * Math.sqrt(5), surface(WEDGE), 1e-9);
         assertEquals("and its nine edges", 18, ends(WEDGE, new CgPose()).size());

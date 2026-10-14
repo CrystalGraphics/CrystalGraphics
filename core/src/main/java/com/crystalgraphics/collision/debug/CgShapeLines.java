@@ -46,8 +46,9 @@ import java.util.WeakHashMap;
  *       and end arcs, a cylinder's two rings and four sides, a cone's rim, four sides and cap arcs. A shell or ring
  *       draws both its walls, a compound each child, a plane a disc of at most {@link #PLANE_SHOWN} with its normal,
  *       a hull its edges. A shape known only by its support draws that around its three axes.</li>
- *   <li>Faces are the shape's whole surface, each part once. A hull's are its own faces; a support shape's, its
- *       support over a ball of directions.</li>
+ *   <li>Faces are the shape's whole surface, each part once, wound counter-clockwise seen from outside the solid
+ *       (a shell's inner ball and a ring's inner wall face their hollow), so a viewer can tell back faces from front.
+ *       A hull's are its own faces; a support shape's, its support over a ball of directions.</li>
  *   <li>Circles take {@link #CIRCLE} segments, edges and faces alike: every corner of an outline is a corner of the
  *       faces, so a fill meets its edges. One instance a thread.</li>
  * </ul>
@@ -91,6 +92,8 @@ final class CgShapeLines {
     /** Each hull's faces and edges, built the first time it is drawn. */
     private final Map<CgConvex, HullMesh> hulls = new WeakHashMap<>();
     private double eyeX = Double.NaN, eyeY, eyeZ;
+    /** Whether the faces being written face in: a shell's inner ball. */
+    private boolean inward;
 
     /** Where the eye is, in the world: each ball written from now on draws its outline from there too. */
     public CgShapeLines eye(double x, double y, double z) {
@@ -299,7 +302,11 @@ final class CgShapeLines {
             coneFaces(((CgCone) shape).range(), ((CgCone) shape).halfAngle());
         } else if (shape instanceof CgShell) {
             ball(0, 0, 0, ((CgShell) shape).outer());
-            if (((CgShell) shape).inner() > 0) ball(0, 0, 0, ((CgShell) shape).inner());
+            if (((CgShell) shape).inner() > 0) {
+                inward = true;
+                ball(0, 0, 0, ((CgShell) shape).inner());
+                inward = false;
+            }
         } else if (shape instanceof CgRing) {
             ringFaces(((CgRing) shape).inner(), ((CgRing) shape).outer(), ((CgRing) shape).halfHeight());
         } else if (shape instanceof CgPlane) {
@@ -340,9 +347,10 @@ final class CgShapeLines {
     private void boxFaces(CgBox box) {
         double x = box.halfX(), y = box.halfY(), z = box.halfZ();
         for (int s = -1; s <= 1; s += 2) {
-            quad(s * x, -y, -z, s * x, y, -z, s * x, y, z, s * x, -y, z);
-            quad(-x, s * y, -z, x, s * y, -z, x, s * y, z, -x, s * y, z);
-            quad(-x, -y, s * z, x, -y, s * z, x, y, s * z, -x, y, s * z);
+            // each side's corners counter-clockwise seen from its own side of the box
+            quad(s * x, -y, -z, s * x, s * y, -s * z, s * x, y, z, s * x, -s * y, s * z);
+            quad(-x, s * y, -z, -s * x, s * y, s * z, x, s * y, z, s * x, s * y, -s * z);
+            quad(-x, -y, s * z, s * x, -s * y, s * z, x, y, s * z, -s * x, s * y, s * z);
         }
     }
 
@@ -383,13 +391,14 @@ final class CgShapeLines {
         profile(outer, -h);
         profile(inner, -h);
         if (inner > 0) profile(inner, h);
-        lathe(0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0);
+        // turned from Z toward X about Y, the outline's corners at the same points as cylinder()'s rings
+        lathe(0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0);
     }
 
     private void coneFaces(double range, double halfAngle) {
         profiled = 0;
+        profileArc(0, range, 0, halfAngle);
         profile(0, 0);
-        profileArc(0, range, halfAngle, 0);
         lathe(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1);
     }
 
@@ -415,8 +424,8 @@ final class CgShapeLines {
             if (band > 0) {
                 for (int i = 0; i < CIRCLE; i++) {
                     int p = i * 3, q = p + 3;
-                    quad(rowBefore[p], rowBefore[p + 1], rowBefore[p + 2], row[p], row[p + 1], row[p + 2],
-                            row[q], row[q + 1], row[q + 2], rowBefore[q], rowBefore[q + 1], rowBefore[q + 2]);
+                    quad(rowBefore[p], rowBefore[p + 1], rowBefore[p + 2], rowBefore[q], rowBefore[q + 1],
+                            rowBefore[q + 2], row[q], row[q + 1], row[q + 2], row[p], row[p + 1], row[p + 2]);
                 }
             }
             double[] swap = rowBefore;
@@ -441,7 +450,10 @@ final class CgShapeLines {
         }
     }
 
-    /** Turns {@link #profile} about the axis W through a local point, U and V square to it: its surface. */
+    /**
+     * Turns {@link #profile} about the axis W through a local point, U and V square to it with U x V = W: its
+     * surface, facing away from the axis where the profile runs down W, and up W where it runs out from the axis.
+     */
     private void lathe(double cx, double cy, double cz, double ux, double uy, double uz, double vx, double vy,
             double vz, double wx, double wy, double wz) {
         for (int p = 0; p + 1 < profiled; p++) {
@@ -551,9 +563,18 @@ final class CgShapeLines {
         out.line(wax, way, waz, wbx, wby, wbz);
     }
 
-    /** A triangle in the current shape's space, out in the world. */
+    /** A triangle in the current shape's space, out in the world; turned over while {@link #inward}. */
     private void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
             double cz) {
+        if (inward) {
+            double tx = bx, ty = by, tz = bz;
+            bx = cx;
+            by = cy;
+            bz = cz;
+            cx = tx;
+            cy = ty;
+            cz = tz;
+        }
         CgPose pose = poses[depth];
         out.triangle(pose.m00() * ax + pose.m01() * ay + pose.m02() * az + pose.x,
                 pose.m10() * ax + pose.m11() * ay + pose.m12() * az + pose.y,
