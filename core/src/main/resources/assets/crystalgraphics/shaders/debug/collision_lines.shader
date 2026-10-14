@@ -1,9 +1,10 @@
 // CgCollisionDebug's lines and see-through faces: one colour a segment or triangle, carried in cg_Normal with its
 // alpha in cg_TexCoord0.x. Depth-tested against the scene and writing no depth, so neither hides what is drawn after
-// it; unculled, so a face is seen from inside its shape too.
+// it; unculled, so a face is seen from inside its shape too. In the HDR scene the colour is decoded but its alpha kept:
+// the scene's coverage remap, made for smoke over a bright world, turns a faint tint over a dark one nearly opaque.
 #type spatial
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Linear" }
 Queue = "Transparent"
 
 struct v2f { vec4 color; };
@@ -23,6 +24,6 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        fragColor = i.color;
+        fragColor = vec4(CG_LINEAR_SCENE ? cg_SceneDecode(i.color.rgb) : i.color.rgb, i.color.a);
     }
 }

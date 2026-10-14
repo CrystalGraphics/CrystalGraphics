@@ -9,6 +9,7 @@ import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
@@ -33,6 +34,8 @@ import java.util.Arrays;
  *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at
  *       {@link #FACE_ALPHA} of their colour, so each reads as the space it tests with what is behind it still seen;
  *       not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are lines under both.</li>
+ *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces back to front, then
+ *       the lines over them.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
@@ -123,14 +126,15 @@ public final class CgCollisionDebug {
         SHAPES.eye(view.x(), view.y(), view.z());
         faces = CgCollisionShow.STYLE.get() == CgCollisionShow.Style.TRANSPARENT;
         CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
-        FACES.draw();
-        LINES.draw();
+        FACES.draw(view.x(), view.y(), view.z());
+        LINES.draw(view.x(), view.y(), view.z());
     }
 
     private static void write(CgMeshWriter m, Batch batch) {
         m.topology(batch.corners == 2 ? CgMeshTopology.LINES : CgMeshTopology.TRIANGLES);
         float[] p = batch.points;
-        for (int i = 0, at = 0; i < batch.count; i++) {
+        for (int k = 0; k < batch.count; k++) {
+            int i = batch.sorted ? batch.order[k] : k, at = i * batch.corners * 3;
             int argb = batch.colours[i];
             float r = (argb >>> 16 & 0xFF) / 255f, g = (argb >>> 8 & 0xFF) / 255f, b = (argb & 0xFF) / 255f;
             float a = (argb >>> 24) / 255f * batch.alpha;
@@ -143,7 +147,7 @@ public final class CgCollisionDebug {
 
     /**
      * The frame's segments, or its triangles, as floats from the first one's start, which the draw stands at in
-     * doubles.
+     * doubles. Triangles are drawn back to front from the eye: they blend over one another and write no depth.
      */
     private static final class Batch implements CgShapeLines.Sink {
         /** Points a record: two a segment, three a triangle. */
@@ -154,6 +158,11 @@ public final class CgCollisionDebug {
         int[] colours = new int[512];
         int count;
         double ox, oy, oz;
+        /** Whether {@link #order} holds the draw order: triangles, sorted far to near. */
+        boolean sorted;
+        int[] order = new int[0];
+        private int[] keys = new int[0], orderScratch = new int[0], keyScratch = new int[0];
+        private final int[] counts = new int[256];
         private CgMesh mesh;
 
         Batch(int corners, float alpha) {
@@ -199,17 +208,60 @@ public final class CgCollisionDebug {
             points[at + 2] = (float) (z - oz);
         }
 
-        /** Submits what the frame queued, and empties it. */
-        void draw() {
+        /** Submits what the frame queued, seen from the eye, and empties it. */
+        void draw(double ex, double ey, double ez) {
             if (count == 0) return;
+            sorted = corners == 3;
+            if (sorted) sortFrom(ex, ey, ez);
             if (mesh == null) {
                 mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
             } else {
                 mesh.edit(this, CgCollisionDebug::write);
             }
             if (material == null) material = CgMaterial.load(SHADER);
-            CgWorldRenderer.get().draw(mesh, material).at(ox, oy, oz).submit();
+            // one group at the eye, so the faces draw before the lines whatever their distances
+            CgWorldRenderer.get().draw(mesh, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).group(ex, ey, ez)
+                    .order(corners == 3 ? 0 : 1).submit();
             count = 0;
+        }
+
+        /** {@link #order} far to near by each triangle's middle: an LSD radix sort on its distance's float bits. */
+        private void sortFrom(double ex, double ey, double ez) {
+            if (order.length < count) {
+                order = new int[colours.length];
+                keys = new int[colours.length];
+                orderScratch = new int[colours.length];
+                keyScratch = new int[colours.length];
+            }
+            double cx = ox - ex, cy = oy - ey, cz = oz - ez;
+            for (int i = 0, at = 0; i < count; i++, at += 9) {
+                double dx = (points[at] + points[at + 3] + points[at + 6]) / 3 + cx;
+                double dy = (points[at + 1] + points[at + 4] + points[at + 7]) / 3 + cy;
+                double dz = (points[at + 2] + points[at + 5] + points[at + 8]) / 3 + cz;
+                // a non-negative float's bits order as it does; flipped, ascending is far to near
+                keys[i] = Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
+                order[i] = i;
+            }
+            for (int shift = 0; shift < 32; shift += 8) {
+                Arrays.fill(counts, 0);
+                for (int i = 0; i < count; i++) counts[keys[i] >>> shift & 0xFF]++;
+                for (int b = 0, sum = 0; b < 256; b++) {
+                    int n = counts[b];
+                    counts[b] = sum;
+                    sum += n;
+                }
+                for (int i = 0; i < count; i++) {
+                    int to = counts[keys[i] >>> shift & 0xFF]++;
+                    keyScratch[to] = keys[i];
+                    orderScratch[to] = order[i];
+                }
+                int[] k = keys;
+                keys = keyScratch;
+                keyScratch = k;
+                int[] o = order;
+                order = orderScratch;
+                orderScratch = o;
+            }
         }
 
         void release() {
