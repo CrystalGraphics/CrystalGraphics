@@ -2,11 +2,13 @@
 // its silhouette, where the front is seen edge-on. Racing out from a blast ahead of its dust, it reads as the air
 // itself rippling. Drawn on CgVfxFrame.mesh's sphere's far wall, the shell the eye sees found analytically: its near
 // side from outside, its far side from inside, so a front sweeping past the camera ripples the whole view as it goes.
-// A Distortion pass (ORDER_DISTORTION), so it bends smoke and glow but never a bright body. CG_OBJECT_CUSTOM1.z is an
+// A Distortion pass (Role.DISTORTION), so it bends smoke and glow but never a bright body. CG_OBJECT_CUSTOM1.z is an
 // intensity. Reads depth.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 // The bend reaches _Strength times the intensity, at most about 0.08 of the height.
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
@@ -65,7 +67,7 @@ Pass {
         vec3 n = normalize(eye + ray * hit - centre);
         float face = abs(dot(n, ray));
         float band = (1.0 - smoothstep(_Band * 0.4, _Band, face)) * smoothstep(0.0, 0.08, face);
-        float strength = band * CG_OBJECT_CUSTOM1.z;
+        float strength = band * CG_OBJECT_CUSTOM1.z * FX_PRESENCE;
         if (strength < 0.002) discard;
         // Outward on screen, along the normal as the eye sees it.
         vec2 dir = normalize((mat3(cg_ViewMatrix) * n).xy + 1.0e-5);

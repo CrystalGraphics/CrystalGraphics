@@ -45,7 +45,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.function.IntConsumer;
 
@@ -219,11 +218,11 @@ public final class CgVfxSystem {
     private final List<CgVfxEventListener> eventListeners = new ArrayList<>();
     private final CgVfxPathTexture paths = new CgVfxPathTexture();
     private final CgVfxTube tube = new CgVfxTube();
-    private final CgVfxFrame frame = new CgVfxFrame(this);
-    private final IdentityHashMap<CgVfxLayer, CgMaterial> materials = new IdentityHashMap<>();
-    /** Each layer's material's batch key: the order the materials were made in. */
-    private final IdentityHashMap<CgVfxLayer, Integer> materialKeys = new IdentityHashMap<>();
-    private final List<CgMaterial> unbound = new ArrayList<>();
+    /** Every layer's resolved bindings and materials, and the frame's rows. */
+    private final CgVfxMaterials materials = new CgVfxMaterials();
+    private final CgVfxFrame frame = new CgVfxFrame(this, materials);
+    /** How many of {@link #materials}' materials have the path texture bound. */
+    private int pathsBound;
     /** Materials compiling ahead of their first draw, so a layer that appears late does not stall its frame. */
     private final List<CgMaterial> warming = new ArrayList<>();
     /** Emitters {@link #prepare} queued whose kernels and slot meshes are still to start, one a step under the budget. */
@@ -635,7 +634,7 @@ public final class CgVfxSystem {
             closedTubeMesh = CgVfxTube.mesh(true);
             ribbonMesh = CgVfxRibbons.mesh();
             sphereMesh = CgMeshShapes.sphere(48, 96);
-            // 12 x 24 faces come within cos(15°) cos(7.5°) of the centre: at radius 1.05 they still enclose the unit sphere.
+            // 12 x 24 faces come within cos(15Â°) cos(7.5Â°) of the centre: at radius 1.05 they still enclose the unit sphere.
             volumeMesh = COARSE_VOLUMES.get()
                     ? CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.sphere(m, 12, 24, 1.05f)) : sphereMesh;
             quadMesh = CgVfxQuads.mesh();
@@ -654,6 +653,7 @@ public final class CgVfxSystem {
                 gz += effect.originZ;
             }
             int n = effects.size();
+            materials.begin(CgFrameRing.frame());
             frame.begin(world, alpha, Math.min((sinceParticleTick + alpha) / drawnStep, 1f), gx / n, gy / n, gz / n);
             gpuSteps.frame(frame.particleAlpha(), frame.particleAlpha() * particleDt);
             paths.begin();
@@ -669,6 +669,7 @@ public final class CgVfxSystem {
                 }
             }
             frame.end();
+            materials.upload();
             cpuDrawn += frame.cpuDrawn();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
@@ -868,11 +869,7 @@ public final class CgVfxSystem {
             // The particle sphere's levels are built on first ask: here, not in the first burst's frame.
             if (looked.get(k).renderer() == CgVfxEmitter.Renderer.MESHES) particleSphere();
         }
-        List<CgVfxLayer> layers = look.layers();
-        for (int k = 0; k < layers.size(); k++) {
-            CgMaterial material = material(layers.get(k));
-            if (!warming.contains(material)) warming.add(material);
-        }
+        materials.prepare(look, warming);
     }
 
     /**
@@ -920,7 +917,7 @@ public final class CgVfxSystem {
         volumeMesh = null;
         quadMesh = null;
         boundTexture = null;
-        unbound.addAll(materials.values());
+        pathsBound = 0;
         warming.clear();
         gpuWarming.clear();
     }
@@ -961,17 +958,19 @@ public final class CgVfxSystem {
      * {@code -Dcrystalgraphics.vfx.sharedDistortion=true} every distortion layer after all of them.
      */
     public static CgSortLayer sortLayer(CgVfxLayer layer) {
-        return SHARED_DISTORTION.get() && layer.order() == CgVfxLayer.ORDER_DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
+        return SHARED_DISTORTION.get() && layer.role() == CgVfxLayer.Role.DISTORTION ? DISTORTION : CgSortLayer.EFFECTS;
     }
 
     /**
-     * {@code draw} placed as a draw of {@code layer} in the effect at {@code (ox, oy, oz)}: its sort layer, the effect's
-     * group and the layer's order, and a sharp layer ({@link CgVfxLayer#ORDER_SURFACE} and up) after the distortion
-     * apply, so no haze bends it.
+     * {@code draw} placed as a draw of {@code placed} in the effect at {@code (ox, oy, oz)}: its sort layer, the effect's
+     * group and the layer's order in its look, and a {@link CgVfxLayer.Role#SURFACE} layer after the distortion apply,
+     * so no haze of its own effect bends it.
      */
-    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLayer layer, double ox, double oy, double oz) {
-        draw.layer(sortLayer(layer)).group(ox, oy, oz).order(layer.order());
-        return layer.order() >= CgVfxLayer.ORDER_SURFACE ? draw.afterDistortion() : draw;
+    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, double ox, double oy,
+                                             double oz) {
+        CgVfxLayer layer = placed.layer();
+        draw.layer(sortLayer(layer)).group(ox, oy, oz).order(placed.order());
+        return layer.role() == CgVfxLayer.Role.SURFACE ? draw.afterDistortion() : draw;
     }
 
     CgMesh ribbonMesh() {
@@ -982,36 +981,17 @@ public final class CgVfxSystem {
         return quadMesh;
     }
 
-    CgMaterial material(CgVfxLayer layer) {
-        CgMaterial material = materials.get(layer);
-        if (material == null) {
-            material = CgMaterial.newInstance(layer.shader());
-            if (layer.properties() != null) material.applyProperties(layer.properties());
-            materials.put(layer, material);
-            materialKeys.put(layer, materialKeys.size() & 0xFFFF);
-            unbound.add(material);
-        }
-        return material;
-    }
-
-    /** {@code layer}'s material's batch key: draws given one sort together ({@code CgWorldRenderer.Draw.batchKey}). */
-    int materialKey(CgVfxLayer layer) {
-        material(layer);
-        return materialKeys.get(layer);
-    }
-
     /** Points every material at the path texture: once each, and again if the texture was made anew. */
     private void bindPaths() {
         CgTexture2D texture = paths.texture();
         if (texture == null) return;
         if (texture != boundTexture) {
             boundTexture = texture;
-            unbound.clear();
-            unbound.addAll(materials.values());
+            pathsBound = 0;
         }
-        for (int i = 0; i < unbound.size(); i++) {
-            unbound.get(i).applyProperties(b -> b.sampler(PATH_SAMPLER, 0, texture));
+        List<CgMaterial> all = materials.all();
+        for (; pathsBound < all.size(); pathsBound++) {
+            all.get(pathsBound).applyProperties(b -> b.sampler(PATH_SAMPLER, 0, texture));
         }
-        unbound.clear();
     }
 }

@@ -2,16 +2,20 @@
 // at every scale, each forking once or twice into branches that strike back down into it. A strike holds its channel and
 // strobes through its return strokes, several new strikes a second. Stateless (CgVfxRibbons, fx_lightning.glsl): three
 // ribbons per bolt, its channel and two forks, in a unit space where the orb's radius is 1 and the core shows at about
-// two thirds of it. CG_OBJECT_CUSTOM1.x is the orb's radius in blocks, .z an intensity. Colour A is the glow, colour B
-// the white core, A's alpha a strength. CgEnergyWave.
+// two thirds of it. CG_OBJECT_CUSTOM1.x is the orb's radius in blocks, .z an intensity. _Spiral is the glow, its alpha
+// a strength; _Core the white core. CgEnergyWave.
 #type none
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_lightning.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Spiral   ("The bolts' glow; its alpha a strength", color) = (0.5, 0.85, 1.6, 1)
+    _Core     ("The bolts' white core; its alpha a strength", color) = (1, 1, 1, 1)
     _Count  ("Bolts at most", float) = 16.0
     _Rate   ("New strikes a second, each bolt", float) = 6.0
     _Chance ("Share of moments a bolt strikes", float) = 0.7
@@ -20,7 +24,7 @@ Properties {
     _Jag    ("Jaggedness, share of the bolt's length", float) = 0.55
     _Leap   ("Share of bolts that leap out past the orb", float) = 0.35
     _Width  ("Half-width with its glow, share of the orb's radius", float) = 0.16
-    _Core   ("White core, share of the half-width", float) = 0.035
+    _CoreWidth ("White core, share of the half-width", float) = 0.035
 }
 
 struct v2f { vec3 world; vec2 bolt; };
@@ -90,9 +94,9 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        vec3 l = fx_bolt_profile(i.bolt.x, fwidth(i.bolt.x), _Core);
-        vec3 col = CG_OBJECT_CUSTOM3.rgb * l.x * 2.6 + CG_OBJECT_CUSTOM2.rgb * (l.y * 0.55 + l.z * 0.3);
-        fragColor = vec4(col * i.bolt.y * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z, 1.0);
+        vec3 l = fx_bolt_profile(i.bolt.x, fwidth(i.bolt.x), _CoreWidth);
+        vec3 col = _Core.rgb * l.x * 2.6 + _Spiral.rgb * (l.y * 0.55 + l.z * 0.3);
+        fragColor = vec4(col * i.bolt.y * _Spiral.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE, 1.0);
     }
 }
 

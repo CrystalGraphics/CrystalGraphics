@@ -11,17 +11,21 @@
 // shaded, and its own back lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's.
 // Drawn on CgVfxFrame.mesh's sphere, turned and sized per billow. CG_OBJECT_CUSTOM0.xyz: its velocity, which points away
 // from the blast it rolls out of. CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is
-// 0..1. Colour A is the body, colour B the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
+// 0..1. _Color is the body, _Hot the blast's light. Where it meets a floor or a wall (CG_OBJECT_SPARE: the
 // surface's normal and its centre's height over it, Range's) it squashes against it, and its underside's shade climbs
 // the lobes near it.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "CastShadows" = "Off" "Lighting" = "Unlit" "Depth" = "Prepass" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The body: its hue sets the three tones", color) = (0.35, 0.36, 0.4, 1)
+    _Hot ("The blast's light on it", color) = (1, 0.55, 0.2, 1)
     _Cells   ("Lobes around the sphere, cells per unit", float) = 1.5
     _Bulge   ("Lobe height, share of the radius", float) = 0.4
     _Fine    ("Small domes on the lobes, share of the bulge", float) = 0.3
@@ -85,7 +89,7 @@ Pass {
     }
 
     void fragment(in v2f i, out vec4 fragColor) {
-        float life = CG_OBJECT_CUSTOM1.x, seed = CG_OBJECT_CUSTOM1.y, opacity = CG_OBJECT_CUSTOM1.z;
+        float life = CG_OBJECT_CUSTOM1.x, seed = CG_OBJECT_CUSTOM1.y, opacity = CG_OBJECT_CUSTOM1.z * FX_PRESENCE;
         float hot = CG_OBJECT_CUSTOM1.w;
         vec3 n = normalize(i.normal);
         vec3 toEye = normalize(FX_CAMERA - i.world);
@@ -110,7 +114,7 @@ Pass {
         float tone = fx_value_noise(i.world * 0.3 + seed * 13.0) - 0.5;
         // Three tones from the body's hue: the lit one nearly grey, the shade saturated and turned toward violet, each
         // billow and each patch of it a little lighter or darker.
-        vec3 tint = CG_OBJECT_CUSTOM2.rgb, glow = CG_OBJECT_CUSTOM3.rgb;
+        vec3 tint = _Color.rgb, glow = _Hot.rgb;
         vec3 hue = tint / max(max(tint.r, tint.g), max(tint.b, 1.0e-3));
         vec3 violet = clamp(hue + vec3(_Hue, -0.2 * _Hue, 0.0), 0.0, 1.0);
         float value = 1.0 + 0.1 * (fract(seed * 7.13) - 0.5) + 0.08 * tone;

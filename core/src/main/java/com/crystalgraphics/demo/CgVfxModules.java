@@ -4,7 +4,6 @@ import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
-import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.easing.CgEasings;
@@ -25,6 +24,7 @@ import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
+import com.crystalgraphics.vfx.look.CgVfxTexture;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -76,27 +76,27 @@ public final class CgVfxModules {
     /** The station grid: columns along x, rows along z, toward the camera. */
     private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f};
 
-    private static final CgVfxSchema SCHEMA = new CgVfxSchema();
-    private static final CgVfxParam GOLD = SCHEMA.color("gold", 1f, 0.55f, 0.12f, 1f);
-    private static final CgVfxParam WHITE = SCHEMA.color("white", 1f, 1f, 1f, 1f);
-    private static final CgVfxParam CYAN = SCHEMA.color("cyan", 0.15f, 0.7f, 1.2f, 1f);
-    private static final CgVfxParam VIOLET = SCHEMA.color("violet", 0.7f, 0.25f, 1.3f, 1f);
-    private static final CgVfxParam SMOKE = SCHEMA.color("smoke", 0.55f, 0.55f, 0.6f, 0.8f);
-    private static final CgVfxParam EMBER = SCHEMA.color("ember", 1.2f, 0.35f, 0.05f, 1f);
-    private static final CgVfxParam FLAME = SCHEMA.color("flame", 1.4f, 1.1f, 0.5f, 1f);
-    private static final CgVfxParam DEBRIS = SCHEMA.color("debris", 0.3f, 0.26f, 0.22f, 1f);
-    private static final CgVfxParam DUST = SCHEMA.color("dust", 0.45f, 0.38f, 0.3f, 0.5f);
-    private static final CgVfxParam FUNNEL = SCHEMA.color("funnel", 0.5f, 0.52f, 0.56f, 0.85f);
-    private static final CgVfxParam SOOT = SCHEMA.color("soot", 0.2f, 0.19f, 0.19f, 0.5f);
+    private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/modules");
+    private static final CgVfxParam.Color GOLD = SCHEMA.color("gold", 0xFFFF8C1F);
+    private static final CgVfxParam.Color WHITE = SCHEMA.color("white", 0xFFFFFFFF);
+    private static final CgVfxParam.Color CYAN = SCHEMA.color("cyan", 0xFF2095FF, 1.2f);
+    private static final CgVfxParam.Color VIOLET = SCHEMA.color("violet", 0xFF8931FF, 1.3f);
+    private static final CgVfxParam.Color SMOKE = SCHEMA.color("smoke", 0xCC8C8C99);
+    private static final CgVfxParam.Color EMBER = SCHEMA.color("ember", 0xFFFF4A0B, 1.2f);
+    private static final CgVfxParam.Color FLAME = SCHEMA.color("flame", 0xFFFFC85B, 1.4f);
+    private static final CgVfxParam.Color DEBRIS = SCHEMA.color("debris", 0xFF4C4238);
+    private static final CgVfxParam.Color DUST = SCHEMA.color("dust", 0x8073614C);
+    private static final CgVfxParam.Color FUNNEL = SCHEMA.color("funnel", 0xD980858F);
+    private static final CgVfxParam.Color SOOT = SCHEMA.color("soot", 0x80333030);
     // The fire sheet carries its own colours: a flame's tint reddens from these as it cools. Flames overlap and add, so
     // each is faint (A's alpha): bright where many cross, never a white blob.
-    private static final CgVfxParam FIRE_COOL = SCHEMA.color("fireCool", 0.9f, 0.32f, 0.1f, 0.45f);
-    private static final CgVfxParam FIRE_HOT = SCHEMA.color("fireHot", 1f, 0.78f, 0.5f, 1f);
-    private static final CgVfxParam MAGENTA = SCHEMA.color("magenta", 1.2f, 0.2f, 0.9f, 1f);
-    private static final CgVfxParam ICE = SCHEMA.color("ice", 0.35f, 0.75f, 1.2f, 0.9f);
-    private static final CgVfxParam SNOW = SCHEMA.color("snow", 0.85f, 0.9f, 1f, 0.55f);
-    private static final CgVfxParam SPIRIT_COOL = SCHEMA.color("spiritCool", 0.1f, 0.3f, 1f, 0.5f);
-    private static final CgVfxParam SPIRIT_HOT = SCHEMA.color("spiritHot", 0.55f, 0.95f, 1.1f, 1f);
+    private static final CgVfxParam.Color FIRE_COOL = SCHEMA.color("fireCool", 0x73E6521A);
+    private static final CgVfxParam.Color FIRE_HOT = SCHEMA.color("fireHot", 0xFFFFC780);
+    private static final CgVfxParam.Color MAGENTA = SCHEMA.color("magenta", 0xFFFF2BBF, 1.2f);
+    private static final CgVfxParam.Color ICE = SCHEMA.color("ice", 0xE64A9FFF, 1.2f);
+    private static final CgVfxParam.Color SNOW = SCHEMA.color("snow", 0x8CD9E6FF);
+    private static final CgVfxParam.Color SPIRIT_COOL = SCHEMA.color("spiritCool", 0x801A4CFF);
+    private static final CgVfxParam.Color SPIRIT_HOT = SCHEMA.color("spiritHot", 0xFF80DCFF, 1.1f);
 
     private static final CgKeyframes FADE = CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD)
             .to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build();
@@ -292,8 +292,8 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.55f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgShaderBindings> sheet = b -> b.sampler("_Sheet", 0, smokeSheet).vec4("_Frames", 8f, 8f, 64f, 1f)
-                .vec4("_Flip", 0.3f, 0f, 1f, 0f);
+        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet)).set("_Frames", 8f, 8f, 64f, 1f)
+                .set("_Flip", 0.3f, 0f, 1f, 0f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(funnel).emitter(debris).emitter(dust)
                 .layer(layerOf("sprite", dust, DUST, DUST, sheet)).layer(layerOf("sprite", funnel, FUNNEL, FUNNEL, sheet))
                 .layer(layer("speck", debris, DEBRIS, DEBRIS, 1f, null)).build();
@@ -344,7 +344,7 @@ public final class CgVfxModules {
         // A line's launch angle picks its shell: leaving at these vertical shares, they loop about 1.5, 2, 2.6 and 3.2
         // blocks out. One leaving upward would fly off the field.
         float[] shares = {-0.65f, -0.45f, -0.25f, -0.08f};
-        CgVfxParam[][] colours = {{CYAN, WHITE}, {CYAN, VIOLET}, {VIOLET, MAGENTA}, {MAGENTA, GOLD}};
+        CgVfxParam.Color[][] colours = {{CYAN, WHITE}, {CYAN, VIOLET}, {VIOLET, MAGENTA}, {MAGENTA, GOLD}};
         float top = 2.4f + 2f * MAGNET_POLE, middle = top - MAGNET_POLE;
         CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
         List<CgVfxEmitter> emitters = new ArrayList<>();
@@ -362,8 +362,8 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .sampler("_Sheet", 0, dot).vec4("_Frames", 1f, 1f, 1f, 1f).set1f("_Facing", 3f)
-                    .set1f("_Stretch", 3f).set1f("_MaxStretch", 40f)));
+                    .texture("_Sheet", CgVfxTexture.of(dot)).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", 3f)
+                    .set("_Stretch", 3f).set("_MaxStretch", 40f)));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
         }
@@ -453,7 +453,7 @@ public final class CgVfxModules {
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         add("shield: Conform + Turbulence", x, z, List.of(motes), new float[][]{{0f, 3.2f, 0f}},
                 layer("sprite_glow", motes, VIOLET, WHITE, 1f,
-                        b -> b.sampler("_Sheet", 0, dot).vec4("_Frames", 1f, 1f, 1f, 1f)), null);
+                        b -> b.texture("_Sheet", CgVfxTexture.of(dot)).set("_Frames", 1f, 1f, 1f, 1f)), null);
     }
 
     /**
@@ -552,10 +552,10 @@ public final class CgVfxModules {
                 .event(CgVfxEvent.onCollision().spawn(snow, 1))
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(shards).emitter(snow)
-                .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.sampler("_Sheet", 0, smokeSheet)
-                        .vec4("_Frames", 8f, 8f, 64f, 1f).vec4("_Flip", 0.3f, 0f, 1f, 0f)))
+                .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet))
+                        .set("_Frames", 8f, 8f, 64f, 1f).set("_Flip", 0.3f, 0f, 1f, 0f)))
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
-                .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set1f("_SoftDistance", 0f).set1f("_CameraOffset", 1f)))
+                .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_CameraOffset", 1f)))
                 .build();
         stations.add(new Station("slope: Collide plane, an avalanche kicking up snow", x, z, look, List.of(shards),
                 new float[][]{{0f, source, 0f}}, p -> {
@@ -585,7 +585,7 @@ public final class CgVfxModules {
         // 1.1 of its middle, a ripple's 0.35 radius short of its 1.5 edge; the floor's dies in the column over the block.
         CgVfxEmitter onBlock = rain("block", 180f, 1.1f, source, splash, ripple);
         CgVfxEmitter onFloor = rain("blockFloor", 420f, 3f, source, splash, ripple);
-        Consumer<CgShaderBindings> streak = b -> b.set1f("_Stretch", 0.25f).set1f("_MaxStretch", 12f);
+        Consumer<CgVfxLayer.Builder> streak = b -> b.set("_Stretch", 0.25f).set("_MaxStretch", 12f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(onBlock).emitter(onFloor).emitter(splash).emitter(ripple)
                 .layer(facing(onBlock, CYAN, WHITE, dot, 3, streak)).layer(facing(onFloor, CYAN, WHITE, dot, 3, streak))
                 .layer(facing(splash, CYAN, WHITE, dot, 3, streak)).layer(facing(ripple, CYAN, WHITE, ring, 4, null))
@@ -773,14 +773,14 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgShaderBindings> smoke = b -> b.sampler("_Sheet", 0, smokeSheet).vec4("_Frames", 8f, 8f, 64f, 1f)
-                .vec4("_Flip", 0f, 0f, 1f, 0f);
+        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet)).set("_Frames", 8f, 8f, 64f, 1f)
+                .set("_Flip", 0f, 0f, 1f, 0f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
                 .layer(layerOf("sprite", puffs, SMOKE, SMOKE, smoke))
                 .layer(layerOf("sprite", soot, SOOT, SOOT, smoke))
                 .layer(layerOf("sprite_glow", fire, FIRE_COOL, FIRE_HOT,
-                        b -> b.sampler("_Sheet", 0, fireSheet).vec4("_Frames", 4f, 4f, 16f, 2f).vec4("_Flip", 1f, 1f, 1f, 0f)
-                                .set1f("_Facing", 2f)))
+                        b -> b.texture("_Sheet", CgVfxTexture.of(fireSheet)).set("_Frames", 4f, 4f, 16f, 2f).set("_Flip", 1f, 1f, 1f, 0f)
+                                .set("_Facing", 2f)))
                 .layer(sparkLayer(embers, EMBER, FLAME))
                 .build();
         stations.add(new Station("flipbooks: a smoke column (left), a fire with embers and smoke (right)", x, z, look,
@@ -838,9 +838,9 @@ public final class CgVfxModules {
                 .emitter(waves)
                 .layer(facing(glints, GOLD, WHITE, star, 0, null))
                 .layer(facing(runes, VIOLET, WHITE, rune, 1, null))
-                .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.vec4("_Frames", 4f, 4f, 16f, 2f)
-                        .vec4("_Flip", 1f, 1f, 1f, 0f)))
-                .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set1f("_Stretch", 0.6f).set1f("_MaxStretch", 10f)))
+                .layer(facing(flames, SPIRIT_COOL, SPIRIT_HOT, wisp, 2, b -> b.set("_Frames", 4f, 4f, 16f, 2f)
+                        .set("_Flip", 1f, 1f, 1f, 0f)))
+                .layer(facing(sparks, GOLD, WHITE, dot, 3, b -> b.set("_Stretch", 0.6f).set("_MaxStretch", 10f)))
                 .layer(facing(waves, CYAN, WHITE, ring, 4, null)).build();
         stations.add(new Station("facing: camera, camera position, upright, velocity, axis", x, z, look,
                 List.of(glints, runes, flames, sparks, waves),
@@ -859,13 +859,13 @@ public final class CgVfxModules {
             "lies along its motion", "flat across an axis"};
 
     /** A glowing sprite of {@code sheet}, a single frame unless {@code more} says otherwise, facing as {@code mode}. */
-    private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam cool, CgVfxParam hot, CgTexture sheet, int mode,
-                                     Consumer<CgShaderBindings> more) {
+    private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,
+                                     Consumer<CgVfxLayer.Builder> more) {
         return layerOf("sprite_glow", e, cool, hot, b -> {
-            b.sampler("_Sheet", 0, sheet).vec4("_Frames", 1f, 1f, 1f, 1f).set1f("_Facing", mode)
-                    .vec4("_Axis", 0f, 1f, 0f, 0f);
+            b.texture("_Sheet", CgVfxTexture.of(sheet)).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", mode)
+                    .set("_Axis", 0f, 1f, 0f, 0f);
             // Lying on a surface on purpose: a soft fade would fade it out.
-            if (mode == 4) b.set1f("_SoftDistance", 0f);
+            if (mode == 4) b.set("_SoftDistance", 0f);
             if (more != null) more.accept(b);
         });
     }
@@ -879,19 +879,21 @@ public final class CgVfxModules {
         stations.add(new Station(name, x, z, look.layer(layer).build(), emitters, sources, props));
     }
 
-    private static CgVfxLayer layer(String shader, CgVfxEmitter e, CgVfxParam a, CgVfxParam b, float radius,
-                                    Consumer<CgShaderBindings> properties) {
-        CgVfxLayer.Builder l = CgVfxLayer.builder(PARTICLE + shader + ".shader").slot(e.layer()).colors(a, b).radius(radius);
-        if (properties != null) l.properties(properties);
+    private static CgVfxLayer layer(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b, float radius,
+                                    Consumer<CgVfxLayer.Builder> properties) {
+        CgVfxLayer.Builder l = CgVfxLayer.of(PARTICLE + shader + ".shader").on(e).bind("_Color", a).size(radius);
+        // sprite and speck tint by one colour
+        if (!shader.equals("sprite") && !shader.equals("speck")) l.bind("_Hot", b);
+        if (properties != null) properties.accept(l);
         return l.build();
     }
 
-    private static CgVfxLayer layerOf(String shader, CgVfxEmitter e, CgVfxParam a, CgVfxParam b,
-                                      Consumer<CgShaderBindings> properties) {
+    private static CgVfxLayer layerOf(String shader, CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b,
+                                      Consumer<CgVfxLayer.Builder> properties) {
         return layer(shader, e, a, b, 1f, properties);
     }
 
-    private static CgVfxLayer sparkLayer(CgVfxEmitter e, CgVfxParam a, CgVfxParam b) {
+    private static CgVfxLayer sparkLayer(CgVfxEmitter e, CgVfxParam.Color a, CgVfxParam.Color b) {
         return layer("spark", e, a, b, 1f, null);
     }
 

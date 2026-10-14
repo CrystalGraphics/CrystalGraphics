@@ -1,14 +1,18 @@
 // An energy wave's spirals: two sets of bright bands wrapping the body in opposite senses, flowing forward, crisp-edged
 // and broken up so no band runs unbroken, faded in from the muzzle and out before the head. A tube layer
-// (fx_tube.glsl). Colour A is the bands, colour B where they cross, A's alpha a strength. CgEnergyWave.
+// (fx_tube.glsl). _Spiral is the bands, its alpha a strength; _Core where they cross. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Spiral   ("The bands and bolts; its alpha a strength", color) = (0.5, 0.85, 1.6, 1)
+    _Core     ("Where the bands cross", color) = (1, 1, 1, 1)
     _FxPath ("Path rings", sampler2D) = "black"
     _Pitch  ("Blocks per turn", float) = 2.6
     _Speed  ("How fast the bands flow forward, turns a second", float) = 5.5
@@ -55,8 +59,8 @@ Pass {
         float tear = fx_ridged(q * 1.8 + 9.0, 2);
         float breakup = smoothstep(0.38, 0.55, 0.5 + 0.5 * fx_noise(q)) * (1.0 - smoothstep(0.72, 0.86, tear));
         float ends = smoothstep(1.0, 3.5, s) * smoothstep(0.5, 2.5, i.surface.w);
-        vec3 col = CG_OBJECT_CUSTOM2.rgb * (b1 + 0.7 * b2) * 1.6 + CG_OBJECT_CUSTOM3.rgb * (b1 * b2 * 2.0 + b1 * 0.35);
-        fragColor = vec4(col * breakup * ends * fx_flicker(age, 0.71) * CG_OBJECT_CUSTOM2.a * (gl_FrontFacing ? 1.0 : 0.4), 1.0);
+        vec3 col = _Spiral.rgb * (b1 + 0.7 * b2) * 1.6 + _Core.rgb * (b1 * b2 * 2.0 + b1 * 0.35);
+        fragColor = vec4(col * breakup * ends * fx_flicker(age, 0.71) * _Spiral.a * FX_PRESENCE * (gl_FrontFacing ? 1.0 : 0.4), 1.0);
     }
 }
 

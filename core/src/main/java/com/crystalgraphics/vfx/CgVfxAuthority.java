@@ -1,11 +1,15 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.easing.CgEasing;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.world.CgEntityAttachments;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Consumer;
 
 /**
@@ -44,6 +48,24 @@ public final class CgVfxAuthority {
     /** The numbers and colours set on the effect since {@link #drainSet} last ran. */
     private CgVfxParam[] set = new CgVfxParam[4];
     private int setCount;
+    /** Tweens begun on the effect since {@link #drainMotion} last ran, and the ending it began, if any. */
+    private final List<Tween> tweens = new ArrayList<>();
+    private CgVfxEnding ending;
+
+    /** A tween begun on the server's copy, for every viewer to play: a number or a colour, eased to {@code to}. */
+    public static final class Tween {
+        public final CgVfxParam param;
+        public final float[] to;
+        public final float seconds;
+        public final CgEasing easing;
+
+        Tween(CgVfxParam param, float[] to, float seconds, CgEasing easing) {
+            this.param = param;
+            this.to = to;
+            this.seconds = seconds;
+            this.easing = easing;
+        }
+    }
 
     /** Takes {@code effect}, unplayed, to run against {@code world}: one level's. */
     public CgVfxAuthority(CgVfxEffect effect, CgCollisionWorld world) {
@@ -96,6 +118,27 @@ public final class CgVfxAuthority {
             each.accept(param);
         }
         setCount = 0;
+    }
+
+    /**
+     * Hands {@code tweens} each tween begun since the last call and {@code endings} the ending begun, if one was: a
+     * lasting cue sends them as events, which every viewer plays itself.
+     */
+    public void drainMotion(Consumer<Tween> tweens, Consumer<CgVfxEnding> endings) {
+        for (int i = 0; i < this.tweens.size(); i++) tweens.accept(this.tweens.get(i));
+        this.tweens.clear();
+        if (ending != null) {
+            endings.accept(ending);
+            ending = null;
+        }
+    }
+
+    void animated(CgVfxParam param, float[] to, float seconds, CgEasing easing) {
+        tweens.add(new Tween(param, to, seconds, easing));
+    }
+
+    void ended(CgVfxEnding ending) {
+        this.ending = ending;
     }
 
     /** {@code param} was set on the effect. */

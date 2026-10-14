@@ -2,19 +2,22 @@
 // orb's glow, where the scene still shows through, rippling out of the orb in rings broken up by rising noise, its
 // strongest bend split slightly by colour. The bend is a share of the screen's height, held to _Hold of the sheath's
 // size on screen, so a far orb keeps it. Drawn on CgVfxFrame.mesh's sphere's far wall, its entry found analytically,
-// so it bends from inside it too; a Distortion pass (ORDER_DISTORTION), so the sharp layers stay unbent. CG_OBJECT_CUSTOM0.x
-// is the layer's radius and .y its parameter, the orb's radius in the same units, so the orb fills y/x of the sphere and
-// is left unbent; .zw the effect's age and seed. CG_OBJECT_CUSTOM1.z an intensity, taken at most 1.
+// so it bends from inside it too; a Distortion pass (Role.DISTORTION), so the sharp layers stay unbent. The orb is _Orb of
+// the slot's units, so it fills _Orb / CG_OBJECT_CUSTOM0.x (the layer's size) of the sphere, and is left unbent;
+// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity, taken at most 1.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 // The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under 0.02 of the height.
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
+    _Orb      ("The orb, left unbent: its radius in the slot's units", float) = 1
     _Strength ("Bend at full intensity, share of the screen's height", float) = 0.014
     _Hold     ("The bend's most, as a share of the sheath's height on screen", float) = 0.12
     _Peak     ("Where the bend is strongest, in the orb's radii: just past its glow", float) = 2.6
@@ -69,7 +72,7 @@ Pass {
         // The orb's radius in blocks. Where the ray enters (0 from inside). Its strength is the air's at the point it sees
         // nearest the centre (the eye itself, looking out from inside), in orb radii; its shimmer is sampled there from
         // outside, and halfway to where it leaves from inside, so the view from inside does not move as one sheet.
-        float orb = max(radius * CG_OBJECT_CUSTOM0.y / max(CG_OBJECT_CUSTOM0.x, 1.0e-4), 1.0e-4);
+        float orb = max(radius * _Orb / max(CG_OBJECT_CUSTOM0.x, 1.0e-4), 1.0e-4);
         float along = dot(centre - eye, ray);
         vec3 line = eye + ray * along - centre;
         float chord = sqrt(max(radius * radius - dot(line, line), 0.0));
@@ -86,7 +89,7 @@ Pass {
                 * (1.0 - smoothstep(_Peak, rim, length(plume) + tear * 0.25 * (rim - _Peak)))
                 * (1.0 - smoothstep(0.85 * rim, rim, u));
         // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
-        float strength = sheath * min(CG_OBJECT_CUSTOM1.z, 1.0);
+        float strength = sheath * min(CG_OBJECT_CUSTOM1.z, 1.0) * FX_PRESENCE;
         if (strength < 0.002) discard;
         // Rings rippling out of the orb push the scene along the screen's radial; the rest is rising shimmer.
         float ring = sin((u * _Rings - age * _Pulse + tear * 0.6) * 6.28318531);

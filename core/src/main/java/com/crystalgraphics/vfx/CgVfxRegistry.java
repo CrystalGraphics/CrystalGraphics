@@ -3,9 +3,8 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.vfx.effect.CgVfxBurst;
 import com.crystalgraphics.vfx.effect.air.CgVfxHeatHaze;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
-import com.crystalgraphics.vfx.element.CgVfxExplosion;
+import com.crystalgraphics.vfx.element.CgVfxBlast;
 import com.crystalgraphics.vfx.look.CgVfxLook;
-import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.net.CgVfxCue;
 
 import java.util.Collections;
@@ -113,10 +112,9 @@ public final class CgVfxRegistry {
         wave("crystalgraphics:kamehameha", "Kamehameha", CgEnergyWave.kamehameha());
         wave("crystalgraphics:final_flash", "Final Flash", CgEnergyWave.finalFlash());
         wave("crystalgraphics:galick_gun", "Galick Gun", CgEnergyWave.galickGun());
-        CgVfxSchema schema = new CgVfxSchema();
-        // Before the builder, which takes the schema's defaults: the kit declares its parameters on it.
-        CgVfxExplosion blast = new CgVfxExplosion(schema, "blast");
-        register("crystalgraphics:explosion", "Explosion", "Bursts", CgVfxLook.builder(schema).add(blast).build(),
+        wave("crystalgraphics:kamehameha_toon", "Kamehameha (toon)", CgEnergyWave.toon());
+        register("crystalgraphics:explosion", "Explosion", "Bursts",
+                CgVfxLook.builder(CgVfxBurst.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build(),
                 (look, x, y, z, tx, ty, tz) -> new CgVfxBurst(look, x, y, z));
         register("crystalgraphics:heat_haze", "Heat haze", "Air", CgVfxHeatHaze.standard(),
                 (look, x, y, z, tx, ty, tz) -> new CgVfxHeatHaze(look, x, y, z));

@@ -340,12 +340,13 @@ public class EngineOnTrackedBackendTest {
             }
             """;
 
-    /** Every {@code .shader} directly under core's {@code assets/crystalgraphics/shaders/}, jar or directory. */
+    /** Every {@code .shader} under core's {@code assets/crystalgraphics/shaders/}, its folders' too, jar or directory. */
     private static List<String> shippedMaterials() throws Exception {
         URI dir = CgMaterial.class.getResource("/assets/crystalgraphics/shaders/").toURI();
         try (FileSystem jar = "jar".equals(dir.getScheme()) ? FileSystems.newFileSystem(dir, Map.of()) : null;
-             Stream<Path> files = Files.list(Path.of(dir))) {
-            return files.map(f -> f.getFileName().toString())
+             Stream<Path> files = Files.walk(Path.of(dir))) {
+            Path root = Path.of(dir);
+            return files.map(f -> root.relativize(f).toString().replace('\\', '/'))
                     .filter(n -> n.endsWith(".shader") && !n.equals(DOCUMENTATION_ONLY))
                     .sorted().map(n -> "crystalgraphics:shaders/" + n).toList();
         }

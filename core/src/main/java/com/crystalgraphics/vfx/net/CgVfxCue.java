@@ -3,6 +3,8 @@ package com.crystalgraphics.vfx.net;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgSentHit;
+import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetEvent;
@@ -12,9 +14,10 @@ import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
+import com.crystalgraphics.vfx.look.CgVfxEnding;
+import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
-import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 
@@ -111,9 +114,17 @@ public final class CgVfxCue {
 
     /** What an authoritative cue's server copy struck, its part by its place in the look's schema. */
     static final CgNetEvent<CgSentHit> HIT = CgNetEvent.of("cue/hit", CgSentHit.wire());
+    /**
+     * A tween its server copy began, for every viewer to play: the parameter's place in the look's layout, the easing's
+     * in {@code CgEasings}, the seconds, then where it ends.
+     */
+    static final CgNetEvent<List<Float>> TWEEN = CgNetEvent.of("cue/tween", CgCodecs.listOf(CgCodecs.FLOAT));
+    /** An ending its server copy began, by name ({@code CgVfxEnding.named}); and the field a late viewer reads it from. */
+    static final CgNetEvent<String> END = CgNetEvent.of("cue/end", CgCodecs.STRING);
+    static final CgNetField<String> ENDING = CgNetField.of("cue/ending", CgCodecs.STRING);
 
     private static final Map<String, CgVfxCue> CUES = new ConcurrentHashMap<>();
-    private static final Map<CgVfxSchema, LookFields> LOOK_FIELDS = new IdentityHashMap<>();
+    private static final Map<CgVfxLayout, LookFields> LOOK_FIELDS = new IdentityHashMap<>();
 
     private final String id;
     final CgNetType type;
@@ -129,7 +140,7 @@ public final class CgVfxCue {
     private CgVfxCue(Builder b, CgNetType type) {
         this.id = b.id;
         this.type = type;
-        this.look = b.look == null ? null : lookFields(b.look.schema());
+        this.look = b.look == null ? null : lookFields(b.look.layout());
         this.range = b.range;
         this.authoritative = b.authoritative;
     }
@@ -221,11 +232,11 @@ public final class CgVfxCue {
                         + " what it plays, cue(path, look, factory)");
             }
             if (CUES.containsKey(id)) throw new IllegalStateException("cue '" + id + "' is already declared");
-            CgNetType.Builder type = CgNetType.define(id).fields(CORE).fields(fields.toArray(new CgNetField<?>[0]))
-                    .events(HIT).range(range).keepRefused();
+            CgNetType.Builder type = CgNetType.define(id).fields(CORE).fields(ENDING)
+                    .fields(fields.toArray(new CgNetField<?>[0])).events(HIT, TWEEN, END).range(range).keepRefused();
             if (look != null) {
-                type.fields(look.schema().networked().toArray(new CgNetField<?>[0]));
-                type.fields(lookFields(look.schema()).all);
+                type.fields(look.layout().networked().toArray(new CgNetField<?>[0]));
+                type.fields(lookFields(look.layout()).all);
             }
             if (persisted) type.persisted();
             CgVfxCue cue = new CgVfxCue(this, type.build());
@@ -346,7 +357,7 @@ public final class CgVfxCue {
 
     private void confirmed(CgNetObject obj, CgSentHit sent) {
         if (confirmations.isEmpty()) return;
-        sent.read(arrived, look == null ? null : look.schema.partAt(sent.part()));
+        sent.read(arrived, look == null ? null : look.layout.partAt(sent.part()));
         for (Consumer<? super CgHit> listener : confirmations) listener.accept(arrived);
     }
 
@@ -398,9 +409,9 @@ public final class CgVfxCue {
 
     // ── Look parameters as fields ───────────────────────────────────────────────────────────────
 
-    /** A schema's numbers and colours as float fields, one a component; shared by every cue playing it. */
+    /** A layout's numbers, colours and palettes as float fields, one a component; shared by every cue playing it. */
     static final class LookFields {
-        final CgVfxSchema schema;
+        final CgVfxLayout layout;
         final CgVfxParam[] params;
         /** By parameter: its components' fields. */
         final CgNetField<Float>[][] fields;
@@ -409,19 +420,21 @@ public final class CgVfxCue {
         final Map<CgNetField<?>, Integer> byField = new IdentityHashMap<>();
 
         @SuppressWarnings("unchecked")
-        LookFields(CgVfxSchema schema) {
-            this.schema = schema;
+        LookFields(CgVfxLayout layout) {
+            this.layout = layout;
             List<CgVfxParam> values = new ArrayList<>();
-            for (CgVfxParam param : schema.params()) if (!param.isCurve() && !param.isShake()) values.add(param);
+            for (CgVfxParam param : layout.params()) if (param.numeric()) values.add(param);
             params = values.toArray(new CgVfxParam[0]);
             fields = new CgNetField[params.length][];
             List<CgNetField<?>> all = new ArrayList<>();
             for (int i = 0; i < params.length; i++) {
-                String name = "look/" + fieldName(params[i].name());
-                int size = params[i].size();
+                String name = "look/" + fieldName(layout.qualifiedName(params[i]));
+                int size = params[i].floats();
                 fields[i] = new CgNetField[size];
                 for (int k = 0; k < size; k++) {
-                    fields[i][k] = CgNetField.ofFloat(size == 1 ? name : name + "/" + "rgba".charAt(k));
+                    String component = size == 1 ? name : size == 4 ? name + "/" + "rgba".charAt(k)
+                            : name + "/" + k / 4 + "rgba".charAt(k % 4);
+                    fields[i][k] = CgNetField.ofFloat(component);
                     byField.put(fields[i][k], i);
                     all.add(fields[i][k]);
                 }
@@ -439,17 +452,52 @@ public final class CgVfxCue {
         void apply(int i, Play play, CgVfxEffect effect) {
             CgNetField<Float>[] f = fields[i];
             if (!play.has(f[0])) return;
-            if (f.length == 1) {
-                effect.set(params[i], play.getFloat(f[0]));
+            CgVfxParam param = params[i];
+            if (param instanceof CgVfxParam.Scalar) {
+                effect.set((CgVfxParam.Scalar) param, play.getFloat(f[0]));
+            } else if (param instanceof CgVfxParam.Color) {
+                effect.set((CgVfxParam.Color) param, play.getFloat(f[0]), play.getFloat(f[1]), play.getFloat(f[2]),
+                        play.getFloat(f[3]));
             } else {
-                effect.set(params[i], play.getFloat(f[0]), play.getFloat(f[1]), play.getFloat(f[2]), play.getFloat(f[3]));
+                CgVfxParam.Palette palette = (CgVfxParam.Palette) param;
+                for (int e = 0; e < palette.count(); e++) {
+                    effect.set(palette, e, play.getFloat(f[e * 4]), play.getFloat(f[e * 4 + 1]), play.getFloat(f[e * 4 + 2]),
+                            play.getFloat(f[e * 4 + 3]));
+                }
             }
         }
     }
 
-    private static LookFields lookFields(CgVfxSchema schema) {
+    private static LookFields lookFields(CgVfxLayout layout) {
         synchronized (LOOK_FIELDS) {
-            return LOOK_FIELDS.computeIfAbsent(schema, LookFields::new);
+            return LOOK_FIELDS.computeIfAbsent(layout, LookFields::new);
+        }
+    }
+
+    /** A tween as {@link #TWEEN} sends it: the parameter's place in the layout, the easing's, the seconds, the target. */
+    static List<Float> tween(@Nullable LookFields look, CgVfxParam param, float[] to, float seconds, CgEasing easing) {
+        if (look == null) throw new IllegalArgumentException("a cue with no look animates nothing");
+        List<Float> out = new ArrayList<>(3 + to.length);
+        out.add((float) look.layout.params().indexOf(param));
+        out.add((float) CgEasings.indexOf(easing));
+        out.add(seconds);
+        for (float v : to) out.add(v);
+        return out;
+    }
+
+    /** Plays a {@link #TWEEN} on a viewer's {@code effect}. */
+    static void play(@Nullable LookFields look, CgVfxEffect effect, List<Float> tween) {
+        if (look == null || effect.look().layout() != look.layout || tween.size() < 4) return;
+        int index = Math.round(tween.get(0));
+        List<CgVfxParam> params = look.layout.params();
+        if (index < 0 || index >= params.size()) return;
+        CgVfxParam param = params.get(index);
+        CgEasing easing = CgEasings.byIndex(Math.round(tween.get(1)));
+        float seconds = tween.get(2);
+        if (param instanceof CgVfxParam.Scalar) {
+            effect.animate((CgVfxParam.Scalar) param, tween.get(3), seconds, easing);
+        } else if (param instanceof CgVfxParam.Color && tween.size() >= 7) {
+            effect.animate((CgVfxParam.Color) param, tween.get(3), tween.get(4), tween.get(5), tween.get(6), seconds, easing);
         }
     }
 
@@ -475,7 +523,7 @@ public final class CgVfxCue {
         if (look == null) return false;
         Integer i = look.byField.get(field);
         if (i == null) return false;
-        if (effect.look().schema() == look.schema) look.apply(i, play, effect);
+        if (effect.look().layout() == look.layout) look.apply(i, play, effect);
         return true;
     }
 
@@ -653,21 +701,40 @@ public final class CgVfxCue {
         }
 
         /** One of its look's numbers, by the parameter's constant ({@code Blast.RADIUS}). */
-        public Play set(CgVfxParam param, float value) {
-            CgNetField<Float>[] f = lookField(param, 1);
-            return setFloat(f[0], value);
+        public Play set(CgVfxParam.Scalar param, float value) {
+            return setFloat(lookField(param)[0], value);
         }
 
-        /** One of its look's colours. */
-        public Play set(CgVfxParam param, float r, float g, float b, float a) {
-            CgNetField<Float>[] f = lookField(param, 4);
-            return setFloat(f[0], r).setFloat(f[1], g).setFloat(f[2], b).setFloat(f[3], a);
+        /** One of its look's colours, {@code 0xAARRGGBB}. */
+        public Play set(CgVfxParam.Color param, int argb) {
+            return set(param, argb, 1f);
         }
 
-        private CgNetField<Float>[] lookField(CgVfxParam param, int size) {
+        /** One of its look's colours, {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
+        public Play set(CgVfxParam.Color param, int argb, float intensity) {
+            return setColour(lookField(param), 0, argb, intensity);
+        }
+
+        /** Colour {@code entry} of one of its look's palettes, {@code 0xAARRGGBB}. */
+        public Play set(CgVfxParam.Palette param, int entry, int argb) {
+            return set(param, entry, argb, 1f);
+        }
+
+        /** Colour {@code entry} of one of its look's palettes, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
+        public Play set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
+            return setColour(lookField(param), entry * 4, argb, intensity);
+        }
+
+        private Play setColour(CgNetField<Float>[] f, int at, int argb, float intensity) {
+            return setFloat(f[at], CgVfxParam.Color.red(argb) * intensity)
+                    .setFloat(f[at + 1], CgVfxParam.Color.green(argb) * intensity)
+                    .setFloat(f[at + 2], CgVfxParam.Color.blue(argb) * intensity)
+                    .setFloat(f[at + 3], CgVfxParam.Color.alpha(argb));
+        }
+
+        private CgNetField<Float>[] lookField(CgVfxParam param) {
             CgNetField<Float>[] f = cue.look == null ? null : cue.look.of(param);
             if (f == null) throw new IllegalArgumentException(param + " is not a number or colour of cue '" + cue.id + "''s look");
-            if (f.length != size) throw new IllegalArgumentException(param + " has " + f.length + " components, not " + size);
             return f;
         }
 
@@ -755,10 +822,15 @@ public final class CgVfxCue {
                 else effect.follow(followId, at);
             }
             LookFields look = cue.look;
-            if (look != null && effect.look().schema() == look.schema) {
+            if (look != null && effect.look().layout() == look.layout) {
                 for (int i = 0; i < look.params.length; i++) look.apply(i, this, effect);
             }
             if (age > 0f) effect.startAt(age);
+            String ending = get(ENDING);
+            if (ending != null) {
+                CgVfxEnding named = CgVfxEnding.named(ending);
+                if (named != null) effect.end(named);
+            }
             return effect;
         }
 
@@ -980,16 +1052,68 @@ public final class CgVfxCue {
         }
 
         /** One of its look's numbers; on an authoritative cue, set on the server's effect, which sends it on. */
-        public Playing set(CgVfxParam param, float value) {
+        public Playing set(CgVfxParam.Scalar param, float value) {
             if (authority != null) authority.effect().set(param, value);
             else play.set(param, value);
             return this;
         }
 
-        /** One of its look's colours. */
-        public Playing set(CgVfxParam param, float r, float g, float b, float a) {
-            if (authority != null) authority.effect().set(param, r, g, b, a);
-            else play.set(param, r, g, b, a);
+        /** One of its look's colours, {@code 0xAARRGGBB}; on an authoritative cue, set on the server's effect. */
+        public Playing set(CgVfxParam.Color param, int argb) {
+            return set(param, argb, 1f);
+        }
+
+        /** One of its look's colours, {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
+        public Playing set(CgVfxParam.Color param, int argb, float intensity) {
+            if (authority != null) authority.effect().set(param, argb, intensity);
+            else play.set(param, argb, intensity);
+            return this;
+        }
+
+        /** Colour {@code entry} of one of its look's palettes, {@code 0xAARRGGBB}. */
+        public Playing set(CgVfxParam.Palette param, int entry, int argb) {
+            return set(param, entry, argb, 1f);
+        }
+
+        /** Colour {@code entry} of one of its look's palettes, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
+        public Playing set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
+            if (authority != null) authority.effect().set(param, entry, argb, intensity);
+            else play.set(param, entry, argb, intensity);
+            return this;
+        }
+
+        /**
+         * Eases one of its look's numbers to {@code to} over {@code seconds}, on every viewer at once. On an
+         * authoritative cue, the server's effect eases it too, and its hits follow.
+         *
+         * <pre>{@code
+         * wave.animate(CgEnergyWave.RADIUS, 1.4f, 0.5f, CgEasings.OUT_BACK);   // powered up mid-beam
+         * }</pre>
+         */
+        public Playing animate(CgVfxParam.Scalar param, float to, float seconds, CgEasing easing) {
+            if (authority != null) {
+                authority.effect().animate(param, to, seconds, easing);
+            } else {
+                play.obj.emit(TWEEN, tween(play.cue.look, param, new float[] {to}, seconds, easing));
+            }
+            return this;
+        }
+
+        /**
+         * Ends it by {@code ending} on every viewer, and on the server's copy of an authoritative cue: its values eased
+         * where the ending puts them, then gone.
+         *
+         * <pre>{@code
+         * wave.end(CgEnergyWave.FADE);
+         * }</pre>
+         */
+        public Playing end(CgVfxEnding ending) {
+            if (authority != null) {
+                authority.effect().end(ending);
+            } else {
+                play.obj.set(ENDING, ending.name());
+                play.obj.emit(END, ending.name());
+            }
             return this;
         }
 

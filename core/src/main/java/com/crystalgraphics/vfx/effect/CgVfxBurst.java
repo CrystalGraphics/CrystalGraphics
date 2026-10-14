@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.effect;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 
@@ -14,7 +15,7 @@ import java.util.List;
  * particles alone and needs no code: an explosion kit's debris, a puff, a hit spark.
  *
  * <pre>{@code
- * CgVfxLook puff = CgVfxLook.builder(SCHEMA).add(KIT).build();
+ * CgVfxLook puff = CgVfxLook.builder(CgVfxBurst.SCHEMA).with(PUFF_KIT).build();
  * vfx.play(new CgVfxBurst(puff, x, y, z)).ground(floorY);
  * }</pre>
  *
@@ -24,6 +25,9 @@ import java.util.List;
  * </ul>
  */
 public class CgVfxBurst extends CgVfxEffect {
+
+    /** A burst reads no parameter of its own: its kits' layers read theirs. */
+    public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:burst");
 
     private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
     private boolean grounded;

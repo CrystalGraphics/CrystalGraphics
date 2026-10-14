@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import org.junit.Test;
@@ -16,7 +17,7 @@ import static org.junit.Assert.assertSame;
 /** An effect's hits reach its own listeners, by part; a wave reports its beam, its burst, then its blast. */
 public class CgVfxHitsTest {
 
-    private static final CgVfxSchema SCHEMA = new CgVfxSchema();
+    private static final CgVfxSchema SCHEMA = CgVfxSchema.of("test:hits");
     private static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_ARC = SCHEMA.part("arc");
     private static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).build();
 
@@ -47,8 +48,8 @@ public class CgVfxHitsTest {
                 .onHit(PART_ARC, h -> heard.add("arc alone at " + h.blockX() + "," + h.blockZ()));
         striker.tick(0f);
         assertEquals(List.of("bolt ENTITY 7", "arc BLOCK -1", "arc alone at 3,4"), heard);
-        assertEquals(1, SCHEMA.indexOf(PART_ARC));
-        assertSame(PART_BOLT, SCHEMA.partAt(0));
+        assertEquals(1, CgVfxLayout.of(List.of(SCHEMA)).indexOf(PART_ARC));
+        assertSame(PART_BOLT, CgVfxLayout.of(List.of(SCHEMA)).partAt(0));
     }
 
     @Test

@@ -1,22 +1,26 @@
 // An energy orb's skin (a wave's head, its charge ball): violently churning, its folds rolling back along -z, its trailing
 // half torn into comet tongues flung backward, eroded into crisp streaks with white-hot filaments, brightest where it
 // leads, flickering. Drawn on CgVfxFrame.mesh's sphere, +z forward. Premultiplied: the skin covers part of what is
-// behind it (_Cover), so it shows its colour over a bright scene. The layer's parameter is how much its back fades out,
-// 1 for a head blending into the body; CG_OBJECT_CUSTOM1.z an intensity. Colour A is the skin, colour B its hottest
-// streaks, A's alpha a strength. CgEnergyWave.
+// behind it (_Cover), so it shows its colour over a bright scene. Its back fades out by _Back; CG_OBJECT_CUSTOM1.z is an
+// intensity. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Shell    ("The skin; its alpha a strength", color) = (0.15, 0.55, 1.6, 1)
+    _ShellHot ("Its hottest streaks and filaments", color) = (0.7, 0.95, 1.6, 1)
+    _Back     ("How much its back fades out: 1 for a head blending into the body", float) = 1
     _Flow     ("How fast the folds roll back, blocks a second", float) = 14.0
     _Erosion  ("Erosion threshold face-on, 0..1", float) = 0.56
     _Displace ("Churn, share of the size", float) = 0.24
     _Tongue   ("Comet tongues flung back, share of the size", float) = 0.7
     _Cover    ("How much of what is behind the skin hides", float) = 0.7
-    _GlowHdr  ("Filament glow under HDR: past white by itself, since the scene blooms only what passes it", float) = 3.0
+    _GlowGain ("Filament glow: past white by itself, since the scene blooms only what passes it", float) = 3.0
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -63,15 +67,15 @@ Pass {
         float alpha = smoothstep(threshold - aa, threshold + aa, e);
         float hot = smoothstep(threshold, threshold + 0.2, e);
         float lead = 0.55 + 0.45 * smoothstep(-0.2, 0.9, lp.z);
-        float fade = mix(1.0, smoothstep(-0.95, -0.25, lp.z), CG_OBJECT_CUSTOM0.y);
+        float fade = mix(1.0, smoothstep(-0.95, -0.25, lp.z), _Back);
         // The skin covers in its colour, so folds piled up settle on it rather than past white; filaments add light.
-        vec3 skin = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
-        vec3 glow = CG_OBJECT_CUSTOM3.rgb * filament * 2.0;
+        vec3 skin = mix(_Shell.rgb, _ShellHot.rgb, hot) * (0.6 + 0.5 * rim) * lead * _Cover;
+        vec3 glow = _ShellHot.rgb * filament * 2.0;
         // Faded by the sphere's normal, as body_shell's: gl_FrontFacing stripes the edge-on, displaced skin with teeth.
         float far = smoothstep(-0.3, 0.3, dot(n, ray));
-        float strength = alpha * fade * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * mix(1.0, 0.55, far);
+        float strength = alpha * fade * _Shell.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * mix(1.0, 0.55, far);
         fragColor = vec4((skin + glow) * fx_flicker(age, seed) * strength, _Cover * strength);
-        CG_GLOW(glow * fx_flicker(age, seed) * strength * CG_HDR(1.0, _GlowHdr));
+        CG_GLOW(glow * fx_flicker(age, seed) * strength * _GlowGain);
     }
 }
 

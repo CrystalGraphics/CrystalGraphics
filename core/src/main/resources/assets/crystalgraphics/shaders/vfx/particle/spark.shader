@@ -1,16 +1,20 @@
 // A glowing spark or ember: a white-hot disc in a soft bloom of its colour, drawn out along its motion the faster it
 // goes, as bright as it is hot, so an ember dims as it cools. A CgVfxQuads quad placed from its particle record
-// (CgVfxFrame.particles, QUADS). Colour A is the bloom, colour B the hot centre, A's alpha a strength.
+// (CgVfxFrame.particles, QUADS). _Color is the bloom, its alpha a strength; _Hot the centre.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The bloom; its alpha a strength", color) = (1, 0.5, 0.15, 1)
+    _Hot ("The white-hot centre", color) = (1, 0.95, 0.8, 1)
     _Stretch ("How much longer a spark draws per block a second it moves", float) = 0.12
     _MaxStretch ("Longest a streak gets, in its widths", float) = 4.0
     _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
@@ -58,9 +62,9 @@ Pass {
         // A round disc, white-hot in the middle, in a wide soft bloom.
         float disc = 1.0 - smoothstep(0.26 - aa, 0.26 + aa, r);
         float bloom = exp(-r * r * 9.0) * (1.0 - smoothstep(0.7, 1.0, r));
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, exp(-r * r * 60.0)) * disc * 1.8
-                 + CG_OBJECT_CUSTOM2.rgb * bloom * 0.9;
-        fragColor = vec4(col * i.spark.z * CG_OBJECT_CUSTOM2.a, 1.0);
+        vec3 col = mix(_Color.rgb, _Hot.rgb, exp(-r * r * 60.0)) * disc * 1.8
+                 + _Color.rgb * bloom * 0.9;
+        fragColor = vec4(col * i.spark.z * _Color.a * FX_PRESENCE, 1.0);
     }
 }
 

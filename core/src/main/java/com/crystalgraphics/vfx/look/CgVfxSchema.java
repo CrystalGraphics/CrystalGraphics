@@ -4,80 +4,168 @@ import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import javax.annotation.Nullable;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * The parameters one kind of effect reads, each with a built-in default: what its {@link CgVfxLook}s fill in and what
- * a playing effect may override. Declare it once per effect class, as static constants.
+ * A named set of parameters: what one effect, one kit or one look reads, each with a default in a unit. A look lays
+ * out every schema it includes ({@link CgVfxLayout}): its effect's, each kit's, its own.
  *
  * <pre>{@code
- * static final CgVfxSchema SCHEMA = new CgVfxSchema();
- * public static final CgVfxParam SPEED = SCHEMA.scalar("speed", 40f);
- * public static final CgVfxParam GLOW = SCHEMA.color("glow", 0.2f, 0.45f, 1.4f, 1f);
- * public static final CgVfxParam BLAST_SHAKE = SCHEMA.shake("blastShake", CgCameraShakes.EXPLOSION);
+ * public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
+ * public static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 0.4f);
+ * public static final CgVfxParam.Scalar REACH = SCHEMA.length("reach", RADIUS, 6f);       // RADIUS × 6 unless set
+ * public static final CgVfxParam.Scalar LIFE = SCHEMA.time("life", 0.8f);
+ * public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFFFFF);
+ * public static final CgVfxParam.Color SHELL = SCHEMA.color("shell", 0xFF1858FF, 1.6f);     // rgb × 1.6: past white
+ * public static final CgVfxParam.Palette BANDS = SCHEMA.palette("bands", 0xFFFFFFFF, 0xFF00FFFF, 0xFF0080E6);
+ * public static final CgVfxParam.Curve GLOW = SCHEMA.curve("glow", CgKeyframes.start(0f, 0f).to(1f, 1f, LINEAR).build());
+ * public static final CgVfxParam.Shake HIT = SCHEMA.shake("hit", CgCameraShakes.IMPACT);
  * }</pre>
  *
  * <ul>
- *   <li>Declare every parameter before the first look is built: a look copies the defaults as they are then.</li>
- *   <li>Values are flat floats, so reading one allocates nothing.</li>
+ *   <li>Declare every parameter before the first look that includes it is built: building one freezes the schema,
+ *       and a declaration after throws.</li>
+ *   <li>A name is unique in its schema, and a schema's name among the schemas of a look.</li>
+ *   <li>A link's source may be another schema's, as a kit's reach follows its effect's radius; a look including the one
+ *       must include the other.</li>
  * </ul>
  */
 public final class CgVfxSchema {
 
+    private static final AtomicInteger IDS = new AtomicInteger();
+
+    final int id = IDS.getAndIncrement();
+    private final String name;
     private final List<CgVfxParam> params = new ArrayList<>();
-    private float[] defaults = new float[0];
-    // Curves and shakes, by a parameter's offset.
-    private final List<Object> objects = new ArrayList<>();
     private final List<CgNetField<?>> networked = new ArrayList<>();
     private final List<CgHitPart> parts = new ArrayList<>();
+    private int floats, objects;
+    private volatile boolean frozen;
 
-    public CgVfxParam scalar(String name, float value) {
-        CgVfxParam param = declare(name, 1);
-        defaults[param.offset] = value;
-        return param;
+    private CgVfxSchema(String name) {
+        this.name = Objects.requireNonNull(name, "name");
     }
 
-    /** A colour, linear rgb above 1 allowed, and a fourth value the reader decides (usually a strength). */
-    public CgVfxParam color(String name, float r, float g, float b, float a) {
-        CgVfxParam param = declare(name, 4);
-        defaults[param.offset] = r;
-        defaults[param.offset + 1] = g;
-        defaults[param.offset + 2] = b;
-        defaults[param.offset + 3] = a;
-        return param;
+    /** A schema named {@code name}: by convention {@code namespace:path}, as {@code "crystalgraphics:wave"}. */
+    public static CgVfxSchema of(String name) {
+        return new CgVfxSchema(name);
+    }
+
+    public String name() {
+        return name;
+    }
+
+    /** A number with no unit: a count, a share, a multiple. */
+    public CgVfxParam.Scalar scalar(String name, float value) {
+        return scalar(name, CgVfxUnit.NONE, value);
+    }
+
+    /** A number in {@code unit}. */
+    public CgVfxParam.Scalar scalar(String name, CgVfxUnit unit, float value) {
+        return add(new CgVfxParam.Scalar(this, unique(name), floats, unit, value, null, 0f));
+    }
+
+    /** A number in {@code unit} following {@code source × factor} until a look or an effect sets it. */
+    public CgVfxParam.Scalar scalar(String name, CgVfxUnit unit, CgVfxParam.Scalar source, float factor) {
+        Objects.requireNonNull(source, "source");
+        return add(new CgVfxParam.Scalar(this, unique(name), floats, unit, 0f, source, factor));
+    }
+
+    /** A length in blocks. */
+    public CgVfxParam.Scalar length(String name, float blocks) {
+        return scalar(name, CgVfxUnit.LENGTH, blocks);
+    }
+
+    /** A length in blocks following {@code source × factor}. */
+    public CgVfxParam.Scalar length(String name, CgVfxParam.Scalar source, float factor) {
+        return scalar(name, CgVfxUnit.LENGTH, source, factor);
+    }
+
+    /** A time in seconds. */
+    public CgVfxParam.Scalar time(String name, float seconds) {
+        return scalar(name, CgVfxUnit.TIME, seconds);
+    }
+
+    /** A speed in blocks a second. */
+    public CgVfxParam.Scalar speed(String name, float blocksPerSecond) {
+        return scalar(name, CgVfxUnit.SPEED, blocksPerSecond);
+    }
+
+    /** A speed following {@code source × factor}. */
+    public CgVfxParam.Scalar speed(String name, CgVfxParam.Scalar source, float factor) {
+        return scalar(name, CgVfxUnit.SPEED, source, factor);
+    }
+
+    /** An angle in radians. */
+    public CgVfxParam.Scalar angle(String name, float radians) {
+        return scalar(name, CgVfxUnit.ANGLE, radians);
+    }
+
+    /** Times a second, or radians a second. */
+    public CgVfxParam.Scalar rate(String name, float perSecond) {
+        return scalar(name, CgVfxUnit.RATE, perSecond);
+    }
+
+    /** A colour, {@code 0xAARRGGBB}: its alpha is whatever its readers decide, usually a strength. */
+    public CgVfxParam.Color color(String name, int argb) {
+        return color(name, argb, 1f);
+    }
+
+    /** A colour, {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1, which is what blooms. */
+    public CgVfxParam.Color color(String name, int argb, float intensity) {
+        return add(new CgVfxParam.Color(this, unique(name), floats, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb)));
+    }
+
+    /** Colours in a row, each {@code 0xAARRGGBB}. */
+    public CgVfxParam.Palette palette(String name, int... argb) {
+        if (argb.length == 0) throw new IllegalArgumentException("Palette '" + name + "' holds no colour");
+        float[] rgba = new float[argb.length * 4];
+        for (int i = 0; i < argb.length; i++) {
+            rgba[i * 4] = CgVfxParam.Color.red(argb[i]);
+            rgba[i * 4 + 1] = CgVfxParam.Color.green(argb[i]);
+            rgba[i * 4 + 2] = CgVfxParam.Color.blue(argb[i]);
+            rgba[i * 4 + 3] = CgVfxParam.Color.alpha(argb[i]);
+        }
+        return add(new CgVfxParam.Palette(this, unique(name), floats, argb.length, rgba));
     }
 
     /** A value over time, read with {@code CgVfxValues.curve}. */
-    public CgVfxParam curve(String name, CgKeyframes value) {
-        return object(name, value, 0);
+    public CgVfxParam.Curve curve(String name, CgKeyframes value) {
+        return add(new CgVfxParam.Curve(this, unique(name), objects, Objects.requireNonNull(value, "value")));
     }
 
-    /** A camera shake the effect plays, read with {@code CgVfxValues.shake}: how a look changes what its moments feel like. */
-    public CgVfxParam shake(String name, CgCameraShake value) {
-        return object(name, value, -1);
+    /** A camera shake the effect plays, read with {@code CgVfxValues.shake}. */
+    public CgVfxParam.Shake shake(String name, CgCameraShake value) {
+        return add(new CgVfxParam.Shake(this, unique(name), objects, Objects.requireNonNull(value, "value")));
     }
 
     public List<CgVfxParam> params() {
         return Collections.unmodifiableList(params);
     }
 
+    /** The parameter named {@code name}, or null. */
+    public CgVfxParam param(String name) {
+        for (CgVfxParam p : params) if (p.name.equals(name)) return p;
+        return null;
+    }
+
     /**
      * State an effect of this kind sends from the server's copy to its viewers, beyond its parameters: every cue playing
-     * a look of this schema lists these fields, and the effect writes and reads them through its cue
-     * ({@code CgVfxCue.Authoritative}, {@code CgVfxCue.Live}).
+     * a look including this schema lists these fields.
      *
      * <pre>{@code
      * public static final CgNetField<Float> FIRED_AT = CgNetField.ofFloat("wave/fired_at").fallback(Float.NaN);
      * static { SCHEMA.networked(FIRED_AT); }
      * }</pre>
-     *
-     * Before any cue playing it is declared.
      */
     public CgVfxSchema networked(CgNetField<?>... fields) {
+        checkOpen();
         Collections.addAll(networked, fields);
         return this;
     }
@@ -87,68 +175,65 @@ public final class CgVfxSchema {
     }
 
     /**
-     * Declares a part of an effect of this kind that strikes: each hit it reports names its part, so a listener may hear
-     * one part alone. A cue sends a part as its place here, so declare parts as constants beside the parameters.
+     * Declares a part that strikes: each hit names its part, so a listener may hear one part alone.
      *
      * <pre>{@code
-     * public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_ARC = SCHEMA.part("arc");
-     *
-     * bolt.onHit(Bolt.PART_ARC, h -> chain(h.entity()));
+     * public static final CgHitPart PART_BOLT = SCHEMA.part("bolt");
+     * bolt.onHit(Bolt.PART_BOLT, h -> damage(h.entity()));
      * }</pre>
      */
     public CgHitPart part(String name) {
+        checkOpen();
         CgHitPart part = CgHitPart.of(name);
         parts.add(part);
         return part;
     }
 
-    /** The part declared {@code index}-th; null out of range. */
-    @Nullable
-    public CgHitPart partAt(int index) {
-        return index >= 0 && index < parts.size() ? parts.get(index) : null;
+    public List<CgHitPart> parts() {
+        return Collections.unmodifiableList(parts);
     }
 
-    /** Where {@code part} was declared; -1 for null or another schema's. */
-    public int indexOf(@Nullable CgHitPart part) {
-        return part == null ? -1 : parts.indexOf(part);
+    /** Floats a full set of this schema's values takes. */
+    public int floats() {
+        return floats;
     }
 
-    /** Floats in a full set of values. */
-    public int width() {
-        return defaults.length;
+    int objects() {
+        return objects;
     }
 
-    float[] defaults() {
-        return defaults.clone();
+    /** Whether a look has laid it out, after which nothing more is declared on it. */
+    public boolean frozen() {
+        return frozen;
     }
 
-    Object[] defaultObjects() {
-        return objects.toArray();
+    void freeze() {
+        frozen = true;
     }
 
-    private void unique(String name) {
-        for (CgVfxParam existing : params) {
-            if (existing.name.equals(name)) throw new IllegalArgumentException("Parameter '" + name + "' is already declared");
+    private String unique(String name) {
+        checkOpen();
+        Objects.requireNonNull(name, "name");
+        if (param(name) != null) throw new IllegalArgumentException("'" + name + "' is already declared on " + this.name);
+        return name;
+    }
+
+    private void checkOpen() {
+        if (frozen) {
+            throw new IllegalStateException("Schema " + name + " is in a look already: declare its parameters, fields and"
+                    + " parts before the first look including it is built (static field order)");
         }
     }
 
-    private CgVfxParam object(String name, Object value, int size) {
-        unique(name);
-        CgVfxParam param = new CgVfxParam(this, name, objects.size(), size);
-        objects.add(value);
+    private <P extends CgVfxParam> P add(P param) {
         params.add(param);
+        if (param.numeric()) floats += param.floats();
+        else objects++;
         return param;
     }
 
-    private CgVfxParam declare(String name, int size) {
-        unique(name);
-        CgVfxParam param = new CgVfxParam(this, name, defaults.length, size);
-        defaults = Arrays.copyOf(defaults, defaults.length + size);
-        params.add(param);
-        return param;
-    }
-
-    void check(CgVfxParam param) {
-        if (param.schema != this) throw new IllegalArgumentException("'" + param.name + "' belongs to another effect");
+    @Override
+    public String toString() {
+        return name;
     }
 }

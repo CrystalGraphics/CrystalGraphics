@@ -2,16 +2,20 @@
 // racing along it, its silhouette lashed by flame tongues that burst out and fall back. Eroded by a noise threshold into
 // crisp edges, sparse where it faces the eye so the core shows through and filled at the silhouette; it flickers
 // violently. Premultiplied: its skin covers part of what is behind it (_Cover), so it shows its colour over a bright
-// scene rather than paling it. Colour A is the skin, colour B its hottest streaks and filaments, A's alpha a strength.
+// scene rather than paling it. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks and filaments.
 // CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Shell    ("The skin; its alpha a strength", color) = (0.15, 0.55, 1.6, 1)
+    _ShellHot ("Its hottest streaks and filaments", color) = (0.7, 0.95, 1.6, 1)
     _FxPath   ("Path rings", sampler2D) = "black"
     _Flow     ("Flow, blocks a second", float) = 22.0
     _Scale    ("Turbulence frequency", float) = 1.0
@@ -19,7 +23,7 @@ Properties {
     _Displace ("Rolling bulges, share of the radius", float) = 0.16
     _Tongue   ("Flame tongues, share of the radius", float) = 0.5
     _Cover    ("How much of what is behind the skin hides", float) = 0.7
-    _GlowHdr  ("Streak glow under HDR: past white by itself, since the scene blooms only what passes it", float) = 3.0
+    _GlowGain ("Streak glow: past white by itself, since the scene blooms only what passes it", float) = 3.0
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -79,15 +83,15 @@ Pass {
         float hot = smoothstep(threshold + 0.05, threshold + 0.3, e);
         // The skin covers in its own colour, so folds piled up settle on it rather than past white; only the hot
         // streaks and filaments add light over it.
-        vec3 skin = CG_OBJECT_CUSTOM2.rgb * (0.6 + 0.5 * rim) * _Cover;
-        vec3 glow = CG_OBJECT_CUSTOM3.rgb * (0.6 * hot * hot + 1.8 * filament);
+        vec3 skin = _Shell.rgb * (0.6 + 0.5 * rim) * _Cover;
+        vec3 glow = _ShellHot.rgb * (0.6 * hot * hot + 1.8 * filament);
         float flicker = fx_flicker(age + s * 0.015, seed);
         // The far side dimmer, faded across the silhouette by the axis normal: gl_FrontFacing flips triangle by
         // triangle where the displaced skin turns edge-on, striping the rim with teeth.
         float far = smoothstep(-0.3, 0.3, dot(n, ray));
-        float strength = alpha * CG_OBJECT_CUSTOM2.a * mix(1.0, 0.55, far);
+        float strength = alpha * _Shell.a * FX_PRESENCE * mix(1.0, 0.55, far);
         fragColor = vec4((skin + glow) * strength * i.pulse * flicker, _Cover * strength);
-        CG_GLOW(glow * strength * i.pulse * flicker * CG_HDR(1.0, _GlowHdr));
+        CG_GLOW(glow * strength * i.pulse * flicker * _GlowGain);
     }
 }
 

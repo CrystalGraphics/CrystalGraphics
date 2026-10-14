@@ -4,15 +4,19 @@
 // blue it erodes into dimming shreds until nothing is left. Its front wall veils what is behind it, a little face-on and
 // more toward the rim, so smoke and ink on its far side read as behind it; what is in front hides it by depth. Drawn on
 // CgVfxFrame.mesh's sphere, both faces, premultiplied.
-// CG_OBJECT_CUSTOM1.z is an intensity, .w the blast's progress 0..1. Colour A is the hot burst, colour B the cool shell,
-// A's alpha a strength. CgEnergyWave.
+// CG_OBJECT_CUSTOM1.z is an intensity, .w the blast's progress 0..1. _Core is the hot burst, its alpha a strength; _Shell
+// the cool shell. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Core     ("The hot burst; its alpha a strength", color) = (1, 1, 1, 1)
+    _Shell    ("The cool shell it fades to", color) = (0.15, 0.55, 1.6, 1)
     _Erode   ("Progress the dome starts breaking up at", float) = 0.3
     _Scale   ("Break-up frequency", float) = 3.0
     _Billow  ("Billows out of the sphere, share of its radius", float) = 0.16
@@ -73,7 +77,7 @@ Pass {
         float vein = (smoothstep(0.9 - fa, 0.9 + fa, filament) + 0.3 * smoothstep(0.72, 0.95, filament)) * (0.35 + 0.65 * heat);
         float thread = (smoothstep(0.93 - ff, 0.93 + ff, fine) + 0.2 * smoothstep(0.78, 0.97, fine)) * (0.25 + 0.75 * heat);
         float glint = smoothstep(0.8 - fl, 0.8 + fl, flow) * body;
-        vec3 cool = CG_OBJECT_CUSTOM3.rgb, hot = CG_OBJECT_CUSTOM2.rgb;
+        vec3 cool = _Shell.rgb, hot = _Core.rgb;
         vec3 shell = mix(cool, hot, heat * 0.6);
         vec3 col = shell * (0.06 + 0.3 * body) + mix(shell, hot, 0.5 + 0.5 * heat) * bright * 0.9
                 + hot * (vein * 1.4 + thread * 0.6 + glint * 0.3 + outline * 0.8);
@@ -97,8 +101,8 @@ Pass {
         col = col * fade + mix(shell, hot, 0.5) * band * (0.8 + filament) * (0.3 + 0.7 * heat);
         col *= fx_flicker(age, seed);
         float veil = gl_FrontFacing ? min(_Veil * (0.2 + 0.35 * body + 0.25 * bright), 0.85) * left * fade : 0.0;
-        fragColor = vec4(col * left * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (gl_FrontFacing ? 1.0 : 0.35),
-                veil * CG_OBJECT_CUSTOM1.z);
+        fragColor = vec4(col * left * _Core.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * (gl_FrontFacing ? 1.0 : 0.35),
+                veil * CG_OBJECT_CUSTOM1.z * FX_PRESENCE);
     }
 }
 

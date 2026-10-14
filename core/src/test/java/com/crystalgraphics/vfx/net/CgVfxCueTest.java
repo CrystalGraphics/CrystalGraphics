@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.net;
 
 import com.crystalgraphics.collision.CollisionFakes;
 import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.net.CgNetTesting;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.object.CgNetField;
@@ -36,14 +37,16 @@ import java.util.function.Function;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /** Cues over one player's loopback: what the server sends, the client builds, as the server sent it. */
 public class CgVfxCueTest {
 
-    private static final CgVfxSchema SCHEMA = new CgVfxSchema();
-    private static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 1f);
-    private static final CgVfxParam KI = SCHEMA.color("ki", 1f, 1f, 1f, 1f);
+    private static final CgVfxSchema SCHEMA = CgVfxSchema.of("test:cue");
+    private static final CgVfxParam.Scalar RADIUS = SCHEMA.scalar("radius", 1f);
+    private static final CgVfxParam.Color KI = SCHEMA.color("ki", 0xFFFFFFFF);
     private static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).build();
     private static final CgNetField<Integer> LEVEL = CgNetField.ofInt("cue_test/level");
 
@@ -254,7 +257,7 @@ public class CgVfxCueTest {
     public void aOneShotIsBuiltAsTheServerSentIt() {
         join();
         SPARK.at(body, 1, 64, 2).toward(0, 0, 4).seed(0x12345600)
-                .set(RADIUS, 3f).set(KI, 0f, 0f, 1f, 1f).setInt(LEVEL, 2).send();
+                .set(RADIUS, 3f).set(KI, 0xFF0000FF).setInt(LEVEL, 2).send();
         settle();
 
         assertEquals(1, BUILT.size());
@@ -440,6 +443,24 @@ public class CgVfxCueTest {
         settle();
         assertEquals("the server's effect takes the Playing's", 0.7f, beam.get(CgEnergyWave.RADIUS), 0f);
         assertEquals(0.7f, WAVES.get(0).get(CgEnergyWave.RADIUS), 0f);
+    }
+
+    @Test
+    public void aTweenAndAnEndingOnTheServersEffectPlayOnEveryViewer() {
+        levels.blocks = level -> CgVfxAuthorityTest.FLOOR;
+        join();
+        CgVfxCue.Playing playing = WAVE.at(body, 0, 64, 0).toward(1, 0, 0).start();
+        CgEnergyWave beam = playing.effect();
+        settle();
+        beam.animate(CgEnergyWave.RADIUS, 2f, 0.5f, CgEasings.LINEAR);
+        settle();
+        CgEnergyWave viewer = WAVES.get(0);
+        assertNull("a viewer's eases on its own clock", viewer.ending());
+
+        beam.end(CgEnergyWave.FADE);
+        settle();
+        assertSame("a viewer's ends as the server's did", CgEnergyWave.FADE, viewer.ending());
+        assertEquals("and one joining later reads it", CgEnergyWave.FADE.name(), playing.object().get(CgVfxCue.ENDING));
     }
 
     @Test(expected = IllegalStateException.class)

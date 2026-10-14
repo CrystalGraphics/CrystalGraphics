@@ -6,6 +6,7 @@ import com.crystalgraphics.vfx.CgVfxFrame;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
+import com.crystalgraphics.vfx.element.CgVfxBlast;
 import com.crystalgraphics.vfx.element.CgVfxExplosion;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
@@ -45,20 +46,16 @@ public final class CgVfxBlasts {
     /** Blocks over a burst its ground search starts from, and how far down it looks. */
     private static final int SEARCH = 16, DEPTH = 48;
 
-    private static final CgVfxSchema SCHEMA = new CgVfxSchema();
-    private static final CgVfxExplosion KIT = new CgVfxExplosion(SCHEMA, "blast");
-    /**
-     * The kit's particles without its meshes or its ink, in the Kamehameha's blue, the Final Flash's gold and the Galick
-     * Gun's violet.
-     */
-    private static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA)
-            .layer(KIT.speckLayer).layer(KIT.dustLayer).layer(KIT.rayLayer).layer(KIT.sparkLayer)
-            .emitter(KIT.specks).emitter(KIT.sparkles).emitter(KIT.rays)
-            .build();
+    private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/blasts");
+    private static final CgVfxExplosion KIT = CgVfxBlast.EXPLOSION;
+    /** The kit's emitters a burst starts: its particles without its meshes or its ink. */
+    private static final List<CgVfxEmitter> PLAYED = List.of(KIT.specks, KIT.sparkles, KIT.rays);
+    /** In the Kamehameha's blue, the Final Flash's gold and the Galick Gun's violet. */
+    private static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA).with(KIT.kit()).build();
     private static final CgVfxLook[] LOOKS = {
             BLUE,
-            BLUE.toBuilder().set(KIT.hot, 1f, 0.88f, 0.3f, 1f).set(KIT.debris, 0.1f, 0.03f, 0.01f, 1f).build(),
-            BLUE.toBuilder().set(KIT.hot, 0.98f, 0.65f, 1f, 1f).set(KIT.debris, 0.06f, 0.01f, 0.1f, 1f).build(),
+            BLUE.derive().set(KIT.hot, 0xFFFFE04C).set(KIT.debris, 0xFF1A0803).build(),
+            BLUE.derive().set(KIT.hot, 0xFFFAA6FF).set(KIT.debris, 0xFF0F031A).build(),
     };
 
     private final CgVfxOwner vfx;
@@ -159,15 +156,14 @@ public final class CgVfxBlasts {
         }
     }
 
-    /** One burst of a look's emitters at its origin, landing on a floor at {@code floorY}; dies when they all have. */
+    /** One burst of {@link #PLAYED} at its origin, landing on a floor at {@code floorY}; dies when they all have. */
     private static final class Burst extends CgVfxEffect {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
 
         Burst(CgVfxLook look, double x, double y, double z, double floorY) {
             super(look, x, y, z);
-            List<CgVfxEmitter> kinds = look.emitters();
-            for (int i = 0; i < kinds.size(); i++) {
-                CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(kinds.get(i), seed + i * 0.137f);
+            for (int i = 0; i < PLAYED.size(); i++) {
+                CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(look.emitter(PLAYED.get(i).name()), seed + i * 0.137f);
                 emitter.start(0f, 0f, 0f);
                 emitter.ground((float) (floorY - y));
                 emitters.add(emitter);

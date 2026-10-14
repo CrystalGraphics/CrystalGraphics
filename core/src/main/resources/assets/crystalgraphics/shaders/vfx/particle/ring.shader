@@ -4,16 +4,20 @@
 // shock_ring.shader on the same particle. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere the vertex stage
 // bends into the wall (fx_ring.glsl), its radius the particle's drawn size; the line is where the wall comes within
 // _Width of the scene behind it, so it finds a floor anywhere within _Below under the centre. CG_OBJECT_CUSTOM1: x its
-// life 0..1, y its seed, z its opacity. Colour A is the glow, colour B its hot middle, A's alpha a strength.
+// life 0..1, y its seed, z its opacity. _Color is the glow, its alpha a strength; _Hot its middle.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ring.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The glow; its alpha a strength", color) = (1, 0.55, 0.2, 1)
+    _Hot ("The line's hot middle", color) = (1, 1, 1, 1)
     _Below  ("Blocks the wall reaches under its centre", float) = 1.5
     _Height ("Blocks it stands over its centre", float) = 2.5
     _Width  ("Blocks of wall in front of the scene the line lights", float) = 0.5
@@ -61,9 +65,9 @@ Pass {
         float edgeOn = 1.0 - abs(dot(normalize(i.outward), ray));
         float veil = _Veil * exp(-max(over, 0.0) / _VeilHeight) * mix(0.25, 1.0, edgeOn * edgeOn);
         float flash = 1.0 - smoothstep(0.4 * _FlashFor, _FlashFor, life);
-        float glow = (contact + veil) * whole * flash * opacity * CG_OBJECT_CUSTOM2.a;
+        float glow = (contact + veil) * whole * flash * opacity * _Color.a * FX_PRESENCE;
         if (glow < 0.003) discard;
-        vec3 col = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, contact * contact * contact) * _Bright;
+        vec3 col = mix(_Color.rgb, _Hot.rgb, contact * contact * contact) * _Bright;
         fragColor = vec4(col * glow, 1.0);
     }
 }

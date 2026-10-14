@@ -1,128 +1,179 @@
 package com.crystalgraphics.vfx.look;
 
-import com.crystalgraphics.api.shader.CgShaderBindings;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * One draw of a {@link CgVfxLook}: a {@code .shader}, how wide it is drawn, the two colour parameters it reads, and
- * material properties of its own.
+ * One draw of a look: a {@code .shader} on one or more slots, its properties set, bound to the look's parameters, or
+ * left to bind themselves by name.
  *
  * <pre>{@code
- * CgVfxLayer shell = CgVfxLayer.builder("crystalgraphics:shaders/vfx/beam/body_shell.shader")
- *         .slot(CgVfxLayer.SLOT_BODY)                         // the part of the effect it draws
- *         .radius(1.0f)                                      // times the effect's own radius
- *         .colors(CgEnergyWave.SHELL, CgEnergyWave.SHELL_HOT) // CG_OBJECT_CUSTOM2, CG_OBJECT_CUSTOM3
- *         .order(CgVfxLayer.ORDER_SURFACE)
- *         .properties(b -> b.set1f("_Flow", 22f))
+ * CgVfxLayer shell = CgVfxLayer.of("crystalgraphics:shaders/vfx/beam/body_shell.shader")
+ *         .on(CgBeamBody.BODY)
+ *         .size(1.15f)                        // times the slot's own size
+ *         .set("_Flow", 22f)                  // a constant of this layer
+ *         .build();                           // _Shell, _ShellHot bind to SHELL, SHELL_HOT by name
+ *
+ * CgVfxLayer bands = CgVfxLayer.of("mymod:shaders/vfx/bands.shader")
+ *         .on(CgBeamBody.BODY, CgBeamBody.HEAD)            // one shader on a tube and a sphere
+ *         .bind("_Colors", MyWave.BANDS)                   // a palette into color[3]
+ *         .bind("_Reach", CgEnergyWave.RADIUS, 2.6f)       // RADIUS × 2.6, every draw
+ *         .texture("_Strip", MyWave.SLEEVE)
  *         .build();
  * }</pre>
  *
  * <ul>
- *   <li>Colours are read from the playing effect's values each draw, so two effects with different palettes still
- *       batch. Material properties are per layer: a different value needs a different layer.</li>
- *   <li>A tube layer's shader reads {@code fx_tube.glsl}'s contract: {@code _FxPath}, and {@code CG_OBJECT_CUSTOM0..3}
- *       as {@code CgVfxTube} writes them. A mesh layer's reads {@code CgVfxFrame.mesh}'s.</li>
- *   <li>A layer {@link Builder#from} a quality tier is not drawn below it; the frame skips it, so an effect never asks.</li>
+ *   <li><b>By name</b>: a colour or palette property neither set nor bound reads the look's colour or palette of its
+ *       name, the leading underscore dropped and the first letter lowered ({@code _ShellHot} reads {@code shellHot});
+ *       else the shader's default. A number is bound only by {@link Builder#bind}, so a shader's {@code _Speed} never
+ *       takes an effect's {@code speed}. {@link Builder#unbound} keeps a colour the shader's.</li>
+ *   <li>Bound values are read per draw from the effect's own values, so effects playing different values still batch;
+ *       constants are the layer's material, made once per layer.</li>
+ *   <li>A name the shader does not declare, or of the wrong kind, throws when the layer's first material is made.</li>
+ *   <li>Order within an effect is the look's list order within a {@link Role}: no numbers.</li>
+ *   <li>Immutable, and shared: a look built from kits shares their layers' materials. A {@link CgVfxTuning} may change
+ *       its constants for the run, in every look drawing it.</li>
  * </ul>
  */
 public final class CgVfxLayer {
 
     /**
-     * Where a layer draws within its effect (the world renderer's {@code order} within the effect's group, Niagara's
-     * emitter sort order hint), one per kind of draw so each batches: 0 to 15, higher later. Every effect sorts as one
-     * group at its origin in {@code CgSortLayer.EFFECTS}, so these order nothing outside it. Layers of one order sort
-     * by distance alone, so two tube layers sharing one interleave chunk by chunk and never instance.
-     *
-     * <p>Layers that bend the scene ({@link #ORDER_DISTORTION}) write the world renderer's Distortion pass and bend what
-     * sorts before them: smoke and light pools. {@link #ORDER_SURFACE}, {@link #ORDER_BANDS} and
-     * {@link #ORDER_CORE} are marked {@code Draw.afterDistortion}, so their own haze never smears a bright body into the
-     * air round it (as a fire in Unreal draws after its distortion), while a nearer effect's haze still bends them.</p>
-     *
-     * <p>A layer whose shader is {@code "Depth" = "Clip"} draws before the rest of its effect whatever its order, so what
-     * blends over it sees its depth.</p>
+     * What a layer is, for where it draws within its effect: roles draw in this order, and within one the look's
+     * order. A {@link #SURFACE} layer draws after its own effect's distortion, so its haze never smears it.
      */
-    public static final int ORDER_SMOKE = 1, ORDER_LIGHT = 2;
-    /**
-     * Layers that bend the scene behind them (heat haze, a shock front), through a Distortion pass: every haze of the
-     * frame adds into one offset target, applied once. A haze also leaves its own hot body unbent.
-     */
-    public static final int ORDER_DISTORTION = 4;
-    /** Sharp emissive layers: never bent by their own effect's haze. */
-    public static final int ORDER_SURFACE = 5, ORDER_BANDS = 6, ORDER_CORE = 7;
-    /** The slot a layer draws in unless given another: an effect's main body. */
-    public static final String SLOT_BODY = "body";
+    public enum Role {
+        /** Smoke, dust and other soft matter, drawn first. */
+        SMOKE,
+        /** Light pools on what is round the effect. */
+        LIGHT,
+        /** Haze and shock fronts: a shader with a Distortion pass, bending what drew before it. */
+        DISTORTION,
+        /** The effect itself: its body, its glows, its sparks. */
+        SURFACE
+    }
 
-    final String shader;
-    final String slot;
-    final float radius;
-    final CgVfxParam colorA, colorB;
-    final float parameter;
-    final int order;
-    final boolean volume, closed;
+    /** A property bound to a parameter: read from the effect's values each draw, a number times {@code factor}. */
+    public static final class Binding {
+        final String property;
+        final CgVfxParam param;
+        final float factor;
+
+        Binding(String property, CgVfxParam param, float factor) {
+            this.property = property;
+            this.param = param;
+            this.factor = factor;
+        }
+
+        public String property() {
+            return property;
+        }
+
+        public CgVfxParam param() {
+            return param;
+        }
+
+        public float factor() {
+            return factor;
+        }
+    }
+
+    final String shader, name;
+    final List<CgVfxSlot> slots;
+    final float size;
+    final CgVfxParam.Scalar sizeParam;
+    final Role role;
     final CgQuality from;
-    final Consumer<CgShaderBindings> properties;
+    final boolean volume, closed;
+    final Map<String, float[]> constants;
+    final List<Binding> bindings;
+    final Map<String, CgVfxTexture> textures;
+    final Set<String> keywords, unbound;
+    /** Constants a tuning changed: the layer's for as long as the run. */
+    private final Map<String, float[]> tuned = new ConcurrentHashMap<>();
+    private volatile int tunings;
 
     private CgVfxLayer(Builder b) {
         this.shader = b.shader;
-        this.slot = b.slot;
-        this.radius = b.radius;
-        this.colorA = b.colorA;
-        this.colorB = b.colorB;
-        this.parameter = b.parameter;
-        this.order = b.order;
+        this.name = b.name != null ? b.name : defaultName(b.shader);
+        this.slots = Collections.unmodifiableList(new ArrayList<>(b.slots));
+        this.size = b.size;
+        this.sizeParam = b.sizeParam;
+        this.role = b.role;
+        this.from = b.from;
         this.volume = b.volume;
         this.closed = b.closed;
-        this.from = b.from;
-        this.properties = b.properties;
+        this.constants = Collections.unmodifiableMap(new LinkedHashMap<>(b.constants));
+        this.bindings = Collections.unmodifiableList(new ArrayList<>(b.bindings));
+        this.textures = Collections.unmodifiableMap(new LinkedHashMap<>(b.textures));
+        this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(b.keywords));
+        this.unbound = Collections.unmodifiableSet(new LinkedHashSet<>(b.unbound));
     }
 
-    public static Builder builder(String shader) {
+    public static Builder of(String shader) {
         return new Builder(shader);
+    }
+
+    private static String defaultName(String shader) {
+        int slash = Math.max(shader.lastIndexOf('/'), shader.lastIndexOf(':'));
+        String file = shader.substring(slash + 1);
+        return file.endsWith(".shader") ? file.substring(0, file.length() - ".shader".length()) : file;
+    }
+
+    /** A copy to change: another size, another slot, one more constant. */
+    public Builder derive() {
+        Builder b = new Builder(shader);
+        b.name = name;
+        b.slots.addAll(slots);
+        b.size = size;
+        b.sizeParam = sizeParam;
+        b.role = role;
+        b.from = from;
+        b.volume = volume;
+        b.closed = closed;
+        b.constants.putAll(constants);
+        b.bindings.addAll(bindings);
+        b.textures.putAll(textures);
+        b.keywords.addAll(keywords);
+        b.unbound.addAll(unbound);
+        return b;
     }
 
     public String shader() {
         return shader;
     }
 
-    /** Which part of its effect it draws: an effect names its slots ({@link #SLOT_BODY}, a head, a muzzle). */
-    public String slot() {
-        return slot;
+    /** What tools and kits call it: its shader's file name unless {@link Builder#named}. */
+    public String name() {
+        return name;
     }
 
-    public float radius() {
-        return radius;
+    /** The slots it draws on. */
+    public List<CgVfxSlot> slots() {
+        return slots;
     }
 
-    /** The colour parameters its shader reads as {@code CG_OBJECT_CUSTOM2} and {@code CG_OBJECT_CUSTOM3}; either may be null. */
-    public CgVfxParam colorA() {
-        return colorA;
+    /** Its size, times its slot's own; times {@link #sizeParam} too when bound. */
+    public float size() {
+        return size;
     }
 
-    public CgVfxParam colorB() {
-        return colorB;
+    /** A parameter its size follows, times {@link #size}, or null. */
+    public CgVfxParam.Scalar sizeParam() {
+        return sizeParam;
     }
 
-    /** The free number its shader reads as {@code CG_OBJECT_CUSTOM0.w}. */
-    public float parameter() {
-        return parameter;
-    }
-
-    /** Where it draws within its effect: an {@code ORDER_} constant. */
-    public int order() {
-        return order;
-    }
-
-    /** Whether each chunk of a tube draws on a sphere around it ({@link Builder#volume()}). */
-    public boolean isVolume() {
-        return volume;
-    }
-
-    /** Whether each chunk of a tube is closed at both ends ({@link Builder#closed()}). */
-    public boolean isClosed() {
-        return closed;
+    public Role role() {
+        return role;
     }
 
     /** The lowest quality tier that draws it. */
@@ -130,82 +181,117 @@ public final class CgVfxLayer {
         return from;
     }
 
-    /** Material properties set once on its material, or null. */
-    public Consumer<CgShaderBindings> properties() {
-        return properties;
+    /** Whether each chunk of a tube draws on a sphere round it ({@link Builder#volume}). */
+    public boolean isVolume() {
+        return volume;
+    }
+
+    /** Whether each chunk of a tube is closed at both ends ({@link Builder#closed}). */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    /** Its constants by property as built: one float a number, four a colour, four an element an array. */
+    public Map<String, float[]> constants() {
+        return constants;
+    }
+
+    /** A constant as it stands: as a {@link CgVfxTuning} set it, else as built; null for one it does not set. */
+    public float[] constant(String property) {
+        float[] tuned = this.tuned.get(property);
+        return tuned != null ? tuned : constants.get(property);
+    }
+
+    /** How many times a tuning has changed its constants: a material re-applies them when this moves. */
+    public int tunings() {
+        return tunings;
+    }
+
+    /** Sets one float of a constant it sets: a tuning's, on any thread. */
+    synchronized void tune(String property, int component, float value) {
+        float[] v = constant(property).clone();
+        v[component] = value;
+        tuned.put(property, v);
+        tunings++;
+    }
+
+    /** Its explicit bindings. */
+    public List<Binding> bindings() {
+        return bindings;
+    }
+
+    public Map<String, CgVfxTexture> textures() {
+        return textures;
+    }
+
+    /** The {@code cg_feature} keywords set on its materials, beside its slot kind's {@code FX_ON_*}. */
+    public Set<String> keywords() {
+        return keywords;
+    }
+
+    /** Properties kept the shader's own, never bound by name. */
+    public Set<String> unbound() {
+        return unbound;
+    }
+
+    @Override
+    public String toString() {
+        return "layer " + name + " (" + shader + ")";
     }
 
     public static final class Builder {
 
         private final String shader;
-        private String slot = SLOT_BODY;
-        private float radius = 1f;
-        private CgVfxParam colorA, colorB;
-        private float parameter;
-        private int order = ORDER_SURFACE;
-        private boolean volume, closed;
+        private String name;
+        private final List<CgVfxSlot> slots = new ArrayList<>();
+        private float size = 1f;
+        private CgVfxParam.Scalar sizeParam;
+        private Role role = Role.SURFACE;
         private CgQuality from = CgQuality.LOW;
-        private Consumer<CgShaderBindings> properties;
+        private boolean volume, closed;
+        private final Map<String, float[]> constants = new LinkedHashMap<>();
+        private final List<Binding> bindings = new ArrayList<>();
+        private final Map<String, CgVfxTexture> textures = new LinkedHashMap<>();
+        private final Set<String> keywords = new LinkedHashSet<>(), unbound = new LinkedHashSet<>();
 
         private Builder(String shader) {
             this.shader = Objects.requireNonNull(shader, "shader");
         }
 
-        /** Which part of the effect it draws, as the effect names them; {@link #SLOT_BODY} unless set. */
-        public Builder slot(String slot) {
-            this.slot = Objects.requireNonNull(slot, "slot");
+        /** What kits and tools call it. */
+        public Builder named(String name) {
+            this.name = Objects.requireNonNull(name, "name");
             return this;
         }
 
-        public Builder radius(float radius) {
-            this.radius = radius;
+        /** The slots it draws on; replaces any set before. */
+        public Builder on(CgVfxSlot... slots) {
+            this.slots.clear();
+            for (CgVfxSlot slot : slots) this.slots.add(Objects.requireNonNull(slot, "slot"));
             return this;
         }
 
-        /** The colour parameters the shader reads as {@code CG_OBJECT_CUSTOM2} and {@code CG_OBJECT_CUSTOM3}; either may be null. */
-        public Builder colors(CgVfxParam a, CgVfxParam b) {
-            this.colorA = a;
-            this.colorB = b;
+        /** The emitters whose particles it draws. */
+        public Builder on(CgVfxEmitter... emitters) {
+            this.slots.clear();
+            for (CgVfxEmitter emitter : emitters) this.slots.add(emitter.slot());
             return this;
         }
 
-        /** A free number the shader reads as {@code CG_OBJECT_CUSTOM0.w}. */
-        public Builder parameter(float parameter) {
-            this.parameter = parameter;
+        /** Its size, times its slot's own: a band 1.4 times the beam. */
+        public Builder size(float times) {
+            this.size = times;
             return this;
         }
 
-        /** Where it draws within its effect, 0 to 15: an {@code ORDER_} constant. */
-        public Builder order(int order) {
-            if (order < 0 || order > 15) throw new IllegalArgumentException("order " + order + " is outside 0..15");
-            this.order = order;
+        /** Its size following {@code param}, times its slot's own: animatable, tunable, sent. */
+        public Builder size(CgVfxParam.Scalar param) {
+            this.sizeParam = Objects.requireNonNull(param, "param");
             return this;
         }
 
-        /**
-         * Draws each chunk of a tube layer on a sphere around it rather than along it, for a shader that sums the light
-         * of the chunk's own rings ({@code vfx/beam/body_light.shader}): a sphere's far wall covers each pixel once, which a
-         * bent tube's does not, so the chunks add up to the whole with nothing counted twice. The radius is then how far
-         * the light reaches, in the rings' radii.
-         */
-        public Builder volume() {
-            this.volume = true;
-            return this;
-        }
-
-        /**
-         * Closes each chunk of a tube layer with a disc at both ends, for a shader that traces the view ray through its
-         * own chunk's rings ({@code vfx/beam/body_core.shader}): every ray through the chunk then leaves by one of its
-         * back faces, the open ends included.
-         *
-         * <pre>{@code
-         * CgVfxLayer.builder(BEAM + "body_core.shader").closed().radius(1.25f).order(CgVfxLayer.ORDER_CORE).build()
-         * }</pre>
-         *
-         * A shader drawing the tube's surface wants it open: the discs would show.
-         */
-        public Builder closed() {
-            this.closed = true;
+        public Builder role(Role role) {
+            this.role = Objects.requireNonNull(role, "role");
             return this;
         }
 
@@ -215,13 +301,89 @@ public final class CgVfxLayer {
             return this;
         }
 
-        /** Set once on the layer's material, after the shader's own defaults. */
-        public Builder properties(Consumer<CgShaderBindings> properties) {
-            this.properties = properties;
+        /**
+         * Draws each chunk of a tube on a sphere round it rather than along it, for a shader summing the light of its
+         * own chunk's rings ({@code body_light}): the chunks then add up to the whole with nothing counted twice. Its
+         * size is how far the light reaches, in the rings' radii.
+         */
+        public Builder volume() {
+            this.volume = true;
+            return this;
+        }
+
+        /**
+         * Closes each chunk of a tube with a disc at both ends, for a shader tracing the view ray through its own
+         * chunk's rings ({@code body_core}). A shader drawing the tube's surface wants it open: the discs would show.
+         */
+        public Builder closed() {
+            this.closed = true;
+            return this;
+        }
+
+        /** A number. */
+        public Builder set(String property, float value) {
+            constants.put(property, new float[] {value});
+            return this;
+        }
+
+        public Builder set(String property, float x, float y) {
+            constants.put(property, new float[] {x, y});
+            return this;
+        }
+
+        /** A vector or a colour. */
+        public Builder set(String property, float x, float y, float z, float w) {
+            constants.put(property, new float[] {x, y, z, w});
+            return this;
+        }
+
+        /** An array property's elements, four floats each. */
+        public Builder setArray(String property, float... elements) {
+            if (elements.length == 0 || elements.length % 4 != 0) {
+                throw new IllegalArgumentException("'" + property + "': four floats an element, got " + elements.length);
+            }
+            constants.put(property, elements.clone());
+            return this;
+        }
+
+        /** {@code property} read from {@code param} each draw: a number, a colour, or a palette into an array. */
+        public Builder bind(String property, CgVfxParam param) {
+            return bind(property, param, 1f);
+        }
+
+        /** {@code property} read from a number times {@code factor} each draw. */
+        public Builder bind(String property, CgVfxParam param, float factor) {
+            Objects.requireNonNull(property, "property");
+            if (!Objects.requireNonNull(param, "param").numeric()) {
+                throw new IllegalArgumentException(param + " is a curve or a shake: a shader cannot read it");
+            }
+            if (factor != 1f && !(param instanceof CgVfxParam.Scalar)) {
+                throw new IllegalArgumentException("A factor scales a number, not " + param);
+            }
+            bindings.removeIf(b -> b.property.equals(property));
+            bindings.add(new Binding(property, param, factor));
+            return this;
+        }
+
+        public Builder texture(String property, CgVfxTexture texture) {
+            textures.put(Objects.requireNonNull(property, "property"), Objects.requireNonNull(texture, "texture"));
+            return this;
+        }
+
+        /** Sets a {@code #pragma cg_feature} keyword on its materials. */
+        public Builder keyword(String keyword) {
+            keywords.add(Objects.requireNonNull(keyword, "keyword"));
+            return this;
+        }
+
+        /** Keeps {@code property} the shader's own: never bound by name. */
+        public Builder unbound(String property) {
+            unbound.add(Objects.requireNonNull(property, "property"));
             return this;
         }
 
         public CgVfxLayer build() {
+            if (slots.isEmpty()) throw new IllegalStateException("Layer " + shader + " draws on no slot: give it on(...)");
             return new CgVfxLayer(this);
         }
     }

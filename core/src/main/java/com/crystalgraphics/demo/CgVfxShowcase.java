@@ -119,7 +119,7 @@ public final class CgVfxShowcase {
 
         Lane(String name, CgVfxLook base, float offset, float[] from, float[] aim, float[] via, float[][] targets) {
             this.name = name;
-            this.look = base.toBuilder()
+            this.look = base.derive()
                     .set(CgEnergyWave.SPEED, 30f)
                     .set(CgEnergyWave.NAVIGATION, 5f)
                     .set(CgEnergyWave.TURN_RATE, 6f)

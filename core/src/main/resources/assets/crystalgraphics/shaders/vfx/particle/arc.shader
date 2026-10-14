@@ -1,17 +1,20 @@
 // An ink streak, as anime draws an explosion's shock: a dark tapered stroke, an arc of the circle round the emitter's
 // source through its particle, in the eye's plane, so it flies out as the particle does and thins as its size curve
 // falls. A CgVfxRibbons stroke placed from its particle record (CgVfxFrame.particles, ARCS); the draw is centred on the
-// source, so CG_OBJECT_TO_WORLD[3] is the source. Colour A is the ink, A's alpha a strength.
+// source, so CG_OBJECT_TO_WORLD[3] is the source. _Color is the ink, its alpha a strength.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Depth" = "Clip" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The ink; its alpha a strength", color) = (0.02, 0.02, 0.03, 1)
     _Span ("Arc a stroke spans, radians, before its seed varies it", float) = 0.9
 }
 
@@ -56,7 +59,7 @@ Pass {
         // Solid ink: it writes depth wherever it covers half a pixel, so what is behind it is hidden.
         float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
         cg_Clip(cover);
-        float alpha = cover * i.stroke.y * CG_OBJECT_CUSTOM2.a;
-        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
+        float alpha = cover * i.stroke.y * _Color.a * FX_PRESENCE;
+        fragColor = vec4(_Color.rgb * alpha, alpha);
     }
 }

@@ -3,19 +3,21 @@
 // is a plume, not the sphere's disc: it reaches the rim above and fades sooner below and to the sides, and its edge is
 // torn by noise rising with the air, so it has no shape of its own.
 // Drawn on CgVfxFrame.mesh's sphere's far wall, its entry found analytically, so it bends from inside it too; a
-// Distortion pass (ORDER_DISTORTION), so the sharp layers stay unbent. A ray through the hot thing itself is left unbent, so the haze shimmers round it and never
-// warps it: CG_OBJECT_CUSTOM0.y, the layer's parameter, is the share of the unit sphere it fills,
-// 0 for nothing inside; .x is the layer's radius.
-// CG_OBJECT_CUSTOM0.zw are the effect's age and seed, CG_OBJECT_CUSTOM1.z an intensity.
+// Distortion pass (Role.DISTORTION), so the sharp layers stay unbent. A ray through the hot thing itself (_Source) is left unbent, so the haze shimmers round it
+// and never warps it. CG_OBJECT_CUSTOM0.x is the layer's size, .zw the effect's age and seed; CG_OBJECT_CUSTOM1.z an
+// intensity.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 // The bend reaches _Strength times the intensity times the noise, at most about 0.08 of the height.
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
+    _Source ("The hot thing it rises from, left unbent: its radius in the slot's units; 0 for none", float) = 0
     _Strength ("Shimmer at full intensity, share of the screen's height", float) = 0.04
     _Reference ("Within this many blocks the bend is _Strength; farther it shrinks as the haze does on screen", float) = 6
     _Scale    ("Shimmer frequency, a block", float) = 1.6
@@ -80,10 +82,10 @@ Pass {
         // Full out to half the radius, so a haze round a hot body keeps its strength.
         float body = (1.0 - smoothstep(0.5, 1.0, length(plume) + tear * 0.25)) * (1.0 - smoothstep(0.85, 1.0, passes));
         // The hot thing itself: a ray through it stays unbent.
-        float core = CG_OBJECT_CUSTOM0.y / max(CG_OBJECT_CUSTOM0.x, 1.0e-4);
+        float core = _Source / max(CG_OBJECT_CUSTOM0.x, 1.0e-4);
         if (core > 0.0) body *= smoothstep(core * 0.8, core * 1.3, passes);
         // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
-        float strength = body * CG_OBJECT_CUSTOM1.z;
+        float strength = body * CG_OBJECT_CUSTOM1.z * FX_PRESENCE;
         if (strength < 0.002) discard;
         vec2 wobble = fx_heat(spot * _Scale, age, _Rise * _Scale, seed);
         // Perspective: a far haze moves the scene behind it as little as it covers.

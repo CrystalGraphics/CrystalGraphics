@@ -3,28 +3,34 @@ package com.crystalgraphics.vfx.look;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 
+import java.util.Arrays;
+
 /**
- * A value for every parameter of one {@link CgVfxSchema}: a look's defaults, or a playing effect's own copy of them.
+ * A value for every parameter of a {@link CgVfxLayout}: a look's, or a playing effect's own copy of its look's.
  *
  * <pre>{@code
  * CgVfxValues values = look.copyValues();
- * values.set(CgEnergyWave.RADIUS, 0.9f);
- * float green = values.get(CgEnergyWave.CORE, 1);   // a colour's second component
- * float size = values.curve(CgEnergyWave.CHARGE_SIZE).at(0.5f);
- * values.set(CgEnergyWave.BLAST_SHAKE, CgCameraShakes.IMPACT);
+ * values.set(CgEnergyWave.RADIUS, 0.9f);              // and everything following RADIUS follows
+ * float green = values.get(CgEnergyWave.CORE, 1);     // a colour's second component
+ * float band = values.get(MyLook.BANDS, 2, 0);        // the third colour's red
+ * values.link(MyLook.REACH, CgEnergyWave.RADIUS, 4f); // REACH follows RADIUS × 4 from now on
  * }</pre>
  *
  * <ul>
- *   <li>Flat floats: reading one allocates nothing.</li>
- *   <li>A parameter of another schema throws.</li>
+ *   <li>Flat floats: reading allocates nothing and costs two array reads.</li>
+ *   <li>Setting a number breaks the link it followed; {@link #link} makes one.</li>
+ *   <li>A parameter of a schema the layout does not include throws.</li>
  * </ul>
  */
 public final class CgVfxValues {
 
-    private final CgVfxSchema schema;
+    private final CgVfxLayout layout;
     private final float[] values;
-    // Curves and shakes.
     private final Object[] objects;
+    /** The scalars following another: each one's offset, its source's and the factor, sources before followers. */
+    private int[] linkTo, linkFrom;
+    private float[] linkFactor;
+    private int links;
     // A look's values copied for an effect: what takeTuning follows.
     private final CgVfxValues look;
     private int tuningsTaken;
@@ -32,97 +38,176 @@ public final class CgVfxValues {
     private boolean[] tuned;
     private volatile int tunings;
 
-    CgVfxValues(CgVfxSchema schema, float[] values, Object[] objects) {
-        this(schema, values, objects, null);
+    CgVfxValues(CgVfxLayout layout) {
+        this(layout, layout.defaults(), layout.defaultObjects(), layout.linkTo.clone(), layout.linkFrom.clone(),
+                layout.linkFactor.clone(), layout.linkTo.length, null);
+        order();
+        resolve();
     }
 
-    private CgVfxValues(CgVfxSchema schema, float[] values, Object[] objects, CgVfxValues look) {
-        this.schema = schema;
+    private CgVfxValues(CgVfxLayout layout, float[] values, Object[] objects, int[] linkTo, int[] linkFrom,
+                        float[] linkFactor, int links, CgVfxValues look) {
+        this.layout = layout;
         this.values = values;
         this.objects = objects;
+        this.linkTo = linkTo;
+        this.linkFrom = linkFrom;
+        this.linkFactor = linkFactor;
+        this.links = links;
         this.look = look;
     }
 
-    public CgVfxSchema schema() {
-        return schema;
+    public CgVfxLayout layout() {
+        return layout;
     }
 
-    public float get(CgVfxParam param) {
-        scalar(param);
-        return values[param.offset];
+    public float get(CgVfxParam.Scalar param) {
+        return values[layout.offset(param)];
     }
 
     /** Component {@code index} of a colour: 0 red, 1 green, 2 blue, 3 the fourth value. */
-    public float get(CgVfxParam param, int index) {
-        scalar(param);
-        return values[param.offset + index];
+    public float get(CgVfxParam.Color param, int index) {
+        return values[layout.offset(param) + index];
     }
 
-    public CgVfxValues set(CgVfxParam param, float value) {
-        scalar(param);
-        values[param.offset] = value;
+    /** Component {@code component} of colour {@code entry} of a palette. */
+    public float get(CgVfxParam.Palette param, int entry, int component) {
+        return values[layout.offset(param) + entry * 4 + component];
+    }
+
+    public CgKeyframes curve(CgVfxParam.Curve param) {
+        return (CgKeyframes) objects[layout.offset(param)];
+    }
+
+    public CgCameraShake shake(CgVfxParam.Shake param) {
+        return (CgCameraShake) objects[layout.offset(param)];
+    }
+
+    /** Sets a number, breaking any link it followed; what follows it follows. */
+    public CgVfxValues set(CgVfxParam.Scalar param, float value) {
+        int at = layout.offset(param);
+        unlink(at);
+        values[at] = value;
+        resolve();
         return this;
     }
 
-    public CgVfxValues set(CgVfxParam param, float r, float g, float b, float a) {
-        schema.check(param);
-        if (param.size != 4) throw new IllegalArgumentException("'" + param.name + "' is not a colour");
-        values[param.offset] = r;
-        values[param.offset + 1] = g;
-        values[param.offset + 2] = b;
-        values[param.offset + 3] = a;
+    public CgVfxValues set(CgVfxParam.Color param, float r, float g, float b, float a) {
+        int at = layout.offset(param);
+        values[at] = r;
+        values[at + 1] = g;
+        values[at + 2] = b;
+        values[at + 3] = a;
         return this;
     }
 
-    public CgKeyframes curve(CgVfxParam param) {
-        curveParam(param);
-        return (CgKeyframes) objects[param.offset];
+    /** {@code 0xAARRGGBB}. */
+    public CgVfxValues set(CgVfxParam.Color param, int argb) {
+        return set(param, argb, 1f);
     }
 
-    public CgVfxValues set(CgVfxParam param, CgKeyframes curve) {
-        curveParam(param);
-        objects[param.offset] = curve;
+    /** {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
+    public CgVfxValues set(CgVfxParam.Color param, int argb, float intensity) {
+        return set(param, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
+    }
+
+    /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}. */
+    public CgVfxValues set(CgVfxParam.Palette param, int entry, int argb) {
+        return set(param, entry, argb, 1f);
+    }
+
+    /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
+    public CgVfxValues set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
+        return set(param, entry, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
+    }
+
+    /** Sets colour {@code entry} of a palette. */
+    public CgVfxValues set(CgVfxParam.Palette param, int entry, float r, float g, float b, float a) {
+        if (entry < 0 || entry >= param.count) throw new IndexOutOfBoundsException(param + " has " + param.count + " colours");
+        int at = layout.offset(param) + entry * 4;
+        values[at] = r;
+        values[at + 1] = g;
+        values[at + 2] = b;
+        values[at + 3] = a;
         return this;
     }
 
-    public CgCameraShake shake(CgVfxParam param) {
-        shakeParam(param);
-        return (CgCameraShake) objects[param.offset];
-    }
-
-    public CgVfxValues set(CgVfxParam param, CgCameraShake shake) {
-        shakeParam(param);
-        objects[param.offset] = shake;
+    public CgVfxValues set(CgVfxParam.Curve param, CgKeyframes curve) {
+        objects[layout.offset(param)] = curve;
         return this;
     }
 
-    private void scalar(CgVfxParam param) {
-        schema.check(param);
-        if (param.size <= 0) throw new IllegalArgumentException("'" + param.name + "' is not a number");
+    public CgVfxValues set(CgVfxParam.Shake param, CgCameraShake shake) {
+        objects[layout.offset(param)] = shake;
+        return this;
     }
 
-    private void curveParam(CgVfxParam param) {
-        schema.check(param);
-        if (!param.isCurve()) throw new IllegalArgumentException("'" + param.name + "' is not a curve");
+    /** Makes {@code param} follow {@code source × factor} from now on. A cycle throws. */
+    public CgVfxValues link(CgVfxParam.Scalar param, CgVfxParam.Scalar source, float factor) {
+        int to = layout.offset(param), from = layout.offset(source);
+        unlink(to);
+        if (links == linkTo.length) {
+            int n = Math.max(4, links * 2);
+            linkTo = Arrays.copyOf(linkTo, n);
+            linkFrom = Arrays.copyOf(linkFrom, n);
+            linkFactor = Arrays.copyOf(linkFactor, n);
+        }
+        linkTo[links] = to;
+        linkFrom[links] = from;
+        linkFactor[links] = factor;
+        links++;
+        order();
+        resolve();
+        return this;
     }
 
-    private void shakeParam(CgVfxParam param) {
-        schema.check(param);
-        if (!param.isShake()) throw new IllegalArgumentException("'" + param.name + "' is not a shake");
+    /** Whether {@code param} follows another now. */
+    public boolean linked(CgVfxParam.Scalar param) {
+        int at = layout.offset(param);
+        for (int i = 0; i < links; i++) if (linkTo[i] == at) return true;
+        return false;
     }
 
-    /** Whether these values hold every parameter the schema declares now. */
-    boolean coversSchema() {
-        return values.length == schema.defaults().length && objects.length == schema.defaultObjects().length;
+    /** The raw float at {@code offset}: a tool's, and the rows'. */
+    public float raw(int offset) {
+        return values[offset];
+    }
+
+    /** Copies {@code count} floats from {@code offset} into {@code into} at {@code at}. */
+    public void copy(int offset, int count, float[] into, int at) {
+        System.arraycopy(values, offset, into, at, count);
+    }
+
+    /** Sets the float at {@code offset}, with no link broken: a tween's, a cue's, a tool's write of what it was. */
+    public void setRaw(int offset, float value) {
+        values[offset] = value;
+        resolve();
+    }
+
+    /** Multiplies every number in a scaling unit by {@code s}: lengths and speeds. Links keep following. */
+    void scale(float s) {
+        for (CgVfxParam p : layout.params()) {
+            if (p instanceof CgVfxParam.Scalar && ((CgVfxParam.Scalar) p).unit.scales()) values[layout.offset(p)] *= s;
+        }
+        resolve();
     }
 
     public CgVfxValues copy() {
-        return new CgVfxValues(schema, values.clone(), objects.clone());
+        return new CgVfxValues(layout, values.clone(), objects.clone(), linkTo.clone(), linkFrom.clone(),
+                linkFactor.clone(), links, null);
+    }
+
+    /** A copy that {@link #takeTuning} keeps up with these: a look's values handed to an effect. */
+    CgVfxValues follower() {
+        return new CgVfxValues(layout, values.clone(), objects.clone(), linkTo.clone(), linkFrom.clone(),
+                linkFactor.clone(), links, this);
     }
 
     /**
      * Takes what a {@link CgVfxTuning} set on the look these were copied from since the last call, over any value set
-     * here. A playing effect's values take it before each tick; a copy made with {@link #copy()} follows nothing.
+     * here. A playing effect's values take it before each tick; a {@link #copy} follows nothing.
      */
     public void takeTuning() {
         CgVfxValues from = look;
@@ -132,23 +217,56 @@ public final class CgVfxValues {
         tuningsTaken = count;
         boolean[] set = from.tuned;
         for (int i = 0; i < set.length; i++) {
-            if (set[i]) values[i] = from.values[i];
+            if (!set[i]) continue;
+            unlink(i);
+            values[i] = from.values[i];
         }
-    }
-
-    /** A copy that {@link #takeTuning} keeps up with these: a look's values handed to an effect. */
-    CgVfxValues follower() {
-        return new CgVfxValues(schema, values.clone(), objects.clone(), this);
+        resolve();
     }
 
     synchronized void tune(int offset, float value) {
         if (tuned == null) tuned = new boolean[values.length];
+        unlink(offset);
         values[offset] = value;
+        resolve();
         tuned[offset] = true;
         tunings++;
     }
 
-    float raw(int offset) {
-        return values[offset];
+    private void unlink(int offset) {
+        for (int i = 0; i < links; i++) {
+            if (linkTo[i] != offset) continue;
+            links--;
+            System.arraycopy(linkTo, i + 1, linkTo, i, links - i);
+            System.arraycopy(linkFrom, i + 1, linkFrom, i, links - i);
+            System.arraycopy(linkFactor, i + 1, linkFactor, i, links - i);
+            return;
+        }
+    }
+
+    /** Puts every link after the links its source follows, so one pass resolves chains. */
+    private void order() {
+        for (int pass = 0; pass <= links; pass++) {
+            boolean moved = false;
+            for (int i = 0; i < links; i++) {
+                for (int j = i + 1; j < links; j++) {
+                    if (linkTo[j] != linkFrom[i]) continue;
+                    swap(i, j);
+                    moved = true;
+                }
+            }
+            if (!moved) return;
+        }
+        throw new IllegalArgumentException("A cycle of linked parameters in " + layout);
+    }
+
+    private void swap(int i, int j) {
+        int t = linkTo[i]; linkTo[i] = linkTo[j]; linkTo[j] = t;
+        t = linkFrom[i]; linkFrom[i] = linkFrom[j]; linkFrom[j] = t;
+        float f = linkFactor[i]; linkFactor[i] = linkFactor[j]; linkFactor[j] = f;
+    }
+
+    private void resolve() {
+        for (int i = 0; i < links; i++) values[linkTo[i]] = values[linkFrom[i]] * linkFactor[i];
     }
 }

@@ -4,16 +4,20 @@
 // from below while it is hot, lit by nothing. Its edge is soft, and it fades where the scene is
 // nearer than the ball's own surface, so it meets the ground in a curve rather than along the quad's flat cut; that
 // comparison is its depth test. Overlapping puffs, sorted back to front by the world renderer, make the cloud.
-// CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. Colour A is the smoke,
-// colour B the fire's light in it, A's alpha a strength.
+// CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity, w how hot it still is 0..1. _Color is the smoke, its
+// alpha a strength; _Hot the fire's light in it.
 #type none
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The smoke; its alpha a strength", color) = (0.3, 0.3, 0.32, 1)
+    _Hot ("The fire's light in it", color) = (1, 0.5, 0.15, 1)
     _Shadow ("Underside, share of the lit colour", float) = 0.12
     _Bumps  ("Billows on the ball, share of its radius", float) = 0.45
     _Spin   ("Turns over its life", float) = 0.15
@@ -76,18 +80,18 @@ Pass {
         float lit = clamp(dot(normal, CG_SUN_DIRECTION) * 0.7 + 0.3, 0.0, 1.0);
         lit *= lit;
         float fold = mix(0.55, 1.0, clamp(h / (1.0 + _Bumps), 0.0, 1.0));
-        vec3 smoke = CG_OBJECT_CUSTOM2.rgb;
+        vec3 smoke = _Color.rgb;
         vec3 col = mix(smoke * _Shadow, smoke, lit) * fold * CG_LIGHTMAP(cg_Light);
         // The fire beneath lights its underside and its thick heart while it is hot.
         float under = clamp(0.5 - 0.5 * normal.y, 0.0, 1.0);
-        col += CG_OBJECT_CUSTOM3.rgb * hot * hot * (0.3 + 0.9 * under) * (0.4 + 0.6 * h) * 1.6;
+        col += _Hot.rgb * hot * hot * (0.3 + 0.9 * under) * (0.4 + 0.6 * h) * 1.6;
         // Opaque in the middle, thinning to a soft rim, and faded where it meets the scene.
         float alpha = (1.0 - smoothstep(edge - 0.07, edge, r)) * mix(0.7, 1.0, smoothstep(0.0, 0.5, h));
         vec3 eye = FX_CAMERA;
         vec3 ray = normalize(i.world - eye);
         float surface = distance(i.world, eye) - min(h, 1.0) * i.size * edge;
         alpha *= clamp((FX_SCENE_DISTANCE(ray) - surface) / (_Soft * i.size), 0.0, 1.0);
-        alpha *= CG_OBJECT_CUSTOM1.z * CG_OBJECT_CUSTOM2.a;
+        alpha *= CG_OBJECT_CUSTOM1.z * _Color.a * FX_PRESENCE;
         fragColor = vec4(col * alpha, alpha);
     }
 }

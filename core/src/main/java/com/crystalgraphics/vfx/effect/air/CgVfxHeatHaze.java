@@ -3,13 +3,13 @@ package com.crystalgraphics.vfx.effect.air;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxFrame;
+import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
+import com.crystalgraphics.vfx.look.CgVfxSlot;
 import org.joml.Matrix4f;
-
-import java.util.List;
 
 /**
  * Heat haze over a point, for as long as it plays: the air above something hot shimmering, with nothing else drawn. For
@@ -23,26 +23,32 @@ import java.util.List;
  *
  * <ul>
  *   <li>It fades in and out over {@link #FADE} seconds, so starting or stopping it never pops.</li>
- *   <li>Its look draws {@link #SLOT_HAZE} on a sphere of {@link #RADIUS} ({@code shaders/vfx/air/haze.shader}); it draws
+ *   <li>Its look draws {@link #HAZE} on a sphere of {@link #RADIUS} ({@code shaders/vfx/air/haze.shader}); it draws
  *       nothing at the Low quality tier.</li>
  * </ul>
  */
 public final class CgVfxHeatHaze extends CgVfxEffect {
 
-    public static final CgVfxSchema SCHEMA = new CgVfxSchema();
-    /** The haze's radius in blocks. */
-    public static final CgVfxParam RADIUS = SCHEMA.scalar("radius", 2f);
+    public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:heat_haze");
+    /** The haze's radius. */
+    public static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 2f);
     /** How strongly it bends, 1 the shader's own strength. */
-    public static final CgVfxParam INTENSITY = SCHEMA.scalar("intensity", 1f);
-    /** The slot its layers draw in, on a sphere of its radius. */
-    public static final String SLOT_HAZE = "haze";
+    public static final CgVfxParam.Scalar INTENSITY = SCHEMA.scalar("intensity", 1f);
+    /**
+     * The haze: a sphere of its radius, scaled by it ({@code CUSTOM1} the radius twice, the intensity faded in and out,
+     * and 0).
+     */
+    public static final CgVfxSlot HAZE = CgVfxSlot.mesh("crystalgraphics:heat_haze/haze");
     /** Seconds it takes to fade in and to fade out. */
     public static final float FADE = 0.4f;
 
-    private static final CgVfxLook STANDARD = CgVfxLook.builder(SCHEMA)
-            .layer(CgVfxLayer.builder("crystalgraphics:shaders/vfx/air/haze.shader").slot(SLOT_HAZE)
-                    .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build())
+    /** The haze shader on {@link #HAZE}. */
+    public static final CgVfxKit KIT = CgVfxKit.of("crystalgraphics:heat_haze")
+            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/air/haze.shader").on(HAZE)
+                    .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
             .build();
+
+    private static final CgVfxLook STANDARD = CgVfxLook.builder(SCHEMA).with(KIT).build();
 
     private final Matrix4f placed = new Matrix4f();
     private float stopAge = Float.NaN;
@@ -74,10 +80,6 @@ public final class CgVfxHeatHaze extends CgVfxEffect {
         float radius = get(RADIUS), intensity = get(INTENSITY) * fade;
         if (intensity <= 0f) return;
         placed.identity().scale(radius);
-        List<CgVfxLayer> layers = look().layers();
-        for (int i = 0; i < layers.size(); i++) {
-            CgVfxLayer layer = layers.get(i);
-            if (SLOT_HAZE.equals(layer.slot())) frame.mesh(this, layer, 0f, 0f, 0f, placed, radius, radius, intensity, 0f);
-        }
+        frame.mesh(this, HAZE, 0f, 0f, 0f, placed, radius, radius, intensity, 0f);
     }
 }

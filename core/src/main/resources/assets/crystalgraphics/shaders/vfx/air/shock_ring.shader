@@ -2,11 +2,13 @@
 // it spreads, bending the scene behind it out from the blast, most at its foot and where the wall is seen edge-on, and
 // none at its top. With ring.shader's bright foot on the same particle it reads as the front sweeping the ground ahead
 // of the dust. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere the vertex stage bends into the wall
-// (fx_ring.glsl), its radius the particle's drawn size; a Distortion pass (ORDER_DISTORTION), so it bends smoke and glow
+// (fx_ring.glsl), its radius the particle's drawn size; a Distortion pass (Role.DISTORTION), so it bends smoke and glow
 // but never a bright body. CG_OBJECT_CUSTOM1: x its life 0..1, y its seed, z its opacity.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ring.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
@@ -66,7 +68,7 @@ Pass {
         float low = 1.0 - smoothstep(0.0, height, max(over, 0.0));
         float edge = mix(0.35, 1.0, 1.0 - smoothstep(0.1, 0.8, abs(dot(outward, ray))));
         float uneven = 0.7 + 0.6 * fx_value_noise(vec3(outward.xz * 3.0, seed * 5.0 + 1.0));
-        float strength = low * edge * uneven * opacity;
+        float strength = low * edge * uneven * opacity * FX_PRESENCE;
         if (strength < 0.002) discard;
         // Out from the blast on screen; tilted up, so the sides facing the eye bend up rather than at random.
         vec3 bend = normalize(outward + vec3(0.0, 0.6, 0.0));

@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
@@ -28,7 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
  *         .module(new CgVfxModule.Turbulence(8f, 0.12f, 0.6f))
  *         .module(new CgVfxModule.Wind(1f))
  *         .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.OUT_QUAD).build())
- *         .layer("sparkles")
  *         .build();
  *
  * // a variant that changes only what differs
@@ -57,7 +57,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         ARCS
     }
 
-    final String name, layer;
+    final String name;
+    private final CgVfxSlot slot;
     final Renderer renderer;
     final boolean optional, local;
     final int capacity;
@@ -78,7 +79,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     private CgVfxEmitter(Builder b) {
         name = b.name;
-        layer = b.layer;
+        slot = CgVfxSlot.particles(b.name);
         renderer = b.renderer;
         optional = b.optional;
         local = b.local;
@@ -164,9 +165,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         return name;
     }
 
-    /** The slot of the look's layer that draws these particles. */
-    public String layer() {
-        return layer;
+    /** The slot a look's layers draw these particles on: {@code CgVfxSlot.particles(name())}. */
+    public CgVfxSlot slot() {
+        return slot;
     }
 
     public Renderer renderer() {
@@ -323,7 +324,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     public static final class Builder {
 
         private String name;
-        private String layer;
         private Renderer renderer = Renderer.QUADS;
         private boolean optional, local;
         private int capacity = 256;
@@ -345,12 +345,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
         private Builder(String name) {
             this.name = name;
-            this.layer = name;
         }
 
         private Builder(CgVfxEmitter e) {
             name = e.name;
-            layer = e.layer;
             renderer = e.renderer;
             optional = e.optional;
             local = e.local;
@@ -387,12 +385,6 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Renames it: a look holds one emitter per name, and replaces by it. */
         public Builder name(String name) {
             this.name = name;
-            return this;
-        }
-
-        /** The slot of the look's layer that draws these particles; the emitter's name unless given. */
-        public Builder layer(String slot) {
-            layer = slot;
             return this;
         }
 

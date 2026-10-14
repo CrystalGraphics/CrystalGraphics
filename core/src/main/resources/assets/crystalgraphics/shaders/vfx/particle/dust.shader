@@ -6,18 +6,22 @@
 // young. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS), facing the camera, _Aspect as
 // tall as it is wide. Where the record has a floor (CG_PARTICLE_FLOOR: kinds with Ground) it stands on it, never sunk
 // below _Sit of its height, and fades into it by its height over it; else it fades into what is behind it
-// (_SoftDistance), as it does against anything else. Colour A is the dust, A's alpha a strength; colour B the blast's
-// light, or none.
+// (_SoftDistance), as it does against anything else. _Color is the dust, its alpha a strength; _Hot the blast's light,
+// black for none.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The dust; its alpha a strength", color) = (0.6, 0.57, 0.53, 0.6)
+    _Hot ("The blast's light on the side facing it while young; black for none", color) = (0, 0, 0, 1)
     _Noise ("Noise", sampler3D) = "cg_noise"
     _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.3
     _Aspect ("Its height, share of its width", float) = 0.8
@@ -97,7 +101,7 @@ Pass {
                 cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
         float settle = floored ? smoothstep(0.0, _Fade, above) : 1.0;
         float near = smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
-        float alpha = min(density, 1.0) * i.opacity * CG_OBJECT_CUSTOM2.a * soft * settle * near;
+        float alpha = min(density, 1.0) * i.opacity * _Color.a * FX_PRESENCE * soft * settle * near;
         if (alpha < 0.003) discard;
 
         vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
@@ -114,12 +118,12 @@ Pass {
         // The ground shades its foot, the shade climbing a little way up it.
         float shade = floored ? mix(0.65, 1.0, smoothstep(0.0, tall * 1.2, above)) : 1.0;
         float value = 0.97 + 0.06 * fract(seed * 7.13) + 0.04 * n;
-        vec3 col = CG_OBJECT_CUSTOM2.rgb * (_Sky * sky + _Key * wrap * through) * shade * value;
+        vec3 col = _Color.rgb * (_Sky * sky + _Key * wrap * through) * shade * value;
         // The blast's light, from behind it along its motion, on the side facing the blast, while young.
         vec3 toBlast = vec3(-i.motion.x, 0.0, -i.motion.y);
         float faces = dot(normal, toBlast) * 0.5 + 0.5;
         float young = 1.0 - smoothstep(0.0, _GlowFor, life);
-        col += CG_OBJECT_CUSTOM3.rgb * faces * faces * young * _Glow;
+        col += _Hot.rgb * faces * faces * young * _Glow;
         fragColor = vec4(col * alpha, alpha);
     }
 }

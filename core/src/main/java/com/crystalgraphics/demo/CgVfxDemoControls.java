@@ -5,6 +5,7 @@ import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
+import com.crystalgraphics.vfx.element.CgVfxBlast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -170,19 +171,19 @@ public final class CgVfxDemoControls {
         for (int i = live.size() - 1; i >= 0; i--) {
             if (live.get(i).wave.state() == CgVfxEffect.State.DEAD) live.remove(i);
         }
-        Live entry = new Live(wave, wave.curve(CgEnergyWave.BLAST_FLASH));
+        Live entry = new Live(wave, wave.curve(CgVfxBlast.FLASH));
         live.add(entry);
         applyTo(entry);
     }
 
     private void applyTo(Live entry) {
-        entry.wave.set(CgEnergyWave.BLAST_FLASH, switch (flash) {
+        entry.wave.set(CgVfxBlast.FLASH, switch (flash) {
             case DOUBLE -> entry.flash;
             case SINGLE -> SINGLE;
             case OFF -> NONE;
         });
-        entry.wave.set(CgEnergyWave.BLAST_IMPACT, impact ? 1f : 0f);
-        entry.wave.set(CgEnergyWave.BLAST_BILLOWS, billows ? 1f : 0f);
+        entry.wave.set(CgVfxBlast.IMPACT, impact ? 1f : 0f);
+        entry.wave.set(CgVfxBlast.BILLOWS, billows ? 1f : 0f);
     }
 
     /**

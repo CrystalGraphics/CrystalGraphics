@@ -1,15 +1,19 @@
 // Sparks thrown off an impact: streaks flying out over the hemisphere the draw's +z faces, slowed and pulled down by
 // gravity, white-hot heads and fading tails. Stateless (CgVfxRibbons). Continuous while _Burst is 0, each spark relaunched
 // when its life ends; one burst at CG_OBJECT_CUSTOM1.w seconds ago when _Burst is 1. CG_OBJECT_CUSTOM1.z is an intensity.
-// Colour A is a spark's sheath, colour B its hot head, A's alpha a strength. CgEnergyWave.
+// _ShellHot is a spark's sheath, its alpha a strength; _Core its hot head. CgEnergyWave.
 #type none
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _ShellHot ("A spark's sheath; its alpha a strength", color) = (0.7, 0.95, 1.6, 1)
+    _Core     ("A spark's hot head", color) = (1, 1, 1, 1)
     _Count   ("Sparks drawn", float) = 64.0
     _Life    ("Seconds a spark lives", float) = 0.55
     _Speed   ("Launch speed, blocks a second", float) = 12.0
@@ -76,8 +80,8 @@ Pass {
         float along = i.spark.x, across = i.spark.y;
         float core = exp(-across * across * 9.0);
         float sheath = exp(-across * across * 2.5) * 0.5;
-        vec3 col = (CG_OBJECT_CUSTOM2.rgb * sheath + CG_OBJECT_CUSTOM3.rgb * core * along) * pow(along, 1.3);
-        fragColor = vec4(col * i.spark.z * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z, 1.0);
+        vec3 col = (_ShellHot.rgb * sheath + _Core.rgb * core * along) * pow(along, 1.3);
+        fragColor = vec4(col * i.spark.z * _ShellHot.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE, 1.0);
     }
 }
 

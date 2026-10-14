@@ -1,17 +1,20 @@
 // A debris speck: a small rock chunk, sliver or shard, each its own stretch, raggedness, tone and shine from its seed,
 // a lumpy dome inside its ragged outline lit by the sun (a key light from above where the world has none) and by the
 // world where it is, its light turning as its spin tumbles it. A CgVfxQuads quad placed from its particle record
-// (CgVfxFrame.particles, QUADS). Colour A is the rock, A's alpha a strength.
+// (CgVfxFrame.particles, QUADS). _Color is the rock, its alpha a strength.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Depth" = "Clip" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The rock; its alpha a strength", color) = (0.1, 0.09, 0.08, 1)
     _ValueNoise ("Value noise", sampler3D) = "cg_value_noise"
     _CameraOffset ("Drawn this many of its sizes toward the eye, so one resting on a surface is not cut by it", float) = 1
 }
@@ -69,7 +72,7 @@ Pass {
         // Solid: it writes depth wherever it covers half a pixel ("Depth" = "Clip").
         float cover = 1.0 - smoothstep(edge - aa, edge + aa, r);
         cg_Clip(cover);
-        float alpha = cover * i.opacity * CG_OBJECT_CUSTOM2.a;
+        float alpha = cover * i.opacity * _Color.a * FX_PRESENCE;
 
         // A lumpy dome inside the outline, roughened by noise into facets.
         float inside = clamp(r / max(edge, 1.0e-3), 0.0, 1.0);
@@ -90,7 +93,7 @@ Pass {
         float sky = 0.3 + 0.2 * normal.y;
         float occlusion = mix(0.55, 1.0, dome);
         float glint = pow(max(dot(reflect(-key, normal), i.facing), 0.0), 24.0) * i.tone.z;
-        vec3 rock = CG_OBJECT_CUSTOM2.rgb * i.tone.y * (sky + 0.95 * diffuse) * occlusion + vec3(0.35 * glint);
+        vec3 rock = _Color.rgb * i.tone.y * (sky + 0.95 * diffuse) * occlusion + vec3(0.35 * glint);
         fragColor = vec4(rock * alpha, alpha);
     }
 }

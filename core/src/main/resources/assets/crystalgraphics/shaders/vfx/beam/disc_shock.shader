@@ -1,14 +1,18 @@
 // An energy wave's shock ring at the release: a crisp leading edge sweeping outward with a softer wake behind it, its
 // radius wavering, fading as it spreads. Drawn on CgVfxFrame.mesh's sphere flattened to a disc facing along the aim;
 // Cull BACK keeps only the half facing the eye. CG_OBJECT_CUSTOM1.z is an intensity, .w the ring's progress 0..1.
-// Colour A is the edge, colour B the wake, A's alpha a strength. CgEnergyWave.
+// _CoreRim is the edge, its alpha a strength; _Shell the wake. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _CoreRim  ("The leading edge; its alpha a strength", color) = (0.7, 0.95, 1, 1)
+    _Shell    ("The wake behind it", color) = (0.15, 0.55, 1.6, 1)
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
@@ -42,8 +46,8 @@ Pass {
         // Crisp outside the edge, fading in over the wake behind it.
         float ring = (1.0 - smoothstep(-aa, aa, d)) * smoothstep(-wake, 0.0, d);
         float line = 1.0 - smoothstep(0.02 + aa, 0.02 + 2.0 * aa, abs(d));
-        vec3 col = CG_OBJECT_CUSTOM3.rgb * ring * 0.7 + CG_OBJECT_CUSTOM2.rgb * line * 1.6;
-        fragColor = vec4(col * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * (1.0 - smoothstep(0.98, 1.0, r)), 1.0);
+        vec3 col = _Shell.rgb * ring * 0.7 + _CoreRim.rgb * line * 1.6;
+        fragColor = vec4(col * _CoreRim.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * (1.0 - smoothstep(0.98, 1.0, r)), 1.0);
     }
 }
 

@@ -1,6 +1,5 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -13,9 +12,10 @@ import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
-import com.crystalgraphics.vfx.look.CgVfxParam;
-import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.look.CgVfxLook;
+import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
@@ -32,17 +32,25 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * What a {@link CgVfxEffect} draws through in one frame, handed to it by {@link CgVfxSystem#submit}.
+ * What a {@link CgVfxEffect} draws through in one frame, handed to it by {@link CgVfxSystem#submit}: each call draws
+ * one slot, every layer its look has on it.
  *
  * <pre>{@code
  * @Override protected void submit(CgVfxFrame frame) {
- *     path.build(points, n, 0.2f);
  *     int row = frame.path(path, seed, age);
- *     for (CgVfxLayer layer : look().layers()) frame.tube(this, path, row, layer);
+ *     frame.tube(this, BODY, path, row);                                        // every layer on BODY
+ *     frame.mesh(this, HEAD, x, y, z, transform, halfWidth, halfLength, 1f, 0f);   // every layer on HEAD
+ *     frame.particles(this, sparks);                                           // its emitter's slot
  * }
  * }</pre>
  *
- * <p>A layer above this frame's quality tier ({@link CgVfxLayer#from}) draws nothing, whichever method draws it.</p>
+ * <ul>
+ *   <li>A slot no layer of the look draws on costs nothing: a look without its realistic body draws no tube.</li>
+ *   <li>A layer above this frame's quality tier ({@link CgVfxLayer#from}) draws nothing.</li>
+ *   <li>Every draw's {@code CG_OBJECT_CUSTOM3} is its header ({@code fx_draw.glsl}): its row of bound values, the
+ *       effect's age, its seed and its presence. The other customs are the slot kind's ({@link CgVfxSlot.Kind}).</li>
+ *   <li>Calling a method of another kind than the slot's throws.</li>
+ * </ul>
  */
 public final class CgVfxFrame {
 
@@ -53,7 +61,7 @@ public final class CgVfxFrame {
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"), MESHES_ZONE = CgTrace.name("vfx.particles.meshes"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
-     * GPU particle slots drawn as one draw a pool and layer ({@code Draw.indirectEach}), in one group for the system:
+     * GPU particle slots drawn as one draw a pool and material ({@code Draw.indirectEach}), in one group for the system:
      * each material's slots blend as one run over the others' rather than effect by effect. False draws a slot a draw,
      * per effect, as the CPU path.
      */
@@ -61,19 +69,21 @@ public final class CgVfxFrame {
             "GPU particles one draw a pool and layer (indirectEach); false draws a slot a draw, sorted per effect: the"
                     + " comparison for overlaps.");
     private final CgVfxSystem system;
+    private final CgVfxMaterials materials;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f(), turned = new Matrix4f();
     private CgWorldRenderer world;
     private float alpha, particleAlpha;
     /** Where the merged particle draws sort as one group: the middle of the system's effects. */
     private double groupX, groupY, groupZ;
-    /** This frame's merged particle slots, a set per pool and layer, the first {@link #setsUsed} in use. */
+    /** This frame's merged particle slots, a set per pool and material, the first {@link #setsUsed} in use. */
     private final List<SlotSet> sets = new ArrayList<>();
     private int setsUsed;
     /** The CPU path's particles this frame drew: GPU pools are counted by Range. */
     private int cpuDrawn;
 
-    CgVfxFrame(CgVfxSystem system) {
+    CgVfxFrame(CgVfxSystem system, CgVfxMaterials materials) {
         this.system = system;
+        this.materials = materials;
     }
 
     void begin(CgWorldRenderer world, float alpha, float particleAlpha, double groupX, double groupY, double groupZ) {
@@ -87,20 +97,20 @@ public final class CgVfxFrame {
         setsUsed = 0;
     }
 
-    /** Draws the merged particle slots: one draw a pool and layer, each slot a record of it. After every effect's submit. */
+    /** Draws the merged particle slots: one draw a pool and material, each slot a record of it. After every submit. */
     void end() {
         for (int i = 0; i < setsUsed; i++) {
             SlotSet set = sets.get(i);
             CgVfxRange range = CgVfxRange.of(set.pool);
             boolean arcs = set.renderer == CgVfxEmitter.Renderer.ARCS;
-            CgWorldRenderer.Draw draw = world.draw(slotMesh(set.renderer, set.capacity), system.material(set.layer))
+            CgWorldRenderer.Draw draw = world.draw(slotMesh(set.renderer, set.capacity), set.material)
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
                     .indirectEach(range.visible(), arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                             arcs ? CgVfxRibbons.VERTICES : 6)
                     .gpuCulled()
                     .at(groupX, groupY, groupZ);
-            CgVfxSystem.place(draw, set.layer, groupX, groupY, groupZ);
-            draw.group(groupX, groupY, groupZ).batchKey(system.materialKey(set.layer));
+            CgVfxSystem.place(draw, set.placed, groupX, groupY, groupZ);
+            draw.group(groupX, groupY, groupZ).batchKey(materials.key(set.material));
             for (int r = 0; r < set.records; r++) {
                 draw.each(set.at[r * 3], set.at[r * 3 + 1], set.at[r * 3 + 2], set.count[r]);
                 for (int c = 0; c < 4; c++) {
@@ -113,26 +123,29 @@ public final class CgVfxFrame {
         }
     }
 
-    /** {@code pool}'s set for {@code layer} this frame, begun empty the first time it is asked for. */
-    private SlotSet set(CgVfxParticlePool pool, CgVfxLayer layer, CgVfxEmitter.Renderer renderer) {
+    /** {@code pool}'s set for {@code material} this frame, begun empty the first time it is asked for. */
+    private SlotSet set(CgVfxParticlePool pool, CgMaterial material, CgVfxLook.Placed placed, CgVfxEmitter.Renderer renderer) {
         for (int i = 0; i < setsUsed; i++) {
             SlotSet set = sets.get(i);
-            if (set.pool == pool && set.layer == layer && set.renderer == renderer) return set;
+            if (set.pool == pool && set.material == material && set.renderer == renderer) return set;
         }
         if (setsUsed == sets.size()) sets.add(new SlotSet());
         SlotSet set = sets.get(setsUsed++);
         set.pool = pool;
-        set.layer = layer;
+        set.material = material;
+        set.placed = placed;
         set.renderer = renderer;
         set.capacity = 0;
         set.records = 0;
         return set;
     }
 
-    /** One pool's slots drawn through one layer: each a record's position, customs and count offset. */
+    /** One pool's slots drawn through one material: each a record's position, customs and count offset. */
     private static final class SlotSet {
         CgVfxParticlePool pool;
-        CgVfxLayer layer;
+        CgMaterial material;
+        /** The first layer drawn through it: what places the set's draw. */
+        CgVfxLook.Placed placed;
         CgVfxEmitter.Renderer renderer;
         /** The largest slot's: the mesh is sized for it. */
         int capacity;
@@ -179,6 +192,11 @@ public final class CgVfxFrame {
         return world;
     }
 
+    /** Whether {@code effect}'s look draws anything on {@code slot}: skip working out a slot nothing draws. */
+    public boolean draws(CgVfxEffect effect, CgVfxSlot slot) {
+        return effect.look().draws(slot);
+    }
+
     /** Whether this frame's quality tier is below {@code layer}'s, or {@link CgVfxSystem#skipped()} names it. */
     private boolean skips(CgVfxLayer layer) {
         if (!system.quality().atLeast(layer.from())) return true;
@@ -188,66 +206,89 @@ public final class CgVfxFrame {
         return false;
     }
 
+    private static void kind(CgVfxSlot slot, CgVfxSlot.Kind kind) {
+        if (slot.kind() != kind) throw new IllegalArgumentException(slot + " is not a " + kind + " slot");
+    }
+
     /** Puts {@code path} in this frame's path texture and answers its row. */
     public int path(CgVfxPath path, float seed, float age) {
         return system.paths().add(path, seed, age);
     }
 
-    /** Draws {@code layer} as a tube along {@code path}, at {@code row}, around {@code effect}'s origin. */
-    public void tube(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer) {
-        if (skips(layer)) return;
-        CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
-        system.tube().submit(world, mesh, system.material(layer), path, row,
-                effect.originX, effect.originY, effect.originZ, layer, effect.values());
+    /** Draws every layer on {@code slot}, a tube slot, as tubes along {@code path} at {@code row}, round the origin. */
+    public void tube(CgVfxEffect effect, CgVfxSlot slot, CgVfxPath path, int row) {
+        kind(slot, CgVfxSlot.Kind.TUBE);
+        CgVfxLook look = effect.look();
+        CgVfxLook.Placed[] on = look.on(slot);
+        for (CgVfxLook.Placed placed : on) {
+            CgVfxLayer layer = placed.layer();
+            if (skips(layer)) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
+            system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row,
+                    effect.originX, effect.originY, effect.originZ, CgVfxMaterials.size(effect, r),
+                    materials.row(effect, r), effect.age, effect.seed, effect.presence());
+        }
     }
 
     /**
-     * Draws {@code layer} on a unit sphere placed by {@code transform} (rotation and scale, radius 1 before it) at
-     * {@code (x, y, z)} from {@code effect}'s origin, scaled again by the layer's radius. What its shader reads:
+     * Draws every layer on {@code slot}, a mesh slot, on a unit sphere placed by {@code transform} (rotation and scale,
+     * radius 1 before it) at {@code (x, y, z)} from the origin, scaled again by each layer's size. What its shader reads:
      * <ul>
-     *   <li>{@code CG_OBJECT_CUSTOM0}: the layer's radius, its parameter, the effect's age and its seed.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM1}: {@code (ex, ey, ez, ew)}, which the effect defines.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM2}, {@code CG_OBJECT_CUSTOM3}: the layer's two colours.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM0}: the layer's size, 0, the effect's age and its seed.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM1}: {@code (ex, ey, ez, ew)}, which the effect documents for the slot.</li>
      * </ul>
      * The model matrix's columns are the sphere's axes, its +z the effect's forward where it has one.
      */
-    public void mesh(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
+    public void mesh(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                      float ex, float ey, float ez, float ew) {
-        if (skips(layer)) return;
-        CgVfxTrace.count(DRAWS_MESH, 1);
-        draw(system.sphereMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).submit();
+        kind(slot, CgVfxSlot.Kind.MESH);
+        CgVfxLook look = effect.look();
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(placed.layer())) continue;
+            CgVfxTrace.count(DRAWS_MESH, 1);
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            dress(world.draw(system.sphereMesh(), materials.material(r, CgVfxSlot.Kind.MESH)), effect, r, x, y, z,
+                    transform, ex, ey, ez, ew).submit();
+        }
     }
 
     /**
-     * Draws {@code layer} on the ribbon mesh ({@code CgVfxRibbons}), its unit cube placed by {@code transform} at
-     * {@code (x, y, z)} from {@code effect}'s origin and scaled by the layer's radius: stateless particles the shader
-     * places inside that cube. Its shader reads the same per-draw data as {@link #mesh}'s.
+     * Draws every layer on {@code slot}, a ribbons slot, on the ribbon mesh ({@code CgVfxRibbons}), its unit cube placed
+     * by {@code transform} at {@code (x, y, z)} from the origin and scaled by each layer's size: stateless particles the
+     * shader places inside that cube. Its shader reads the same per-draw data as {@link #mesh}'s.
      */
-    public void ribbons(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, Matrix4fc transform,
+    public void ribbons(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, Matrix4fc transform,
                         float ex, float ey, float ez, float ew) {
-        if (skips(layer)) return;
-        CgVfxTrace.count(DRAWS_RIBBONS, 1);
-        draw(system.ribbonMesh(), effect, layer, x, y, z, transform, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+        kind(slot, CgVfxSlot.Kind.RIBBONS);
+        CgVfxLook look = effect.look();
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(placed.layer())) continue;
+            CgVfxTrace.count(DRAWS_RIBBONS, 1);
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            dress(world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.RIBBONS)), effect, r, x, y, z,
+                    transform, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+        }
     }
 
     /**
-     * Draws {@code emitter}'s particles through every layer of {@code effect}'s look in the emitter's slot, as its
-     * renderer says (plan vfx-particles):
+     * Draws {@code emitter}'s particles through every layer on its slot ({@code emitter.emitter().slot()}), as its
+     * renderer says:
      * <ul>
-     *   <li>{@code MESHES}: a {@link #mesh} per particle, turned by its spin and sized by its size over life;
+     *   <li>{@code MESHES}: a mesh per particle, turned by its spin and sized by its size over life;
      *       {@code CG_OBJECT_CUSTOM0.xyz} is its velocity, {@code CG_OBJECT_CUSTOM1} its life 0..1, its seed, its
      *       opacity and its heat.</li>
      *   <li>{@code QUADS} and {@code ARCS}: one draw per {@link CgVfxQuads#COUNT} (or {@link CgVfxRibbons#COUNT})
      *       particles, reading the frame's particle records ({@code #pragma cg_use particle}).
-     *       {@code CG_OBJECT_CUSTOM0}: the first record, how many, the layer's radius and parameter;
+     *       {@code CG_OBJECT_CUSTOM0}: the first record, how many, the layer's size and 0;
      *       {@code CG_OBJECT_CUSTOM1}: the draw's centre minus the effect's origin, and the effect's age, so
      *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin the records are relative to. An
      *       {@code ARCS} draw is centred on the emitter's source, so {@code CG_OBJECT_TO_WORLD[3]} is the source.</li>
      * </ul>
-     * Its events' children are drawn with it, each through the layers in its own definition's slot.
+     * Its events' children are drawn with it, each through the layers on its own definition's slot.
      *
      * <pre>{@code
-     * for (CgVfxEmitterInstance emitter : emitters) frame.particles(this, emitter);
+     * for (CgVfxEmitterInstance e : emitters) frame.particles(this, e);
      * }</pre>
      */
     public void particles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
@@ -263,19 +304,18 @@ public final class CgVfxFrame {
         }
         if (emitter.particles().count() == 0) return;
         cpuDrawn += emitter.particles().count();
-        String slot = emitter.emitter().layer();
-        List<CgVfxLayer> layers = effect.look().layers();
-        for (int k = 0; k < layers.size(); k++) {
-            CgVfxLayer layer = layers.get(k);
-            if (!slot.equals(layer.slot()) || skips(layer)) continue;
+        CgVfxLook look = effect.look();
+        for (CgVfxLook.Placed placed : look.on(emitter.emitter().slot())) {
+            if (skips(placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             switch (emitter.emitter().renderer()) {
                 case MESHES -> {
                     try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, MESHES_ZONE)) {
-                        particleMeshes(effect, emitter, layer);
+                        particleMeshes(effect, emitter, r);
                     }
                 }
-                case QUADS -> particleDraws(effect, emitter, layer, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
-                case ARCS -> particleDraws(effect, emitter, layer, system.ribbonMesh(), CgVfxRibbons.COUNT,
+                case QUADS -> particleDraws(effect, emitter, r, system.quadMesh(), CgVfxQuads.COUNT, 6, false);
+                case ARCS -> particleDraws(effect, emitter, r, system.ribbonMesh(), CgVfxRibbons.COUNT,
                         CgVfxRibbons.VERTICES, true);
             }
         }
@@ -297,63 +337,63 @@ public final class CgVfxFrame {
         float cx = arcs ? emitter.sourceX() : 0f, cy = arcs ? emitter.sourceY() : 0f, cz = arcs ? emitter.sourceZ() : 0f;
         // The instance's origin, not the effect's: a world-space instance stays where it was first stepped.
         double ox = emitter.originX(), oy = emitter.originY(), oz = emitter.originZ();
-        String name = emitter.emitter().layer();
-        List<CgVfxLayer> layers = effect.look().layers();
-        CgVfxValues values = effect.values();
+        CgVfxLook look = effect.look();
         CgVfxRange range = CgVfxRange.of(pool);
         float reach = 0f;
-        for (int k = 0; k < layers.size(); k++) {
-            CgVfxLayer layer = layers.get(k);
-            if (!name.equals(layer.slot()) || skips(layer)) continue;
-            boolean inOrder = blendsInOrder(system.material(layer));
+        for (CgVfxLook.Placed placed : look.on(emitter.emitter().slot())) {
+            if (skips(placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
+            float size = CgVfxMaterials.size(effect, r);
+            int row = materials.row(effect, r);
+            boolean inOrder = blendsInOrder(material);
             if (inOrder) range.sorted(slot);
             if (meshes) {
-                // One record set for every layer: the cull stamps each draw's colours and scale onto it, leaving
+                // One record set for every layer: the cull stamps each draw's customs and scale onto it, leaving
                 // custom 0, Range's velocity.
-                reach = Math.max(reach, layer.radius());
-                CgWorldRenderer.Draw draw = world.draw(system.particleSphere(), system.material(layer))
+                reach = Math.max(reach, size);
+                CgWorldRenderer.Draw draw = world.draw(system.particleSphere(), material)
                         .instances(range.objects(), range.base(slot),
                                 CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
-                        .instanceScale(layer.radius())
+                        .instanceScale(size)
                         .gpuCulled()
-                        .at(ox, oy, oz);
-                color(draw, 2, layer.colorA(), values);
-                color(draw, 3, layer.colorB(), values);
-                CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
+                        .at(ox, oy, oz)
+                        .custom(3, row, effect.age, effect.seed, effect.presence());
+                CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
                 CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
                 continue;
             }
-            reach = Math.max(reach, Math.max(layer.radius(), 1f) * 4f);
+            reach = Math.max(reach, Math.max(size, 1f) * 4f);
             if (MERGED.get()) {
-                SlotSet set = set(pool, layer, renderer);
+                SlotSet set = set(pool, material, placed, renderer);
                 set.capacity = Math.max(set.capacity, capacity);
                 int f = set.add(ox + cx, oy + cy, oz + cz, range.visibleWord(slot) * 4L);
                 float[] c = set.custom;
                 c[f] = range.base(slot);
                 c[f + 1] = capacity;
-                c[f + 2] = layer.radius();
-                c[f + 3] = layer.parameter();
+                c[f + 2] = size;
                 c[f + 4] = cx;
                 c[f + 5] = cy;
                 c[f + 6] = cz;
                 c[f + 7] = effect.age;
-                color(c, f + 8, layer.colorA(), values);
-                color(c, f + 12, layer.colorB(), values);
+                c[f + 12] = row;
+                c[f + 13] = effect.age;
+                c[f + 14] = effect.seed;
+                c[f + 15] = effect.presence();
                 CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
                 continue;
             }
             CgMesh mesh = slotMesh(renderer, capacity);
-            CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer))
+            CgWorldRenderer.Draw draw = world.draw(mesh, material)
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
                     .indirect(range.visible(), range.visibleWord(slot) * 4L, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                             arcs ? CgVfxRibbons.VERTICES : 6)
                     .gpuCulled()
                     .at(ox + cx, oy + cy, oz + cz)
-                    .custom(0, range.base(slot), capacity, layer.radius(), layer.parameter())
-                    .custom(1, cx, cy, cz, effect.age);
-            color(draw, 2, layer.colorA(), values);
-            color(draw, 3, layer.colorB(), values);
-            CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
+                    .custom(0, range.base(slot), capacity, size, 0f)
+                    .custom(1, cx, cy, cz, effect.age)
+                    .custom(3, row, effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
         }
         if (reach <= 0f) return;
@@ -394,18 +434,19 @@ public final class CgVfxFrame {
         return Math.max(least, capacity <= 1 ? 1 : Integer.highestOneBit(capacity - 1) << 1);
     }
 
-    private void particleMeshes(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer) {
+    private void particleMeshes(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxMaterials.Resolved r) {
         CgVfxEmitter def = emitter.emitter();
         CgVfxParticleSet p = emitter.particles();
         CgVfxTrace.count(DRAWS_PARTICLE_MESH, p.count());
         float a = particleAlpha;
         float dx = (float) (emitter.originX() - effect.originX), dy = (float) (emitter.originY() - effect.originY),
                 dz = (float) (emitter.originZ() - effect.originZ);
+        CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
         for (int i = 0; i < p.count(); i++) {
             float t = p.progress(i), turn = p.seed[i] * 6.2831853f + p.spin[i];
             turned.rotationXYZ(turn * 1.7f, turn * 2.3f, turn).scale(p.size[i] * def.sizeAt(t));
-            dress(world.draw(system.particleSphere(), system.material(layer)), effect, layer, dx + p.x(i, a),
-                    dy + p.y(i, a), dz + p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i])
+            dress(world.draw(system.particleSphere(), material), effect, r, dx + p.x(i, a), dy + p.y(i, a),
+                    dz + p.z(i, a), turned, t, p.seed[i], def.opacityAt(t), p.heat[i])
                     .custom(0, p.vx[i], p.vy[i], p.vz[i], 0f).submit();
         }
     }
@@ -415,12 +456,14 @@ public final class CgVfxFrame {
      * for the ribbons, which have none), their transform the particles' bounding box: the unit cube, stated, since
      * neither mesh has bounds of its own.
      */
-    private void particleDraws(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLayer layer, CgMesh mesh,
+    private void particleDraws(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxMaterials.Resolved r, CgMesh mesh,
                                int perDraw, int indicesEach, boolean aroundSource) {
         CgVfxParticleSet p = emitter.particles();
         int base = system.particleBase(emitter);
-        CgVfxValues values = effect.values();
-        float stretch = Math.max(layer.radius(), 1f) * 4f;
+        float size = CgVfxMaterials.size(effect, r);
+        float stretch = Math.max(size, 1f) * 4f;
+        CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
+        int row = materials.row(effect, r);
         for (int start = 0; start < p.count(); start += perDraw) {
             int n = Math.min(perDraw, p.count() - start);
             float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
@@ -453,23 +496,23 @@ public final class CgVfxFrame {
                 hz = (maxZ - minZ) * 0.5f + margin;
             }
             scaled.scaling(Math.max(hx, 1.0e-3f), Math.max(hy, 1.0e-3f), Math.max(hz, 1.0e-3f));
-            CgWorldRenderer.Draw draw = world.draw(mesh, system.material(layer)).indices(0, n * indicesEach)
+            CgWorldRenderer.Draw draw = world.draw(mesh, material).indices(0, n * indicesEach)
                     .bounds(CgAABBc.UNIT)
                     .at(emitter.originX() + cx, emitter.originY() + cy, emitter.originZ() + cz).transform(scaled)
-                    .custom(0, base + start, n, layer.radius(), layer.parameter())
-                    .custom(1, cx, cy, cz, effect.age);
-            color(draw, 2, layer.colorA(), values);
-            color(draw, 3, layer.colorB(), values);
-            CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
+                    .custom(0, base + start, n, size, 0f)
+                    .custom(1, cx, cy, cz, effect.age)
+                    .custom(3, row, effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, r.placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_PARTICLE_BATCH, 1);
         }
     }
 
     /**
-     * Draws {@code layer} on one camera-facing quad ({@code CgMesh.quads(1)}) at {@code (x, y, z)} from {@code effect}'s
-     * origin, {@code size} times the layer's radius from its centre to an edge: one particle. Each is its own draw, so
-     * the world renderer sorts alpha-blended ones back to front and instances neighbours. Its shader reads the same
-     * per-draw data as {@link #mesh}'s, {@code (ex, ey, ez, ew)} being the particle's own, and turns the quad itself:
+     * Draws every layer on {@code slot}, a billboard slot, on one camera-facing quad ({@code CgMesh.quads(1)}) at
+     * {@code (x, y, z)} from the origin, {@code size} times the layer's size from its centre to an edge: one particle.
+     * Each is its own draw, so the world renderer sorts alpha-blended ones back to front and instances neighbours. Its
+     * shader reads the same per-draw data as {@link #mesh}'s, {@code (ex, ey, ez, ew)} being the particle's own, and
+     * turns the quad itself:
      *
      * <pre>{@code
      * vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
@@ -478,79 +521,75 @@ public final class CgVfxFrame {
      *         + (right * FX_QUAD_CORNER.x + up * FX_QUAD_CORNER.y) * length(CG_OBJECT_TO_WORLD[0].xyz);
      * }</pre>
      */
-    public void billboard(CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z, float size,
+    public void billboard(CgVfxEffect effect, CgVfxSlot slot, float x, float y, float z, float size,
                           float ex, float ey, float ez, float ew) {
-        if (skips(layer)) return;
-        CgVfxTrace.count(DRAWS_BILLBOARD, 1);
-        // Its bounds: the cube its transform scales, whichever way the shader turns it.
-        draw(CgMesh.quads(1), effect, layer, x, y, z, sized.scaling(size), ex, ey, ez, ew).bounds(CgAABBc.UNIT)
-                .submit();
+        kind(slot, CgVfxSlot.Kind.BILLBOARD);
+        CgVfxLook look = effect.look();
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(placed.layer())) continue;
+            CgVfxTrace.count(DRAWS_BILLBOARD, 1);
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            // Its bounds: the cube its transform scales, whichever way the shader turns it.
+            dress(world.draw(CgMesh.quads(1), materials.material(r, CgVfxSlot.Kind.BILLBOARD)), effect, r, x, y, z,
+                    sized.scaling(size), ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+        }
     }
 
     /**
-     * Draws {@code layer} on the ribbon mesh spread over {@code path}, at {@code row}: stateless particles that ride the
-     * path itself, reading it through {@code fx_tube.glsl} ({@code fx_ring_at}). What its shader reads:
+     * Draws every layer on {@code slot}, a path-ribbons slot, on the ribbon mesh spread over {@code path} at
+     * {@code row}: stateless particles riding the path itself, reading it through {@code fx_tube.glsl}
+     * ({@code fx_ring_at}). What its shader reads:
      * <ul>
      *   <li>{@code _FxPath}; the header gives the effect's age and seed.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, 0, the layer's radius, the layer's parameter.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, 0, the layer's size, 0.</li>
      *   <li>{@code CG_OBJECT_CUSTOM1}: the draw's centre minus the effect's origin, so
      *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin; {@code .w} an intensity.</li>
-     *   <li>{@code CG_OBJECT_CUSTOM2}, {@code CG_OBJECT_CUSTOM3}: the layer's two colours.</li>
      * </ul>
-     * The draw's bounds are the path's, grown by its widest ring times the layer's radius.
+     * The draw's bounds are the path's, grown by its widest ring times the layer's size.
      */
-    public void pathRibbons(CgVfxEffect effect, CgVfxPath path, int row, CgVfxLayer layer, float intensity) {
+    public void pathRibbons(CgVfxEffect effect, CgVfxSlot slot, CgVfxPath path, int row, float intensity) {
+        kind(slot, CgVfxSlot.Kind.PATH_RIBBONS);
         int count = path.count();
-        if (count < 2 || skips(layer)) return;
+        CgVfxLook look = effect.look();
+        CgVfxLook.Placed[] on = look.on(slot);
+        if (count < 2 || on.length == 0) return;
         float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
-        float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE, reach = 0f;
+        float maxX = -Float.MAX_VALUE, maxY = -Float.MAX_VALUE, maxZ = -Float.MAX_VALUE, widest = 0f;
         for (int i = 0; i < count; i++) {
             minX = Math.min(minX, path.x(i)); maxX = Math.max(maxX, path.x(i));
             minY = Math.min(minY, path.y(i)); maxY = Math.max(maxY, path.y(i));
             minZ = Math.min(minZ, path.z(i)); maxZ = Math.max(maxZ, path.z(i));
-            reach = Math.max(reach, path.radius(i));
+            widest = Math.max(widest, path.radius(i));
         }
-        reach *= Math.max(layer.radius(), 1f) * 2f;
         float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f, cz = (minZ + maxZ) * 0.5f;
-        // The ribbon mesh spans -1..1: half the extent each way.
-        scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
-        CgVfxValues values = effect.values();
-        CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), system.material(layer)).bounds(CgAABBc.UNIT)
-                .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled).subject(effect.subject)
-                .custom(0, row, 0f, layer.radius(), layer.parameter())
-                .custom(1, cx, cy, cz, intensity);
-        color(draw, 2, layer.colorA(), values);
-        color(draw, 3, layer.colorB(), values);
-        CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ).submit();
-        CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
+        for (CgVfxLook.Placed placed : on) {
+            if (skips(placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            float size = CgVfxMaterials.size(effect, r);
+            float reach = widest * Math.max(size, 1f) * 2f;
+            // The ribbon mesh spans -1..1: half the extent each way.
+            scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
+            CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.PATH_RIBBONS))
+                    .bounds(CgAABBc.UNIT)
+                    .at(effect.originX + cx, effect.originY + cy, effect.originZ + cz).transform(scaled)
+                    .subject(effect.subject)
+                    .custom(0, row, 0f, size, 0f)
+                    .custom(1, cx, cy, cz, intensity)
+                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_PATH_RIBBONS, 1);
+        }
     }
 
-    /** A draw of {@code layer} on {@code mesh} with the per-draw data every effect shader reads, for the caller to submit. */
-    private CgWorldRenderer.Draw draw(CgMesh mesh, CgVfxEffect effect, CgVfxLayer layer, float x, float y, float z,
-                                      Matrix4fc transform, float ex, float ey, float ez, float ew) {
-        return dress(world.draw(mesh, system.material(layer)), effect, layer, x, y, z, transform, ex, ey, ez, ew);
-    }
-
-    /** {@code draw} given the placement and per-draw data of {@link #draw}, whatever mesh it draws. */
-    private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect effect, CgVfxLayer layer, float x, float y,
-                                       float z, Matrix4fc transform, float ex, float ey, float ez, float ew) {
-        CgVfxValues values = effect.values();
-        scaled.set(transform).scale(layer.radius());
+    /** {@code draw} placed and given the per-draw data every mesh-like slot's shader reads, for the caller to submit. */
+    private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect effect, CgVfxMaterials.Resolved r, float x,
+                                       float y, float z, Matrix4fc transform, float ex, float ey, float ez, float ew) {
+        float size = CgVfxMaterials.size(effect, r);
+        scaled.set(transform).scale(size);
         draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled).subject(effect.subject)
-                .custom(0, layer.radius(), layer.parameter(), effect.age, effect.seed)
-                .custom(1, ex, ey, ez, ew);
-        color(draw, 2, layer.colorA(), values);
-        color(draw, 3, layer.colorB(), values);
-        return CgVfxSystem.place(draw, layer, effect.originX, effect.originY, effect.originZ);
-    }
-
-    private static void color(float[] into, int at, CgVfxParam param, CgVfxValues values) {
-        if (param == null) return;
-        for (int i = 0; i < 4; i++) into[at + i] = values.get(param, i);
-    }
-
-    private static void color(CgWorldRenderer.Draw draw, int slot, CgVfxParam param, CgVfxValues values) {
-        if (param == null) return;
-        draw.custom(slot, values.get(param, 0), values.get(param, 1), values.get(param, 2), values.get(param, 3));
+                .custom(0, size, 0f, effect.age, effect.seed)
+                .custom(1, ex, ey, ez, ew)
+                .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+        return CgVfxSystem.place(draw, r.placed, effect.originX, effect.originY, effect.originZ);
     }
 }

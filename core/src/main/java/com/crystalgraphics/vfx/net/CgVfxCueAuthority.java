@@ -79,8 +79,15 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
             LOGGER.error("[CgVfx] {} threw on the server, and is killed", play.id(), e);
             effect.kill();
         }
+        if (obj.isRemoved()) return;
+        // Before the despawn below: an ending stops the effect, and viewers must hear which ending it was.
+        authority.drainMotion(t -> play.obj.emit(CgVfxCue.TWEEN, CgVfxCue.tween(play.cue.look, t.param, t.to, t.seconds,
+                t.easing)), ending -> {
+            play.obj.set(CgVfxCue.ENDING, ending.name());
+            play.obj.emit(CgVfxCue.END, ending.name());
+        });
         if (!obj.isStopping() && effect.state() != CgVfxEffect.State.PLAYING) obj.despawn();   // it stopped itself
-        if (obj.isStopping() || obj.isRemoved()) return;
+        if (obj.isStopping()) return;
         authority.drainSet(this);
         if (effect instanceof CgVfxCue.Authoritative) ((CgVfxCue.Authoritative) effect).publish(play);
     }
@@ -92,11 +99,12 @@ final class CgVfxCueAuthority implements CgNetBehaviour, Consumer<CgVfxParam> {
         CgNetField<Float>[] fields = look == null ? null : look.of(param);
         if (fields == null) return;
         CgVfxEffect effect = authority.effect();
-        for (int k = 0; k < fields.length; k++) play.setFloat(fields[k], effect.get(param, k));
+        int at = effect.values().layout().offset(param);
+        for (int k = 0; k < fields.length; k++) play.setFloat(fields[k], effect.values().raw(at + k));
     }
 
     private void hit(CgHit h) {
-        play.obj.emit(CgVfxCue.HIT, sent.set(h, authority.effect().look().schema().indexOf(h.part())));
+        play.obj.emit(CgVfxCue.HIT, sent.set(h, authority.effect().look().layout().indexOf(h.part())));
     }
 
     @Override

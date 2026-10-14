@@ -1,15 +1,19 @@
 // An energy orb's core (a wave's head, its charge ball): a white-hot, hard-edged ellipsoid evaluated per pixel against
 // the view ray, so it holds from any side and from inside; the opaque scene hides it by depth. Drawn on CgVfxFrame.mesh's
-// sphere at the layer's radius, the core 0.8 of it; CG_OBJECT_CUSTOM1.z an intensity. Colour A is the core, colour B its
-// rim, A's alpha a strength. CgEnergyWave.
+// sphere at the layer's radius, the core 0.8 of it; CG_OBJECT_CUSTOM1.z an intensity. _Core is the core, its alpha a
+// strength; _CoreRim its rim. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_volume.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Core     ("The white core; its alpha a strength", color) = (1, 1, 1, 1)
+    _CoreRim  ("The core's rim", color) = (0.7, 0.95, 1, 1)
     _Density ("How fast it turns white", float) = 3.4
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
@@ -49,8 +53,8 @@ Pass {
         float age = CG_OBJECT_CUSTOM0.z;
         float flicker = 0.85 + 0.3 * fx_noise(vec3((o + d * along) * 2.2) + vec3(0.0, 0.0, age * 3.1));
         float white = 1.0 - exp(-thickness * _Density * flicker);
-        vec3 col = mix(CG_OBJECT_CUSTOM3.rgb, CG_OBJECT_CUSTOM2.rgb, smoothstep(0.1, 0.6, thickness));
-        fragColor = vec4(col * white * 1.6 * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * seen, 1.0);
+        vec3 col = mix(_CoreRim.rgb, _Core.rgb, smoothstep(0.1, 0.6, thickness));
+        fragColor = vec4(col * white * 1.6 * _Core.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * seen, 1.0);
     }
 }
 

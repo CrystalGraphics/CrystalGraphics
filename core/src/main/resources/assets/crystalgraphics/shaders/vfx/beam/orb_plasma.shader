@@ -2,16 +2,20 @@
 // the centre and falling smoothly through cyan to blue at the edge, so it has no hard rim and no gaps. Filaments inside
 // it pour inward on two cross-faded phases, so the motion never winds up, and turn with it. Drawn on
 // CgVfxFrame.mesh's sphere's far wall, each pixel once; the opaque scene hides it by depth. CG_OBJECT_CUSTOM1.z is an
-// intensity. Colour A is the hot heart, colour B the cool edge, A's alpha a strength. CgEnergyWave.
+// intensity. _Core is the hot heart, its alpha a strength; _Shell the cool edge. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Core     ("The hot heart; its alpha a strength", color) = (1, 1, 1, 1)
+    _Shell    ("The cool edge", color) = (0.15, 0.55, 1.6, 1)
     _Inflow     ("How fast filaments pour inward, cycles a second", float) = 1.5
     _Spin       ("How fast it turns, radians a second", float) = 2.6
     _Scale      ("Filament frequency", float) = 2.6
@@ -73,7 +77,7 @@ Pass {
         float stride = (t1 - t0) / float(STEPS);
         // One fixed dither per pixel, so the steps leave no bands and nothing shimmers.
         float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-        vec3 hot = CG_OBJECT_CUSTOM2.rgb, cool = CG_OBJECT_CUSTOM3.rgb;
+        vec3 hot = _Core.rgb, cool = _Shell.rgb;
         vec3 mid = mix(cool, hot, 0.45) * 1.15;
         // The heart throbs, a violent surge several times a second.
         float throb = 0.75 + 0.5 * fx_value_noise(vec3(seed * 7.0, 1.5, 0.0) + cg_noise_time(age * 9.0));
@@ -98,7 +102,7 @@ Pass {
         // The orb's centre against the opaque scene, softened over the orb's own size.
         float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
         float seen = smoothstep(-radius, radius * 0.5, FX_SCENE_DISTANCE(ray) - dot(centre - eye, ray));
-        fragColor = vec4(sum * _Brightness * fx_flicker(age, seed) * CG_OBJECT_CUSTOM2.a * CG_OBJECT_CUSTOM1.z * seen, 1.0);
+        fragColor = vec4(sum * _Brightness * fx_flicker(age, seed) * _Core.a * CG_OBJECT_CUSTOM1.z * FX_PRESENCE * seen, 1.0);
     }
 }
 

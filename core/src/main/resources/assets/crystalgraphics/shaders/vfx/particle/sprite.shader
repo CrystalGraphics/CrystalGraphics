@@ -1,19 +1,22 @@
 // A textured sprite: a frame of a flipbook sheet on a quad facing as _Facing says (fx_particle.glsl's FX_FACE_*), lit by
 // the world where it is and blended over what is behind: smoke, dust, leaves. A CgVfxQuads quad placed from its particle
-// record (CgVfxFrame.particles, QUADS). Colour A tints the sheet, A's alpha a strength.
+// record (CgVfxFrame.particles, QUADS). _Color tints the sheet, its alpha a strength.
 //
-//     CgVfxLayer.builder("crystalgraphics:shaders/vfx/particle/sprite.shader").slot(puffs.layer()).colors(TINT, TINT)
-//             .properties(b -> b.sampler("_Sheet", 0, sheet).vec4("_Frames", 8f, 8f, 64f, 1f).set1f("_Facing", 2f))
+//     CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/sprite.shader").on(PUFFS).bind("_Color", TINT)
+//             .texture("_Sheet", SHEET).set("_Frames", 8f, 8f, 64f, 1f).set("_Facing", 2f).build()
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("Tints the sheet; its alpha a strength", color) = (1, 1, 1, 1)
     _Sheet ("The flipbook sheet, straight alpha, frame 0 at the top left", sampler2D) = "white"
     _Frames ("Columns, rows, frames, cycles over a life", vec4) = (1, 1, 1, 1)
     _Flip ("Start-frame spread by seed (0..1), loops, blends frames", vec4) = (0, 1, 1, 0)
@@ -69,7 +72,7 @@ Pass {
         vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
         float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
                 cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
-        float alpha = texel.a * i.opacity * CG_OBJECT_CUSTOM2.a * soft;
-        fragColor = vec4(texel.rgb * CG_OBJECT_CUSTOM2.rgb * alpha, alpha);
+        float alpha = texel.a * i.opacity * _Color.a * FX_PRESENCE * soft;
+        fragColor = vec4(texel.rgb * _Color.rgb * alpha, alpha);
     }
 }

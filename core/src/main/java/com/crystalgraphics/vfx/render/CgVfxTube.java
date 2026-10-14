@@ -9,7 +9,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
-import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import org.joml.Matrix4f;
 
@@ -20,12 +20,12 @@ import org.joml.Matrix4f;
  * <p>Each chunk is its own {@link CgWorldRenderer} draw, at its centre and scaled to its bounds, so the world renderer
  * culls and sorts chunks one by one. What a chunk's shader reads:</p>
  * <ul>
- *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, the chunk's first ring, the layer's radius scale, the layer's
- *       parameter.</li>
+ *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, the chunk's first ring, the layer's size, 0.</li>
  *   <li>{@code CG_OBJECT_CUSTOM1.xyz}: the chunk's centre minus the effect's origin, so
  *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin, camera-relative; {@code .w} how many
  *       rings from the first the chunk owns, each ring owned by one chunk.</li>
- *   <li>{@code CG_OBJECT_CUSTOM2}, {@code CG_OBJECT_CUSTOM3}: the layer's two colours, from the effect's values.</li>
+ *   <li>{@code CG_OBJECT_CUSTOM3}: the draw header ({@code fx_draw.glsl}): the effect's row for the layer, its age, its
+ *       seed and its presence.</li>
  * </ul>
  * <p>The mesh's uv is (ring within the chunk, angle as 0..1), its seam column doubled, and a closed mesh's end centres
  * have angle -1; its positions span the unit cube only so its bounds are right.</p>
@@ -76,22 +76,16 @@ public final class CgVfxTube {
 
     /**
      * Submits {@code path}, already in the frame's path texture at {@code row}, as one layer's chunks around the
-     * effect origin {@code (ox, oy, oz)}: what {@code CgVfxFrame.tube} calls, with the system's mesh and material.
+     * effect origin {@code (ox, oy, oz)}, {@code size} times its rings: what {@code CgVfxFrame.tube} calls, with the
+     * system's mesh and the layer's material, and the effect's header.
      */
-    public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterial material, CgVfxPath path, int row,
-                       double ox, double oy, double oz, CgVfxLayer layer, CgVfxValues values) {
+    public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterial material, CgVfxLook.Placed placed, CgVfxPath path,
+                       int row, double ox, double oy, double oz, float size, int valuesRow, float age, float seed,
+                       float presence) {
         int count = path.count();
         if (count < 2) return;
-        float a0 = 0f, a1 = 0f, a2 = 0f, a3 = 0f, b0 = 0f, b1 = 0f, b2 = 0f, b3 = 0f;
-        if (layer.colorA() != null) {
-            a0 = values.get(layer.colorA(), 0); a1 = values.get(layer.colorA(), 1);
-            a2 = values.get(layer.colorA(), 2); a3 = values.get(layer.colorA(), 3);
-        }
-        if (layer.colorB() != null) {
-            b0 = values.get(layer.colorB(), 0); b1 = values.get(layer.colorB(), 1);
-            b2 = values.get(layer.colorB(), 2); b3 = values.get(layer.colorB(), 3);
-        }
-        float scaleOf = layer.radius();
+        CgVfxLayer layer = placed.layer();
+        float scaleOf = size;
         for (int first = 0; first < count - 1; first += SPANS) {
             int last = Math.min(first + SPANS, count - 1);
             float minX = Float.MAX_VALUE, minY = Float.MAX_VALUE, minZ = Float.MAX_VALUE;
@@ -115,11 +109,10 @@ public final class CgVfxTube {
             }
             int owned = last == count - 1 ? last - first + 1 : SPANS;
             CgWorldRenderer.Draw draw = world.draw(mesh, material).at(ox + cx, oy + cy, oz + cz).transform(scale)
-                    .custom(0, row, first, scaleOf, layer.parameter())
+                    .custom(0, row, first, scaleOf, 0f)
                     .custom(1, cx, cy, cz, owned)
-                    .custom(2, a0, a1, a2, a3)
-                    .custom(3, b0, b1, b2, b3);
-            CgVfxSystem.place(draw, layer, ox, oy, oz);
+                    .custom(3, valuesRow, age, seed, presence);
+            CgVfxSystem.place(draw, placed, ox, oy, oz);
             // A volume is soft light that adds: a quarter of the pixels draws it as well.
             if (layer.isVolume()) draw.halfResolution();
             draw.submit();

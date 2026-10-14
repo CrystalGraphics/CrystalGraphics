@@ -2,20 +2,23 @@
 // rippling forward along the beam and torn at its edge by rising noise, its strongest bend split slightly by colour.
 // The bend is a share of the screen's height, held to _Hold of the sheath's width on screen, so a far beam keeps it. A
 // tube layer: fx_tube.glsl's contract (_FxPath, CG_OBJECT_CUSTOM0..1 as CgVfxTube writes them), its radius the layer's
-// times the ring's, capped at the layer's parameter in blocks (0 for no cap). Drawn on the tube's far wall, where the
-// ray meets it found analytically, so it bends from inside it too; a Distortion pass (ORDER_DISTORTION), so the sharp
+// times the ring's, capped at _Cap blocks. Drawn on the tube's far wall, where the
+// ray meets it found analytically, so it bends from inside it too; a Distortion pass (Role.DISTORTION), so the sharp
 // layers stay unbent. A ray through the beam itself, within _Core times its ring's radius of the path, is left unbent.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 // The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under 0.016 of the height.
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
 Queue = "Transparent"
 
 Properties {
+    _Cap      ("Widest the sheath gets, blocks: it holds still while the beam throbs; 0 for no cap", float) = 0
     _FxPath   ("Path rings", sampler2D) = "black"
     _Strength ("Bend at full intensity, share of the screen's height", float) = 0.012
     _Hold     ("The bend's most, as a share of the sheath's width on screen", float) = 0.12
@@ -45,7 +48,7 @@ Pass {
     }
 
     void vertex(out v2f o) {
-        float scale = CG_OBJECT_CUSTOM0.z, cap = CG_OBJECT_CUSTOM0.w;
+        float scale = CG_OBJECT_CUSTOM0.z, cap = _Cap;
         FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
                                         cg_TexCoord0, scale, 0.0);
         // Capped below the body's throb, so the haze holds still while the beam pulses; the taper at its ends survives.
@@ -103,7 +106,7 @@ Pass {
         float sheath = smoothstep(ring * _Core * 0.9, peak, passes)
                 * (1.0 - smoothstep(peak, edge, passes + tear * 0.25 * (edge - peak)));
         // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
-        float strength = sheath;
+        float strength = sheath * FX_PRESENCE;
         if (strength < 0.002) discard;
         // Ripples racing toward the head push the scene along the beam on screen; the rest is rising shimmer.
         float ripple = sin((arc * _Rings - age * _Pulse + tear * 0.5) * 6.28318531);

@@ -19,7 +19,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgVfxStartAtTest {
 
-    private static final CgVfxLook LOOK = CgVfxLook.builder(new CgVfxSchema()).build();
+    private static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("test:start_at")).build();
     /** A rate for 4 s and a burst at 1 s: both the books and what is alive depend on the whole past. */
     private static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("start_at_embers").capacity(2000)
             .rate(150f, 0f, 4f).burst(1f, 60).life(0.5f, 1.2f).speed(1f, 3f)

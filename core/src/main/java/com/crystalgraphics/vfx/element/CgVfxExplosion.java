@@ -3,8 +3,8 @@ package com.crystalgraphics.vfx.element;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
-import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
@@ -16,35 +16,38 @@ import java.util.List;
 /**
  * The parts nearly every explosion and ki attack shares, as Sparking Zero reuses them: a cloud of cel-shaded billows in a
  * surge of dust along the ground, dark debris specks, glowing embers and hot streaks, the shock front running out along
- * the ground in the dust it lifts, and the ink an impact frame calls for ({@link #drawn}). Each part is an emitter with its own physics
- * (plan vfx-particles) and a layer that draws it. An effect makes one on its schema, which declares the parts' colours
- * there, adds it to its looks, and starts the look's emitters where the burst happens.
+ * the ground in the dust it lifts, and the ink an impact frame calls for ({@link #drawn}). Each part is an emitter with
+ * its own physics and a layer that draws it; its colours are on a schema of its own, so every look carrying the kit has
+ * them, tunable and sent with a cue like the effect's own.
  *
  * <pre>{@code
- * static final CgVfxSchema SCHEMA = new CgVfxSchema();
- * static final CgVfxExplosion BLAST = new CgVfxExplosion(SCHEMA, "blast");
- * static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA).add(BLAST).build();
+ * static final CgVfxExplosion BLAST = new CgVfxExplosion("mymod:bolt/blast");
+ * static final CgVfxLook BLUE = CgVfxLook.builder(SCHEMA).with(BLAST.kit()).build();
  *
  * // another palette
- * static final CgVfxLook FIRE = BLUE.toBuilder()
- *         .set(BLAST.body, 0.95f, 0.3f, 0.04f, 1f).set(BLAST.hot, 1f, 0.88f, 0.3f, 1f)
+ * static final CgVfxLook FIRE = BLUE.derive()
+ *         .set(BLAST.body, 0xFFF24C0A).set(BLAST.hot, 0xFFFFE04C)
  *         .build();
  *
  * // other physics for one part: replace its emitter by name
- * static final CgVfxLook DRIFTING = BLUE.toBuilder()
+ * static final CgVfxLook DRIFTING = BLUE.derive()
  *         .emitter(BLAST.sparkles.toBuilder().module(new CgVfxModule.Wind(2f)).build())
  *         .build();
  *
- * // where it bursts, in the effect's tick
- * for (CgVfxEmitter e : look().emitters()) { CgVfxEmitterInstance i = new CgVfxEmitterInstance(e, seed); i.start(x, y, z); ... }
+ * // where it bursts, in the effect's tick: the look's emitters, which may replace the kit's
+ * for (CgVfxEmitter e : BLAST.emitters()) {
+ *     CgVfxEmitter played = look().emitter(e.name());
+ *     if (played != null && (framed || !BLAST.drawn(played))) start(played, x, y, z);
+ * }
  * }</pre>
  *
  * <ul>
- *   <li>Two kits on one schema need different names: the name prefixes their colours, slots and emitters.</li>
- *   <li>Sizes and speeds are in blocks, made for a blast about ten blocks across.</li>
+ *   <li>Two kits in one look need different names: the name is its schema's, and prefixes its emitters'.</li>
+ *   <li>Sizes and speeds are in blocks, made for a blast about ten blocks across; a look scaled by
+ *       {@code CgVfxLook.Builder.scaled} scales them.</li>
  * </ul>
  */
-public final class CgVfxExplosion implements CgVfxLook.Part {
+public final class CgVfxExplosion {
 
     private static final String PARTICLE = "crystalgraphics:shaders/vfx/particle/";
 
@@ -198,60 +201,61 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
                     .to(1f, 0f, CgEasings.IN_QUAD).build())
             .build();
 
-    /** The cloud's body and its hot core, the debris and ink, its dust, and a spark's white centre: colours on its schema. */
-    public final CgVfxParam body, hot, debris, dustColor, sparkCore;
+    /** Its colours' schema, named as the kit is. */
+    public final CgVfxSchema schema;
+    /** The cloud's body and its hot core, the debris and ink, its dust, and a spark's white centre. */
+    public final CgVfxParam.Color body, hot, debris, dust, sparkCore;
     /**
      * This kit's emitters: the defaults above, named for it, so a look can replace any by that name. Its specks raise
-     * its {@link #dust} where they land: a look replacing the specks keeps that only by adding the event itself.
+     * {@link #puffs} where they land: a look replacing the specks keeps that only by adding the event itself.
      */
-    public final CgVfxEmitter billows, surge, specks, dust, sparkles, ink, rays, rings, skirt;
-    /** The layers that draw them, each in its emitter's slot; the rings' air and their foot's flash both in theirs. */
-    public final CgVfxLayer billowLayer, surgeLayer, speckLayer, dustLayer, sparkLayer, inkLayer, rayLayer,
-            ringLayer, ringAirLayer, skirtLayer;
+    public final CgVfxEmitter billows, surge, specks, puffs, sparkles, ink, rays, rings, skirt;
+    private final CgVfxKit kit;
 
-    /** Declares this kit's colours on {@code schema}, defaulting to a blue blast, and builds its layers. */
-    public CgVfxExplosion(CgVfxSchema schema, String name) {
-        body = schema.color(name + "Body", 0.06f, 0.3f, 0.95f, 1f);
-        hot = schema.color(name + "Hot", 0.42f, 0.7f, 1f, 1f);
-        debris = schema.color(name + "Debris", 0.02f, 0.04f, 0.12f, 1f);
-        dustColor = schema.color(name + "Dust", 0.6f, 0.57f, 0.53f, 0.6f);
-        sparkCore = schema.color(name + "SparkCore", 1f, 1f, 1f, 1f);
+    /** A kit named {@code name}, its schema's name ({@code namespace:path}), defaulting to a blue blast. */
+    public CgVfxExplosion(String name) {
+        schema = CgVfxSchema.of(name);
+        body = schema.color("body", 0xFF0F4CF2);
+        hot = schema.color("hot", 0xFF6BB2FF);
+        debris = schema.color("debris", 0xFF050A1F);
+        dust = schema.color("dust", 0x99999187);
+        sparkCore = schema.color("sparkCore", 0xFFFFFFFF);
         billows = named(BILLOWS, name);
         surge = named(SURGE, name);
-        dust = named(DUST, name);
+        puffs = named(DUST, name);
         specks = named(SPECKS, name).toBuilder()
-                .event(CgVfxEvent.onLanding().spawn(dust, 1).inherit(0.15f)).build();
+                .event(CgVfxEvent.onLanding().spawn(puffs, 1).inherit(0.15f)).build();
         sparkles = named(SPARKLES, name);
         ink = named(INK, name);
         rays = named(RAYS, name);
         rings = named(RINGS, name);
         skirt = named(SKIRT, name);
-        billowLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/smoke/billow.shader").slot(billows.layer())
-                .colors(body, hot).order(CgVfxLayer.ORDER_SMOKE).build();
-        surgeLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(surge.layer())
-                .colors(dustColor, hot).order(CgVfxLayer.ORDER_SMOKE)
-                .properties(b -> b.set1f("_Aspect", 0.6f).set1f("_Boil", 1.6f)).build();
-        speckLayer = CgVfxLayer.builder(PARTICLE + "speck.shader").slot(specks.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
-        dustLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(dust.layer())
-                .colors(dustColor, null).order(CgVfxLayer.ORDER_SMOKE).from(CgQuality.MEDIUM)
-                .properties(b -> b.set1f("_Glow", 0f)).build();
-        inkLayer = CgVfxLayer.builder(PARTICLE + "arc.shader").slot(ink.layer())
-                .colors(debris, null).order(CgVfxLayer.ORDER_SMOKE).build();
-        rayLayer = CgVfxLayer.builder(PARTICLE + "ray.shader").slot(rays.layer())
-                .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
-        ringLayer = CgVfxLayer.builder(PARTICLE + "ring.shader").slot(rings.layer())
-                .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
-        ringAirLayer = CgVfxLayer.builder("crystalgraphics:shaders/vfx/air/shock_ring.shader").slot(rings.layer())
-                .order(CgVfxLayer.ORDER_DISTORTION).from(CgQuality.MEDIUM).build();
-        skirtLayer = CgVfxLayer.builder(PARTICLE + "dust.shader").slot(skirt.layer())
-                .colors(dustColor, hot).order(CgVfxLayer.ORDER_SMOKE)
-                .properties(b -> b.set1f("_Aspect", 0.55f).set1f("_Boil", 1.8f)).build();
-        sparkLayer = CgVfxLayer.builder(PARTICLE + "spark.shader").slot(sparkles.layer())
-                .colors(hot, sparkCore).order(CgVfxLayer.ORDER_BANDS).build();
+        kit = CgVfxKit.of(name).params(schema)
+                .emitter(billows).emitter(surge).emitter(specks).emitter(sparkles).emitter(ink).emitter(rays)
+                .emitter(rings).emitter(skirt)
+                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/smoke/billow.shader").on(billows)
+                        .bind("_Color", body).bind("_Hot", hot).role(CgVfxLayer.Role.SMOKE).build())
+                .layer(dustLayer(surge).set("_Aspect", 0.6f).set("_Boil", 1.6f).bind("_Hot", hot).build())
+                .layer(dustLayer(skirt).set("_Aspect", 0.55f).set("_Boil", 1.8f).bind("_Hot", hot).build())
+                .layer(CgVfxLayer.of(PARTICLE + "speck.shader").on(specks).bind("_Color", debris)
+                        .role(CgVfxLayer.Role.SMOKE).build())
+                .layer(dustLayer(puffs).set("_Glow", 0f).from(CgQuality.MEDIUM).build())
+                .layer(CgVfxLayer.of(PARTICLE + "arc.shader").on(ink).bind("_Color", debris)
+                        .role(CgVfxLayer.Role.SMOKE).build())
+                .layer(glow(PARTICLE + "ray.shader", rays))
+                .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/air/shock_ring.shader").on(rings)
+                        .role(CgVfxLayer.Role.DISTORTION).from(CgQuality.MEDIUM).build())
+                .layer(glow(PARTICLE + "ring.shader", rings))
+                .layer(glow(PARTICLE + "spark.shader", sparkles))
+                .build();
     }
 
-    /** Every emitter of this kit an effect starts, in that order; the dust runs inside the specks' instances. */
+    /** Its emitters, their layers and its colours, for a look's {@code with}. */
+    public CgVfxKit kit() {
+        return kit;
+    }
+
+    /** Every emitter of this kit an effect starts, in that order; the puffs run inside the specks' instances. */
     public List<CgVfxEmitter> emitters() {
         return List.of(billows, surge, specks, sparkles, ink, rays, rings, skirt);
     }
@@ -259,27 +263,20 @@ public final class CgVfxExplosion implements CgVfxLook.Part {
     /**
      * Whether {@code emitter} is this kit's ink, or a look's replacement of it by name: a drawn mark among lit and glowing
      * parts, which an effect starts only when its burst has an impact frame.
-     *
-     * <pre>{@code
-     * for (CgVfxEmitter e : look().emitters()) {
-     *     if (!framed && BLAST.drawn(e)) continue;
-     *     ...
-     * }
-     * }</pre>
      */
     public boolean drawn(CgVfxEmitter emitter) {
         return emitter.name().equals(ink.name());
     }
 
-    @Override
-    public void addTo(CgVfxLook.Builder look) {
-        look.layer(billowLayer).layer(surgeLayer).layer(skirtLayer).layer(speckLayer).layer(dustLayer).layer(inkLayer)
-                .layer(rayLayer).layer(ringAirLayer).layer(ringLayer).layer(sparkLayer);
-        for (CgVfxEmitter emitter : emitters()) look.emitter(emitter);
+    private CgVfxLayer.Builder dustLayer(CgVfxEmitter emitter) {
+        return CgVfxLayer.of(PARTICLE + "dust.shader").on(emitter).bind("_Color", dust).role(CgVfxLayer.Role.SMOKE);
+    }
+
+    private CgVfxLayer glow(String shader, CgVfxEmitter emitter) {
+        return CgVfxLayer.of(shader).on(emitter).bind("_Color", hot).bind("_Hot", sparkCore).build();
     }
 
     private static CgVfxEmitter named(CgVfxEmitter emitter, String kit) {
-        String name = kit + "." + emitter.name();
-        return emitter.toBuilder().name(name).layer(name).build();
+        return emitter.toBuilder().name(kit + "." + emitter.name()).build();
     }
 }

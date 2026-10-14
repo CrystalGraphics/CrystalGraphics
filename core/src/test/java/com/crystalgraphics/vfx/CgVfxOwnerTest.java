@@ -15,7 +15,7 @@ import static org.junit.Assert.fail;
 /** Owner handles: namespaced ids, ending only their own effects, and an effect that throws killed alone. */
 public class CgVfxOwnerTest {
 
-    private static final CgVfxLook LOOK = CgVfxLook.builder(new CgVfxSchema()).build();
+    private static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("test:owner")).build();
 
     static class Quiet extends CgVfxEffect {
         int ticks;

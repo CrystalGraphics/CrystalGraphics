@@ -1,19 +1,21 @@
 // The light an energy wave's body casts on the scene around it: each ring a point light on the surfaces nearby, so the
 // ground under the beam floods with its colour. A volume layer (CgVfxLayer.volume): each chunk lights from only the
-// rings it owns, on a sphere whose far wall covers each pixel once. Colour A is the light, its alpha a strength. The
-// layer's radius is how far the light reaches, in the rings' radii. CgEnergyWave.
+// rings it owns, on a sphere whose far wall covers each pixel once. _Glow is the light, its alpha a strength. The
+// layer's size is how far the light reaches, in the rings' radii. CgEnergyWave.
 #type spatial
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_light.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Glow     ("The light it casts; its alpha a strength", color) = (0.18, 0.45, 1.4, 0.9)
     _FxPath   ("Path rings", sampler2D) = "black"
-    _Strength    ("Brightness", float) = 1.6
-    _StrengthHdr ("Brightness under HDR", float) = 3.0
+    _Strength ("Brightness", float) = 3.0
 }
 
 struct v2f { vec3 world; };
@@ -51,6 +53,6 @@ Pass {
             float size = max(ring.w, 1.0e-3);
             light += spacing / size * fx_point_light(surface, normal, origin + ring.xyz, size, size * CG_OBJECT_CUSTOM0.z);
         }
-        fragColor = vec4(CG_OBJECT_CUSTOM2.rgb * CG_OBJECT_CUSTOM2.a * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
+        fragColor = vec4(_Glow.rgb * _Glow.a * FX_PRESENCE * light * _Strength, 1.0);
     }
 }

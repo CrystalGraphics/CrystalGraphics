@@ -4,6 +4,7 @@ import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.easing.CgEasing;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
@@ -11,6 +12,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
+import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
@@ -46,7 +48,8 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * <ul>
- *   <li>Its values start as its look's; {@link #set} changes this effect alone.</li>
+ *   <li>Its values start as its look's; {@link #set} changes this effect alone, {@link #animate} eases one there.</li>
+ *   <li>{@link #stop()} is its graceful end; {@link #end(CgVfxEnding)} ends it another way a look or a game picks.</li>
  *   <li>An effect is done when it calls {@link #die()}; the system then drops it before the next frame.</li>
  *   <li>It announces the moments of its life with {@link #moment}, which a {@link CgVfxMomentListener} hears: name
  *       them as constants on the effect.</li>
@@ -100,7 +103,7 @@ public abstract class CgVfxEffect {
     private static final CgVfxAir STILL = new CgVfxAir().wind(0f, 0f, 0f);
     private double groundY = Double.NaN;
     /** The shakes it holds, by parameter; made when first held. */
-    private CgVfxParam[] heldParams;
+    private CgVfxParam.Shake[] heldParams;
     private CgCameraShake.Held[] held;
     /** What hears its hits; null for none. */
     private List<Consumer<? super CgHit>> hitListeners;
@@ -124,6 +127,19 @@ public abstract class CgVfxEffect {
     /** The CPU-stepped emitters whose step this tick left event rows, delivered by the system after the steps. */
     private CgVfxEmitterInstance[] reporting = new CgVfxEmitterInstance[0];
     private int reportingCount;
+    /** Values easing toward a target: each one's float offset (-1 its presence), from, to, start, length, easing. */
+    private int[] tweenAt = new int[0];
+    private float[] tweenFrom = new float[0], tweenTo = new float[0], tweenStart = new float[0], tweenLength = new float[0];
+    private CgEasing[] tweenEasing = new CgEasing[0];
+    private int tweens;
+    /** How present it is, 0 to 1: every engine layer multiplies its light by it ({@code FX_PRESENCE}). */
+    private float presence = 1f;
+    /** The ending it plays and the age it began; null while it plays on. */
+    private CgVfxEnding ending;
+    private float endingAge;
+    /** Its draws' row per placed layer this frame ({@code CgVfxFrame}), valid while {@link #rowsFrame} is the frame's. */
+    int[] rows = new int[0];
+    long rowsFrame = -1;
     /** Seconds simulated since it started. */
     protected float age;
     /** A stable random number for this effect, 0..1, which shaders read to tell two effects apart. */
@@ -469,56 +485,224 @@ public abstract class CgVfxEffect {
         return age;
     }
 
-    public final float get(CgVfxParam param) {
+    public final float get(CgVfxParam.Scalar param) {
         return values.get(param);
     }
 
-    /** Component {@code index} of a colour. */
-    public final float get(CgVfxParam param, int index) {
+    /** Component {@code index} of a colour: 0 red, 1 green, 2 blue, 3 the fourth value. */
+    public final float get(CgVfxParam.Color param, int index) {
         return values.get(param, index);
     }
 
+    /** Component {@code component} of colour {@code entry} of a palette. */
+    public final float get(CgVfxParam.Palette param, int entry, int component) {
+        return values.get(param, entry, component);
+    }
+
     /**
-     * Sets a number. On a server, an effect a lasting cue runs sends it to every viewer at the tick's end, as it does a
-     * colour ({@code CgVfxCue.authoritative()}).
+     * Sets a number for this effect alone, stopping a tween of it; what follows it follows. On a server, an effect a
+     * lasting cue runs sends it to every viewer at the tick's end, as it does a colour ({@code CgVfxCue.authoritative()}).
      */
-    public final CgVfxEffect set(CgVfxParam param, float value) {
+    public final CgVfxEffect set(CgVfxParam.Scalar param, float value) {
+        untween(values.layout().offset(param), 1);
         values.set(param, value);
         if (authority != null) authority.set(param);
         return this;
     }
 
-    public final CgVfxEffect set(CgVfxParam param, float r, float g, float b, float a) {
+    public final CgVfxEffect set(CgVfxParam.Color param, float r, float g, float b, float a) {
+        untween(values.layout().offset(param), 4);
         values.set(param, r, g, b, a);
         if (authority != null) authority.set(param);
         return this;
     }
 
-    public final CgKeyframes curve(CgVfxParam param) {
+    /** Sets colour {@code entry} of a palette. */
+    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, float r, float g, float b, float a) {
+        untween(values.layout().offset(param) + entry * 4, 4);
+        values.set(param, entry, r, g, b, a);
+        if (authority != null) authority.set(param);
+        return this;
+    }
+
+    /** {@code 0xAARRGGBB}. */
+    public final CgVfxEffect set(CgVfxParam.Color param, int argb) {
+        return set(param, argb, 1f);
+    }
+
+    /** {@code 0xAARRGGBB}, its rgb times {@code intensity}: past white where above 1. */
+    public final CgVfxEffect set(CgVfxParam.Color param, int argb, float intensity) {
+        return set(param, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
+    }
+
+    /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}. */
+    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, int argb) {
+        return set(param, entry, argb, 1f);
+    }
+
+    /** Colour {@code entry} of a palette, {@code 0xAARRGGBB}, its rgb times {@code intensity}. */
+    public final CgVfxEffect set(CgVfxParam.Palette param, int entry, int argb, float intensity) {
+        return set(param, entry, CgVfxParam.Color.red(argb) * intensity, CgVfxParam.Color.green(argb) * intensity,
+                CgVfxParam.Color.blue(argb) * intensity, CgVfxParam.Color.alpha(argb));
+    }
+
+    public final CgKeyframes curve(CgVfxParam.Curve param) {
         return values.curve(param);
     }
 
-    public final CgVfxEffect set(CgVfxParam param, CgKeyframes curve) {
+    public final CgVfxEffect set(CgVfxParam.Curve param, CgKeyframes curve) {
         values.set(param, curve);
         return this;
     }
 
-    public final CgCameraShake shake(CgVfxParam param) {
+    public final CgCameraShake shake(CgVfxParam.Shake param) {
         return values.shake(param);
     }
 
-    public final CgVfxEffect set(CgVfxParam param, CgCameraShake shake) {
+    public final CgVfxEffect set(CgVfxParam.Shake param, CgCameraShake shake) {
         values.set(param, shake);
         return this;
     }
 
+    /**
+     * Eases a number from where it is to {@code to} over {@code seconds}, on its tick: what follows it follows. On a
+     * server, an effect a lasting cue runs plays it on every viewer at once, rather than sending each step.
+     *
+     * <pre>{@code
+     * wave.animate(CgEnergyWave.RADIUS, 1.4f, 0.5f, CgEasings.OUT_BACK);   // powered up
+     * }</pre>
+     *
+     * A later tween of the same value replaces it from where it has got to; a {@link #set} of it stops it.
+     */
+    public final CgVfxEffect animate(CgVfxParam.Scalar param, float to, float seconds, CgEasing easing) {
+        int at = values.layout().offset(param);
+        values.set(param, values.get(param));   // breaks the link it followed: the tween drives it now
+        tween(at, to, seconds, easing);
+        if (authority != null) authority.animated(param, new float[] {to}, seconds, easing);
+        return this;
+    }
+
+    /** Eases a colour to {@code (r, g, b, a)} over {@code seconds}. */
+    public final CgVfxEffect animate(CgVfxParam.Color param, float r, float g, float b, float a, float seconds,
+                                     CgEasing easing) {
+        int at = values.layout().offset(param);
+        float[] to = {r, g, b, a};
+        for (int i = 0; i < 4; i++) tween(at + i, to[i], seconds, easing);
+        if (authority != null) authority.animated(param, to, seconds, easing);
+        return this;
+    }
+
+    /** Eases a colour to {@code 0xAARRGGBB} over {@code seconds}. */
+    public final CgVfxEffect animate(CgVfxParam.Color param, int argb, float seconds, CgEasing easing) {
+        return animate(param, CgVfxParam.Color.red(argb), CgVfxParam.Color.green(argb), CgVfxParam.Color.blue(argb),
+                CgVfxParam.Color.alpha(argb), seconds, easing);
+    }
+
+    /**
+     * Ends it by {@code ending}: its values eased to where the ending puts them over its seconds, then gone. Nothing new
+     * starts meanwhile, as after {@link #stop()}; an effect skips what a graceful end would play in
+     * {@link #ending(CgVfxEnding)}. A second ending, or one after it died, is ignored.
+     *
+     * <pre>{@code
+     * wave.end(CgEnergyWave.FADE);
+     * }</pre>
+     */
+    public final CgVfxEffect end(CgVfxEnding ending) {
+        if (state == State.DEAD || this.ending != null) return this;
+        this.ending = ending;
+        endingAge = age;
+        for (CgVfxEnding.Target target : ending.targets()) {
+            int at = values.layout().offset(target.param());
+            float[] to = target.to();
+            for (int i = 0; i < to.length; i++) tween(at + i, to[i], ending.seconds(), target.easing());
+        }
+        if (ending.fadesOut()) tween(-1, 0f, ending.seconds(), ending.fadeEasing());
+        if (authority != null) authority.ended(ending);
+        ending(ending);
+        stop();
+        return this;
+    }
+
+    /** The ending it plays, or null: an effect asks to skip what its graceful end would have played. */
+    public final CgVfxEnding ending() {
+        return ending;
+    }
+
+    /** How present it is, 0 to 1: 1 unless an ending fades it ({@link CgVfxEnding#FADE_OUT}). */
+    public final float presence() {
+        return presence;
+    }
+
+    /**
+     * Heard as it starts {@code ending}, before {@link #stop()}: an effect drops what its graceful end plays (a wave
+     * bursting into its blast). Nothing by default.
+     */
+    protected void ending(CgVfxEnding ending) {
+    }
+
+    /** Stops the tweens of the {@code count} floats from {@code at}, leaving each where it has got to. */
+    private void untween(int at, int count) {
+        for (int i = 0; i < tweens; i++) {
+            if (tweenAt[i] < at || tweenAt[i] >= at + count) continue;
+            removeTween(i--);
+        }
+    }
+
+    /** Drops tween {@code i}, the last moving into its place. */
+    private void removeTween(int i) {
+        tweens--;
+        tweenAt[i] = tweenAt[tweens];
+        tweenFrom[i] = tweenFrom[tweens];
+        tweenTo[i] = tweenTo[tweens];
+        tweenStart[i] = tweenStart[tweens];
+        tweenLength[i] = tweenLength[tweens];
+        tweenEasing[i] = tweenEasing[tweens];
+    }
+
+    /** Eases the float at {@code at} (-1 its presence) to {@code to}; a later tween of it replaces this one. */
+    private void tween(int at, float to, float seconds, CgEasing easing) {
+        int i = 0;
+        while (i < tweens && tweenAt[i] != at) i++;
+        if (i == tweens) {
+            if (tweens == tweenAt.length) {
+                int n = Math.max(4, tweens * 2);
+                tweenAt = Arrays.copyOf(tweenAt, n);
+                tweenFrom = Arrays.copyOf(tweenFrom, n);
+                tweenTo = Arrays.copyOf(tweenTo, n);
+                tweenStart = Arrays.copyOf(tweenStart, n);
+                tweenLength = Arrays.copyOf(tweenLength, n);
+                tweenEasing = Arrays.copyOf(tweenEasing, n);
+            }
+            tweens++;
+        }
+        tweenAt[i] = at;
+        tweenFrom[i] = at < 0 ? presence : values.raw(at);
+        tweenTo[i] = to;
+        tweenStart[i] = age;
+        tweenLength[i] = Math.max(seconds, 0f);
+        tweenEasing[i] = easing;
+    }
+
+    /** Steps every tween to this tick's age; one that has arrived ends. */
+    private void stepTweens() {
+        for (int i = 0; i < tweens; i++) {
+            float t = tweenLength[i] <= 0f ? 1f : Math.min((age - tweenStart[i]) / tweenLength[i], 1f);
+            float v = tweenFrom[i] + (tweenTo[i] - tweenFrom[i]) * (float) tweenEasing[i].ease(t);
+            if (tweenAt[i] < 0) presence = v;
+            else values.setRaw(tweenAt[i], v);
+            if (t < 1f) continue;
+            removeTween(i--);
+        }
+    }
+
     /** Plays the shake {@code param} at a point relative to its origin, its radii in units of {@code scale} blocks. */
-    protected final void playShake(CgVfxParam param, float x, float y, float z, float scale) {
+    protected final void playShake(CgVfxParam.Shake param, float x, float y, float z, float scale) {
         if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, scale);
     }
 
-    /** As {@link #playShake(CgVfxParam, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
-    protected final void playShake(CgVfxParam param, float x, float y, float z, float dx, float dy, float dz, float scale) {
+    /** As {@link #playShake(CgVfxParam.Shake, float, float, float, float)}, its punch shoving along {@code (dx, dy, dz)}. */
+    protected final void playShake(CgVfxParam.Shake param, float x, float y, float z, float dx, float dy, float dz, float scale) {
         if (!seeking && authority == null) values.shake(param).play(originX + x, originY + y, originZ + z, dx, dy, dz, scale);
     }
 
@@ -526,12 +710,12 @@ public abstract class CgVfxEffect {
      * Holds the shake {@code param} at a point relative to its origin, its trauma times {@code level}: call it every tick
      * while it lasts. Left unset for a quarter second, it lapses.
      */
-    protected final void holdShake(CgVfxParam param, float x, float y, float z, float scale, float level) {
+    protected final void holdShake(CgVfxParam.Shake param, float x, float y, float z, float scale, float level) {
         if (seeking || authority != null) return;
         CgCameraShake shake = values.shake(param);
         int slot = 0;
         if (heldParams == null) {
-            heldParams = new CgVfxParam[4];
+            heldParams = new CgVfxParam.Shake[4];
             held = new CgCameraShake.Held[4];
         }
         while (slot < heldParams.length && heldParams[slot] != null && heldParams[slot] != param) slot++;
@@ -692,8 +876,10 @@ public abstract class CgVfxEffect {
     final void step(float dt) {
         values.takeTuning();
         age += dt;
+        if (tweens > 0) stepTweens();
         tick(dt);
         if (hitboxCount > 0) tickHitboxes(dt);
+        if (ending != null && state != State.DEAD && age - endingAge >= ending.seconds()) die();
     }
 
     /** Moves the origin, between ticks: {@link #follow}'s. */

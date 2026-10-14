@@ -6,6 +6,7 @@ import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxRegistry;
+import com.crystalgraphics.vfx.look.CgVfxEnding;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -42,6 +43,15 @@ public final class CgVfxCueClient {
 
     private static void view(CgVfxCue cue) {
         cue.type.onClient(obj -> new View(cue));
+        cue.type.onEvent(CgVfxCue.TWEEN, (obj, tween) -> {
+            View view = obj.behaviour();
+            if (view != null && view.effect != null) CgVfxCue.play(cue.look, view.effect, tween);
+        });
+        cue.type.onEvent(CgVfxCue.END, (obj, name) -> {
+            View view = obj.behaviour();
+            CgVfxEnding ending = CgVfxEnding.named(name);
+            if (view != null && view.effect != null && ending != null) view.effect.end(ending);
+        });
     }
 
     /** Builds {@code p} and plays it under its namespace's owner; null where nothing is registered under its id. */

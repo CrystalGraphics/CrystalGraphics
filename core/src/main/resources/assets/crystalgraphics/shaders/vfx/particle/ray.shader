@@ -2,18 +2,22 @@
 // down its middle in a soft glow of its colour, brightest at its head and dying out down its tail. Stretched by its speed,
 // so it shortens as the air brakes it down to _MinLength, and never reaching back past the emitter's source. A
 // velocity-aligned streak, as Niagara's sprite renderer draws one, on a CgVfxRibbons stroke placed from its particle
-// record (CgVfxFrame.particles, ARCS); the draw is centred on the source, so CG_OBJECT_TO_WORLD[3] is the source. Colour
-// A is the glow, colour B the hot middle, A's alpha a strength.
+// record (CgVfxFrame.particles, ARCS); the draw is centred on the source, so CG_OBJECT_TO_WORLD[3] is the source. _Color
+// is the glow, its alpha a strength; _Hot the middle.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("The glow; its alpha a strength", color) = (1, 0.55, 0.2, 1)
+    _Hot ("The white-hot middle", color) = (1, 1, 1, 1)
     _Stretch ("Stroke length per block a second of speed", float) = 0.2
     _MinLength ("Shortest it draws however slow, blocks", float) = 1.2
     _Longest ("How many times its speed's length the longest few draw, over the shortest's 0.4", float) = 2.4
@@ -60,8 +64,8 @@ Pass {
         float core = exp(-across * across * 40.0);
         // Dying out down its tail.
         float fade = along * along;
-        vec3 col = (CG_OBJECT_CUSTOM2.rgb * glow + CG_OBJECT_CUSTOM3.rgb * core) * fade * _Bright;
-        fragColor = vec4(col * i.stroke.z * CG_OBJECT_CUSTOM2.a, 1.0);
+        vec3 col = (_Color.rgb * glow + _Hot.rgb * core) * fade * _Bright;
+        fragColor = vec4(col * i.stroke.z * _Color.a * FX_PRESENCE, 1.0);
     }
 }
 

@@ -1,16 +1,20 @@
 // A glowing textured sprite: sprite.shader's flipbook frame and facing, added and unlit, as bright as the particle is
-// hot: fire, magic, energy. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS). Colour A
-// tints the cool sheet, colour B the hot, A's alpha a strength.
+// hot: fire, magic, energy. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS). _Color
+// tints the cool sheet, its alpha a strength; _Hot the hot.
 #type none
 #pragma cg_use particle
+#pragma cg_use rows
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
 Queue = "Transparent"
 
 Properties {
+    _Color ("Tints the sheet where it is cool; its alpha a strength", color) = (1, 0.6, 0.2, 1)
+    _Hot ("Tints the sheet where it is hot", color) = (1, 1, 0.9, 1)
     _Sheet ("The flipbook sheet, straight alpha, frame 0 at the top left", sampler2D) = "white"
     _Frames ("Columns, rows, frames, cycles over a life", vec4) = (1, 1, 1, 1)
     _Flip ("Start-frame spread by seed (0..1), loops, blends frames", vec4) = (0, 1, 1, 0)
@@ -62,10 +66,10 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
-        vec3 tint = mix(CG_OBJECT_CUSTOM2.rgb, CG_OBJECT_CUSTOM3.rgb, i.glow.x);
+        vec3 tint = mix(_Color.rgb, _Hot.rgb, i.glow.x);
         float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
                 cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
-        float strength = texel.a * i.glow.y * CG_OBJECT_CUSTOM2.a * (0.35 + 0.65 * i.glow.x) * soft;
+        float strength = texel.a * i.glow.y * _Color.a * FX_PRESENCE * (0.35 + 0.65 * i.glow.x) * soft;
         fragColor = vec4(texel.rgb * tint * strength, 1.0);
     }
 }
