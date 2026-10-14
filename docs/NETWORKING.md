@@ -702,7 +702,8 @@ turret.emitToOwner(JAMMED, null);                      // server: its owner alon
 Turret.TYPE.onEvent(FIRED, (obj, shot) -> flash(shot)); // client
 ```
 
-- An event arrives after the tick's changes, so a client reading fields sees the state the event happened in.
+- **An event arrives after the tick's changes**, guaranteed: set before or after the emit, the tick the object ends
+  included. A listener reading fields sees the state the tick left, and `onChange` has already run.
 - **A viewer who was not watching that tick never gets it**, and a later viewer never does: an event is a moment,
   not state. What a newcomer must know is a field.
 - An event emitted in the tick an object despawns still reaches its viewers, before the end.

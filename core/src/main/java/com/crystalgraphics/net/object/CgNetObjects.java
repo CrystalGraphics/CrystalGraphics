@@ -423,11 +423,19 @@ public final class CgNetObjects {
                 if (obj.isLive()) follow(obj);
             }
             if (obj.isEnding()) {
+                beginObject();
                 for (int v = 0; v < VIEWERS.size(); v++) {
                     Viewer viewer = VIEWERS.get(v);
                     if (!CgNetObject.has(obj.seenBy, viewer.slot)) continue;
                     int before = viewer.frame.size;
-                    viewer.events(obj, isOwner(obj, viewer));
+                    boolean owner = isOwner(obj, viewer);
+                    // The tick's changes before its events, ending or not: a listener reads the state they happened in.
+                    if (obj.anyDirty) {
+                        int segment = changeSegment(obj, owner);
+                        if (SEGMENT_END[segment] > SEGMENT_START[segment]) viewer.append(segment);
+                    }
+                    if (obj.moved) viewer.move(obj);
+                    viewer.events(obj, owner);
                     viewer.despawn(obj.id, obj.killed);
                     obj.type.tickBytes += viewer.frame.size - before;
                 }

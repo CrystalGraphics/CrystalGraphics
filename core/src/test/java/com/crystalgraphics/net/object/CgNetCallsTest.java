@@ -103,6 +103,15 @@ public class CgNetCallsTest {
     }
 
     @Test
+    public void theTicksChangesArriveBeforeItsEventsInTheTickItEnds() {
+        rig.client(1).disconnect();
+        heard.clear();
+        machine.emit(SAID, "last").setFloat(HEAT, 0.75f).kill();
+        rig.tick(1);
+        assertEquals(List.of("heat 0.75", "said last at heat 0.75", "despawned"), heard);
+    }
+
+    @Test
     public void theOwnersCommandRunsSanitizedAndOthersAreRefused() {
         seenBy(0).send(SET_HEAT, 7f);
         rig.tick(2);

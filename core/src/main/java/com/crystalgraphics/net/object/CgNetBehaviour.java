@@ -67,7 +67,10 @@ public interface CgNetBehaviour {
     default void moved(CgNetObject obj) {
     }
 
-    /** On a client: an event the server emitted on it, after the frame's changes are in. */
+    /**
+     * On a client: an event the server emitted on it. Guaranteed after that tick's changes and their {@code changed}
+     * calls, set before or after the emit, the tick it ends included.
+     */
     default void event(CgNetObject obj, CgNetEvent<?> event, Object value) {
     }
 

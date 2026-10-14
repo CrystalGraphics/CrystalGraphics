@@ -540,7 +540,17 @@ public final class CgNetObject {
         this.z = z;
     }
 
-    /** Sends {@code event} to every client that sees it at the end of the tick, after the tick's changes; nothing once it has ended. */
+    /**
+     * Sends {@code event} to every client that sees it, at the end of the tick; nothing once it has ended.
+     *
+     * <p>Guaranteed: a client hears it after the tick's changes, whenever in the tick they were made, the tick it ends
+     * included. Its listeners read the fields as the tick left them, their {@code changed} calls already made:
+     *
+     * <pre>{@code
+     * guard.emit(GUARDED, shell);
+     * guard.setFloat(SHIELD, 0.4f);   // a GUARDED listener reads 0.4
+     * }</pre>
+     */
     public <P> CgNetObject emit(CgNetEvent<P> event, @Nullable P value) {
         return emit(event, value, false);
     }
