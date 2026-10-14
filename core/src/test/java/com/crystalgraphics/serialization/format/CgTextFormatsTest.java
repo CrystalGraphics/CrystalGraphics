@@ -24,7 +24,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-/** A codec's value in JSON, YAML and TOML, files and text, and the format a file's name picks. */
+/** A codec's value in JSON, JSONC, YAML and TOML, files and text, and the format a file's name picks. */
 public class CgTextFormatsTest {
 
     static final class Settings {
@@ -82,7 +82,7 @@ public class CgTextFormatsTest {
 
     @Test
     public void everyKindOfValueCrossesBothTextFormats() {
-        for (CgTextFormat format : Arrays.asList(CgFormats.JSON, CgFormats.YAML, CgFormats.TOML)) {
+        for (CgTextFormat format : Arrays.asList(CgFormats.JSON, CgFormats.JSONC, CgFormats.YAML, CgFormats.TOML)) {
             String text = format.toText(Settings.CODEC, goku());
             assertTrue(text, text.contains("kamehameha"));
             assertGoku(format.fromText(Settings.CODEC, text));
@@ -109,7 +109,7 @@ public class CgTextFormatsTest {
 
     @Test
     public void aFileIsWrittenWholeAndReadIntoALiveObject() throws IOException {
-        for (String name : Arrays.asList("live.json", "live.yaml", "live.toml", "live.dat")) {
+        for (String name : Arrays.asList("live.json", "live.yaml", "live.toml", "live.jsonc", "live.dat")) {
             Path file = folder.getRoot().toPath().resolve(name);
             CgFormat format = CgFormats.of(file);
             format.write(file, Settings.CODEC, goku());
@@ -128,6 +128,7 @@ public class CgTextFormatsTest {
         assertSame(CgFormats.JSON, CgFormats.of(folder.getRoot().toPath().resolve("a.JSON")));
         assertSame(CgFormats.YAML, CgFormats.of(folder.getRoot().toPath().resolve("a.yml")));
         assertSame(CgFormats.YAML, CgFormats.of(folder.getRoot().toPath().resolve("a.yaml")));
+        assertSame(CgFormats.JSONC, CgFormats.of(folder.getRoot().toPath().resolve("a.jsonc")));
         assertSame(CgFormats.TOML, CgFormats.of(folder.getRoot().toPath().resolve("a.toml")));
         assertSame(CgFormats.BINARY, CgFormats.of(folder.getRoot().toPath().resolve("a.dat")));
     }

@@ -6,6 +6,7 @@ import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.serialization.format.file.BinaryFileFormat;
 import com.crystalgraphics.serialization.format.file.JsonFileFormat;
+import com.crystalgraphics.serialization.format.file.JsoncFileFormat;
 import com.crystalgraphics.serialization.format.file.TomlFileFormat;
 import com.crystalgraphics.serialization.format.file.YamlFileFormat;
 import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
@@ -59,13 +60,23 @@ public final class CgFormats {
     /** TOML 1.0, Forge's and NeoForge's config format: tables of keys, a value's text says its type. */
     public static final CgTextFormat TOML = new TomlFileFormat();
 
+    /**
+     * JSON with comments, as VS Code's {@code settings.json}: {@code //} comments kept like TOML's, a trailing comma
+     * allowed. For a file people edit that is JSON in shape; {@link #JSON} stays strict, for files a tool reads.
+     */
+    public static final CgTextFormat JSONC = new JsoncFileFormat();
+
     private CgFormats() {
     }
 
-    /** The format a file's extension names: {@code .json}, {@code .yml}, {@code .yaml} or {@code .toml}, anything else binary. */
+    /**
+     * The format a file's extension names: {@code .json}, {@code .jsonc}, {@code .yml}, {@code .yaml} or {@code .toml},
+     * anything else binary.
+     */
     public static CgFormat of(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
         if (name.endsWith(".json")) return JSON;
+        if (name.endsWith(".jsonc")) return JSONC;
         if (name.endsWith(".yml") || name.endsWith(".yaml")) return YAML;
         if (name.endsWith(".toml")) return TOML;
         return BINARY;

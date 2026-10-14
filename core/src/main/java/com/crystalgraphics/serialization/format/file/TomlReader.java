@@ -5,7 +5,6 @@ import com.crystalgraphics.serialization.CgCodecException;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,22 +15,12 @@ import java.util.regex.Pattern;
 /**
  * TOML 1.0 text as a plain tree: a table a {@code LinkedHashMap}, an array an {@code ArrayList}, an integer an
  * {@code Integer} where it fits and a {@code Long} otherwise, a float a {@code Double}, a date or time its text. Keeps
- * the comments by key path when asked, for {@link TomlWriter} to carry into the file that replaces this one.
+ * the comments when asked ({@link FileComments}), for {@link TomlWriter} to carry into the file that replaces this one.
  *
  * <p>Ported from Jackson's TOML module (jackson-dataformats-text 2.19, Apache-2.0, © FasterXML): the table rules of
  * {@code Parser.java}, and the tokens of {@code toml.jflex} as one hand-written scanner.</p>
  */
 final class TomlReader {
-
-    /**
-     * A file's comments by {@link #path}: the lines above a key or table header, the one after it, the file's last.
-     * Its header, a block above the first key with a blank line after it, is above {@code ""}.
-     */
-    static final class Comments {
-        final Map<String, List<String>> above = new HashMap<>();
-        final Map<String, String> after = new HashMap<>();
-        final List<String> end = new ArrayList<>();
-    }
 
     private static final String DEC_INT = "[+-]?(?:[0-9]|[1-9](?:_?[0-9])+)";
     private static final String DIGITS = "[0-9](?:_?[0-9])*";
@@ -48,7 +37,7 @@ final class TomlReader {
 
     private final String s;
     @Nullable
-    private final Comments comments;
+    private final FileComments comments;
     private final List<String> pending = new ArrayList<>();
     /** Tables a header or a dotted key has defined: a second header for one is refused. */
     private final Set<Object> defined = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -57,22 +46,15 @@ final class TomlReader {
     private int pos;
     private boolean started;
 
-    private TomlReader(String text, @Nullable Comments comments) {
+    private TomlReader(String text, @Nullable FileComments comments) {
         this.s = text;
         this.comments = comments;
         if (text.startsWith("\uFEFF")) pos = 1;
     }
 
     /** {@code text} as a table. @throws CgCodecException where it is not TOML, naming the line */
-    static Map<String, Object> read(String text, @Nullable Comments comments) {
+    static Map<String, Object> read(String text, @Nullable FileComments comments) {
         return new TomlReader(text, comments).document();
-    }
-
-    /** A key path: {@code segment} under {@code parent}, an array-of-tables element as {@code #index}. */
-    @Nullable
-    static String path(@Nullable String parent, String segment) {
-        if (parent == null) return null;
-        return parent.isEmpty() ? segment : parent + '\u001f' + segment;
     }
 
     private Map<String, Object> document() {
@@ -97,11 +79,11 @@ final class TomlReader {
                     if (closed.contains(list)) fail("[[" + ref.key + "]] adds to an array that was written inline");
                     table = new LinkedHashMap<>();
                     list.add(table);
-                    tablePath = path(path(ref.path, ref.key), "#" + (list.size() - 1));
+                    tablePath = FileComments.path(FileComments.path(ref.path, ref.key), "#" + (list.size() - 1));
                 } else {
                     table = tableAt(ref.map, ref.key);
                     if (!defined.add(table)) fail("table [" + ref.key + "] is defined twice");
-                    tablePath = path(ref.path, ref.key);
+                    tablePath = FileComments.path(ref.path, ref.key);
                 }
                 at = tablePath;
                 above(at);
@@ -118,7 +100,7 @@ final class TomlReader {
     @Nullable
     private String keyVal(Map<String, Object> table, @Nullable String tablePath) {
         Ref ref = enter(table, tablePath, false);
-        String at = path(ref.path, ref.key);
+        String at = FileComments.path(ref.path, ref.key);
         if (at != null) above(at);
         expect("=");
         ws();
@@ -147,15 +129,15 @@ final class TomlReader {
                 Map<String, Object> made = new LinkedHashMap<>();
                 node.put(part, made);
                 node = made;
-                at = path(at, part);
+                at = FileComments.path(at, part);
             } else if (existing instanceof Map) {
                 node = (Map<String, Object>) existing;
-                at = path(at, part);
+                at = FileComments.path(at, part);
             } else if (existing instanceof List && !closed.contains(existing)) {
                 // An array of tables: a reference goes to its last element.
                 List<Object> list = (List<Object>) existing;
                 node = (Map<String, Object>) list.get(list.size() - 1);
-                at = path(path(at, part), "#" + (list.size() - 1));
+                at = FileComments.path(FileComments.path(at, part), "#" + (list.size() - 1));
             } else {
                 fail("key " + part + " already holds a value, not a table");
             }

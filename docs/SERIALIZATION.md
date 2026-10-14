@@ -75,7 +75,7 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 3. [Writing a codec](#3-writing-a-codec)
 4. [A mutable object: `CgCodecs.object`](#4-a-mutable-object-cgcodecsobject)
 5. [Decoding into a live object](#5-decoding-into-a-live-object)
-6. [Files: binary, JSON, TOML and YAML](#6-files-binary-json-toml-and-yaml)
+6. [Files: binary, JSON, TOML, YAML and JSONC](#6-files-binary-json-toml-yaml-and-jsonc)
 7. [Minecraft's NBT](#7-minecrafts-nbt)
 8. [Formats by hand: `CgDynamicOps`](#8-formats-by-hand-cgdynamicops)
 9. [Changing a saved shape](#9-changing-a-saved-shape)
@@ -396,7 +396,7 @@ Every way in has the target form: `CgFormats.read(file, codec, target)`, `CgForm
 
 ---
 
-## 6. Files: binary, JSON, TOML and YAML
+## 6. Files: binary, JSON, TOML, YAML and JSONC
 
 | Format | Use it for | What it is |
 |---|---|---|
@@ -404,9 +404,13 @@ Every way in has the target form: `CgFormats.read(file, codec, target)`, `CgForm
 | `CgFormats.JSON` | data packs, exports, files a tool reads | pretty-printed JSON, through Gson (every Minecraft ships it) |
 | `CgFormats.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
 | `CgFormats.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
+| `CgFormats.JSONC` | a JSON-shaped file people edit and want to explain | JSON with `//` comments and trailing commas, as VS Code's `settings.json`. `.jsonc` |
 
 **Which for a config?** TOML. Players already know it from every other mod's config, a stray space cannot break it,
 and its values say their type: `language = "no"` is text, where YAML reads an unquoted `no` as `false`.
+
+**Why is JSON strict?** JSON has no comments: a `.json` file with one is rejected by strict readers, and data packs and
+tools are exactly those. So `CgFormats.JSON` writes none, and `CgFormats.JSONC` writes `.jsonc` files with them.
 
 ```java
 CgFormats.write(file, Data.CODEC, data);                  // BINARY, the shorthand
@@ -447,7 +451,7 @@ skills:
   read, throws `CgCodecException`, naming the line for TOML.
 - **Missing keys keep their defaults**, with an object codec: a hand-written file need hold only what it changes.
 - **Comments survive** a rewrite: below.
-- **Map keys are text** in JSON, TOML and YAML. Bytes are Base64 in JSON and TOML, `!!binary` in YAML.
+- **Map keys are text** in JSON, JSONC, TOML and YAML. Bytes are Base64 in all but YAML, which writes `!!binary`.
 - **A TOML file is a table at its top**: a codec whose value is a map (a record, an object, `mapOf`). A map becomes a
   `[section]`, a list of maps `[[sections]]`, anything inside a list is written inline. TOML has no null: a null
   field is not written. A date or time a person types reads as its text.
@@ -525,7 +529,7 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 | You change a key's comment in an update | files that already have the old text keep it: once written, a comment is the file's |
 | The file is not valid TOML (or YAML) | it is replaced; its comments cannot be read, so they go |
 
-- **Comments live in TOML and YAML.** JSON has none; binary files and NBT have none.
+- **Comments live in TOML, YAML and JSONC.** JSON has none; binary files and NBT have none.
 - **Nested keys** take their own comments: a nested record's key comment lands above that key, under its `[section]`
   in TOML, indented in YAML. The comment on the key holding it goes above the `[section]`; failing that, the nested
   codec's own (`Audio.CODEC.comment("Sound.")`). Keys inside list elements take theirs too.
@@ -789,7 +793,7 @@ number, add one step from the old number, and never change a step once it has sh
 
 ### My config's comments are gone. Why?
 
-Comments live in TOML and YAML: a `.json` or binary file has none. A comment is kept when its key is still written;
+Comments live in TOML, YAML and JSONC (`.jsonc`): a `.json` or binary file has none. A comment is kept when its key is still written;
 a key you removed takes its comment with it, a comment inside a multi-line array is not kept, and a file that would
 not parse is replaced whole.
 
