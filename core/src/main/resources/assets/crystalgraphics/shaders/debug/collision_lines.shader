@@ -1,5 +1,6 @@
-// CgCollisionDebug's lines: one colour a segment, carried in cg_Normal with its alpha in cg_TexCoord0.x. Depth-tested
-// against the scene and writing no depth, so a line never hides another drawn after it.
+// CgCollisionDebug's lines and see-through faces: one colour a segment or triangle, carried in cg_Normal with its
+// alpha in cg_TexCoord0.x. Depth-tested against the scene and writing no depth, so neither hides what is drawn after
+// it; unculled, so a face is seen from inside its shape too.
 #type spatial
 
 Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }

@@ -27,13 +27,14 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * {@code crystalgraphics.collision.show}: every live hitbox and every world query drawn as lines, as Minecraft's F3+B
- * draws entity boxes and PhysX's visual debugger draws scene queries. A client draws the hitboxes it ticks and the
- * queries it runs itself, and the server's.
+ * {@code crystalgraphics.collision.show}: every live hitbox drawn see-through with its edges solid, and every world
+ * query as lines, as Minecraft's F3+B draws entity boxes and PhysX's visual debugger draws scene queries. A client
+ * draws the hitboxes it ticks and the queries it runs itself, and the server's.
  *
  * <pre>{@code
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
  * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
+ * -Dcrystalgraphics.collision.style=wireframe           // hitboxes as their edges alone; transparent by default
  * }</pre>
  *
  * <ul>
@@ -48,22 +49,36 @@ import java.util.concurrent.ConcurrentHashMap;
  *       query a hitbox runs is left out, its parts drawn instead, as are an empty world's.</li>
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_SEGMENTS} segments a
  *       tick, while their client keeps asking.</li>
- *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and for half a second once stopped: a
- *       blast's front lives a few ticks.</li>
+ *   <li>{@link #STYLE} is each client's own: {@link Style#TRANSPARENT} fills a hitbox's faces in under its edges,
+ *       {@link Style#WIREFRAME} draws the edges alone. Queries are lines under both.</li>
+ *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and are gone a tick or two after
+ *       their last: one that lives a tick shows for about that.</li>
  * </ul>
  */
 public final class CgCollisionShow {
 
     public static final CgVar.Bool SHOW = CgVar.bool("crystalgraphics.collision.show", false, CgVar.DEV,
-            "Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's and the"
-                    + " server's.");
+            "Draws every live hitbox, see-through, and every world query, as lines, as Minecraft's F3+B also does:"
+                    + " the client's and the server's.");
     public static final CgVar.Bool SERVE = CgVar.bool("crystalgraphics.collision.serve", true, CgVar.SAVED,
             "Lets a server send its hitboxes and queries to any player showing them (F3+B), recording only while one"
                     + " is. Off, it sends only while its own collision.show is on.");
 
+    /** How a shown hitbox is drawn. */
+    public enum Style {
+        /** See-through faces under solid edges. */
+        TRANSPARENT,
+        /** Edges alone. */
+        WIREFRAME
+    }
+
+    public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.TRANSPARENT,
+            CgVar.SAVED, "How this client draws the hitboxes it shows. transparent: see-through faces under solid"
+                    + " edges. wireframe: the edges alone.");
+
     /** How far from a player a server's hitboxes are sent. */
     static final double RANGE = 64;
-    /** The most segments a server sends a player a tick. */
+    /** The most segments and triangles a server sends a player a tick. */
     static final int MAX_SEGMENTS = 4096;
     /** Client ticks between asks while showing: a server forgets a client after {@link #FORGET_AFTER}. */
     static final int ASK_EVERY = 100;
