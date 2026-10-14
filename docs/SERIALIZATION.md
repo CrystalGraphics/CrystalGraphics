@@ -63,9 +63,10 @@ CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC); 
 | **Every port rewrites the NBT code** | `getInt`, `getAllKeys`, `NBTTagCompound`, `func_150296_c`: renamed across versions | your codec never names a tag; each version's spelling is CrystalGraphics' |
 | **Keys typed twice** | the save writes `"Level"`, the load reads `"level"`, nothing notices | `CgCodecs.object` declares each field once, for both directions |
 | **A reload breaks references** | a new object is made, and every screen holding the old one shows stale data | decode into the live object: everything holding it sees the new values |
-| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFormats.YAML` or `JSON` with the same codec; missing keys keep their defaults |
+| **Hand-edited config files** | a parser of your own, or Gson's reflection guessing your fields | `CgFormats.YAML` or `JSON` with the same codec; missing keys keep their defaults, and a person's comments survive the mod writing the file |
+| **An old save after a change** | a migration written by hand, or saves that stop loading | `CgCodecs.versioned`: each old version's steps run before today's codec reads it |
 | **A crash mid-save** | half a file, and a corrupted world folder | written beside the old file, then moved over it in one step |
-| **Testing** | launch the game to see whether a save loads | a codec runs in a plain JUnit test, no Minecraft needed |
+| **Testing** | launch the game to see whether a save loads | a codec runs in a plain JUnit test, NBT included (`CgTestTags`) |
 
 ## Contents
 
@@ -91,6 +92,7 @@ takes a codec from this page.
 | Word | What it is | Class |
 |---|---|---|
 | **Codec** | How a value of one Java type is written and read. Says what keys it has and each one's codec; nothing about bytes or files. | `CgCodec`, `CgCodecs` |
+| **Record codec** | A record's codec, declared as its keys and its constructor. | `CgCodecs.record` |
 | **Format** | What the value becomes: the wire's plain tree, JSON, YAML, NBT. A codec works with every one. | `CgDynamicOps` |
 | **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgFormats.nbt()` |
 | **Tree** | A value in a format before it is bytes: maps, lists, strings, numbers. | — |
@@ -116,15 +118,10 @@ How they fit together:
 
 ```java
 public record Spell(String name, int cost) {
-    public static final CgCodec<Spell> CODEC = new CgCodec<Spell>() {
-        @Override public <T> T encode(CgDynamicOps<T> ops, Spell s) {
-            return CgCodecs.map(ops).field("name", CgCodecs.STRING, s.name()).field("cost", CgCodecs.INT, s.cost()).build();
-        }
-        @Override public <T> Spell decode(CgDynamicOps<T> ops, T in) {
-            CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
-            return new Spell(r.field("name", CgCodecs.STRING), r.field("cost", CgCodecs.INT));
-        }
-    };
+    public static final CgCodec<Spell> CODEC = CgCodecs.record(
+            CgCodecs.field("name", CgCodecs.STRING, Spell::name),
+            CgCodecs.field("cost", CgCodecs.INT, Spell::cost),
+            Spell::new);
 }
 
 CgFormats.write(file, Spell.CODEC, spell);          // a compressed file of your own
@@ -178,22 +175,51 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 | `CgCodecs.listOf(codec)` | `List<A>` | |
 | `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; JSON, YAML and NBT take only text keys |
 | `CgCodecs.xmap(base, from, to)` | anything | one codec in terms of another |
+| `CgCodecs.record(...)` | a record | its keys and its constructor, below |
 | `CgCodecs.dispatch(...)` | one of several kinds | below |
+| `CgCodecs.versioned(n, codec)` | a save that changes shape | §9 |
 
-### A record of your own
+### A record of your own: `CgCodecs.record`
 
-A record is built and read field by field, with `CgCodecs.map(ops)` and `CgCodecs.read(ops, in)`, as `Spell` above.
-
-- **`field(key, codec, value)`** writes a key; the reader's **`field(key, codec)`** reads it and throws, naming the
-  key, when it is missing.
-- **`optional(key, codec, value, omitWhen)`** writes nothing when the value equals `omitWhen`; the reader's
-  **`optional(key, codec, fallback)`** gives `fallback` for a missing key. A usual default costs nothing then.
-- **A record inside a record** is a field with the inner record's codec: `.field("stats", Stats.CODEC, s.stats())`.
-- **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
+A record's codec is its keys, each with its codec and its accessor, then its constructor: one declaration both
+directions read, so a key written as `"cost"` cannot be read as `"Cost"`. The shape of Mojang's `RecordCodecBuilder`.
 
 ```java
-.optional("full", CgCodecs.BOOL, p.full(), false)       // encode: most values send no "full" at all
-r.optional("full", CgCodecs.BOOL, false)                // decode
+public record Purge(int machine, boolean full, @Nullable String reason) {
+    public static final CgCodec<Purge> CODEC = CgCodecs.record(
+            CgCodecs.field("m", CgCodecs.INT, Purge::machine),                       // required
+            CgCodecs.optionalField("f", CgCodecs.BOOL, Purge::full, false),          // false is not written
+            CgCodecs.optionalField("r", CgCodecs.STRING, Purge::reason, null),       // nor is a null
+            Purge::new);
+}
+```
+
+| Key | Written | Absent on read |
+|---|---|---|
+| `field(key, codec, get)` | always | throws, naming the key |
+| `optionalField(key, codec, get, fallback)` | unless it equals `fallback` | reads `fallback` |
+| `fieldOr(key, codec, get, fallback)` | always | reads `fallback`: a key older files lack, in a shape whose bytes must not change |
+
+- **Up to eight keys**; nest a record (a key whose codec is another record's), or use `CgCodecs.object`, beyond that.
+- **Keys are written in declaration order**, so the same value encodes to the same bytes, which a content hash needs.
+- **A key's comment** goes in a YAML file above it: `CgCodecs.field(...).comment("Master volume, 0 to 1.")` (§6).
+- **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
+
+### By hand: a map built and read
+
+A shape no record states (a key written only sometimes, a value that decides the rest) is built and read field by
+field with `CgCodecs.map(ops)` and `CgCodecs.read(ops, in)`:
+
+```java
+@Override public <T> T encode(CgDynamicOps<T> ops, Slot s) {
+    CgCodecs.MapCodecBuilder<T> out = CgCodecs.map(ops).field("kind", CgCodecs.STRING, s.kind());
+    if (s.isTimed()) out.field("ticks", CgCodecs.INT, s.ticks());
+    return out.build();
+}
+@Override public <T> Slot decode(CgDynamicOps<T> ops, T in) {
+    CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
+    return new Slot(r.field("kind", CgCodecs.STRING), r.optional("ticks", CgCodecs.INT, 0));
+}
 ```
 
 ### A value in terms of another: `xmap`
@@ -261,6 +287,7 @@ public final class Character {
 | `optional(key, codec, get, set, omitWhen)` | a field usually at its default | as `field`; nothing is written for `omitWhen` |
 | `into(key, codec, get)` | a final member the object owns | always updated in place; a codec that cannot (a string, a record) throws, naming the key |
 | `extend(Parent.CODEC)` | a subclass | the parent's keys first, flat beside its own |
+| `.comment(text)` | the field just declared | written above its key in a YAML file (§6) |
 
 - **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
   for a target. A partial file is a patch.
@@ -367,7 +394,14 @@ skills:
 - **A read parses the whole file before decoding.** A file that is not its format, or holds what the codec cannot
   read, throws `CgCodecException`.
 - **Missing keys keep their defaults**, with an object codec: a hand-written file need hold only what it changes.
-- **Comments a person wrote are lost** when the mod writes the file again.
+- **Comments survive.** A person's, in the file being replaced, stay on the same key; a codec's own (`.comment(text)`
+  on a field) is written where they wrote none. A comment on a key the mod no longer writes is dropped. JSON has no
+  comments.
+
+  ```yaml
+  # Master volume, 0 to 1.          <- the codec's
+  volume: 0.5    # turned down        <- the person's, kept
+  ```
 - **Map keys are text** in JSON and YAML. Bytes are Base64 in JSON and `!!binary` in YAML.
 - **A YAML file builds maps, lists and scalars only**: a `!!java.io.File`-style tag is refused, never instantiated.
 - **SnakeYAML is relocated inside CrystalGraphics' jar.** Never import `org.yaml` in your mod: in game it is not at
@@ -393,8 +427,8 @@ CgFormats.fromNbt(Character.CODEC, tag.get("character"), this.character);     //
 - **NBT's own rules apply**: map keys must encode as text (`mapOf(CgCodecs.STRING, …)`), and a list holds one kind of
   value.
 - `/data get` shows your values as real tags, readable and editable.
-- **NBT exists only inside Minecraft.** In a test or the harness, `toNbt` throws, naming the
-  `crystalgraphics:host_formats` slot. Test the codec through a file or `CgPlainOps` (§10) instead.
+- **NBT exists only inside Minecraft.** In the harness, `toNbt` throws, naming the `crystalgraphics:host_formats`
+  slot. A test installs `CgTestTags` for it (§10).
 
 Use NBT only where Minecraft owns the container. Your mod's own files are better as `CgFormats.BINARY`: smaller,
 faster, and no NBT rules.
@@ -434,10 +468,30 @@ Saves outlive the code that wrote them. With codecs, most changes need no migrat
 |---|---|---|
 | **Add a field** | lack its key | an object codec keeps the default; a record reads it with `optional(key, codec, fallback)` |
 | **Remove a field** | still have its key | nothing: undeclared keys are ignored |
-| **Rename a key** | have the old name | read both for a while: `r.has("old") ? r.field("old", c) : r.field("new", c)` |
-| **Change a field's type** | have the old shape | a new key for the new type; read the old one once, then stop writing it |
+| **Rename a key** | have the old name | a versioned step: `tree.rename("old", "new")` (below) |
+| **Change a field's type, or move it** | have the old shape | a versioned step: `tree.map(key, v -> ...)`, `tree.move(from, to)` |
 | **Add a kind to a `dispatch`** | never name it | nothing |
 | **An enum constant** | name it | by name, so reordering is safe; removing one throws on old saves: map it in `xmap` |
+
+### Versioned saves
+
+A codec wrapped in `CgCodecs.versioned` writes a version beside its keys, and runs each step from an older save's
+version up to today's before reading it: DataFixerUpper's idea, for a mod's own data.
+
+```java
+static final CgCodec<Character> SAVED = CgCodecs.versioned(3, Character.CODEC)
+        .from(1, tree -> tree.rename("Level", "level"))                                // 1 to 2
+        .from(2, tree -> tree.move("skills", "abilities.list").map("level", v -> v.asInt() * 10));   // 2 to 3
+
+CgFormats.write(file, SAVED, character);        // "_v": 3, then the codec's keys
+Character back = CgFormats.read(file, SAVED);   // a version 1 save runs both steps first
+```
+
+- **A save with no version is version 1**, so a codec gains `versioned` without touching the saves it already wrote.
+- **A save newer than the code throws**, naming both versions: it is never read on a best effort.
+- **Steps edit the tree** (`CgTreeEdit`: `rename`, `move`, `remove`, `set`, `map`, `has`, `get`), with dotted paths for
+  nested maps, in whatever format the save was read from: one step serves binary, JSON, YAML and NBT.
+- A step on a key the save lacks does nothing.
 
 For a value sent over the network, a change an older copy of your mod cannot read raises your namespace's version
 (`CgMessage.version`, `docs/NETWORKING.md` § *Versions*). Files have no peer to ask: they are read with today's
@@ -466,7 +520,20 @@ A codec runs in a plain JUnit test, no Minecraft:
 
 - Run a codec through `CgPlainOps`, `CgJsonOps` and a file: three formats, one codec, and a codec that secretly
   depends on one format shows itself.
-- NBT needs a running Minecraft (§7); everything else here does not.
+- NBT in a test: install `CgTestTags` and it runs under the game's rules (a boolean is a byte, a list holds one kind),
+  with SNBT for presets kept as text.
+
+  ```java
+  private CgTestTags tags;
+  @Before public void tags() { tags = CgTestTags.install(); }
+  @After public void untag() { tags.close(); }
+
+  @Test public void aCharacterSavesAsNbt() {
+      Object tag = CgFormats.toNbt(Character.CODEC, character);
+      assertEquals(9, CgFormats.fromNbt(Character.CODEC, tag).level);
+      assertEquals(3, CgFormats.fromNbt(Hair.CODEC, CgTestTags.parse("{style:3b,dyed:1b}")).style);
+  }
+  ```
 - A networked object's fields are tested in a `CgNetTestRig` (`docs/NETWORKING.md` § *Testing without Minecraft*).
 
 ---
@@ -497,5 +564,6 @@ serde.
 
 ### Where is the code?
 
-`com.crystalgraphics.serialization` (codecs), `.format` (`CgFormats`), `.format.file` (each file format) and
-`.format.nbt` (the NBT bridge); the package guide is `core/src/main/java/com/crystalgraphics/serialization/CLAUDE.md`.
+`com.crystalgraphics.serialization` (codecs, records, versions), `.format` (`CgFormats`), `.format.file` (each file
+format) and `.format.nbt` (the NBT bridge and `CgTestTags`); the package guide is
+`core/src/main/java/com/crystalgraphics/serialization/CLAUDE.md`.

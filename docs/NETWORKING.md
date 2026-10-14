@@ -263,37 +263,21 @@ own, so each record brings its codec, written once beside it:
 ```java
 // The player asks to purge a machine: which one, and whether to empty it completely.
 public record Purge(int machine, boolean full) {
-    public static final CgCodec<Purge> CODEC = new CgCodec<Purge>() {
-        // Value to data: one entry per component, under a short key.
-        @Override public <T> T encode(CgDynamicOps<T> ops, Purge p) {
-            return CgCodecs.map(ops)
-                    .field("m", CgCodecs.INT, p.machine())
-                    .field("f", CgCodecs.BOOL, p.full())
-                    .build();
-        }
-        // Data to value: the same keys, read back with the same codecs.
-        @Override public <T> Purge decode(CgDynamicOps<T> ops, T in) {
-            CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
-            return new Purge(r.field("m", CgCodecs.INT), r.field("f", CgCodecs.BOOL));
-        }
-    };
+    // Each component under a short key, with its codec and how to read it; then how to make one.
+    public static final CgCodec<Purge> CODEC = CgCodecs.record(
+            CgCodecs.field("m", CgCodecs.INT, Purge::machine),
+            CgCodecs.optionalField("f", CgCodecs.BOOL, Purge::full, false),   // false is not sent
+            Purge::new);
 }
 
 // A round-trip timer: the client sends the time it sent at, the server sends the same value straight back.
 public record Ping(long sentAt) {
-    public static final CgCodec<Ping> CODEC = new CgCodec<Ping>() {
-        @Override public <T> T encode(CgDynamicOps<T> ops, Ping p) {
-            return CgCodecs.map(ops).field("t", CgCodecs.LONG, p.sentAt()).build();
-        }
-        @Override public <T> Ping decode(CgDynamicOps<T> ops, T in) {
-            return new Ping(CgCodecs.read(ops, in).field("t", CgCodecs.LONG));
-        }
-    };
+    public static final CgCodec<Ping> CODEC = CgCodecs.record(CgCodecs.field("t", CgCodecs.LONG, Ping::sentAt), Ping::new);
 }
 ```
 
-`ops` is the format being written (bytes on the wire, a tree when saving); a codec written this way works for every
-format, so you never write one per format. [Your own data](#your-own-data-a-codec) below has the rest of what a codec
+A codec declared this way works for every format (bytes on the wire, a tree when saving), so you never write one
+per format. [Your own data](#your-own-data-a-codec) below has the rest of what a codec
 can do.
 
 ### Server to clients
@@ -390,19 +374,11 @@ every version.
 
 ```java
 public record Stats(float heat, int fuel, String owner) {
-    public static final CgCodec<Stats> CODEC = new CgCodec<Stats>() {
-        @Override public <T> T encode(CgDynamicOps<T> ops, Stats s) {
-            return CgCodecs.map(ops)
-                    .field("h", CgCodecs.FLOAT, s.heat())
-                    .field("f", CgCodecs.INT, s.fuel())
-                    .field("o", CgCodecs.STRING, s.owner())
-                    .build();
-        }
-        @Override public <T> Stats decode(CgDynamicOps<T> ops, T in) {
-            CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
-            return new Stats(r.field("h", CgCodecs.FLOAT), r.field("f", CgCodecs.INT), r.field("o", CgCodecs.STRING));
-        }
-    };
+    public static final CgCodec<Stats> CODEC = CgCodecs.record(
+            CgCodecs.field("h", CgCodecs.FLOAT, Stats::heat),
+            CgCodecs.field("f", CgCodecs.INT, Stats::fuel),
+            CgCodecs.field("o", CgCodecs.STRING, Stats::owner),
+            Stats::new);
 }
 ```
 
