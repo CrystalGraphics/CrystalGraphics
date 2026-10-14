@@ -5,8 +5,11 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.entity.effect.EntityLightningBolt;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.DamageSource;
 import net.minecraft.world.WorldServer;
 
 import java.util.Locale;
@@ -53,6 +56,28 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     public boolean explode(double x, double y, double z) {
         return run(command(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)),
                 command(String.format(Locale.ROOT, "summon PrimedTnt %.2f %.2f %.2f {Fuse:0}", x, y, z)));
+    }
+
+    // 1.7.10's /kill takes no target: this is what it does to its sender.
+    @Override
+    public boolean kill() {
+        EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
+        if (player == null) return false;
+        String name = player.getCommandSenderName();
+        return run(server -> {
+            EntityPlayerMP body = server.getConfigurationManager().func_152612_a(name);
+            if (body != null) body.attackEntityFrom(DamageSource.outOfWorld, Float.MAX_VALUE);
+        });
+    }
+
+    // As the death screen's button does: nothing closes the screen for it.
+    @Override
+    public boolean respawn() {
+        EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
+        if (player == null || player.isEntityAlive()) return false;
+        player.respawnPlayer();
+        Minecraft.getMinecraft().displayGuiScreen(null);
+        return true;
     }
 
     private static Consumer<MinecraftServer> command(String command) {

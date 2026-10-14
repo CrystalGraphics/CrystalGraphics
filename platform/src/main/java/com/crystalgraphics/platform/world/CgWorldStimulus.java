@@ -15,11 +15,20 @@ import com.crystalgraphics.platform.CgService;
  * stimulus.explode(ex, ey, ez);       // a pig there, and a TNT with no fuse
  * }</pre>
  *
+ * A death and the way back, for a probe of what outlives the player's body:
+ *
+ * <pre>{@code
+ * stimulus.kill();                    // the local player, killed by the server
+ * // ...once the death screen is up:
+ * stimulus.respawn();                 // its Respawn button; works connected to a server too
+ * }</pre>
+ *
  * <ul>
  *   <li>False, and nothing done, where there is no single-player server: connected to a server, or a version whose
- *       server takes no queued task.</li>
+ *       server takes no queued task. {@link #respawn} only needs a dead local player.</li>
  *   <li>It changes the world: {@link #breakBlock} leaves air and drops a stone, {@link #explode} breaks blocks within
- *       its reach. A probe aims them at the air above the player.</li>
+ *       its reach, {@link #kill} drops the player's inventory unless the world keeps it. A probe aims them at the air
+ *       above the player.</li>
  *   <li>Client side, render thread.</li>
  * </ul>
  */
@@ -31,6 +40,8 @@ public interface CgWorldStimulus {
         @Override public boolean lightning(double x, double y, double z) { return false; }
         @Override public boolean breakBlock(int x, int y, int z) { return false; }
         @Override public boolean explode(double x, double y, double z) { return false; }
+        @Override public boolean kill() { return false; }
+        @Override public boolean respawn() { return false; }
     };
 
     CgService<CgWorldStimulus> SERVICE = CgService.of("crystalgraphics:world_stimulus", NONE);
@@ -49,4 +60,10 @@ public interface CgWorldStimulus {
 
     /** A pig at the point and a TNT with no fuse on it: an explosion, and an entity hurt and killed. */
     boolean explode(double x, double y, double z);
+
+    /** The local player killed on the server, as {@code /kill} would. */
+    boolean kill();
+
+    /** The death screen's Respawn: false unless the local player is dead. */
+    boolean respawn();
 }

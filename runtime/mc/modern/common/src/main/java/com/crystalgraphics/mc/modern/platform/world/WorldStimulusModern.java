@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 //? if >=1.14 {
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.commands.CommandSourceStack;
@@ -36,6 +37,21 @@ public final class WorldStimulusModern implements CgWorldStimulus {
     public boolean explode(double x, double y, double z) {
         return run(String.format(Locale.ROOT, "summon minecraft:pig %.2f %.2f %.2f", x, y, z),
                 String.format(Locale.ROOT, "summon minecraft:tnt %.2f %.2f %.2f {Fuse:0,fuse:0}", x, y, z));
+    }
+
+    @Override
+    public boolean kill() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        return player != null && run("kill " + player.getScoreboardName());
+    }
+
+    // The respawn packet closes the death screen.
+    @Override
+    public boolean respawn() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || player.isAlive()) return false;
+        player.respawn();
+        return true;
     }
 
     private static boolean run(String... commands) {

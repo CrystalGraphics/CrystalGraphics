@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.server.integrated.IntegratedServer;
 
 import java.util.Locale;
@@ -38,6 +39,30 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     public boolean explode(double x, double y, double z) {
         return run(String.format(Locale.ROOT, "summon %s %.2f %.2f %.2f", PIG, x, y, z),
                 String.format(Locale.ROOT, "summon %s %.2f %.2f %.2f {Fuse:0}", TNT, x, y, z));
+    }
+
+    @Override
+    public boolean kill() {
+        EntityPlayerSP player = player();
+        return player != null && run("kill " + player.getName());
+    }
+
+    // As the death screen's button does: nothing closes the screen for it.
+    @Override
+    public boolean respawn() {
+        EntityPlayerSP player = player();
+        if (player == null || player.isEntityAlive()) return false;
+        player.respawnPlayer();
+        Minecraft.getMinecraft().displayGuiScreen(null);
+        return true;
+    }
+
+    private static EntityPlayerSP player() {
+        //? if >=1.10 {
+        return Minecraft.getMinecraft().player;
+        //?} else {
+        /*return Minecraft.getMinecraft().thePlayer;
+        *///?}
     }
 
     private static boolean run(String... commands) {
