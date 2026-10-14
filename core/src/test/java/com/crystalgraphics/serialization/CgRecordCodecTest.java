@@ -40,6 +40,20 @@ public class CgRecordCodecTest {
                 Wide::new);
     }
 
+    record Widest(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j, int k, int l, int m, int n,
+                  int o, String p) {
+        static final CgCodec<Widest> CODEC = CgCodecs.record(
+                CgCodecs.field("a", CgCodecs.INT, Widest::a), CgCodecs.field("b", CgCodecs.INT, Widest::b),
+                CgCodecs.field("c", CgCodecs.INT, Widest::c), CgCodecs.field("d", CgCodecs.INT, Widest::d),
+                CgCodecs.field("e", CgCodecs.INT, Widest::e), CgCodecs.field("f", CgCodecs.INT, Widest::f),
+                CgCodecs.field("g", CgCodecs.INT, Widest::g), CgCodecs.field("h", CgCodecs.INT, Widest::h),
+                CgCodecs.field("i", CgCodecs.INT, Widest::i), CgCodecs.field("j", CgCodecs.INT, Widest::j),
+                CgCodecs.field("k", CgCodecs.INT, Widest::k), CgCodecs.field("l", CgCodecs.INT, Widest::l),
+                CgCodecs.field("m", CgCodecs.INT, Widest::m), CgCodecs.field("n", CgCodecs.INT, Widest::n),
+                CgCodecs.field("o", CgCodecs.INT, Widest::o), CgCodecs.optionalField("p", CgCodecs.STRING, Widest::p, ""),
+                Widest::new);
+    }
+
     @Test
     public void everyArityRoundTrips() {
         Tag tag = new Tag("kamehameha");
@@ -47,6 +61,26 @@ public class CgRecordCodecTest {
         Wide wide = new Wide(1, 2, 3, 4, "five", true, 7.5, Arrays.asList("eight"));
         assertEquals(wide, Wide.CODEC.decode(CgPlainOps.INSTANCE, Wide.CODEC.encode(CgPlainOps.INSTANCE, wide)));
         assertEquals(wide, CgFormats.JSON.fromText(Wide.CODEC, CgFormats.JSON.toText(Wide.CODEC, wide)));
+        Widest widest = new Widest(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, "sixteen");
+        Map<?, ?> tree = (Map<?, ?>) Widest.CODEC.encode(CgPlainOps.INSTANCE, widest);
+        assertArrayEquals("a flat save, in declaration order", "abcdefghijklmnop".split(""), tree.keySet().toArray());
+        assertEquals(widest, Widest.CODEC.decode(CgPlainOps.INSTANCE, tree));
+    }
+
+    record Cost(String name, int cost) {
+        static final CgCodec<Cost> LENIENT = CgCodecs.record(
+                CgCodecs.field("name", CgCodecs.STRING, Cost::name),
+                CgCodecs.optionalField("cost", CgCodecs.INT, Cost::cost, 1).lenient(),
+                Cost::new);
+    }
+
+    @Test
+    public void aLenientKeyThatCannotBeReadReadsItsFallback() {
+        assertEquals("a cost saved in a shape no longer read", new Cost("beam", 1),
+                Cost.LENIENT.decode(CgJsonOps.INSTANCE, CgJsonOps.fromText("{\"name\":\"beam\",\"cost\":{\"ki\":3}}")));
+        assertEquals(new Cost("beam", 4), Cost.LENIENT.decode(CgJsonOps.INSTANCE, CgJsonOps.fromText("{\"name\":\"beam\",\"cost\":4}")));
+        assertThrows("a required key has no fallback to read", IllegalStateException.class,
+                () -> CgCodecs.field("name", CgCodecs.STRING, Cost::name).lenient());
     }
 
     @Test

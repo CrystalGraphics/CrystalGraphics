@@ -224,8 +224,16 @@ public record Loadout(Spell primary, List<Spell> spare) {
 }
 ```
 
-**More than eight keys**: group some into a nested record (often they belong together anyway: `audio`, `video`), or
-make the class mutable and use `CgCodecs.object` (§4).
+**Up to sixteen keys**, as Mojang's `RecordCodecBuilder`. Past that, group some into a nested record (often they belong
+together anyway: `audio`, `video`), or make the class mutable and use `CgCodecs.object` (§4).
+
+**A value that may no longer read**, because its shape changed since old saves wrote it: mark the key `lenient()`.
+A stored value that fails to decode then reads as the fallback, with a warning naming the key, instead of failing
+the whole record. Only a key with a fallback can be lenient.
+
+```java
+CgCodecs.optionalField("hair", Hair.CODEC, Look::hair, Hair.DEFAULT).lenient()
+```
 
 - **Keys are written in declaration order**, so a value always encodes to the same bytes.
 - **Keys the codec does not declare are ignored**, so a save with a key you since removed still loads.
@@ -239,7 +247,7 @@ make the class mutable and use `CgCodecs.object` (§4).
 | Your value | Write |
 |---|---|
 | A record, or any immutable value with a constructor | `CgCodecs.record` |
-| A mutable class other code holds (settings, a handler, a block entity's state), or more than eight fields | `CgCodecs.object` (§4) |
+| A mutable class other code holds (settings, a handler, a block entity's state), or more than sixteen fields | `CgCodecs.object` (§4) |
 | One of several kinds | `CgCodecs.dispatch` (below) |
 | One value as another (a colour as an int) | `CgCodecs.xmap` (below) |
 | A key written only sometimes, or one value deciding the rest | by hand (next) |

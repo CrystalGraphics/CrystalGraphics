@@ -30,14 +30,16 @@ public final class CgRecordField<R, F> {
     final F fallback;
     @Nullable
     final String comment;
+    /** A stored value that fails to decode reads {@link #fallback}, with a warning. */
+    final boolean lenient;
 
     CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits, boolean defaults,
                   @Nullable F fallback) {
-        this(key, codec, get, omits, defaults, fallback, null);
+        this(key, codec, get, omits, defaults, fallback, null, false);
     }
 
     private CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits,
-                          boolean defaults, @Nullable F fallback, @Nullable String comment) {
+                          boolean defaults, @Nullable F fallback, @Nullable String comment, boolean lenient) {
         this.key = key;
         this.codec = codec;
         this.get = get;
@@ -45,11 +47,28 @@ public final class CgRecordField<R, F> {
         this.defaults = defaults;
         this.fallback = fallback;
         this.comment = comment;
+        this.lenient = lenient;
     }
 
     /** This key with {@code text} above it: what {@code CgCodecs.comment(text).field(...)} makes. */
     CgRecordField<R, F> withComment(String text) {
-        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text);
+        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text, lenient);
+    }
+
+    /**
+     * This key, read as its fallback when its stored value fails to decode, with a warning naming the key, rather than
+     * failing the whole record: a save written before the value's shape changed still loads. DataFixerUpper's
+     * {@code lenientOptionalFieldOf}.
+     *
+     * <pre>{@code
+     * CgCodecs.optionalField("hair", Hair.CODEC, Look::hair, Hair.DEFAULT).lenient()
+     * }</pre>
+     *
+     * Only a key with a fallback ({@code optionalField}, {@code fieldOr}); a required {@code field} throws here.
+     */
+    public CgRecordField<R, F> lenient() {
+        if (!defaults) throw new IllegalStateException("'" + key + "' has no fallback to read; declare it optionalField or fieldOr");
+        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, comment, true);
     }
 
     public String key() {

@@ -453,6 +453,100 @@ public final class CgCodecs {
                 (G) v[6], (H) v[7]), a, b, c, d, e, f, g, h);
     }
 
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i,
+            CgRecordCodec.Of9<A, B, C, D, E, F, G, H, I, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8]),
+                a, b, c, d, e, f, g, h, i);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j,
+            CgRecordCodec.Of10<A, B, C, D, E, F, G, H, I, J, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9]),
+                a, b, c, d, e, f, g, h, i, j);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k,
+            CgRecordCodec.Of11<A, B, C, D, E, F, G, H, I, J, K, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10]),
+                a, b, c, d, e, f, g, h, i, j, k);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K, L> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k, CgRecordField<R, L> l,
+            CgRecordCodec.Of12<A, B, C, D, E, F, G, H, I, J, K, L, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10], (L) v[11]),
+                a, b, c, d, e, f, g, h, i, j, k, l);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K, L, M> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k, CgRecordField<R, L> l,
+            CgRecordField<R, M> m,
+            CgRecordCodec.Of13<A, B, C, D, E, F, G, H, I, J, K, L, M, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10], (L) v[11], (M) v[12]),
+                a, b, c, d, e, f, g, h, i, j, k, l, m);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K, L, M, N> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k, CgRecordField<R, L> l,
+            CgRecordField<R, M> m, CgRecordField<R, N> n,
+            CgRecordCodec.Of14<A, B, C, D, E, F, G, H, I, J, K, L, M, N, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10], (L) v[11], (M) v[12], (N) v[13]),
+                a, b, c, d, e, f, g, h, i, j, k, l, m, n);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k, CgRecordField<R, L> l,
+            CgRecordField<R, M> m, CgRecordField<R, N> n, CgRecordField<R, O> o,
+            CgRecordCodec.Of15<A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10], (L) v[11], (M) v[12], (N) v[13],
+                (O) v[14]),
+                a, b, c, d, e, f, g, h, i, j, k, l, m, n, o);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P> CgRecordCodec<R> record(
+            CgRecordField<R, A> a, CgRecordField<R, B> b, CgRecordField<R, C> c, CgRecordField<R, D> d,
+            CgRecordField<R, E> e, CgRecordField<R, F> f, CgRecordField<R, G> g, CgRecordField<R, H> h,
+            CgRecordField<R, I> i, CgRecordField<R, J> j, CgRecordField<R, K> k, CgRecordField<R, L> l,
+            CgRecordField<R, M> m, CgRecordField<R, N> n, CgRecordField<R, O> o, CgRecordField<R, P> p,
+            CgRecordCodec.Of16<A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5], (G) v[6],
+                (H) v[7], (I) v[8], (J) v[9], (K) v[10], (L) v[11], (M) v[12], (N) v[13],
+                (O) v[14], (P) v[15]),
+                a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p);
+    }
+
     // ── Versions ────────────────────────────────────────────────────────────
 
     /**

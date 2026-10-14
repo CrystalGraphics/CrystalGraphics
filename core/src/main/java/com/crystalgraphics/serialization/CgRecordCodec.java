@@ -1,5 +1,8 @@
 package com.crystalgraphics.serialization;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -28,10 +31,13 @@ import java.util.function.Function;
  *   <li>A {@code fieldOr} key is always written, and reads as its fallback when absent: a shape whose bytes are
  *       pinned (a content hash) and whose older files lacked the key.</li>
  *   <li>Keys the record does not declare are ignored.</li>
- *   <li>Up to eight keys; nest a record, or use {@link CgCodecs#object}, beyond that.</li>
+ *   <li>A {@link CgRecordField#lenient lenient} key whose value fails to decode reads its fallback, with a warning.</li>
+ *   <li>Up to sixteen keys, as DataFixerUpper; nest a record, or use {@link CgCodecs#object}, beyond that.</li>
  * </ul>
  */
 public final class CgRecordCodec<R> implements CgCodec<R> {
+
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
     private final CgRecordField<R, ?>[] fields;
     private final Function<Object[], R> make;
@@ -101,8 +107,10 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
             }
             try {
                 args[i] = f.codec.decode(ops, raw);
-            } catch (CgCodecException e) {
-                throw new CgCodecException("'" + f.key + "': " + e.getMessage(), e);
+            } catch (CgCodecException | ClassCastException e) {
+                if (!f.lenient) throw new CgCodecException("'" + f.key + "': " + e.getMessage(), e);
+                LOGGER.warn("'{}' could not be read ({}); it reads as its fallback", f.key, e.getMessage());
+                args[i] = f.fallback;
             }
         }
         return make.apply(args);
@@ -137,5 +145,45 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
     @FunctionalInterface
     public interface Of8<A, B, C, D, E, F, G, H, R> {
         R apply(A a, B b, C c, D d, E e, F f, G g, H h);
+    }
+
+    @FunctionalInterface
+    public interface Of9<A, B, C, D, E, F, G, H, I, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i);
+    }
+
+    @FunctionalInterface
+    public interface Of10<A, B, C, D, E, F, G, H, I, J, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j);
+    }
+
+    @FunctionalInterface
+    public interface Of11<A, B, C, D, E, F, G, H, I, J, K, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k);
+    }
+
+    @FunctionalInterface
+    public interface Of12<A, B, C, D, E, F, G, H, I, J, K, L, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k, L l);
+    }
+
+    @FunctionalInterface
+    public interface Of13<A, B, C, D, E, F, G, H, I, J, K, L, M, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k, L l, M m);
+    }
+
+    @FunctionalInterface
+    public interface Of14<A, B, C, D, E, F, G, H, I, J, K, L, M, N, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k, L l, M m, N n);
+    }
+
+    @FunctionalInterface
+    public interface Of15<A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k, L l, M m, N n, O o);
+    }
+
+    @FunctionalInterface
+    public interface Of16<A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, R> {
+        R apply(A a, B b, C c, D d, E e, F f, G g, H h, I i, J j, K k, L l, M m, N n, O o, P p);
     }
 }
