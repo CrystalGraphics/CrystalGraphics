@@ -74,7 +74,7 @@ there is no `sync()` to forget.
 | **Client classes crashing the server** | `DistExecutor` and `@OnlyIn` around anything that touches the client | install client handlers from your client entry point; nothing else to wrap |
 | **Keeping a client in sync** | resend on login, respawn, dimension change, start tracking, and every change, by hand | a networked object's anchor decides who sees it, and newcomers get the current value |
 | **Sending too much** | the whole state on every change, or dirty flags of your own | only the fields that changed, once a tick, in one frame per player |
-| **Two serializations of the same data** | `FriendlyByteBuf` for the wire, NBT for saving, kept in step by hand | one codec does both |
+| **Two serializations of the same data** | `FriendlyByteBuf` for the wire, NBT for saving, kept in step by hand | one codec does both, Minecraft's NBT included ([§14](#14-saving-your-own-data-and-nbt)) |
 | **Trusting the client** | a packet carrying a player or entity id the client chose | the sender is always the connection's; commands come only from the owner, sanitized and rate-limited |
 | **A client without your mod** | a refused connection, or packets it cannot read | it is sent nothing of yours, and the send is counted |
 | **Lag on your own actions** | hand-written prediction, or none | `predict()`: shown at once, confirmed or corrected by the server |
@@ -99,9 +99,10 @@ Networked objects ([§6](#6-networked-objects-state-that-lives-on-the-server)) t
 11. [The server deciding: server behaviours](#11-the-server-deciding-server-behaviours)
 12. [Showing it at once: prediction](#12-showing-it-at-once-prediction)
 13. [Saving with the world](#13-saving-with-the-world)
-14. [Testing without Minecraft](#14-testing-without-minecraft)
-15. [Performance and debugging](#15-performance-and-debugging)
-16. [Questions people ask](#16-questions-people-ask)
+14. [Saving your own data, and NBT](#14-saving-your-own-data-and-nbt)
+15. [Testing without Minecraft](#15-testing-without-minecraft)
+16. [Performance and debugging](#16-performance-and-debugging)
+17. [Questions people ask](#17-questions-people-ask)
 
 Effects over the network (cues) are built on networked objects and have their own guide: `docs/VFX.md` § 6.
 
@@ -349,9 +350,23 @@ An audience is worked out when you send. Build one once and send through it as o
 
 ### Your own data: a codec
 
-A built-in value has a codec ready: `CgCodecs.INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL`, `STRING`, `UUID`, and
-`CgCodecs.enumOf(MyEnum.class)`, `CgCodecs.listOf(codec)`. A record of your own gets a codec written once beside it,
-a key per component, as `Purge` and `Ping` above do.
+A built-in value has a codec ready: `CgCodecs.INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL`, `STRING`, `UUID`, `BYTES`,
+and `CgCodecs.enumOf(MyEnum.class)`, `listOf(codec)`, `mapOf(keyCodec, valueCodec)`. A record of your own gets a codec
+written once beside it, a key per component, as `Purge` and `Ping` above do. The same codec saves it too
+([§14](#14-saving-your-own-data-and-nbt)).
+
+- **One of several kinds** (a skill that is a beam, a dash or a buff, each with its own fields) is `dispatch`: a
+  key names the kind, and each kind's codec reads the rest.
+
+  ```java
+  static final CgCodec<Skill> CODEC = CgCodecs.dispatch("kind", CgCodecs.STRING,
+          Skill::kind,                       // which kind a value is
+          kind -> switch (kind) {            // and the codec for each
+              case "beam" -> Beam.CODEC;
+              case "dash" -> Dash.CODEC;
+              default -> null;               // an unknown kind fails, naming it
+          });
+  ```
 
 - **A component that is usually its default** can be left out: the builder's `optional(key, codec, value, fallback)`
   writes nothing when `value` equals `fallback`, and the reader's `optional(key, codec, fallback)` reads it back.
@@ -691,6 +706,14 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 ```
 
 - `of(player)` takes a player entity or a profile id, online or not; `of(entity)` any other entity.
+- **`find(holder)`** only looks, on either side: on a server the holder's object if it has one (null, and nothing
+  made, if not); on a client this client's copy of it, null until it arrives. A client reaches its own object, to
+  send it a command, with `find(localPlayer)`.
+
+  ```java
+  CgNetObject mine = MANA_BAR.find(Minecraft.getInstance().player);   // client
+  if (mine != null) mine.send(CAST, spell);
+  ```
 - **`persisted()`** keeps it with the world ([§13](#13-saving-with-the-world)).
 - **`copyOnDeath()`** keeps a player's object through death; without it, dying despawns it.
 - **`visibleToTrackers()`** lets the players around them see it too: a health bar over their head.
@@ -869,7 +892,44 @@ the server stops and every five minutes, and come back when it starts again, bef
 
 ---
 
-## 14. Testing without Minecraft
+## 14. Saving your own data, and NBT
+
+### Files of your own: no NBT needed
+
+Data that is not a networked object saves with the codec it is sent with. `CgFormats` writes it to a file of your
+own, compressed, in the same binary format the wire uses:
+
+```java
+Path file = worldDir.resolve("mymod/players/" + uuid + ".dat");
+CgFormats.write(file, PlayerData.CODEC, data);                 // makes the folders; replaces the file whole
+PlayerData data = CgFormats.read(file, PlayerData.CODEC);      // null when there is no file yet
+```
+
+A crash mid-save leaves the last save, never half of one: the file is written beside itself and moved over the old.
+
+### When Minecraft wants NBT
+
+Minecraft's own containers (an entity's saved data, a block entity's, an item's) take only its tags. `CgFormats`
+turns any codec's value into them and back, on every version, so you still write no NBT code:
+
+```java
+// saving
+tag.put("character", CgFormats.toNbt(Character.CODEC, character));   // typed as put takes it
+// loading
+Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
+```
+
+- A map becomes a compound, a list a list tag, a number the tag of its width, `BYTES` a byte array; a boolean is a
+  byte, as in Minecraft's own `NbtOps`.
+- NBT's rules apply: map keys must encode as text (`mapOf(CgCodecs.STRING, …)`, or a codec writing a string), and a
+  list holds one kind of value.
+- `CgFormats.nbt()` is the same format as a `CgDynamicOps`, for a codec read or written by hand.
+- NBT exists only inside Minecraft: in a test or the harness, `toNbt` throws, naming the `crystalgraphics:host_formats`
+  slot. Test the codec with `CgFormats.write`/`read`, or `CgPlainOps`.
+
+---
+
+## 15. Testing without Minecraft
 
 `CgNetTestRig` is a server and any number of clients in one JVM, with real connections and frames, a tick you step
 and latency you choose. Test your types in a plain JUnit test:
@@ -903,7 +963,7 @@ public void aTurretsHeatReachesWhoeverIsNear() {
 
 ---
 
-## 15. Performance and debugging
+## 16. Performance and debugging
 
 ### What it costs
 
@@ -987,7 +1047,7 @@ LOGGER.info(CgNetObjects.report());
 
 ---
 
-## 16. Questions people ask
+## 17. Questions people ask
 
 ### Message, request or networked object?
 

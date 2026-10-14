@@ -50,6 +50,40 @@ cues, a type each (`docs/VFX.md` § *Effects over the network: cues*). Hosts for
 router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
 mostly push: a `CgMessage` unless the asker needs the answer.
 
+### Saving and NBT — `serialization.CgFormats`
+
+**A mod saves with the codecs it sends with, and writes no NBT.** Its own files are `CgFormats.write`/`read`:
+CrystalGraphics' binary format, compressed, in core, with no host involved. NBT comes in only where Minecraft owns the
+container (an entity's, block entity's or item's saved data), and there `CgFormats.toNbt`/`fromNbt` turn any codec's
+value into the running version's real tags and back, so `/data` reads it. Using it from a mod:
+[`docs/NETWORKING.md` § 14](NETWORKING.md#14-saving-your-own-data-and-nbt).
+
+```java
+tag.put("character", CgFormats.toNbt(Character.CODEC, character));             // typed as put takes it
+Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
+```
+
+The host answers one slot, `CgHostFormats` (`crystalgraphics:host_formats`): a dozen primitives to make, fill and read
+compounds, lists, strings, numbers and byte arrays. The format's rules live once, in core's `HostTagOps` (the shape
+of Mojang's `NbtOps`): a boolean is a byte, map keys are text, a list holds one kind of tag. Each host provides it
+beside its channel, both sides. Absent (a test, the harness), `toNbt` throws, naming the slot.
+
+| Touch point | Modern 1.13.2–26.3 (`HostFormatsModern`) | Legacy 1.8.9–1.12.2 (`HostFormatsLegacy`) | 1.7.10 (`HostFormats1710`) |
+|---|---|---|---|
+| Compound put | `put(String, Tag)`; 1.13.2 still `a(String, Tag)` | `setTag` | `setTag` |
+| Compound keys | `getAllKeys()` to 1.21.4, `keySet()` from 1.21.5 | `getKeySet()` | `func_150296_c()` |
+| A list's tags | `ListTag` is a `List` | `get(i)` over `tagCount()` | no reader by index: taken off the end with `removeTag`, then put back |
+| Make a string or number | constructors before 1.15.2, `valueOf` after | constructors | constructors |
+| Read a string | `getAsString()` to 1.21.4, `value()` from 1.21.5's record tags | `getString()` | `func_150285_a_()` |
+| Read a number | each class's `getAs*` to 1.21.4, `NumericTag.box()` from 1.21.5 | `getByte()`, `getInt()`, … | `func_150290_f()` (byte) … `func_150286_g()` (double) |
+| Byte array | `ByteArrayTag(byte[])`, `getAsByteArray()` | `NBTTagByteArray`, `getByteArray()` | `NBTTagByteArray`, `func_150292_c()` |
+
+**Proven**: `checkAllTargets` for every host; CrystalGUI's `serverSmoke` round-trips every kind of value (string,
+int, float, double, boolean, bytes, a list of longs, a map) through the running version's tags, read twice so a read
+is shown to leave the tag as it was: run on 1.7.10, legacy Forge 1.8.9 and 1.12.2 (the shipped jars, `server_smoke.py`), Forge 1.14.4 and 1.20.1,
+NeoForge 1.21.11 and Fabric 26.2.
+Forge 1.13.2's dev server does not load mods at all, so its `a(String, Tag)` is proven by compiling only.
+
 ### Collision — `collision`, `shape`
 
 World queries, hitboxes and snapshots are core (`docs/COLLISION.md`); a host only answers what a level holds, in

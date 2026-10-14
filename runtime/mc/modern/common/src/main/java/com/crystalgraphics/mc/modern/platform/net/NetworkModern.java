@@ -5,6 +5,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
+import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
@@ -15,6 +16,7 @@ import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.serialization.CgHostFormats;
 
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -36,6 +38,7 @@ public final class NetworkModern {
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQueryModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHostModern());
+        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormatsModern());
     }
 
     public static void playerJoined(@Nullable ServerPlayer player) {

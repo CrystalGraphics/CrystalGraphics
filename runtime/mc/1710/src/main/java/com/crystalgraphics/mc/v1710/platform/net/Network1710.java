@@ -5,6 +5,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
+import com.crystalgraphics.mc.v1710.platform.world.HostFormats1710;
 import com.crystalgraphics.mc.v1710.platform.world.HostShapes1710;
 import com.crystalgraphics.mc.v1710.platform.world.Levels1710;
 import com.crystalgraphics.mc.v1710.platform.world.MirrorHost1710;
@@ -15,6 +16,7 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
+import com.crystalgraphics.serialization.CgHostFormats;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
@@ -49,6 +51,7 @@ public final class Network1710 {
         CgPlatform.provide(CgPlayerQuery.SERVICE, PlayerQuery1710.INSTANCE);
         CgPlatform.provide(CgHostShapes.SERVICE, new HostShapes1710());
         CgPlatform.provide(CgMirrorHost.SERVICE, new MirrorHost1710());
+        CgPlatform.provide(CgHostFormats.SERVICE, new HostFormats1710());
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.SERVICE, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Handler());
