@@ -148,6 +148,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | Variable | Takes | Default | |
 |---|---|---|---|
 | `crystalgraphics.net.budget` | 1024 to 2147483647 | `32768` | Bytes of objects a server sends each player a tick; CgNetObjects.budget sets it in code. Read at launch. |
+| `crystalgraphics.net.latency` | 0 to 5000 | `0` | Milliseconds every connection holds what arrives before handing it on: two clients at 150 feel a 300 ms ping. Debug only. Read at launch. |
 | `crystalgraphics.net.trace` | true, false | `false` | Log the first few frames each way through the host's network channel (1.7.10 and legacy Forge). Read at launch. |
 
 ## `crystalgraphics.netprobe`

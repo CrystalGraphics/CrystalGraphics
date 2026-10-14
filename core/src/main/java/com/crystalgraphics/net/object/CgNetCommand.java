@@ -48,6 +48,8 @@ public final class CgNetCommand<P> {
     final String name;
     @Nullable
     final CgCodec<P> codec;
+    @Nullable
+    final CgNetWire<P> wire;
     CgRatePolicy rate = CgRatePolicy.IMMEDIATE;
     float perSecond = 20;
     float burst = -1;
@@ -60,20 +62,30 @@ public final class CgNetCommand<P> {
     @Nullable
     CgNetField<P> field;
 
-    private CgNetCommand(String name, @Nullable CgCodec<P> codec) {
+    private CgNetCommand(String name, @Nullable CgCodec<P> codec, @Nullable CgNetWire<P> wire) {
         if (!NAME.matcher(name).matches()) throw new IllegalArgumentException("a command name is lowercase, not '" + name + "'");
         this.name = name;
         this.codec = codec;
+        this.wire = wire;
     }
 
     /** A command carrying a value. */
     public static <P> CgNetCommand<P> of(String name, CgCodec<P> codec) {
-        return new CgNetCommand<>(name, Objects.requireNonNull(codec, "codec"));
+        return new CgNetCommand<>(name, Objects.requireNonNull(codec, "codec"), null);
+    }
+
+    /**
+     * A command carrying a value in its fixed-width form, as {@link CgNetEvent#of(String, CgNetWire)}: nothing allocated
+     * per send, for one sent often (a hit claimed). An immediate rate writes it at the send, so one value may be refilled
+     * for the next send at once; a held rate keeps the instance until it leaves.
+     */
+    public static <P> CgNetCommand<P> of(String name, CgNetWire<P> wire) {
+        return new CgNetCommand<>(name, null, Objects.requireNonNull(wire, "wire"));
     }
 
     /** A command carrying nothing. */
     public static CgNetCommand<Void> of(String name) {
-        return new CgNetCommand<>(name, null);
+        return new CgNetCommand<>(name, null, null);
     }
 
     /** How often the client lets it go; immediate unless said. */
@@ -127,14 +139,29 @@ public final class CgNetCommand<P> {
     }
 
     void write(NetBuffer out, @Nullable Object value) {
-        if (codec == null) return;
         @SuppressWarnings("unchecked") P typed = (P) value;
+        if (wire != null) {
+            wire.write(Objects.requireNonNull(typed, name), out);
+            return;
+        }
+        if (codec == null) return;
         byte[] encoded = CgBinaryFormat.encode(codec.encode(CgPlainOps.INSTANCE, Objects.requireNonNull(typed, name)));
         out.writeBytes(encoded, 0, encoded.length);
     }
 
     @Nullable
     P read(NetBuffer in, int length) {
+        if (wire != null) {
+            int end = in.pos + length;
+            int size = in.size;
+            in.size = end;
+            try {
+                return wire.read(in);
+            } finally {
+                in.size = size;
+                in.pos = end;
+            }
+        }
         if (codec == null) {
             in.skip(length);
             return null;

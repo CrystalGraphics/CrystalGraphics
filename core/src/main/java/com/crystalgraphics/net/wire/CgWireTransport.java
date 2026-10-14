@@ -4,8 +4,10 @@ import com.crystalgraphics.net.CgTransport;
 import com.crystalgraphics.net.protocol.CgEnvelope;
 import com.crystalgraphics.serialization.CgBinaryFormat;
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.variable.CgVar;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -54,15 +56,32 @@ public final class CgWireTransport implements CgTransport<Object> {
     private final List<String> methods = new ArrayList<>();
     private final List<byte[]> methodBytes = new ArrayList<>();
 
+    /** Every message held this long after it arrives, both sides: a dev run at a ping of twice this. */
+    private static final int LATENCY = CgVar.integer("crystalgraphics.net.latency", 0, 0, 5000, CgVar.RESTART,
+            "Milliseconds every connection holds what arrives before handing it on: two clients at 150 feel a 300 ms "
+                    + "ping. Debug only.").get();
+
     private final CgFrameMultiplexer frames;
     private Consumer<Object> receiver = value -> { };
+    /** What arrived, and when, waiting out {@link #LATENCY}. */
+    private final ArrayDeque<Object> held = new ArrayDeque<>();
+    private final ArrayDeque<Long> heldAt = new ArrayDeque<>();
 
     public CgWireTransport(CgFrameMultiplexer frames) {
         this.frames = frames;
         // Decoding here rather than in the engine keeps CgFrameMultiplexer ignorant of what it carries: it
         // moves byte arrays, and every question about their meaning belongs on this side of the seam.
-        frames.setMessageHandler(bytes -> receiver.accept(bytes.length > 0 && (bytes[0] & 0xFF) == RAW_NOTIFICATION
+        frames.setMessageHandler(bytes -> arrived(bytes.length > 0 && (bytes[0] & 0xFF) == RAW_NOTIFICATION
                 ? readNotification(bytes) : CgBinaryFormat.decode(bytes)));
+    }
+
+    private void arrived(Object message) {
+        if (LATENCY == 0) {
+            receiver.accept(message);
+            return;
+        }
+        held.add(message);
+        heldAt.add(System.currentTimeMillis());
     }
 
     @Override
@@ -153,7 +172,14 @@ public final class CgWireTransport implements CgTransport<Object> {
      * @return whole packets delivered this pump
      */
     public int pump() {
-        return frames.pump();
+        int delivered = frames.pump();
+        if (held.isEmpty()) return delivered;
+        long due = System.currentTimeMillis() - LATENCY;
+        while (!heldAt.isEmpty() && heldAt.peek() <= due) {
+            heldAt.poll();
+            receiver.accept(held.poll());
+        }
+        return delivered;
     }
 
     public CgFrameMultiplexer frames() {

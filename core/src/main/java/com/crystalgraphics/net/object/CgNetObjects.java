@@ -769,7 +769,9 @@ public final class CgNetObjects {
         NetBuffer in = new NetBuffer(payload);
         try {
             while (in.more()) {
-                CgNetObject obj = find(in.readVarInt());
+                // A stopping object still takes commands: its viewers keep it, and a claim may arrive late.
+                CgNetObject obj = BY_ID.get(in.readVarInt());
+                if (obj != null && !obj.isLive() && !obj.isStopping()) obj = null;
                 int index = in.readVarInt();
                 int length = in.readVarInt();
                 if (obj == null || index >= obj.type.commands.length) {

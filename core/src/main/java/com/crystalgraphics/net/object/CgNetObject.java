@@ -577,8 +577,8 @@ public final class CgNetObject {
     }
 
     /**
-     * On a client: asks the server to run {@code command} on this object. The command's rate decides when it leaves;
-     * the server decides whether it runs.
+     * On a client: asks the server to run {@code command} on this object, live or {@link #isStopping stopping}. The
+     * command's rate decides when it leaves; the server decides whether it runs.
      */
     public <P> CgNetObject send(CgNetCommand<P> command, @Nullable P value) {
         if (server) throw new IllegalStateException("a command is a client's to send; the server handles it");
@@ -586,7 +586,7 @@ public final class CgNetObject {
         if (!mine && !command.fromAnyViewer) {
             throw new IllegalStateException(command + " is its owner's to send, and this client does not own " + this);
         }
-        if (client != null && state == LIVE) client.send(this, command, value);
+        if (client != null && (state == LIVE || state == STOPPING)) client.send(this, command, value);
         return this;
     }
 

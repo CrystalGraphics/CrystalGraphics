@@ -734,6 +734,10 @@ myTurret.send(AIM, new Aim(yaw, pitch));                                        
 - **Rates**: `rate(...)` is how often the client lets one go (`CgRatePolicy.IMMEDIATE`, `DRAGGING`, `TYPING`,
   `throttle(ms)`); a throttled command always sends its last value, so the end of a drag is never lost.
   `perSecond(n)` and `burst(n)` are how many the server accepts from one player.
+- **A stopping object still takes commands** ([§11](#ending-in-front-of-the-viewers)): its owner keeps it, and a
+  command sent just before the end may arrive during it.
+- **A command sent often** takes a `CgNetWire`, as an event does: `CgNetCommand.of("claim", Claim.WIRE)` allocates
+  nothing per send. An immediate one is written at the send, so one value can be refilled for the next at once.
 
 ---
 
@@ -969,6 +973,12 @@ The report is in the server's log and in `runs/server/net-stress.txt`, and each 
 On 1.7.10 it is `:runtime:mc:1710:runServer -PcgLiveServer` and `:runtime:mc:1710:runClient` with the same flags (Bob's
 directory `run/client-bob`), and each client with `-Dcrystalgraphics.demo=false`: a client joining straight from launch
 builds the world demo while it logs in, and FML drops a client whose thread is busy for 5 seconds then.
+
+### Feeling a ping in a dev run
+
+`-Dcrystalgraphics.net.latency=<ms>` makes every connection hold what arrives that long before handing it on. Give it
+to the server and each client: at 150 on all three, each direction takes 150 ms more, a round trip of 300. What the
+rig's `latencyTicks` does for a test, for a real run.
 
 ### Through a death: the net probe
 
