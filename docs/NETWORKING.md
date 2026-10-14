@@ -597,7 +597,8 @@ turret.despawn();                     // ends it gracefully; kill() ends it at o
   ```
 - **A codec field can go back to null**: `set(TARGET, null)` reaches every viewer as null, and is saved as null, so
   it does not load as the fallback. A primitive field cannot be null.
-- `Turret.TYPE.forEach(obj -> ...)` and `Turret.TYPE.size()` reach every live object of a type on the server.
+- `Turret.TYPE.forEach(obj -> ...)` and `Turret.TYPE.size()` reach every live object of a type on the server;
+  `Turret.TYPE.visible()` lists the ones a client sees.
 
 ### A one-off: fired, not started
 

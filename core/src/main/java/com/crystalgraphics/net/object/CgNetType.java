@@ -433,6 +433,17 @@ public final class CgNetType {
     }
 
     /**
+     * Client: the objects of this type this client sees now; none outside a world.
+     *
+     * <pre>{@code
+     * for (CgNetObject turret : Turret.TYPE.visible()) drawRangeRing(turret);
+     * }</pre>
+     */
+    public List<CgNetObject> visible() {
+        return CgNetObjects.visible(this);
+    }
+
+    /**
      * On the server: the authority over each object, made at its first server tick (and when a persisted one loads),
      * ticked each server tick while it is live and not dormant. After a graceful despawn it ticks on until
      * {@link CgNetBehaviour#done()}, for at most {@link Builder#linger}, its viewers keeping the object meanwhile.
