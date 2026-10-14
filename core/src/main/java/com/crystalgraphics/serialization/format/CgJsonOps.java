@@ -3,10 +3,14 @@ package com.crystalgraphics.serialization.format;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgCodecException;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 import java.util.ArrayList;
@@ -32,7 +36,37 @@ public final class CgJsonOps implements CgDynamicOps<JsonElement> {
 
     public static final CgJsonOps INSTANCE = new CgJsonOps();
 
+    private static final Gson PRINTER = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
+
     private CgJsonOps() {
+    }
+
+    /**
+     * A tree built by hand as pretty-printed JSON, ending in a newline: what {@link CgFormats#JSON} writes, for a tree
+     * no single codec made.
+     *
+     * <pre>{@code
+     * CgStateMap<JsonElement> out = new CgStateMap<>(CgJsonOps.INSTANCE);
+     * out.putString("theme", "dark");
+     * storage.write(file, CgJsonOps.toText(out.encode()));
+     * }</pre>
+     */
+    public static String toText(JsonElement tree) {
+        return PRINTER.toJson(tree) + "\n";
+    }
+
+    /**
+     * {@code text} as a tree.
+     *
+     * @throws CgCodecException where it is not JSON
+     */
+    public static JsonElement fromText(String text) {
+        try {
+            // the instance parse: 2.2.4, 1.7.10's, has no static JsonParser.parseString
+            return new JsonParser().parse(text);
+        } catch (JsonParseException e) {
+            throw new CgCodecException("Not JSON: " + e.getMessage(), e);
+        }
     }
 
     @Override
