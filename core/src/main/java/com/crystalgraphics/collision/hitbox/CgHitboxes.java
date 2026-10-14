@@ -31,6 +31,10 @@ public final class CgHitboxes {
     public interface Watcher {
         /** {@code hitbox} has ticked in {@code world}, after its hits; on the thread ticking it. */
         void ticked(CgHitbox hitbox, CgCollisionWorld world);
+
+        /** {@code hitbox} was stopped between ticks, where its last tick left it; on the thread stopping it. */
+        default void stopped(CgHitbox hitbox, CgCollisionWorld world) {
+        }
     }
 
     private static final ThreadLocal<CgHitboxes> ACTIVE = ThreadLocal.withInitial(CgHitboxes::new);
@@ -78,8 +82,8 @@ public final class CgHitboxes {
     }
 
     /**
-     * Hands {@code watcher} every hitbox each time it ticks, and once more as {@code stop()} ends it between ticks; null
-     * stops. One watcher for the process: the collision show.
+     * Hands {@code watcher} every hitbox each time it ticks, and as {@code stop()} ends one between ticks; null stops.
+     * One watcher for the process: the collision show.
      */
     public static void watch(@Nullable Watcher watcher) {
         CgHitboxes.watcher = watcher;
@@ -108,6 +112,11 @@ public final class CgHitboxes {
     static void ticked(CgHitbox hitbox, CgCollisionWorld world) {
         Watcher w = watcher;
         if (w != null) w.ticked(hitbox, world);
+    }
+
+    static void stopped(CgHitbox hitbox, CgCollisionWorld world) {
+        Watcher w = watcher;
+        if (w != null) w.stopped(hitbox, world);
     }
 
     /** Ticks this thread's hitboxes once. Those started during the pass first tick on the next. */

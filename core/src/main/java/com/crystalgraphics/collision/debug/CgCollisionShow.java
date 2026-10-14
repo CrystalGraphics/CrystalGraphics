@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
  * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
  * -Dcrystalgraphics.collision.style=wireframe           // hitboxes as their edges alone; transparent by default
- * -Dcrystalgraphics.collision.linger=0                  // a stopped hitbox gone with its last tick; 250 ms by default
+ * -Dcrystalgraphics.collision.linger=250                // a stopped hitbox kept 250 ms, fading; none by default
  * }</pre>
  *
  * <ul>
@@ -53,8 +53,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *       them.</li>
  *   <li>{@link #STYLE} is each client's own: {@link Style#TRANSPARENT} fills a hitbox's faces in under its edges,
  *       {@link Style#WIREFRAME} draws the edges alone. Queries are lines under both.</li>
- *   <li>Hitboxes are drawn as their last tick tested them, not between ticks. One that stops is held
- *       {@link #LINGER} longer, fading, so a blow that lives a tick is still seen; a server's lingers by its own.</li>
+ *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and only while active: one that
+ *       stops is gone with its last tick, unless its {@link CgHitbox#showLinger(double) linger} or {@link #LINGER}
+ *       keeps it, fading. A server's lingers by its own setting.</li>
  * </ul>
  */
 public final class CgCollisionShow {
@@ -77,8 +78,9 @@ public final class CgCollisionShow {
     public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.TRANSPARENT,
             CgVar.SAVED, "How this client draws the hitboxes it shows. transparent: see-through faces under solid"
                     + " edges. wireframe: the edges alone.");
-    public static final CgVar.Int LINGER = CgVar.integer("crystalgraphics.collision.linger", 250, 0, 5000,
-            CgVar.SAVED, "Milliseconds a stopped hitbox stays shown, fading out, so one that lived a tick is seen.");
+    public static final CgVar.Int LINGER = CgVar.integer("crystalgraphics.collision.linger", 0, 0, 5000,
+            CgVar.SAVED, "Milliseconds a stopped hitbox stays shown, fading out, unless it sets its own. 0 shows each"
+                    + " only while it is active.");
 
     /** How far from a player a server's hitboxes are sent. */
     static final double RANGE = 64;
@@ -89,6 +91,7 @@ public final class CgCollisionShow {
     static final long FORGET_AFTER = 3 * ASK_EVERY;
     /** A server's hitboxes and queries. */
     static final int SERVER = 0xFFFF9030;
+    private static final long TICK_NANOS = 50_000_000L;
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
 
@@ -188,7 +191,7 @@ public final class CgCollisionShow {
     /** Records while this process shows, or while its server serves someone asking. */
     private static void follow() {
         boolean on = showing() || SERVE.get() && !WATCHERS.isEmpty();
-        CgHitboxes.watch(on ? CgCollisionShow::saw : null);
+        CgHitboxes.watch(on ? HITBOXES : null);
         CgCollisionQuery.watch(on ? CgCollisionShow::ran : null);
     }
 
@@ -198,9 +201,27 @@ public final class CgCollisionShow {
         if (into != null) into.query(shape, pose, box, dx, dy, dz, length, level, nearest, System.nanoTime());
     }
 
+    private static final CgHitboxes.Watcher HITBOXES = new CgHitboxes.Watcher() {
+        @Override
+        public void ticked(CgHitbox hitbox, CgCollisionWorld world) {
+            saw(hitbox, world);
+        }
+
+        @Override
+        public void stopped(CgHitbox hitbox, CgCollisionWorld world) {
+            if (lingerNanos(hitbox) > 0) saw(hitbox, world);
+        }
+    };
+
     private static void saw(CgHitbox hitbox, CgCollisionWorld world) {
         CgRecentLines into = lines();
-        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime(), LINGER.get() * 1_000_000L);
+        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime(), lingerNanos(hitbox));
+    }
+
+    /** How long {@code hitbox} stays shown once stopped: its own linger, else {@link #LINGER}. */
+    static long lingerNanos(CgHitbox hitbox) {
+        double own = hitbox.showLinger();
+        return own >= 0 ? (long) (own * TICK_NANOS) : LINGER.get() * 1_000_000L;
     }
 
     /** Where this thread's queries and hitboxes are kept: a server's only while a player watches. */

@@ -163,6 +163,7 @@ public final class CgHitbox {
     private boolean once, held;
     private final Quaterniond fixed = new Quaterniond();
     private int showColour;
+    private double showLinger = -1;
 
     // ---- size and time
     private int sizeKind = NO_SIZE;
@@ -509,6 +510,26 @@ public final class CgHitbox {
         return showColour;
     }
 
+    /**
+     * How many game ticks the collision show keeps drawing it once it stops, fading out, over
+     * {@code crystalgraphics.collision.linger} (none by default). For a hitbox too short to see; a lingering one is
+     * no longer hitting anything, which the fade is there to say.
+     *
+     * <pre>{@code
+     * CgHitbox.follow(player, STRIKE).activeFor(1).showLinger(6)...   // a one-tick blow, seen for 0.3 s after
+     * }</pre>
+     */
+    public CgHitbox showLinger(double ticks) {
+        if (!(ticks >= 0) || Double.isInfinite(ticks)) throw new IllegalArgumentException("linger ticks: " + ticks);
+        showLinger = ticks;
+        return this;
+    }
+
+    /** Its {@link #showLinger(double)} in ticks; negative for the show's own setting. */
+    public double showLinger() {
+        return showLinger;
+    }
+
     // ---- running
 
     /** Starts it in {@code level} (a host level), ticked by the engine on the level's thread. */
@@ -552,8 +573,7 @@ public final class CgHitbox {
             int gone = inside[--insideCount];
             if (onExit != null) onExit.accept(gone);
         }
-        // the show lingers what it last tested, stopped between ticks too
-        if (hasPrev && world != null) CgHitboxes.ticked(this, world);
+        if (hasPrev && world != null) CgHitboxes.stopped(this, world);
     }
 
     public boolean stopped() {

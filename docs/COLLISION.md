@@ -1336,7 +1336,7 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 ```
 -Dcrystalgraphics.collision.show=true        // or from the console, or CgCollisionShow.SHOW.set(true)
 -Dcrystalgraphics.collision.style=wireframe  // hitboxes as their edges alone; transparent, the default, fills them in
--Dcrystalgraphics.collision.linger=0         // a stopped hitbox gone with its last tick; 250 ms, fading, by default
+-Dcrystalgraphics.collision.linger=250       // a stopped hitbox kept 250 ms, fading; none by default
 ```
 
 | You see | Colour |
@@ -1352,9 +1352,14 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 - `crystalgraphics.collision.style` is how each client draws hitboxes, and the shapes `CgCollisionDebug` draws:
   `transparent` (the default) fills their faces in see-through under solid edges, `wireframe` draws the edges alone.
   A player's setting, kept in their settings file.
-- Hitboxes are drawn as their last tick tested them. One that stops stays `crystalgraphics.collision.linger`
-  milliseconds longer, fading out, so a blow that lives a tick is still seen; the server's linger by the server's
+- Hitboxes are drawn as their last tick tested them, and only while active: what is drawn could still hit. A blow too
+  short to see can linger, fading, so it reads as over: `showLinger(ticks)` on the hitbox, or
+  `crystalgraphics.collision.linger` milliseconds for every hitbox that sets none. The server's linger by its own
   setting.
+
+  ```java
+  CgHitbox.follow(player, STRIKE).activeFor(1).showLinger(6)...   // a one-tick blow, seen fading for 0.3 s after
+  ```
 - The server sends a player what is within 64 blocks of them while their client is showing, recording only while
   someone is. `crystalgraphics.collision.serve=false` keeps a server's own to itself unless its
   `crystalgraphics.collision.show` is on.

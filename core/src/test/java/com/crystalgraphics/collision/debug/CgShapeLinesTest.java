@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /** The wireframes lie on their shapes where their poses put them, and survive the wire. */
@@ -231,7 +232,17 @@ public class CgShapeLinesTest {
         CgRecentLines lines = new CgRecentLines(1 << 12);
         CgHitbox zone = CgHitbox.of(CgBox.of(1, 1, 1)).at(0.5, 1, 0.5);
         zone.tick(YARD, 1);
-        CgHitboxes.watch((hitbox, world) -> lines.hitbox(hitbox, world.blocks(), 0, CgRecentLines.HOLD_NANOS));
+        CgHitboxes.watch(new CgHitboxes.Watcher() {
+            @Override
+            public void ticked(CgHitbox hitbox, CgCollisionWorld world) {
+                throw new AssertionError("a stop is not a tick");
+            }
+
+            @Override
+            public void stopped(CgHitbox hitbox, CgCollisionWorld world) {
+                lines.hitbox(hitbox, world.blocks(), 0, CgRecentLines.HOLD_NANOS);
+            }
+        });
         try {
             zone.stop();
         } finally {
@@ -240,6 +251,21 @@ public class CgShapeLinesTest {
         Tally drawn = new Tally();
         lines.drawTo(CgRecentLines.HOLD_NANOS + 1, drawn);
         assertEquals("its last pose, past the hold", 12, drawn.lines);
+    }
+
+    @Test
+    public void aHitboxLingersOnlyWhenItOrTheSettingSays() {
+        CgHitbox plain = CgHitbox.of(CgSphere.of(1));
+        assertEquals("only while active, by default", 0, CgCollisionShow.lingerNanos(plain));
+        CgCollisionShow.LINGER.set(300);
+        try {
+            assertEquals(300_000_000L, CgCollisionShow.lingerNanos(plain));
+            assertEquals("its own over the setting", 0, CgCollisionShow.lingerNanos(CgHitbox.of(CgSphere.of(1)).showLinger(0)));
+        } finally {
+            CgCollisionShow.LINGER.set(0);
+        }
+        assertEquals("in game ticks", 300_000_000L, CgCollisionShow.lingerNanos(plain.showLinger(6)));
+        assertThrows(IllegalArgumentException.class, () -> plain.showLinger(-1));
     }
 
     @Test
