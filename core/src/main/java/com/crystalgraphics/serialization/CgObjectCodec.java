@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  * }
  *
  * Character fresh = CgFormats.read(file, Character.CODEC);       // Character::new, then filled
- * CgFormats.readInto(file, Character.CODEC, live);               // live, its skills and its stats keep their identity
+ * CgFormats.read(file, Character.CODEC, live);               // live, its skills and its stats keep their identity
  * }</pre>
  *
  * An object the caller makes itself (from a registry, a constructor with arguments) takes the factory-less form:
@@ -42,13 +42,13 @@ import java.util.function.Supplier;
  *         .build();
  *
  * Machine machine = new Machine(level, pos);
- * STATE.decodeInto(ops, saved, machine);
+ * STATE.decode(ops, saved, machine);
  * }</pre>
  *
  * <ul>
  *   <li><b>A key the input lacks leaves its field as it is</b>: the constructor's default in {@link #decode}, the live
- *       value in {@link #decodeInto}. A partial input is a patch. A field holding null is not written.</li>
- *   <li>{@link #field} stores what its codec's {@code decodeInto} answers, so a nested object codec still updates the
+ *       value in {@link #decode}. A partial input is a patch. A field holding null is not written.</li>
+ *   <li>{@link #field} stores what its codec's {@code decode} answers, so a nested object codec still updates the
  *       held value in place. {@link #into} has no setter: its codec must update in place, and one that cannot (a
  *       string, a record) throws, naming the key.</li>
  *   <li>The factory-less form's {@link #decode} throws: it has nothing to decode into.</li>
@@ -87,13 +87,13 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     @Override
     public <T> A decode(CgDynamicOps<T> ops, T input) {
         if (make == null) {
-            throw new CgCodecException(name + " has no factory: decode into an object with decodeInto");
+            throw new CgCodecException(name + " has no factory: decode into an object with decode");
         }
-        return decodeInto(ops, input, make.get());
+        return decode(ops, input, make.get());
     }
 
     @Override
-    public <T> A decodeInto(CgDynamicOps<T> ops, T input, @Nullable A target) {
+    public <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         if (target == null) return decode(ops, input);
         for (Map.Entry<T, T> e : ops.getMapValue(input).entrySet()) {
             Field<A, ?> f = byKey.get(ops.getStringValue(e.getKey()));
@@ -185,12 +185,12 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
             F current = get.apply(owner);
             if (set == null) {
                 if (current == null) throw new CgCodecException("'" + key + "' is held by the object, and it holds null");
-                if (codec.decodeInto(ops, raw, current) != current) {
+                if (codec.decode(ops, raw, current) != current) {
                     throw new CgCodecException("'" + key + "' cannot be updated in place: declare it with field(...)");
                 }
                 return;
             }
-            F next = current == null ? codec.decode(ops, raw) : codec.decodeInto(ops, raw, current);
+            F next = current == null ? codec.decode(ops, raw) : codec.decode(ops, raw, current);
             if (next != current) set.accept(owner, next);
         }
     }

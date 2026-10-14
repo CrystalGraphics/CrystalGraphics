@@ -73,7 +73,7 @@ public class CgDecodeIntoTest {
         Stats stats = live.stats;
         List<String> skills = live.skills;
 
-        Character same = Character.CODEC.decodeInto(CgPlainOps.INSTANCE,
+        Character same = Character.CODEC.decode(CgPlainOps.INSTANCE,
                 encoded("Kakarot", 9, 20, 7, "kamehameha", "instant transmission"), live);
 
         assertSame(live, same);
@@ -92,7 +92,7 @@ public class CgDecodeIntoTest {
         Character live = Character.CODEC.decode(CgPlainOps.INSTANCE, encoded("Goku", 3, 10, 5));
         Map<String, Object> patch = new LinkedHashMap<>();
         patch.put("name", "Kakarot");
-        Character.CODEC.decodeInto(CgPlainOps.INSTANCE, patch, live);
+        Character.CODEC.decode(CgPlainOps.INSTANCE, patch, live);
         assertEquals("Kakarot", live.name);
         assertEquals(3, live.level);
         assertEquals(5, live.stats.power);
@@ -121,7 +121,7 @@ public class CgDecodeIntoTest {
         List<Stats> live = new ArrayList<>(list.decode(CgPlainOps.INSTANCE, list.encode(CgPlainOps.INSTANCE,
                 Arrays.asList(stats(1), stats(2), stats(3)))));
         Stats first = live.get(0);
-        List<Stats> same = list.decodeInto(CgPlainOps.INSTANCE,
+        List<Stats> same = list.decode(CgPlainOps.INSTANCE,
                 list.encode(CgPlainOps.INSTANCE, Arrays.asList(stats(10), stats(20))), live);
         assertSame(live, same);
         assertSame("element 0 updated in place", first, live.get(0));
@@ -136,7 +136,7 @@ public class CgDecodeIntoTest {
         Map<String, Stats> next = new LinkedHashMap<>();
         next.put("goku", stats(9));
         next.put("gohan", stats(4));
-        map.decodeInto(CgPlainOps.INSTANCE, map.encode(CgPlainOps.INSTANCE, next), byName);
+        map.decode(CgPlainOps.INSTANCE, map.encode(CgPlainOps.INSTANCE, next), byName);
         assertSame(goku, byName.get("goku"));
         assertEquals(9, goku.power);
         assertEquals(Arrays.asList("goku", "gohan"), new ArrayList<>(byName.keySet()));
@@ -146,11 +146,11 @@ public class CgDecodeIntoTest {
     public void aDispatchUpdatesInPlaceOnlyForItsOwnKey() {
         CgCodec<Stats> one = CgCodecs.dispatch("kind", CgCodecs.STRING, s -> "stats", kind -> Stats.CODEC);
         Stats live = stats(1);
-        assertSame(live, one.decodeInto(CgPlainOps.INSTANCE, one.encode(CgPlainOps.INSTANCE, stats(5)), live));
+        assertSame(live, one.decode(CgPlainOps.INSTANCE, one.encode(CgPlainOps.INSTANCE, stats(5)), live));
         assertEquals(5, live.power);
 
         CgCodec<Stats> other = CgCodecs.dispatch("kind", CgCodecs.STRING, s -> "other", kind -> Stats.CODEC);
-        assertNotSame(live, other.decodeInto(CgPlainOps.INSTANCE, one.encode(CgPlainOps.INSTANCE, stats(6)), live));
+        assertNotSame(live, other.decode(CgPlainOps.INSTANCE, one.encode(CgPlainOps.INSTANCE, stats(6)), live));
     }
 
     @Test
@@ -165,7 +165,7 @@ public class CgDecodeIntoTest {
                 .into("name", CgCodecs.STRING, c -> c.name).build();
         Map<String, Object> in = new LinkedHashMap<>();
         in.put("name", "Goku");
-        e = assertThrows(CgCodecException.class, () -> heldString.decodeInto(CgPlainOps.INSTANCE, in, new Character()));
+        e = assertThrows(CgCodecException.class, () -> heldString.decode(CgPlainOps.INSTANCE, in, new Character()));
         assertTrue(e.getMessage(), e.getMessage().contains("'name'"));
 
         assertThrows(IllegalArgumentException.class, () -> CgCodecs.object(Stats::new)
@@ -177,19 +177,19 @@ public class CgDecodeIntoTest {
     public void aFileIsReadIntoTheLiveObjectAndADamagedOneTouchesNothing() throws IOException {
         Path file = folder.getRoot().toPath().resolve("goku.dat");
         Character live = new Character();
-        assertSame("no file: as it was", live, CgFormats.readInto(file, Character.CODEC, live));
+        assertSame("no file: as it was", live, CgFormats.read(file, Character.CODEC, live));
 
         Character saved = Character.CODEC.decode(CgPlainOps.INSTANCE, encoded("Goku", 4, 1, 2, "kaioken"));
         CgFormats.write(file, Character.CODEC, saved);
         List<String> skills = live.skills;
-        assertSame(live, CgFormats.readInto(file, Character.CODEC, live));
+        assertSame(live, CgFormats.read(file, Character.CODEC, live));
         assertEquals("Goku", live.name);
         assertSame(skills, live.skills);
         assertEquals(Arrays.asList("kaioken"), live.skills);
 
         byte[] bytes = Files.readAllBytes(file);
         Files.write(file, Arrays.copyOf(bytes, bytes.length / 2));
-        assertThrows(IOException.class, () -> CgFormats.readInto(file, Character.CODEC, live));
+        assertThrows(IOException.class, () -> CgFormats.read(file, Character.CODEC, live));
         assertEquals("Goku", live.name);
         assertEquals(Arrays.asList("kaioken"), live.skills);
     }

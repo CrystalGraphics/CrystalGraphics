@@ -75,19 +75,19 @@ public final class CgFormats {
     }
 
     /**
-     * What {@link #write} left in {@code file}, decoded into {@code target} ({@link CgCodec#decodeInto}): answers what
+     * What {@link #write} left in {@code file}, decoded into {@code target} ({@link CgCodec#decode}): answers what
      * now holds the data, {@code target} itself for a codec that updates in place. No file leaves {@code target} as
      * it is.
      *
      * <pre>{@code
-     * CgFormats.readInto(file, Settings.CODEC, settings);   // every screen holding settings sees the reload
+     * CgFormats.read(file, Settings.CODEC, settings);   // every screen holding settings sees the reload
      * }</pre>
      *
      * The file is read and parsed whole first, so a damaged one throws before {@code target} is touched.
      */
-    public static <V> V readInto(Path file, CgCodec<V> codec, V target) throws IOException {
+    public static <V> V read(Path file, CgCodec<V> codec, V target) throws IOException {
         if (!Files.exists(file)) return target;
-        return codec.decodeInto(CgPlainOps.INSTANCE, tree(file), target);
+        return codec.decode(CgPlainOps.INSTANCE, tree(file), target);
     }
 
     private static Object tree(Path file) throws IOException {
@@ -116,8 +116,8 @@ public final class CgFormats {
     }
 
     /** What {@link #toNbt} wrote, decoded into {@code target}: an entity's live data refreshed from its tag. */
-    public static <V> V fromNbtInto(CgCodec<V> codec, Object tag, V target) {
-        return codec.decodeInto(nbt(), tag, target);
+    public static <V> V fromNbt(CgCodec<V> codec, Object tag, V target) {
+        return codec.decode(nbt(), tag, target);
     }
 
     /** The host's tags as a codec format, for a codec read or written by hand. */

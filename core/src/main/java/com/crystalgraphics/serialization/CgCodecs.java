@@ -67,7 +67,7 @@ public final class CgCodecs {
 
     /**
      * A list, each element through {@code elementCodec}. Decoded into a list, it refills that list: element {@code i}
-     * through {@code elementCodec}'s own {@code decodeInto}, extras dropped, new ones added (serde's {@code Vec}).
+     * through {@code elementCodec}'s own {@code decode}, extras dropped, new ones added (serde's {@code Vec}).
      */
     public static <A> CgCodec<List<A>> listOf(CgCodec<A> elementCodec) {
         return new CgCodec<List<A>>() {
@@ -87,13 +87,13 @@ public final class CgCodecs {
             }
 
             @Override
-            public <T> List<A> decodeInto(CgDynamicOps<T> ops, T input, @Nullable List<A> target) {
+            public <T> List<A> decode(CgDynamicOps<T> ops, T input, @Nullable List<A> target) {
                 if (target == null) return decode(ops, input);
                 List<T> raw = ops.getListValue(input);
                 int kept = Math.min(raw.size(), target.size());
                 for (int i = 0; i < kept; i++) {
                     A current = target.get(i);
-                    A next = elementCodec.decodeInto(ops, raw.get(i), current);
+                    A next = elementCodec.decode(ops, raw.get(i), current);
                     if (next != current) target.set(i, next);
                 }
                 if (target.size() > raw.size()) target.subList(raw.size(), target.size()).clear();
@@ -115,7 +115,7 @@ public final class CgCodecs {
      *   <li>Encoding follows the map's own order: hand it a {@code LinkedHashMap} or a {@code TreeMap} where the
      *       encoded bytes must not vary (a content hash, a save diffed by hand).</li>
      *   <li>NBT and JSON take only text keys: key by a codec that encodes as a string there.</li>
-     *   <li>Decoded into a map, it keeps that map: a key already there goes through its value's {@code decodeInto}, a
+     *   <li>Decoded into a map, it keeps that map: a key already there goes through its value's {@code decode}, a
      *       new one is added, and one the input lacks is removed.</li>
      * </ul>
      */
@@ -141,7 +141,7 @@ public final class CgCodecs {
             }
 
             @Override
-            public <T> Map<K, V> decodeInto(CgDynamicOps<T> ops, T input, @Nullable Map<K, V> target) {
+            public <T> Map<K, V> decode(CgDynamicOps<T> ops, T input, @Nullable Map<K, V> target) {
                 if (target == null) return decode(ops, input);
                 Map<T, T> raw = ops.getMapValue(input);
                 Set<K> seen = new HashSet<>(raw.size() * 2);
@@ -150,7 +150,7 @@ public final class CgCodecs {
                     seen.add(key);
                     V current = target.get(key);
                     V next = current == null ? valueCodec.decode(ops, e.getValue())
-                            : valueCodec.decodeInto(ops, e.getValue(), current);
+                            : valueCodec.decode(ops, e.getValue(), current);
                     if (next != current) target.put(key, next);
                 }
                 target.keySet().retainAll(seen);
@@ -193,13 +193,13 @@ public final class CgCodecs {
             }
 
             @Override
-            public <T> V decodeInto(CgDynamicOps<T> ops, T input, @Nullable V target) {
+            public <T> V decode(CgDynamicOps<T> ops, T input, @Nullable V target) {
                 MapCodecReader<T> r = read(ops, input);
                 K key = r.field(keyName, keyCodec);
                 if (target == null || !Objects.equals(keyOf.apply(target), key)) return r.field("value", codecFor(key));
                 T value = r.raw("value");
                 if (value == null) throw new CgCodecException("Missing required field 'value'");
-                return codecFor(key).decodeInto(ops, value, target);
+                return codecFor(key).decode(ops, value, target);
             }
 
             @SuppressWarnings("unchecked")

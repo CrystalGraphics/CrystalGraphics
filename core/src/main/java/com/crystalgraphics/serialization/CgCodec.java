@@ -26,7 +26,7 @@ import javax.annotation.Nullable;
  *
  * <pre>{@code
  * Settings fresh = CgFormats.read(file, Settings.CODEC);      // a new one
- * CgFormats.readInto(file, Settings.CODEC, live);             // live itself, refreshed; whoever holds it sees the change
+ * CgFormats.read(file, Settings.CODEC, live);                // live itself, refreshed; whoever holds it sees it
  * }</pre>
  *
  * <ul>
@@ -51,8 +51,8 @@ public interface CgCodec<A> {
      *
      * <pre>{@code
      * List<String> names = holder.names;
-     * CgCodecs.listOf(CgCodecs.STRING).decodeInto(ops, in, names);    // names refilled; holder.names is still names
-     * holder.title = CgCodecs.STRING.decodeInto(ops, in, holder.title); // a string cannot change: the new one is stored
+     * CgCodecs.listOf(CgCodecs.STRING).decode(ops, in, names);    // names refilled; holder.names is still names
+     * holder.title = CgCodecs.STRING.decode(ops, in, holder.title); // a string cannot change: the new one is stored
      * }</pre>
      *
      * <ul>
@@ -62,7 +62,7 @@ public interface CgCodec<A> {
      *   <li>A collection target must be mutable.</li>
      * </ul>
      */
-    default <T> A decodeInto(CgDynamicOps<T> ops, T input, @Nullable A target) {
+    default <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         return decode(ops, input);
     }
 }
