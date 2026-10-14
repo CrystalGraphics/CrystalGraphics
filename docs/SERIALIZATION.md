@@ -243,6 +243,7 @@ make the class mutable and use `CgCodecs.object` (§4).
 | One of several kinds | `CgCodecs.dispatch` (below) |
 | One value as another (a colour as an int) | `CgCodecs.xmap` (below) |
 | A key written only sometimes, or one value deciding the rest | by hand (next) |
+| Nothing to describe: an object hands over what it has, when asked | a `CgStateMap` (below) |
 
 ### By hand: a map built and read
 
@@ -260,6 +261,42 @@ field with `CgCodecs.map(ops)` and `CgCodecs.read(ops, in)`:
     return new Slot(r.field("kind", CgCodecs.STRING), r.optional("ticks", CgCodecs.INT, 0));
 }
 ```
+
+### An object that writes itself: `CgStateMap`
+
+A codec and a `CgStateMap` both turn values into maps of keys, but they answer different questions.
+
+- **A codec describes a type, once.** "A `Spell` is a `name` and a `cost`." Declared as a constant, it then sends,
+  saves, reads into live objects, and carries comments and versions, for every `Spell` anywhere.
+- **A `CgStateMap` is a notepad an object fills itself, by hand, when something asks it to.** No type is described:
+  the object writes what it has, and later reads it back, each read with a default.
+
+```java
+// something hands the object a CgStateMap to write itself into...
+public <T> void writeState(CgStateMap<T> out) {
+    out.putFloat("zoom", zoom).putBool("grid", showGrid);
+}
+// ...and another to read itself back from; a key that is not there reads its default
+public <T> void readState(CgStateMap<T> in) {
+    zoom = in.getFloat("zoom", 1f);
+    showGrid = in.getBool("grid", true);
+}
+```
+
+| | Codec | `CgStateMap` |
+|---|---|---|
+| What it is | a description of a type, a constant | a bag filled for one value, then thrown away |
+| A missing key | throws, or reads the fallback you declared | always reads the default you pass |
+| Files, NBT, the wire | `CgFormats`, `toNbt`, `CgMessage` take it directly | gives a tree (`encode()`) to whatever asked for it |
+| Comments, versions, decoding into a live object | yes | no |
+
+**Which do I use?**
+
+- You are saying how a type of yours is saved or sent: **a codec** (`record`, `object`), always.
+- A method you implement is handed a `CgStateMap` (CrystalGUI's widget state, workbench sessions and UI
+  payloads are): **fill and read that map**. You do not choose it; the framework that calls you did.
+- A value with a codec inside a state map: `out.putRaw("spell", Spell.CODEC.encode(out.ops(), spell))`, and
+  `Spell.CODEC.decode(in.ops(), in.getRaw("spell"))` to read it.
 
 ### A value in terms of another: `xmap`
 
@@ -803,6 +840,11 @@ not parse is replaced whole.
 number, toggle or choice with a label, a range and a default, read again while the game runs whenever the file
 changes. It is a `config/<name>.toml` written through `CgFormats.TOML`, so its comments and a player's survive the
 same way. Anything else a mod configures is a codec of its own and `CgFormats.TOML`, as in §6.
+
+### A codec or a `CgStateMap`?
+
+A codec, whenever you are describing how a type of yours is saved or sent. A `CgStateMap` only where a method you
+implement is handed one, as a CrystalGUI widget's state is: §3, *An object that writes itself*.
 
 ### Why not Mojang's `Codec`?
 

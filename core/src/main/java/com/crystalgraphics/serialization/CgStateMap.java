@@ -1,22 +1,42 @@
 package com.crystalgraphics.serialization;
 
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
- * A widget's own serializable state, as a small string-keyed bag.
+ * A bag of keys an object fills itself when asked, and reads itself back from: no type is described, the object
+ * writes what it has. Where a {@link CgCodec} says once how a type is stored, a state map is what a method you
+ * implement is handed: CrystalGUI's widget state, workbench sessions and UI payloads are written this way.
  *
- * <p>Exists so {@code UIElement.writeState}/{@code readState} implementations never see a
- * {@link CgDynamicOps}. A widget author writes {@code out.putBool("checked", checked)}, and stays
- * unaware of whether the result becomes JSON, NBT or bytes — which is the same separation
- * {@link CgCodec} gives, one level up.</p>
+ * <pre>{@code
+ * public <T> void writeState(CgStateMap<T> out) {
+ *     out.putFloat("zoom", zoom).putBool("grid", showGrid);
+ * }
+ * public <T> void readState(CgStateMap<T> in) {
+ *     zoom = in.getFloat("zoom", 1f);             // a key that is not there reads its default
+ *     showGrid = in.getBool("grid", true);
+ * }
+ * }</pre>
  *
- * <p><b>Insertion-ordered.</b> Descriptions are content-addressed, so encoding the same widget twice
- * must produce identical bytes; a {@code HashMap} here would make the hash vary per JVM run.</p>
+ * A value that has a codec goes in raw, encoded with the map's own ops:
  *
- * <p>Reads take a default rather than throwing. A widget gaining a new state key must still be able
- * to read a description written before that key existed — the alternative is that every added field
- * is a breaking protocol change.</p>
+ * <pre>{@code
+ * out.putRaw("spell", Spell.CODEC.encode(out.ops(), spell));
+ * Spell spell = Spell.CODEC.decode(in.ops(), in.getRaw("spell"));
+ * }</pre>
+ *
+ * <ul>
+ *   <li>Every read takes a default, so a key added later still reads what an older version wrote.</li>
+ *   <li>Keys are written in the order they were put: the same state encodes to the same bytes.</li>
+ *   <li>Choosing between this and a codec: {@code docs/SERIALIZATION.md} §3, <i>An object that writes itself</i>.</li>
+ * </ul>
  */
 public final class CgStateMap<T> {
 
@@ -74,7 +94,7 @@ public final class CgStateMap<T> {
     /** Writes only when {@code value} differs from {@code omitWhen} — keeps a default-valued widget
      * from carrying its own defaults over the wire. */
     public CgStateMap<T> putStringIfNot(String key, String value, String omitWhen) {
-        return java.util.Objects.equals(value, omitWhen) ? this : putString(key, value);
+        return Objects.equals(value, omitWhen) ? this : putString(key, value);
     }
 
     public CgStateMap<T> putBoolIfNot(String key, boolean value, boolean omitWhen) {
@@ -101,7 +121,7 @@ public final class CgStateMap<T> {
     }
 
     /** The encoded value under {@code key}, untouched — the inverse of {@link #putRaw}. */
-    @javax.annotation.Nullable
+    @Nullable
     public T getRaw(String key) {
         return entries.get(key);
     }
@@ -161,9 +181,8 @@ public final class CgStateMap<T> {
      * <p>The one shape this needed beyond scalars. Each element is written by {@code element}, which gets
      * a fresh {@link CgStateMap} to fill, so a caller never touches {@link CgDynamicOps} directly.</p>
      */
-    public <E> CgStateMap<T> putList(String key, java.util.List<E> values,
-                                   java.util.function.BiConsumer<CgStateMap<T>, E> element) {
-        java.util.List<T> encoded = new java.util.ArrayList<>(values.size());
+    public <E> CgStateMap<T> putList(String key, List<E> values, BiConsumer<CgStateMap<T>, E> element) {
+        List<T> encoded = new ArrayList<>(values.size());
         for (E value : values) {
             CgStateMap<T> entry = new CgStateMap<>(ops);
             element.accept(entry, value);
@@ -179,10 +198,10 @@ public final class CgStateMap<T> {
     }
 
     /** Reads back what {@link #putList} wrote. Absent or empty both give an empty list. */
-    public <E> java.util.List<E> getList(String key, java.util.function.Function<CgStateMap<T>, E> element) {
+    public <E> List<E> getList(String key, Function<CgStateMap<T>, E> element) {
         T value = entries.get(key);
-        if (value == null) return java.util.List.of();
-        java.util.List<E> out = new java.util.ArrayList<>();
+        if (value == null) return Collections.emptyList();
+        List<E> out = new ArrayList<>();
         for (T encoded : ops.getListValue(value)) {
             out.add(element.apply(new CgStateMap<>(ops, encoded)));
         }
