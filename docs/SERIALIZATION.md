@@ -271,6 +271,16 @@ A codec and a `CgStateMap` both turn values into maps of keys, but they answer d
 - **A `CgStateMap` is a notepad an object fills itself, by hand, when something asks it to.** No type is described:
   the object writes what it has, and later reads it back, each read with a default.
 
+**If you know NBT, you know it:** a `CgStateMap` is used the way a `CompoundTag` is in an entity's
+`addAdditionalSaveData` and `readAdditionalSaveData`.
+
+| `CompoundTag` | `CgStateMap` |
+|---|---|
+| `tag.putFloat("zoom", zoom)` | `out.putFloat("zoom", zoom)` |
+| `zoom = tag.getFloat("zoom")`, 0 when missing; `getFloatOr("zoom", 1f)` from 1.21.5 | `zoom = in.getFloat("zoom", 1f)`: always the default you pass |
+| `tag.put("inv", inventory.save(...))`: another object's tag inside | `out.putRaw("spell", Spell.CODEC.encode(out.ops(), spell))` |
+| always NBT | whatever its ops build: NBT, JSON, the wire's bytes |
+
 ```java
 // something hands the object a CgStateMap to write itself into...
 public <T> void writeState(CgStateMap<T> out) {

@@ -13,7 +13,8 @@ import java.util.function.Function;
 /**
  * A bag of keys an object fills itself when asked, and reads itself back from: no type is described, the object
  * writes what it has. Where a {@link CgCodec} says once how a type is stored, a state map is what a method you
- * implement is handed: CrystalGUI's widget state, workbench sessions and UI payloads are written this way.
+ * implement is handed: CrystalGUI's widget state, workbench sessions and UI payloads are written this way. It is used
+ * as a {@code CompoundTag} is in an entity's save and load, and becomes whatever its ops build: NBT, JSON, the wire's.
  *
  * <pre>{@code
  * public <T> void writeState(CgStateMap<T> out) {
