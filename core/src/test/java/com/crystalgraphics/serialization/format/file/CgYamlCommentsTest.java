@@ -1,0 +1,111 @@
+package com.crystalgraphics.serialization.format.file;
+
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgObjectCodec;
+import com.crystalgraphics.serialization.format.CgFormats;
+import org.junit.Rule;
+import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+/** A codec's comments written, and a person's kept, when a mod writes its YAML again. */
+public class CgYamlCommentsTest {
+
+    record Audio(float volume, boolean subtitles) {
+        static final CgCodec<Audio> CODEC = CgCodecs.record(
+                CgCodecs.field("volume", CgCodecs.FLOAT, Audio::volume).comment("Master volume, 0 to 1."),
+                CgCodecs.field("subtitles", CgCodecs.BOOL, Audio::subtitles),
+                Audio::new);
+    }
+
+    static class Settings {
+        Audio audio = new Audio(1f, false);
+        final List<String> muted = new ArrayList<>();
+        int legacy;
+
+        static final CgObjectCodec<Settings> CODEC = CgCodecs.object(Settings::new)
+                .field("audio", Audio.CODEC, s -> s.audio, (s, v) -> s.audio = v).comment("Sound.\nAll of it.")
+                .into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)
+                .build();
+    }
+
+    static class More extends Settings {
+        int extra;
+        static final CgObjectCodec<More> CODEC = CgCodecs.object(More::new)
+                .extend(Settings.CODEC).comment("Only on More.")
+                .field("extra", CgCodecs.INT, m -> m.extra, (m, v) -> m.extra = v)
+                .build();
+    }
+
+    @Rule
+    public final TemporaryFolder folder = new TemporaryFolder();
+
+    private static Settings settings(float volume, String... muted) {
+        Settings s = new Settings();
+        s.audio = new Audio(volume, false);
+        s.muted.addAll(Arrays.asList(muted));
+        return s;
+    }
+
+    @Test
+    public void aCodecsCommentsAreWrittenAboveTheirKeys() {
+        String text = CgFormats.YAML.toText(Settings.CODEC, settings(0.5f, "vegeta"));
+        assertTrue(text, text.startsWith("# Sound.\n# All of it.\naudio:\n"));
+        assertTrue(text, text.contains("  # Master volume, 0 to 1.\n  volume: 0.5\n"));
+        assertEquals(0.5f, CgFormats.YAML.fromText(Settings.CODEC, text).audio.volume(), 0f);
+        assertFalse(CgFormats.JSON.toText(Settings.CODEC, settings(0.5f)).contains("#"));
+    }
+
+    @Test
+    public void aPersonsCommentsSurviveTheModWritingTheFileAgain() throws IOException {
+        Path file = folder.newFile("mymod.yml").toPath();
+        Files.write(file, ("# my own: quiet at night\n"
+                + "audio:\n"
+                + "  volume: 0.2   # turned down\n"
+                + "  subtitles: false\n"
+                + "muted:\n"
+                + "  - vegeta\n"
+                + "# about a key the mod no longer writes\n"
+                + "legacy: 3\n").getBytes(StandardCharsets.UTF_8));
+        Settings live = CgFormats.YAML.read(file, Settings.CODEC);
+        live.muted.add("goku");
+        live.audio = new Audio(0.3f, true);
+        CgFormats.YAML.write(file, Settings.CODEC, live);
+
+        String text = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(text, text.startsWith("# my own: quiet at night\naudio:\n"));      // theirs, over the codec's
+        assertTrue(text, text.contains("# Master volume, 0 to 1."));                  // ours, where they wrote none
+        assertTrue(text, text.contains("volume: 0.3 # turned down"));
+        assertFalse(text, text.contains("no longer writes"));
+        Settings back = CgFormats.YAML.read(file, Settings.CODEC);
+        assertEquals(Arrays.asList("vegeta", "goku"), back.muted);
+        assertTrue(back.audio.subtitles());
+    }
+
+    @Test
+    public void aFileThatIsNotYamlIsReplacedWithoutItsComments() throws IOException {
+        Path file = folder.newFile("broken.yml").toPath();
+        Files.write(file, "audio: [unclosed\n".getBytes(StandardCharsets.UTF_8));
+        CgFormats.YAML.write(file, Settings.CODEC, settings(0.7f));
+        assertEquals(0.7f, CgFormats.YAML.read(file, Settings.CODEC).audio.volume(), 0f);
+    }
+
+    @Test
+    public void aSubclassCommentLeavesItsParentAlone() {
+        assertEquals("Only on More.", More.CODEC.comments().get("muted"));
+        assertFalse(Settings.CODEC.comments().containsKey("muted"));
+        assertEquals("Master volume, 0 to 1.", Settings.CODEC.comments().get("audio.volume"));
+    }
+}

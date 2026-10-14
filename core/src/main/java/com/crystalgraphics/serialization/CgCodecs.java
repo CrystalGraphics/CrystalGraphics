@@ -283,6 +283,11 @@ public final class CgCodecs {
             public <T> B decode(CgDynamicOps<T> ops, T input) {
                 return from.apply(base.decode(ops, input));
             }
+
+            @Override
+            public Map<String, String> comments() {
+                return base.comments();
+            }
         };
     }
 

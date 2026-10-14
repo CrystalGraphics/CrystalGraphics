@@ -48,6 +48,23 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
     }
 
     @Override
+    public Map<String, String> comments() {
+        return commentsOf(fields);
+    }
+
+    /** Each key's own comment, and its codec's under its key: {@code "audio.volume"}. */
+    static Map<String, String> commentsOf(CgRecordField<?, ?>[] fields) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (CgRecordField<?, ?> f : fields) {
+            if (f.comment != null) out.put(f.key, f.comment);
+            for (Map.Entry<String, String> nested : f.codec.comments().entrySet()) {
+                out.put(f.key + "." + nested.getKey(), nested.getValue());
+            }
+        }
+        return out;
+    }
+
+    @Override
     public <T> T encode(CgDynamicOps<T> ops, R input) {
         Map<T, T> entries = new LinkedHashMap<>(fields.length * 2);
         for (CgRecordField<R, ?> f : fields) write(ops, f, input, entries);

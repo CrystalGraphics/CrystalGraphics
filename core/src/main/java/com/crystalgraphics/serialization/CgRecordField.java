@@ -27,15 +27,34 @@ public final class CgRecordField<R, F> {
     final boolean defaults;
     @Nullable
     final F fallback;
+    @Nullable
+    final String comment;
 
     CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits, boolean defaults,
                   @Nullable F fallback) {
+        this(key, codec, get, omits, defaults, fallback, null);
+    }
+
+    private CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits,
+                          boolean defaults, @Nullable F fallback, @Nullable String comment) {
         this.key = key;
         this.codec = codec;
         this.get = get;
         this.omits = omits;
         this.defaults = defaults;
         this.fallback = fallback;
+        this.comment = comment;
+    }
+
+    /**
+     * This key, with {@code text} written above it where a format keeps comments (YAML). A line each, for a {@code \n}.
+     *
+     * <pre>{@code
+     * CgCodecs.optionalField("volume", CgCodecs.FLOAT, Settings::volume, 1f).comment("Master volume, 0 to 1.")
+     * }</pre>
+     */
+    public CgRecordField<R, F> comment(String text) {
+        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text);
     }
 
     public String key() {

@@ -21,9 +21,14 @@ abstract class FileFormat<T> implements CgFormat {
 
     abstract T fromBytes(byte[] bytes) throws IOException;
 
+    /** What {@link #write} puts in {@code file}; a format that keeps something of the file it replaces reads it here. */
+    <V> byte[] bytesFor(Path file, CgCodec<V> codec, V value) throws IOException {
+        return toBytes(codec.encode(ops(), value));
+    }
+
     @Override
     public <V> void write(Path file, CgCodec<V> codec, V value) throws IOException {
-        byte[] bytes = toBytes(codec.encode(ops(), value));
+        byte[] bytes = bytesFor(file, codec, value);
         Path parent = file.toAbsolutePath().getParent();
         if (parent != null) Files.createDirectories(parent);
         Path temp = file.resolveSibling(file.getFileName() + ".tmp");

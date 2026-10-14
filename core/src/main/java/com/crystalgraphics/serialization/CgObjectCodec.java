@@ -85,6 +85,18 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
     }
 
     @Override
+    public Map<String, String> comments() {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (Field<A, ?> f : fields) {
+            if (f.comment != null) out.put(f.key, f.comment);
+            for (Map.Entry<String, String> nested : f.codec.comments().entrySet()) {
+                out.put(f.key + "." + nested.getKey(), nested.getValue());
+            }
+        }
+        return out;
+    }
+
+    @Override
     public <T> A decode(CgDynamicOps<T> ops, T input) {
         if (make == null) {
             throw new CgCodecException(name + " has no factory: decode into an object with decode");
@@ -156,6 +168,21 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
             return this;
         }
 
+        /**
+         * {@code text} written above the field declared just before, where a format keeps comments (YAML). A line
+         * each, for a {@code \n}.
+         *
+         * <pre>{@code
+         * .field("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v).comment("Master volume, 0 to 1.")
+         * }</pre>
+         */
+        public Builder<A> comment(String text) {
+            if (fields.isEmpty()) throw new IllegalStateException("comment() follows the field it describes");
+            int last = fields.size() - 1;
+            fields.set(last, fields.get(last).withComment(text));
+            return this;
+        }
+
         public CgObjectCodec<A> build() {
             return new CgObjectCodec<>(make, name, new ArrayList<>(fields));
         }
@@ -170,15 +197,28 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         final boolean optional;
         @Nullable
         final F omitWhen;
+        @Nullable
+        final String comment;
 
         Field(String key, CgCodec<F> codec, Function<? super A, ? extends F> get,
               @Nullable BiConsumer<? super A, ? super F> set, boolean optional, @Nullable F omitWhen) {
+            this(key, codec, get, set, optional, omitWhen, null);
+        }
+
+        private Field(String key, CgCodec<F> codec, Function<? super A, ? extends F> get,
+                      @Nullable BiConsumer<? super A, ? super F> set, boolean optional, @Nullable F omitWhen,
+                      @Nullable String comment) {
             this.key = key;
             this.codec = codec;
             this.get = get;
             this.set = set;
             this.optional = optional;
             this.omitWhen = omitWhen;
+            this.comment = comment;
+        }
+
+        Field<A, F> withComment(String text) {
+            return new Field<>(key, codec, get, set, optional, omitWhen, text);
         }
 
         <T> void write(CgDynamicOps<T> ops, A owner, Map<T, T> entries) {

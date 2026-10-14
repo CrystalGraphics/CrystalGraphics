@@ -1,6 +1,8 @@
 package com.crystalgraphics.serialization;
 
 import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.Map;
 
 /**
  * How a value of type {@code A} is written and read, in any format: the wire, CrystalGraphics' binary files, NBT, JSON.
@@ -57,5 +59,14 @@ public interface CgCodec<A> {
      */
     default <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         return decode(ops, input);
+    }
+
+    /**
+     * What a text format that keeps comments ({@code CgFormats.YAML}) writes above each key, by dotted path:
+     * {@code "volume"}, {@code "audio.volume"}. None unless the codec declares some, as {@code object(...).comment(text)}
+     * and {@code field(...).comment(text)} do.
+     */
+    default Map<String, String> comments() {
+        return Collections.emptyMap();
     }
 }

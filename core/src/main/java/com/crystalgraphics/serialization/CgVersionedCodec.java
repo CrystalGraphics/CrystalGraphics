@@ -68,6 +68,11 @@ public final class CgVersionedCodec<A> implements CgCodec<A> {
     }
 
     @Override
+    public Map<String, String> comments() {
+        return codec.comments();
+    }
+
+    @Override
     public <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         return codec.decode(ops, migrated(ops, input), target);
     }
