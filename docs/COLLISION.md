@@ -1244,6 +1244,11 @@ public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_BLAST = SCHE
 
 The whole story (parts, authority on the server, confirmed hits on clients) is [`VFX.md`](VFX.md) §8.
 
+**Which to use.** A volume carried by the attacker's body (a fist, a blade, a grab) is a claimed hitbox type (§10):
+it lands where the attacker saw the target. What an effect throws into the world (a beam, a blast, a shockwave) is the
+effect's own hitbox, in an authoritative cue: everyone sees the server's copy, so a target is judged where the server
+has it, as Minecraft judges an arrow. A cosmetic effect's hitbox hits on each client alone: never gameplay.
+
 ---
 
 ## 12. Many queries a tick, and off the main thread
