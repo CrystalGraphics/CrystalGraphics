@@ -106,6 +106,12 @@ public final class CgBindingPoints {
      */
     public static Binding PARTICLES;
 
+    /**
+     * Reserved binding pair for {@code CgPropertyRows}, the frame's per-draw property rows (one below
+     * {@link #SHAPE_TABLE}'s). Read from both stages.
+     */
+    public static Binding PROPERTY_ROWS;
+
     /** How many buffers a material's {@code Buffers { }} may declare. */
     public static final int MATERIAL_BUFFER_COUNT = 4;
 
@@ -231,6 +237,7 @@ public final class CgBindingPoints {
         CLIP_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         PALETTE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         SHAPE_TABLE = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
+        PROPERTY_ROWS = new Binding(--maxSsboBindings, tbo ? --maxTextureUnits : -1);
         maxSsboBindings -= MATERIAL_BUFFER_COUNT;
         MATERIAL_BUFFERS_SSBO = maxSsboBindings;
 

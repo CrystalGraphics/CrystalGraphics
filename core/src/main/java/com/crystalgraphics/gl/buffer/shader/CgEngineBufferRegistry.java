@@ -69,6 +69,8 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/env/buffer/shape.glsl");
         register("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
                 "crystalgraphics:shaders/env/buffer/particle.glsl");
+        register("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
+                "crystalgraphics:shaders/env/buffer/rows.glsl");
     }
 
     private CgEngineBufferRegistry() {}

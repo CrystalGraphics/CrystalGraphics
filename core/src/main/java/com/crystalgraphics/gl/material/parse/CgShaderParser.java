@@ -159,6 +159,23 @@ public final class CgShaderParser {
         return failed;
     }
 
+    /** The engine buffer whose shaders read their numbers from a draw's property row ({@code CgPropertyRows}). */
+    public static final String ROWS = "rows";
+
+    /**
+     * Under {@code cg_use rows}: every number, vector, colour and array read through its row accessor, and after them
+     * the hidden {@code _cg_at<name>} ints saying where a draw's row holds each, -1 for the material's own value.
+     */
+    private static List<CgMaterialProperty> withRowSlots(List<CgMaterialProperty> props) {
+        List<CgMaterialProperty> out = new ArrayList<>(props);
+        for (CgMaterialProperty p : props) {
+            if (!p.isRowable()) continue;
+            p.markRows();
+            out.add(CgMaterialProperty.rowSlot(p.getName()));
+        }
+        return Collections.unmodifiableList(out);
+    }
+
     private static CgParsedShader parseLocating(String source, String resourcePath) {
         if (source == null || source.isEmpty()) {
             throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing: source is empty");
@@ -177,6 +194,7 @@ public final class CgShaderParser {
                 CgStructureParser.parseUsePragmas(source, resourcePath));
         validateEngineBufferUsage(source, engineBuffers, resourcePath);
         List<CgMaterialProperty> props = CgPropertiesParser.parse(source, resourcePath);
+        if (engineBuffers.contains(ROWS)) props = withRowSlots(props);
         CgStructureParser.MaterialBuffers buffers = CgStructureParser.parseBuffers(stripGlslComments(source), resourcePath);
         int renderQueue                = CgQueueParser.parse(source, resourcePath);
 

@@ -31,6 +31,7 @@ Properties {
     _MainTex   ("Main Texture", sampler2D) = "white"
     _Color     ("Tint Color",   color)     = (1, 1, 1, 1)
     _Roughness ("Roughness",    float)     = 0.5
+    _Bands     ("Band colours", color[3])  = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)   // read as _Bands(i)
 }
 
 struct Spark { vec4 positionLife; vec4 velocitySeed; };
@@ -128,14 +129,14 @@ void fragment(in v2f i, out vec4 fragColor) {
   An Emissive pass is linear always.
 - **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
   program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds, a light pool's falloff,
-  reads dimmer under the scene; `body_light` carries an HDR twin of its strength:
+  reads dimmer under the scene:
 
   ```glsl
-  _Strength    ("Brightness", float) = 1.6
-  _StrengthHdr ("Brightness under HDR", float) = 3.0
-  ...
-  fragColor = vec4(colour * light * CG_HDR(_Strength, _StrengthHdr), 1.0);
+  fragColor = vec4(colour * light * CG_HDR(1.6, 3.0), 1.0);
   ```
+
+  The VFX shaders carry their HDR value alone: the scene is their default path, and a twin per property doubled
+  what a look had to tune.
 - A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
 
 #### Per-Instance Object Data — SSBO / TBO Dual Path
@@ -288,6 +289,7 @@ essentially every shader wants them. Buffers that only a minority of shaders nee
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgVectorRenderer` — Bézier strokes, graph wires, connectors |
 | `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment` — the raster pass's property trees (`CgPalette`): each spatial node's affine into the target, each effect node's opacity. `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it | Never declared by hand. A material that honours group opacity multiplies by `CG_QUAD_OPACITY`/`CG_CURVE_OPACITY` |
 | `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextRenderer.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
+| `rows` | Every numeric property (`float`, `Range`, `vec2`, `vec4`, `color`, and arrays of `vec4` or `color`) read per draw: the material's value, or the draw's row in `CgPropertyRows` (FRAME lifetime, a vec4 a value) where its binder says so. The shader reads `_X` as before; an array is `_X(i)` in every shader. A draw's row starts at `CG_PROPERTY_ROW`, `int(CG_OBJECT_CUSTOM3.x)` unless the shader defines it | The VFX layers, whose properties a look binds to its parameters ([below](#per-draw-properties-cg_use-rows)) |
 | `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` / `CG_PARTICLE_LIGHT` — the frame's particle records (`CgParticleBuffer`, FRAME lifetime, four vec4s each, the fourth its `vec2(block, sky)` light), written once a frame by whatever simulates particles; a draw reads its own range `[base, base + count)`. Write it every frame any particle draws | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
 
 > **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
@@ -355,6 +357,29 @@ the provider class's static init (which would allocate against `CgBindingPoints`
 
 Like `cg_feature`, `cg_use` lines are stripped and never reach generated GLSL, and are only read
 from the material-level preamble (never from inside a `Pass` body).
+
+#### Per-draw properties: `cg_use rows`
+
+A material's properties are one block for every draw of it. Under `#pragma cg_use rows` each numeric property may
+instead come from the draw: a row of vec4s in `CgPropertyRows` that whoever draws writes once a frame, so draws with
+different values still batch and instance. Godot's `instance uniform` is the same idea; here a row holds only the
+properties bound per draw, and every other one stays the material's, through a branch uniform across the draw.
+
+```glsl
+#pragma cg_use rows
+Properties {
+    _Color ("Colour", color) = (1, 1, 1, 1)
+    _Bands ("Bands", color[3]) = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)
+}
+...
+fragColor = _Color * _Bands(1);    // read as always: the row's value where bound, else the material's
+```
+
+- **Java sets a material's value by its declared name**, as for any property. Who binds a property per draw sets its
+  place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
+- **An array** is `color[n]` or `vec4[n]`, n at most 16, its default each element's in order; read as `_Name(i)` in
+  every shader, with `rows` or without.
+- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) §6, §15).
 
 ### Reading a kernel's buffers
 

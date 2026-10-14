@@ -600,6 +600,7 @@ public final class CgMaterialShaderCompiler {
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
+        appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader, useSsbo);
 
@@ -681,6 +682,7 @@ public final class CgMaterialShaderCompiler {
         appendAttachedBuffers(sb, attachedBuffers, shaderBufferPath);
 
         appendEngineBufferEnv(sb, shader.engineBuffers());
+        appendPropertyAccessors(sb, properties, shader.engineBuffers().contains(CgShaderParser.ROWS));
 
         appendMaterialBuffers(sb, shader, useSsbo);
 
@@ -780,6 +782,45 @@ public final class CgMaterialShaderCompiler {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
             if (provider == null || provider.envPath() == null) continue;
             sb.append("#include \"").append(provider.envPath()).append("\"").append("\n");
+        }
+    }
+
+    /**
+     * The accessors a property read through its own name needs: an array's {@code _Name(i)}, and under
+     * {@code cg_use rows} each number's macro choosing the draw's row ({@code _cg_at<name>} at or above 0) over the
+     * material's value. Before any user code, after the block and the rows buffer they read.
+     *
+     * <pre>{@code
+     * #define _Radius (_cg_at_Radius < 0 ? _cgm_Radius : CG_ROW(CG_PROPERTY_ROW + _cg_at_Radius).x)
+     * vec4 _cg_arr_Bands(int i) { ... }
+     * #define _Bands(i) _cg_arr_Bands(i)
+     * }</pre>
+     */
+    /** A line's end in emitted source. */
+    private static final char NL = 10;
+
+    static void appendPropertyAccessors(StringBuilder sb, List<CgMaterialProperty> properties, boolean rows) {
+        for (CgMaterialProperty p : properties) {
+            if (p.getType().isSampler() || p.isHidden()) continue;
+            String name = p.getName(), slot = CgMaterialProperty.rowSlotName(name);
+            if (p.isArray()) {
+                int n = p.getCount();
+                sb.append("vec4 _cg_arr").append(name).append("(int i) {").append(NL)
+                        .append("    int k = clamp(i, 0, ").append(n - 1).append(");").append(NL);
+                if (p.isRows()) {
+                    sb.append("    if (").append(slot).append(" >= 0) return CG_ROW(CG_PROPERTY_ROW + ").append(slot)
+                            .append(" + k);").append(NL);
+                }
+                sb.append("    vec4 a[").append(n).append("] = vec4[").append(n).append("](");
+                for (int i = 0; i < n; i++) sb.append(i == 0 ? "" : ", ").append(p.blockName(i));
+                sb.append(");").append(NL).append("    return a[k];").append(NL).append('}').append(NL);
+                sb.append("#define ").append(name).append("(i) _cg_arr").append(name).append("(i)").append(NL);
+            } else if (rows && p.isRows()) {
+                String swizzle = p.getType().getComponents() == 1 ? ".x" : p.getType().getComponents() == 2 ? ".xy" : "";
+                sb.append("#define ").append(name).append(" (").append(slot).append(" < 0 ? ").append(p.blockName())
+                        .append(" : CG_ROW(CG_PROPERTY_ROW + ").append(slot).append(")").append(swizzle).append(')')
+                        .append(NL);
+            }
         }
     }
 

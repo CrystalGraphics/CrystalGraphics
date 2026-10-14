@@ -600,6 +600,27 @@ public final class CgMaterial {
         return this;
     }
 
+    /**
+     * The properties its shader declares, and under {@code cg_use rows} the hidden row slots the parser adds, from the
+     * parse alone: what a binder checks a name and its kind against. Empty while the source does not parse.
+     *
+     * <pre>{@code
+     * for (CgMaterialProperty p : material.properties()) if (p.isRowable()) bindable.add(p.getName());
+     * }</pre>
+     */
+    public List<CgMaterialProperty> properties() {
+        checkNotDeleted();
+        syncPropsToParse();
+        return propStore == null ? Collections.emptyList() : propStore.all();
+    }
+
+    /** The keywords its shader declares ({@code #pragma cg_feature}), from the parse alone. */
+    public List<String> declaredKeywords() {
+        checkNotDeleted();
+        if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
+        return getDeclaredFeatureNames();
+    }
+
     // ── Keyword API ───────────────────────────────────────────────────────────
 
     /**

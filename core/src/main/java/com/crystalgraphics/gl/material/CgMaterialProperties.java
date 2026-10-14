@@ -291,10 +291,19 @@ public final class CgMaterialProperties implements CgShaderBindings {
                 "Use shader.bindings() for array(name, int[]) — CgMaterialProperties only handles property writes");
     }
 
+    /** An array property's elements ({@code color[n]}, {@code vec4[n]}), four floats an element. */
     @Override
     public CgShaderBindings array(String name, float[] array) {
-        throw new UnsupportedOperationException(
-                "Use shader.bindings() for array(name, float[]) — CgMaterialProperties only handles property writes");
+        CgMaterialProperty p = propsByName.get(name);
+        if (p == null) return this;
+        if (!p.isArray()) throw new IllegalArgumentException("'" + name + "' is not an array property");
+        blockChanged |= p.setArray(array);
+        return this;
+    }
+
+    /** The property named {@code name}, or null: what a binder checks a name and its type against. */
+    public CgMaterialProperty property(String name) {
+        return propsByName.get(name);
     }
 
     @Override

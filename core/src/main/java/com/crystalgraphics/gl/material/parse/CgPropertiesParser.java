@@ -40,6 +40,11 @@ final class CgPropertiesParser {
     private static final Pattern MISSING_DISPLAY_NAME_PATTERN =
             Pattern.compile("^\\s*(\\w+)\\s*\\([^\"(]");
 
+    /** An array type, {@code color[3]}: group 1 the element type, group 2 the length. */
+    private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(\\w+)\\s*\\[\\s*(\\d+)\\s*\\]$");
+    /** The longest array property: a palette's colours, a row's worth. */
+    static final int MAX_ARRAY = 16;
+
     /** Valid property types accepted in the {@code Properties { }} block. */
     private static final Set<String> VALID_PROPERTY_TYPES;
 
@@ -79,9 +84,22 @@ final class CgPropertiesParser {
                 String typeRaw = typeAndDef[0];
                 String defRaw  = typeAndDef[1];
                 CgStructureParser.validateNotReservedPrefix(name, "Properties block", resourcePath);
+                int length = 0;
+                Matcher arrayM = ARRAY_TYPE_PATTERN.matcher(typeRaw);
+                if (arrayM.matches()) {
+                    typeRaw = arrayM.group(1);
+                    length = Integer.parseInt(arrayM.group(2));
+                    if (!"color".equals(typeRaw) && !"vec4".equals(typeRaw) || length < 1 || length > MAX_ARRAY) {
+                        throw new CgShaderParseException("[" + resourcePath + "] An array property is color[n] or vec4[n]"
+                                + " with n from 1 to " + MAX_ARRAY + ". In: '" + line + "'");
+                    }
+                }
                 String typeBase = resolvePropertyTypeBase(typeRaw, resourcePath, line);
                 defRaw = validateAndStripSamplerDefault(typeBase, defRaw, resourcePath, line);
-                result.add(buildProperty(name, displayName, typeBase, typeRaw, defRaw));
+                CgMaterialProperty prop = length > 0
+                        ? CgMaterialProperty.fromDecl(name, displayName, typeBase, defRaw, length)
+                        : buildProperty(name, displayName, typeBase, typeRaw, defRaw);
+                result.add(prop);
                 continue;
             }
 
