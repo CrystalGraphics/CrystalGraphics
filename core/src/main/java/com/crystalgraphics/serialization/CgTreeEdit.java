@@ -19,7 +19,8 @@ import java.util.function.Function;
  *
  * <ul>
  *   <li>A step on a path that is not there does nothing, so one step serves files that never had the key.</li>
- *   <li>{@link #set} and {@link #map} take a {@code String}, a {@code Number}, a {@code Boolean} or a {@link Value}.</li>
+ *   <li>{@link #set} and {@link #map} take a {@code String}, a {@code Number}, a {@code Boolean} or a {@link Value}; a list,
+ *       a map or a record is made with {@link #value}.</li>
  *   <li>A path through a value that is not a map is refused.</li>
  * </ul>
  */
@@ -109,6 +110,23 @@ public final class CgTreeEdit {
     public CgTreeEdit set(String path, Object value) {
         parentOf(path, true).put(last(path), create(value));
         return this;
+    }
+
+    /**
+     * {@code value} through {@code codec}, as a value {@link #set} and {@link #map} take: a list, a map or a record where a
+     * step needs more than a string or a number.
+     *
+     * <pre>{@code
+     * // skills was a list of names; now a map of name to level, each at 1
+     * .from(2, tree -> tree.map("skills", v -> {
+     *     Map<String, Integer> levels = new LinkedHashMap<>();
+     *     for (String name : v.as(CgCodecs.listOf(CgCodecs.STRING))) levels.put(name, 1);
+     *     return tree.value(CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT), levels);
+     * }))
+     * }</pre>
+     */
+    public <A> Value value(CgCodec<A> codec, A value) {
+        return new Value(ops, codec.encode(ops, value));
     }
 
     /** Replaces {@code path}'s value with what {@code step} answers for it. */

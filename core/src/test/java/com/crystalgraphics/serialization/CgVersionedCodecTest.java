@@ -78,6 +78,24 @@ public class CgVersionedCodecTest {
         }
     }
 
+    record Book(Map<String, Integer> skills) {
+        static final CgCodec<Book> CODEC = CgCodecs.record(
+                CgCodecs.field("skills", CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT), Book::skills), Book::new);
+    }
+
+    @Test
+    public void aStepCanTurnAListIntoAMap() {
+        CgCodec<Book> saved = CgCodecs.versioned(2, Book.CODEC).from(1, tree -> tree.map("skills", v -> {
+            Map<String, Integer> levels = new LinkedHashMap<>();
+            for (String name : v.as(CgCodecs.listOf(CgCodecs.STRING))) levels.put(name, 1);
+            return tree.value(CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT), levels);
+        }));
+        Map<String, Integer> want = new LinkedHashMap<>();
+        want.put("kamehameha", 1);
+        want.put("solar flare", 1);
+        assertEquals(want, CgFormats.JSON.fromText(saved, "{\"skills\":[\"kamehameha\",\"solar flare\"]}").skills());
+    }
+
     @Test
     public void aStepOnAMissingPathDoesNothingAndAStepIsDeclaredOnce() {
         assertEquals(new Character("Gohan", 10, Collections.emptyList()),
