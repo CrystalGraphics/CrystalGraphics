@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
@@ -96,7 +97,7 @@ public final class CgVfxLayer {
     final boolean volume, closed;
     final Map<String, float[]> constants;
     final List<Binding> bindings;
-    final Map<String, CgVfxTexture> textures;
+    final Map<String, CgTexture> textures;
     final Set<String> keywords, unbound;
     /** Constants a tuning changed: the layer's for as long as the run. */
     private final Map<String, float[]> tuned = new ConcurrentHashMap<>();
@@ -220,7 +221,7 @@ public final class CgVfxLayer {
         return bindings;
     }
 
-    public Map<String, CgVfxTexture> textures() {
+    public Map<String, CgTexture> textures() {
         return textures;
     }
 
@@ -251,7 +252,7 @@ public final class CgVfxLayer {
         private boolean volume, closed;
         private final Map<String, float[]> constants = new LinkedHashMap<>();
         private final List<Binding> bindings = new ArrayList<>();
-        private final Map<String, CgVfxTexture> textures = new LinkedHashMap<>();
+        private final Map<String, CgTexture> textures = new LinkedHashMap<>();
         private final Set<String> keywords = new LinkedHashSet<>(), unbound = new LinkedHashSet<>();
 
         private Builder(String shader) {
@@ -365,7 +366,17 @@ public final class CgVfxLayer {
             return this;
         }
 
-        public Builder texture(String property, CgVfxTexture texture) {
+        /**
+         * A texture its shader samples as {@code property}: a {@code sampler2D}, or a {@code sampler2DArray} for a
+         * {@code CgTexture2DArray}. One made from files is named in common code and loads at its first draw.
+         *
+         * <pre>{@code
+         * static final CgTexture2D STRIP = CgTexture2D.create("mymod:textures/vfx/strip.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+         * static final CgTexture2DArray FLAMES = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/vfx/flame_%d.png", 3);
+         * layer.texture("_Strip", STRIP).texture("_Flames", FLAMES)
+         * }</pre>
+         */
+        public Builder texture(String property, CgTexture texture) {
             textures.put(Objects.requireNonNull(property, "property"), Objects.requireNonNull(texture, "texture"));
             return this;
         }

@@ -1351,6 +1351,7 @@ com/crystalgraphics/api/texture/CgTexture
   access public,abstract,interface
   extends java/lang/Object
   method public getLevels ()I
+  method public isMissing ()Z
   method public reload ()V
   method public,abstract bind ()V
   method public,abstract bind (I)V
@@ -1380,6 +1381,7 @@ com/crystalgraphics/api/texture/CgTextureSpec
   field public,static,final RGBA8_NEAREST_MIRRORED Lcom/crystalgraphics/api/texture/CgTextureSpec;
   field public,static,final RGBA8_NEAREST_REPEAT Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public applyTo (I)V
+  method public equals (Ljava/lang/Object;)Z
   method public getCompareFunc ()I
   method public getCompareMode ()I
   method public getGlBaseFormat ()I
@@ -1392,6 +1394,7 @@ com/crystalgraphics/api/texture/CgTextureSpec
   method public getWrapR ()I
   method public getWrapS ()I
   method public getWrapT ()I
+  method public hashCode ()I
   method public toBuilder ()Lcom/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder;
   method public,static builder ()Lcom/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder;
 com/crystalgraphics/api/texture/CgTextureSpec$CgTextureSpecBuilder
@@ -4132,7 +4135,6 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public getLevels ()I
   method public getSourcePath ()Ljava/lang/String;
   method public getTarget ()I
-  method public reload ()V
   method public unpinLevels ()V
   method public upload (IILjava/nio/ByteBuffer;II)V
   method public upload (Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
@@ -4144,6 +4146,7 @@ com/crystalgraphics/gl/texture/CgTexture2D
   method public,static createEmpty (IILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createEmpty (IILcom/crystalgraphics/api/texture/CgTextureSpec;I)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static createFromPixels (IILjava/nio/ByteBuffer;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public,static missing ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static wrap (III)Lcom/crystalgraphics/gl/texture/CgTexture2D;
 com/crystalgraphics/gl/texture/CgTexture2DArray
   access public,final
@@ -4152,14 +4155,12 @@ com/crystalgraphics/gl/texture/CgTexture2DArray
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
   method public growLayers (I)V
-  method public reload ()V
-  method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadLayerRegion (IIIIIIILjava/nio/ByteBuffer;)V
   method public uploadLayerRegion (IIIIIIILjava/nio/FloatBuffer;)V
   method public,static allocateEmpty (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
-  method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
+  method public,static frames (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
 com/crystalgraphics/gl/texture/CgTexture3D
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract
@@ -4168,12 +4169,9 @@ com/crystalgraphics/gl/texture/CgTexture3D
   method public getLevels ()I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
-  method public reload ()V
-  method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadRegion (IIIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
-  method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static createEmpty (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
   method public,static createEmpty (IIILcom/crystalgraphics/api/texture/CgTextureSpec;I)Lcom/crystalgraphics/gl/texture/CgTexture3D;
@@ -4182,6 +4180,7 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   access public,abstract
   extends java/lang/Object
   field protected height I
+  field protected missing Z
   field protected textureId I
   field protected width I
   field protected,final gpu Lcom/crystalgraphics/gpu/CgDeferral;
@@ -4192,9 +4191,12 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   implements com/crystalgraphics/mc/CgReloadable
   method protected <init> (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)V
   method protected <init> (IIILcom/crystalgraphics/api/texture/CgTextureSpec;Z)V
-  method protected checkNotDeleted ()V
   method protected checkOwned ()V
+  method protected checkUsable ()V
   method protected converts (II)Z
+  method protected load ()V
+  method protected,final ensureLoaded ()V
+  method protected,final loadOnFirstUse ()V
   method protected,static pixelFormatForChannels (I)I
   method public bind ()V
   method public bind (I)V
@@ -4203,7 +4205,9 @@ com/crystalgraphics/gl/texture/CgTextureAbstract
   method public getId ()I
   method public getWidth ()I
   method public isDeleted ()Z
+  method public isMissing ()Z
   method public refresh ()V
+  method public,final reload ()V
 com/crystalgraphics/gl/texture/CgTextureCopy
   access public,final
   extends java/lang/Object
@@ -4221,7 +4225,6 @@ com/crystalgraphics/gl/texture/CgTextureCubemap
   field public,static,final POSITIVE_Z I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
-  method public reload ()V
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadFace (IIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadFace (IIIIIILjava/nio/ByteBuffer;II)V
@@ -4231,16 +4234,11 @@ com/crystalgraphics/gl/texture/CgTextureCubemap
 com/crystalgraphics/gl/texture/CgTextureManager
   access public,final
   extends java/lang/Object
-  method public bind (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public freeAll ()V
-  method public get (Ljava/lang/String;)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public getCachedCount ()I
+  method public get (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/api/texture/CgTexture;
   method public getFallback ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
-  method public getOrCreate (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
-  method public getOrCreate (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/api/texture/CgTexture;
-  method public isCached (Ljava/lang/String;)Z
-  method public register (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)V
+  method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/util/function/Supplier;)Lcom/crystalgraphics/api/texture/CgTexture;
   method public reloadAll ()V
   method public,static get ()Lcom/crystalgraphics/gl/texture/CgTextureManager;
 com/crystalgraphics/gl/texture/CgTextureMutable
@@ -8690,7 +8688,6 @@ com/crystalgraphics/util/io/CgTextureIO
   access public,final
   extends java/lang/Object
   field public,static FOLLOW_MC_CONVENTION Z
-  method public,static createFallback ()Lcom/crystalgraphics/gl/texture/CgTexture2D;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;
 com/crystalgraphics/util/io/CgTextureIO$CgImageData
   access public,final,record
@@ -9346,7 +9343,7 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Builder
   method public setArray (Ljava/lang/String;[F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public size (F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public size (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
-  method public texture (Ljava/lang/String;Lcom/crystalgraphics/vfx/look/CgVfxTexture;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public unbound (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public volume ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
 com/crystalgraphics/vfx/look/CgVfxLayer$Role
@@ -9510,21 +9507,6 @@ com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   method public keyword ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   method public,static values ()[Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
-com/crystalgraphics/vfx/look/CgVfxTexture
-  access public,final
-  extends java/lang/Object
-  method public equals (Ljava/lang/Object;)Z
-  method public hashCode ()I
-  method public isArray ()Z
-  method public mipmapped ()Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public nearest ()Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public repeat ()Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
-  method public toString ()Ljava/lang/String;
-  method public,static frames (Ljava/lang/String;I)Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public,static frames ([Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public,static of (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/vfx/look/CgVfxTexture;
-  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxTexture;
 com/crystalgraphics/vfx/look/CgVfxTuning
   access public,final
   extends java/lang/Object

@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.shader.CgShaderBindings;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gl.buffer.shader.CgPropertyRows;
 import com.crystalgraphics.gl.material.CgMaterialProperty;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
@@ -9,7 +10,6 @@ import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
-import com.crystalgraphics.vfx.look.CgVfxTexture;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 
 import java.util.ArrayList;
@@ -270,8 +270,8 @@ final class CgVfxMaterials {
                 b.set1i(CgMaterialProperty.rowSlotName(slot.getKey()), slot.getValue());
             }
             int unit = 0;
-            for (Map.Entry<String, CgVfxTexture> t : layer.textures().entrySet()) {
-                b.sampler(t.getKey(), unit++, t.getValue().texture());
+            for (Map.Entry<String, CgTexture> t : layer.textures().entrySet()) {
+                b.sampler(t.getKey(), unit++, t.getValue());
             }
         });
     }

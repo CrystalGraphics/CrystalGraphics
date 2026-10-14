@@ -279,15 +279,24 @@ fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() creates non-ow
 ### Textures
 
 ```java
-CgTexture2D tex    = CgTexture2D.create("mymod:textures/foo.png");
+CgTexture2D tex    = CgTexture2D.create("mymod:textures/foo.png", CgTextureSpec.RGBA8_NEAREST);   // cached, lazy
+CgTexture2DArray f = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/fx/f_%d.png", 4);
 CgTexture2D hdr    = CgTexture2D.createEmpty(512, 512, CgTextureSpec.RGBA16F_LINEAR);
 CgTexture2D shadow = CgTexture2D.createEmpty(512, 512, CgTextureSpec.DEPTH24_SHADOW);  // PCF
 tex.bind(0);   // bind to texture unit 0
-tex.delete();
+hdr.delete();
 ```
 
 Every texture type is made, filled and deleted from any thread, and takes its bytes from an upload lease a worker
 wrote (§ *Async*).
+
+- **A texture from files loads at its first use**: its size, its id, a bind or a write decode it on the thread that
+  asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
+- **`create` is cached by the paths and the spec**: one image sampled two ways is two textures. `createDirect` decodes
+  at once and is the caller's.
+- **A file that will not load** is logged and drawn as the 8x8 checkerboard (`CgTexture2D.missing()`), a missing
+  array layer as clear; `isMissing()` says so. An array's images of different sizes are each centred on a layer the
+  largest one's size.
 
 `CgTextureType` — typed enum of ~42 GL format constants; single source of truth for (internalFormat, baseFormat, type). `CgTextureSpec` — immutable `@Builder` describing format + filter + wrap + optional shadow compare. `CgMipmapConfig` — `NONE` / `TRILINEAR` / `NEAREST`. Concrete impls: `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D`, `CgTextureCubemap`.
 
@@ -724,7 +733,7 @@ CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed 
 
 `util/io/CgTextureIO` decodes image files into direct `ByteBuffer`s ready for GL upload. Path resolution delegates to `CgIO.openStream()`. Returns `CgImageData(pixels, width, height, channels)` or `null` on failure — never throws. Channel count (1/3/4) is preserved from the source image so callers can derive the correct `GL_RED`/`GL_RGB`/`GL_RGBA` upload format. Pixels are bottom-left row order (GL convention).
 
-Also owns `CgTextureIO.createFallback()` — generates the purple/black 8×8 checkerboard texture used when a texture fails to load.
+The checkerboard drawn for a texture that will not load is `CgTexture2D.missing()`.
 
 ---
 

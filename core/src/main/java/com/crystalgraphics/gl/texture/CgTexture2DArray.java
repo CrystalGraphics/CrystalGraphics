@@ -16,7 +16,10 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import lombok.Getter;
@@ -30,20 +33,28 @@ import lombok.Getter;
  * Storage is allocated via {@link GL12#glTexImage3D} and per-layer upload
  * happens via {@link GL12#glTexSubImage3D}.</p>
  *
- * <h3>Factories</h3>
+ * <h3>From files</h3>
+ * <p>{@link #create(CgTextureSpec, String...)} is a layer an image, cached by the paths and the spec and loaded at its
+ * first use, as a {@link CgTexture2D} from a file is: a flipbook, or a set of paintings to pick from past a material's
+ * sampler limit.</p>
+ *
+ * <pre>{@code
+ * static final CgTexture2DArray FLAMES = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/vfx/flame_%d.png", 3);
+ * static final CgTexture2DArray PAINTINGS = CgTexture2DArray.create(CgTextureSpec.RGBA8_LINEAR,
+ *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png");
+ * }</pre>
+ *
  * <ul>
- *   <li>{@link #create(String...)} / {@link #create(CgTextureSpec, String...)} — cached via
- *       {@link CgTextureManager}; supports in-place {@link #reload()}.</li>
- *   <li>{@link #createDirect(CgTextureSpec, String...)} — bypass cache; no reload support.</li>
+ *   <li>Images of different sizes are each centred on a layer the largest one's size, clear round it.</li>
+ *   <li>An image that will not load, or has another channel count than the first, is logged and its layer left clear:
+ *       {@link #isMissing()}.</li>
  * </ul>
  *
  * <h3>Growth without a GPU readback</h3>
  * <p>Every {@link #uploadLayerRegion} call also mirrors its data into that layer's
  * {@link PageData} (see {@link #growLayers}'s javadoc for why). This only applies to the
  * incremental "allocate empty, upload sub-rects over time" pattern ({@link #allocateEmpty} +
- * {@link #uploadLayerRegion}) — {@link #upload(CgImageData[])} (the "N whole images, uploaded
- * once, from file" path used by {@link #create}/{@link #createDirect}) never calls
- * {@link #uploadLayerRegion} and so is untouched by this.</p>
+ * {@link #uploadLayerRegion}); an array from files is not mirrored.</p>
  */
 public final class CgTexture2DArray extends CgTextureAbstract {
 
@@ -81,31 +92,40 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /** Creates a 2D-array texture from image paths using {@link CgTextureSpec#RGBA8_LINEAR}, cached. */
-    public static CgTexture2DArray create(String... paths) {
-        return create(CgTextureSpec.RGBA8_LINEAR, paths);
-    }
-
     /**
-     * Creates a 2D-array texture from a list of image paths, cached.
-     * Subsequent calls with the same paths return the cached instance.
-     *
-     * @throws IllegalArgumentException if {@code paths} is empty, any layer
-     *         fails to load, or layers have mismatching dimensions
+     * A layer for each of {@code paths}, in order, sampled as {@code spec}: cached by the two, loaded at its first use.
+     * Any thread.
      */
     public static CgTexture2DArray create(CgTextureSpec spec, String... paths) {
-        String key = String.join(CgTextureManager.PATH_SEPARATOR, paths);
-        CgTexture result = CgTextureManager.get().getOrCreate(key, () -> doCreate(spec, paths, paths));
-        return result != null ? (CgTexture2DArray) result : null;
+        String[] own = checkPaths(paths);
+        CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
+            CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own);
+            tex.loadOnFirstUse();
+            return tex;
+        });
+        return (CgTexture2DArray) result;
     }
 
-    /**
-     * Creates a fresh 2D-array texture without consulting the cache.
-     * Not registered with {@link CgTextureManager}; caller owns the lifecycle.
-     * No reload support.
-     */
+    /** {@code pattern} formatted with 0 to {@code count - 1}, a layer each: {@code "mymod:textures/fx/flame_%d.png"}. */
+    public static CgTexture2DArray frames(CgTextureSpec spec, String pattern, int count) {
+        if (count < 1) throw new IllegalArgumentException("frames of " + pattern + ": count " + count);
+        String[] paths = new String[count];
+        for (int i = 0; i < count; i++) paths[i] = String.format(Locale.ROOT, pattern, i);
+        return create(spec, paths);
+    }
+
+    /** {@link #create} decoded here, not cached: the caller owns it, and no change to a file finds it. Any thread. */
     public static CgTexture2DArray createDirect(CgTextureSpec spec, String... paths) {
-        return doCreate(spec, paths, null);
+        String[] own = checkPaths(paths);
+        CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own);
+        tex.load();
+        return tex;
+    }
+
+    private static String[] checkPaths(String[] paths) {
+        if (paths.length == 0) throw new IllegalArgumentException("an array of no images");
+        for (String path : paths) Objects.requireNonNull(path, "path");
+        return paths.clone();
     }
 
     /**
@@ -177,7 +197,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      */
     public void uploadLayerRegion(int layer, int x, int y, int w, int h,
                                    int format, int type, ByteBuffer data) {
-        checkNotDeleted();
+        checkUsable();
         synchronized (this) {
             mirrorByteUpload(layer, x, y, w, h, format, type, data);
         }
@@ -190,7 +210,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     /** {@code float}-data variant of {@link #uploadLayerRegion(int, int, int, int, int, int, int, ByteBuffer)}. */
     public void uploadLayerRegion(int layer, int x, int y, int w, int h,
                                    int format, int type, FloatBuffer data) {
-        checkNotDeleted();
+        checkUsable();
         synchronized (this) {
             mirrorFloatUpload(layer, x, y, w, h, format, data);
         }
@@ -325,7 +345,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
      * @param newLayerCount new depth; must exceed the current {@link #getDepth()}
      */
     public void growLayers(int newLayerCount) {
-        checkNotDeleted();
+        checkUsable();
         if (newLayerCount <= depth) {
             throw new IllegalArgumentException(
                     "newLayerCount (" + newLayerCount + ") must exceed current depth (" + depth + ")");
@@ -447,95 +467,83 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         }
     }
 
-    // ── Upload ────────────────────────────────────────────────────────
+    // ── Files ─────────────────────────────────────────────────────────
 
-    /**
-     * Re-uploads all layers from pre-loaded image data in-place.
-     * Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
-     * Updates {@link #getWidth()} / {@link #getHeight()} to match the new images.
-     *
-     * <p>The images array must have exactly {@link #getDepth()} entries, all
-     * the same width/height. Validation is the caller's responsibility.</p>
-     */
-    public void upload(CgImageData[] images) {
-        checkNotDeleted();
-        this.width = images[0].width();
-        this.height = images[0].height();
-        gpu.run(() -> uploadImages(images));
+    @Override
+    protected void load() {
+        if (sourcePaths == null) return;
+        CgImageData[] images = new CgImageData[sourcePaths.length];
+        int w = 0, h = 0, channels = 0;
+        boolean failed = false;
+        for (int i = 0; i < images.length; i++) {
+            CgImageData image = CgTextureIO.load(sourcePaths[i]);
+            if (image == null || channels != 0 && image.channels() != channels) {
+                LOGGER.log(Level.WARNING, "[CgTexture2DArray] Layer {0}, {1}, would not load as the first did: it stays clear",
+                        new Object[] {i, sourcePaths[i]});
+                failed = true;
+                continue;
+            }
+            channels = image.channels();
+            images[i] = image;
+            w = Math.max(w, image.width());
+            h = Math.max(h, image.height());
+        }
+        if (failed && width != 0) return;
+        missing = failed;
+        if (channels == 0) {
+            w = h = 1;
+            channels = 4;
+        }
+        ByteBuffer[] layers = new ByteBuffer[images.length];
+        for (int i = 0; i < layers.length; i++) layers[i] = centred(images[i], w, h, channels);
+        int format = pixelFormatForChannels(channels), lw = w, lh = h;
+        width = w;
+        height = h;
+        gpu.run(() -> uploadLayers(lw, lh, format, layers));
     }
 
-    private void uploadImages(CgImageData[] images) {
-        int w = images[0].width();
-        int h = images[0].height();
-        int uploadPixelFormat = pixelFormatForChannels(images[0].channels());
+    /** {@code image} centred on a {@code w} x {@code h} layer, clear round it; its own pixels where it fills one. */
+    static ByteBuffer centred(@Nullable CgImageData image, int w, int h, int channels) {
+        if (image != null && image.width() == w && image.height() == h) return image.pixels();
+        ByteBuffer layer = ByteBuffer.allocateDirect(w * h * channels);
+        if (image == null) return layer;
+        int row = image.width() * channels, x = (w - image.width()) / 2, y = (h - image.height()) / 2;
+        ByteBuffer src = image.pixels().duplicate();
+        for (int r = 0; r < image.height(); r++) {
+            src.limit(r * row + row).position(r * row);
+            layer.position(((y + r) * w + x) * channels);
+            layer.put(src);
+        }
+        layer.clear();
+        return layer;
+    }
+
+    private void uploadLayers(int w, int h, int format, ByteBuffer[] layers) {
+        boolean made = textureId == 0;
+        if (made) textureId = CgGL.glGenTextures();
         CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, textureId);
         try {
-            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                    spec.getGlInternalFormat(), w, h, images.length, 0,
-                    uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+            CgGL.glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, spec.getGlInternalFormat(), w, h, layers.length, 0, format,
+                    GL_UNSIGNED_BYTE, (ByteBuffer) null);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
-                for (int i = 0; i < images.length; i++) {
-                    CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0,
-                            0, 0, i, w, h, 1,
-                            uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+                for (int i = 0; i < layers.length; i++) {
+                    CgGL.glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, i, w, h, 1, format, GL_UNSIGNED_BYTE, layers[i]);
                 }
             }
             spec.applyTo(GL_TEXTURE_2D_ARRAY);
-            storageDepth = images.length;
+            storageDepth = layers.length;
+        } catch (RuntimeException e) {
+            if (made) {
+                CgGL.glDeleteTextures(textureId);
+                textureId = 0;
+            }
+            throw e;
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
         }
     }
 
-    // ── Reload ────────────────────────────────────────────────────────
-
-    @Override
-    public void reload() {
-        if (sourcePaths == null) return;
-        try {
-            upload(loadAndValidate(sourcePaths));
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "[CgTexture2DArray] Failed to reload layers", e);
-        }
-    }
-
     @Override public int getTarget() { return GL_TEXTURE_2D_ARRAY; }
-
-    // ── Internal factory ──────────────────────────────────────────────
-
-    private static CgTexture2DArray doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
-        CgImageData[] images = loadAndValidate(paths);
-        CgTexture2DArray tex = new CgTexture2DArray(images[0].width(), images[0].height(), paths.length, spec, sourcePaths);
-        tex.gpu.run(() -> tex.textureId = CgGL.glGenTextures());
-        try {
-            tex.upload(images);
-            return tex;
-        } catch (RuntimeException e) {
-            tex.delete();
-            throw e;
-        }
-    }
-
-    private static CgImageData[] loadAndValidate(String[] paths) {
-        if (paths == null || paths.length == 0) {
-            throw new IllegalArgumentException("paths must not be empty");
-        }
-        CgImageData[] images = new CgImageData[paths.length];
-        for (int i = 0; i < paths.length; i++) {
-            images[i] = CgTextureIO.load(paths[i]);
-            if (images[i] == null) {
-                throw new IllegalArgumentException("Failed to load layer " + i + ": " + paths[i]);
-            }
-        }
-        int w = images[0].width(), h = images[0].height();
-        for (int i = 1; i < images.length; i++) {
-            if (images[i].width() != w || images[i].height() != h) {
-                throw new IllegalArgumentException("All layers must be same size. Layer 0: " + w + "x" + h
-                        + ", layer " + i + ": " + images[i].width() + "x" + images[i].height());
-            }
-        }
-        return images;
-    }
 
     /**
      * One layer's CPU-side upload mirror — owns both the storage and the sub-rect write logic

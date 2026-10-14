@@ -24,7 +24,6 @@ import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
-import com.crystalgraphics.vfx.look.CgVfxTexture;
 import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -292,7 +291,7 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 2.4f, CgEasings.OUT_QUAD).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 0.55f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet)).set("_Frames", 8f, 8f, 64f, 1f)
+        Consumer<CgVfxLayer.Builder> sheet = b -> b.texture("_Sheet", smokeSheet).set("_Frames", 8f, 8f, 64f, 1f)
                 .set("_Flip", 0.3f, 0f, 1f, 0f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(funnel).emitter(debris).emitter(dust)
                 .layer(layerOf("sprite", dust, DUST, DUST, sheet)).layer(layerOf("sprite", funnel, FUNNEL, FUNNEL, sheet))
@@ -362,7 +361,7 @@ public final class CgVfxModules {
                     .opacity(CgKeyframes.start(0f, 0f).to(0.05f, 1f, CgEasings.OUT_QUAD).to(0.85f, 1f, CgEasings.LINEAR)
                             .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
             look.emitter(shell).layer(layerOf("sprite_glow", shell, colours[s][0], colours[s][1], b -> b
-                    .texture("_Sheet", CgVfxTexture.of(dot)).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", 3f)
+                    .texture("_Sheet", dot).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", 3f)
                     .set("_Stretch", 3f).set("_MaxStretch", 40f)));
             emitters.add(shell);
             sources.add(new float[]{0f, top, 0f});
@@ -453,7 +452,7 @@ public final class CgVfxModules {
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         add("shield: Conform + Turbulence", x, z, List.of(motes), new float[][]{{0f, 3.2f, 0f}},
                 layer("sprite_glow", motes, VIOLET, WHITE, 1f,
-                        b -> b.texture("_Sheet", CgVfxTexture.of(dot)).set("_Frames", 1f, 1f, 1f, 1f)), null);
+                        b -> b.texture("_Sheet", dot).set("_Frames", 1f, 1f, 1f, 1f)), null);
     }
 
     /**
@@ -552,7 +551,7 @@ public final class CgVfxModules {
                 .event(CgVfxEvent.onCollision().spawn(snow, 1))
                 .opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(shards).emitter(snow)
-                .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet))
+                .layer(layerOf("sprite", snow, SNOW, SNOW, b -> b.texture("_Sheet", smokeSheet)
                         .set("_Frames", 8f, 8f, 64f, 1f).set("_Flip", 0.3f, 0f, 1f, 0f)))
                 // Solid pieces: pulled toward the eye to rest on the ramp whole, never faded into it.
                 .layer(facing(shards, ICE, WHITE, shard, 0, b -> b.set("_SoftDistance", 0f).set("_CameraOffset", 1f)))
@@ -773,13 +772,13 @@ public final class CgVfxModules {
                 .size(CgKeyframes.start(0f, 0.6f).to(1f, 3.2f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
-        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", CgVfxTexture.of(smokeSheet)).set("_Frames", 8f, 8f, 64f, 1f)
+        Consumer<CgVfxLayer.Builder> smoke = b -> b.texture("_Sheet", smokeSheet).set("_Frames", 8f, 8f, 64f, 1f)
                 .set("_Flip", 0f, 0f, 1f, 0f);
         CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(puffs).emitter(fire).emitter(embers).emitter(soot)
                 .layer(layerOf("sprite", puffs, SMOKE, SMOKE, smoke))
                 .layer(layerOf("sprite", soot, SOOT, SOOT, smoke))
                 .layer(layerOf("sprite_glow", fire, FIRE_COOL, FIRE_HOT,
-                        b -> b.texture("_Sheet", CgVfxTexture.of(fireSheet)).set("_Frames", 4f, 4f, 16f, 2f).set("_Flip", 1f, 1f, 1f, 0f)
+                        b -> b.texture("_Sheet", fireSheet).set("_Frames", 4f, 4f, 16f, 2f).set("_Flip", 1f, 1f, 1f, 0f)
                                 .set("_Facing", 2f)))
                 .layer(sparkLayer(embers, EMBER, FLAME))
                 .build();
@@ -862,7 +861,7 @@ public final class CgVfxModules {
     private static CgVfxLayer facing(CgVfxEmitter e, CgVfxParam.Color cool, CgVfxParam.Color hot, CgTexture sheet, int mode,
                                      Consumer<CgVfxLayer.Builder> more) {
         return layerOf("sprite_glow", e, cool, hot, b -> {
-            b.texture("_Sheet", CgVfxTexture.of(sheet)).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", mode)
+            b.texture("_Sheet", sheet).set("_Frames", 1f, 1f, 1f, 1f).set("_Facing", mode)
                     .set("_Axis", 0f, 1f, 0f, 0f);
             // Lying on a surface on purpose: a soft fade would fade it out.
             if (mode == 4) b.set("_SoftDistance", 0f);

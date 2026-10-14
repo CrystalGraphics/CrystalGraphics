@@ -4,44 +4,30 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.CgReloadable;
-import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.io.CgTextureIO;
-import com.crystalgraphics.util.trace.CgChannels;
-
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Singleton manager for texture caching, lifecycle, and resource cleanup.
+ * Every texture made from files, cached by the files and the spec it samples them with: what each type's
+ * {@code create(...)} answers from. One image sampled two ways is two textures.
  *
- * <p>Caches all texture types ({@link CgTexture2D}, {@link CgTexture2DArray},
- * {@link CgTexture3D}, {@link CgTextureCubemap}) keyed by a stable string key.
- * For single-path textures the key is the asset path. For multi-path textures
- * (arrays, 3D, cubemaps) the key is the paths joined by {@code \0}.</p>
+ * <pre>{@code
+ * CgTexture2D icon = CgTexture2D.create("mymod:textures/gui/icon.png", CgTextureSpec.RGBA8_NEAREST);   // through here
+ * CgTexture2D same = CgTextureManager.get().getOrCreate("mymod:textures/gui/icon.png", CgTextureSpec.RGBA8_NEAREST);
+ * }</pre>
  *
- * <h3>Reload</h3>
- * <p>Reload is fully in-place: {@link #reloadAll()} calls {@link CgTexture#reload()}
- * on each cached texture. Each texture knows how to reload itself from its
- * source paths (stored at construction time). Procedural/dynamic textures
- * (no source path) silently no-op on reload. The cache entries are never
- * replaced — existing Java references always stay valid.</p>
- *
- * <h3>Fallback</h3>
- * <p>When a 2D texture path fails to load, {@link #getOrCreate(String)} and
- * {@link #getOrCreate(String, CgTextureSpec)} return a shared 8×8
- * purple/black checkerboard texture instead of {@code null}. The fallback is
- * created lazily on first use and freed with the rest of the cache on
- * {@link #freeAll()}.</p>
- *
- * <h3>Lifecycle hooks</h3>
  * <ul>
- *   <li>{@link #freeAll()} — called by {@code CgGraphicsLifecycle.destroyContext()}</li>
- *   <li>{@link #reloadAll()} — called by {@code CgAssetReloader} on F3+T</li>
+ *   <li>A key is the paths joined by {@code \0}. Each cached texture is found again by those paths when one of them
+ *       changes ({@link CgAssetReloader}), and reloaded in place: references stay valid.</li>
+ *   <li>A texture it makes loads at its first use, so naming one on a server costs nothing; one whose files will not
+ *       load samples a stand-in ({@link CgTexture#isMissing()}).</li>
+ *   <li>{@link #freeAll()} is the context's teardown; {@link #reloadAll()} a resource reload.</li>
  * </ul>
  */
 public final class CgTextureManager {
@@ -53,12 +39,10 @@ public final class CgTextureManager {
     /** Joins multi-path keys with a character that cannot appear in asset paths. */
     static final String PATH_SEPARATOR = "\0";
 
-    private final Map<String, CgTexture> cache = new HashMap<>();
+    /** By key, then by spec. */
+    private final Map<String, Map<CgTextureSpec, CgTexture>> cache = new HashMap<>();
 
-    /**
-     * Shared fallback texture: 8×8 purple/black checkerboard. Created lazily;
-     * freed in {@link #freeAll()}. Never put into {@link #cache}.
-     */
+    /** The shared stand-in: never in {@link #cache}. */
     private CgTexture2D fallback;
 
     private CgTextureManager() {}
@@ -67,152 +51,68 @@ public final class CgTextureManager {
         return INSTANCE;
     }
 
-    // ── Core API ──────────────────────────────────────────────────────────────
-
-    /**
-     * Returns the cached texture for {@code key}, or {@code null} if absent or deleted.
-     */
-    public synchronized CgTexture get(String key) {
-        CgTexture t = cache.get(key);
-        return (t != null && !t.isDeleted()) ? t : null;
+    /** The texture cached for {@code key} and {@code spec}, or null if there is none or it was deleted. */
+    public synchronized CgTexture get(String key, CgTextureSpec spec) {
+        Map<CgTextureSpec, CgTexture> bySpec = cache.get(key);
+        CgTexture t = bySpec != null ? bySpec.get(spec) : null;
+        return t != null && !t.isDeleted() ? t : null;
     }
 
     /**
-     * Returns the cached texture for {@code key}. On a cache miss, calls
-     * {@code loader} to create it, stores the result, and returns it.
-     *
-     * <p>The loader is invoked once. Reload is handled in-place by the texture
-     * itself via {@link CgTexture#reload()} — the loader is not stored.</p>
-     *
-     * @return the texture, or {@code null} if the loader returned null or threw
+     * The texture cached for {@code key} and {@code spec}, made by {@code maker} the first time: once, and kept. A
+     * maker returning null or throwing is logged and answers the {@link #getFallback() fallback}, uncached.
      */
-    public synchronized CgTexture getOrCreate(String key, Supplier<CgTexture> loader) {
-        CgTexture cached = get(key);
+    public synchronized CgTexture getOrCreate(String key, CgTextureSpec spec, Supplier<CgTexture> maker) {
+        CgTexture cached = get(key, spec);
         if (cached != null) return cached;
-
         CgTexture texture;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
-            texture = loader.get();
-        } catch (Exception e) {
+        try {
+            texture = maker.get();
+        } catch (RuntimeException e) {
             LOGGER.log(Level.WARNING, "[CgTextureManager] Failed to create texture: " + key, e);
-            return fallback;
+            return getFallback();
         }
-
         if (texture == null) {
-            LOGGER.log(Level.WARNING, "[CgTextureManager] Loader returned null for: {0}", key);
-            return fallback;
+            LOGGER.log(Level.WARNING, "[CgTextureManager] Maker returned null for: {0}", key);
+            return getFallback();
         }
-
-        cache.put(key, texture);
-        track(key, texture);
-        return texture;
-    }
-
-    // ── 2D convenience ────────────────────────────────────────────────────────
-
-    /**
-     * Gets or creates a cached 2D texture for {@code path} using {@link CgTextureSpec#RGBA8_LINEAR}.
-     * Returns the {@link #getFallback() fallback checkerboard} if loading fails.
-     */
-    public CgTexture2D getOrCreate(String path) {
-        return getOrCreate(path, CgTextureSpec.RGBA8_LINEAR);
-    }
-
-    /**
-     * Gets or creates a cached 2D texture for {@code path}.
-     * On a cache hit the cached texture is returned regardless of spec — first caller wins.
-     * Returns the {@link #getFallback() fallback checkerboard} if loading fails.
-     *
-     * <p>Any thread: the image is decoded here, and where no GL may run its GL object is made on the render thread
-     * before the next frame executes.</p>
-     */
-    public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
-        if (path == null || path.isEmpty()) return getFallback();
-        CgTexture result = getOrCreate(path, () -> CgTexture2D.createDirect(path, spec));
-        return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
-    }
-
-    /**
-     * Gets or creates a 2D texture for {@code path} and immediately binds it.
-     * Returns the {@link #getFallback() fallback checkerboard} if loading fails.
-     */
-    public CgTexture2D bind(String path) {
-        CgTexture2D texture = getOrCreate(path);
-        texture.bind();
-        return texture;
-    }
-
-    // ── Manual registration ───────────────────────────────────────────────────
-
-    /**
-     * Registers a texture under {@code key}. The texture will be freed on
-     * {@link #freeAll()} and reloaded in-place by {@link #reloadAll()} if it
-     * has source paths (set at construction time).
-     */
-    public synchronized void register(String key, CgTexture texture) {
-        cache.put(key, texture);
-        track(key, texture);
-    }
-
-    /** Found again by the images its key names when one of them changes ({@link CgAssetReloader}). */
-    private static void track(String key, CgTexture texture) {
+        cache.computeIfAbsent(key, k -> new HashMap<>()).put(Objects.requireNonNull(spec, "spec"), texture);
         if (texture instanceof CgReloadable) {
             CgAssetReloader.track((CgReloadable) texture, Arrays.asList(key.split(PATH_SEPARATOR)));
         }
+        return texture;
     }
 
-    /** @return {@code true} if a valid (non-deleted) texture is cached under {@code key} */
-    public synchronized boolean isCached(String key) {
-        return get(key) != null;
+    /** {@code path} sampled as {@code spec}, loaded at its first use; the {@link #getFallback() fallback} for no path. */
+    public CgTexture2D getOrCreate(String path, CgTextureSpec spec) {
+        if (path == null || path.isEmpty()) return getFallback();
+        CgTexture result = getOrCreate(path, spec, () -> CgTexture2D.unloaded(path, spec));
+        return result instanceof CgTexture2D ? (CgTexture2D) result : getFallback();
     }
 
-    /** @return number of entries currently in the cache */
-    public synchronized int getCachedCount() {
-        return cache.size();
-    }
-
-    // ── Fallback ──────────────────────────────────────────────────────────────
-
-    /**
-     * Returns the shared purple/black checkerboard fallback texture, creating it lazily.
-     * This texture is never cached under a path key and is freed separately in {@link #freeAll()}.
-     */
+    /** The shared stand-in for a texture that is not there: {@link CgTexture2D#missing()}, made at its first ask. */
     public synchronized CgTexture2D getFallback() {
-        if (fallback == null || fallback.isDeleted()) {
-            fallback = CgTextureIO.createFallback();
-        }
+        if (fallback == null || fallback.isDeleted()) fallback = CgTexture2D.missing();
         return fallback;
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    /**
-     * Reloads all cached textures in-place by calling {@link CgTexture#reload()} on each.
-     * Textures without source paths (procedural/dynamic) silently no-op.
-     * Called from {@code CgAssetReloader} on F3+T.
-     */
+    /** Reloads every cached texture in place: a resource reload. Each keeps what it had where a file will not load. */
     public synchronized void reloadAll() {
-        LOGGER.log(Level.INFO, "[CgTextureManager] Reloading {0} texture(s)", cache.size());
-        for (CgTexture texture : cache.values()) {
-            if (!texture.isDeleted()) texture.reload();
+        for (Map<CgTextureSpec, CgTexture> bySpec : cache.values()) {
+            for (CgTexture texture : bySpec.values()) texture.reload();
         }
     }
 
-    /**
-     * Deletes all cached textures and the fallback, then clears the cache.
-     * Called from {@code CgGraphicsLifecycle.destroyContext()}.
-     */
+    /** Deletes every cached texture and the fallback: the context's teardown. */
     public synchronized void freeAll() {
-        LOGGER.log(Level.INFO, "[CgTextureManager] Freeing {0} texture(s)", cache.size());
-        for (CgTexture texture : cache.values()) {
-            if (texture instanceof CgReloadable) CgAssetReloader.untrack((CgReloadable) texture);
-            if (!texture.isDeleted()) texture.delete();
+        for (Map<CgTextureSpec, CgTexture> bySpec : cache.values()) {
+            for (CgTexture texture : bySpec.values()) {
+                if (texture instanceof CgReloadable) CgAssetReloader.untrack((CgReloadable) texture);
+                texture.delete();
+            }
         }
         cache.clear();
-        
-        if (fallback != null && !fallback.isDeleted()) {
-            fallback.delete();
-        }
+        if (fallback != null) fallback.delete();
         fallback = null;
     }
 }

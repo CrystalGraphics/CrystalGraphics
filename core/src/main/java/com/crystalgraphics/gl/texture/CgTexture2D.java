@@ -26,16 +26,21 @@ import java.util.logging.Logger;
  * <p>Failure during creation is always failure-atomic: the partially-allocated
  * GL id is deleted before re-throwing, so no ids are ever leaked.</p>
  *
- * <h3>Caching</h3>
- * <p>{@link #create(String)} and {@link #create(String, CgTextureSpec)} are
- * transparently cached via {@link CgTextureManager}. First caller wins;
- * subsequent callers with the same path get the cached instance.</p>
+ * <h3>From a file</h3>
+ * <p>{@link #create(String, CgTextureSpec)} is cached by its path and spec, and loaded at its first use: its size, its
+ * id, a bind. Name one anywhere, a constant in common code included: a server never decodes it.</p>
  *
- * <h3>Reload</h3>
- * <p>Path-based textures support in-place {@link #reload()}: the image is
- * re-uploaded into the same GL texture id so existing references remain valid.
- * Procedural textures ({@code createEmpty}, {@code createFromPixels}) have no
- * source path and silently no-op on reload.</p>
+ * <pre>{@code
+ * static final CgTexture2D STRIP = CgTexture2D.create("mymod:textures/vfx/strip.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+ * float aspect = STRIP.getWidth() / (float) STRIP.getHeight();   // decodes it here, on this thread
+ * STRIP.bind(0);                                                 // uploads it, on the render thread
+ * }</pre>
+ *
+ * <ul>
+ *   <li>A file that will not load is logged and drawn as the purple and black checkerboard: {@link #isMissing()}.</li>
+ *   <li>{@link #reload()} decodes it again into the same id, so references stay valid; a texture made without a file
+ *       ({@code createEmpty}, {@code createFromPixels}) has nothing to reload.</li>
+ * </ul>
  *
  * <h3>Upload</h3>
  * <p>Two {@code upload()} instance methods allow callers to push fresh pixel
@@ -50,8 +55,8 @@ import java.util.logging.Logger;
  * {@link CgUploadLease} by the thread that passed them, and land on the render thread with no further copy there.</p>
  *
  * <pre>{@code
- * CgTexture2D sprite = CgTexture2D.createDirect("mymod:textures/gui/atlas.png", CgTextureSpec.RGBA8_NEAREST);
- * float u = 16f / sprite.getWidth();                         // known now, on any thread
+ * CgTexture2D sprite = CgTexture2D.create("mymod:textures/gui/atlas.png", CgTextureSpec.RGBA8_NEAREST);
+ * float u = 16f / sprite.getWidth();                         // any thread
  * recording.bindings().begin().texture(0, sprite).end();     // bound when the frame executes
  * }</pre>
  */
@@ -86,31 +91,54 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /** Loads a 2D texture from an asset path using {@link CgTextureSpec#RGBA8_LINEAR}, cached. */
+    /** {@code path}, linear and clamped: {@link #create(String, CgTextureSpec)} with {@link CgTextureSpec#RGBA8_LINEAR}. */
     public static CgTexture2D create(String path) {
-        return CgTextureManager.get().getOrCreate(path);
+        return create(path, CgTextureSpec.RGBA8_LINEAR);
     }
 
     /**
-     * Loads a 2D texture from an asset path with a custom spec, cached.
-     * On a cache hit the cached texture is returned regardless of {@code spec} — first caller wins.
-     *
-     * @return the texture, or the manager fallback if loading failed
+     * {@code path} sampled as {@code spec}, cached by the two: one image sampled two ways is two textures. Any thread;
+     * loaded at its first use. An empty path is {@link CgTextureManager#getFallback()}.
      */
     public static CgTexture2D create(String path, CgTextureSpec spec) {
         return CgTextureManager.get().getOrCreate(path, spec);
     }
 
     /**
-     * Creates a fresh texture from {@code path} without consulting the cache, decoding it here. Any thread.
-     * Not registered with {@link CgTextureManager}; caller owns the lifecycle.
-     * Returns {@code null} if loading fails.
+     * {@code path} decoded here, not cached: the caller owns it, and no change to the file finds it. Any thread. A file
+     * that will not load leaves the checkerboard.
      */
     public static CgTexture2D createDirect(String path, CgTextureSpec spec) {
-        CgImageData data = CgTextureIO.load(path);
-        if (data == null) return null;
-        return doCreate(data.width(), data.height(), data.pixels(),
-                pixelFormatForChannels(data.channels()), GL_UNSIGNED_BYTE, spec, path, 1);
+        CgTexture2D tex = new CgTexture2D(0, 0, 0, spec, path);
+        tex.load();
+        return tex;
+    }
+
+    /** {@code path}, loaded at its first use: what the manager caches. */
+    static CgTexture2D unloaded(String path, CgTextureSpec spec) {
+        CgTexture2D tex = new CgTexture2D(0, 0, 0, spec, path);
+        tex.loadOnFirstUse();
+        return tex;
+    }
+
+    /**
+     * The stand-in for an image that would not load: an 8x8 purple and black checkerboard, sampled nearest, its
+     * {@link #isMissing()} true. Not cached; the manager keeps one ({@link CgTextureManager#getFallback()}).
+     */
+    public static CgTexture2D missing() {
+        CgTexture2D tex = createFromPixels(8, 8, checkerboard(), CgTextureSpec.RGBA8_NEAREST);
+        tex.missing = true;
+        return tex;
+    }
+
+    private static ByteBuffer checkerboard() {
+        ByteBuffer pixels = ByteBuffer.allocateDirect(8 * 8 * 4);
+        for (int i = 0; i < 64; i++) {
+            boolean purple = ((i & 7) + (i >> 3) & 1) == 0;
+            pixels.putInt(purple ? 0xFF00FFFF : 0x000000FF);
+        }
+        pixels.flip();
+        return pixels;
     }
 
     /**
@@ -194,12 +222,12 @@ public final class CgTexture2D extends CgTextureAbstract {
      * @param pixelType   upload pixel type (e.g. {@code GL_UNSIGNED_BYTE})
      */
     public void upload(int width, int height, ByteBuffer pixels, int pixelFormat, int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         checkOwned();
         this.width = width;
         this.height = height;
         if (pixels == null || gpu.immediate()) {
-            gpu.run(() -> texImage(width, height, pixels, null, pixelFormat, pixelType));
+            gpu.run(() -> whole(width, height, pixels, null, pixelFormat, pixelType));
             return;
         }
         gpu.run(CgUploads.copyOf(pixels, converts(pixelFormat, pixelType))
@@ -216,7 +244,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void uploadRegion(int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
                              int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         if (!gpu.immediate()) {
             uploadRegion(level, x, y, width, height, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),
                     pixelFormat, pixelType);
@@ -244,7 +272,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      */
     public void uploadRegion(int level, int x, int y, int width, int height, CgUploadLease lease, int pixelFormat,
                              int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         gpu.run(lease.into(landing, level, x, y, 0, width, height, 1, pixelFormat, pixelType));
     }
 
@@ -257,12 +285,17 @@ public final class CgTexture2D extends CgTextureAbstract {
         }
     }
 
-    /** The whole image from a lease, with its storage; the texture made first if it has no id yet. */
     private void landWhole(CgUploadLease lease) {
+        whole(lease.width(), lease.height(), null, lease, lease.format(), lease.type());
+    }
+
+    /** The whole image with its storage, the texture made first if it has no id yet; deleted again if that throws. */
+    private void whole(int width, int height, @Nullable ByteBuffer pixels, @Nullable CgUploadLease lease,
+                       int pixelFormat, int pixelType) {
         boolean made = textureId == 0;
         if (made) textureId = CgGL.glGenTextures();
         try {
-            texImage(lease.width(), lease.height(), null, lease, lease.format(), lease.type());
+            texImage(width, height, pixels, lease, pixelFormat, pixelType);
         } catch (RuntimeException e) {
             if (made) {
                 CgGL.glDeleteTextures(textureId);
@@ -298,22 +331,21 @@ public final class CgTexture2D extends CgTextureAbstract {
         }
     }
 
-    // ── Reload ────────────────────────────────────────────────────────
+    // ── Files ─────────────────────────────────────────────────────────
 
     @Override
-    public void reload() {
+    protected void load() {
         if (sourcePath == null) return;
-
         CgImageData data = CgTextureIO.load(sourcePath);
-        if (data == null) {
-            LOGGER.log(Level.WARNING, "[CgTexture2D] Failed to load image data {0}", sourcePath);
+        if (data != null) {
+            missing = false;
+            upload(data);
             return;
         }
-        try {
-            upload(data);
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "[CgTexture2D] Exception reloading " + sourcePath, e);
-        }
+        LOGGER.log(Level.WARNING, "[CgTexture2D] {0} would not load", sourcePath);
+        if (width != 0) return;
+        missing = true;
+        upload(8, 8, checkerboard(), GL_RGBA, GL_UNSIGNED_BYTE);
     }
 
     /** Binds it sampling every level, undoing a {@link #bindLevel}. */
@@ -368,36 +400,19 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     @Override
     public int getLevels() {
+        ensureLoaded();
         return spec.getMipmaps().isEnabled() ? CgTexture.fullChain(width, height) : levels;
     }
 
     // ── Internal factory ──────────────────────────────────────────────
 
-    /**
-     * The single allocation path: the object now, its GL texture through {@link #gpu}. Failure-atomic: the id is deleted
-     * if the first upload throws.
-     */
+    /** The object now, its GL texture through {@link #gpu}. */
     private static CgTexture2D doCreate(int width, int height, @Nullable ByteBuffer pixels,
                                         int pixelFormat, int pixelType,
                                         CgTextureSpec spec, @Nullable String sourcePath, int levels) {
         CgTexture2D tex = new CgTexture2D(0, width, height, spec, sourcePath);
         tex.levels = levels;
-        if (pixels != null && !tex.gpu.immediate()) {
-            tex.gpu.run(CgUploads.copyOf(pixels, tex.converts(pixelFormat, pixelType))
-                    .into(tex.wholeLanding, 0, 0, 0, 0, width, height, 1, pixelFormat, pixelType));
-            return tex;
-        }
-        tex.gpu.run(() -> {
-            int id = CgGL.glGenTextures();
-            tex.textureId = id;
-            try {
-                tex.texImage(width, height, pixels, null, pixelFormat, pixelType);
-            } catch (RuntimeException e) {
-                CgGL.glDeleteTextures(id);
-                tex.textureId = 0;
-                throw e;
-            }
-        });
+        tex.upload(width, height, pixels, pixelFormat, pixelType);
         return tex;
     }
 }

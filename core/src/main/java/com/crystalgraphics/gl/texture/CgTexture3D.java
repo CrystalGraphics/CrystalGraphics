@@ -25,9 +25,10 @@ import lombok.Getter;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(String...)} / {@link #create(CgTextureSpec, String...)} — cached via
- *       {@link CgTextureManager}; supports in-place {@link #reload()}.</li>
- *   <li>{@link #createDirect(CgTextureSpec, String...)} — bypass cache; no reload support.</li>
+ *   <li>{@link #create(CgTextureSpec, String...)} — a slice an image, cached by the paths and the spec, loaded at its
+ *       first use as a {@link CgTexture2D} from a file is. Slices of another size than the first, or that will not
+ *       load, are logged and leave a clear 1x1x1 volume: {@link #isMissing()}.</li>
+ *   <li>{@link #createDirect(CgTextureSpec, String...)} — the same decoded here, not cached.</li>
  *   <li>{@link #createEmpty(int, int, int, CgTextureSpec, int)} — storage a kernel, a bake or an upload fills; any
  *       thread, its GL work waiting for the render thread as a {@link CgTexture2D}'s does.</li>
  * </ul>
@@ -54,7 +55,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     private static final int GL_TEXTURE_3D = 0x806F;
 
     // ── Type-specific state ─────────────────────────────────────────
-    @Getter private final int depth;
+    private int depth;
 
     /** Levels allocated by {@link #createEmpty}; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
@@ -72,31 +73,32 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /** Creates a 3D texture from slice paths using {@link CgTextureSpec#RGBA8_LINEAR}, cached. */
-    public static CgTexture3D create(String... paths) {
-        return create(CgTextureSpec.RGBA8_LINEAR, paths);
-    }
-
-    /**
-     * Creates a 3D texture from a list of slice paths, cached.
-     * Subsequent calls with the same paths return the cached instance.
-     *
-     * @throws IllegalArgumentException if {@code paths} is empty, any slice
-     *         fails to load, or slices have mismatching dimensions
-     */
+    /** A slice for each of {@code paths}, in order, sampled as {@code spec}: cached, loaded at its first use. */
     public static CgTexture3D create(CgTextureSpec spec, String... paths) {
-        String key = String.join(CgTextureManager.PATH_SEPARATOR, paths);
-        CgTexture result = CgTextureManager.get().getOrCreate(key, () -> doCreate(spec, paths, paths));
-        return result != null ? (CgTexture3D) result : null;
+        String[] own = checkPaths(paths);
+        CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
+            CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, spec, own);
+            tex.loadOnFirstUse();
+            return tex;
+        });
+        return (CgTexture3D) result;
     }
 
-    /**
-     * Creates a fresh 3D texture without consulting the cache.
-     * Not registered with {@link CgTextureManager}; caller owns the lifecycle.
-     * No reload support.
-     */
+    /** {@link #create} decoded here, not cached: the caller owns it. */
     public static CgTexture3D createDirect(CgTextureSpec spec, String... paths) {
-        return doCreate(spec, paths, null);
+        CgTexture3D tex = new CgTexture3D(0, 0, 0, paths.length, spec, checkPaths(paths));
+        tex.load();
+        return tex;
+    }
+
+    private static String[] checkPaths(String[] paths) {
+        if (paths.length == 0) throw new IllegalArgumentException("a volume of no images");
+        return paths.clone();
+    }
+
+    /** Slices along R; known before it loads. */
+    public int getDepth() {
+        return depth;
     }
 
     /** An empty texture of one level. Not cached; caller owns the lifecycle. */
@@ -177,7 +179,7 @@ public final class CgTexture3D extends CgTextureAbstract {
      */
     public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, ByteBuffer pixels,
                              int pixelFormat, int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         if (!gpu.immediate()) {
             uploadRegion(level, x, y, z, width, height, depth, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),
                     pixelFormat, pixelType);
@@ -196,7 +198,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     /** {@link #uploadRegion(int, int, int, int, int, int, int, ByteBuffer, int, int)} from a lease. Takes it; any thread. */
     public void uploadRegion(int level, int x, int y, int z, int width, int height, int depth, CgUploadLease lease,
                              int pixelFormat, int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         gpu.run(lease.into(landing, level, x, y, z, width, height, depth, pixelFormat, pixelType));
     }
 
@@ -211,7 +213,7 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     /** Fills every level below 0 from level 0, box-filtered by the driver. Any thread, after level 0 is written. */
     public void generateMipmaps() {
-        checkNotDeleted();
+        checkUsable();
         gpu.run(() -> {
             CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
             try {
@@ -224,93 +226,75 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     @Override
     public int getLevels() {
+        ensureLoaded();
         return spec.getMipmaps().isEnabled() ? fullChain(width, height, depth) : levels;
     }
 
-    // ── Upload ────────────────────────────────────────────────────────
+    // ── Files ─────────────────────────────────────────────────────────
 
-    /**
-     * Re-uploads all slices from pre-loaded image data in-place.
-     * Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
-     * Updates {@link #getWidth()} / {@link #getHeight()} to match the new images.
-     *
-     * <p>The images array must have exactly {@link #getDepth()} entries, all
-     * the same width/height. Validation is the caller's responsibility.</p>
-     */
-    public void upload(CgImageData[] images) {
-        checkNotDeleted();
-        int w = images[0].width();
-        int h = images[0].height();
-        int uploadPixelFormat = pixelFormatForChannels(images[0].channels());
-        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
-        try {
-            CgGL.glTexImage3D(GL_TEXTURE_3D, 0,
-                    spec.getGlInternalFormat(), w, h, images.length, 0,
-                    uploadPixelFormat, GL_UNSIGNED_BYTE, (ByteBuffer) null);
+    @Override
+    protected void load() {
+        if (sourcePaths == null) return;
+        CgImageData[] images = new CgImageData[sourcePaths.length];
+        for (int i = 0; i < images.length; i++) {
+            images[i] = CgTextureIO.load(sourcePaths[i]);
+            CgImageData first = images[0];
+            if (images[i] == null || first == null || images[i].width() != first.width()
+                    || images[i].height() != first.height() || images[i].channels() != first.channels()) {
+                LOGGER.log(Level.WARNING, "[CgTexture3D] Slice {0}, {1}, would not load as the first did",
+                        new Object[] {i, sourcePaths[i]});
+                if (width != 0) return;
+                missing = true;
+                width = height = depth = 1;
+                gpu.run(() -> {
+                    make();
+                    applySpec();
+                });
+                return;
+            }
+        }
+        missing = false;
+        int w = images[0].width(), h = images[0].height(), format = pixelFormatForChannels(images[0].channels());
+        width = w;
+        height = h;
+        depth = images.length;
+        gpu.run(() -> {
+            make();
+            CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
             try (CgTightUnpack ignored = CgTightUnpack.begin()) {
                 for (int i = 0; i < images.length; i++) {
-                    CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0,
-                            0, 0, i, w, h, 1,
-                            uploadPixelFormat, GL_UNSIGNED_BYTE, images[i].pixels());
+                    CgGL.glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, i, w, h, 1, format, GL_UNSIGNED_BYTE, images[i].pixels());
                 }
+            } finally {
+                CgGL.glBindTexture(GL_TEXTURE_3D, 0);
             }
-            spec.applyTo(GL_TEXTURE_3D);
+            applySpec();
+        });
+    }
 
-            this.width = w;
-            this.height = h;
+    /** Level 0 at its size, the texture made first if it has no id yet. */
+    private void make() {
+        if (textureId == 0) textureId = CgGL.glGenTextures();
+        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
+        try {
+            CgGL.glTexImage3D(GL_TEXTURE_3D, 0, spec.getGlInternalFormat(), width, height, depth, 0, spec.getGlBaseFormat(),
+                    spec.getGlType(), (ByteBuffer) null);
         } finally {
             CgGL.glBindTexture(GL_TEXTURE_3D, 0);
         }
     }
 
-    // ── Reload ────────────────────────────────────────────────────────
-
-    @Override
-    public void reload() {
-        if (sourcePaths == null) return;
+    /** The spec's filters and wrap, and its mipmaps from what level 0 holds now. */
+    private void applySpec() {
+        CgGL.glBindTexture(GL_TEXTURE_3D, textureId);
         try {
-            upload(loadAndValidate(sourcePaths));
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "[CgTexture3D] Failed to reload slices", e);
+            spec.applyTo(GL_TEXTURE_3D);
+        } finally {
+            CgGL.glBindTexture(GL_TEXTURE_3D, 0);
         }
     }
 
     @Override
     public int getTarget() {return GL_TEXTURE_3D;}
 
-    // ── Internal factory ──────────────────────────────────────────────
-
-    private static CgTexture3D doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
-        CgImageData[] images = loadAndValidate(paths);
-        int id = CgGL.glGenTextures();
-        CgTexture3D tex = new CgTexture3D(id, images[0].width(), images[0].height(), paths.length, spec, sourcePaths);
-        try {
-            tex.upload(images);
-            return tex;
-        } catch (RuntimeException e) {
-            tex.delete();
-            throw e;
-        }
-    }
-
-    private static CgImageData[] loadAndValidate(String[] paths) {
-        if (paths == null || paths.length == 0) {
-            throw new IllegalArgumentException("paths must not be empty");
-        }
-        CgImageData[] images = new CgImageData[paths.length];
-        for (int i = 0; i < paths.length; i++) {
-            images[i] = CgTextureIO.load(paths[i]);
-            if (images[i] == null) {
-                throw new IllegalArgumentException("Failed to load slice " + i + ": " + paths[i]);
-            }
-        }
-        int w = images[0].width(), h = images[0].height();
-        for (int i = 1; i < images.length; i++) {
-            if (images[i].width() != w || images[i].height() != h) {
-                throw new IllegalArgumentException("All slices must be same size. Slice 0: " + w + "x" + h
-                        + ", slice " + i + ": " + images[i].width() + "x" + images[i].height());
-            }
-        }
-        return images;
-    }
 }

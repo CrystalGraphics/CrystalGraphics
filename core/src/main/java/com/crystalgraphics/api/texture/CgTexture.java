@@ -57,23 +57,28 @@ public interface CgTexture {
     boolean isDeleted();
 
     /**
+     * Whether its images would not load, so it samples a stand-in: the purple and black checkerboard for a 2D texture,
+     * clear for a missing layer. Loads a texture from files if it has not yet.
+     *
+     * <pre>{@code
+     * CgTexture2D icon = CgTexture2D.create("mymod:textures/gui/icon.png");
+     * if (icon.isMissing()) drawPlaceholder(); else draw(icon);
+     * }</pre>
+     */
+    default boolean isMissing() {
+        return false;
+    }
+
+    /**
      * Releases the underlying GL texture object. Idempotent — a second call
      * is a silent no-op (matching {@code glDeleteTextures(0)} semantics).
      */
     void delete();
 
     /**
-     * Re-uploads this texture's data from its original source path(s) in-place.
-     *
-     * <p>The GL texture id is replaced internally while the Java object reference
-     * stays valid, so any code holding a {@code CgTexture} reference will
-     * automatically see the refreshed data after reload without needing to
-     * re-fetch from the cache.</p>
-     *
-     * <p>No-op for procedural/dynamic textures created without a source path
-     * (e.g. {@code createEmpty()}, {@code createFromPixels()}).
-     * Called by {@link CgTextureManager#reloadAll()}
-     * on resource reload.</p>
+     * Decodes its images again and uploads them in place: same object, same id. A file that will not load keeps what
+     * it had. Nothing for a texture made without files ({@code createEmpty}, {@code createFromPixels}), or one from
+     * files not yet used. Called by {@link CgTextureManager#reloadAll()} on a resource reload.
      */
     default void reload() {}
 

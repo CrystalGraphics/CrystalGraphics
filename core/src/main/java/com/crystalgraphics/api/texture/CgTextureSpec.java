@@ -3,6 +3,7 @@ package com.crystalgraphics.api.texture;
 
 import com.crystalgraphics.platform.gl.CgGL;
 import lombok.Builder;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 
 /**
@@ -40,8 +41,11 @@ import lombok.Getter;
  *
  * <p>Also exposes the GL-side helper {@link #applyTo(int)} which writes this spec's
  * filter/wrap/compare params to the currently bound texture.</p>
+ *
+ * <p>Equal when every field is: the texture manager caches an image once per spec.</p>
  */
 @Getter
+@EqualsAndHashCode
 @Builder(toBuilder = true)
 public final class CgTextureSpec {
 

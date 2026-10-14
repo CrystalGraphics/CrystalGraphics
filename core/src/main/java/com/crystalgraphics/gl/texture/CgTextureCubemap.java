@@ -28,9 +28,11 @@ import java.util.logging.Logger;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(CgTextureSpec, String, String, String, String, String, String)} — cached via
- *       {@link CgTextureManager}; supports in-place {@link #reload()}.</li>
- *   <li>{@link #createDirect(CgTextureSpec, String, String, String, String, String, String)} — bypass cache; no reload support.</li>
+ *   <li>{@link #create(CgTextureSpec, String, String, String, String, String, String)} — cached by the paths and the
+ *       spec, loaded at its first use as a {@link CgTexture2D} from a file is. Faces that will not load, or are not
+ *       one square size, are logged and leave a clear 1x1 cube: {@link #isMissing()}.</li>
+ *   <li>{@link #createDirect(CgTextureSpec, String, String, String, String, String, String)} — the same decoded here,
+ *       not cached.</li>
  *   <li>{@link #createEmpty(int, CgTextureSpec)} — empty faces; caller owns lifecycle.</li>
  * </ul>
  *
@@ -76,34 +78,28 @@ public final class CgTextureCubemap extends CgTextureAbstract {
 
     // ── Factories ────────────────────────────────────────────────────
 
-    /**
-     * Creates a cubemap from six face image paths, cached.
-     * Subsequent calls with the same six paths return the cached instance.
-     *
-     * @throws IllegalArgumentException if any path fails to load, or faces
-     *         have mismatching dimensions, or any face is non-square
-     */
+    /** Six faces, +X, -X, +Y, -Y, +Z, -Z, sampled as {@code spec}: cached, loaded at its first use. */
     public static CgTextureCubemap create(CgTextureSpec spec,
                                           String posX, String negX,
                                           String posY, String negY,
                                           String posZ, String negZ) {
         String[] paths = { posX, negX, posY, negY, posZ, negZ };
-        String key = String.join(CgTextureManager.PATH_SEPARATOR, paths);
-        CgTexture result = CgTextureManager.get().getOrCreate(key, () -> doCreate(spec, paths, paths));
-        return result != null ? (CgTextureCubemap) result : null;
+        CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, paths), spec, () -> {
+            CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, paths);
+            tex.loadOnFirstUse();
+            return tex;
+        });
+        return (CgTextureCubemap) result;
     }
 
-    /**
-     * Creates a fresh cubemap without consulting the cache.
-     * Not registered with {@link CgTextureManager}; caller owns the lifecycle.
-     * No reload support.
-     */
+    /** {@link #create} decoded here, not cached: the caller owns it. */
     public static CgTextureCubemap createDirect(CgTextureSpec spec,
                                                 String posX, String negX,
                                                 String posY, String negY,
                                                 String posZ, String negZ) {
-        String[] paths = { posX, negX, posY, negY, posZ, negZ };
-        return doCreate(spec, paths, null);
+        CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, new String[] { posX, negX, posY, negY, posZ, negZ });
+        tex.load();
+        return tex;
     }
 
     /** Creates an empty cubemap with no image data. Any thread. Not cached; caller owns the lifecycle. */
@@ -120,15 +116,11 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     // ── Upload ────────────────────────────────────────────────────────
 
     /**
-     * Re-uploads all six faces from pre-loaded image data in-place. Any thread; the pixels are copied into leases where
-     * the work waits. Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
-     *
-     * <p>The array must contain exactly 6 images in canonical order
-     * (+X, -X, +Y, -Y, +Z, -Z), all the same square size.
-     * Use {@link #loadFaces(String[])} to load and validate before calling.</p>
+     * Six faces in place, +X to -Z, all one square size. Any thread; the pixels are copied into leases where the work
+     * waits. Also reapplies the spec's filter/wrap params and regenerates mipmaps if enabled.
      */
     public void upload(CgImageData[] faces) {
-        checkNotDeleted();
+        checkUsable();
         int size = faces[0].width();
         int format = pixelFormatForChannels(faces[0].channels());
         this.width = size;
@@ -146,7 +138,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
      */
     public void uploadFace(int face, int level, int x, int y, int width, int height, ByteBuffer pixels, int pixelFormat,
                            int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         checkFace(face);
         if (!gpu.immediate()) {
             uploadFace(face, level, x, y, width, height, CgUploads.copyOf(pixels, converts(pixelFormat, pixelType)),
@@ -169,7 +161,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
      */
     public void uploadFace(int face, int level, int x, int y, int width, int height, CgUploadLease lease,
                            int pixelFormat, int pixelType) {
-        checkNotDeleted();
+        checkUsable();
         checkFace(face);
         // The face rides in the lease's z.
         gpu.run(lease.into(landing, level, x, y, face, width, height, 1, pixelFormat, pixelType));
@@ -219,55 +211,33 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         if (face < POSITIVE_X || face > NEGATIVE_Z) throw new IllegalArgumentException("face " + face + " of 0 to 5");
     }
 
-    // ── Reload ────────────────────────────────────────────────────────
+    // ── Files ─────────────────────────────────────────────────────────
 
     @Override
-    public void reload() {
+    protected void load() {
         if (sourcePaths == null) return;
-        try {
-            upload(loadFaces(sourcePaths));
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "[CgTextureCubemap] Failed to reload faces", e);
+        CgImageData[] faces = new CgImageData[6];
+        for (int i = 0; i < 6; i++) {
+            faces[i] = CgTextureIO.load(sourcePaths[i]);
+            CgImageData first = faces[0];
+            if (faces[i] == null || first == null || first.width() != first.height() || faces[i].width() != first.width()
+                    || faces[i].height() != first.height() || faces[i].channels() != first.channels()) {
+                LOGGER.log(Level.WARNING, "[CgTextureCubemap] Face {0}, {1}, would not load as one square size",
+                        new Object[] {i, sourcePaths[i]});
+                if (width != 0) return;
+                missing = true;
+                width = height = 1;
+                gpu.run(() -> {
+                    storage(1);
+                    applySpec();
+                });
+                return;
+            }
         }
+        missing = false;
+        upload(faces);
     }
 
     @Override public int getTarget() { return CgGL.GL_TEXTURE_CUBE_MAP; }
 
-    // ── Internal factory ──────────────────────────────────────────────
-
-    /** The faces decoded on this thread; the texture made and filled through {@link #gpu}, which may wait. */
-    private static CgTextureCubemap doCreate(CgTextureSpec spec, String[] paths, String[] sourcePaths) {
-        CgImageData[] faces = loadFaces(paths);
-        CgTextureCubemap tex = new CgTextureCubemap(0, faces[0].width(), spec, sourcePaths);
-        try {
-            tex.upload(faces);
-            return tex;
-        } catch (RuntimeException e) {
-            tex.delete();
-            throw e;
-        }
-    }
-
-    private static CgImageData[] loadFaces(String[] paths) {
-        CgImageData[] images = new CgImageData[6];
-        for (int i = 0; i < 6; i++) {
-            images[i] = CgTextureIO.load(paths[i]);
-            if (images[i] == null) {
-                throw new IllegalArgumentException("Failed to load cubemap face " + i + ": " + paths[i]);
-            }
-        }
-        int size = images[0].width();
-        if (images[0].height() != size) {
-            throw new IllegalArgumentException("Cubemap face 0 must be square. Got: "
-                    + size + "x" + images[0].height());
-        }
-        for (int i = 1; i < 6; i++) {
-            if (images[i].width() != size || images[i].height() != size) {
-                throw new IllegalArgumentException("All cubemap faces must be the same square size ("
-                        + size + "x" + size + "). Face " + i + " is "
-                        + images[i].width() + "x" + images[i].height());
-            }
-        }
-        return images;
-    }
 }

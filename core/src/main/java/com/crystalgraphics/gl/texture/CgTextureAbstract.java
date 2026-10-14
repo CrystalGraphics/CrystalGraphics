@@ -4,11 +4,10 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.texture.CgTextureSpec;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.mc.CgReloadable;
-
-import lombok.Getter;
-
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.platform.gl.state.CgGlSlot;
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.util.trace.CgChannels;
 
 /**
  * Shared base for all owned GL texture implementations.
@@ -28,6 +27,10 @@ import com.crystalgraphics.platform.gl.state.CgGlSlot;
  * the device may not be driven, the work waits for the render thread. {@link #getId()} and {@link #bind} run it first
  * there.</p>
  *
+ * <p>A texture from files is made {@link #loadOnFirstUse() unloaded}: its {@link #load()} decodes them at its first
+ * use (its size, its id, a bind, a write) on the thread that uses it, so a server that names a texture never decodes
+ * it. A subclass reads its own fields only after {@link #checkUsable()} or inside {@code load()}.</p>
+ *
  * <p>Not part of the public API surface; lives in {@code gl/texture/} alongside
  * the concrete implementations.</p>
  */
@@ -44,17 +47,19 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     protected int textureId;
     /** This texture's GL work, in order, each piece handing back the binding it moved. */
     protected final CgDeferral gpu = new CgDeferral(CgGlSlot.TEXTURES);
-    /** Width of the texture at mip level 0, in pixels. */
-    @Getter
+    /** Width of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int width;
-    /** Height of the texture at mip level 0, in pixels. */
-    @Getter
+    /** Height of the texture at mip level 0, in pixels; 0 until a texture from files loads. */
     protected int height;
     /** Immutable spec: format, filter, wrap, and mipmap policy. */
     protected final CgTextureSpec spec;
     /** False for a texture adopted from its owner: {@link #delete()} forgets it without deleting it. */
     private final boolean owned;
     private boolean deleted;
+    /** Set while a texture from files waits for its first use. */
+    private volatile boolean unloaded;
+    /** Whether its files would not load: it samples a stand-in. */
+    protected boolean missing;
 
     protected CgTextureAbstract(int textureId, int width, int height, CgTextureSpec spec) {
         this(textureId, width, height, spec, true);
@@ -72,14 +77,14 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     @Override
     public void bind() {
-        checkNotDeleted();
+        checkUsable();
         gpu.flush();
         CgTexture.bind(getTarget(),textureId);
     }
 
     @Override
     public void bind(int unit) {
-        checkNotDeleted();
+        checkUsable();
         gpu.flush();
         CgTexture.active(unit);
         CgTexture.bind(getTarget(),textureId);
@@ -89,17 +94,72 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     @Override
     public int getId() {
+        ensureLoaded();
         gpu.flush();
         return textureId;
     }
 
     @Override
+    public int getWidth() {
+        ensureLoaded();
+        return width;
+    }
+
+    @Override
+    public int getHeight() {
+        ensureLoaded();
+        return height;
+    }
+
+    @Override
     public boolean isDeleted() {return deleted;}
+
+    @Override
+    public boolean isMissing() {
+        ensureLoaded();
+        return missing;
+    }
+
+    /** Decodes its files again and uploads them in place; nothing before its first use, or for a texture of none. */
+    @Override
+    public final void reload() {
+        if (deleted || unloaded) return;
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
+            load();
+        }
+    }
 
     /** Reloads it in place from its source images: what a cached texture does when one of them changes. */
     @Override
     public void refresh() {
-        if (!deleted) reload();
+        reload();
+    }
+
+    // ── Files ───────────────────────────────────────────────────────
+
+    /**
+     * Decodes its files and queues their upload, at its first use and at each reload. A file that will not load is
+     * logged; at the first load it leaves a stand-in and sets {@link #missing}, at a reload it keeps what it had.
+     * Nothing for a texture made without files.
+     */
+    protected void load() {}
+
+    /** Marks it to {@link #load()} at its first use rather than now. */
+    protected final void loadOnFirstUse() {
+        unloaded = true;
+    }
+
+    /** Loads it now if it waits for its first use. Any thread. */
+    protected final void ensureLoaded() {
+        if (!unloaded) return;
+        synchronized (this) {
+            if (!unloaded) return;
+            unloaded = false;
+            if (deleted) return;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "texture.load")) {
+                load();
+            }
+        }
     }
 
     // ── CgTexture — lifecycle ───────────────────────────────────────
@@ -109,6 +169,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
     public void delete() {
         if (deleted) return;
         deleted = true;
+        unloaded = false;
         gpu.clear();
         gpu.run(() -> {
             if (owned && textureId != 0) CgGL.glDeleteTextures(textureId);
@@ -118,12 +179,10 @@ public abstract class CgTextureAbstract implements CgTexture, CgReloadable {
 
     // ── Internal ────────────────────────────────────────────────────
 
-    /**
-     * Guards every bind/upload/mipmap call. Throws {@link IllegalStateException}
-     * if this texture has already been deleted.
-     */
-    protected void checkNotDeleted() {
+    /** Guards every bind and write: throws once it is deleted, and loads a texture from files first. */
+    protected void checkUsable() {
         if (deleted) throw new IllegalStateException(getClass().getSimpleName() + " has been deleted");
+        ensureLoaded();
     }
 
     /** Guards every write: an adopted texture's storage and parameters are its owner's. */
