@@ -45,22 +45,15 @@ public interface CgCodec<A> {
     <T> A decode(CgDynamicOps<T> ops, T input);
 
     /**
-     * {@code input} decoded into {@code target} where this codec can update one in place, answering what now holds the
-     * data: {@code target} itself, or a new value where it cannot (a string, a record, an enum), which the caller stores
-     * in place of the old one. A null target is a plain {@link #decode}.
+     * Decodes into {@code target}, answering what holds the data: {@code target} where this codec updates in place
+     * ({@code listOf}, {@code mapOf}, {@code dispatch}, {@code object}), a new value otherwise.
      *
      * <pre>{@code
-     * List<String> names = holder.names;
-     * CgCodecs.listOf(CgCodecs.STRING).decode(ops, in, names);    // names refilled; holder.names is still names
-     * holder.title = CgCodecs.STRING.decode(ops, in, holder.title); // a string cannot change: the new one is stored
+     * CgCodecs.listOf(CgCodecs.STRING).decode(ops, in, holder.names);   // the same list, refilled
+     * holder.title = CgCodecs.STRING.decode(ops, in, holder.title);     // a string is replaced
      * }</pre>
      *
-     * <ul>
-     *   <li>In place where it says so: {@link CgCodecs#listOf}, {@link CgCodecs#mapOf}, {@link CgCodecs#dispatch} for the
-     *       same key, and {@link CgCodecs#object}. Everything else decodes anew, the default here.</li>
-     *   <li>A failure part-way can leave {@code target} half-updated.</li>
-     *   <li>A collection target must be mutable.</li>
-     * </ul>
+     * A failure part-way can leave {@code target} half-updated. A null target decodes anew.
      */
     default <T> A decode(CgDynamicOps<T> ops, T input, @Nullable A target) {
         return decode(ops, input);
