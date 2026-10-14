@@ -107,6 +107,7 @@ public final class CollisionFakes {
         final List<double[]> rows = new ArrayList<>();
         final List<int[]> facts = new ArrayList<>();
         final Map<Integer, double[]> looks = new HashMap<>();
+        final Map<Integer, double[]> steps = new HashMap<>();
         int[] ids = new int[0];
         private static final double[] NO_LOOK = {0, 0};
 
@@ -145,6 +146,12 @@ public final class CollisionFakes {
             return this;
         }
 
+        /** {@code id}'s last tick moved it by {@code (dx, dy, dz)}: a pose before partial tick 1 is that far back. */
+        public Table moved(int id, double dx, double dy, double dz) {
+            steps.put(id, new double[]{dx, dy, dz});
+            return this;
+        }
+
         /** {@code id} is dead, still listed: Minecraft's corpse before it is removed. */
         public Table kill(int id) {
             facts.get(id)[0] &= ~ALIVE;
@@ -176,9 +183,11 @@ public final class CollisionFakes {
         @Override public boolean pose(int id, float partialTick, double[] out) {
             double[] r = row(id);
             if (r == null) return false;
-            out[X] = r[0];
-            out[Y] = r[1];
-            out[Z] = r[2];
+            double[] step = steps.get(id);
+            double back = step == null ? 0 : 1 - partialTick;
+            out[X] = r[0] - (back == 0 ? 0 : step[0] * back);
+            out[Y] = r[1] - (back == 0 ? 0 : step[1] * back);
+            out[Z] = r[2] - (back == 0 ? 0 : step[2] * back);
             out[WIDTH] = r[3] * 2;
             out[HEIGHT] = r[4];
             out[EYE_HEIGHT] = r[4] * 0.9;

@@ -1184,17 +1184,36 @@ PUNCH.predict(CgAnchor.onEntity(me)).point(CgEntityAttachments.RIGHT_HAND_FORWAR
 - **Only the owner's copy claims**: the predicting player, or the server spawn's `owner(player)`, or a player given as
   `source(player)`. Every other viewer's copy is cosmetic, as for any hitbox type. The server's copy hits nothing
   itself: it keeps where the hitbox was, to check against.
-- **A claim counts** when its target is alive, its age is within the window of the server's copy (20 ticks unless
-  `claimWindow` says), the target's box grown by the padding (3 blocks unless `claimPadding` says, Forge's attack
-  padding) touched where the hitbox was over the window, and the hitbox's own query and rules allow it there: `living`,
-  the source, `rehit`, `maxHits`, `maxTargets`. A claim never hits twice what the hitbox hits once.
+- **With no owner, the server hits** as for an unclaimed type, so players and mobs share one type and one call:
+  `STRIKE.spawn(CgAnchor.on(attacker)).source(attacker).start()` claims for a player and hits on the server for a mob.
+- **A claim counts** when its target is alive (`Entity.isAlive`: armour stands and boats too), its age is within the
+  window of the server's copy (20 ticks unless `claimWindow` says), the target's box grown by the padding (3 blocks
+  unless `claimPadding` says, Forge's attack padding) touched where the hitbox was over the window, and the hitbox's own
+  query and rules allow it there: `living`, the source, `rehit`, `maxHits`, `maxTargets`. A claim never hits twice what
+  the hitbox hits once. `visible()` looks from the attacker's eyes as they were at the claim's tick.
+- **Fast targets**: `claimPaddingPerSpeed(ticks)` adds the target's speed (how far it moved last tick) times `ticks` to
+  the padding, so an honest claim on a flier lands while the padding for a still target stays tight.
 - **Accepted**, the hit lands on the target's body where the server sees it, so every viewer's spark is on the body
-  they see. It reaches `onHit` and the viewers' `onConfirmedHit`, as a server hit does.
+  they see. It reaches `onHit` and the viewers' `onConfirmedHit`, as a server hit does. Inside `onHit`,
+  `PUNCH.ticksLate(obj)` is how many ticks ago it was made, to judge a guard or a dodge as of the swing.
 - **Refused**, it is counted by reason (`PUNCH.refusedClaims(CgHitClaim.Refusal.OUT_OF_RANGE)`), heard by
   `onRefusedClaim`, and sent to its owner alone for `onRefusedHere`. The reasons, in the order they are checked:
   `NO_TARGET`, `OUT_OF_WINDOW`, `OUT_OF_RANGE`, `RULE`. A claim from someone else, or past the rate, is refused by
   the command layer first (`NETWORKING.md` §9).
-- **A prediction's claims wait** until the server makes it real, then go; a refused prediction's never leave.
+- **A prediction's claims wait** until the server makes it real, then go. A refused prediction's never leave, and its
+  owner hears each in `onRefusedHere` as `PREDICTION_REFUSED`. One player's predictions are judged in the order sent.
+- **The server's sizes, not the client's**: the accept rule runs before the server's factory, with the client's fields
+  written, so a field it sets is what the server's hitbox is built from. What the hit belongs to rides along with
+  `obj.local(...)`, kept on its side and never sent:
+
+```java
+PUNCH.acceptPredictionsFrom((peer, obj) -> {
+    obj.setFloat(REACH, reachOf(peer.player())).local(swingOf(peer));
+    return true;
+});
+PUNCH.onHit((obj, h) -> obj.<Swing>local().land(h, PUNCH.ticksLate(obj)));
+```
+
 - **The server's copy outlives its hitbox by the window**, so a slow connection's claim still finds it.
 - **It trusts the attacker within the padding.** The stronger answer, the server rewinding every target to where the
   attacker saw it (Valve's lag compensation), is not built: it needs every entity's past positions every tick.

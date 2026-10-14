@@ -656,16 +656,19 @@ public final class CgHitbox {
 
     /**
      * A hit its owner claims on {@code target} with part {@code part}, put to this hitbox's own query and rules over
-     * {@code window}, the box it swept while the claim could have been made, every entity grown by {@code padding}:
-     * null and the hit in {@code out} when they allow it, recorded as this hitbox's own; else
-     * {@link CgHitClaim.Refusal#RULE}. The caller has checked the target is in range.
+     * {@code window}, the box it swept while the claim could have been made, every entity grown by {@code padding},
+     * its sight from {@code eyes} (the follower's at the claim's tick; null for where they are now): null and the hit
+     * in {@code out} when they allow it, recorded as this hitbox's own; else {@link CgHitClaim.Refusal#RULE}. The
+     * caller has checked the target is in range.
      */
     @Nullable
-    CgHitClaim.Refusal judge(CgCollisionWorld world, int target, int part, CgAABBc window, double padding, CgHit out) {
+    CgHitClaim.Refusal judge(CgCollisionWorld world, int target, int part, CgAABBc window, double padding,
+                             @Nullable double[] eyes, CgHit out) {
         CgHitPart name = part >= 0 && part < parts ? names[part] : parts > 0 ? names[0] : null;
         CgCollisionQuery q = world.overlap(window).part(name);
         int whose = source >= 0 ? source : entity;
         if (whose >= 0) q.source(whose);
+        if (eyes != null) q.lookingFrom(eyes[0], eyes[1], eyes[2]);
         if (query != null) query.accept(q);
         q.inflate(padding);
         int n;

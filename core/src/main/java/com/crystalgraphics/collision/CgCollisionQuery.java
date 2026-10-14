@@ -395,6 +395,18 @@ public final class CgCollisionQuery {
         return this;
     }
 
+    /**
+     * Where {@link #visible} looks from should it be asked, without asking it: a check of a hit made a few ticks ago
+     * looks from where the attacker's eyes were then.
+     */
+    public CgCollisionQuery lookingFrom(double x, double y, double z) {
+        sightGiven = true;
+        givenX = x;
+        givenY = y;
+        givenZ = z;
+        return this;
+    }
+
     /** Fills each entity hit's {@link CgHit#exposure()}, as Minecraft's explosions sample it. */
     public CgCollisionQuery exposure() {
         exposure = true;

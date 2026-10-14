@@ -30,7 +30,9 @@ public final class CgHitClaim {
         /** The target's box, grown by the padding, touched none of the hitbox's places over the window. */
         OUT_OF_RANGE,
         /** The hitbox's own rules refuse it: its source, its query's filters, once, rehit, maxHits, maxTargets. */
-        RULE
+        RULE,
+        /** Heard by the owner alone: the server refused the prediction the claim waited in, so it never left. */
+        PREDICTION_REFUSED
     }
 
     private static final Refusal[] REFUSALS = Refusal.values();

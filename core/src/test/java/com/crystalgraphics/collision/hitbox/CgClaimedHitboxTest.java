@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static com.crystalgraphics.platform.world.CgEntityQuery.KIND_MONSTER;
@@ -32,8 +33,11 @@ import static org.junit.Assert.assertTrue;
  */
 public class CgClaimedHitboxTest {
 
-    private static final List<Integer> SERVER = new CopyOnWriteArrayList<>(), REFUSED_HERE = new CopyOnWriteArrayList<>();
-    private static final List<CgHitClaim.Refusal> REFUSED = new CopyOnWriteArrayList<>();
+    private static final List<Integer> SERVER = new CopyOnWriteArrayList<>(), REFUSED_HERE = new CopyOnWriteArrayList<>(),
+            LATE = new CopyOnWriteArrayList<>();
+    private static final List<CgHitClaim.Refusal> REFUSED = new CopyOnWriteArrayList<>(),
+            REFUSED_HERE_FOR = new CopyOnWriteArrayList<>();
+    private static final List<Object> LOCALS = new CopyOnWriteArrayList<>();
 
     private static final CgHitboxType PUNCH = claimed(CgHitboxType.define("claim_test:punch")
             .hitbox(obj -> CgHitbox.of(CgSphere.of(0.8)).activeFor(6).query(CgCollisionQuery::living)).claimed());
@@ -41,16 +45,30 @@ public class CgClaimedHitboxTest {
             .hitbox(obj -> CgHitbox.of(CgSphere.of(0.8)).activeFor(6)).claimed());
     private static final CgHitboxType BRIEF = claimed(CgHitboxType.define("claim_test:brief")
             .hitbox(obj -> CgHitbox.of(CgSphere.of(0.8)).activeFor(40)).claimed().claimWindow(4));
+    private static final CgHitboxType TIGHT = claimed(CgHitboxType.define("claim_test:tight")
+            .hitbox(obj -> CgHitbox.of(CgSphere.of(0.8)).activeFor(6)).claimed().claimPadding(1));
+    private static final CgHitboxType FAST = claimed(CgHitboxType.define("claim_test:fast")
+            .hitbox(obj -> CgHitbox.of(CgSphere.of(0.8)).activeFor(6)).claimed().claimPadding(1).claimPaddingPerSpeed(3));
 
     private static CgHitboxType claimed(CgHitboxType.Builder b) {
-        return b.build()
-                .onHit((obj, h) -> SERVER.add(h.entityId()))
+        CgHitboxType type = b.build();
+        return type
+                .onHit((obj, h) -> {
+                    SERVER.add(h.entityId());
+                    LATE.add(type.ticksLate(obj));
+                    if (obj.local() != null) LOCALS.add(obj.local());
+                })
                 .onRefusedClaim((obj, c) -> REFUSED.add(c.reason()))
-                .onRefusedHere((obj, c) -> REFUSED_HERE.add(c.target()));
+                .onRefusedHere((obj, c) -> {
+                    REFUSED_HERE.add(c.target());
+                    REFUSED_HERE_FOR.add(c.reason());
+                });
     }
 
     static {
         PUNCH.acceptPredictionsFrom((peer, obj) -> true);
+        TIGHT.acceptPredictionsFrom((peer, obj) -> true);
+        FAST.acceptPredictionsFrom((peer, obj) -> true);
     }
 
     private final Table table = new Table().mob(2001, 2, 0, KIND_MONSTER);
@@ -60,6 +78,9 @@ public class CgClaimedHitboxTest {
         SERVER.clear();
         REFUSED.clear();
         REFUSED_HERE.clear();
+        REFUSED_HERE_FOR.clear();
+        LATE.clear();
+        LOCALS.clear();
     }
 
     private CgNetTestRig rig(int clients, int latency) {
@@ -79,6 +100,31 @@ public class CgClaimedHitboxTest {
             rig.tick(20);
             assertEquals(Collections.singletonList(2001), SERVER);
             assertEquals(Collections.emptyList(), REFUSED);
+            assertTrue("made a round trip ago: " + LATE, LATE.get(0) >= 3);
+        }
+    }
+
+    @Test
+    public void withNoOwnerTheServerHitsAsAnUnclaimedTypeDoes() {
+        try (CgNetTestRig rig = rig(1, 2)) {
+            PUNCH.spawn(rig.at(2, 0.9, 0)).local("the swing").start();     // a mob's: no player to claim
+            rig.tick(4);
+            assertEquals(Collections.singletonList(2001), SERVER);
+            assertEquals(Collections.singletonList(0), LATE);
+            assertEquals(Collections.singletonList((Object) "the swing"), LOCALS);
+        }
+    }
+
+    @Test
+    public void aFastTargetsClaimLandsWithPaddingGrownByItsSpeed() {
+        try (CgNetTestRig rig = rig(1, 3)) {
+            punch(rig, TIGHT);
+            punch(rig, FAST);
+            rig.tick(2);
+            table.move(2001, 6, 0, 0).moved(2001, 2, 0, 0);   // flying off at 2 blocks a tick
+            rig.tick(20);
+            assertEquals("only the type padding for speed takes it", Collections.singletonList(2001), SERVER);
+            assertEquals(Collections.singletonList(CgHitClaim.Refusal.OUT_OF_RANGE), REFUSED);
         }
     }
 
@@ -112,12 +158,14 @@ public class CgClaimedHitboxTest {
     }
 
     @Test
-    public void aRefusedPredictionsClaimsNeverLeave() {
+    public void aRefusedPredictionsClaimsNeverLeaveAndItsOwnerHearsThem() {
         try (CgNetTestRig rig = rig(1, 2)) {
             punch(rig, UNASKED);
             rig.tick(30);
             assertEquals(Collections.emptyList(), SERVER);
             assertEquals("nothing was claimed, so nothing refused", Collections.emptyList(), REFUSED);
+            assertEquals(Collections.singletonList(2001), REFUSED_HERE);
+            assertEquals(Collections.singletonList(CgHitClaim.Refusal.PREDICTION_REFUSED), REFUSED_HERE_FOR);
         }
     }
 
@@ -135,8 +183,8 @@ public class CgClaimedHitboxTest {
     @Test
     public void judgingAClaimAllocatesNothing() {
         try (CgNetTestRig rig = rig(1, 0)) {
-            // no owner: nobody claims, and the test's own judging is all there is
-            CgNetObject server = PUNCH.spawn(rig.at(2, 0.9, 0)).start();
+            // an owner not connected: nobody claims, and the test's own judging is all there is
+            CgNetObject server = PUNCH.spawn(rig.at(2, 0.9, 0)).owner(UUID.randomUUID()).start();
             rig.tick(2);
             CgHitbox hitbox = CgHitboxType.hitbox(server);
             CgCollisionWorld world = CgCollisionWorld.of(server.level());
@@ -144,7 +192,7 @@ public class CgClaimedHitboxTest {
             CgHit out = new CgHit();
             List<CgHitClaim.Refusal> first = new ArrayList<>();
             for (int i = 0; i < 200; i++) {
-                CgHitClaim.Refusal r = hitbox.judge(world, 2001, 0, window, 3, out);
+                CgHitClaim.Refusal r = hitbox.judge(world, 2001, 0, window, 3, null, out);
                 if (i == 0) first.add(r);
             }
             assertEquals("the first is allowed, the rest hit what was hit", Arrays.asList((CgHitClaim.Refusal) null), first);
@@ -153,7 +201,7 @@ public class CgClaimedHitboxTest {
             long least = Long.MAX_VALUE;
             for (int round = 0; round < 5; round++) {
                 long before = threads.getThreadAllocatedBytes(thread);
-                for (int i = 0; i < 100; i++) hitbox.judge(world, 2001, 0, window, 3, out);
+                for (int i = 0; i < 100; i++) hitbox.judge(world, 2001, 0, window, 3, null, out);
                 least = Math.min(least, threads.getThreadAllocatedBytes(thread) - before);
             }
             assertEquals("bytes allocated judging 100 claims", 0, least);

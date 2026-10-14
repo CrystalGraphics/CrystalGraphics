@@ -19,8 +19,6 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgEntityAttachments;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgPlayers;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
 
@@ -120,23 +118,24 @@ public final class CgHitboxType {
     static final CgNetEvent<CgHitClaim> REFUSED = CgNetEvent.of("hitbox/refused", CgHitClaim.wire());
     /** Claims a prediction holds until the server makes it real. */
     private static final int QUEUE = 8;
-
-    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+    /** Doubles per tick in a claimed server copy's ring: box, eyes, the hitbox's age. */
+    private static final int PLACE = 10;
 
     private final CgNetType type;
     private final Function<CgNetObject, CgHitbox> factory;
     private final boolean outlivesSource;
     private final boolean claimed;
     private final int claimWindow;
-    private final double claimPadding;
+    private final double claimPadding, claimPaddingPerSpeed;
     private final List<BiConsumer<CgNetObject, CgHit>> hits = new CopyOnWriteArrayList<>(),
             predicted = new CopyOnWriteArrayList<>(), confirmed = new CopyOnWriteArrayList<>();
     private final List<BiConsumer<CgNetObject, CgHitClaim>> refusedClaim = new CopyOnWriteArrayList<>(),
             refusedHere = new CopyOnWriteArrayList<>();
     private final long[] refusals = new long[CgHitClaim.Refusal.values().length];
-    private boolean warnedNoOwner;
     /** The confirmed hit handed to listeners, read back from the wire; client thread. */
     private final CgHit arrived = new CgHit();
+    /** A claimed target's pose, for its speed; server thread. */
+    private final double[] speedPose = new double[CgEntityQuery.POSE_LENGTH];
 
     private CgHitboxType(Builder b, CgNetType type) {
         this.type = type;
@@ -145,6 +144,7 @@ public final class CgHitboxType {
         this.claimed = b.claimed;
         this.claimWindow = b.claimWindow;
         this.claimPadding = b.claimPadding;
+        this.claimPaddingPerSpeed = b.claimPaddingPerSpeed;
         type.onServer(obj -> new Side(obj, true));
         type.onClient(obj -> new Side(obj, false));
         type.onEvent(HIT, this::confirmed);
@@ -172,7 +172,7 @@ public final class CgHitboxType {
         private boolean outlivesSource;
         private boolean claimed;
         private int claimWindow = 20;
-        private double claimPadding = 3;
+        private double claimPadding = 3, claimPaddingPerSpeed;
 
         private Builder(String id) {
             this.id = id;
@@ -206,9 +206,14 @@ public final class CgHitboxType {
          * Its owner's client decides what it hit, and the server checks each claim: melee that lands where the attacker
          * saw it at any ping. The server's own copy hits nothing; it keeps where the hitbox was, to check against.
          *
+         * <pre>{@code
+         * STRIKE.spawn(CgAnchor.on(attacker)).source(attacker).start();   // a player's claims; a mob's hits the server's
+         * }</pre>
+         *
          * <ul>
          *   <li>The owner is the predicting player for a {@link CgHitboxType#predict prediction}, else the spawn's
-         *       {@link Spawn#owner}, else a player given as {@link Spawn#source(Object)}. With none, nothing is hit.</li>
+         *       {@link Spawn#owner}, else a player given as {@link Spawn#source(Object)}. One with none is the server's,
+         *       hitting as an unclaimed type does: players and mobs share one type.</li>
          *   <li>A claim counts when its target is alive, its age is within {@link #claimWindow} of the server's copy,
          *       the target's box grown by {@link #claimPadding} touched where the hitbox was over that window, and the
          *       hitbox's own rules and query allow it there. Each refusal is counted: {@link #refusedClaims}.</li>
@@ -237,6 +242,20 @@ public final class CgHitboxType {
             return this;
         }
 
+        /**
+         * Grows the padding by the target's speed over {@code ticks}, its distance moved in the last tick: a flier's
+         * honest claim still lands where a fixed padding tight enough to mean something would refuse it.
+         *
+         * <pre>{@code
+         * .claimed().claimPadding(2).claimPaddingPerSpeed(4)   // a target moving 3 blocks a tick: 2 + 3 * 4
+         * }</pre>
+         */
+        public Builder claimPaddingPerSpeed(double ticks) {
+            if (!(ticks >= 0) || Double.isInfinite(ticks)) throw new IllegalArgumentException("claimPaddingPerSpeed(" + ticks + ")");
+            claimPaddingPerSpeed = ticks;
+            return this;
+        }
+
         public CgHitboxType build() {
             if (factory == null) throw new IllegalStateException(id + " needs hitbox(factory)");
             CgNetType.Builder t = CgNetType.define(id).fields(CORE).fields(fields.toArray(new CgNetField<?>[0]))
@@ -249,7 +268,10 @@ public final class CgHitboxType {
 
     // ---- listeners
 
-    /** Server: each hit of the server's hitbox, the authoritative one. */
+    /**
+     * Server: each hit of the server's hitbox, the authoritative one; on a {@link Builder#claimed claimed} type each
+     * claim it accepts, {@link #ticksLate} after it was made.
+     */
     public CgHitboxType onHit(BiConsumer<CgNetObject, CgHit> listener) {
         hits.add(Objects.requireNonNull(listener, "listener"));
         return this;
@@ -284,6 +306,21 @@ public final class CgHitboxType {
         return this;
     }
 
+    /**
+     * Server, inside {@link #onHit}: how many ticks ago the hit being dealt was made, to judge a defence as of the
+     * swing. 0 for one the server found itself.
+     *
+     * <pre>{@code
+     * STRIKE.onHit((obj, h) -> {
+     *     if (guardHistory.wasGuarding(h.entity(), now - STRIKE.ticksLate(obj))) guarded(h); else land(h);
+     * });
+     * }</pre>
+     */
+    public int ticksLate(CgNetObject obj) {
+        Side side = side(obj);
+        return side == null ? 0 : side.late;
+    }
+
     /** Server: claims refused for {@code reason} since the type was declared. */
     public long refusedClaims(CgHitClaim.Refusal reason) {
         return refusals[reason.ordinal()];
@@ -305,7 +342,17 @@ public final class CgHitboxType {
         return new Spawn(type.predict(anchor), claimed);
     }
 
-    /** Server, at init: which of the clients' predictions to make real. */
+    /**
+     * Server, at init: which of the clients' predictions to make real. The rule runs before the factory, with the
+     * client's fields written: set a field there and the server's hitbox is built from the server's value.
+     *
+     * <pre>{@code
+     * STRIKE.acceptPredictionsFrom((peer, obj) -> {
+     *     obj.setFloat(REACH, reachOf(peer.player())).local(swingOf(peer));   // the server's reach, not the client's
+     *     return true;
+     * });
+     * }</pre>
+     */
     public CgHitboxType acceptPredictionsFrom(BiPredicate<CgPeer, CgNetObject> rule) {
         type.acceptPredictionsFrom(rule);
         return this;
@@ -410,6 +457,12 @@ public final class CgHitboxType {
             return facing(CgHitbox.Facing.FIXED);
         }
 
+        /** Kept with it on this side, never sent: {@link CgNetObject#local(Object)}. */
+        public Spawn local(@Nullable Object value) {
+            obj.local(value);
+            return this;
+        }
+
         /** One of its own fields, read by the factory on every side. */
         public <V> Spawn set(CgNetField<V> field, V value) {
             obj.set(field, value);
@@ -456,12 +509,16 @@ public final class CgHitboxType {
         private final CgHitClaim claim = new CgHitClaim();
         private CgHitClaim[] queued;
         private int queuedCount;
-        // A claimed type's server copy: where its hitbox was each of the last claimWindow ticks, by the object's age.
+        // A claimed type's server copy: each of the last claimWindow ticks, by the object's age, the hitbox's box, the
+        // follower's eyes (NaN for none) and the hitbox's age.
         private final double[] places;
         private final long[] placedAt;
         private final CgAABB box = new CgAABB(), window = new CgAABB(), targetBox = new CgAABB();
         private final CgHit judged = new CgHit();
+        private final double[] eyes = new double[3];
         private long stoppedAt = -1;
+        /** The claim being dealt: ticks since it was made. */
+        int late;
 
         Side(CgNetObject obj, boolean server) {
             this.obj = obj;
@@ -471,15 +528,11 @@ public final class CgHitboxType {
                 throw new IllegalStateException(
                         type.name() + "'s hitbox hears hits through the type, not its own listeners");
             }
-            if (claimed && server) {
+            if (claimed && server && obj.owner() != null) {
                 hitbox.passive();
-                places = new double[claimWindow * 6];
+                places = new double[claimWindow * PLACE];
                 placedAt = new long[claimWindow];
                 Arrays.fill(placedAt, Long.MIN_VALUE);
-                if (obj.owner() == null && !warnedNoOwner) {
-                    warnedNoOwner = true;
-                    LOGGER.warn("[cg-hitbox] {} is claimed but this one has no owner: it hits nothing", type.name());
-                }
             } else {
                 places = null;
                 placedAt = null;
@@ -547,6 +600,13 @@ public final class CgHitboxType {
         public void despawned(CgNetObject obj, boolean killed) {
             hitbox.stop();
             if (stoppedAt < 0) stoppedAt = obj.age();
+            // ended while still a prediction: the server refused it, and its claims never left
+            if (!server && obj.isPredicted()) {
+                for (int i = 0; i < queuedCount; i++) {
+                    queued[i].refused(CgHitClaim.Refusal.PREDICTION_REFUSED);
+                    for (BiConsumer<CgNetObject, CgHitClaim> listener : refusedHere) listener.accept(obj, queued[i]);
+                }
+            }
             queuedCount = 0;
         }
 
@@ -595,13 +655,18 @@ public final class CgHitboxType {
 
         /** Where the hitbox is this tick, kept for the window. */
         private void placed() {
-            int i = (int) (obj.age() % claimWindow);
-            places[i * 6] = box.minX();
-            places[i * 6 + 1] = box.minY();
-            places[i * 6 + 2] = box.minZ();
-            places[i * 6 + 3] = box.maxX();
-            places[i * 6 + 4] = box.maxY();
-            places[i * 6 + 5] = box.maxZ();
+            int i = (int) (obj.age() % claimWindow), at = i * PLACE;
+            places[at] = box.minX();
+            places[at + 1] = box.minY();
+            places[at + 2] = box.minZ();
+            places[at + 3] = box.maxX();
+            places[at + 4] = box.maxY();
+            places[at + 5] = box.maxZ();
+            if (!hitbox.followerEyes(eyes)) eyes[0] = Double.NaN;
+            places[at + 6] = eyes[0];
+            places[at + 7] = eyes[1];
+            places[at + 8] = eyes[2];
+            places[at + 9] = hitbox.age();
             placedAt[i] = obj.age();
         }
 
@@ -609,6 +674,7 @@ public final class CgHitboxType {
             CgHitClaim.Refusal reason = check(c);
             if (reason == null) {
                 serverHit(judged);
+                late = 0;
                 return;
             }
             refusals[reason.ordinal()]++;
@@ -630,25 +696,47 @@ public final class CgHitboxType {
             double px = clamp(c.x(), targetBox.minX(), targetBox.maxX());
             double py = clamp(c.y(), targetBox.minY(), targetBox.maxY());
             double pz = clamp(c.z(), targetBox.minZ(), targetBox.maxZ());
-            targetBox.grow(claimPadding);
+            double padding = claimPadding + claimPaddingPerSpeed * speed(entities, c.target());
+            targetBox.grow(padding);
             boolean near = false, any = false;
             long oldest = obj.age() - claimWindow;
+            // the tick the claim was made in: the place whose hitbox age is nearest the claim's
+            int made = -1;
+            double nearest = Double.POSITIVE_INFINITY;
             for (int i = 0; i < claimWindow; i++) {
                 if (placedAt[i] < oldest) continue;
-                box.set(places[i * 6], places[i * 6 + 1], places[i * 6 + 2], places[i * 6 + 3], places[i * 6 + 4],
-                        places[i * 6 + 5]);
+                int at = i * PLACE;
+                box.set(places[at], places[at + 1], places[at + 2], places[at + 3], places[at + 4], places[at + 5]);
                 if (any) window.union(box);
                 else window.set(box);
                 any = true;
                 near |= box.intersects(targetBox);
+                double off = Math.abs(places[at + 9] - c.age());
+                if (off < nearest) {
+                    nearest = off;
+                    made = i;
+                }
             }
             if (!near) return CgHitClaim.Refusal.OUT_OF_RANGE;
-            CgHitClaim.Refusal rule = hitbox.judge(w, c.target(), c.part(), window, claimPadding, judged);
+            boolean seenThen = made >= 0 && !Double.isNaN(places[made * PLACE + 6]);
+            if (seenThen) System.arraycopy(places, made * PLACE + 6, eyes, 0, 3);
+            CgHitClaim.Refusal rule = hitbox.judge(w, c.target(), c.part(), window, padding, seenThen ? eyes : null,
+                    judged);
             if (rule != null) return rule;
+            late = made < 0 ? 0 : (int) Math.max(0, obj.age() - placedAt[made]);
             judged.setPlace(px, py, pz, judged.normalX(), judged.normalY(), judged.normalZ(), judged.distance(),
                     judged.fraction());
             return null;
         }
+    }
+
+    /** How far {@code id} moved in the last tick: a player's velocity on the server is not its movement. */
+    private double speed(CgEntityQuery entities, int id) {
+        if (claimPaddingPerSpeed == 0 || !entities.pose(id, 0f, speedPose)) return 0;
+        double x = speedPose[CgEntityQuery.X], y = speedPose[CgEntityQuery.Y], z = speedPose[CgEntityQuery.Z];
+        if (!entities.pose(id, 1f, speedPose)) return 0;
+        double dx = speedPose[CgEntityQuery.X] - x, dy = speedPose[CgEntityQuery.Y] - y, dz = speedPose[CgEntityQuery.Z] - z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private static double clamp(double v, double min, double max) {
