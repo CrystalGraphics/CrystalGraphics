@@ -1,8 +1,6 @@
 package com.crystalgraphics.net.object;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -14,6 +12,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -26,11 +25,11 @@ import org.apache.logging.log4j.Logger;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
-import com.crystalgraphics.serialization.CgBinaryFormat;
+import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.serialization.CgPlainOps;
+import com.crystalgraphics.serialization.format.CgFormats;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -1089,47 +1088,9 @@ public final class CgNetObjects {
 
     private static void load(CgNetType type, Path world) {
         Path file = file(world, type);
-        if (!Files.isRegularFile(file)) return;
-        CgDynamicOps<Object> ops = CgPlainOps.INSTANCE;
-        int count = 0;
-        try (InputStream in = Files.newInputStream(file)) {
-            Object tree = CgBinaryFormat.readFrom(in);
-            for (Object entry : ops.getListValue(CgCodecs.read(ops, tree).raw("objects"))) {
-                CgCodecs.MapCodecReader<Object> o = CgCodecs.read(ops, entry);
-                CgAnchor.Kind kind = CgAnchor.Kind.values()[o.field("k", CgCodecs.INT)];
-                CgAnchor anchor = CgAnchor.restore(kind, o.optional("d", CgCodecs.STRING, null),
-                        o.field("x", CgCodecs.DOUBLE), o.field("y", CgCodecs.DOUBLE), o.field("z", CgCodecs.DOUBLE),
-                        o.optional("p", CgCodecs.UUID, null), o.optional("cx", CgCodecs.INT, 0), o.optional("cz", CgCodecs.INT, 0));
-                CgNetObject obj = new CgNetObject(type, anchor);
-                obj.owner = o.optional("o", CgCodecs.UUID, null);
-                int lifetime = o.optional("l", CgCodecs.INT, -1);
-                CgCodecs.MapCodecReader<Object> fields = CgCodecs.read(ops, o.raw("f"));
-                for (int i = 0; i < type.fields.length; i++) {
-                    CgNetField<?> field = type.fields[i];
-                    if (!fields.has(field.name)) continue;
-                    Object raw = fields.raw(field.name);
-                    if (raw == null && field.kind == CgNetField.Kind.CODEC) {
-                        obj.refs[i] = null;
-                        CgNetObject.mark(obj.set, i);
-                        continue;
-                    }
-                    Object value = field.codec.decode(ops, raw);
-                    if (field.kind == CgNetField.Kind.CODEC) obj.refs[i] = value;
-                    else obj.bits[i] = field.bitsOf(value);
-                    CgNetObject.mark(obj.set, i);
-                }
-                obj.live(nextId++, tick - o.optional("a", CgCodecs.LONG, 0L));
-                obj.lifetime = lifetime;
-                obj.behaviourPending = true;
-                if (type.perHolder) {
-                    obj.holderKey = kind == CgAnchor.Kind.PLAYER ? obj.player : new CgNetType.ChunkKey(obj.dimension, obj.chunkX, obj.chunkZ);
-                    type.holders.put(obj.holderKey, obj);
-                }
-                LIVE.add(obj);
-                BY_ID.put(obj.id, obj);
-                count++;
-            }
-            LOGGER.info("[cg-net] loaded {} {} from {}", count, type.name, file);
+        List<CgNetObject> loaded;
+        try {
+            loaded = CgFormats.read(file, new SavedObjects(type));
         } catch (IOException | RuntimeException failed) {
             Path aside = file.resolveSibling(file.getFileName() + ".unreadable");
             LOGGER.error("[cg-net] could not read {}; moved to {}", file, aside, failed);
@@ -1138,7 +1099,18 @@ public final class CgNetObjects {
             } catch (IOException ignored) {
                 // A later save still writes a fresh file; saving over the unreadable one is what this guards.
             }
+            return;
         }
+        if (loaded == null) return;
+        for (CgNetObject obj : loaded) {
+            if (type.perHolder) {
+                obj.holderKey = obj.kind == CgAnchor.Kind.PLAYER ? obj.player : new CgNetType.ChunkKey(obj.dimension, obj.chunkX, obj.chunkZ);
+                type.holders.put(obj.holderKey, obj);
+            }
+            LIVE.add(obj);
+            BY_ID.put(obj.id, obj);
+        }
+        LOGGER.info("[cg-net] loaded {} {} from {}", loaded.size(), type.name, file);
     }
 
     private static void save() {
@@ -1150,46 +1122,89 @@ public final class CgNetObjects {
         }
     }
 
-    @SuppressWarnings("unchecked")
     private static boolean save(CgNetType type, Path world) {
-        CgDynamicOps<Object> ops = CgPlainOps.INSTANCE;
-        List<Object> objects = new ArrayList<>();
-        for (CgNetObject obj : LIVE) {
-            if (obj.type != type || !obj.isLive()) continue;
-            CgCodecs.MapCodecBuilder<Object> fields = CgCodecs.map(ops);
-            for (int i = 0; i < type.fields.length; i++) {
-                if (!CgNetObject.has(obj.set, i)) continue;
-                CgNetField<Object> field = (CgNetField<Object>) type.fields[i];
-                if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
-                    fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
-                    continue;
-                }
-                fields.field(field.name, field.codec, field.kind == CgNetField.Kind.CODEC ? obj.refs[i] : field.box(obj.bits[i]));
-            }
-            CgCodecs.MapCodecBuilder<Object> o = CgCodecs.map(ops).field("k", CgCodecs.INT, obj.kind.ordinal())
-                    .optional("d", CgCodecs.STRING, obj.dimension, null)
-                    .field("x", CgCodecs.DOUBLE, obj.x).field("y", CgCodecs.DOUBLE, obj.y).field("z", CgCodecs.DOUBLE, obj.z)
-                    .optional("o", CgCodecs.UUID, obj.owner, null)
-                    .optional("p", CgCodecs.UUID, obj.player, null)
-                    .field("a", CgCodecs.LONG, obj.age())
-                    .raw("f", fields.build());
-            if (obj.lifetime > 0) o.field("l", CgCodecs.INT, (int) Math.max(1, obj.lifetime - obj.age()));
-            if (obj.kind == CgAnchor.Kind.CHUNK) o.field("cx", CgCodecs.INT, obj.chunkX).field("cz", CgCodecs.INT, obj.chunkZ);
-            objects.add(o.build());
-        }
-        Object tree = CgCodecs.map(ops).raw("objects", ops.createList(objects)).build();
+        List<CgNetObject> objects = new ArrayList<>();
+        for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive()) objects.add(obj);
         Path file = file(world, type);
-        Path temp = file.resolveSibling(file.getFileName() + ".tmp");
         try {
-            Files.createDirectories(file.getParent());
-            try (OutputStream out = Files.newOutputStream(temp)) {
-                CgBinaryFormat.writeTo(out, tree);
-            }
-            Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            CgFormats.write(file, new SavedObjects(type), objects);
             return true;
         } catch (IOException failed) {
             LOGGER.error("[cg-net] could not save {} to {}", type.name, file, failed);
             return false;
+        }
+    }
+
+    /** One type's live objects as its save file holds them; a decoded object is live but not yet registered. */
+    private static final class SavedObjects implements CgCodec<List<CgNetObject>> {
+
+        final CgNetType type;
+
+        SavedObjects(CgNetType type) {
+            this.type = type;
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> T encode(CgDynamicOps<T> ops, List<CgNetObject> objects) {
+            List<T> out = new ArrayList<>(objects.size());
+            for (CgNetObject obj : objects) {
+                CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
+                for (int i = 0; i < type.fields.length; i++) {
+                    if (!CgNetObject.has(obj.set, i)) continue;
+                    CgNetField<Object> field = (CgNetField<Object>) type.fields[i];
+                    if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
+                        fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
+                        continue;
+                    }
+                    fields.field(field.name, field.codec, field.kind == CgNetField.Kind.CODEC ? obj.refs[i] : field.box(obj.bits[i]));
+                }
+                CgCodecs.MapCodecBuilder<T> o = CgCodecs.map(ops).field("k", CgCodecs.INT, obj.kind.ordinal())
+                        .optional("d", CgCodecs.STRING, obj.dimension, null)
+                        .field("x", CgCodecs.DOUBLE, obj.x).field("y", CgCodecs.DOUBLE, obj.y).field("z", CgCodecs.DOUBLE, obj.z)
+                        .optional("o", CgCodecs.UUID, obj.owner, null)
+                        .optional("p", CgCodecs.UUID, obj.player, null)
+                        .field("a", CgCodecs.LONG, obj.age())
+                        .raw("f", fields.build());
+                if (obj.lifetime > 0) o.field("l", CgCodecs.INT, (int) Math.max(1, obj.lifetime - obj.age()));
+                if (obj.kind == CgAnchor.Kind.CHUNK) o.field("cx", CgCodecs.INT, obj.chunkX).field("cz", CgCodecs.INT, obj.chunkZ);
+                out.add(o.build());
+            }
+            return CgCodecs.map(ops).raw("objects", ops.createList(out)).build();
+        }
+
+        @Override
+        public <T> List<CgNetObject> decode(CgDynamicOps<T> ops, T in) {
+            List<CgNetObject> out = new ArrayList<>();
+            for (T entry : ops.getListValue(CgCodecs.read(ops, in).raw("objects"))) {
+                CgCodecs.MapCodecReader<T> o = CgCodecs.read(ops, entry);
+                CgAnchor.Kind kind = CgAnchor.Kind.values()[o.field("k", CgCodecs.INT)];
+                CgAnchor anchor = CgAnchor.restore(kind, o.optional("d", CgCodecs.STRING, null),
+                        o.field("x", CgCodecs.DOUBLE), o.field("y", CgCodecs.DOUBLE), o.field("z", CgCodecs.DOUBLE),
+                        o.optional("p", CgCodecs.UUID, null), o.optional("cx", CgCodecs.INT, 0), o.optional("cz", CgCodecs.INT, 0));
+                CgNetObject obj = new CgNetObject(type, anchor);
+                obj.owner = o.optional("o", CgCodecs.UUID, null);
+                int lifetime = o.optional("l", CgCodecs.INT, -1);
+                CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, o.raw("f"));
+                for (int i = 0; i < type.fields.length; i++) {
+                    CgNetField<?> field = type.fields[i];
+                    if (!fields.has(field.name)) continue;
+                    T raw = fields.raw(field.name);
+                    if (field.kind == CgNetField.Kind.CODEC && Objects.equals(raw, ops.empty())) {
+                        obj.refs[i] = null;
+                    } else {
+                        Object value = field.codec.decode(ops, raw);
+                        if (field.kind == CgNetField.Kind.CODEC) obj.refs[i] = value;
+                        else obj.bits[i] = field.bitsOf(value);
+                    }
+                    CgNetObject.mark(obj.set, i);
+                }
+                obj.live(nextId++, tick - o.optional("a", CgCodecs.LONG, 0L));
+                obj.lifetime = lifetime;
+                obj.behaviourPending = true;
+                out.add(obj);
+            }
+            return out;
         }
     }
 
