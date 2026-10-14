@@ -77,7 +77,10 @@ public final class CgHitboxes {
         return hitbox.followerEyes(out);
     }
 
-    /** Hands {@code watcher} every hitbox each time it ticks; null stops. One watcher for the process: the collision show. */
+    /**
+     * Hands {@code watcher} every hitbox each time it ticks, and once more as {@code stop()} ends it between ticks; null
+     * stops. One watcher for the process: the collision show.
+     */
     public static void watch(@Nullable Watcher watcher) {
         CgHitboxes.watcher = watcher;
     }

@@ -6,6 +6,7 @@ import com.crystalgraphics.collision.CollisionFakes.Table;
 import com.crystalgraphics.collision.CollisionFakes.Yard;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
+import com.crystalgraphics.collision.hitbox.CgHitboxes;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -31,6 +32,7 @@ import static org.junit.Assert.assertTrue;
 public class CgShapeLinesTest {
 
     private static final double EPS = 1e-9;
+    private static final CgCollisionWorld YARD = CgCollisionWorld.of(new Yard(), new Table());
 
     @Test
     public void aBoxDrawsItsTwelveEdgesTurnedWithItsPose() {
@@ -197,34 +199,117 @@ public class CgShapeLinesTest {
     }
 
     @Test
-    public void aHitboxIsShownWithItsFacesAndGoesWithItsHoldThoughStopped() {
+    public void aStoppedHitboxLingersFadingThenGoes() {
+        long linger = 200_000_000L;
         CgRecentLines lines = new CgRecentLines(1 << 12);
-        CgCollisionWorld yard = CgCollisionWorld.of(new Yard(), new Table());
-        CgHitbox blow = CgHitbox.of(CgBox.of(0.75, 0.75, 1.5)).at(0.5, 1, 0.5).activeFor(1).showColour(0xFF4040);
-        blow.tick(yard, 1);
-        assertTrue("a blow of one tick stops in it", blow.stopped());
-        lines.hitbox(blow, yard.blocks(), 0);
-        int[] drawn = {0, 0};
-        CgRecentLines.Out count = new CgRecentLines.Out() {
-            @Override
-            public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
-                assertEquals(0xFFFF4040, argb);
-                drawn[0]++;
-            }
+        CgHitbox blow = blow();
+        lines.hitbox(blow, YARD.blocks(), 0, linger);
+        Tally drawn = new Tally();
+        lines.drawTo(CgRecentLines.HOLD_NANOS - 1, drawn);
+        assertEquals("its edges", 12, drawn.lines);
+        assertEquals("its faces", 12, drawn.faces);
+        assertEquals("whole through its hold", 0xFFFF4040, drawn.argb);
+        lines.drawTo(CgRecentLines.HOLD_NANOS + linger / 2, drawn.reset());
+        assertEquals(24, drawn.lines + drawn.faces);
+        assertEquals("half faded", 0x7F, drawn.argb >>> 24, 1);
+        assertEquals(0xFF4040, drawn.argb & 0xFFFFFF);
+        lines.drawTo(CgRecentLines.HOLD_NANOS + linger, drawn.reset());
+        assertEquals("gone after its linger", 0, drawn.lines + drawn.faces);
+    }
 
-            @Override
-            public void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz,
-                    double cx, double cy, double cz) {
-                assertEquals(0xFFFF4040, argb);
-                drawn[1]++;
-            }
-        };
-        lines.drawTo(CgRecentLines.HOLD_NANOS - 1, count);
-        assertEquals("its edges", 12, drawn[0]);
-        assertEquals("its faces", 12, drawn[1]);
-        drawn[0] = drawn[1] = 0;
-        lines.drawTo(CgRecentLines.HOLD_NANOS, count);
-        assertEquals("gone after its hold, not lingering", 0, drawn[0] + drawn[1]);
+    @Test
+    public void noLingerAndAStoppedHitboxGoesWithItsHold() {
+        CgRecentLines lines = new CgRecentLines(1 << 12);
+        lines.hitbox(blow(), YARD.blocks(), 0, 0);
+        Tally drawn = new Tally();
+        lines.drawTo(CgRecentLines.HOLD_NANOS, drawn);
+        assertEquals(0, drawn.lines + drawn.faces);
+    }
+
+    @Test
+    public void aHitboxStoppedBetweenTicksLingersToo() {
+        CgRecentLines lines = new CgRecentLines(1 << 12);
+        CgHitbox zone = CgHitbox.of(CgBox.of(1, 1, 1)).at(0.5, 1, 0.5);
+        zone.tick(YARD, 1);
+        CgHitboxes.watch((hitbox, world) -> lines.hitbox(hitbox, world.blocks(), 0, CgRecentLines.HOLD_NANOS));
+        try {
+            zone.stop();
+        } finally {
+            CgHitboxes.watch(null);
+        }
+        Tally drawn = new Tally();
+        lines.drawTo(CgRecentLines.HOLD_NANOS + 1, drawn);
+        assertEquals("its last pose, past the hold", 12, drawn.lines);
+    }
+
+    @Test
+    public void edgesOutlastFacesWhenTheRecordIsFull() {
+        CgRecentLines lines = new CgRecentLines(24);
+        for (int i = 0; i < 3; i++) {
+            CgHitbox box = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(i * 4, 1, 0);
+            box.tick(YARD, 1);
+            lines.hitbox(box, YARD.blocks(), 0, 0);
+        }
+        Tally drawn = new Tally();
+        lines.drawTo(0, drawn);
+        assertEquals("two boxes' edges each fill the cap apart", 24, drawn.lines);
+        assertEquals(24, drawn.faces);
+
+        CgLinePack pack = new CgLinePack();
+        pack.begin(0, 0, 0, 30);
+        lines.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
+        CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, drawn.reset());
+        assertEquals("a full pack keeps every edge", 24, drawn.lines);
+        assertEquals("and drops faces", 6, drawn.faces);
+    }
+
+    @Test
+    public void aWireframeWatchersPackHoldsNoFacesAndAFadingOneItsOwnColour() {
+        CgRecentLines lines = new CgRecentLines(1 << 12);
+        CgHitbox box = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(0, 1, 0).activeFor(1);
+        box.tick(YARD, 1);
+        lines.hitbox(box, YARD.blocks(), 0, 100);
+        CgLinePack pack = new CgLinePack();
+        pack.begin(0, 0, 0, 1 << 12);
+        lines.packTo(YARD.blocks(), 0, 0, 0, 64, false, CgCollisionShow.SERVER, CgRecentLines.HOLD_NANOS + 50, pack);
+        Tally drawn = new Tally();
+        CgLinePack.read(pack.finish(), 0, drawn);
+        assertEquals(12, drawn.lines);
+        assertEquals(0, drawn.faces);
+        assertEquals("the server's colour, in eighths of alpha", CgCollisionShow.SERVER & 0xFFFFFF,
+                drawn.argb & 0xFFFFFF);
+        assertEquals(4 * 255 / 8, drawn.argb >>> 24);
+    }
+
+    /** A blow of one tick, stopped in it. */
+    private static CgHitbox blow() {
+        CgHitbox blow = CgHitbox.of(CgBox.of(0.75, 0.75, 1.5)).at(0.5, 1, 0.5).activeFor(1).showColour(0xFF4040);
+        blow.tick(YARD, 1);
+        assertTrue(blow.stopped());
+        return blow;
+    }
+
+    /** How many of each were drawn, and the last one's colour. */
+    private static final class Tally implements CgRecentLines.Out {
+        int lines, faces, argb;
+
+        Tally reset() {
+            lines = faces = argb = 0;
+            return this;
+        }
+
+        @Override
+        public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
+            this.argb = argb;
+            lines++;
+        }
+
+        @Override
+        public void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
+                double cy, double cz) {
+            this.argb = argb;
+            faces++;
+        }
     }
 
     @Test
