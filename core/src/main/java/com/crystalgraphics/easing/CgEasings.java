@@ -1,6 +1,11 @@
 package com.crystalgraphics.easing;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
 
 /**
  * The library of easings: Penner's families, CSS's keywords, and factories for {@code cubic-bezier()}, {@code linear()}
@@ -20,6 +25,51 @@ import java.util.Arrays;
 public final class CgEasings {
 
     private CgEasings() {
+    }
+
+    /**
+     * Every named easing, by field name: what {@link #indexOf} counts, so a tween travels by number. By name, since
+     * reflection's own order is the JVM's, and a server and its clients may run different ones.
+     */
+    private static CgEasing[] named;
+
+    /**
+     * {@code easing}'s place among this class's named easings, or -1 for one made by a factory: how a networked tween
+     * names its easing.
+     *
+     * <pre>{@code
+     * int i = CgEasings.indexOf(CgEasings.IN_QUAD);   // sent
+     * CgEasing e = CgEasings.byIndex(i);              // received; LINEAR for -1
+     * }</pre>
+     */
+    public static int indexOf(CgEasing easing) {
+        CgEasing[] all = named();
+        for (int i = 0; i < all.length; i++) if (all[i] == easing) return i;
+        return -1;
+    }
+
+    /** The named easing at {@code index}; {@link #LINEAR} out of range. */
+    public static CgEasing byIndex(int index) {
+        CgEasing[] all = named();
+        return index >= 0 && index < all.length ? all[index] : LINEAR;
+    }
+
+    private static synchronized CgEasing[] named() {
+        if (named == null) {
+            List<CgEasing> out = new ArrayList<>();
+            Field[] fields = CgEasings.class.getFields();
+            Arrays.sort(fields, Comparator.comparing(Field::getName));
+            for (Field f : fields) {
+                if (f.getType() != CgEasing.class || !Modifier.isStatic(f.getModifiers())) continue;
+                try {
+                    out.add((CgEasing) f.get(null));
+                } catch (IllegalAccessException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            named = out.toArray(new CgEasing[0]);
+        }
+        return named;
     }
 
     private static final double BACK = 1.70158, BACK_IN_OUT = BACK * 1.525, ELASTIC = 2 * Math.PI / 3,
