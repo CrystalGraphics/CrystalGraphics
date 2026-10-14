@@ -2,12 +2,15 @@ package com.crystalgraphics.settings;
 
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgGameDirectory;
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.CgDynamicOps;
+import com.crystalgraphics.serialization.format.CgFormats;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -20,9 +23,9 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * A file of {@link CgSetting}s a player can change: {@code config/<name>.toml} under the game directory, written in a
- * small subset of TOML ({@code [section]}, {@code key = value}, {@code #} comments) with each setting's description beside
- * it, read when a setting is first asked for and again whenever the file changes on disk.
+ * A file of {@link CgSetting}s a player can change: {@code config/<name>.toml} under the game directory, each setting
+ * under its {@code [section]} with its description above it, read when a setting is first asked for and again whenever
+ * the file changes on disk.
  *
  * <pre>{@code
  * public final class MySettings {
@@ -42,20 +45,26 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *   <li>Render thread. {@code CgGraphicsLifecycle.tickFrame} saves a changed file and looks for edits on disk once a
  *       second; nothing here runs mid-frame but the first read.</li>
  *   <li>A missing file is written with every default; an unreadable value keeps its default and is rewritten. Keys this
- *       version does not know are kept as written.</li>
+ *       version does not know are kept as written, and so are a player's comments.</li>
+ *   <li>A file that is not TOML is kept as {@code <name>.toml.bak} and written again from the values in force, as Forge
+ *       does with a broken config.</li>
  * </ul>
  */
 public final class CgSettings {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final long POLL_NANOS = 1_000_000_000L;
-    private static final char NL = (char) 10;
     private static final List<CgSettings> FILES = new CopyOnWriteArrayList<>();
+    private static final String UNKNOWN = "Not used by this version, kept as written.";
 
     private final String name;
     private final List<CgSetting> settings = new ArrayList<>();
-    /** Entries the file holds and nothing declares, by {@code section.key}, as written. */
-    private final Map<String, String> unknown = new LinkedHashMap<>();
+    private final FileCodec codec = new FileCodec();
+    /** What the file holds and nothing declares, by section ({@code ""} its top) and key, as the format read it. */
+    private final Map<String, Map<String, Object>> unknown = new LinkedHashMap<>();
+    /** The format that read {@link #unknown}: only it can write those values back. */
+    @Nullable
+    private CgDynamicOps<Object> unknownOps;
     private Path path;
     private volatile boolean loaded;
     private boolean dirty, warned;
@@ -125,8 +134,9 @@ public final class CgSettings {
             if (s.id().equals(setting.id())) throw new IllegalArgumentException("setting " + setting.id() + " already exists");
         }
         settings.add(setting);
-        String raw = unknown.remove(setting.id());
-        if (raw != null) readInto(setting, raw);
+        Map<String, Object> section = unknown.get(setting.section());
+        Object raw = section == null ? null : section.remove(setting.key());
+        if (raw != null) readInto(setting, unknownOps, raw);
         return setting;
     }
 
@@ -162,23 +172,32 @@ public final class CgSettings {
             return;
         }
         try {
-            Map<String, String> entries = parse(Files.readAllLines(file, StandardCharsets.UTF_8));
-            seen = modified();
-            unknown.clear();
-            for (CgSetting setting : settings) {
-                String raw = entries.remove(setting.id());
-                if (raw != null) readInto(setting, raw);
-                else dirty = true;   // a key the file lacks is written back in
-            }
-            unknown.putAll(entries);
+            CgFormats.TOML.read(file, codec, this);
+        } catch (CgCodecException notToml) {
+            keepBroken(file, notToml);
         } catch (IOException e) {
             warnOnce("could not read " + file, e);
         }
+        seen = modified();
     }
 
-    private void readInto(CgSetting setting, String raw) {
-        if (!setting.read(unquote(raw))) {
-            LOGGER.warn("[settings] {} = {} in {} is not a value it takes; keeping {}", setting.id(), raw, name, setting.write());
+    /** A file that will not parse is moved aside, the player's text whole, and written again from the values in force. */
+    private void keepBroken(Path file, CgCodecException why) {
+        Path kept = file.resolveSibling(file.getFileName() + ".bak");
+        try {
+            Files.move(file, kept, StandardCopyOption.REPLACE_EXISTING);
+            LOGGER.warn("[settings] {} could not be read ({}); kept as {} and written again", file, why.getMessage(),
+                    kept.getFileName());
+            dirty = true;
+        } catch (IOException e) {
+            warnOnce("could not move " + file + " aside", e);
+        }
+    }
+
+    private <T> void readInto(CgSetting setting, CgDynamicOps<T> ops, T raw) {
+        if (!setting.decode(ops, raw)) {
+            LOGGER.warn("[settings] {} = {} in {} is not a value it takes; keeping {}", setting.id(), raw, name,
+                    setting.savedText());
             dirty = true;
         }
     }
@@ -187,100 +206,24 @@ public final class CgSettings {
         dirty = false;
         Path file = path();
         try {
-            Files.createDirectories(file.getParent());
-            Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.write(temp, render().getBytes(StandardCharsets.UTF_8));
-            try {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
-            }
+            CgFormats.TOML.write(file, codec, this);
             seen = modified();
         } catch (IOException e) {
             warnOnce("could not write " + file, e);
         }
     }
 
-    /**
-     * The whole file as it is written. A key nothing declares stays in its own section, so no table is opened twice:
-     * a top-level one before the first table, one in a section this version no longer has after every declared one.
-     */
-    String render() {
-        StringBuilder out = new StringBuilder();
-        out.append("# ").append(name).append(" settings: edited here or in the settings screen, read while the game runs.").append(NL);
-        out.append("# A value that cannot be read keeps its default and is rewritten.").append(NL);
-        List<String> sections = new ArrayList<>();
+    /** Every section a setting is declared in, in declaration order. */
+    private List<String> sections() {
+        List<String> out = new ArrayList<>();
         for (CgSetting setting : settings) {
-            if (!sections.contains(setting.section())) sections.add(setting.section());
+            if (!out.contains(setting.section())) out.add(setting.section());
         }
-        for (String key : unknown.keySet()) {
-            String section = sectionOf(key);
-            if (!sections.contains(section)) sections.add(section.isEmpty() ? 0 : sections.size(), section);
-        }
-        for (String section : sections) {
-            if (!section.isEmpty()) out.append(NL).append('[').append(section).append(']').append(NL);
-            for (CgSetting setting : settings) {
-                if (!setting.section().equals(section)) continue;
-                out.append("# ").append(setting.label()).append(": ").append(setting.description()).append(NL);
-                out.append("# ").append(setting.hint()).append(NL);
-                out.append(setting.key()).append(" = ").append(setting.write()).append(NL);
-            }
-            boolean first = true;
-            for (Map.Entry<String, String> entry : unknown.entrySet()) {
-                if (!sectionOf(entry.getKey()).equals(section)) continue;
-                if (first) out.append("# Not used by this version, kept as written.").append(NL);
-                first = false;
-                out.append(entry.getKey().substring(section.isEmpty() ? 0 : section.length() + 1))
-                        .append(" = ").append(entry.getValue()).append(NL);
-            }
-        }
-        return out.toString();
+        return out;
     }
 
-    private static String sectionOf(String id) {
-        int dot = id.indexOf('.');
-        return dot < 0 ? "" : id.substring(0, dot);
-    }
-
-    /** {@code section.key} to the value as written, quotes and all. */
-    static Map<String, String> parse(List<String> lines) {
-        Map<String, String> entries = new LinkedHashMap<>();
-        String section = "";
-        for (String line : lines) {
-            String text = stripComment(line).trim();
-            if (text.isEmpty()) continue;
-            if (text.startsWith("[") && text.endsWith("]")) {
-                section = text.substring(1, text.length() - 1).trim();
-                continue;
-            }
-            int eq = text.indexOf('=');
-            if (eq <= 0) continue;
-            String key = text.substring(0, eq).trim();
-            entries.put(section.isEmpty() ? key : section + "." + key, text.substring(eq + 1).trim());
-        }
-        return entries;
-    }
-
-    private static String stripComment(String line) {
-        boolean quoted = false;
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
-            if (c == '\\' && quoted) i++;
-            else if (c == '"') quoted = !quoted;
-            else if (c == '#' && !quoted) return line.substring(0, i);
-        }
-        return line;
-    }
-
-    private static String unquote(String raw) {
-        if (raw.length() < 2 || raw.charAt(0) != '"' || raw.charAt(raw.length() - 1) != '"') return raw;
-        StringBuilder s = new StringBuilder();
-        for (int i = 1; i < raw.length() - 1; i++) {
-            char c = raw.charAt(i);
-            if (c == '\\' && i + 1 < raw.length() - 1) c = raw.charAt(++i);
-            s.append(c);
-        }
-        return s.toString();
+    private static String dotted(String section, String key) {
+        return section.isEmpty() ? key : section + "." + key;
     }
 
     private FileTime modified() {
@@ -295,5 +238,89 @@ public final class CgSettings {
         if (warned) return;
         warned = true;
         LOGGER.warn("[settings] {}: {}", what, e.toString());
+    }
+
+    /** The file: a table per section and a key per setting, with what nothing declares kept beside them. */
+    private final class FileCodec implements CgCodec<CgSettings> {
+
+        @Override
+        public <T> T encode(CgDynamicOps<T> ops, CgSettings file) {
+            Map<T, T> top = new LinkedHashMap<>();
+            for (String section : sections()) {
+                Map<T, T> keys = section.isEmpty() ? top : new LinkedHashMap<>();
+                for (CgSetting setting : settings) {
+                    if (setting.section().equals(section)) keys.put(ops.createString(setting.key()), setting.encode(ops));
+                }
+                kept(ops, unknown.get(section), keys);
+                if (!section.isEmpty()) top.put(ops.createString(section), ops.createMap(keys));
+            }
+            kept(ops, unknown.get(""), top);
+            return ops.createMap(top);
+        }
+
+        @SuppressWarnings("unchecked")
+        private <T> void kept(CgDynamicOps<T> ops, @Nullable Map<String, Object> values, Map<T, T> into) {
+            if (values == null || ops != (Object) unknownOps) return;
+            for (Map.Entry<String, Object> e : values.entrySet()) {
+                T key = ops.createString(e.getKey());
+                if (!into.containsKey(key)) into.put(key, (T) e.getValue());
+            }
+        }
+
+        @Override
+        public <T> CgSettings decode(CgDynamicOps<T> ops, T input) {
+            throw new UnsupportedOperationException("a settings file is decoded into itself");
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> CgSettings decode(CgDynamicOps<T> ops, T input, @Nullable CgSettings target) {
+            Map<String, T> top = byName(ops, input);
+            Map<String, Map<String, T>> sections = new LinkedHashMap<>();
+            for (String section : sections()) {
+                if (section.isEmpty()) continue;
+                T table = top.remove(section);
+                if (table == null) continue;
+                try {
+                    sections.put(section, byName(ops, table));
+                } catch (CgCodecException notATable) {
+                    LOGGER.warn("[settings] [{}] in {} is not a table; its settings keep their values", section, name);
+                }
+            }
+            for (CgSetting setting : settings) {
+                Map<String, T> in = setting.section().isEmpty() ? top : sections.get(setting.section());
+                T raw = in == null ? null : in.remove(setting.key());
+                if (raw != null) readInto(setting, ops, raw);
+                else dirty = true;   // a key the file lacks is written back in
+            }
+            unknown.clear();
+            unknownOps = (CgDynamicOps<Object>) ops;
+            sections.put("", top);
+            for (Map.Entry<String, Map<String, T>> e : sections.entrySet()) {
+                if (!e.getValue().isEmpty()) unknown.put(e.getKey(), new LinkedHashMap<>((Map<String, Object>) e.getValue()));
+            }
+            return CgSettings.this;
+        }
+
+        private <T> Map<String, T> byName(CgDynamicOps<T> ops, T table) {
+            Map<String, T> out = new LinkedHashMap<>();
+            for (Map.Entry<T, T> e : ops.getMapValue(table).entrySet()) out.put(ops.getStringValue(e.getKey()), e.getValue());
+            return out;
+        }
+
+        @Override
+        public Map<String, String> comments() {
+            Map<String, String> out = new LinkedHashMap<>();
+            out.put("", name + " settings: edited here or in the settings screen, read while the game runs.\n"
+                    + "A value that cannot be read keeps its default and is rewritten.");
+            for (CgSetting setting : settings) {
+                out.put(dotted(setting.section(), setting.key()),
+                        setting.label() + ": " + setting.description() + "\n" + setting.hint());
+            }
+            for (Map.Entry<String, Map<String, Object>> section : unknown.entrySet()) {
+                for (String key : section.getValue().keySet()) out.put(dotted(section.getKey(), key), UNKNOWN);
+            }
+            return out;
+        }
     }
 }

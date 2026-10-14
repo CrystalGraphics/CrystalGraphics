@@ -1,7 +1,10 @@
 package com.crystalgraphics.settings;
 
+import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.variable.CgVar;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -74,12 +77,36 @@ public abstract class CgSetting {
     /** Puts the player's choice back to its default. */
     public abstract void reset();
 
-    /** The player's choice as the file writes it. */
-    abstract String write();
+    /** The player's choice as the file holds it: a number, a boolean, a choice's name. */
+    abstract <T> T encode(CgDynamicOps<T> ops);
 
-    /** Reads {@code text} from the file; false leaves the value as it was. */
-    final boolean read(String text) {
-        return var().setText(CgVar.Source.FILE, text);
+    /** The player's choice as text, for a warning. */
+    abstract String savedText();
+
+    /** Reads {@code value} from the file; false leaves the value as it was. */
+    final <T> boolean decode(CgDynamicOps<T> ops, T value) {
+        String text = textOf(ops, value);
+        return text != null && var().setText(CgVar.Source.FILE, text);
+    }
+
+    /** What the file holds as text, whatever its kind: a quoted {@code "0.5"} reads as well as {@code 0.5}. */
+    @Nullable
+    private static <T> String textOf(CgDynamicOps<T> ops, T value) {
+        try {
+            return ops.getStringValue(value);
+        } catch (CgCodecException notText) {
+            // a number or a boolean
+        }
+        try {
+            return String.valueOf(ops.getBooleanValue(value));
+        } catch (CgCodecException notBoolean) {
+            // a number
+        }
+        try {
+            return ops.getNumberValue(value).toString();
+        } catch (CgCodecException neither) {
+            return null;
+        }
     }
 
     /** The file comment's second line: its range or choices and its default. */
@@ -164,7 +191,12 @@ public abstract class CgSetting {
         }
 
         @Override
-        String write() {
+        <T> T encode(CgDynamicOps<T> ops) {
+            return ops.createNumber(saved(var));
+        }
+
+        @Override
+        String savedText() {
             return Float.toString(saved(var));
         }
     }
@@ -209,7 +241,12 @@ public abstract class CgSetting {
         }
 
         @Override
-        String write() {
+        <T> T encode(CgDynamicOps<T> ops) {
+            return ops.createBoolean(saved(var));
+        }
+
+        @Override
+        String savedText() {
             return Boolean.toString(saved(var));
         }
     }
@@ -259,8 +296,13 @@ public abstract class CgSetting {
         }
 
         @Override
-        String write() {
-            return "\"" + var.format(saved(var)) + "\"";
+        <T> T encode(CgDynamicOps<T> ops) {
+            return ops.createString(var.format(saved(var)));
+        }
+
+        @Override
+        String savedText() {
+            return var.format(saved(var));
         }
     }
 }

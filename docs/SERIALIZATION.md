@@ -781,6 +781,13 @@ Comments live in TOML and YAML: a `.json` or binary file has none. A comment is 
 a key you removed takes its comment with it, a comment inside a multi-line array is not kept, and a file that would
 not parse is replaced whole.
 
+### A config file, or `CgSettings`?
+
+`CgSettings` (`com.crystalgraphics.settings`) is for the options a player changes in a settings screen: each a
+number, toggle or choice with a label, a range and a default, read again while the game runs whenever the file
+changes. It is a `config/<name>.toml` written through `CgFormats.TOML`, so its comments and a player's survive the
+same way. Anything else a mod configures is a codec of its own and `CgFormats.TOML`, as in §6.
+
 ### Why not Mojang's `Codec`?
 
 A codec here is one API on every version and loader, and Mojang's is not: it is missing from some versions and

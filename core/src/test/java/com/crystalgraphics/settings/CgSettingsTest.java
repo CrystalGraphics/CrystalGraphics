@@ -9,9 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -50,8 +47,13 @@ public class CgSettingsTest {
     }
 
     private void edit(String text) throws Exception {
+        Files.createDirectories(path.getParent());
         Files.write(path, text.getBytes(StandardCharsets.UTF_8));
         Files.setLastModifiedTime(path, FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+    }
+
+    private String written() throws Exception {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
     }
 
     @Test
@@ -59,10 +61,13 @@ public class CgSettingsTest {
         declare();
         assertEquals(1f, density.get(), 0f);
         frame();
-        Map<String, String> written = CgSettings.parse(Files.readAllLines(path));
-        assertEquals("1.0", written.get("fx.density"));
-        assertEquals("true", written.get("fx.trails"));
-        assertEquals("\"high\"", written.get("look.tier"));
+        String text = written();
+        assertTrue(text, text.startsWith("# " + file.name() + " settings: edited here"));
+        assertTrue(text, text.contains("[fx]\n# Density: Share spawned.\n"));
+        assertTrue(text, text.contains("density = 1.0\n"));
+        assertTrue(text, text.contains("trails = true\n"));
+        assertTrue(text, text.contains("[look]\n"));
+        assertTrue(text, text.contains("tier = \"high\"\n"));
     }
 
     @Test
@@ -71,9 +76,9 @@ public class CgSettingsTest {
         density.set(0.25f);
         tier.set(Tier.LOW);
         frame();
-        Map<String, String> written = CgSettings.parse(Files.readAllLines(path));
-        assertEquals("0.25", written.get("fx.density"));
-        assertEquals("\"low\"", written.get("look.tier"));
+        String text = written();
+        assertTrue(text, text.contains("density = 0.25\n"));
+        assertTrue(text, text.contains("tier = \"low\"\n"));
     }
 
     @Test
@@ -85,7 +90,7 @@ public class CgSettingsTest {
         assertEquals(0.5f, density.get(), 0f);
         assertEquals(0.25f, density.saved(), 0f);
         frame();
-        assertEquals("0.25", CgSettings.parse(Files.readAllLines(path)).get("fx.density"));
+        assertTrue(written().contains("density = 0.25\n"));
         density.var().clear(CgVar.Source.CONSOLE);
         assertEquals(0.25f, density.get(), 0f);
     }
@@ -105,21 +110,31 @@ public class CgSettingsTest {
     @Test
     public void anUnreadableValueKeepsItsDefaultAndIsRewritten() throws Exception {
         declare();
-        Files.createDirectories(path.getParent());
-        edit("[fx]\ndensity = lots\ntrails = false\n[look]\ntier = \"medium\"\n");
+        edit("[fx]\ndensity = \"lots\"\ntrails = false\n[look]\ntier = \"medium\"\n");
         assertEquals(1f, density.get(), 0f);
         assertFalse(trails.get());
         assertEquals(Tier.HIGH, tier.get());
         frame();
-        Map<String, String> written = CgSettings.parse(Files.readAllLines(path));
-        assertEquals("1.0", written.get("fx.density"));
-        assertEquals("\"high\"", written.get("look.tier"));
+        String text = written();
+        assertTrue(text, text.contains("density = 1.0\n"));
+        assertTrue(text, text.contains("trails = false\n"));
+        assertTrue(text, text.contains("tier = \"high\"\n"));
+    }
+
+    @Test
+    public void aFileThatIsNotTomlIsKeptAsideAndWrittenAgain() throws Exception {
+        declare();
+        edit("[fx]\ndensity = lots\n");
+        assertEquals(1f, density.get(), 0f);
+        Path kept = path.resolveSibling("settings.toml.bak");
+        assertEquals("[fx]\ndensity = lots\n", new String(Files.readAllBytes(kept), StandardCharsets.UTF_8));
+        frame();
+        assertTrue(written().contains("density = 1.0\n"));
     }
 
     @Test
     public void aValueOutsideItsRangeIsClamped() throws Exception {
         declare();
-        Files.createDirectories(path.getParent());
         edit("[fx]\ndensity = 7\n");
         assertEquals(1f, density.get(), 0f);
         density.set(-2f);
@@ -129,22 +144,19 @@ public class CgSettingsTest {
     @Test
     public void keysThisVersionDoesNotKnowAreKept() throws Exception {
         declare();
-        Files.createDirectories(path.getParent());
         edit("[fx]\ndensity = 0.5\nbloom = \"soft\"\n[later]\nthing = 3\n");
         density.set(0.75f);
         frame();
-        List<String> lines = Files.readAllLines(path);
-        Map<String, String> written = CgSettings.parse(lines);
-        assertEquals("0.75", written.get("fx.density"));
-        assertEquals("\"soft\"", written.get("fx.bloom"));
-        assertEquals("3", written.get("later.thing"));
-        assertEquals("no table opened twice", 1, lines.stream().filter("[fx]"::equals).count());
+        String text = written();
+        assertTrue(text, text.contains("density = 0.75\n"));
+        assertTrue(text, text.contains("# Not used by this version, kept as written.\nbloom = \"soft\"\n"));
+        assertTrue(text, text.contains("[later]\nthing = 3\n"));
+        assertEquals("no table opened twice", text.indexOf("[fx]"), text.lastIndexOf("[fx]"));
     }
 
     @Test
     public void aSettingDeclaredAfterTheFirstReadTakesItsValueFromTheFile() throws Exception {
         declare();
-        Files.createDirectories(path.getParent());
         edit("[fx]\ndensity = 0.5\nlate = 0.3\n");
         density.get();
         CgSetting.Number late = file.number("fx", "late", "Late", "Declared late.", 1f, 0f, 1f, 0f);
@@ -152,12 +164,14 @@ public class CgSettingsTest {
     }
 
     @Test
-    public void commentsAndQuotedHashesParse() {
-        Map<String, String> entries = CgSettings.parse(Arrays.asList(
-                "# a comment", "", "top = 1", "[s]", "name = \"a # b\" # trailing", "  spaced   =   2  "));
-        assertEquals("1", entries.get("top"));
-        assertEquals("\"a # b\"", entries.get("s.name"));
-        assertEquals("2", entries.get("s.spaced"));
-        assertTrue(entries.size() == 3);
+    public void aPlayersCommentsSurviveASave() throws Exception {
+        declare();
+        edit("# my notes\n\n[fx]\n# mine\ndensity = 0.5  # half\n");
+        density.set(0.6f);
+        frame();
+        String text = written();
+        assertTrue(text, text.startsWith("# my notes\n\n[fx]\n"));
+        assertTrue(text, text.contains("# mine\ndensity = 0.6  # half\n"));
+        assertTrue(text, text.contains("# Trails: Leave trails.\n"));
     }
 }
