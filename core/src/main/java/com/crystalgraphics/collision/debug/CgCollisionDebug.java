@@ -16,7 +16,7 @@ import com.crystalgraphics.shape.CgShape;
 import java.util.Arrays;
 
 /**
- * Shapes and hitboxes drawn as lines in the world, for the next world frame only: call each frame you want them seen.
+ * Shapes and hitboxes drawn in the world, for the next world frame only: call each frame you want them seen.
  * Depth-tested against the scene, never hiding what is behind them.
  *
  * <pre>{@code
@@ -30,8 +30,9 @@ import java.util.Arrays;
  *   <li>Render thread. Colours are ARGB.</li>
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
  *       draws too, so a query drawn here as well is drawn twice.</li>
- *   <li>The show's hitboxes have their faces drawn as well, at {@link #FACE_ALPHA} of their colour, so each reads as
- *       the space it tests with what is behind it still seen; not under {@link CgCollisionShow.Style#WIREFRAME}.</li>
+ *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at
+ *       {@link #FACE_ALPHA} of their colour, so each reads as the space it tests with what is behind it still seen;
+ *       not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are lines under both.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
@@ -59,7 +60,7 @@ public final class CgCollisionDebug {
         }
     };
     private static boolean installed;
-    /** Whether this frame draws the show's faces: {@link CgCollisionShow#STYLE}, read once a frame. */
+    /** Whether faces are drawn: {@link CgCollisionShow#STYLE}, read once a frame. */
     private static boolean faces;
     private static CgMaterial material;
     private static int colour;
@@ -71,6 +72,7 @@ public final class CgCollisionDebug {
     public static void shape(CgShape shape, CgPose pose, int argb) {
         colour = argb;
         SHAPES.write(shape, pose, LINES);
+        if (faces) SHAPES.faces(shape, pose, FACES);
     }
 
     /** Draws each part of {@code hitbox} as its last tick tested it on the next world frame; the last, once stopped. */
@@ -100,6 +102,7 @@ public final class CgCollisionDebug {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
+        faces = CgCollisionShow.STYLE.get() == CgCollisionShow.Style.TRANSPARENT;
         CgCollisionShow.installClient();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
     }
@@ -112,7 +115,7 @@ public final class CgCollisionDebug {
     }
 
     private static void part(CgHitPart name, CgShape shape, CgPose pose) {
-        SHAPES.write(shape, pose, LINES);
+        shape(shape, pose, colour);
     }
 
     private static void frame(CgHostView view) {
