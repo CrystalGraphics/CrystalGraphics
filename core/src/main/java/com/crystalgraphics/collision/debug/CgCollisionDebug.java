@@ -32,10 +32,9 @@ import java.util.Arrays;
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
  *       draws too, so a query drawn here as well is drawn twice.</li>
  *   <li>Under {@link CgCollisionShow.Style#TRANSPARENT}, shapes and hitboxes, the show's and those drawn here, have
- *       their faces drawn as well, at {@link CgCollisionShow#FILL_OPACITY} of their colour's alpha, so each reads as
- *       the space it tests with what is behind it still seen. A hitbox with its own
- *       {@link CgHitbox#showFill(float) fill} is filled under either style, at that share of the opacity. Lines and
- *       marks are lines under both.</li>
+ *       their faces drawn as well, at a quarter of their colour's alpha, so each reads as the space it tests with
+ *       what is behind it still seen. A hitbox with its own {@link CgHitbox#showFill(float) fill} is filled at that
+ *       under either style. Lines and marks are lines under both.</li>
  *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces turned away, the
  *       lines, then the faces turned toward the eye, each far to near, so a face tints the edges behind it.</li>
  * </ul>
@@ -67,8 +66,7 @@ public final class CgCollisionDebug {
         }
     };
     private static boolean installed;
-    /** {@link CgCollisionShow#opacity()} and {@link CgCollisionShow#transparent()}, read once a frame. */
-    private static int opacity;
+    /** {@link CgCollisionShow#transparent()}, read once a frame. */
     private static boolean transparent;
     private static CgMaterial material;
     private static int colour, fill;
@@ -78,7 +76,7 @@ public final class CgCollisionDebug {
 
     /** Draws {@code shape} at {@code pose} on the next world frame. */
     public static void shape(CgShape shape, CgPose pose, int argb) {
-        shape(shape, pose, argb, transparent ? 255 : 0);
+        shape(shape, pose, argb, transparent ? CgRecentLines.FILL : 0);
     }
 
     /**
@@ -88,7 +86,7 @@ public final class CgCollisionDebug {
     public static void hitbox(CgHitbox hitbox, int argb) {
         colour = argb;
         int own = CgRecentLines.ownFill(hitbox);
-        fill = own == CgRecentLines.DEFAULT_FILL ? transparent ? 255 : 0 : own;
+        fill = own == CgRecentLines.DEFAULT_FILL ? transparent ? CgRecentLines.FILL : 0 : own;
         hitbox.parts(CgCollisionDebug::part);
     }
 
@@ -113,7 +111,6 @@ public final class CgCollisionDebug {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        opacity = CgCollisionShow.opacity();
         transparent = CgCollisionShow.transparent();
         CgCollisionShow.installClient();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
@@ -130,12 +127,12 @@ public final class CgCollisionDebug {
         shape(shape, pose, colour, fill);
     }
 
-    /** Its edges, and its faces at {@code share} of 255 of the opacity. */
-    private static void shape(CgShape shape, CgPose pose, int argb, int share) {
+    /** Its edges, and its faces at {@code fill} of 255 of its colour's alpha. */
+    private static void shape(CgShape shape, CgPose pose, int argb, int fill) {
         colour = argb;
         SHAPES.write(shape, pose, LINES);
-        if (share <= 0 || opacity <= 0) return;
-        colour = CgRecentLines.scaled(CgRecentLines.scaled(argb, share), opacity);
+        if (fill <= 0) return;
+        colour = CgRecentLines.scaled(argb, fill);
         SHAPES.faces(shape, pose, FACES);
         colour = argb;
     }
@@ -143,7 +140,6 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        opacity = CgCollisionShow.opacity();
         transparent = CgCollisionShow.transparent();
         CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
         FACES.draw(view.x(), view.y(), view.z());

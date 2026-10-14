@@ -6,8 +6,8 @@ import java.util.Arrays;
 /**
  * Line segments and face triangles packed for the wire: an origin, runs of one colour and one kind each, then each
  * point as shorts in {@link #UNIT}s from the origin. What a server sends a client that shows collision. Points past
- * {@link #REACH} are clamped; a run's colour 0 is drawn in the reader's own; a run of faces is scaled by the reader's
- * fill opacity, may begin a piece, and may be drawn only by a reader drawing transparent.
+ * {@link #REACH} are clamped; a run's colour 0 is drawn in the reader's own; a run of faces may begin a piece, and
+ * may be drawn only by a reader drawing transparent, at its fill.
  */
 final class CgLinePack implements CgShapeLines.Sink {
 
@@ -108,10 +108,10 @@ final class CgLinePack implements CgShapeLines.Sink {
     }
 
     /**
-     * Hands {@code out} what a pack holds, back in world space, in its run's colour or {@code argb}, faces at
-     * {@code opacity} of 255 of their alpha and those marked only {@code transparent}; how many it holds.
+     * Hands {@code out} what a pack holds, back in world space, in its run's colour or {@code argb}, faces marked
+     * only {@code transparent}, at {@link CgRecentLines#FILL}; how many it holds.
      */
-    static int read(byte[] pack, int argb, int opacity, boolean transparent, CgRecentLines.Out out) {
+    static int read(byte[] pack, int argb, boolean transparent, CgRecentLines.Out out) {
         ByteBuffer in = ByteBuffer.wrap(pack);
         if (in.remaining() < HEADER) return 0;
         double ox = in.getDouble(), oy = in.getDouble(), oz = in.getDouble();
@@ -125,9 +125,9 @@ final class CgLinePack implements CgShapeLines.Sink {
             boolean faces = (n & FACES) != 0, skipped = false;
             int size = faces ? TRIANGLE : SEGMENT;
             if ((n & PIECE) != 0) out.piece();
-            if (faces) {
-                skipped = (n & DEFAULT) != 0 && !transparent;
-                drawn = CgRecentLines.scaled(drawn, opacity);
+            if ((n & DEFAULT) != 0) {
+                skipped = !transparent;
+                drawn = CgRecentLines.scaled(drawn, CgRecentLines.FILL);
             }
             n &= ~(FACES | PIECE | DEFAULT);
             for (int k = 0; k < n && read < count && at + size <= pack.length; k++, read++, at += size) {

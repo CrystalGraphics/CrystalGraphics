@@ -1336,7 +1336,6 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 ```
 -Dcrystalgraphics.collision.show=true        // or from the console, or CgCollisionShow.SHOW.set(true)
 -Dcrystalgraphics.collision.style=transparent     // hitboxes filled in; wireframe, the default, draws their edges alone
--Dcrystalgraphics.collision.fillOpacity=0.4       // how strongly fills show: 0.25 of their colour's alpha by default
 -Dcrystalgraphics.collision.linger=250            // a stopped hitbox kept 250 ms, fading; none by default
 ```
 
@@ -1351,15 +1350,13 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 - A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape.
 - A query a hitbox runs is left out: its parts are drawn instead. Queries on an empty world are not drawn.
 - `crystalgraphics.collision.style` is how each client draws hitboxes, and the shapes `CgCollisionDebug` draws:
-  `wireframe` (the default) draws the edges alone, `transparent` fills the faces in see-through under them.
-  `crystalgraphics.collision.fillOpacity` is how strongly every fill shows: the share of its colour's alpha its faces
-  take, 0.25 by default. Both are a player's settings, kept in their settings file.
-- A hitbox that should read as a volume for everyone fills itself with `showFill(share)`, whatever each player's
-  style: its faces take that share of the player's fill opacity, 0 for its edges alone. Unset, it follows the style.
+  `wireframe` (the default) draws the edges alone, `transparent` fills the faces in see-through under them at a
+  quarter of their colour's alpha. A player's setting, kept in their settings file.
+- A hitbox that should read as a volume for everyone fills itself with `showFill(alpha)`, whatever each player's
+  style: its faces take that share of its colour's alpha, 0 for its edges alone. Unset, it follows the style.
 
   ```java
-  CgHitbox.follow(attacker, STRIKE).showColour(0xFF4040).showFill(1)...   // red, filled for every player
-  spark.showFill(0.5f);                                                    // filled, half as strongly
+  CgHitbox.follow(attacker, STRIKE).showColour(0xFF4040).showFill(0.25f)...   // red, filled for every player
   ```
 - Hitboxes are drawn as their last tick tested them, and only while active: what is drawn could still hit. A blow too
   short to see can linger, fading, so it reads as over: `showLinger(ticks)` on the hitbox, or

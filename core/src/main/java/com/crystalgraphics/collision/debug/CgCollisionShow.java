@@ -35,7 +35,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
  * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
  * -Dcrystalgraphics.collision.style=transparent         // hitboxes filled in; their edges alone by default
- * -Dcrystalgraphics.collision.fillOpacity=0.4           // how strongly fills show: 0.25 of their colour's alpha
  * -Dcrystalgraphics.collision.linger=250                // a stopped hitbox kept 250 ms, fading; none by default
  * }</pre>
  *
@@ -52,10 +51,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_RECORDS} segments and
  *       triangles a tick, edges before faces, while their client keeps asking; faces only to a client drawing
  *       them.</li>
- *   <li>{@link #STYLE} and {@link #FILL_OPACITY} are each client's own: {@link Style#WIREFRAME} draws a hitbox's
- *       edges alone, {@link Style#TRANSPARENT} fills its faces in under them. A hitbox with its own
- *       {@link CgHitbox#showFill(float) fill} is filled under both, at that share. Every fill shows at
- *       {@link #FILL_OPACITY} of its colour's alpha, times its share. Queries are lines under both.</li>
+ *   <li>{@link #STYLE} is each client's own: {@link Style#WIREFRAME} draws a hitbox's edges alone,
+ *       {@link Style#TRANSPARENT} fills its faces in under them at a quarter of its colour's alpha. A hitbox with its
+ *       own {@link CgHitbox#showFill(float) fill} is filled at that under both. Queries are lines under both.</li>
  *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and only while active: one that
  *       stops is gone with its last tick, unless its {@link CgHitbox#showLinger(double) linger} or {@link #LINGER}
  *       keeps it, fading. A server's lingers by its own setting.</li>
@@ -81,9 +79,6 @@ public final class CgCollisionShow {
     public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.WIREFRAME,
             CgVar.SAVED, "How this client draws the hitboxes it shows. wireframe: the edges alone. transparent:"
                     + " see-through faces under solid edges. A hitbox with its own fill is filled under both.");
-    public static final CgVar.Num FILL_OPACITY = CgVar.number("crystalgraphics.collision.fillOpacity", 0.25f, 0f,
-            1f, CgVar.SAVED, "How strongly this client's hitbox fills show: the share of each one's colour's alpha its"
-                    + " faces take, times the hitbox's own share where it sets one.");
     public static final CgVar.Int LINGER = CgVar.integer("crystalgraphics.collision.linger", 0, 0, 5000,
             CgVar.SAVED, "Milliseconds a stopped hitbox stays shown, fading out, unless it sets its own. 0 shows each"
                     + " only while it is active.");
@@ -180,13 +175,10 @@ public final class CgCollisionShow {
         boolean showing = showing();
         if (showing) {
             long now = System.nanoTime();
-            int opacity = opacity();
             boolean transparent = transparent();
-            CLIENT_LINES.drawTo(now, out, opacity, transparent);
+            CLIENT_LINES.drawTo(now, out, transparent);
             byte[] pack = serverLines;
-            if (pack != null && now - serverAt < SERVER_HOLD_NANOS) {
-                CgLinePack.read(pack, SERVER, opacity, transparent, out);
-            }
+            if (pack != null && now - serverAt < SERVER_HOLD_NANOS) CgLinePack.read(pack, SERVER, transparent, out);
         } else if (shown) {
             CLIENT_LINES.clear();
         }
@@ -198,10 +190,6 @@ public final class CgCollisionShow {
         return STYLE.get() == Style.TRANSPARENT;
     }
 
-    /** This client's {@link #FILL_OPACITY}, of 255. */
-    static int opacity() {
-        return Math.round(FILL_OPACITY.get() * 255);
-    }
 
     /** Whether hitboxes are shown in this process: the variable, or the client's host view. */
     private static boolean showing() {

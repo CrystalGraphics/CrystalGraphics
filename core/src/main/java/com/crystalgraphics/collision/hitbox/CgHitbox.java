@@ -532,20 +532,18 @@ public final class CgHitbox {
     }
 
     /**
-     * Whether and how strongly the collision show fills it in, for every player whatever their style: the share of
-     * each player's fill opacity ({@code crystalgraphics.collision.fillOpacity}, a quarter of its colour's alpha by
-     * default) its faces take, 0 for its edges alone. Unset, it follows each player's style: edges alone by default,
-     * filled at their whole opacity when they draw transparent.
+     * How strongly the collision show fills it in, for every player whatever their style: the share of its colour's
+     * alpha its faces take, 0 for its edges alone. Unset, it follows each player's style: edges alone by default, a
+     * quarter when they draw transparent.
      *
      * <pre>{@code
-     * slam.showFill(1);                                        // filled for everyone, at their opacity
-     * spark.showFill(0.5f);                                    // filled for everyone, half as strongly
+     * slam.showFill(0.25f);                                    // filled for everyone, as transparent fills
      * probe.showFill(0);                                       // edges only, even for a player drawing transparent
      * }</pre>
      */
-    public CgHitbox showFill(float share) {
-        if (!(share >= 0 && share <= 1)) throw new IllegalArgumentException("fill share outside 0..1: " + share);
-        showFill = share;
+    public CgHitbox showFill(float alpha) {
+        if (!(alpha >= 0 && alpha <= 1)) throw new IllegalArgumentException("fill alpha outside 0..1: " + alpha);
+        showFill = alpha;
         return this;
     }
 
