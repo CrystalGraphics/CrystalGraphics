@@ -47,7 +47,9 @@ import com.crystalgraphics.serialization.CgPlainOps;
  *   <li>A name is matched within each type that lists it, so a short one ({@code "heat"}) is enough: the type's
  *       {@code namespace:path} keeps it apart from another mod's. Lowercase, digits and {@code _ . / -}.</li>
  *   <li>A field may be listed by several types; its name is what crosses the wire, once per connection.</li>
- *   <li>A value read off a {@code CgCodec} field is shared, not copied: change it by setting a new one.</li>
+ *   <li>A value read off a {@code CgCodec} field is shared, not copied: change it by setting a new one. On a client, a
+ *       field whose codec updates in place ({@code CgCodecs.object}, a list, a map) keeps its instance across
+ *       changes, so whatever holds it sees each one.</li>
  * </ul>
  */
 public final class CgNetField<V> {
@@ -246,11 +248,19 @@ public final class CgNetField<V> {
     /** A codec value off the wire, {@code length} bytes; none is null. */
     @Nullable
     V readRef(NetBuffer in, int length) {
+        return readRef(in, length, null);
+    }
+
+    /** {@link #readRef(NetBuffer, int)}, decoded into {@code current} where the codec updates in place. */
+    @Nullable
+    V readRef(NetBuffer in, int length, @Nullable Object current) {
         if (length == 0) return null;
         byte[] encoded = new byte[length];
         System.arraycopy(in.bytes, in.pos, encoded, 0, length);
         in.skip(length);
-        return codec.decode(CgPlainOps.INSTANCE, CgBinaryFormat.decode(encoded));
+        // never into the fallback: one instance, shared by every object of every type listing this field
+        @SuppressWarnings("unchecked") V held = current == fallback ? null : (V) current;
+        return codec.decode(CgPlainOps.INSTANCE, CgBinaryFormat.decode(encoded), held);
     }
 
     @Override

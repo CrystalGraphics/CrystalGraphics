@@ -644,6 +644,8 @@ A behaviour's calls, in the order they come:
 
 - Install all three **from client code**.
 - On a client, `obj.isMine()` says whether this client's player owns it.
+- **A field whose codec updates in place** (`CgCodecs.object`, a list, a map: `docs/SERIALIZATION.md` §5) keeps its
+  instance on a client: a screen holding `obj.get(STATS)` sees every change without reading it again.
 
 ---
 

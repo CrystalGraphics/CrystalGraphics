@@ -1,6 +1,7 @@
 package com.crystalgraphics.net.object;
 
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgObjectCodec;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -13,6 +14,7 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -27,6 +29,16 @@ public class CgNetFieldValuesTest {
 
     static final CgNetField<Boolean> WINGS = CgNetField.ofBool("wings").predicted().sanitizedBy((obj, wanted) -> false);
     static final CgNetType GLIDER = CgNetType.define("test:glider").fields(WINGS).build();
+
+    static final class Stats {
+        int power;
+        static final CgObjectCodec<Stats> CODEC = CgCodecs.object(Stats::new)
+                .field("power", CgCodecs.INT, s -> s.power, (s, v) -> s.power = v).build();
+    }
+
+    static final Stats NONE = new Stats();
+    static final CgNetField<Stats> STATS = CgNetField.of("stats", Stats.CODEC).fallback(NONE);
+    static final CgNetType FIGHTER = CgNetType.define("test:fighter").fields(STATS).build();
 
     static final List<Boolean> HEARD = new ArrayList<>();
 
@@ -84,6 +96,25 @@ public class CgNetFieldValuesTest {
 
         CgNetObject seen = rig.client(0).visible(FLIER).get(0);
         assertThrows(IllegalStateException.class, () -> seen.resend(FLYING));
+    }
+
+    @Test
+    public void aClientsHeldValueIsUpdatedInPlace() {
+        CgNetObject fighter = FIGHTER.spawn(CgAnchor.player(rig.client(0).id())).start();
+        Stats first = new Stats();
+        first.power = 3;
+        fighter.set(STATS, first);
+        rig.tick(1);
+        Stats held = rig.client(0).visible(FIGHTER).get(0).get(STATS);
+        assertEquals(3, held.power);
+
+        Stats next = new Stats();
+        next.power = 9000;
+        fighter.set(STATS, next);
+        rig.tick(1);
+        assertSame("the same instance, refreshed", held, rig.client(0).visible(FIGHTER).get(0).get(STATS));
+        assertEquals(9000, held.power);
+        assertEquals("the fallback, shared by all, is never decoded into", 0, NONE.power);
     }
 
     @Test

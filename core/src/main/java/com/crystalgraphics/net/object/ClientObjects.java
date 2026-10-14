@@ -430,7 +430,8 @@ final class ClientObjects {
             }
             CgNetField<?> field = obj.type.fields[local];
             if (field.kind == CgNetField.Kind.CODEC) {
-                obj.refs[local] = field.readRef(in, length);
+                // into the held value where its codec can: whatever holds it sees the change
+                obj.refs[local] = field.readRef(in, length, obj.refs[local]);
             } else {
                 obj.bits[local] = field.readBits(in);
                 if (in.pos != end) throw new CgCodecException(field.name + " is " + length + " bytes here, another type there");
