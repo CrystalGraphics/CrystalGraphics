@@ -30,17 +30,37 @@ import java.util.Arrays;
  *   <li>Render thread. Colours are ARGB.</li>
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
  *       draws too, so a query drawn here as well is drawn twice.</li>
+ *   <li>The show's hitboxes have their faces drawn as well, at {@link #FACE_ALPHA} of their colour, so each reads as
+ *       the space it tests with what is behind it still seen; not under {@link CgCollisionShow.Style#WIREFRAME}.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
 
     static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
     private static final double MARK = 0.4;
+    /** How much of a shown hitbox's faces show over what is behind them; its edges are drawn as they are. */
+    static final float FACE_ALPHA = 0.25f;
 
-    private static final Lines LINES = new Lines();
+    private static final Batch LINES = new Batch(2, 1f), FACES = new Batch(3, FACE_ALPHA);
     private static final CgShapeLines SHAPES = new CgShapeLines();
+    private static final CgRecentLines.Out SHOWN = new CgRecentLines.Out() {
+        @Override
+        public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
+            colour = argb;
+            LINES.line(ax, ay, az, bx, by, bz);
+        }
+
+        @Override
+        public void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
+                double cy, double cz) {
+            if (!faces) return;
+            colour = argb;
+            FACES.triangle(ax, ay, az, bx, by, bz, cx, cy, cz);
+        }
+    };
     private static boolean installed;
-    private static CgMesh mesh;
+    /** Whether this frame draws the show's faces: {@link CgCollisionShow#STYLE}, read once a frame. */
+    private static boolean faces;
     private static CgMaterial material;
     private static int colour;
 
@@ -86,10 +106,9 @@ public final class CgCollisionDebug {
 
     /** Frees the mesh and material with the context. */
     public static void release() {
-        if (mesh != null) mesh.release();
-        mesh = null;
+        LINES.release();
+        FACES.release();
         material = null;
-        LINES.count = 0;
     }
 
     private static void part(CgHitPart name, CgShape shape, CgPose pose) {
@@ -99,62 +118,101 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        CgCollisionShow.drawTo(view.x(), view.y(), view.z(), CgCollisionDebug::coloured);
-        if (LINES.count == 0) return;
-        if (mesh == null) {
-            mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, LINES));
-        } else {
-            mesh.edit(LINES, CgCollisionDebug::write);
-        }
-        if (material == null) material = CgMaterial.load(SHADER);
-        CgWorldRenderer.get().draw(mesh, material).at(LINES.ox, LINES.oy, LINES.oz).submit();
-        LINES.count = 0;
+        faces = CgCollisionShow.STYLE.get() == CgCollisionShow.Style.TRANSPARENT;
+        CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
+        FACES.draw();
+        LINES.draw();
     }
 
-    private static void coloured(int argb, double ax, double ay, double az, double bx, double by, double bz) {
-        colour = argb;
-        LINES.line(ax, ay, az, bx, by, bz);
-    }
-
-    private static void write(CgMeshWriter m, Lines lines) {
-        m.topology(CgMeshTopology.LINES);
-        float[] p = lines.points;
-        for (int i = 0; i < lines.count; i++) {
-            int argb = lines.colours[i];
+    private static void write(CgMeshWriter m, Batch batch) {
+        m.topology(batch.corners == 2 ? CgMeshTopology.LINES : CgMeshTopology.TRIANGLES);
+        float[] p = batch.points;
+        for (int i = 0, at = 0; i < batch.count; i++) {
+            int argb = batch.colours[i];
             float r = (argb >>> 16 & 0xFF) / 255f, g = (argb >>> 8 & 0xFF) / 255f, b = (argb & 0xFF) / 255f;
-            float a = (argb >>> 24) / 255f;
+            float a = (argb >>> 24) / 255f * batch.alpha;
             // the colour rides in the normal, its alpha in u: collision_lines.shader reads them back
-            m.vertex().position(p[i * 6], p[i * 6 + 1], p[i * 6 + 2]).uv(a, 0f).normal(r, g, b).end();
-            m.vertex().position(p[i * 6 + 3], p[i * 6 + 4], p[i * 6 + 5]).uv(a, 0f).normal(r, g, b).end();
+            for (int c = 0; c < batch.corners; c++, at += 3) {
+                m.vertex().position(p[at], p[at + 1], p[at + 2]).uv(a, 0f).normal(r, g, b).end();
+            }
         }
     }
 
-    /** The frame's segments as floats from the first one's start, which the draw stands at in doubles. */
-    private static final class Lines implements CgShapeLines.Sink {
-        float[] points = new float[6 * 512];
+    /**
+     * The frame's segments, or its triangles, as floats from the first one's start, which the draw stands at in
+     * doubles.
+     */
+    private static final class Batch implements CgShapeLines.Sink {
+        /** Points a record: two a segment, three a triangle. */
+        final int corners;
+        /** What each record's own alpha is drawn at. */
+        final float alpha;
+        float[] points;
         int[] colours = new int[512];
         int count;
         double ox, oy, oz;
+        private CgMesh mesh;
+
+        Batch(int corners, float alpha) {
+            this.corners = corners;
+            this.alpha = alpha;
+            points = new float[corners * 3 * 512];
+        }
 
         @Override
         public void line(double ax, double ay, double az, double bx, double by, double bz) {
+            int at = record(ax, ay, az);
+            point(at, ax, ay, az);
+            point(at + 3, bx, by, bz);
+        }
+
+        @Override
+        public void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
+                double cz) {
+            int at = record(ax, ay, az);
+            point(at, ax, ay, az);
+            point(at + 3, bx, by, bz);
+            point(at + 6, cx, cy, cz);
+        }
+
+        /** Books the next record in the colour being drawn, the first one's start the origin; where its points go. */
+        private int record(double x, double y, double z) {
             if (count == 0) {
-                ox = ax;
-                oy = ay;
-                oz = az;
+                ox = x;
+                oy = y;
+                oz = z;
             }
             if (count == colours.length) {
                 points = Arrays.copyOf(points, points.length * 2);
                 colours = Arrays.copyOf(colours, colours.length * 2);
             }
-            int at = count * 6;
-            points[at] = (float) (ax - ox);
-            points[at + 1] = (float) (ay - oy);
-            points[at + 2] = (float) (az - oz);
-            points[at + 3] = (float) (bx - ox);
-            points[at + 4] = (float) (by - oy);
-            points[at + 5] = (float) (bz - oz);
-            colours[count++] = colour;
+            colours[count] = colour;
+            return count++ * corners * 3;
+        }
+
+        private void point(int at, double x, double y, double z) {
+            points[at] = (float) (x - ox);
+            points[at + 1] = (float) (y - oy);
+            points[at + 2] = (float) (z - oz);
+        }
+
+        /** Submits what the frame queued, and empties it. */
+        void draw() {
+            if (count == 0) return;
+            if (mesh == null) {
+                mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
+            } else {
+                mesh.edit(this, CgCollisionDebug::write);
+            }
+            if (material == null) material = CgMaterial.load(SHADER);
+            CgWorldRenderer.get().draw(mesh, material).at(ox, oy, oz).submit();
+            count = 0;
+        }
+
+        void release() {
+            if (mesh != null) mesh.release();
+            mesh = null;
+            count = 0;
         }
     }
 }

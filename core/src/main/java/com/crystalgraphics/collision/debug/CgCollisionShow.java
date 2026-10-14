@@ -27,13 +27,15 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * {@code crystalgraphics.collision.show}: every live hitbox and every world query drawn as lines, as Minecraft's F3+B
- * draws entity boxes and PhysX's visual debugger draws scene queries. A client draws the hitboxes it ticks and the
- * queries it runs itself, and the server's.
+ * {@code crystalgraphics.collision.show}: every live hitbox drawn see-through with its edges solid, and every world
+ * query as lines, as Minecraft's F3+B draws entity boxes and PhysX's visual debugger draws scene queries. A client
+ * draws the hitboxes it ticks and the queries it runs itself, and the server's.
  *
  * <pre>{@code
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
  * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
+ * -Dcrystalgraphics.collision.style=wireframe           // hitboxes as their edges alone; transparent by default
+ * -Dcrystalgraphics.collision.linger=0                  // a stopped hitbox gone with its last tick; 250 ms by default
  * }</pre>
  *
  * <ul>
@@ -46,25 +48,42 @@ import java.util.concurrent.ConcurrentHashMap;
  *       with a {@link CgHitbox#showColour(int) show colour} is drawn in it on every side.</li>
  *   <li>A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape. A
  *       query a hitbox runs is left out, its parts drawn instead, as are an empty world's.</li>
- *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_SEGMENTS} segments a
- *       tick, while their client keeps asking.</li>
- *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and for half a second once stopped: a
- *       blast's front lives a few ticks.</li>
+ *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_RECORDS} segments and
+ *       triangles a tick, edges before faces, while their client keeps asking; faces only to a client drawing
+ *       them.</li>
+ *   <li>{@link #STYLE} is each client's own: {@link Style#TRANSPARENT} fills a hitbox's faces in under its edges,
+ *       {@link Style#WIREFRAME} draws the edges alone. Queries are lines under both.</li>
+ *   <li>Hitboxes are drawn as their last tick tested them, not between ticks. One that stops is held
+ *       {@link #LINGER} longer, fading, so a blow that lives a tick is still seen; a server's lingers by its own.</li>
  * </ul>
  */
 public final class CgCollisionShow {
 
     public static final CgVar.Bool SHOW = CgVar.bool("crystalgraphics.collision.show", false, CgVar.DEV,
-            "Draws every live hitbox and world query as lines, as Minecraft's F3+B also does: the client's and the"
-                    + " server's.");
+            "Draws every live hitbox, see-through, and every world query, as lines, as Minecraft's F3+B also does:"
+                    + " the client's and the server's.");
     public static final CgVar.Bool SERVE = CgVar.bool("crystalgraphics.collision.serve", true, CgVar.SAVED,
             "Lets a server send its hitboxes and queries to any player showing them (F3+B), recording only while one"
                     + " is. Off, it sends only while its own collision.show is on.");
 
+    /** How a shown hitbox is drawn. */
+    public enum Style {
+        /** See-through faces under solid edges. */
+        TRANSPARENT,
+        /** Edges alone. */
+        WIREFRAME
+    }
+
+    public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.TRANSPARENT,
+            CgVar.SAVED, "How this client draws the hitboxes it shows. transparent: see-through faces under solid"
+                    + " edges. wireframe: the edges alone.");
+    public static final CgVar.Int LINGER = CgVar.integer("crystalgraphics.collision.linger", 250, 0, 5000,
+            CgVar.SAVED, "Milliseconds a stopped hitbox stays shown, fading out, so one that lived a tick is seen.");
+
     /** How far from a player a server's hitboxes are sent. */
     static final double RANGE = 64;
-    /** The most segments a server sends a player a tick. */
-    static final int MAX_SEGMENTS = 4096;
+    /** The most segments and triangles a server sends a player a tick, and keeps of each. */
+    static final int MAX_RECORDS = 4096;
     /** Client ticks between asks while showing: a server forgets a client after {@link #FORGET_AFTER}. */
     static final int ASK_EVERY = 100;
     static final long FORGET_AFTER = 3 * ASK_EVERY;
@@ -73,7 +92,9 @@ public final class CgCollisionShow {
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
 
-    static final CgMessage<Boolean> ASK = CgMessage.toServer("crystalgraphics:collision/show", CgCodecs.BOOL);
+    /** What a client asks for: {@link #ASK_NONE}, {@link #ASK_EDGES} or {@link #ASK_FACES}, edges and faces. */
+    static final CgMessage<Integer> ASK = CgMessage.toServer("crystalgraphics:collision/show", CgCodecs.INT);
+    static final int ASK_NONE = 0, ASK_EDGES = 1, ASK_FACES = 2;
     static final CgMessage<byte[]> LINES = CgMessage.toClients("crystalgraphics:collision/lines", CgCodecs.BYTES);
 
     private static boolean installed;
@@ -82,7 +103,7 @@ public final class CgCollisionShow {
     private static final Map<UUID, Watcher> WATCHERS = new ConcurrentHashMap<>();
     private static final CgLinePack PACK = new CgLinePack();
     private static final double[] AT = new double[3];
-    private static final CgRecentLines SERVER_LINES = new CgRecentLines(MAX_SEGMENTS);
+    private static final CgRecentLines SERVER_LINES = new CgRecentLines(MAX_RECORDS);
     /** Whose queries and hitboxes are a server's: an integrated server runs beside its client. */
     private static volatile Thread serverThread;
 
@@ -91,7 +112,7 @@ public final class CgCollisionShow {
     private static volatile boolean client;
     /** The client's host hitbox view, from its tick; false on a dedicated server. */
     private static volatile boolean host;
-    private static boolean asked;
+    private static int asked;
     private static int sinceAsked;
     private static volatile byte[] serverLines;
     private static volatile long serverAt;
@@ -104,6 +125,7 @@ public final class CgCollisionShow {
     private static final class Watcher {
         final CgPeer peer;
         long asked;
+        boolean faces;
 
         Watcher(CgPeer peer) {
             this.peer = peer;
@@ -178,7 +200,7 @@ public final class CgCollisionShow {
 
     private static void saw(CgHitbox hitbox, CgCollisionWorld world) {
         CgRecentLines into = lines();
-        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime());
+        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime(), LINGER.get() * 1_000_000L);
     }
 
     /** Where this thread's queries and hitboxes are kept: a server's only while a player watches. */
@@ -194,16 +216,21 @@ public final class CgCollisionShow {
             host = view;
             follow();
         }
-        boolean on = showing();
-        if (on == asked && (!on || ++sinceAsked < ASK_EVERY)) return;
-        ASK.sendToServer(on);
-        asked = on;
+        int want = !showing() ? ASK_NONE : STYLE.get() == Style.TRANSPARENT ? ASK_FACES : ASK_EDGES;
+        if (want == asked && (want == ASK_NONE || ++sinceAsked < ASK_EVERY)) return;
+        ASK.sendToServer(want);
+        asked = want;
         sinceAsked = 0;
     }
 
-    private static void asked(CgPeer peer, Boolean on) {
-        if (on) WATCHERS.computeIfAbsent(peer.id(), id -> new Watcher(peer)).asked = CgNetwork.serverTicks();
-        else WATCHERS.remove(peer.id());
+    private static void asked(CgPeer peer, Integer want) {
+        if (want == ASK_NONE) {
+            WATCHERS.remove(peer.id());
+        } else {
+            Watcher w = WATCHERS.computeIfAbsent(peer.id(), id -> new Watcher(peer));
+            w.asked = CgNetwork.serverTicks();
+            w.faces = want == ASK_FACES;
+        }
         follow();
     }
 
@@ -213,7 +240,8 @@ public final class CgCollisionShow {
             SERVER_LINES.clear();
             return;
         }
-        SERVER_LINES.expire(System.nanoTime());
+        long nanos = System.nanoTime();
+        SERVER_LINES.expire(nanos);
         long now = CgNetwork.serverTicks();
         for (Iterator<Watcher> it = WATCHERS.values().iterator(); it.hasNext(); ) {
             Watcher w = it.next();
@@ -225,8 +253,8 @@ public final class CgCollisionShow {
             Object player = w.peer.player();
             if (player == null || !CgEntityQueries.position(player, AT)) continue;
             CgWorldQuery level = CgWorldQueries.of(player);
-            PACK.begin(Math.floor(AT[0]), Math.floor(AT[1]), Math.floor(AT[2]), MAX_SEGMENTS);
-            SERVER_LINES.packTo(level, AT[0], AT[1], AT[2], RANGE, PACK);
+            PACK.begin(Math.floor(AT[0]), Math.floor(AT[1]), Math.floor(AT[2]), MAX_RECORDS);
+            SERVER_LINES.packTo(level, AT[0], AT[1], AT[2], RANGE, w.faces, SERVER, nanos, PACK);
             LINES.send(CgAudience.player(w.peer.id()), PACK.finish());
         }
     }

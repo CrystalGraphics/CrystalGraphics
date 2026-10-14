@@ -552,6 +552,8 @@ public final class CgHitbox {
             int gone = inside[--insideCount];
             if (onExit != null) onExit.accept(gone);
         }
+        // the show lingers what it last tested, stopped between ticks too
+        if (hasPrev && world != null) CgHitboxes.ticked(this, world);
     }
 
     public boolean stopped() {
