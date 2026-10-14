@@ -181,29 +181,66 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 
 ### A record of your own: `CgCodecs.record`
 
-A record's codec is its keys, each with its codec and its accessor, then its constructor: one declaration both
-directions read, so a key written as `"cost"` cannot be read as `"Cost"`. The shape of Mojang's `RecordCodecBuilder`.
+Most data a mod sends or saves is a record: a spell, a purge request, a machine's stats. Its codec is its keys, each
+with a codec and the record's accessor, then its constructor:
 
 ```java
-public record Purge(int machine, boolean full, @Nullable String reason) {
-    public static final CgCodec<Purge> CODEC = CgCodecs.record(
-            CgCodecs.field("m", CgCodecs.INT, Purge::machine),                       // required
-            CgCodecs.optionalField("f", CgCodecs.BOOL, Purge::full, false),          // false is not written
-            CgCodecs.optionalField("r", CgCodecs.STRING, Purge::reason, null),       // nor is a null
-            Purge::new);
+public record Spell(String name, int cost, @Nullable String icon) {
+    public static final CgCodec<Spell> CODEC = CgCodecs.record(
+            CgCodecs.field("name", CgCodecs.STRING, Spell::name),
+            CgCodecs.optionalField("cost", CgCodecs.INT, Spell::cost, 0),
+            CgCodecs.optionalField("icon", CgCodecs.STRING, Spell::icon, null),
+            Spell::new);
 }
 ```
 
-| Key | Written | Absent on read |
-|---|---|---|
-| `field(key, codec, get)` | always | throws, naming the key |
-| `optionalField(key, codec, get, fallback)` | unless it equals `fallback` | reads `fallback` |
-| `fieldOr(key, codec, get, fallback)` | always | reads `fallback`: a key older files lack, in a shape whose bytes must not change |
+Both directions read that one declaration, so a key written as `"cost"` can never be read back as `"Cost"`. It is the
+shape of Mojang's `RecordCodecBuilder`, if you know that, without its `App` and `Kind` types.
 
-- **Up to eight keys**; nest a record (a key whose codec is another record's), or use `CgCodecs.object`, beyond that.
-- **Keys are written in declaration order**, so the same value encodes to the same bytes, which a content hash needs.
-- **A key's comment** goes in a YAML file above it: `CgCodecs.field(...).comment("Master volume, 0 to 1.")` (§6).
+**Which kind of key?** Pick by what you want to happen when the key is missing:
+
+| You want | Key | Example |
+|---|---|---|
+| The value is always there; a save without it is broken | `field(key, codec, get)` | a spell's name |
+| The value usually has a default, so most saves need not carry it | `optionalField(key, codec, get, fallback)` | a cost of 0, an icon that may be null |
+| You added the key in an update, and saves from before it should load | `optionalField(..., fallback)`: old saves read the fallback | a cooldown added in 1.2 |
+| The same, but the key must be written even at its default | `fieldOr(key, codec, get, fallback)` | a content-hashed shape whose bytes must not change |
+
+```java
+CgCodecs.field("name", CgCodecs.STRING, Spell::name)                     // missing: throws "Missing required field 'name'"
+CgCodecs.optionalField("cost", CgCodecs.INT, Spell::cost, 0)             // 0 is not written; missing reads 0
+CgCodecs.fieldOr("exposed", CgCodecs.BOOL, Prop::exposed, true)          // always written; missing reads true
+```
+
+**A record inside a record** is a key whose codec is the inner record's:
+
+```java
+public record Loadout(Spell primary, List<Spell> spare) {
+    public static final CgCodec<Loadout> CODEC = CgCodecs.record(
+            CgCodecs.field("primary", Spell.CODEC, Loadout::primary),
+            CgCodecs.optionalField("spare", CgCodecs.listOf(Spell.CODEC), Loadout::spare, List.of()),
+            Loadout::new);
+}
+```
+
+**More than eight keys**: group some into a nested record (often they belong together anyway: `audio`, `video`), or
+make the class mutable and use `CgCodecs.object` (§4).
+
+- **Keys are written in declaration order**, so a value always encodes to the same bytes.
+- **Keys the codec does not declare are ignored**, so a save with a key you since removed still loads.
+- **A required value that is null throws when written**, naming the key: declare it `optionalField(..., null)` instead.
+- **A key's comment** goes in a YAML file above it: `.comment("Master volume, 0 to 1.")` on the key (§6).
 - **Short keys** keep the wire small: a key travels with every send. A file people read can afford long ones.
+
+### Record, object, or by hand?
+
+| Your value | Write |
+|---|---|
+| A record, or any immutable value with a constructor | `CgCodecs.record` |
+| A mutable class other code holds (settings, a handler, a block entity's state), or more than eight fields | `CgCodecs.object` (§4) |
+| One of several kinds | `CgCodecs.dispatch` (below) |
+| One value as another (a colour as an int) | `CgCodecs.xmap` (below) |
+| A key written only sometimes, or one value deciding the rest | by hand (next) |
 
 ### By hand: a map built and read
 
@@ -394,18 +431,80 @@ skills:
 - **A read parses the whole file before decoding.** A file that is not its format, or holds what the codec cannot
   read, throws `CgCodecException`.
 - **Missing keys keep their defaults**, with an object codec: a hand-written file need hold only what it changes.
-- **Comments survive.** A person's, in the file being replaced, stay on the same key; a codec's own (`.comment(text)`
-  on a field) is written where they wrote none. A comment on a key the mod no longer writes is dropped. JSON has no
-  comments.
-
-  ```yaml
-  # Master volume, 0 to 1.          <- the codec's
-  volume: 0.5    # turned down        <- the person's, kept
-  ```
+- **Comments survive** a rewrite: below.
 - **Map keys are text** in JSON and YAML. Bytes are Base64 in JSON and `!!binary` in YAML.
 - **A YAML file builds maps, lists and scalars only**: a `!!java.io.File`-style tag is refused, never instantiated.
 - **SnakeYAML is relocated inside CrystalGraphics' jar.** Never import `org.yaml` in your mod: in game it is not at
   that name. Use `CgFormats.YAML`.
+
+### A config file people edit, with comments
+
+A config file explains itself when the codec says what each key means. Put `.comment(text)` after a field (or on a
+record key); the comment is written above that key in YAML.
+
+```java
+public final class ModConfig {
+    float volume = 1f;
+    int particles = 100;
+    final List<String> muted = new ArrayList<>();
+
+    public static final CgObjectCodec<ModConfig> CODEC = CgCodecs.object(ModConfig::new)
+            .field("volume", CgCodecs.FLOAT, c -> c.volume, (c, v) -> c.volume = v)
+            .comment("Master volume, 0 to 1.")
+            .field("particles", CgCodecs.INT, c -> c.particles, (c, v) -> c.particles = v)
+            .comment("Particles per effect, in percent.\nLower it on a slow computer.")      // two lines
+            .into("muted", CgCodecs.listOf(CgCodecs.STRING), c -> c.muted)
+            .comment("Players whose effects you never see.")
+            .build();
+}
+
+// at startup: load what is there, then write it back, so a new key appears with its comment
+Path file = configDir.resolve("mymod.yml");
+ModConfig config = CgFormats.YAML.read(file, ModConfig.CODEC, new ModConfig());
+CgFormats.YAML.write(file, ModConfig.CODEC, config);
+```
+
+The first run writes:
+
+```yaml
+# Master volume, 0 to 1.
+volume: 1.0
+# Particles per effect, in percent.
+# Lower it on a slow computer.
+particles: 100
+# Players whose effects you never see.
+muted: []
+```
+
+A player then edits it, and writes their own notes:
+
+```yaml
+# Master volume, 0 to 1.
+volume: 0.4        # quieter at night
+# Particles per effect, in percent.
+# Lower it on a slow computer.
+particles: 50
+# my friends spam beams
+muted:
+  - vegeta
+```
+
+The next time the mod writes the file, **everything the player wrote stays**: `quieter at night` beside its value,
+`my friends spam beams` above `muted` in place of the mod's comment, the values they chose. What changes:
+
+| When | The file |
+|---|---|
+| Your update adds a key | it is written with its value and your comment |
+| Your update removes a key | it disappears, and so does any comment on it |
+| A player wrote a comment on a key | theirs is kept; yours is not added beside it |
+| You change a key's comment in an update | files that already have the old text keep it: once written, a comment is the file's |
+| The file is not valid YAML | it is replaced; its comments cannot be read, so they go |
+
+- **Comments live in YAML only.** JSON has none; binary files and NBT have none.
+- **Nested keys** take their own comments: a record key's `.comment(...)` inside a nested record lands above that key,
+  indented.
+- **Read before you write**, as above: a mod that writes a fresh `ModConfig` over the file throws the player's values
+  away (their comments stay, on keys that still exist).
 
 ---
 
@@ -462,40 +561,129 @@ Settings back = Settings.CODEC.decode(CgJsonOps.INSTANCE, json);
 
 ## 9. Changing a saved shape
 
-Saves outlive the code that wrote them. With codecs, most changes need no migration:
+Saves outlive the code that wrote them. A player who updates your mod keeps their world, their config and their
+character, and the new code has to read what the old code wrote.
 
-| Change | What old saves do | Do this |
+### Most changes need nothing
+
+| You | Old saves | Do |
 |---|---|---|
-| **Add a field** | lack its key | an object codec keeps the default; a record reads it with `optional(key, codec, fallback)` |
-| **Remove a field** | still have its key | nothing: undeclared keys are ignored |
-| **Rename a key** | have the old name | a versioned step: `tree.rename("old", "new")` (below) |
-| **Change a field's type, or move it** | have the old shape | a versioned step: `tree.map(key, v -> ...)`, `tree.move(from, to)` |
-| **Add a kind to a `dispatch`** | never name it | nothing |
-| **An enum constant** | name it | by name, so reordering is safe; removing one throws on old saves: map it in `xmap` |
+| Add a field | lack its key | nothing: give it a default (`optionalField(..., fallback)`, or the object's own default) |
+| Remove a field | still have its key | nothing: keys the codec does not declare are ignored |
+| Add a kind to a `dispatch` | never name it | nothing |
+| Reorder an enum's constants | name them | nothing: enums are saved by name |
 
-### Versioned saves
+### A change old saves cannot be read through: a versioned codec
 
-A codec wrapped in `CgCodecs.versioned` writes a version beside its keys, and runs each step from an older save's
-version up to today's before reading it: DataFixerUpper's idea, for a mod's own data.
+Renaming a key, changing a value's type or moving it into a section breaks old saves: the new codec looks for
+something they do not have. Wrap the codec in `CgCodecs.versioned` and write one **step** per change. Each step turns a
+save of one version into the next, and runs before today's codec reads it. It is Minecraft's DataFixerUpper idea, cut
+down to what a mod needs.
+
+You do not need it from day one. A save with no version reads as version 1, so add `versioned` the first time you
+make a change like this, starting at 2:
 
 ```java
-static final CgCodec<Character> SAVED = CgCodecs.versioned(3, Character.CODEC)
-        .from(1, tree -> tree.rename("Level", "level"))                                // 1 to 2
-        .from(2, tree -> tree.move("skills", "abilities.list").map("level", v -> v.asInt() * 10));   // 2 to 3
+// The codec, as it is today. Keep using it for the network: §9 is about saves.
+public static final CgCodec<Character> CODEC = ...;
 
-CgFormats.write(file, SAVED, character);        // "_v": 3, then the codec's keys
-Character back = CgFormats.read(file, SAVED);   // a version 1 save runs both steps first
+// What is saved. Version 2: "Level" was renamed "level".
+public static final CgCodec<Character> SAVED = CgCodecs.versioned(2, CODEC)
+        .from(1, tree -> tree.rename("Level", "level"));
+
+CgFormats.write(file, SAVED, character);        // writes "_v": 2 before the codec's keys
+Character back = CgFormats.read(file, SAVED);   // an old save runs the step first
 ```
 
-- **A save with no version is version 1**, so a codec gains `versioned` without touching the saves it already wrote.
-- **A save newer than the code throws**, naming both versions: it is never read on a best effort.
-- **Steps edit the tree** (`CgTreeEdit`: `rename`, `move`, `remove`, `set`, `map`, `has`, `get`), with dotted paths for
-  nested maps, in whatever format the save was read from: one step serves binary, JSON, YAML and NBT.
-- A step on a key the save lacks does nothing.
+**Each later change raises the version and adds a step**, never edits one already released: a player may be coming
+from any version, and the steps run in order from theirs.
 
-For a value sent over the network, a change an older copy of your mod cannot read raises your namespace's version
-(`CgMessage.version`, `docs/NETWORKING.md` § *Versions*). Files have no peer to ask: they are read with today's
-codec, which is why the table above keeps old saves readable.
+```java
+public static final CgCodec<Character> SAVED = CgCodecs.versioned(4, CODEC)
+        .from(1, tree -> tree.rename("Level", "level"))                    // 1.0 to 1.1
+        .from(2, tree -> tree.move("skills", "abilities.list"))            // 1.1 to 1.2: skills moved into a section
+        .from(3, tree -> tree.map("cooldown", v -> v.asInt() * 20));       // 1.2 to 1.3: seconds became ticks
+```
+
+### Recipes
+
+**I renamed a key.**
+
+```java
+.from(1, tree -> tree.rename("Level", "level"))
+```
+
+**I changed a unit or a type**: seconds to ticks, a float to an int, an enum's name to another.
+
+```java
+.from(2, tree -> tree.map("cooldown", v -> v.asInt() * 20))
+.from(3, tree -> tree.map("volume", v -> (int) Math.round(v.asDouble() * 100)))      // 0.0-1.0 became 0-100
+.from(4, tree -> tree.map("element", v -> v.asString().equals("LIGHTNING") ? "THUNDER" : v.asString()))
+```
+
+**I moved keys into a section.** Dotted paths name nested maps; the maps on the way are made.
+
+```java
+.from(2, tree -> tree.move("volume", "audio.volume").move("subtitles", "audio.subtitles"))
+```
+
+**I split one value into two, or joined two.**
+
+```java
+.from(3, tree -> {
+    CgTreeEdit.Value size = tree.get("size");                 // was one number for both
+    if (size != null) tree.set("width", size).set("height", size).remove("size");
+})
+```
+
+**I changed a list into a map**, or any other structured value: read the old value with its old codec, and make the
+new one with `tree.value(codec, value)`.
+
+```java
+.from(2, tree -> tree.map("skills", v -> {                    // was ["kamehameha", ...], now {kamehameha: 1, ...}
+    Map<String, Integer> levels = new LinkedHashMap<>();
+    for (String name : v.as(CgCodecs.listOf(CgCodecs.STRING))) levels.put(name, 1);
+    return tree.value(CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT), levels);
+}))
+```
+
+**I added a field whose default depends on another.**
+
+```java
+.from(4, tree -> { if (!tree.has("maxMana")) tree.set("maxMana", tree.get("level").asInt() * 10); })
+```
+
+| Step call | Does |
+|---|---|
+| `rename(from, to)`, `move(from, to)` | moves a value; dotted paths; nothing if `from` is missing |
+| `remove(path)` | drops a value |
+| `set(path, value)` | sets one: a `String`, a `Number`, a `Boolean`, a `Value`, or `tree.value(codec, x)` |
+| `map(path, v -> ...)` | replaces a value with what the function answers for it |
+| `has(path)`, `get(path)` | reads; `get` answers a `Value` (`asInt`, `asString`, `asDouble`, `asBool`, `as(codec)`) or null |
+
+### What happens with a save from a newer version
+
+A player who downgrades your mod, or copies a world from a friend on a newer one, has a save your code cannot know.
+`read` throws a `CgCodecException` naming both versions rather than guessing. **Do not write over that file**: it
+is the only copy of their data. Load something else and keep it:
+
+```java
+ModData data;
+try {
+    data = CgFormats.read(file, ModData.SAVED);
+} catch (CgCodecException newerOrBroken) {
+    LOGGER.error("mymod: {} could not be read ({}); leaving it as it is", file, newerOrBroken.getMessage());
+    data = new ModData();
+    saveDisabled = true;                         // never write over a save you could not read
+}
+```
+
+- **Steps run in whatever format the save was read from**: one step serves binary files, JSON, YAML and NBT.
+- **A step on a key the save lacks does nothing**, so one step serves saves that never had the key.
+- **The version key is `"_v"`**; `CgCodecs.versioned("version", 3, CODEC)` names another.
+- **Versioned codecs are for saves.** A value sent over the network is read by the same build that sent it, or by a
+  peer your namespace's version keeps out (`CgMessage.version`, `docs/NETWORKING.md` § *Versions*): give the network
+  the plain codec, and a save the versioned one.
 
 ---
 
@@ -520,31 +708,57 @@ A codec runs in a plain JUnit test, no Minecraft:
 
 - Run a codec through `CgPlainOps`, `CgJsonOps` and a file: three formats, one codec, and a codec that secretly
   depends on one format shows itself.
-- NBT in a test: install `CgTestTags` and it runs under the game's rules (a boolean is a byte, a list holds one kind),
-  with SNBT for presets kept as text.
+- **NBT in a test**: install `CgTestTags`. `CgFormats.toNbt` and `fromNbt` then work in a plain JUnit test, under
+  the game's own rules (a boolean is a byte, a list holds one kind of tag, keys are text), with no Minecraft.
 
   ```java
   private CgTestTags tags;
   @Before public void tags() { tags = CgTestTags.install(); }
-  @After public void untag() { tags.close(); }
+  @After public void untag() { tags.close(); }                        // puts back what was there
 
   @Test public void aCharacterSavesAsNbt() {
       Object tag = CgFormats.toNbt(Character.CODEC, character);
+      assertEquals("{name:\"Goku\",level:9}", CgTestTags.toSnbt(tag));   // what /data get would show
       assertEquals(9, CgFormats.fromNbt(Character.CODEC, tag).level);
-      assertEquals(3, CgFormats.fromNbt(Hair.CODEC, CgTestTags.parse("{style:3b,dyed:1b}")).style);
   }
   ```
+
+  **SNBT**, the text form `/data get` prints, reads straight into tags, so presets and saves can live in a test as
+  text: `CgTestTags.parse("{style:3b,dyed:1b,colors:[I;16711680,255]}")`. Compounds, lists, `[B;...]`, `[I;...]`
+  and `[L;...]` arrays, quoted and bare strings, the `b s L f d` suffixes, and `true`/`false` as bytes.
+
+- **A migration test keeps an old save as text** and checks it loads as today's value. Write one when you add a
+  step, from a save the old version really wrote:
+
+  ```java
+  @Test public void aSaveFromBeforeTheRenameStillLoads() {
+      String v1 = "{\"name\":\"Goku\",\"Level\":9}";                  // what 1.0 wrote
+      assertEquals(9, CgFormats.JSON.fromText(Character.SAVED, v1).level);
+  }
+  ```
+
 - A networked object's fields are tested in a `CgNetTestRig` (`docs/NETWORKING.md` § *Testing without Minecraft*).
 
 ---
 
 ## 11. Questions people ask
 
-### Why not Mojang's `Codec`?
+### Do I need a versioned codec from the start?
 
-It is not on every version (1.12 and 1.7.10 have none), it is not loader-blind, and its `DataResult` and
-`RecordCodecBuilder` are a lot to learn for "write these keys". `CgCodec` keeps its shape (a codec over
-`DynamicOps`, `dispatch`, `xmap`) without the library, so a Mojang codec's design ports across directly.
+No. A save with no version reads as version 1, so wrap your codec the first time a change breaks old saves, and
+start at 2. Adding a field or removing one never needs it.
+
+### When does a version go up?
+
+When old saves cannot be read by the new codec as they are: a rename, a type or unit change, a move. Raise the
+number, add one step from the old number, and never change a step once it has shipped.
+
+### My config's comments are gone. Why?
+
+Comments live in YAML: a `.json` or binary file has none. In YAML, a comment is kept when its key is still written;
+a key you removed takes its comment with it, and a file that was not valid YAML is replaced whole.
+
+### Why not Mojang's `Codec`?
 
 ### Why not Gson or Jackson reflection?
 
