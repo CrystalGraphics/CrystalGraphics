@@ -1107,7 +1107,13 @@ public final class CgNetObjects {
                 for (int i = 0; i < type.fields.length; i++) {
                     CgNetField<?> field = type.fields[i];
                     if (!fields.has(field.name)) continue;
-                    Object value = field.codec.decode(ops, fields.raw(field.name));
+                    Object raw = fields.raw(field.name);
+                    if (raw == null && field.kind == CgNetField.Kind.CODEC) {
+                        obj.refs[i] = null;
+                        CgNetObject.mark(obj.set, i);
+                        continue;
+                    }
+                    Object value = field.codec.decode(ops, raw);
                     if (field.kind == CgNetField.Kind.CODEC) obj.refs[i] = value;
                     else obj.bits[i] = field.bitsOf(value);
                     CgNetObject.mark(obj.set, i);
@@ -1154,6 +1160,10 @@ public final class CgNetObjects {
             for (int i = 0; i < type.fields.length; i++) {
                 if (!CgNetObject.has(obj.set, i)) continue;
                 CgNetField<Object> field = (CgNetField<Object>) type.fields[i];
+                if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
+                    fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
+                    continue;
+                }
                 fields.field(field.name, field.codec, field.kind == CgNetField.Kind.CODEC ? obj.refs[i] : field.box(obj.bits[i]));
             }
             CgCodecs.MapCodecBuilder<Object> o = CgCodecs.map(ops).field("k", CgCodecs.INT, obj.kind.ordinal())

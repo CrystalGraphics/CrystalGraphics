@@ -447,6 +447,27 @@ public final class CgNetObject {
         return setBits(primitive(field, CgNetField.Kind.BOOL), value ? 1 : 0);
     }
 
+    /**
+     * Sends {@code field}'s current value again at the tick's end, changed or not, to every viewer it reaches, the owner
+     * included: a correction for a client that may have guessed, as Unreal's {@code ForceNetUpdate} is for one
+     * property. Server only.
+     *
+     * <pre>{@code
+     * boolean wanted = !character.getBool(FLYING);
+     * if (hurt) character.resend(FLYING);          // refused: the owner, who toggled at once, is put right
+     * else character.setBool(FLYING, wanted);
+     * }</pre>
+     *
+     * Before the object is live it does nothing: its spawn carries every field.
+     */
+    public CgNetObject resend(CgNetField<?> field) {
+        if (!server) throw new IllegalStateException("resend is the server's: a client's object is the server's to change");
+        int i = type.require(field);
+        mark(set, i);
+        changed(i);
+        return this;
+    }
+
     private CgNetObject setBits(int i, long value) {
         if (predictLocally(i)) {
             bits[i] = value;
@@ -493,7 +514,9 @@ public final class CgNetObject {
     void predictedSet(int i, Object value, boolean asSent) {
         CgNetField<Object> field = (CgNetField<Object>) type.fields[i];
         set(field, value);
+        // refused back to the value the server already held: no change, so nothing would correct the owner's guess
         if (asSent) mark(ownerHas, i);
+        else changed(i);
     }
 
     /** Moves a point-anchored object; who sees it is decided again at the end of the tick. */

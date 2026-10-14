@@ -588,6 +588,15 @@ turret.despawn();                     // ends it gracefully; kill() ends it at o
   false, null, or what `.fallback(v)` said).
 - **Primitives unboxed**: `setFloat`/`getFloat` and friends allocate nothing. `set`/`get` work for any field.
 - **Only what changed is sent**: setting a field to the value it already holds sends nothing.
+- **`resend(field)` sends it anyway**, at the end of the tick, to every viewer it reaches, the owner included: a
+  correction for a client that guessed (its own handler ran ahead, and the server refused). Server only.
+
+  ```java
+  if (hurt) character.resend(FLYING);          // the owner toggled flight at once; put it right
+  else character.setBool(FLYING, !character.getBool(FLYING));
+  ```
+- **A codec field can go back to null**: `set(TARGET, null)` reaches every viewer as null, and is saved as null, so
+  it does not load as the fallback. A primitive field cannot be null.
 - `Turret.TYPE.forEach(obj -> ...)` and `Turret.TYPE.size()` reach every live object of a type on the server.
 
 ### A one-off: fired, not started

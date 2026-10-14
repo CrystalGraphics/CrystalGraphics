@@ -98,7 +98,7 @@ public final class CgNetField<V> {
         return new CgNetField<>(name, Kind.BOOL, CgCodecs.BOOL, false, 0);
     }
 
-    /** A field of any type with a codec; null until set unless given a {@link #fallback}. */
+    /** A field of any type with a codec; null until set unless given a {@link #fallback}, and may be set back to null. */
     public static <V> CgNetField<V> of(String name, CgCodec<V> codec) {
         return new CgNetField<>(name, Kind.CODEC, codec, null, 0);
     }
@@ -222,6 +222,8 @@ public final class CgNetField<V> {
             case DOUBLE: out.writeLong(bits); break;
             case BOOL: out.writeByte((int) bits); break;
             default: {
+                // null is no bytes at all: every codec's encoding is at least a tag
+                if (ref == null) break;
                 @SuppressWarnings("unchecked") V value = (V) ref;
                 byte[] encoded = CgBinaryFormat.encode(codec.encode(CgPlainOps.INSTANCE, value));
                 out.writeBytes(encoded, 0, encoded.length);
@@ -241,8 +243,10 @@ public final class CgNetField<V> {
         }
     }
 
-    /** A codec value off the wire, {@code length} bytes. */
+    /** A codec value off the wire, {@code length} bytes; none is null. */
+    @Nullable
     V readRef(NetBuffer in, int length) {
+        if (length == 0) return null;
         byte[] encoded = new byte[length];
         System.arraycopy(in.bytes, in.pos, encoded, 0, length);
         in.skip(length);
