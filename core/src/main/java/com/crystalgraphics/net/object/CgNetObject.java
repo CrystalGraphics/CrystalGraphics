@@ -111,6 +111,8 @@ public final class CgNetObject {
     @Nullable
     CgNetBehaviour behaviour;
     @Nullable
+    private Object local;
+    @Nullable
     ClientObjects client;
 
     /** A server object, pending. */
@@ -372,6 +374,28 @@ public final class CgNetObject {
     @SuppressWarnings("unchecked")
     public <B extends CgNetBehaviour> B behaviour() {
         return (B) behaviour;
+    }
+
+    /**
+     * Keeps {@code value} with it on this side, never sent: what the code that made it reads back in a listener, as the
+     * attack that threw a hitbox. Either side, at any time; it replaces the last.
+     *
+     * <pre>{@code
+     * STRIKE.spawn(CgAnchor.on(attacker)).local(swing).start();                       // server
+     * STRIKE.onHit((obj, h) -> obj.<Swing>local().land(h));
+     * STRIKE.acceptPredictionsFrom((peer, obj) -> obj.local(swingOf(peer)) != null);  // a prediction's server copy
+     * }</pre>
+     */
+    public CgNetObject local(@Nullable Object value) {
+        local = value;
+        return this;
+    }
+
+    /** What {@link #local(Object)} kept; null for nothing. */
+    @Nullable
+    @SuppressWarnings("unchecked")
+    public <V> V local() {
+        return (V) local;
     }
 
     @SuppressWarnings("unchecked")

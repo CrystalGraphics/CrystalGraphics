@@ -785,6 +785,8 @@ Turret.TYPE.onServer(obj -> new CgNetBehaviour() {          // common, at init
   tick.
 - A behaviour built from what the spawner knows goes on the object instead: `.behaviour(new TurretBrain(target))`
   before `start()`.
+- A value the spawner wants back in a listener, without a behaviour of its own, is `obj.local(value)`: kept on that
+  side, never sent, gone with the object. `onHit((obj, h) -> obj.<Swing>local().land(h))`.
 
 ### Ending in front of the viewers
 
