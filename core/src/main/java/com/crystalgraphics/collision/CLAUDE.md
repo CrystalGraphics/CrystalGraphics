@@ -21,7 +21,7 @@ CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12).onHit(h -> dam
 | `collision.entity` | `CgEntityTable` (entities by 16-block cell), `CgEntityCache` (a batch's, lazy), `CgEntitySnapshot` (a snapshot's, eager) |
 | `collision.block` | `CgBlockSnapshot` (the blocks of a world with no mirror, copied on the spot), `CgBlockCells` (the cells a box covers as it moves, nearest first) |
 | `collision.mirror` | `CgLevelMirror` (one per server level: the watched areas, kept from a write log replayed on a worker, published each tick as an immutable `CgMirrorVersion`), `CgMirrorHost` (the host slot), `CgMirrorColumn` (what the write hook calls), `CgMirrorShape`; inside, `MirrorSection`, `WriteLog`, `MirrorBatch`, `MirrorPalette`, `ShapeStore`, `MirrorBlocks` |
-| `collision.debug` | `CgCollisionShow` (`crystalgraphics.collision.show` and F3+B: records, serves a server's lines, asks for them), `CgCollisionDebug` (lines drawn on the next world frame), `CgRecentLines`, `CgLinePack`, `CgShapeLines` |
+| `collision.debug` | `CgCollisionShow` (`crystalgraphics.collision.show` and F3+B: records, serves a server's lines, asks for them), `CgCollisionDebug` (lines and fills drawn on the next world frame), `CgRecentLines`, `CgLinePack`, `CgShapeLines` (a shape's edges and faces, one tessellation for both), `HullMesh` (a hull's own faces, built once) |
 
 `collision.entity`, `collision.block` and `collision.mirror` are public only so the root and the hosts can reach them:
 a mod never makes one.

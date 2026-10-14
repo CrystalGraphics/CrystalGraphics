@@ -7,6 +7,7 @@ import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgCapsule;
 import com.crystalgraphics.shape.primitive.CgCompound;
 import com.crystalgraphics.shape.primitive.CgCone;
+import com.crystalgraphics.shape.primitive.CgConvex;
 import com.crystalgraphics.shape.primitive.CgCylinder;
 import com.crystalgraphics.shape.primitive.CgPlane;
 import com.crystalgraphics.shape.primitive.CgRing;
@@ -15,6 +16,8 @@ import com.crystalgraphics.shape.primitive.CgSphere;
 import org.joml.Vector3d;
 
 import java.util.Arrays;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 /**
  * A shape's wireframe as line segments in the world: what a debug view draws. Pure, so a server writes the same lines
@@ -41,11 +44,12 @@ import java.util.Arrays;
  * <ul>
  *   <li>The outlines are Unreal's {@code DrawWire*}: a ball's three great circles, a capsule's two rings, four sides
  *       and end arcs, a cylinder's two rings and four sides, a cone's rim, four sides and cap arcs. A shell or ring
- *       draws both its walls, a compound each child, a plane a disc of at most {@link #PLANE_SHOWN} with its normal.
- *       Any other shape draws its support around its three axes.</li>
- *   <li>Circles take {@link #CIRCLE} segments. One instance a thread.</li>
- *   <li>Faces are the shape's whole surface: a round one turned in {@link #FACE_SIDES} sides, a ball in
- *       {@link #FACE_BANDS} bands pole to pole. Any other shape's are its support over a ball of directions.</li>
+ *       draws both its walls, a compound each child, a plane a disc of at most {@link #PLANE_SHOWN} with its normal,
+ *       a hull its edges. A shape known only by its support draws that around its three axes.</li>
+ *   <li>Faces are the shape's whole surface, each part once. A hull's are its own faces; a support shape's, its
+ *       support over a ball of directions.</li>
+ *   <li>Circles take {@link #CIRCLE} segments, edges and faces alike: every corner of an outline is a corner of the
+ *       faces, so a fill meets its edges. One instance a thread.</li>
  * </ul>
  */
 final class CgShapeLines {
@@ -54,15 +58,12 @@ final class CgShapeLines {
     public static final int CIRCLE = 24;
     /** How far a plane's disc is drawn from its origin: its own radius is usually Jolt's 1000. */
     public static final double PLANE_SHOWN = 4;
-    /** Flat sides round a face's circle, and bands over a ball from pole to pole. */
-    public static final int FACE_SIDES = 16, FACE_BANDS = 8;
-
-    private static final double[] COS = new double[FACE_SIDES + 1], SIN = new double[FACE_SIDES + 1];
+    private static final double[] COS = new double[CIRCLE + 1], SIN = new double[CIRCLE + 1];
 
     static {
-        for (int i = 0; i <= FACE_SIDES; i++) {
-            COS[i] = Math.cos(2 * Math.PI * i / FACE_SIDES);
-            SIN[i] = Math.sin(2 * Math.PI * i / FACE_SIDES);
+        for (int i = 0; i <= CIRCLE; i++) {
+            COS[i] = Math.cos(2 * Math.PI * i / CIRCLE);
+            SIN[i] = Math.sin(2 * Math.PI * i / CIRCLE);
         }
     }
 
@@ -83,10 +84,12 @@ final class CgShapeLines {
     private final Vector3d local = new Vector3d();
     private Sink out;
     /** A surface of revolution's outline, as pairs: how far from its axis, how far along it. */
-    private final double[] profile = new double[2 * (2 * FACE_BANDS + 8)];
+    private final double[] profile = new double[2 * (CIRCLE + 8)];
     private int profiled;
     /** A support surface's last row of points and the one being written. */
-    private double[] rowBefore = new double[3 * (FACE_SIDES + 1)], row = new double[3 * (FACE_SIDES + 1)];
+    private double[] rowBefore = new double[3 * (CIRCLE + 1)], row = new double[3 * (CIRCLE + 1)];
+    /** Each hull's faces and edges, built the first time it is drawn. */
+    private final Map<CgConvex, HullMesh> hulls = new WeakHashMap<>();
     private double eyeX = Double.NaN, eyeY, eyeZ;
 
     /** Where the eye is, in the world: each ball written from now on draws its outline from there too. */
@@ -167,6 +170,7 @@ final class CgShapeLines {
         else if (shape instanceof CgRing) ring((CgRing) shape);
         else if (shape instanceof CgPlane) plane((CgPlane) shape);
         else if (shape instanceof CgCompound) compound((CgCompound) shape);
+        else if (mesh(shape) != null) hullEdges(mesh(shape));
         else supportLoops(shape);
     }
 
@@ -232,9 +236,12 @@ final class CgShapeLines {
             line(0, 0, 0, 0, rimR, rimZ);
             line(0, 0, 0, 0, -rimR, rimZ);
         }
-        // the far cap is part of the sphere of radius range: arcs over it from rim to rim
-        arc(0, 0, 0, 0, 0, 1, 1, 0, 0, range, -halfAngle, halfAngle);
-        arc(0, 0, 0, 0, 0, 1, 0, 1, 0, range, -halfAngle, halfAngle);
+        // the far cap is part of the sphere of radius range: arcs over it from rim to rim, from the axis out so their
+        // corners are the faces'
+        arc(0, 0, 0, 0, 0, 1, 1, 0, 0, range, 0, halfAngle);
+        arc(0, 0, 0, 0, 0, 1, 1, 0, 0, range, 0, -halfAngle);
+        arc(0, 0, 0, 0, 0, 1, 0, 1, 0, range, 0, halfAngle);
+        arc(0, 0, 0, 0, 0, 1, 0, 1, 0, range, 0, -halfAngle);
     }
 
     private void shell(CgShell shell) {
@@ -299,8 +306,34 @@ final class CgShapeLines {
             planeFaces((CgPlane) shape);
         } else if (shape instanceof CgCompound) {
             compound((CgCompound) shape, true);
+        } else if (mesh(shape) != null) {
+            hullFaces(mesh(shape));
         } else {
             supportFaces(shape);
+        }
+    }
+
+    /** A hull's own faces and edges; null for a shape known only by its support, or a hull with none. */
+    private HullMesh mesh(CgShape shape) {
+        if (!(shape instanceof CgConvex) || ((CgConvex) shape).pointCount() == 0) return null;
+        CgConvex hull = (CgConvex) shape;
+        HullMesh mesh = hulls.get(hull);
+        if (mesh == null && !hulls.containsKey(hull)) {
+            mesh = HullMesh.of(hull);
+            hulls.put(hull, mesh);
+        }
+        return mesh;
+    }
+
+    private void hullEdges(HullMesh mesh) {
+        double[] e = mesh.edges;
+        for (int i = 0; i < e.length; i += 6) line(e[i], e[i + 1], e[i + 2], e[i + 3], e[i + 4], e[i + 5]);
+    }
+
+    private void hullFaces(HullMesh mesh) {
+        double[] t = mesh.triangles;
+        for (int i = 0; i < t.length; i += 9) {
+            triangle(t[i], t[i + 1], t[i + 2], t[i + 3], t[i + 4], t[i + 5], t[i + 6], t[i + 7], t[i + 8]);
         }
     }
 
@@ -369,18 +402,18 @@ final class CgShapeLines {
         lathe(0, 0, 0, u.x, u.y, u.z, v.x, v.y, v.z, nx, ny, nz);
     }
 
-    /** The farthest point along each direction of a ball of them, joined band by band: a hull's skin. */
+    /** The farthest point along each direction of a ball of them, joined band by band: a smooth shape's skin. */
     private void supportFaces(CgShape shape) {
-        for (int band = 0; band <= FACE_BANDS; band++) {
-            double t = Math.PI * band / FACE_BANDS, round = Math.sin(t), up = Math.cos(t);
-            for (int i = 0; i <= FACE_SIDES; i++) {
+        for (int band = 0; band <= CIRCLE / 2; band++) {
+            double t = 2 * Math.PI * band / CIRCLE, round = Math.sin(t), up = Math.cos(t);
+            for (int i = 0; i <= CIRCLE; i++) {
                 shape.support(round * COS[i], up, round * SIN[i], a);
                 row[i * 3] = a.x;
                 row[i * 3 + 1] = a.y;
                 row[i * 3 + 2] = a.z;
             }
             if (band > 0) {
-                for (int i = 0; i < FACE_SIDES; i++) {
+                for (int i = 0; i < CIRCLE; i++) {
                     int p = i * 3, q = p + 3;
                     quad(rowBefore[p], rowBefore[p + 1], rowBefore[p + 2], row[p], row[p + 1], row[p + 2],
                             row[q], row[q + 1], row[q + 2], rowBefore[q], rowBefore[q + 1], rowBefore[q + 2]);
@@ -401,7 +434,7 @@ final class CgShapeLines {
 
     /** Adds an arc of a circle of radius {@code r}, centred {@code centre} along the axis, by its angle from it. */
     private void profileArc(double centre, double r, double from, double to) {
-        int steps = Math.max(1, (int) Math.ceil(FACE_BANDS * Math.abs(to - from) / Math.PI));
+        int steps = segments(to - from);
         for (int i = 0; i <= steps; i++) {
             double t = from + (to - from) * i / steps;
             profile(r * Math.sin(t), centre + r * Math.cos(t));
@@ -415,7 +448,7 @@ final class CgShapeLines {
             double r0 = profile[p * 2], h0 = profile[p * 2 + 1], r1 = profile[p * 2 + 2], h1 = profile[p * 2 + 3];
             double x0 = cx + h0 * wx, y0 = cy + h0 * wy, z0 = cz + h0 * wz;
             double x1 = cx + h1 * wx, y1 = cy + h1 * wy, z1 = cz + h1 * wz;
-            for (int i = 0; i < FACE_SIDES; i++) {
+            for (int i = 0; i < CIRCLE; i++) {
                 double ix = COS[i] * ux + SIN[i] * vx, iy = COS[i] * uy + SIN[i] * vy, iz = COS[i] * uz + SIN[i] * vz;
                 double jx = COS[i + 1] * ux + SIN[i + 1] * vx, jy = COS[i + 1] * uy + SIN[i + 1] * vy;
                 double jz = COS[i + 1] * uz + SIN[i + 1] * vz;
@@ -481,7 +514,7 @@ final class CgShapeLines {
     /** Points {@code c + r (cos t U + sin t V)} for {@code t} from {@code from} to {@code to}, in local space. */
     private void arc(double cx, double cy, double cz, double ux, double uy, double uz, double vx, double vy, double vz,
             double r, double from, double to) {
-        int segments = Math.max(2, (int) Math.ceil(CIRCLE * (to - from) / (2 * Math.PI)));
+        int segments = segments(to - from);
         double px = 0, py = 0, pz = 0;
         for (int i = 0; i <= segments; i++) {
             double t = from + (to - from) * i / segments, c = r * Math.cos(t), s = r * Math.sin(t);
@@ -491,6 +524,11 @@ final class CgShapeLines {
             py = y;
             pz = z;
         }
+    }
+
+    /** Segments in an arc of {@code angle}: a circle's share, at least two, the same for edges and faces. */
+    private static int segments(double angle) {
+        return Math.max(2, (int) Math.ceil(CIRCLE * Math.abs(angle) / (2 * Math.PI) - 1e-9));
     }
 
     /** Two unit vectors into {@link #u} and {@link #v}, square to each other and to the unit {@code w}. */

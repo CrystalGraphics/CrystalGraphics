@@ -74,6 +74,16 @@ public final class CgConvex extends CgShape {
         return out.set(points[best], points[best + 1], points[best + 2]);
     }
 
+    /** How many points a {@link #hull} was given; 0 for a support function. */
+    public int pointCount() {
+        return points == null ? 0 : points.length / 3;
+    }
+
+    /** A {@link #hull}'s point {@code i}, into {@code out}. */
+    public Vector3d point(int i, Vector3d out) {
+        return out.set(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
+    }
+
     @Override
     public boolean isConvex() {
         return true;

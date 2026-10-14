@@ -175,6 +175,42 @@ public class CgShapeLinesTest {
     }
 
     @Test
+    public void everyCornerOfAnOutlineIsACornerOfItsFaces() {
+        CgPose pose = new CgPose().at(3, 70, -8).facing(1.1, -0.4);
+        CgShape[] shapes = {CgSphere.of(2), CgCapsule.between(0, 0, 0, 1, 2, 0.5, 0.4), CgCylinder.of(1, 2),
+                CgCone.of(4, Math.toRadians(35)), CgCone.of(4, Math.toRadians(15)), CgCone.of(3, Math.toRadians(120)),
+                CgShell.of(1, 2), CgRing.of(1, 2, 0.5), WEDGE};
+        for (CgShape shape : shapes) {
+            List<double[]> corners = corners(shape, pose);
+            for (double[] end : ends(shape, pose)) {
+                boolean met = false;
+                for (double[] c : corners) met |= distance(end, c[0], c[1], c[2]) < 1e-9;
+                assertTrue(shape + ": its edges meet its fill at " + Arrays.toString(end), met);
+            }
+        }
+    }
+
+    @Test
+    public void aHullsFacesAreItsOwnEachOnce() {
+        assertEquals("a prism's two ends and three sides", 8 + 2 * Math.sqrt(5), surface(WEDGE), 1e-9);
+        assertEquals("and its nine edges", 18, ends(WEDGE, new CgPose()).size());
+        CgShape cube = CgConvex.hull(new double[]{0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 2, 0, 0, 0, 2, 2, 0, 2, 0, 2, 2, 2, 2, 2,
+                1, 1, 1});
+        assertEquals("four corners in a plane are one face, inside points none", 24, surface(cube), 1e-9);
+        assertEquals(24, ends(cube, new CgPose()).size());
+    }
+
+    private static final CgShape WEDGE = CgConvex.hull(new double[]{-1, 0, 0, 1, 0, 0, -1, 0, 2, 1, 0, 2, -1, 1, 0, 1,
+            1, 0});
+
+    private static double surface(CgShape shape) {
+        List<double[]> corners = corners(shape, new CgPose());
+        double area = 0;
+        for (int i = 0; i < corners.size(); i += 3) area += area(corners.get(i), corners.get(i + 1), corners.get(i + 2));
+        return area;
+    }
+
+    @Test
     public void everyShapesFacesLieOnItAndNoneIsLeftBare() {
         CgPose pose = new CgPose().at(3, 70, -8).facing(1.1, -0.4);
         CgShape hull = CgConvex.hull(new double[]{-1, 0, 0, 1, 0, 0, -1, 0, 2, 1, 0, 2, -1, 1, 0, 1, 1, 0});
