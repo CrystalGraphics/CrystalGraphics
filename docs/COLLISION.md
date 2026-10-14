@@ -1417,7 +1417,7 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
 | This client's queries | blue, red where they stop and what they hit (a cross and the normal) |
 | The server's hitboxes and queries | orange |
 | A hitbox given `showColour(argb)` | that colour, on every side: what its hits mean at a glance |
-| The way each hitbox faces | a blue arrow, a block and a half from its first part, on every side: F3+B's look line for hitboxes |
+| The way each hitbox faces | a blue arrow from its first part's centre to just past its front, on every side: F3+B's look line for hitboxes |
 
 - **Where green and orange part, a prediction is off**: the client's copy is not where the server's is.
 - A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape.

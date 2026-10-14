@@ -461,7 +461,7 @@ public class CgShapeLinesTest {
         assertEquals(ARROW, arrow.size());
         double[] shaft = arrow.get(0);
         assertEquals(0, distance(new double[]{shaft[0], shaft[1], shaft[2]}, 0, 1, 0), 1e-9);
-        assertEquals("a block and a half along -x", 0, distance(new double[]{shaft[3], shaft[4], shaft[5]}, -1.5, 1, 0), 1e-9);
+        assertEquals("a little past its front, along -x", 0, distance(new double[]{shaft[3], shaft[4], shaft[5]}, -0.9, 1, 0), 1e-9);
     }
 
     /** The lines of the arrow each hitbox faces along: its shaft and four of its head. */

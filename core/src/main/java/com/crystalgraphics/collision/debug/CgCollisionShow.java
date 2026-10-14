@@ -45,8 +45,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *       owner's view).</li>
  *   <li>A client's own hitboxes are green and a server's orange: where the two part, a prediction is off. A
  *       client's queries are blue, and red where they stop and what they hit; a server's are all orange. A hitbox
- *       with a {@link CgHitbox#showColour(int) show colour} is drawn in it on every side. A blue arrow, a block and a
- *       half from its first part, is the way each hitbox faces, as F3+B's blue line is the way an entity looks.</li>
+ *       with a {@link CgHitbox#showColour(int) show colour} is drawn in it on every side. A blue arrow from its first
+ *       part's centre to just past its front is the way each hitbox faces, as F3+B's blue line is the way an entity
+ *       looks.</li>
  *   <li>A cast is drawn where it starts and where it stops, joined; a ray as its path; an overlap as its shape. A
  *       query a hitbox runs is left out, its parts drawn instead, as are an empty world's.</li>
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_RECORDS} segments and

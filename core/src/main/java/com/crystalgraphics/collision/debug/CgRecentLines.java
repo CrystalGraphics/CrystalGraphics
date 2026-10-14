@@ -23,7 +23,8 @@ import java.util.Arrays;
  *       shape; the nearest hit a cross on the surface and its normal.</li>
  *   <li>A hitbox is its parts as that tick tested them, their edges and their faces, kept a little past a game tick
  *       so one ticking each tick shows steadily; once stopped, kept its linger longer, fading. An arrow from its first
- *       part shows which way it faces, blue on every side, as F3+B's line shows where an entity looks.</li>
+ *       part's centre to a little past its front shows which way it faces, blue on every side, as F3+B's line shows
+ *       where an entity looks.</li>
  *   <li>Edges and faces are capped apart, so faces never crowd out a later hitbox's edges.</li>
  * </ul>
  */
@@ -33,9 +34,10 @@ final class CgRecentLines implements CgShapeLines.Sink {
     static final int PATH = 0xFF60C0FF, HIT = 0xFFFF4040;
     /** A client's own hitboxes. */
     static final int HITBOX = 0xFF40FF60;
-    /** The arrow a hitbox faces along. */
-    static final int FORWARD = 0xFF4060FF;
-    private static final double FORWARD_LENGTH = 1.5, FORWARD_HEAD = 0.25;
+    /** The arrow a hitbox faces along: F3+B's blue. */
+    static final int FORWARD = 0xFF0000FF;
+    /** How far past its part's front the arrow reaches, and its head's length. */
+    private static final double FORWARD_PAST = 0.4, FORWARD_HEAD = 0.15;
     /** How long a query or a hitbox's tick is kept: past a game tick, so one each tick shows steadily. */
     static final long HOLD_NANOS = 60_000_000L;
     /** A face's fill when its hitbox sets none: the viewer's style decides, {@link #FILL} or none. */
@@ -136,23 +138,23 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private void part(@Nullable CgHitPart name, CgShape shape, CgPose pose) {
         if (firstPart) {
             firstPart = false;
-            arrow(pose);
+            arrow(shape, pose);
         }
         shapes.write(shape, pose, this);
         if (fill != 0) shapes.faces(shape, pose, this);
     }
 
-    /** {@link #FORWARD_LENGTH} along {@code pose}'s +z, its head in its up and side planes. */
-    private void arrow(CgPose pose) {
+    /** From {@code shape}'s centre along {@code pose}'s +z to {@link #FORWARD_PAST} beyond its front, headed. */
+    private void arrow(CgShape shape, CgPose pose) {
         int edges = colour, shown = show;
         colour = show = FORWARD;
+        double length = shape.support(0, 0, 1, forward).z + FORWARD_PAST;
         pose.rotate(0, 0, 1, forward);
         pose.rotate(0, 1, 0, up);
         pose.rotate(1, 0, 0, side);
-        double tx = pose.x + forward.x * FORWARD_LENGTH, ty = pose.y + forward.y * FORWARD_LENGTH,
-                tz = pose.z + forward.z * FORWARD_LENGTH;
+        double tx = pose.x + forward.x * length, ty = pose.y + forward.y * length, tz = pose.z + forward.z * length;
         double bx = tx - forward.x * FORWARD_HEAD, by = ty - forward.y * FORWARD_HEAD, bz = tz - forward.z * FORWARD_HEAD;
-        double w = FORWARD_HEAD * 0.6;
+        double w = FORWARD_HEAD * 0.5;
         line(pose.x, pose.y, pose.z, tx, ty, tz);
         line(tx, ty, tz, bx + up.x * w, by + up.y * w, bz + up.z * w);
         line(tx, ty, tz, bx - up.x * w, by - up.y * w, bz - up.z * w);
