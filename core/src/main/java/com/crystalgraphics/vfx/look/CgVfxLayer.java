@@ -371,8 +371,8 @@ public final class CgVfxLayer {
          * {@code CgTexture2DArray}. One made from files is named in common code and loads at its first draw.
          *
          * <pre>{@code
-         * static final CgTexture2D STRIP = CgTexture2D.create("mymod:textures/vfx/strip.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
-         * static final CgTexture2DArray FLAMES = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/vfx/flame_%d.png", 3);
+         * static final CgTexture2D STRIP = CgTextures.of("mymod:textures/vfx/strip.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+         * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);
          * layer.texture("_Strip", STRIP).texture("_Flames", FLAMES)
          * }</pre>
          */

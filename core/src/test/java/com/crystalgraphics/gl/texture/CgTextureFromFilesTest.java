@@ -1,6 +1,7 @@
 package com.crystalgraphics.gl.texture;
 
 import com.crystalgraphics.api.texture.CgTextureSpec;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.util.io.CgTextureIO.CgImageData;
 import org.junit.After;
 import org.junit.Test;
@@ -71,8 +72,7 @@ public class CgTextureFromFilesTest {
     public void framesOfDifferentSizesShareTheLargestLayer() throws IOException {
         png("frame_0.png", 4, 2);
         png("frame_1.png", 2, 2);
-        CgTexture2DArray frames = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR,
-                dir.resolve("frame_%d.png").toString(), 2);
+        CgTexture2DArray frames = CgTextures.frames(dir.resolve("frame_%d.png").toString(), 2);
         assertEquals(4, frames.getWidth());
         assertEquals(2, frames.getHeight());
         assertEquals(2, frames.getDepth());

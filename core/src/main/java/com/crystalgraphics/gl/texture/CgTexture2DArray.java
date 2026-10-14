@@ -16,7 +16,6 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
@@ -39,7 +38,7 @@ import lombok.Getter;
  * sampler limit.</p>
  *
  * <pre>{@code
- * static final CgTexture2DArray FLAMES = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/vfx/flame_%d.png", 3);
+ * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);   // numbered files
  * static final CgTexture2DArray PAINTINGS = CgTexture2DArray.create(CgTextureSpec.RGBA8_LINEAR,
  *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png");
  * }</pre>
@@ -104,14 +103,6 @@ public final class CgTexture2DArray extends CgTextureAbstract {
             return tex;
         });
         return (CgTexture2DArray) result;
-    }
-
-    /** {@code pattern} formatted with 0 to {@code count - 1}, a layer each: {@code "mymod:textures/fx/flame_%d.png"}. */
-    public static CgTexture2DArray frames(CgTextureSpec spec, String pattern, int count) {
-        if (count < 1) throw new IllegalArgumentException("frames of " + pattern + ": count " + count);
-        String[] paths = new String[count];
-        for (int i = 0; i < count; i++) paths[i] = String.format(Locale.ROOT, pattern, i);
-        return create(spec, paths);
     }
 
     /** {@link #create} decoded here, not cached: the caller owns it, and no change to a file finds it. Any thread. */

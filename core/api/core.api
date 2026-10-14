@@ -1465,6 +1465,18 @@ com/crystalgraphics/api/texture/CgTextureType
   method public toTextureSpec ()Lcom/crystalgraphics/api/texture/CgTextureSpec;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/texture/CgTextureType;
   method public,static values ()[Lcom/crystalgraphics/api/texture/CgTextureType;
+com/crystalgraphics/api/texture/CgTextures
+  access public,final
+  extends java/lang/Object
+  method public,static array (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
+  method public,static cubemap (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTextureCubemap;
+  method public,static frames (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
+  method public,static frames (Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2D;
+  method public,static volume (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture3D;
+  method public,static volume (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture3D;
+  method public,static volume (Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture3D;
 com/crystalgraphics/api/vertex/CgAttribType
   access public,final,enum
   extends java/lang/Enum
@@ -4160,7 +4172,6 @@ com/crystalgraphics/gl/texture/CgTexture2DArray
   method public,static allocateEmpty (IIILcom/crystalgraphics/api/texture/CgTextureSpec;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static create (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
   method public,static createDirect (Lcom/crystalgraphics/api/texture/CgTextureSpec;[Ljava/lang/String;)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
-  method public,static frames (Lcom/crystalgraphics/api/texture/CgTextureSpec;Ljava/lang/String;I)Lcom/crystalgraphics/gl/texture/CgTexture2DArray;
 com/crystalgraphics/gl/texture/CgTexture3D
   access public,final
   extends com/crystalgraphics/gl/texture/CgTextureAbstract

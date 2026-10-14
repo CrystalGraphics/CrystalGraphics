@@ -454,17 +454,16 @@ that has may be; the first draw says which is wrong.
 ### Textures
 
 ```java
-static final CgTexture2D SLEEVE = CgTexture2D.create("mymod:textures/vfx/sleeve.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
-static final CgTexture2DArray FLAMES = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR,
-        "mymod:textures/vfx/flame_%d.png", 3);                                                // sampler2DArray
+static final CgTexture2D SLEEVE = CgTextures.of("mymod:textures/vfx/sleeve.png", CgTextureSpec.RGBA8_LINEAR_REPEAT);
+static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);   // sampler2DArray
 
 layer.texture("_Strip", SLEEVE).texture("_Aura", FLAMES).texture("_Sheet", madeAtRunTime)   // yours to free
 ```
 
-- A layer takes any `CgTexture`. One from files is named in common code and loads at its first use, so a server
-  that names it never decodes it.
+- A layer takes any `CgTexture`. `CgTextures` makes one from files (`of`, `frames`, `array`, `volume`, `cubemap`):
+  named in common code, it loads at its first use, so a server that names it never decodes it.
 - Its sampling is its spec's: a file is cached once per spec, so one image sampled two ways is two textures.
-- `CgTexture2DArray.frames`, or `create(spec, paths...)`, makes one `sampler2DArray`: a flipbook, or a set of paintings
+- `frames(pattern, count)`, or `array(spec, paths...)`, makes one `sampler2DArray`: a flipbook, or a set of paintings
   to pick from, past a material's sampler limit. Images of different sizes are each centred on a layer the largest
   one's size.
 - An image that will not load is logged and drawn as the checkerboard, a missing layer as clear: `isMissing()`.

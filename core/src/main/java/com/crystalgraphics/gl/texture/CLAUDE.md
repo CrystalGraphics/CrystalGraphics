@@ -16,7 +16,7 @@ via the singleton `CgTextureManager`.
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
 | `CgTextureAbstract.java` | Shared base: id/spec/dimensions, bind, delete, `checkUsable`, and the load at first use (below). |
 | `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, spec])` (cached, loaded at first use), `createDirect(path, spec)`, `missing()` (the checkerboard), `createEmpty(w, h, spec[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` samples one level alone until the next whole `bind`. |
-| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(spec, paths...)` and `frames(spec, pattern, count)` (cached, loaded at first use, images of different sizes centred), `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, and a frame-graph array's storage (`CgFrameBuffer.createArray`). |
+| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(spec, paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(spec, paths...)`; `allocateEmpty` for incremental uploads, and a frame-graph array's storage (`CgFrameBuffer.createArray`). |
 | `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. `CgTexture2DArray` takes none: its CPU mirror needs a source it can read. |
 | `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(spec, paths...)` (cached, loaded at first use), `createDirect(spec, paths...)`; `createEmpty(w, h, d, spec[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
 | `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(spec, posX...negZ)`, `createDirect(spec, posX...negZ)`, `createEmpty(size, spec)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
@@ -70,7 +70,9 @@ createDirect(...)       the same object, load() at once, not cached
   stand-in and sets `missing`: the checkerboard for a 2D texture, a clear layer for an array, a clear 1x1 texture for
   a 3D or cubemap.
 - **An array centres images of different sizes** on a layer the largest one's size (`CgTexture2DArray.centred`);
-  `frames(spec, pattern, count)` names numbered files.
+  `CgTextures.frames(pattern, count)` names numbered files.
+- **`CgTextures` (`api/texture`) is the shorthand** over each type's `create`: `of`, `frames`, `array`, `volume`,
+  `cubemap`. A new way to make a texture from files goes on both.
 - **No decode on a server**: naming a texture builds an object and a cache entry. Nothing reads a file until something
   asks for its size or binds it.
 - **Every GL call goes through `gpu`**, in `load()` too: the first use may be a worker's.

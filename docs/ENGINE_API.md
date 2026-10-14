@@ -279,8 +279,8 @@ fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() creates non-ow
 ### Textures
 
 ```java
-CgTexture2D tex    = CgTexture2D.create("mymod:textures/foo.png", CgTextureSpec.RGBA8_NEAREST);   // cached, lazy
-CgTexture2DArray f = CgTexture2DArray.frames(CgTextureSpec.RGBA8_LINEAR, "mymod:textures/fx/f_%d.png", 4);
+CgTexture2D tex    = CgTextures.of("mymod:textures/foo.png", CgTextureSpec.RGBA8_NEAREST);   // cached, lazy
+CgTexture2DArray f = CgTextures.frames("mymod:textures/fx/f_%d.png", 4);                    // f_0 to f_3, a layer each
 CgTexture2D hdr    = CgTexture2D.createEmpty(512, 512, CgTextureSpec.RGBA16F_LINEAR);
 CgTexture2D shadow = CgTexture2D.createEmpty(512, 512, CgTextureSpec.DEPTH24_SHADOW);  // PCF
 tex.bind(0);   // bind to texture unit 0
@@ -292,6 +292,8 @@ wrote (§ *Async*).
 
 - **A texture from files loads at its first use**: its size, its id, a bind or a write decode it on the thread that
   asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
+- **`CgTextures` is the shorthand for every texture from files**: `of` (2D), `frames` and `array` (2D array),
+  `volume` (3D), `cubemap`. Each type's own `create` is what it calls.
 - **`create` is cached by the paths and the spec**: one image sampled two ways is two textures. `createDirect` decodes
   at once and is the caller's.
 - **A file that will not load** is logged and drawn as the 8x8 checkerboard (`CgTexture2D.missing()`), a missing

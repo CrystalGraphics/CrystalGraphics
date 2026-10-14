@@ -61,7 +61,7 @@ public interface CgTexture {
      * clear for a missing layer. Loads a texture from files if it has not yet.
      *
      * <pre>{@code
-     * CgTexture2D icon = CgTexture2D.create("mymod:textures/gui/icon.png");
+     * CgTexture2D icon = CgTextures.of("mymod:textures/gui/icon.png");
      * if (icon.isMissing()) drawPlaceholder(); else draw(icon);
      * }</pre>
      */
