@@ -4,7 +4,6 @@ import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgCodecException;
 
 import com.crystalgraphics.platform.CgPlatform;
@@ -34,22 +33,14 @@ import static org.junit.Assert.assertTrue;
 public class CgFormatsTest {
 
     record Character(String name, int level, boolean ki, Map<String, Integer> skills, byte[] seed) {
-        static final CgCodec<Character> CODEC = new CgCodec<Character>() {
-            @Override
-            public <T> T encode(CgDynamicOps<T> ops, Character c) {
-                return CgCodecs.map(ops).field("name", CgCodecs.STRING, c.name()).field("level", CgCodecs.INT, c.level())
-                        .field("ki", CgCodecs.BOOL, c.ki()).field("skills", SKILLS, c.skills())
-                        .field("seed", CgCodecs.BYTES, c.seed()).build();
-            }
-
-            @Override
-            public <T> Character decode(CgDynamicOps<T> ops, T in) {
-                CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
-                return new Character(r.field("name", CgCodecs.STRING), r.field("level", CgCodecs.INT),
-                        r.field("ki", CgCodecs.BOOL), r.field("skills", SKILLS), r.field("seed", CgCodecs.BYTES));
-            }
-        };
         static final CgCodec<Map<String, Integer>> SKILLS = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT);
+        static final CgCodec<Character> CODEC = CgCodecs.record(
+                CgCodecs.field("name", CgCodecs.STRING, Character::name),
+                CgCodecs.field("level", CgCodecs.INT, Character::level),
+                CgCodecs.field("ki", CgCodecs.BOOL, Character::ki),
+                CgCodecs.field("skills", SKILLS, Character::skills),
+                CgCodecs.field("seed", CgCodecs.BYTES, Character::seed),
+                Character::new);
     }
 
     @Rule

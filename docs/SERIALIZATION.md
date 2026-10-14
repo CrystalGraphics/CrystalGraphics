@@ -760,6 +760,11 @@ a key you removed takes its comment with it, and a file that was not valid YAML 
 
 ### Why not Mojang's `Codec`?
 
+A codec here is one API on every version and loader, and Mojang's is not: it is missing from some versions and
+changes between the others. Its `RecordCodecBuilder` answers a new value only, so it cannot decode into an object
+other code holds (§5), and it knows no file formats or comments. The shapes are the same, so a codec ports either
+way in a few lines.
+
 ### Why not Gson or Jackson reflection?
 
 Reflection guesses your fields from your class: a rename breaks old files silently, a field you did not mean to save

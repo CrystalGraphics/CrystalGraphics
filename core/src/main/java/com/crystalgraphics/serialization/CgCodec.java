@@ -11,17 +11,15 @@ import java.util.Map;
  *
  * <pre>{@code
  * record Ping(int seq, String from) {
- *     static final CgCodec<Ping> CODEC = new CgCodec<Ping>() {
- *         @Override public <T> T encode(CgDynamicOps<T> ops, Ping p) {
- *             return CgCodecs.map(ops).field("s", CgCodecs.INT, p.seq()).field("f", CgCodecs.STRING, p.from()).build();
- *         }
- *         @Override public <T> Ping decode(CgDynamicOps<T> ops, T in) {
- *             CgCodecs.MapCodecReader<T> r = CgCodecs.read(ops, in);
- *             return new Ping(r.field("s", CgCodecs.INT), r.field("f", CgCodecs.STRING));
- *         }
- *     };
+ *     static final CgCodec<Ping> CODEC = CgCodecs.record(
+ *             CgCodecs.field("s", CgCodecs.INT, Ping::seq),
+ *             CgCodecs.field("f", CgCodecs.STRING, Ping::from),
+ *             Ping::new);
  * }
  * }</pre>
+ *
+ * A shape a record cannot state (a key written only sometimes) implements {@link #encode} and {@link #decode} by hand,
+ * over {@code CgCodecs.map(ops)} and {@code CgCodecs.read(ops, in)}.
  *
  * A mutable object declares its fields once with {@link CgCodecs#object}, and can then be decoded into as well as
  * made:

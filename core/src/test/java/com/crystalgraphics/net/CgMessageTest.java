@@ -13,7 +13,6 @@ import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.CgPlainOps;
 import org.junit.After;
 import org.junit.Before;
@@ -27,19 +26,10 @@ import static org.junit.Assert.assertTrue;
 public class CgMessageTest {
 
     record Blast(String effect, long seed) {
-        static final CgCodec<Blast> CODEC = new CgCodec<>() {
-            @Override
-            public <T> T encode(CgDynamicOps<T> ops, Blast blast) {
-                return CgCodecs.map(ops).field("e", CgCodecs.STRING, blast.effect()).field("s", CgCodecs.LONG, blast.seed())
-                        .build();
-            }
-
-            @Override
-            public <T> Blast decode(CgDynamicOps<T> ops, T input) {
-                CgCodecs.MapCodecReader<T> in = CgCodecs.read(ops, input);
-                return new Blast(in.field("e", CgCodecs.STRING), in.field("s", CgCodecs.LONG));
-            }
-        };
+        static final CgCodec<Blast> CODEC = CgCodecs.record(
+                CgCodecs.field("e", CgCodecs.STRING, Blast::effect),
+                CgCodecs.field("s", CgCodecs.LONG, Blast::seed),
+                Blast::new);
     }
 
     private static final class Loopback implements CgNetworkChannel {
