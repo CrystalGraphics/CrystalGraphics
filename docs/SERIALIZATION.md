@@ -248,7 +248,7 @@ public final class Character {
     public static final CgObjectCodec<Character> CODEC = CgCodecs.object(Character::new)
             .field("name", CgCodecs.STRING, c -> c.name, (c, v) -> c.name = v)
             .optional("level", CgCodecs.INT, c -> c.level, (c, v) -> c.level = v, 1)   // 1 is not written
-            .field("best", Stats.CODEC, c -> c.best, (c, v) -> c.best = v)          // a nested object
+            .field("best", Stats.CODEC, c -> c.best, (c, v) -> c.best = v)          // a nested object, replaced
             .into("skills", CgCodecs.listOf(CgCodecs.STRING), c -> c.skills)        // a final list
             .into("stats", Stats.CODEC, c -> c.stats)                              // a final object
             .build();
@@ -257,7 +257,7 @@ public final class Character {
 
 | Declaration | Use it for | Decoding into a live object |
 |---|---|---|
-| `field(key, codec, get, set)` | anything with a setter | the held value is updated in place when its codec can (a nested object, a list, a map), otherwise replaced through `set` |
+| `field(key, codec, get, set)` | anything with a setter | a new value, decoded and stored through `set`; `get` is only encoded, so it may answer a snapshot or a copy |
 | `optional(key, codec, get, set, omitWhen)` | a field usually at its default | as `field`; nothing is written for `omitWhen` |
 | `into(key, codec, get)` | a final member the object owns | always updated in place; a codec that cannot (a string, a record) throws, naming the key |
 | `extend(Parent.CODEC)` | a subclass | the parent's keys first, flat beside its own |

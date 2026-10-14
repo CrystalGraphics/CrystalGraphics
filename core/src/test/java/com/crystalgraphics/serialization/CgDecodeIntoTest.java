@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,7 +79,7 @@ public class CgDecodeIntoTest {
                 encoded("Kakarot", 9, 20, 7, "kamehameha", "instant transmission"), live);
 
         assertSame(live, same);
-        assertSame("a nested object with a setter is updated in place", best, live.best);
+        assertNotSame("a field with a setter takes a new value", best, live.best);
         assertSame(stats, live.stats);
         assertSame(skills, live.skills);
         assertEquals("Kakarot", live.name);
@@ -86,6 +87,35 @@ public class CgDecodeIntoTest {
         assertEquals(20, live.best.power);
         assertEquals(7, live.stats.power);
         assertEquals(Arrays.asList("kamehameha", "instant transmission"), live.skills);
+    }
+
+    static final class Handler {
+        final List<String> traits = new ArrayList<>();
+
+        List<String> snapshot() {
+            return Collections.unmodifiableList(new ArrayList<>(traits));
+        }
+
+        void restore(List<String> saved) {
+            traits.clear();
+            traits.addAll(saved);
+        }
+
+        static final CgObjectCodec<Handler> CODEC = CgCodecs.object(Handler::new)
+                .field("traits", CgCodecs.listOf(CgCodecs.STRING), Handler::snapshot, Handler::restore)
+                .build();
+    }
+
+    @Test
+    public void aGetterAnsweringASnapshotStillLoadsThroughItsSetter() {
+        Handler saved = new Handler();
+        saved.traits.add("saiyan");
+        Object tree = Handler.CODEC.encode(CgPlainOps.INSTANCE, saved);
+
+        Handler live = new Handler();
+        live.traits.add("human");
+        Handler.CODEC.decode(CgPlainOps.INSTANCE, tree, live);
+        assertEquals(Arrays.asList("saiyan"), live.traits);
     }
 
     @Test

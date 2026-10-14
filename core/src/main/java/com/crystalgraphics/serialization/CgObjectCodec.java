@@ -48,9 +48,9 @@ import java.util.function.Supplier;
  * <ul>
  *   <li><b>A key the input lacks leaves its field as it is</b>: the constructor's default in {@link #decode}, the live
  *       value in {@link #decode}. A partial input is a patch. A field holding null is not written.</li>
- *   <li>{@link #field} stores what its codec's {@code decode} answers, so a nested object codec still updates the
- *       held value in place. {@link #into} has no setter: its codec must update in place, and one that cannot (a
- *       string, a record) throws, naming the key.</li>
+ *   <li>{@link Builder#field} decodes a new value and stores it through its setter; what its getter answers is only
+ *       ever encoded, so a getter may return a snapshot. {@link Builder#into} is the in-place form: it has no setter,
+ *       its codec must update the held value, and one that cannot (a string, a record) throws, naming the key.</li>
  *   <li>The factory-less form's {@link #decode} throws: it has nothing to decode into.</li>
  *   <li>A failure part-way leaves the target with the fields read before it.</li>
  * </ul>
@@ -130,7 +130,13 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
             return this;
         }
 
-        /** A field read with {@code get} and stored with {@code set}. */
+        /**
+         * A field read with {@code get} and stored with {@code set}, always as a newly decoded value.
+         *
+         * <pre>{@code
+         * .field("traits", CgCodecs.listOf(Trait.CODEC), Handler::snapshot, Handler::restore)   // a snapshot is fine
+         * }</pre>
+         */
         public <F> Builder<A> field(String key, CgCodec<F> codec, Function<? super A, ? extends F> get,
                                     BiConsumer<? super A, ? super F> set) {
             fields.add(new Field<>(key, codec, get, set, false, null));
@@ -182,16 +188,16 @@ public final class CgObjectCodec<A> implements CgCodec<A> {
         }
 
         <T> void read(CgDynamicOps<T> ops, T raw, A owner) {
-            F current = get.apply(owner);
-            if (set == null) {
-                if (current == null) throw new CgCodecException("'" + key + "' is held by the object, and it holds null");
-                if (codec.decode(ops, raw, current) != current) {
-                    throw new CgCodecException("'" + key + "' cannot be updated in place: declare it with field(...)");
-                }
+            if (set != null) {
+                // Fresh, never into what get answers: a getter may hand out a snapshot or a copy.
+                set.accept(owner, codec.decode(ops, raw));
                 return;
             }
-            F next = current == null ? codec.decode(ops, raw) : codec.decode(ops, raw, current);
-            if (next != current) set.accept(owner, next);
+            F current = get.apply(owner);
+            if (current == null) throw new CgCodecException("'" + key + "' is held by the object, and it holds null");
+            if (codec.decode(ops, raw, current) != current) {
+                throw new CgCodecException("'" + key + "' cannot be updated in place: declare it with field(...)");
+            }
         }
     }
 }
