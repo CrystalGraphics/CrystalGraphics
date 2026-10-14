@@ -54,4 +54,5 @@ final class CommentedOps implements CgDynamicOps<Object> {
     @Override public boolean getBooleanValue(Object value) { return base.getBooleanValue(value); }
     @Override public List<Object> getListValue(Object value) { return base.getListValue(value); }
     @Override public Map<Object, Object> getMapValue(Object value) { return base.getMapValue(value); }
+    @Override public Object toPlain(Object value) { return base.toPlain(value); }
 }

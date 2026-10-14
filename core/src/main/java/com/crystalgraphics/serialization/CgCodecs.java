@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -117,12 +118,14 @@ public final class CgCodecs {
      * <ul>
      *   <li>Encoding follows the map's own order: hand it a {@code LinkedHashMap} or a {@code TreeMap} where the
      *       encoded bytes must not vary (a content hash, a save diffed by hand).</li>
-     *   <li>NBT and JSON take only text keys: key by a codec that encodes as a string there.</li>
+     *   <li>JSON, TOML, YAML and NBT take only text keys. {@link #INT} and {@link #LONG} keys are written as their text
+     *       in every format, and read back from text or a number; any other key codec must encode as a string there.</li>
      *   <li>Decoded into a map, it keeps that map: a key already there goes through its value's {@code decode}, a
      *       new one is added, and one the input lacks is removed.</li>
      * </ul>
      */
-    public static <K, V> CgCodec<Map<K, V>> mapOf(CgCodec<K> keyCodec, CgCodec<V> valueCodec) {
+    public static <K, V> CgCodec<Map<K, V>> mapOf(CgCodec<K> keys, CgCodec<V> valueCodec) {
+        CgCodec<K> keyCodec = asKey(keys);
         return new CgCodec<Map<K, V>>() {
             @Override
             public <T> T encode(CgDynamicOps<T> ops, Map<K, V> input) {
@@ -226,6 +229,37 @@ public final class CgCodecs {
         }
     };
 
+    /** {@link #INT} and {@link #LONG} as {@link #mapOf}'s keys: their text, which every format can key by. */
+    @SuppressWarnings("unchecked")
+    private static <K> CgCodec<K> asKey(CgCodec<K> codec) {
+        if (codec == INT) return (CgCodec<K>) xmap(WHOLE_KEY, Long::intValue, Integer::longValue);
+        if (codec == LONG) return (CgCodec<K>) WHOLE_KEY;
+        return codec;
+    }
+
+    private static final CgCodec<Long> WHOLE_KEY = new CgCodec<Long>() {
+        @Override
+        public <T> T encode(CgDynamicOps<T> ops, Long input) {
+            return ops.createString(Long.toString(input));
+        }
+
+        // A number too: a save from before keys were text, in a format that kept it a number.
+        @Override
+        public <T> Long decode(CgDynamicOps<T> ops, T input) {
+            String text;
+            try {
+                text = ops.getStringValue(input);
+            } catch (CgCodecException notText) {
+                return ops.getNumberValue(input).longValue();
+            }
+            try {
+                return Long.parseLong(text);
+            } catch (NumberFormatException e) {
+                throw new CgCodecException("'" + text + "' is not a whole-number key", e);
+            }
+        }
+    };
+
     public static final CgCodec<Double> DOUBLE = new CgCodec<Double>() {
         @Override
         public <T> T encode(CgDynamicOps<T> ops, Double input) {
@@ -266,6 +300,57 @@ public final class CgCodecs {
             return new UUID(ops.getNumberValue(halves.get(0)).longValue(), ops.getNumberValue(halves.get(1)).longValue());
         }
     };
+
+    /**
+     * A plain tree, carried whole: maps, lists, strings, numbers, booleans, {@code byte[]} and null, as
+     * {@link CgPlainOps} holds them. For a value that is already another codec's output, picked by something the
+     * carrier does not know, such as a state's synced values encoded by that state's own codec. Equal trees are equal
+     * {@code Map}s and {@code List}s, so a networked field of it sends only when the tree changed.
+     *
+     * <pre>{@code
+     * static final CgNetField<Object> VALUES = CgNetField.of("values", CgCodecs.PLAIN);
+     *
+     * obj.set(VALUES, state.codec().encode(CgPlainOps.INSTANCE, state));      // server
+     * State back = state.codec().decode(CgPlainOps.INSTANCE, obj.get(VALUES)); // client
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Writes through any format. Reads back through the plain ones (the wire, binary files, TOML, YAML) and
+     *       JSON; NBT throws ({@link CgDynamicOps#toPlain}).</li>
+     *   <li>Through a text format, bytes come back as their Base64 text, and JSON's numbers as {@code Integer},
+     *       {@code Long} or {@code Double}.</li>
+     * </ul>
+     */
+    public static final CgCodec<Object> PLAIN = new CgCodec<Object>() {
+        @Override
+        public <T> T encode(CgDynamicOps<T> ops, Object input) {
+            return plainTo(ops, input);
+        }
+
+        @Override
+        public <T> Object decode(CgDynamicOps<T> ops, T input) {
+            return ops.toPlain(input);
+        }
+    };
+
+    private static <T> T plainTo(CgDynamicOps<T> ops, @Nullable Object value) {
+        if (value == null) return ops.empty();
+        if (value instanceof String s) return ops.createString(s);
+        if (value instanceof Boolean b) return ops.createBoolean(b);
+        if (value instanceof Number n) return ops.createNumber(n);
+        if (value instanceof byte[] bytes) return ops.createBytes(bytes);
+        if (value instanceof List<?> list) {
+            List<T> out = new ArrayList<>(list.size());
+            for (Object e : list) out.add(plainTo(ops, e));
+            return ops.createList(out);
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<T, T> out = new LinkedHashMap<>(map.size() * 2);
+            for (Map.Entry<?, ?> e : map.entrySet()) out.put(plainTo(ops, e.getKey()), plainTo(ops, e.getValue()));
+            return ops.createMap(out);
+        }
+        throw new CgCodecException("not a plain tree: a " + value.getClass().getName());
+    }
 
     /**
      * One codec in terms of another — {@code from} converts on decode, {@code to} on encode.
@@ -340,6 +425,68 @@ public final class CgCodecs {
     public static <R, F> CgRecordField<R, F> fieldOr(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
                                                      F fallback) {
         return new CgRecordField<>(key, codec, get, false, true, fallback);
+    }
+
+    /**
+     * Another record's keys written flat into this one's map, not nested under a key of their own: DataFixerUpper's
+     * {@code MapCodec} put into a {@code RecordCodecBuilder}. For a group of keys several records share.
+     *
+     * <pre>{@code
+     * record Group(String file, String group) {
+     *     static final CgRecordCodec<Group> CODEC = CgCodecs.record(
+     *             CgCodecs.field("File", CgCodecs.STRING, Group::file),
+     *             CgCodecs.field("Group", CgCodecs.STRING, Group::group),
+     *             Group::new);
+     * }
+     * record Known(String style, Group group) {
+     *     static final CgCodec<Known> CODEC = CgCodecs.record(
+     *             CgCodecs.field("Style", CgCodecs.STRING, Known::style),
+     *             CgCodecs.inline(Group.CODEC, Known::group),     // {Style, File, Group}, all at one level
+     *             Known::new);
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A key both records declare throws when the outer record is made.</li>
+     *   <li>The inlined record's key comments come along; its own comment, about the whole, does not.</li>
+     *   <li>Its value may not be null: the inlined record's own optional keys say what may be missing.</li>
+     * </ul>
+     */
+    public static <R, G> CgRecordField<R, G> inline(CgRecordCodec<G> keys, Function<? super R, ? extends G> get) {
+        return CgRecordField.inline(keys, get);
+    }
+
+    /**
+     * A key per constant of {@code type}, each through {@code value}: a map from the constants, written as one key
+     * apiece. A key absent, or equal to {@code fallback}, reads as {@code fallback}; with a null fallback the map
+     * simply lacks that constant.
+     *
+     * <pre>{@code
+     * // {"left": [...], "right": [...]} for a Map<Side, List<Strand>>
+     * static final CgRecordCodec<Map<Side, List<Strand>>> SIDES = CgCodecs.eachOf(Side.class, Side::key,
+     *         CgCodecs.listOf(Strand.CODEC), null);
+     *
+     * // one bool per constant, flat beside a record's other keys
+     * CgCodecs.inline(CgCodecs.eachOf(StrandValue.class, StrandValue::key, CgCodecs.BOOL, false), HairStrand::flags)
+     * }</pre>
+     *
+     * Decodes as an {@code EnumMap}. A constant added later reads as {@code fallback} from older saves.
+     */
+    @SuppressWarnings("unchecked")
+    public static <E extends Enum<E>, V> CgRecordCodec<Map<E, V>> eachOf(Class<E> type, Function<? super E, String> key,
+                                                                       CgCodec<V> value, @Nullable V fallback) {
+        E[] constants = type.getEnumConstants();
+        CgRecordField<Map<E, V>, ?>[] fields = new CgRecordField[constants.length];
+        for (int i = 0; i < constants.length; i++) {
+            E constant = constants[i];
+            fields[i] = CgCodecs.<Map<E, V>, V>optionalField(key.apply(constant), value,
+                    m -> m.getOrDefault(constant, fallback), fallback);
+        }
+        return new CgRecordCodec<>(args -> {
+            Map<E, V> out = new EnumMap<>(type);
+            for (int i = 0; i < constants.length; i++) if (args[i] != null) out.put(constants[i], (V) args[i]);
+            return out;
+        }, fields);
     }
 
     /**

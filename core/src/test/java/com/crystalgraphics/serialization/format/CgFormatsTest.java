@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -100,8 +101,10 @@ public class CgFormatsTest {
         CgPlatform.provide(CgHostFormats.SERVICE, new Tags());
         Map<Integer, Integer> byNumber = new LinkedHashMap<>();
         byNumber.put(1, 2);
+        CgCodec<Map<Integer, Integer>> ints = CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT);
+        assertEquals("an INT key is written as its text", byNumber, CgFormats.fromNbt(ints, CgFormats.toNbt(ints, byNumber)));
         assertThrows(CgCodecException.class,
-                () -> CgFormats.toNbt(CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT), byNumber));
+                () -> CgFormats.toNbt(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
     }
 
     /** Tags as Java values: a compound a map, a list a list, a string a string. */

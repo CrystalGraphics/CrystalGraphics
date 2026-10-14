@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +66,62 @@ public class CgRecordCodecTest {
         Map<?, ?> tree = (Map<?, ?>) Widest.CODEC.encode(CgPlainOps.INSTANCE, widest);
         assertArrayEquals("a flat save, in declaration order", "abcdefghijklmnop".split(""), tree.keySet().toArray());
         assertEquals(widest, Widest.CODEC.decode(CgPlainOps.INSTANCE, tree));
+    }
+
+    record Group(String file, String group) {
+        static final CgRecordCodec<Group> CODEC = CgCodecs.record(
+                CgCodecs.comment("The animation file.").field("File", CgCodecs.STRING, Group::file),
+                CgCodecs.optionalField("Group", CgCodecs.STRING, Group::group, "idle"),
+                Group::new);
+    }
+
+    record Known(String style, Group group) {
+        static final CgCodec<Known> CODEC = CgCodecs.record(
+                CgCodecs.field("Style", CgCodecs.STRING, Known::style),
+                CgCodecs.inline(Group.CODEC, Known::group),
+                Known::new);
+    }
+
+    @Test
+    public void anInlinedRecordsKeysSitBesideTheOuterOnes() {
+        Known known = new Known("ssj", new Group("anim.json", "fly"));
+        Map<?, ?> tree = (Map<?, ?>) Known.CODEC.encode(CgPlainOps.INSTANCE, known);
+        assertArrayEquals(new Object[] {"Style", "File", "Group"}, tree.keySet().toArray());
+        assertEquals(known, Known.CODEC.decode(CgPlainOps.INSTANCE, tree));
+        assertEquals("the inlined record's optional key", new Known("base", new Group("a.json", "idle")),
+                CgFormats.JSON.fromText(Known.CODEC, "{\"Style\":\"base\",\"File\":\"a.json\"}"));
+        assertTrue("its keys' comments come along",
+                CgFormats.YAML.toText(Known.CODEC, known).contains("# The animation file.\nFile:"));
+        assertThrows(IllegalArgumentException.class, () -> CgCodecs.record(
+                CgCodecs.field("File", CgCodecs.STRING, Known::style), CgCodecs.inline(Group.CODEC, Known::group),
+                Known::new));
+    }
+
+    enum Side {
+        LEFT, RIGHT;
+
+        String key() {
+            return name().toLowerCase();
+        }
+    }
+
+    @Test
+    public void eachConstantIsAKeyOfItsOwn() {
+        CgRecordCodec<Map<Side, Integer>> strands = CgCodecs.eachOf(Side.class, Side::key, CgCodecs.INT, null);
+        Map<Side, Integer> both = new EnumMap<>(Side.class);
+        both.put(Side.LEFT, 3);
+        both.put(Side.RIGHT, 5);
+        Map<?, ?> tree = (Map<?, ?>) strands.encode(CgPlainOps.INSTANCE, both);
+        assertArrayEquals(new Object[] {"left", "right"}, tree.keySet().toArray());
+        assertEquals(both, strands.decode(CgPlainOps.INSTANCE, tree));
+        assertEquals("absent, with no fallback, the map lacks it", Collections.singletonMap(Side.RIGHT, 5),
+                strands.decode(CgPlainOps.INSTANCE, Collections.singletonMap("right", 5)));
+        CgRecordCodec<Map<Side, Boolean>> flags = CgCodecs.eachOf(Side.class, Side::key, CgCodecs.BOOL, false);
+        Map<Side, Boolean> one = new EnumMap<>(Side.class);
+        one.put(Side.RIGHT, true);
+        assertEquals("the fallback is not written", Collections.singleton("right"),
+                ((Map<?, ?>) flags.encode(CgPlainOps.INSTANCE, one)).keySet());
+        assertEquals(Boolean.FALSE, flags.decode(CgPlainOps.INSTANCE, Collections.emptyMap()).get(Side.LEFT));
     }
 
     record Cost(String name, int cost) {

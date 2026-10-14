@@ -174,7 +174,8 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 | `CgCodecs.UUID` | `UUID` | two longs |
 | `CgCodecs.enumOf(Kind.class)` | an enum | by constant name, never ordinal: inserting a constant does not re-point old saves |
 | `CgCodecs.listOf(codec)` | `List<A>` | |
-| `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; JSON, TOML, YAML and NBT take only text keys |
+| `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; `INT` and `LONG` keys are written as their text, any other key codec must write text for JSON, TOML, YAML and NBT |
+| `CgCodecs.PLAIN` | a plain tree (`Object`) | another codec's output carried whole: maps, lists, strings, numbers, booleans; reads back through every format but NBT |
 | `CgCodecs.xmap(base, from, to)` | anything | one codec in terms of another |
 | `CgCodecs.record(...)` | a record | its keys and its constructor, below |
 | `CgCodecs.dispatch(...)` | one of several kinds | below |
@@ -222,6 +223,32 @@ public record Loadout(Spell primary, List<Spell> spare) {
             CgCodecs.optionalField("spare", CgCodecs.listOf(Spell.CODEC), Loadout::spare, List.of()),
             Loadout::new);
 }
+```
+
+**Keys shared by several records**, written flat rather than nested under a key of their own: declare them as a
+record and `inline` it.
+
+```java
+record Group(String file, String group) {
+    static final CgRecordCodec<Group> CODEC = CgCodecs.record(
+            CgCodecs.field("File", CgCodecs.STRING, Group::file),
+            CgCodecs.field("Group", CgCodecs.STRING, Group::group),
+            Group::new);
+}
+record Known(String style, Group group) {
+    static final CgCodec<Known> CODEC = CgCodecs.record(
+            CgCodecs.field("Style", CgCodecs.STRING, Known::style),
+            CgCodecs.inline(Group.CODEC, Known::group),          // {Style, File, Group}
+            Known::new);
+}
+```
+
+**A key per enum constant**: `eachOf` writes a `Map<E, V>` as one key apiece, named as you say. Use it as a value,
+or `inline` it beside other keys. A constant absent, or at its fallback, reads as the fallback.
+
+```java
+CgCodecs.eachOf(Side.class, Side::key, CgCodecs.listOf(Strand.CODEC), null)       // {"left": [...], "right": [...]}
+CgCodecs.inline(CgCodecs.eachOf(Flag.class, Flag::key, CgCodecs.BOOL, false), Strand::flags)
 ```
 
 **Up to sixteen keys**, as Mojang's `RecordCodecBuilder`. Past that, group some into a nested record (often they belong

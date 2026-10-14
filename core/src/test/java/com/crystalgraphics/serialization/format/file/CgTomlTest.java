@@ -243,7 +243,7 @@ public class CgTomlTest {
     public void whatTomlCannotHoldSaysSo() {
         assertThrows(CgCodecException.class, () -> CgFormats.TOML.toText(CgCodecs.INT, 3));
         assertThrows(CgCodecException.class,
-                () -> CgFormats.TOML.toText(CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT), Collections.singletonMap(1, 2)));
+                () -> CgFormats.TOML.toText(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
     }
 
     @Test

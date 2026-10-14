@@ -102,4 +102,12 @@ public interface CgDynamicOps<T> {
 
     /** Throws {@link CgCodecException} if {@code value} isn't a map in this format. */
     Map<T, T> getMapValue(T value);
+
+    /**
+     * {@code value} as a plain tree, {@link CgPlainOps}' values: what {@link CgCodecs#PLAIN} reads. A format whose tree
+     * already is one answers {@code value}; JSON converts. NBT throws: its tags are opaque to {@code core/}.
+     */
+    default Object toPlain(T value) {
+        throw new CgCodecException(getClass().getSimpleName() + " cannot be read as a plain tree");
+    }
 }

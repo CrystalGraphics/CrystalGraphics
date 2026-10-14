@@ -1,5 +1,6 @@
 package com.crystalgraphics.serialization;
 
+import com.crystalgraphics.serialization.format.CgFormats;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -52,6 +53,35 @@ public class CgCodecsCompositeTest {
         Map<String, Integer> back = throughBytes(CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT), levels);
         assertEquals(levels, back);
         assertEquals(Arrays.asList("zeta", "alpha", "mid"), new ArrayList<>(back.keySet()));
+    }
+
+    @Test
+    public void numberKeysAreWrittenAsTextAndReadFromEither() {
+        Map<Integer, String> layers = new LinkedHashMap<>();
+        layers.put(3, "outline");
+        layers.put(-1, "base");
+        CgCodec<Map<Integer, String>> codec = CgCodecs.mapOf(CgCodecs.INT, CgCodecs.STRING);
+        Map<?, ?> tree = (Map<?, ?>) codec.encode(CgPlainOps.INSTANCE, layers);
+        assertEquals(Arrays.asList("3", "-1"), new ArrayList<>(tree.keySet()));
+        assertEquals(layers, throughBytes(codec, layers));
+        assertEquals(layers, CgFormats.JSON.fromText(codec, CgFormats.JSON.toText(codec, layers)));
+        Map<Object, Object> numbered = new LinkedHashMap<>();
+        numbered.put(3, "outline");
+        numbered.put(-1L, "base");
+        assertEquals("a save from before keys were text", layers, codec.decode(CgPlainOps.INSTANCE, numbered));
+    }
+
+    @Test
+    public void aPlainTreeIsCarriedWholeThroughEveryFormatThatCanReadOne() {
+        Map<String, Object> tree = new LinkedHashMap<>();
+        tree.put("heat", 0.5);
+        tree.put("ammo", 12);
+        tree.put("tags", Arrays.asList("hot", true));
+        tree.put("inner", new LinkedHashMap<>(Map.of("name", "x")));
+        assertEquals(tree, throughBytes(CgCodecs.PLAIN, tree));
+        assertEquals(tree, CgFormats.JSON.fromText(CgCodecs.PLAIN, CgFormats.JSON.toText(CgCodecs.PLAIN, tree)));
+        assertEquals(tree, CgFormats.YAML.fromText(CgCodecs.PLAIN, CgFormats.YAML.toText(CgCodecs.PLAIN, tree)));
+        assertThrows(CgCodecException.class, () -> CgCodecs.PLAIN.encode(CgPlainOps.INSTANCE, new Object()));
     }
 
     @Test

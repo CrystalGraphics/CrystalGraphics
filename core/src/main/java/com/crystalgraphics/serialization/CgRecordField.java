@@ -32,14 +32,18 @@ public final class CgRecordField<R, F> {
     final String comment;
     /** A stored value that fails to decode reads {@link #fallback}, with a warning. */
     final boolean lenient;
+    /** The record whose keys this writes flat into the outer map, {@link CgCodecs#inline}; null for a key of its own. */
+    @Nullable
+    final CgRecordCodec<F> inlined;
 
     CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits, boolean defaults,
                   @Nullable F fallback) {
-        this(key, codec, get, omits, defaults, fallback, null, false);
+        this(key, codec, get, omits, defaults, fallback, null, false, null);
     }
 
     private CgRecordField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get, boolean omits,
-                          boolean defaults, @Nullable F fallback, @Nullable String comment, boolean lenient) {
+                          boolean defaults, @Nullable F fallback, @Nullable String comment, boolean lenient,
+                          @Nullable CgRecordCodec<F> inlined) {
         this.key = key;
         this.codec = codec;
         this.get = get;
@@ -48,11 +52,16 @@ public final class CgRecordField<R, F> {
         this.fallback = fallback;
         this.comment = comment;
         this.lenient = lenient;
+        this.inlined = inlined;
+    }
+
+    static <R, F> CgRecordField<R, F> inline(CgRecordCodec<F> keys, Function<? super R, ? extends F> get) {
+        return new CgRecordField<>(String.join("/", keys.keys()), keys, get, false, false, null, null, false, keys);
     }
 
     /** This key with {@code text} above it: what {@code CgCodecs.comment(text).field(...)} makes. */
     CgRecordField<R, F> withComment(String text) {
-        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text, lenient);
+        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, text, lenient, inlined);
     }
 
     /**
@@ -68,7 +77,7 @@ public final class CgRecordField<R, F> {
      */
     public CgRecordField<R, F> lenient() {
         if (!defaults) throw new IllegalStateException("'" + key + "' has no fallback to read; declare it optionalField or fieldOr");
-        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, comment, true);
+        return new CgRecordField<>(key, codec, get, omits, defaults, fallback, comment, true, inlined);
     }
 
     public String key() {

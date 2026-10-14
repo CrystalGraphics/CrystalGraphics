@@ -112,4 +112,9 @@ public final class CgPlainOps implements CgDynamicOps<Object> {
         if (!(value instanceof Map)) throw new CgCodecException("Not a map: " + value);
         return (Map<Object, Object>) value;
     }
+
+    @Override
+    public Object toPlain(Object value) {
+        return value;
+    }
 }

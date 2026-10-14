@@ -25,4 +25,5 @@ final class TextTreeOps implements CgDynamicOps<Object> {
     @Override public boolean getBooleanValue(Object value) { return CgPlainOps.INSTANCE.getBooleanValue(value); }
     @Override public List<Object> getListValue(Object value) { return CgPlainOps.INSTANCE.getListValue(value); }
     @Override public Map<Object, Object> getMapValue(Object value) { return CgPlainOps.INSTANCE.getMapValue(value); }
+    @Override public Object toPlain(Object value) { return value; }
 }

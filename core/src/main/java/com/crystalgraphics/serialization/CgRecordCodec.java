@@ -4,8 +4,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
@@ -43,6 +45,8 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
     private final Function<Object[], R> make;
     /** The record's own comment by null and each key's by its name: one map, handed to every encode. */
     private final Map<String, String> comments;
+    /** Every key it writes, an inlined record's included, in order. */
+    private final List<String> keys;
 
     @SafeVarargs
     CgRecordCodec(Function<Object[], R> make, CgRecordField<R, ?>... fields) {
@@ -54,15 +58,29 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
         this.fields = fields;
         Map<String, String> byKey = new LinkedHashMap<>();
         if (about != null) byKey.put(null, about);
-        for (int i = 0; i < fields.length; i++) {
-            for (int j = 0; j < i; j++) {
-                if (fields[i].key.equals(fields[j].key)) {
-                    throw new IllegalArgumentException("a record codec declares '" + fields[i].key + "' twice");
-                }
+        List<String> all = new ArrayList<>();
+        for (CgRecordField<R, ?> f : fields) {
+            List<String> own = f.inlined != null ? f.inlined.keys : Collections.singletonList(f.key);
+            for (String key : own) {
+                if (all.contains(key)) throw new IllegalArgumentException("a record codec declares '" + key + "' twice");
+                all.add(key);
             }
-            if (fields[i].comment != null) byKey.put(fields[i].key, fields[i].comment);
+            if (f.inlined != null) {
+                // Its keys' comments come along; its own, about a map that is no longer there, does not.
+                for (Map.Entry<String, String> c : f.inlined.comments.entrySet()) {
+                    if (c.getKey() != null) byKey.put(c.getKey(), c.getValue());
+                }
+            } else if (f.comment != null) {
+                byKey.put(f.key, f.comment);
+            }
         }
+        this.keys = Collections.unmodifiableList(all);
         this.comments = Collections.unmodifiableMap(byKey);
+    }
+
+    /** Every key it writes, in order. */
+    List<String> keys() {
+        return keys;
     }
 
     /** This codec, with {@code text} about the record as a whole: see {@link CgCodec#comment}. */
@@ -84,7 +102,8 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
         if (f.omits && Objects.equals(value, f.fallback)) return;
         if (value == null) throw new CgCodecException("'" + f.key + "' is null; declare it with optionalField");
         try {
-            entries.put(ops.createString(f.key), f.codec.encode(ops, value));
+            if (f.inlined != null) entries.putAll(ops.getMapValue(f.codec.encode(ops, value)));
+            else entries.put(ops.createString(f.key), f.codec.encode(ops, value));
         } catch (CgCodecException e) {
             throw new CgCodecException("'" + f.key + "': " + e.getMessage(), e);
         }
@@ -99,6 +118,11 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
         T empty = ops.empty();
         for (int i = 0; i < fields.length; i++) {
             CgRecordField<R, ?> f = fields[i];
+            if (f.inlined != null) {
+                // The same map: the inlined record reads its own keys and ignores the rest.
+                args[i] = f.inlined.decode(ops, input);
+                continue;
+            }
             T raw = byKey.get(f.key);
             if (raw == null || raw == empty) {
                 if (!f.defaults) throw new CgCodecException("Missing required field '" + f.key + "'");

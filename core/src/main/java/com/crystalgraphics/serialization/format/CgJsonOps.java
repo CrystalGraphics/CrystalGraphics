@@ -146,4 +146,29 @@ public final class CgJsonOps implements CgDynamicOps<JsonElement> {
         }
         return map;
     }
+
+    /** A whole number as an {@code Integer} where it fits, else a {@code Long}; any other number a {@code Double}. */
+    @Override
+    public Object toPlain(JsonElement value) {
+        if (value == null || value.isJsonNull()) return null;
+        if (value.isJsonObject()) {
+            Map<Object, Object> map = new LinkedHashMap<>();
+            for (Map.Entry<String, JsonElement> e : value.getAsJsonObject().entrySet()) map.put(e.getKey(), toPlain(e.getValue()));
+            return map;
+        }
+        if (value.isJsonArray()) {
+            List<Object> list = new ArrayList<>();
+            for (JsonElement e : value.getAsJsonArray()) list.add(toPlain(e));
+            return list;
+        }
+        JsonPrimitive p = value.getAsJsonPrimitive();
+        if (p.isBoolean()) return p.getAsBoolean();
+        if (p.isString()) return p.getAsString();
+        String text = p.getAsString();
+        if (text.indexOf('.') < 0 && text.indexOf('e') < 0 && text.indexOf('E') < 0) {
+            long whole = p.getAsLong();
+            return whole == (int) whole ? (Object) (int) whole : (Object) whole;
+        }
+        return p.getAsDouble();
+    }
 }
