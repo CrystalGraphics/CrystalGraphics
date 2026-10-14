@@ -82,6 +82,84 @@ public final class CgCodecs {
         };
     }
 
+    /**
+     * A map, each key and value through its own codec, read back in the order it was written.
+     *
+     * <pre>{@code
+     * static final CgCodec<Map<String, Integer>> LEVELS = CgCodecs.mapOf(CgCodecs.STRING, CgCodecs.INT);
+     * static final CgCodec<Map<Slot, Picks>> PICKS = CgCodecs.mapOf(Slot.CODEC, Picks.CODEC);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Encoding follows the map's own order: hand it a {@code LinkedHashMap} or a {@code TreeMap} where the
+     *       encoded bytes must not vary (a content hash, a save diffed by hand).</li>
+     *   <li>NBT and JSON take only text keys: key by a codec that encodes as a string there.</li>
+     * </ul>
+     */
+    public static <K, V> CgCodec<Map<K, V>> mapOf(CgCodec<K> keyCodec, CgCodec<V> valueCodec) {
+        return new CgCodec<Map<K, V>>() {
+            @Override
+            public <T> T encode(CgDynamicOps<T> ops, Map<K, V> input) {
+                Map<T, T> encoded = new LinkedHashMap<>(input.size() * 2);
+                for (Map.Entry<K, V> e : input.entrySet()) {
+                    encoded.put(keyCodec.encode(ops, e.getKey()), valueCodec.encode(ops, e.getValue()));
+                }
+                return ops.createMap(encoded);
+            }
+
+            @Override
+            public <T> Map<K, V> decode(CgDynamicOps<T> ops, T input) {
+                Map<T, T> raw = ops.getMapValue(input);
+                Map<K, V> decoded = new LinkedHashMap<>(raw.size() * 2);
+                for (Map.Entry<T, T> e : raw.entrySet()) {
+                    decoded.put(keyCodec.decode(ops, e.getKey()), valueCodec.decode(ops, e.getValue()));
+                }
+                return decoded;
+            }
+        };
+    }
+
+    /**
+     * A value whose codec its key picks: each state's data by the state's id, each registry entry's properties by its
+     * kind. The shape of DataFixerUpper's {@code Codec.dispatch} (MIT): encoded as the key under {@code keyName} and
+     * the value's own encoding under {@code "value"}.
+     *
+     * <pre>{@code
+     * static final CgCodec<StateData> STATES = CgCodecs.dispatch("state", CgCodecs.STRING,
+     *         StateData::stateId,                       // the key a value carries
+     *         id -> States.byId(id).dataCodec());        // the codec a key picks; null for none
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A key {@code codecOf} answers null for fails to encode or decode, naming the key.</li>
+     *   <li>The value always sits under {@code "value"}, never inlined beside the key: with no map-only codecs to tell
+     *       shapes apart, inlining would make a value whose own field is called {@code "value"} ambiguous.</li>
+     * </ul>
+     */
+    public static <K, V> CgCodec<V> dispatch(String keyName, CgCodec<K> keyCodec, Function<? super V, ? extends K> keyOf,
+                                             Function<? super K, ? extends CgCodec<? extends V>> codecOf) {
+        return new CgCodec<V>() {
+            @Override
+            public <T> T encode(CgDynamicOps<T> ops, V input) {
+                K key = keyOf.apply(input);
+                return map(ops).field(keyName, keyCodec, key).field("value", codecFor(key), input).build();
+            }
+
+            @Override
+            public <T> V decode(CgDynamicOps<T> ops, T input) {
+                MapCodecReader<T> r = read(ops, input);
+                return r.field("value", codecFor(r.field(keyName, keyCodec)));
+            }
+
+            @SuppressWarnings("unchecked")
+            private CgCodec<V> codecFor(K key) {
+                CgCodec<? extends V> codec = codecOf.apply(key);
+                if (codec == null) throw new CgCodecException("no codec for " + keyName + " " + key);
+                return (CgCodec<V>) codec;
+            }
+        };
+    }
+
     public static final CgCodec<Long> LONG = new CgCodec<Long>() {
         @Override
         public <T> T encode(CgDynamicOps<T> ops, Long input) {
