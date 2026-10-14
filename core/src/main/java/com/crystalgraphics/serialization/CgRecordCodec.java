@@ -23,6 +23,8 @@ import java.util.function.Function;
  *   <li>Keys are written in declaration order, so the same record encodes to the same bytes.</li>
  *   <li>A required key the input lacks throws, naming it; so does a required value that is null.</li>
  *   <li>An optional key equal to its fallback is not written, and reads as its fallback when absent.</li>
+ *   <li>A {@code fieldOr} key is always written, and reads as its fallback when absent: a shape whose bytes are
+ *       pinned (a content hash) and whose older files lacked the key.</li>
  *   <li>Keys the record does not declare are ignored.</li>
  *   <li>Up to eight keys; nest a record, or use {@link CgCodecs#object}, beyond that.</li>
  * </ul>
@@ -54,7 +56,7 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
 
     private static <T, R, F> void write(CgDynamicOps<T> ops, CgRecordField<R, F> f, R input, Map<T, T> entries) {
         F value = f.get.apply(input);
-        if (f.optional && Objects.equals(value, f.fallback)) return;
+        if (f.omits && Objects.equals(value, f.fallback)) return;
         if (value == null) throw new CgCodecException("'" + f.key + "' is null; declare it with optionalField");
         try {
             entries.put(ops.createString(f.key), f.codec.encode(ops, value));
@@ -74,7 +76,7 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
             CgRecordField<R, ?> f = fields[i];
             T raw = byKey.get(f.key);
             if (raw == null || raw == empty) {
-                if (!f.optional) throw new CgCodecException("Missing required field '" + f.key + "'");
+                if (!f.defaults) throw new CgCodecException("Missing required field '" + f.key + "'");
                 args[i] = f.fallback;
                 continue;
             }

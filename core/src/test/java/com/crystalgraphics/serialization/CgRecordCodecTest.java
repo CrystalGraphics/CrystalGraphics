@@ -58,6 +58,20 @@ public class CgRecordCodecTest {
         assertEquals(new Spell("ki blast", 0, null), CgFormats.JSON.fromText(Spell.CODEC, "{\"name\":\"ki blast\",\"icon\":null}"));
     }
 
+    record Prop(String id, boolean exposed) {
+        static final CgCodec<Prop> CODEC = CgCodecs.record(
+                CgCodecs.field("id", CgCodecs.STRING, Prop::id),
+                CgCodecs.fieldOr("exposed", CgCodecs.BOOL, Prop::exposed, true),
+                Prop::new);
+    }
+
+    @Test
+    public void aFieldOrIsAlwaysWrittenAndAbsentReadsItsFallback() {
+        Map<?, ?> tree = (Map<?, ?>) Prop.CODEC.encode(CgPlainOps.INSTANCE, new Prop("p", true));
+        assertEquals(Boolean.TRUE, tree.get("exposed"));
+        assertEquals(new Prop("p", true), CgFormats.JSON.fromText(Prop.CODEC, "{\"id\":\"p\"}"));
+    }
+
     @Test
     public void keysAreWrittenInDeclarationOrder() {
         Map<?, ?> tree = (Map<?, ?>) Spell.CODEC.encode(CgPlainOps.INSTANCE, new Spell("beam", 5, "beam.png"));

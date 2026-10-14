@@ -325,13 +325,19 @@ public final class CgCodecs {
 
     /** A required key of a {@link #record}: missing on decode throws, naming it. */
     public static <R, F> CgRecordField<R, F> field(String key, CgCodec<F> codec, Function<? super R, ? extends F> get) {
-        return new CgRecordField<>(key, codec, get, false, null);
+        return new CgRecordField<>(key, codec, get, false, false, null);
     }
 
     /** An optional key of a {@link #record}: not written when equal to {@code fallback}, read as it when absent. */
     public static <R, F> CgRecordField<R, F> optionalField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
                                                            @Nullable F fallback) {
-        return new CgRecordField<>(key, codec, get, true, fallback);
+        return new CgRecordField<>(key, codec, get, true, true, fallback);
+    }
+
+    /** A key of a {@link #record} always written, and read as {@code fallback} when absent. */
+    public static <R, F> CgRecordField<R, F> fieldOr(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
+                                                     F fallback) {
+        return new CgRecordField<>(key, codec, get, false, true, fallback);
     }
 
     /**
