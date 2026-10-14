@@ -16,7 +16,7 @@ CgHitbox.of(CgRing.front(1.2, 0.6)).at(x, y, z).radius(0, 12, 12).onHit(h -> dam
 | Package | Owns |
 |---|---|
 | `collision` | `CgCollisionWorld` (a level, the client's frame, a test's fakes, `empty()`; `snapshot`, `batch`, `lineOfSight`, `exposure`; the thread's query scratch `PerThread`, the line-of-sight walker `Sight`, a snapshot's `FrozenHittables`) and `CgCollisionQuery` (one question: overlap, cast or ray, its filters and endings; `watch` for the show) |
-| `collision.hit` | What a query or hitbox reports: `CgHit` (a mutable value, written through its where/what setters), `CgHits`, `CgHitPart`, `CgSentHit` (a hit on the wire) |
+| `collision.hit` | What a query or hitbox reports: `CgHit` (a mutable value, written through its where/what setters), `CgHits`, `CgHitPart`, `CgSentHit` (a hit on the wire), `CgHitClaim` (a hit a claimed hitbox's owner says it made, and why it was refused) |
 | `collision.hitbox` | `CgHitbox` (a volume over time: parts, sizes, rules, listeners), `CgHitList`, `CgHitboxType` (a networked hitbox on every side), `CgHitboxes` (each thread's running and hittable hitboxes: the one seam to `collision`), `CgSwept` (a shape and its motion) |
 | `collision.entity` | `CgEntityTable` (entities by 16-block cell), `CgEntityCache` (a batch's, lazy), `CgEntitySnapshot` (a snapshot's, eager) |
 | `collision.block` | `CgBlockSnapshot` (the blocks of a world with no mirror, copied on the spot), `CgBlockCells` (the cells a box covers as it moves, nearest first) |
@@ -53,7 +53,7 @@ a mod never makes one.
 
 `CgCollisionWorldTest`, `CgSnapshotTest`, `mirror.CgLevelMirrorTest`, `mirror.CgMirrorConsistencyTest` (over
 `MirrorFakes`), `entity.CgEntityCacheTest`, `hit.CgSentHitTest`, `debug.CgShapeLinesTest`,
-`hitbox.CgHitboxTest`, `hitbox.CgHitboxTypeTest` (on `CgNetTestRig`), over `CollisionFakes`' yard. The VFX side:
+`hitbox.CgHitboxTest`, `hitbox.CgHitboxTypeTest` and `hitbox.CgClaimedHitboxTest` (on `CgNetTestRig`), over `CollisionFakes`' yard. The VFX side:
 `CgVfxHitsTest`, `CgVfxAuthorityTest`, `CgVfxCueTest`. The harness's `collision-shapes` scene and `CgRenderDemo`'s
 `collision` draw `demo/collision/CgCollisionDemo`.
 

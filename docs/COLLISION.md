@@ -1153,6 +1153,53 @@ SWING.predict(CgAnchor.onEntity(myId)).point(CgEntityAttachments.RIGHT_HAND_FORW
 Accepted, the server's copy takes over the prediction and its hits are the real ones; refused, the client's copy plays
 out alone and damages nothing.
 
+### Melee at any ping: claimed hitboxes
+
+A prediction shows the swing at once, but the server still judges it against targets that have moved on since the
+attacker saw them: at 150 ms a blade passes through a mob and nothing happens. A **claimed** type turns that round,
+as Minecraft's own attack packet does: the attacker's client decides what its swing hit, and the server checks each
+claim.
+
+```java
+// common, at init: both sides
+public static final CgHitboxType PUNCH = CgHitboxType.define("mymod:punch")
+        .hitbox(obj -> CgHitbox.of(CgSphere.of(0.45)).activeFor(6).query(CgCollisionQuery::living))
+        .claimed()                                    // optional: .claimWindow(ticks), .claimPadding(blocks)
+        .build();
+
+PUNCH.acceptPredictionsFrom((peer, obj) -> obj.entityId() == CgEntityQueries.idOf(peer.player()));   // server
+PUNCH.onHit((obj, h) -> damage(obj.owner(), h.entity()));                     // server: each claim it accepts
+PUNCH.onRefusedClaim((obj, claim) -> Anticheat.note(obj.owner(), claim.reason()));   // server, optional
+
+// client, from client code
+PUNCH.onPredictedHit((obj, h) -> { sparks(h.x(), h.y(), h.z()); HitStop.play(); });   // at once
+PUNCH.onConfirmedHit((obj, h) -> damageNumber(h.entity()));                           // the server's word
+PUNCH.onRefusedHere((obj, claim) -> HitStop.cancel());                                 // its owner alone
+
+// client, on the attack key
+PUNCH.predict(CgAnchor.onEntity(me)).point(CgEntityAttachments.RIGHT_HAND_FORWARD).facing(CgHitbox.Facing.LOOK)
+        .source(me).start();
+```
+
+- **Only the owner's copy claims**: the predicting player, or the server spawn's `owner(player)`, or a player given as
+  `source(player)`. Every other viewer's copy is cosmetic, as for any hitbox type. The server's copy hits nothing
+  itself: it keeps where the hitbox was, to check against.
+- **A claim counts** when its target is alive, its age is within the window of the server's copy (20 ticks unless
+  `claimWindow` says), the target's box grown by the padding (3 blocks unless `claimPadding` says, Forge's attack
+  padding) touched where the hitbox was over the window, and the hitbox's own query and rules allow it there: `living`,
+  the source, `rehit`, `maxHits`, `maxTargets`. A claim never hits twice what the hitbox hits once.
+- **Accepted**, the hit lands on the target's body where the server sees it, so every viewer's spark is on the body
+  they see. It reaches `onHit` and the viewers' `onConfirmedHit`, as a server hit does.
+- **Refused**, it is counted by reason (`PUNCH.refusedClaims(CgHitClaim.Refusal.OUT_OF_RANGE)`), heard by
+  `onRefusedClaim`, and sent to its owner alone for `onRefusedHere`. The reasons, in the order they are checked:
+  `NO_TARGET`, `OUT_OF_WINDOW`, `OUT_OF_RANGE`, `RULE`. A claim from someone else, or past the rate, is refused by
+  the command layer first (`NETWORKING.md` §9).
+- **A prediction's claims wait** until the server makes it real, then go; a refused prediction's never leave.
+- **The server's copy outlives its hitbox by the window**, so a slow connection's claim still finds it.
+- **It trusts the attacker within the padding.** The stronger answer, the server rewinding every target to where the
+  attacker saw it (Valve's lag compensation), is not built: it needs every entity's past positions every tick.
+- A dev run feels the latency with `-Dcrystalgraphics.net.latency=<ms>` on each process ([`DEBUG_FLAGS.md`](DEBUG_FLAGS.md)).
+
 ---
 
 ## 11. Effects that hit
@@ -1532,7 +1579,8 @@ then meets that shape, standing for your entity, instead of its box.
 ### Does a client's hit damage anything?
 
 Only if your code damages on it. Damage belongs on the server; a client's queries and its own hitbox copies are for
-feedback. A hitbox type keeps the two apart for you.
+feedback. A hitbox type keeps the two apart for you. A claimed type ([§10](#melee-at-any-ping-claimed-hitboxes)) lets
+the attacker's client decide what it hit, and the server still decides whether that counts.
 
 ### What about particles?
 

@@ -3,12 +3,15 @@ package com.crystalgraphics.collision.hitbox;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
+import com.crystalgraphics.collision.hit.CgHitClaim;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hit.CgHits;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
+import com.crystalgraphics.shape.bounds.CgAABB;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.shape.primitive.CgResizable;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgShell;
@@ -182,6 +185,10 @@ public final class CgHitbox {
     private CgHitList hitList = new CgHitList();
     private Consumer<? super CgHit> onHit, onEnter;
     private IntConsumer onExit;
+    /** Hears the hits a silent tick keeps from {@link #onHit}: a claimed hitbox's owner claims them still. */
+    @Nullable
+    private Consumer<? super CgHit> silentHits;
+    private final CgAABB partBox = new CgAABB();
 
     // ---- hittable
     private boolean hittable, passive;
@@ -632,6 +639,55 @@ public final class CgHitbox {
         this.silent = silent;
     }
 
+    void silentHits(@Nullable Consumer<? super CgHit> listener) {
+        silentHits = listener;
+    }
+
+    /** The box round every part where its last tick placed it, into {@code out}; false before its first active tick. */
+    boolean bounds(CgAABB out) {
+        if (!posed) return false;
+        for (int p = 0; p < parts; p++) {
+            partShape(p).bounds(partPose(p, drawPose), partBox);
+            if (p == 0) out.set(partBox);
+            else out.union(partBox);
+        }
+        return true;
+    }
+
+    /**
+     * A hit its owner claims on {@code target} with part {@code part}, put to this hitbox's own query and rules over
+     * {@code window}, the box it swept while the claim could have been made, every entity grown by {@code padding}:
+     * null and the hit in {@code out} when they allow it, recorded as this hitbox's own; else
+     * {@link CgHitClaim.Refusal#RULE}. The caller has checked the target is in range.
+     */
+    @Nullable
+    CgHitClaim.Refusal judge(CgCollisionWorld world, int target, int part, CgAABBc window, double padding, CgHit out) {
+        CgHitPart name = part >= 0 && part < parts ? names[part] : parts > 0 ? names[0] : null;
+        CgCollisionQuery q = world.overlap(window).part(name);
+        int whose = source >= 0 ? source : entity;
+        if (whose >= 0) q.source(whose);
+        if (query != null) query.accept(q);
+        q.inflate(padding);
+        int n;
+        CgHitboxes.gathering(this);
+        try {
+            n = q.into(partHits);
+        } finally {
+            CgHitboxes.gathering(null);
+        }
+        for (int i = 0; i < n; i++) {
+            CgHit h = partHits.get(i);
+            if (h.kind().isTerrain() || h.entityId() != target && h.parentId() != target) continue;
+            if (!allowed(h.parentId())) return CgHitClaim.Refusal.RULE;
+            hitList.record(h.parentId(), age);
+            out.set(h);
+            world.changed(h.entityId());
+            if (h.parentId() != h.entityId()) world.changed(h.parentId());
+            return null;
+        }
+        return CgHitClaim.Refusal.RULE;
+    }
+
     /** Ages it {@code ticks} without testing anything: the start of a late joiner's catch-up. */
     void skip(double ticks) {
         if (!prepared) prepare();
@@ -936,6 +992,8 @@ public final class CgHitbox {
             if (!silent) {
                 handed(h);
                 onHit.accept(h);
+            } else if (silentHits != null) {
+                silentHits.accept(h);
             }
         }
         if (!zone || stopped) return;
