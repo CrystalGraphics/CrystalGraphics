@@ -150,8 +150,14 @@ worker. Both sides (`VariantMixins`' common list): an integrated server runs on 
   `crystalgraphics:collision/lines`, recording only while someone asks. `crystalgraphics.collision.serve=false`
   keeps a server's lines to itself unless its own `crystalgraphics.collision.show` is on.
 - **Proven**: `checkAllTargets` for every host; the section copy against block-by-block reads in `serverSmoke` on
-  Forge 1.20.1, Forge 1.16.5 and 1.7.10 (0 differing blocks, radius 8 to 60). A dragon part, a painting's offset box
-  and a ring hitbox in a live level still want a dev client (the plan's S10).
+  Forge 1.20.1, Forge 1.16.5 and 1.7.10 (0 differing blocks, radius 8 to 60). `CgCollisionProbe` passes all ten checks
+  on both sides on one node per era: dragon parts and the head by ray, a painting's box and its face, and a ring hitbox.
+  It ran on dev clients of Forge 1.14.4 and 1.20.1, NeoForge 1.20.6 and 26.3, Fabric 1.14.4 and 26.3, and 1.7.10, and
+  on legacy 1.12.2 through `prodSmoke`.
+- **Summoning differs by era** (`CgWorldStimulus`). 1.7.10's `/summon` breaks a hanging entity's box, so its painting
+  is built in code. 1.9–1.12.2 summon the dragon sitting (`DragonPhase:6`): the hover it starts in turns its position
+  NaN outside the End. 1.7.10's painting box has its corners in either order on its thin side, so its hosts order
+  them.
 
 ### 1.7.10 — `runtime/mc/1710`
 

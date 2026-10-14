@@ -1422,6 +1422,24 @@ answers the platform's `CgWorldQuery` and `CgEntityQuery`: a test's fakes of a y
 **Hitbox types** run on the networking test rig, `CgNetTestRig`: a server and clients in one JUnit test, latency
 included ([`NETWORKING.md`](NETWORKING.md) §14).
 
+### In a running game: the collision probe
+
+`CgCollisionProbe` checks collision against a real level. It summons two armour stands, a painting, an ender dragon
+and a grid of a hundred stands beside the player, then checks them on both sides:
+
+- a dragon's parts, and its head met first by a ray from in front;
+- a painting's thin box on its wall, and a ray stopping at its face;
+- a growing ring hitting each stand once, the nearer one first.
+
+It also logs how long 1000 overlaps take live and batched. When it is done it clears what it summoned.
+
+```bash
+# a dev client's autotest, or prodSmoke -PcgSmokeProps=crystalgraphics.collisionprobe=true
+./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgraphics.collisionprobe=true
+```
+
+The verdict is `collision probe: true (10 passed, 0 failed)` in the client's log.
+
 ---
 
 ## 16. Performance and limits

@@ -52,6 +52,12 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 |---|---|---|---|
 | `crystalgraphics.collision.show` | true, false | `false` | Draws every live hitbox, see-through, and every world query, as lines, as Minecraft's F3+B also does: the client's and the server's. |
 
+## `crystalgraphics.collisionprobe`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.collisionprobe` | true, false | `false` | Prove in a running game that collision finds and hits real entities -- a ring on stands, a dragon's parts, a painting -- logging a verdict per check for prodSmoke and a dev client's autotest. Read at launch. |
+
 ## `crystalgraphics.compute`
 
 | Variable | Takes | Default | |

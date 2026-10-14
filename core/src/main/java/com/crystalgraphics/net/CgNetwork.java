@@ -20,6 +20,7 @@ import com.crystalgraphics.net.protocol.CgProtocolConnection;
 import com.crystalgraphics.net.protocol.CgProtocols;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.service.CgNetworkChannel;
+import com.crystalgraphics.probe.CgCollisionProbe;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -149,6 +150,7 @@ public final class CgNetwork {
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
         if (Boolean.getBoolean(CgNetStress.PROPERTY)) CgNetStress.install();
         if (CgNetProbe.ENABLED) CgNetProbe.install();
+        if (CgCollisionProbe.ENABLED) CgCollisionProbe.install();
         CgCollisionShow.install();
         return true;
     }
