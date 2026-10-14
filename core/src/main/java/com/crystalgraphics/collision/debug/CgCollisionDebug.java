@@ -34,8 +34,8 @@ import java.util.Arrays;
  *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at
  *       {@link #FACE_ALPHA} of their colour, so each reads as the space it tests with what is behind it still seen;
  *       not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are lines under both.</li>
- *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces back to front, then
- *       the lines over them.</li>
+ *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces turned away, the
+ *       lines, then the faces turned toward the eye, each far to near, so a face tints the edges behind it.</li>
  * </ul>
  */
 public final class CgCollisionDebug {
@@ -133,7 +133,7 @@ public final class CgCollisionDebug {
     private static void write(CgMeshWriter m, Batch batch) {
         m.topology(batch.corners == 2 ? CgMeshTopology.LINES : CgMeshTopology.TRIANGLES);
         float[] p = batch.points;
-        for (int k = 0; k < batch.count; k++) {
+        for (int k = batch.from; k < batch.to; k++) {
             int i = batch.sorted ? batch.order[k] : k, at = i * batch.corners * 3;
             int argb = batch.colours[i];
             float r = (argb >>> 16 & 0xFF) / 255f, g = (argb >>> 8 & 0xFF) / 255f, b = (argb & 0xFF) / 255f;
@@ -147,8 +147,8 @@ public final class CgCollisionDebug {
 
     /**
      * The frame's segments, or its triangles, as floats from the first one's start, which the draw stands at in
-     * doubles. Triangles blend over one another and write no depth, so they draw back faces first, each set far to
-     * near.
+     * doubles. Triangles blend over one another and write no depth, so they draw as two meshes, the back faces before
+     * the lines and the front faces after, each far to near.
      */
     private static final class Batch implements CgShapeLines.Sink {
         /** Points a record: two a segment, three a triangle. */
@@ -162,9 +162,12 @@ public final class CgCollisionDebug {
         /** Whether {@link #order} holds the draw order: triangles, sorted far to near. */
         boolean sorted;
         int[] order = new int[0];
+        /** The records the mesh being written takes, in draw order. */
+        int from, to;
         private int[] keys = new int[0], orderScratch = new int[0], keyScratch = new int[0];
         private final int[] counts = new int[256];
-        private CgMesh mesh;
+        /** The lines, or the back faces; and the front faces. */
+        private CgMesh mesh, frontMesh;
 
         Batch(int corners, float alpha) {
             this.corners = corners;
@@ -212,25 +215,40 @@ public final class CgCollisionDebug {
         /** Submits what the frame queued, seen from the eye, and empties it. */
         void draw(double ex, double ey, double ez) {
             if (count == 0) return;
-            sorted = corners == 3;
-            if (sorted) sortFrom(ex, ey, ez);
-            if (mesh == null) {
-                mesh = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
-            } else {
-                mesh.edit(this, CgCollisionDebug::write);
-            }
             if (material == null) material = CgMaterial.load(SHADER);
-            // one group at the eye, so the faces draw before the lines whatever their distances
-            CgWorldRenderer.get().draw(mesh, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).group(ex, ey, ez)
-                    .order(corners == 3 ? 0 : 1).submit();
+            sorted = corners == 3;
+            if (sorted) {
+                int backs = sortFrom(ex, ey, ez);
+                mesh = submit(mesh, 0, backs, 0, ex, ey, ez);
+                frontMesh = submit(frontMesh, backs, count, 2, ex, ey, ez);
+            } else {
+                mesh = submit(mesh, 0, count, 1, ex, ey, ez);
+            }
             count = 0;
         }
 
+        /** Writes records {@code from} to {@code to} into {@code into} and draws it at {@code order} of the group. */
+        private CgMesh submit(CgMesh into, int from, int to, int order, double ex, double ey, double ez) {
+            if (from == to) return into;
+            this.from = from;
+            this.to = to;
+            if (into == null) {
+                into = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> write(m, this));
+            } else {
+                into.edit(this, CgCollisionDebug::write);
+            }
+            // one group at the eye, so back faces, lines and front faces draw in that order whatever their distances
+            CgWorldRenderer.get().draw(into, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).group(ex, ey, ez)
+                    .order(order).submit();
+            return into;
+        }
+
         /**
-         * {@link #order}: back faces then front faces, each far to near by its middle. An LSD radix sort on the
-         * facing bit over its distance's float bits.
+         * {@link #order}: back faces then front faces, each far to near by its middle; how many are back faces. An
+         * LSD radix sort on the facing bit over its distance's float bits.
          */
-        private void sortFrom(double ex, double ey, double ez) {
+        private int sortFrom(double ex, double ey, double ez) {
+            int backs = 0;
             if (order.length < count) {
                 order = new int[colours.length];
                 keys = new int[colours.length];
@@ -250,6 +268,7 @@ public final class CgCollisionDebug {
                 double vy = points[at + 7] - points[at + 1], vz = points[at + 8] - points[at + 2];
                 double facing = (uy * vz - uz * vy) * dx + (uz * vx - ux * vz) * dy + (ux * vy - uy * vx) * dz;
                 int front = facing < 0 ? Integer.MIN_VALUE : 0;
+                if (front == 0) backs++;
                 keys[i] = front | Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
                 order[i] = i;
             }
@@ -273,11 +292,13 @@ public final class CgCollisionDebug {
                 order = orderScratch;
                 orderScratch = o;
             }
+            return backs;
         }
 
         void release() {
             if (mesh != null) mesh.release();
-            mesh = null;
+            if (frontMesh != null) frontMesh.release();
+            mesh = frontMesh = null;
             count = 0;
         }
     }
