@@ -314,12 +314,12 @@ public class CgShapeLinesTest {
         lines.hitbox(blow, YARD.blocks(), 0, linger, true);
         Tally drawn = new Tally();
         lines.drawTo(CgRecentLines.HOLD_NANOS - 1, drawn, true);
-        assertEquals("its edges", 12, drawn.lines);
+        assertEquals("its edges and its arrow", 12 + ARROW, drawn.lines);
         assertEquals("its faces", 12, drawn.faces);
         assertEquals("whole through its hold", 0xFFFF4040, drawn.line);
         assertEquals("its faces at a quarter", 0x40FF4040, drawn.face);
         lines.drawTo(CgRecentLines.HOLD_NANOS + linger / 2, drawn.reset(), true);
-        assertEquals(24, drawn.lines + drawn.faces);
+        assertEquals(24 + ARROW, drawn.lines + drawn.faces);
         assertEquals("half faded", 0x7F, drawn.line >>> 24, 1);
         assertEquals(0xFF4040, drawn.line & 0xFFFFFF);
         lines.drawTo(CgRecentLines.HOLD_NANOS + linger, drawn.reset(), true);
@@ -358,7 +358,7 @@ public class CgShapeLinesTest {
         }
         Tally drawn = new Tally();
         lines.drawTo(CgRecentLines.HOLD_NANOS + 1, drawn, true);
-        assertEquals("its last pose, past the hold", 12, drawn.lines);
+        assertEquals("its last pose, past the hold", 12 + ARROW, drawn.lines);
     }
 
     @Test
@@ -408,7 +408,7 @@ public class CgShapeLinesTest {
         lines.packTo(YARD.blocks(), 0, 0, 0, 64, false, CgCollisionShow.SERVER, CgRecentLines.HOLD_NANOS + 50, pack);
         Tally drawn = new Tally();
         CgLinePack.read(pack.finish(), 0, true, drawn);
-        assertEquals(12, drawn.lines);
+        assertEquals(12 + ARROW, drawn.lines);
         assertEquals(0, drawn.faces);
         assertEquals("the server's colour, in eighths of alpha", CgCollisionShow.SERVER & 0xFFFFFF,
                 drawn.line & 0xFFFFFF);
@@ -425,7 +425,7 @@ public class CgShapeLinesTest {
         for (CgHitbox h : new CgHitbox[]{edges, half, plain}) h.tick(YARD, 1);
         lines.hitbox(edges, YARD.blocks(), 0, 0, true);
         lines.drawTo(0, drawn, true);
-        assertEquals("edges alone", 12, drawn.lines);
+        assertEquals("edges alone", 12 + ARROW, drawn.lines);
         assertEquals(0, drawn.faces);
         lines.hitbox(half, YARD.blocks(), 0, 0, true);
         lines.drawTo(0, drawn.reset(), true);
@@ -444,9 +444,28 @@ public class CgShapeLinesTest {
         assertEquals("a quarter, for a reader drawing transparent", 0x40000000 | CgCollisionShow.SERVER & 0xFFFFFF, drawn.face);
         CgLinePack.read(packed, CgCollisionShow.SERVER, false, drawn.reset());
         assertEquals("a wireframe reader skips what set no fill", 0, drawn.faces);
-        assertEquals(12, drawn.lines);
+        assertEquals(12 + ARROW, drawn.lines);
         assertThrows(IllegalArgumentException.class, () -> plain.showFill(1.5f));
     }
+
+    @Test
+    public void aHitboxsArrowPointsTheWayItFaces() {
+        CgRecentLines lines = new CgRecentLines(1 << 12);
+        CgHitbox turned = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(0, 1, 0).facing(Math.PI / 2, 0);   // yaw 90: -x
+        turned.tick(YARD, 1);
+        lines.hitbox(turned, YARD.blocks(), 0, 0, true);
+        List<double[]> arrow = new ArrayList<>();
+        lines.drawTo(0, (argb, ax, ay, az, bx, by, bz) -> {
+            if (argb == CgRecentLines.FORWARD) arrow.add(new double[]{ax, ay, az, bx, by, bz});
+        }, true);
+        assertEquals(ARROW, arrow.size());
+        double[] shaft = arrow.get(0);
+        assertEquals(0, distance(new double[]{shaft[0], shaft[1], shaft[2]}, 0, 1, 0), 1e-9);
+        assertEquals("a block and a half along -x", 0, distance(new double[]{shaft[3], shaft[4], shaft[5]}, -1.5, 1, 0), 1e-9);
+    }
+
+    /** The lines of the arrow each hitbox faces along: its shaft and four of its head. */
+    private static final int ARROW = 5;
 
     /** A blow of one tick, stopped in it. */
     private static CgHitbox blow() {

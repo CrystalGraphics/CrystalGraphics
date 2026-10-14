@@ -8,6 +8,7 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABBc;
+import org.joml.Vector3d;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -21,7 +22,8 @@ import java.util.Arrays;
  *   <li>A cast is its shape where it starts and where it stops, joined by its path; a ray its path; an overlap its
  *       shape; the nearest hit a cross on the surface and its normal.</li>
  *   <li>A hitbox is its parts as that tick tested them, their edges and their faces, kept a little past a game tick
- *       so one ticking each tick shows steadily; once stopped, kept its linger longer, fading.</li>
+ *       so one ticking each tick shows steadily; once stopped, kept its linger longer, fading. An arrow from its first
+ *       part shows which way it faces, blue on every side, as F3+B's line shows where an entity looks.</li>
  *   <li>Edges and faces are capped apart, so faces never crowd out a later hitbox's edges.</li>
  * </ul>
  */
@@ -31,6 +33,9 @@ final class CgRecentLines implements CgShapeLines.Sink {
     static final int PATH = 0xFF60C0FF, HIT = 0xFFFF4040;
     /** A client's own hitboxes. */
     static final int HITBOX = 0xFF40FF60;
+    /** The arrow a hitbox faces along. */
+    static final int FORWARD = 0xFF4060FF;
+    private static final double FORWARD_LENGTH = 1.5, FORWARD_HEAD = 0.25;
     /** How long a query or a hitbox's tick is kept: past a game tick, so one each tick shows steadily. */
     static final long HOLD_NANOS = 60_000_000L;
     /** A face's fill when its hitbox sets none: the viewer's style decides, {@link #FILL} or none. */
@@ -42,6 +47,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private final CgShapeLines shapes = new CgShapeLines();
     private final CgPose end = new CgPose();
     private final CgHitbox.PartSink parts = this::part;
+    private final Vector3d forward = new Vector3d(), up = new Vector3d(), side = new Vector3d();
+    private boolean firstPart;
     private final int max;
     /** Nine a record: a segment's two ends, or a face's three corners. */
     private double[] points = new double[9 * 256];
@@ -121,13 +128,38 @@ final class CgRecentLines implements CgShapeLines.Sink {
         fill = ownFill(hitbox);
         if (fill == DEFAULT_FILL && !defaultFaces) fill = 0;
         faceColour = fill == DEFAULT_FILL ? colour : scaled(colour, fill);
+        firstPart = true;
         hitbox.parts(parts);
         this.level = null;
     }
 
     private void part(@Nullable CgHitPart name, CgShape shape, CgPose pose) {
+        if (firstPart) {
+            firstPart = false;
+            arrow(pose);
+        }
         shapes.write(shape, pose, this);
         if (fill != 0) shapes.faces(shape, pose, this);
+    }
+
+    /** {@link #FORWARD_LENGTH} along {@code pose}'s +z, its head in its up and side planes. */
+    private void arrow(CgPose pose) {
+        int edges = colour, shown = show;
+        colour = show = FORWARD;
+        pose.rotate(0, 0, 1, forward);
+        pose.rotate(0, 1, 0, up);
+        pose.rotate(1, 0, 0, side);
+        double tx = pose.x + forward.x * FORWARD_LENGTH, ty = pose.y + forward.y * FORWARD_LENGTH,
+                tz = pose.z + forward.z * FORWARD_LENGTH;
+        double bx = tx - forward.x * FORWARD_HEAD, by = ty - forward.y * FORWARD_HEAD, bz = tz - forward.z * FORWARD_HEAD;
+        double w = FORWARD_HEAD * 0.6;
+        line(pose.x, pose.y, pose.z, tx, ty, tz);
+        line(tx, ty, tz, bx + up.x * w, by + up.y * w, bz + up.z * w);
+        line(tx, ty, tz, bx - up.x * w, by - up.y * w, bz - up.z * w);
+        line(tx, ty, tz, bx + side.x * w, by + side.y * w, bz + side.z * w);
+        line(tx, ty, tz, bx - side.x * w, by - side.y * w, bz - side.z * w);
+        colour = edges;
+        show = shown;
     }
 
     /** A hitbox's {@link CgHitbox#showFill(float)}, of 255; {@link #DEFAULT_FILL} where it sets none. */
