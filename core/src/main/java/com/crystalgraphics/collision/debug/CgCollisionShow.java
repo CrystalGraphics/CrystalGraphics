@@ -12,6 +12,7 @@ import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
@@ -21,6 +22,7 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 
 import javax.annotation.Nullable;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
@@ -56,7 +58,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #STYLE} is each client's own: {@link Style#WIREFRAME} draws a hitbox's edges alone,
  *       {@link Style#TRANSPARENT} fills its faces in under them at a quarter of its colour's alpha. A hitbox with its
  *       own {@link CgHitbox#showFill(float) fill} is filled at that under both. Queries are lines under both.</li>
- *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and only while active: one that
+ *   <li>A client's hitbox following an entity is drawn where the frame draws its point, moving with the animation;
+ *       it still tests once a tick. Other hitboxes, and a server's, are drawn as their last tick tested them, not
+ *       between ticks.</li>
+ *   <li>Hitboxes are drawn only while active: one that
  *       stops is gone with its last tick, unless its {@link CgHitbox#showLinger(double) linger} or {@link #LINGER}
  *       keeps it, fading. A server's lingers by its own setting.</li>
  * </ul>
@@ -120,6 +125,9 @@ public final class CgCollisionShow {
 
     // Client.
     private static final CgRecentLines CLIENT_LINES = new CgRecentLines(1 << 14);
+    /** The client's running hitboxes that follow an entity, written where each frame draws them. */
+    private static final Live LIVE = new Live();
+    private static final CgRecentLines FRAME_LINES = new CgRecentLines(1 << 12);
     private static volatile boolean client;
     /** The client's host hitbox view, from its tick; false on a dedicated server. */
     private static volatile boolean host;
@@ -179,10 +187,14 @@ public final class CgCollisionShow {
             long now = System.nanoTime();
             boolean transparent = transparent();
             CLIENT_LINES.drawTo(now, out, transparent);
+            LIVE.writeTo(FRAME_LINES, now, CgRenderStage.WORLD_OPAQUE.host().partialTick(), transparent);
+            FRAME_LINES.drawTo(now, out, transparent);
+            FRAME_LINES.clear();
             byte[] pack = serverLines;
             if (pack != null && now - serverAt < SERVER_HOLD_NANOS) CgLinePack.read(pack, SERVER, transparent, out);
         } else if (shown) {
             CLIENT_LINES.clear();
+            LIVE.clear();
         }
         shown = showing;
     }
@@ -231,6 +243,10 @@ public final class CgCollisionShow {
     private static void saw(CgHitbox hitbox, CgCollisionWorld world) {
         CgRecentLines into = lines();
         if (into == null) return;
+        if (into == CLIENT_LINES && hitbox.follows() && !hitbox.stopped()) {
+            LIVE.saw(hitbox, world.blocks(), System.nanoTime());
+            return;
+        }
         boolean defaultFaces = into == SERVER_LINES ? serverFaces : transparent();
         into.hitbox(hitbox, world.blocks(), System.nanoTime(), lingerNanos(hitbox), defaultFaces);
     }
@@ -245,6 +261,58 @@ public final class CgCollisionShow {
     private static @Nullable CgRecentLines lines() {
         if (Thread.currentThread() != serverThread) return client ? CLIENT_LINES : null;
         return WATCHERS.isEmpty() ? null : SERVER_LINES;
+    }
+
+    /**
+     * The client's running hitboxes that follow an entity, each with its level and when it last ticked: drawn each
+     * frame where the frame draws its point, until it stops or no tick has seen it for two ticks.
+     */
+    private static final class Live {
+        private static final long STALE_NANOS = 2 * TICK_NANOS;
+        private CgHitbox[] hitboxes = new CgHitbox[16];
+        private CgWorldQuery[] levels = new CgWorldQuery[16];
+        private long[] seen = new long[16];
+        private int size;
+
+        synchronized void saw(CgHitbox hitbox, CgWorldQuery level, long now) {
+            int i = 0;
+            while (i < size && hitboxes[i] != hitbox) i++;
+            if (i == size) {
+                if (size == hitboxes.length) {
+                    hitboxes = Arrays.copyOf(hitboxes, size * 2);
+                    levels = Arrays.copyOf(levels, size * 2);
+                    seen = Arrays.copyOf(seen, size * 2);
+                }
+                hitboxes[size++] = hitbox;
+            }
+            levels[i] = level;
+            seen[i] = now;
+        }
+
+        synchronized void writeTo(CgRecentLines into, long now, float partialTick, boolean defaultFaces) {
+            for (int i = 0; i < size; i++) {
+                if (hitboxes[i].stopped() || now - seen[i] > STALE_NANOS) {
+                    remove(i--);
+                    continue;
+                }
+                into.drawn(hitboxes[i], levels[i], now + 1, partialTick, defaultFaces);
+            }
+        }
+
+        private void remove(int i) {
+            size--;
+            hitboxes[i] = hitboxes[size];
+            levels[i] = levels[size];
+            seen[i] = seen[size];
+            hitboxes[size] = null;
+            levels[size] = null;
+        }
+
+        synchronized void clear() {
+            Arrays.fill(hitboxes, 0, size, null);
+            Arrays.fill(levels, 0, size, null);
+            size = 0;
+        }
     }
 
     /** Follows the host's view, and keeps the server told while showing and once when it stops. Client thread. */

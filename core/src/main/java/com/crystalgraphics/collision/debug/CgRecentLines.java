@@ -122,16 +122,31 @@ final class CgRecentLines implements CgShapeLines.Sink {
      * {@code defaultFaces}: someone draws transparent.
      */
     synchronized void hitbox(CgHitbox hitbox, CgWorldQuery level, long now, long linger, boolean defaultFaces) {
+        long fading = hitbox.stopped() ? linger : 0;
+        write(hitbox, level, now + HOLD_NANOS + fading, fading, defaultFaces, Float.NaN);
+    }
+
+    /**
+     * Writes a hitbox where the frame draws it at {@code partialTick} ({@link CgHitbox#parts(float,
+     * CgHitbox.PartSink)}), kept until {@code until}: a record cleared each frame.
+     */
+    synchronized void drawn(CgHitbox hitbox, CgWorldQuery level, long until, float partialTick, boolean defaultFaces) {
+        write(hitbox, level, until, 0, defaultFaces, partialTick);
+    }
+
+    private void write(CgHitbox hitbox, CgWorldQuery level, long until, long fade, boolean defaultFaces,
+                       float partialTick) {
         this.level = level;
-        fade = hitbox.stopped() ? linger : 0;
-        until = now + HOLD_NANOS + fade;
+        this.fade = fade;
+        this.until = until;
         show = hitbox.showColour();
         colour = show != 0 ? show : HITBOX;
         fill = ownFill(hitbox);
         if (fill == DEFAULT_FILL && !defaultFaces) fill = 0;
         faceColour = fill == DEFAULT_FILL ? colour : scaled(colour, fill);
         firstPart = true;
-        hitbox.parts(parts);
+        if (Float.isNaN(partialTick)) hitbox.parts(parts);
+        else hitbox.parts(partialTick, parts);
         this.level = null;
     }
 

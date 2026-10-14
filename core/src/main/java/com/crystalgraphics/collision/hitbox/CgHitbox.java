@@ -209,6 +209,9 @@ public final class CgHitbox {
     private final Vector3d scratch = new Vector3d();
     private final double[] entityPose = new double[CgEntityQuery.POSE_LENGTH];
     private final double[] at = new double[3];
+    // where a frame draws it: parts(partialTick, out)
+    private final double[] frameEntity = new double[CgEntityQuery.POSE_LENGTH], frameAt = new double[3];
+    private final Quaterniond frameQ = new Quaterniond();
     private final CgSwept swept = new CgSwept();
     private final CgHits partHits = new CgHits();
     private CgHit[] targets = new CgHit[0];
@@ -632,6 +635,40 @@ public final class CgHitbox {
     public void parts(PartSink out) {
         if (!posed) return;
         for (int p = 0; p < parts; p++) out.part(names[p], partShape(p), partPose(p, drawPose));
+    }
+
+    /**
+     * As {@link #parts(PartSink)}, a followed one where its point is drawn at {@code partialTick}, turning as its entity
+     * is drawn: it moves with the animation each frame, while it tests at tick rate. Any other, and a stopped one, is
+     * where its last tick placed it. A client's render thread.
+     *
+     * <pre>{@code
+     * hitbox.parts(partialTick, (part, shape, pose) -> CgCollisionDebug.shape(shape, pose, 0xFF40FF60));
+     * }</pre>
+     */
+    public void parts(float partialTick, PartSink out) {
+        if (!posed) return;
+        if (entity < 0 || stopped || !world.entities().pose(entity, partialTick, frameEntity)) {
+            parts(out);
+            return;
+        }
+        CgEntityAttachments.point(entity, point, partialTick, frameEntity, frameAt);
+        if (held || facing == Facing.FIXED) {
+            frameQ.set(fixed);
+        } else {
+            double yaw = Math.toRadians(frameEntity[facing == Facing.BODY ? CgEntityQuery.BODY_YAW : CgEntityQuery.YAW]);
+            double pitch = facing == Facing.LOOK ? Math.toRadians(frameEntity[CgEntityQuery.PITCH]) : 0;
+            stepPose.facing(yaw, pitch).getRotation(frameQ);
+        }
+        for (int p = 0; p < parts; p++) {
+            partOrigin(frameAt[0], frameAt[1], frameAt[2], frameQ, offsets[p * 3], offsets[p * 3 + 1], offsets[p * 3 + 2]);
+            out.part(names[p], partShape(p), drawPose.at(scratch.x, scratch.y, scratch.z).rotation(frameQ));
+        }
+    }
+
+    /** Whether it follows an entity: drawn where the frame draws its point ({@link #parts(float, PartSink)}). */
+    public boolean follows() {
+        return entity >= 0;
     }
 
     // ---- for CgHitboxType, which builds one per side

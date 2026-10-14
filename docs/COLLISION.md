@@ -993,7 +993,8 @@ void remove() { slam.stop(); }
 ### Drawing its outline
 
 `parts(sink)` hands each part where its last tick placed it, sized as it was then: what a debug view draws
-([§14](#14-seeing-it)), or your own outline.
+([§14](#14-seeing-it)), or your own outline. `parts(partialTick, sink)` hands a followed one where the frame draws its
+point instead, so an outline or an effect riding it moves with the animation each frame; it still tests once a tick.
 
 ```java
 slam.parts((name, shape, pose) -> drawOutline(shape, pose));
@@ -1431,7 +1432,9 @@ Press **F3+B** in Minecraft (its own hitbox view), or turn on `crystalgraphics.c
   ```java
   CgHitbox.follow(attacker, STRIKE).showColour(0xFF4040).showFill(0.25f)...   // red, filled for every player
   ```
-- Hitboxes are drawn as their last tick tested them, and only while active: what is drawn could still hit. A blow too
+- Hitboxes are drawn only while active: what is drawn could still hit. A client's hitbox following an entity is drawn
+  where the frame draws its point, moving with the animation; any other, and the server's, as its last tick tested
+  it. Either way it tests once a tick. A blow too
   short to see can linger, fading, so it reads as over: `showLinger(ticks)` on the hitbox, or
   `crystalgraphics.collision.linger` milliseconds for every hitbox that sets none. The server's linger by its own
   setting.

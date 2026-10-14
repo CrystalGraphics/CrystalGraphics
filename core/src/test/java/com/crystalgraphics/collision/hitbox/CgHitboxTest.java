@@ -53,6 +53,18 @@ public class CgHitboxTest {
     }
 
     @Test
+    public void aFollowedHitboxIsDrawnWhereTheFrameDrawsItsEntity() {
+        Table t = new Table().mob(1, 4, 0, KIND_MONSTER).moved(1, 2, 0, 0);   // from x 2 to 4 over the last tick
+        CgHitbox swing = CgHitbox.follow(1, CgEntityAttachments.FEET).part(TIP, CgSphere.of(0.5), 0, 0, 1).activeFor(10);
+        swing.tick(world(t), 1);
+        double[] tested = new double[1], drawn = new double[1];
+        swing.parts((part, shape, pose) -> tested[0] = pose.x);
+        swing.parts(0.5f, (part, shape, pose) -> drawn[0] = pose.x);
+        assertEquals("tested at the tick", 4, tested[0], 1e-9);
+        assertEquals("drawn half a tick back", 3, drawn[0], 1e-9);
+    }
+
+    @Test
     public void facingOnceHoldsTheFacingOfItsFirstTick() {
         // mob 1 looks along +z pitched down, then turns toward +x (Minecraft's yaw -90), where mob 3 stands
         Table t = new Table().mob(1, 0, 0, KIND_MONSTER).mob(2, 0, 2, KIND_MONSTER).mob(3, 2, 0, KIND_MONSTER)
