@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -411,6 +412,27 @@ public final class CgCodecs {
                                                                       CgRecordCodec.Of8<A, B, C, D, E, F, G, H, R> make) {
         return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5],
                 (G) v[6], (H) v[7]), a, b, c, d, e, f, g, h);
+    }
+
+    // ── Versions ────────────────────────────────────────────────────────────
+
+    /**
+     * {@code codec}'s saves at version {@code current}, under {@code "_v"}, each older one migrated by its steps: see
+     * {@link CgVersionedCodec}.
+     *
+     * <pre>{@code
+     * static final CgCodec<Character> SAVED = CgCodecs.versioned(2, Character.CODEC)
+     *         .from(1, tree -> tree.rename("Level", "level"));
+     * }</pre>
+     */
+    public static <A> CgVersionedCodec<A> versioned(int current, CgCodec<A> codec) {
+        return versioned("_v", current, codec);
+    }
+
+    /** As {@link #versioned(int, CgCodec)}, the version under {@code key}. */
+    public static <A> CgVersionedCodec<A> versioned(String key, int current, CgCodec<A> codec) {
+        if (key.indexOf('.') >= 0) throw new IllegalArgumentException("a version key is not a path: " + key);
+        return new CgVersionedCodec<>(key, current, codec, new TreeMap<>());
     }
 
     // ── Maps by hand ────────────────────────────────────────────────────────
