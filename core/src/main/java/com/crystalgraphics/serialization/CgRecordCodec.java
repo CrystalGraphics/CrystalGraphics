@@ -68,10 +68,12 @@ public final class CgRecordCodec<R> implements CgCodec<R> {
         Map<String, T> byKey = new LinkedHashMap<>();
         for (Map.Entry<T, T> e : ops.getMapValue(input).entrySet()) byKey.put(ops.getStringValue(e.getKey()), e.getValue());
         Object[] args = new Object[fields.length];
+        // By identity: JSON's null is one instance, while NBT's empty value is an empty compound, which a map holds.
+        T empty = ops.empty();
         for (int i = 0; i < fields.length; i++) {
             CgRecordField<R, ?> f = fields[i];
             T raw = byKey.get(f.key);
-            if (raw == null || raw.equals(ops.empty())) {
+            if (raw == null || raw == empty) {
                 if (!f.optional) throw new CgCodecException("Missing required field '" + f.key + "'");
                 args[i] = f.fallback;
                 continue;
