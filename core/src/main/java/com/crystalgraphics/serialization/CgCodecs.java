@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -320,11 +321,93 @@ public final class CgCodecs {
         return CgObjectCodec.builder(null, type.getSimpleName() + "'s codec");
     }
 
-    // ── Record building ─────────────────────────────────────────────────────
-    //
-    // A minimal field vocabulary. Not a RecordCodecBuilder — that needs arity-N generic plumbing this
-    // codebase doesn't have and doesn't yet need. `MapCodecBuilder` below is the 80% case: build a
-    // map field by field, read it back field by field, and let the caller assemble the object.
+    // ── Records ─────────────────────────────────────────────────────────────
+
+    /** A required key of a {@link #record}: missing on decode throws, naming it. */
+    public static <R, F> CgRecordField<R, F> field(String key, CgCodec<F> codec, Function<? super R, ? extends F> get) {
+        return new CgRecordField<>(key, codec, get, false, null);
+    }
+
+    /** An optional key of a {@link #record}: not written when equal to {@code fallback}, read as it when absent. */
+    public static <R, F> CgRecordField<R, F> optionalField(String key, CgCodec<F> codec, Function<? super R, ? extends F> get,
+                                                           @Nullable F fallback) {
+        return new CgRecordField<>(key, codec, get, true, fallback);
+    }
+
+    /**
+     * A record's codec from its keys and its constructor: see {@link CgRecordCodec}.
+     *
+     * <pre>{@code
+     * public record Spell(String name, int cost) {
+     *     public static final CgCodec<Spell> CODEC = CgCodecs.record(
+     *             CgCodecs.field("name", CgCodecs.STRING, Spell::name),
+     *             CgCodecs.optionalField("cost", CgCodecs.INT, Spell::cost, 0),
+     *             Spell::new);
+     * }
+     * }</pre>
+     */
+    @SuppressWarnings("unchecked")
+    public static <R, A> CgRecordCodec<R> record(CgRecordField<R, A> a, Function<A, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0]), a);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                    BiFunction<A, B, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1]), a, b);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                       CgRecordField<R, C> c, CgRecordCodec.Of3<A, B, C, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2]), a, b, c);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                          CgRecordField<R, C> c, CgRecordField<R, D> d,
+                                                          CgRecordCodec.Of4<A, B, C, D, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3]), a, b, c, d);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                             CgRecordField<R, C> c, CgRecordField<R, D> d,
+                                                             CgRecordField<R, E> e,
+                                                             CgRecordCodec.Of5<A, B, C, D, E, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4]), a, b, c, d, e);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                                CgRecordField<R, C> c, CgRecordField<R, D> d,
+                                                                CgRecordField<R, E> e, CgRecordField<R, F> f,
+                                                                CgRecordCodec.Of6<A, B, C, D, E, F, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5]),
+                a, b, c, d, e, f);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                                   CgRecordField<R, C> c, CgRecordField<R, D> d,
+                                                                   CgRecordField<R, E> e, CgRecordField<R, F> f,
+                                                                   CgRecordField<R, G> g,
+                                                                   CgRecordCodec.Of7<A, B, C, D, E, F, G, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5],
+                (G) v[6]), a, b, c, d, e, f, g);
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <R, A, B, C, D, E, F, G, H> CgRecordCodec<R> record(CgRecordField<R, A> a, CgRecordField<R, B> b,
+                                                                      CgRecordField<R, C> c, CgRecordField<R, D> d,
+                                                                      CgRecordField<R, E> e, CgRecordField<R, F> f,
+                                                                      CgRecordField<R, G> g, CgRecordField<R, H> h,
+                                                                      CgRecordCodec.Of8<A, B, C, D, E, F, G, H, R> make) {
+        return new CgRecordCodec<>(v -> make.apply((A) v[0], (B) v[1], (C) v[2], (D) v[3], (E) v[4], (F) v[5],
+                (G) v[6], (H) v[7]), a, b, c, d, e, f, g, h);
+    }
+
+    // ── Maps by hand ────────────────────────────────────────────────────────
 
     /** Starts building a map-shaped encoding. Field order is insertion order — see
      * {@link MapCodecBuilder} for why that matters. */
