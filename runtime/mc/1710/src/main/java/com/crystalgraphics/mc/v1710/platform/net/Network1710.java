@@ -16,7 +16,7 @@ import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayerQuery;
-import com.crystalgraphics.serialization.CgHostFormats;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;

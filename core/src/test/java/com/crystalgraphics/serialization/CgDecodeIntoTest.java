@@ -1,5 +1,6 @@
 package com.crystalgraphics.serialization;
 
+import com.crystalgraphics.serialization.format.CgFormats;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;

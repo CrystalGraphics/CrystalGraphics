@@ -7,7 +7,7 @@ import java.util.List;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.serialization.CgHostFormats;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagByte;

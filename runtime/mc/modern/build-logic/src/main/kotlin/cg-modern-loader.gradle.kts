@@ -84,6 +84,8 @@ dependencies {
     // Fabric/Loom dev runs pick this up from runtimeClasspath.
     // ModDevGradle (Forge/NeoForge) dev runs need it in the mods{} sourceSet block instead.
     "runtimeOnly"(project(":freetype-msdfgen-harfbuzz-bindings"))
+    // CgFormats.YAML's library: the single jar carries it relocated, a dev run takes it from here.
+    "runtimeOnly"("org.yaml:snakeyaml:2.7")
     // Mixin compileOnly — loaders bundle it at runtime. A stub build has its signatures in the stub.
     if (!stubMode) "compileOnly"("org.spongepowered:mixin:${property("modern.mixin")}")
     "annotationProcessor"("org.spongepowered:mixin:${property("modern.mixin")}:processor")
@@ -197,6 +199,7 @@ afterEvaluate {
     if (devRunLibraries == "additionalRuntimeClasspath") {
         configurations.findByName("additionalRuntimeClasspath")?.let { runtime ->
             dependencies.add(runtime.name, project(":runtime:mc:shared"))
+            dependencies.add(runtime.name, "org.yaml:snakeyaml:2.7")
         }
     }
 }

@@ -1,4 +1,11 @@
-package com.crystalgraphics.serialization;
+package com.crystalgraphics.serialization.format;
+
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
+
+import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgDynamicOps;
+import com.crystalgraphics.serialization.CgCodecException;
 
 import com.crystalgraphics.platform.CgPlatform;
 import org.junit.After;

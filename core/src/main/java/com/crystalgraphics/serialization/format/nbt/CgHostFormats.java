@@ -1,4 +1,6 @@
-package com.crystalgraphics.serialization;
+package com.crystalgraphics.serialization.format.nbt;
+
+import com.crystalgraphics.serialization.format.CgFormats;
 
 import com.crystalgraphics.platform.CgService;
 

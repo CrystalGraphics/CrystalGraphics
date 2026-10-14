@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.serialization.CgHostFormats;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import net.minecraft.nbt.ByteArrayTag;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.CompoundTag;

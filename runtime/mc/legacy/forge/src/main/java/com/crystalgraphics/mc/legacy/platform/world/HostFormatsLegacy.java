@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
-import com.crystalgraphics.serialization.CgHostFormats;
+import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 import net.minecraft.nbt.NBTBase;
 import net.minecraft.nbt.NBTTagByte;
 import net.minecraft.nbt.NBTTagByteArray;

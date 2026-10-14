@@ -1,4 +1,9 @@
-package com.crystalgraphics.serialization;
+package com.crystalgraphics.serialization.format.nbt;
+
+import com.crystalgraphics.serialization.format.CgFormats;
+
+import com.crystalgraphics.serialization.CgDynamicOps;
+import com.crystalgraphics.serialization.CgCodecException;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -11,11 +16,11 @@ import java.util.Map;
  * and each era answers only {@link CgHostFormats}' primitives: a boolean is a byte, map keys are text, and the absent
  * value is an empty compound. Mojang's {@code NbtOps} keeps the same rules.
  */
-final class HostTagOps implements CgDynamicOps<Object> {
+public final class HostTagOps implements CgDynamicOps<Object> {
 
     private final CgHostFormats tags;
 
-    HostTagOps(CgHostFormats tags) {
+    public HostTagOps(CgHostFormats tags) {
         this.tags = tags;
     }
 

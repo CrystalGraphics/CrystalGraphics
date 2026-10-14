@@ -99,6 +99,8 @@ registerSingleJarPipeline(SingleJarSpec(
     relocations = listOf(
         "de.javagl" to "com.crystalgraphics.shadow.de.javagl",
         "com.fasterxml.jackson" to "com.crystalgraphics.shadow.com.fasterxml.jackson",
+        // CgFormats.YAML; another mod may carry its own SnakeYAML
+        "org.yaml.snakeyaml" to "com.crystalgraphics.shadow.org.yaml.snakeyaml",
     ),
 
     manifest = mapOf(
@@ -128,6 +130,8 @@ registerSingleJarPipeline(SingleJarSpec(
         // `forbiddenPrefixes` cannot catch it: that check reads entry PATHS, and nothing reads inside
         // a service file.
         exclude("META-INF/services/com.fasterxml.jackson.*", "META-INF/maven/**")
+        // SnakeYAML's Java 9 module-info, which would name an org.yaml module this jar does not have
+        exclude("META-INF/versions/**")
 
         // The notice for what THIS jar carries, in the jar: MIT, BSD, Apache 2.0 and the FTL each
         // require it to reach whoever receives the binary.
@@ -144,7 +148,7 @@ registerSingleJarPipeline(SingleJarSpec(
 
     configureCheck = {
         forbiddenPrefixes.set(
-            listOf("META-INF/versions/", "org/joml/", "de/javagl/", "com/fasterxml/"))
+            listOf("META-INF/versions/", "org/joml/", "de/javagl/", "com/fasterxml/", "org/yaml/"))
         // The `:core` MODULE's packages, which are not called `core`: api is the public surface, gl
         // the implementation, text the font stack.
         expectSingle.set(listOf("com/crystalgraphics/api/", "com/crystalgraphics/gl/",
@@ -189,6 +193,7 @@ dependencies {
     jomlCompanion("org.joml:joml-jdk8:1.10.1") { exclude(group = "org.jetbrains.kotlin") }
     "singleJarLibs"("de.javagl:obj:0.4.0")
     "singleJarLibs"("de.javagl:jgltf-model:2.0.4")
+    "singleJarLibs"("org.yaml:snakeyaml:2.7")
 }
 
 // ── The JOML companion, for LWJGL2 targets only (D2) ────────────────────────────────────────────
