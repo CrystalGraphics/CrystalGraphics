@@ -6,12 +6,16 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.effect.EntityLightningBolt;
+import net.minecraft.entity.item.EntityPainting;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.DamageSource;
 import net.minecraft.world.WorldServer;
 
+import java.util.ArrayList;
 import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -78,6 +82,42 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         player.respawnPlayer();
         Minecraft.getMinecraft().displayGuiScreen(null);
         return true;
+    }
+
+    // 1.7.10 has no armor stand: a pig wanders a little, which a probe's hits tolerate.
+    @Override
+    public boolean stand(double x, double y, double z) {
+        return run(command(String.format(Locale.ROOT, "summon Pig %.2f %.2f %.2f", x, y, z)));
+    }
+
+    @Override
+    public boolean dragon(double x, double y, double z) {
+        return run(command(String.format(Locale.ROOT, "summon EnderDragon %.2f %.2f %.2f", x, y, z)));
+    }
+
+    // Built as an item places one, not summoned: 1.7.10's /summon sets the position after loading, which gives a
+    // hanging entity a plain 0.5 box. Its block is the one it hangs on; direction 2 is that block's north face.
+    @Override
+    public boolean painting(int x, int y, int z) {
+        if (Minecraft.getMinecraft().thePlayer == null) return false;
+        int dimension = Minecraft.getMinecraft().thePlayer.dimension;
+        return run(command(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z + 1)), server -> {
+            WorldServer world = server.worldServerForDimension(dimension);
+            world.spawnEntityInWorld(new EntityPainting(world, x, y, z + 1, 2, "Kebab"));
+        });
+    }
+
+    // No @e selector on 1.7.10: removed by hand, in the player's dimension.
+    @Override
+    public boolean clear(double x, double y, double z, double radius) {
+        if (Minecraft.getMinecraft().thePlayer == null) return false;
+        int dimension = Minecraft.getMinecraft().thePlayer.dimension;
+        double limit = radius * radius;
+        return run(server -> {
+            for (Entity e : new ArrayList<Entity>(server.worldServerForDimension(dimension).loadedEntityList)) {
+                if (!(e instanceof EntityPlayer) && e.getDistanceSq(x, y, z) <= limit) e.setDead();
+            }
+        });
     }
 
     private static Consumer<MinecraftServer> command(String command) {

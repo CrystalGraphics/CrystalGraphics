@@ -54,6 +54,32 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         return true;
     }
 
+    @Override
+    public boolean stand(double x, double y, double z) {
+        return run(String.format(Locale.ROOT, "summon minecraft:armor_stand %.2f %.2f %.2f {NoGravity:1b}", x, y, z));
+    }
+
+    @Override
+    public boolean dragon(double x, double y, double z) {
+        return run(String.format(Locale.ROOT, "summon minecraft:ender_dragon %.2f %.2f %.2f", x, y, z));
+    }
+
+    // Every spelling each version has used: a hanging entity's block as TileX/Y/Z, then block_pos (1.21.5);
+    // Facing, then facing; Motive, then variant. North is 2 in both the 2D and the 3D direction values.
+    @Override
+    public boolean painting(int x, int y, int z) {
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y, z + 1),
+                String.format(Locale.ROOT, "summon minecraft:painting %d %d %d {TileX:%d,TileY:%d,TileZ:%d,"
+                        + "block_pos:[I;%d,%d,%d],Facing:2b,facing:2b,Motive:\"minecraft:kebab\",variant:\"minecraft:kebab\"}",
+                        x, y, z, x, y, z, x, y, z));
+    }
+
+    @Override
+    public boolean clear(double x, double y, double z, double radius) {
+        return run(String.format(Locale.ROOT, "execute positioned %.2f %.2f %.2f run kill @e[type=!minecraft:player,distance=..%.1f]",
+                x, y, z, radius));
+    }
+
     private static boolean run(String... commands) {
         //? if >=1.14 {
         IntegratedServer server = Minecraft.getInstance().getSingleplayerServer();

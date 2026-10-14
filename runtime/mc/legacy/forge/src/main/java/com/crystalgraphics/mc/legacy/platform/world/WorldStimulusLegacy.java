@@ -14,9 +14,11 @@ import java.util.Locale;
 public final class WorldStimulusLegacy implements CgWorldStimulus {
 
     //? if >=1.11 {
-    private static final String LIGHTNING = "lightning_bolt", TNT = "tnt", PIG = "pig";
+    private static final String LIGHTNING = "lightning_bolt", TNT = "tnt", PIG = "pig", STAND = "armor_stand",
+            DRAGON = "ender_dragon", PAINTING = "painting", PLAYER = "player";
     //?} else {
-    /*private static final String LIGHTNING = "LightningBolt", TNT = "PrimedTnt", PIG = "Pig";
+    /*private static final String LIGHTNING = "LightningBolt", TNT = "PrimedTnt", PIG = "Pig", STAND = "ArmorStand",
+            DRAGON = "EnderDragon", PAINTING = "Painting", PLAYER = "Player";
     *///?}
 
     @Override
@@ -55,6 +57,33 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
         player.respawnPlayer();
         Minecraft.getMinecraft().displayGuiScreen(null);
         return true;
+    }
+
+    @Override
+    public boolean stand(double x, double y, double z) {
+        return run(String.format(Locale.ROOT, "summon %s %.2f %.2f %.2f {NoGravity:1b}", STAND, x, y, z));
+    }
+
+    // Sitting and scanning (6): the hover a dragon starts in targets its own position, which 1.9-1.12.2's flight
+    // divides by its distance to, so outside the End it turns NaN at once. 1.8.9 has no phases and ignores the tag.
+    @Override
+    public boolean dragon(double x, double y, double z) {
+        return run(String.format(Locale.ROOT, "summon %s %.2f %.2f %.2f {DragonPhase:6}", DRAGON, x, y, z));
+    }
+
+    // A hanging entity takes its block from TileX/Y/Z, not from where it is summoned. Facing 2 is north.
+    @Override
+    public boolean painting(int x, int y, int z) {
+        return run(String.format(Locale.ROOT, "setblock %d %d %d stone", x, y, z + 1),
+                String.format(Locale.ROOT, "summon %s %d %d %d {TileX:%d,TileY:%d,TileZ:%d,Facing:2b,Motive:\"Kebab\"}",
+                        PAINTING, x, y, z, x, y, z));
+    }
+
+    // Selector coordinates and radius are whole numbers before 1.13.
+    @Override
+    public boolean clear(double x, double y, double z, double radius) {
+        return run(String.format(Locale.ROOT, "kill @e[type=!%s,x=%d,y=%d,z=%d,r=%d]", PLAYER,
+                (int) Math.floor(x), (int) Math.floor(y), (int) Math.floor(z), (int) Math.ceil(radius)));
     }
 
     private static EntityPlayerSP player() {

@@ -23,12 +23,21 @@ import com.crystalgraphics.platform.CgService;
  * stimulus.respawn();                 // its Respawn button; works connected to a server too
  * }</pre>
  *
+ * Things to hit, for a probe of collision, and the way to be rid of them:
+ *
+ * <pre>{@code
+ * stimulus.stand(x + 3.5, y, z + 0.5);     // a target that stays put
+ * stimulus.dragon(x, y + 40, z);           // an Ender Dragon, alive: its parts move only with its AI
+ * stimulus.painting(bx, by + 1, bz + 4);   // hung on a stone set south of that block, facing north
+ * stimulus.clear(x, y, z, 48);             // every entity but players within 48 blocks
+ * }</pre>
+ *
  * <ul>
  *   <li>False, and nothing done, where there is no single-player server: connected to a server, or a version whose
  *       server takes no queued task. {@link #respawn} only needs a dead local player.</li>
  *   <li>It changes the world: {@link #breakBlock} leaves air and drops a stone, {@link #explode} breaks blocks within
- *       its reach, {@link #kill} drops the player's inventory unless the world keeps it. A probe aims them at the air
- *       above the player.</li>
+ *       its reach, {@link #kill} drops the player's inventory unless the world keeps it, {@link #clear} removes
+ *       every mob and item in its reach. A probe aims them at the air above the player.</li>
  *   <li>Client side, render thread.</li>
  * </ul>
  */
@@ -42,6 +51,10 @@ public interface CgWorldStimulus {
         @Override public boolean explode(double x, double y, double z) { return false; }
         @Override public boolean kill() { return false; }
         @Override public boolean respawn() { return false; }
+        @Override public boolean stand(double x, double y, double z) { return false; }
+        @Override public boolean dragon(double x, double y, double z) { return false; }
+        @Override public boolean painting(int x, int y, int z) { return false; }
+        @Override public boolean clear(double x, double y, double z, double radius) { return false; }
     };
 
     CgService<CgWorldStimulus> SERVICE = CgService.of("crystalgraphics:world_stimulus", NONE);
@@ -66,4 +79,16 @@ public interface CgWorldStimulus {
 
     /** The death screen's Respawn: false unless the local player is dead. */
     boolean respawn();
+
+    /** A target that stays put: an armor stand with no gravity, or a pig where there are none (1.7.10). */
+    boolean stand(double x, double y, double z);
+
+    /** An Ender Dragon, with its AI: one without never moves its parts from where they were made. */
+    boolean dragon(double x, double y, double z);
+
+    /** A 1x1 painting in the block, facing north, on a stone set in the block south of it. */
+    boolean painting(int x, int y, int z);
+
+    /** Every entity but players within {@code radius} blocks of the point removed, at once. */
+    boolean clear(double x, double y, double z, double radius);
 }
