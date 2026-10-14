@@ -859,8 +859,9 @@ Game ticks, fractional allowed:
 
 Attachment points (`CgEntityAttachments`): `FEET`, `CENTRE`, `CHEST`, `HEAD`, `EYES`, `RIGHT_HAND`, `LEFT_HAND`,
 `RIGHT_HAND_FORWARD`, `LEFT_HAND_FORWARD`, `HANDS_FORWARD`, and points your mod declares (`docs/VFX.md` §4), among
-them a point at a share of the body's height. A hitbox places itself from the entity's proportions on every side, so a
-server and its clients agree where it is.
+them a point at a share of the body's height. On a client a hitbox sits where the point is drawn: a model that marks
+its hand (`CgEntityAttachments.mark`) moves the swing with the animation, on every client that draws it. A server draws
+nothing, so it places from the entity's proportions; for a claimed hitbox the padding covers the difference.
 
 ```java
 static final int STRIKE = CgEntityAttachments.declareAtHeight("mymod:strike", 0.7);   // seven tenths up, scaling

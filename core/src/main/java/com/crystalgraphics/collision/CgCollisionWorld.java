@@ -430,6 +430,11 @@ public class CgCollisionWorld {
         return cache.warm() ? cache : entities;
     }
 
+    /** Whether it is the client's frame ({@link #client}), where entities are drawn and so marked. */
+    public boolean isClient() {
+        return clientLevel;
+    }
+
     /** Where between ticks it reads entities: 1 at the tick's positions. */
     public float partialTick() {
         return partialTick;

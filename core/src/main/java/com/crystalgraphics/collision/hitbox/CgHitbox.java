@@ -112,8 +112,9 @@ import java.util.function.IntConsumer;
  *       block its query meets is not.</li>
  *   <li>A {@link #hittable} one is met by queries on the thread it ticks on, against its level, while it is active and
  *       until it stops: an owner ticking one must stop it.</li>
- *   <li>Placement is from the followed entity's proportions on every side ({@link CgEntityAttachments#point(int,
- *       double[], double[])}), so server and client agree.</li>
+ *   <li>A followed point is where the client draws it ({@link CgEntityAttachments#mark}, then its providers), so a
+ *       claim lands where the player saw the fist; a server places it from the entity's proportions
+ *       ({@link CgEntityAttachments#point(int, double[], double[])}), and a claim's padding covers the gap.</li>
  * </ul>
  */
 public final class CgHitbox {
@@ -836,7 +837,9 @@ public final class CgHitbox {
             return true;
         }
         if (!world.entities().pose(entity, world.partialTick(), entityPose)) return false;
-        CgEntityAttachments.point(point, entityPose, at);
+        // where this client draws the point, so a claim is where the player saw it; a server draws nothing
+        if (world.isClient()) CgEntityAttachments.point(entity, point, world.partialTick(), entityPose, at);
+        else CgEntityAttachments.point(point, entityPose, at);
         nowX = at[0];
         nowY = at[1];
         nowZ = at[2];
