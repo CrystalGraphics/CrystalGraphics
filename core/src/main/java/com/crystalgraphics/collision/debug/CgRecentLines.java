@@ -33,8 +33,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
     static final int HITBOX = 0xFF40FF60;
     /** How long a query or a hitbox's tick is kept: past a game tick, so one each tick shows steadily. */
     static final long HOLD_NANOS = 60_000_000L;
-    /** How much of its colour's alpha a hitbox's faces take unless it says ({@link CgHitbox#showFill(float)}). */
-    static final float FILL = 0.25f;
+    /** A face's share when its hitbox sets none: the viewer's style decides, all of it or none. */
+    static final int DEFAULT_FILL = -1;
     private static final double MARK = 0.4;
 
     private final CgShapeLines shapes = new CgShapeLines();
@@ -50,7 +50,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private long[] expires = new long[256];
     /** How long before it expires a record starts fading; 0 for never. */
     private long[] fades = new long[256];
-    /** How much of its colour's alpha a face takes, of 255; 255 for a segment. */
+    /** A face's share of the viewer's fill opacity, of 255, or {@link #DEFAULT_FILL}; 255 for a segment. */
     private int[] fills = new int[256];
     /** Whether a face begins a piece ({@link CgShapeLines.Sink#piece}). */
     private boolean[] starts = new boolean[256];
@@ -106,30 +106,32 @@ final class CgRecentLines implements CgShapeLines.Sink {
     }
 
     /**
-     * Writes a hitbox's parts as its last tick tested them, edges and faces, kept {@link #HOLD_NANOS}; a stopped one
-     * {@code linger} longer, fading out over it.
+     * Writes a hitbox's parts as its last tick tested them, kept {@link #HOLD_NANOS}; a stopped one {@code linger}
+     * longer, fading out over it. Its edges, and its faces where it sets its own share, or where it sets none and
+     * {@code defaultFaces}: someone draws transparent.
      */
-    synchronized void hitbox(CgHitbox hitbox, CgWorldQuery level, long now, long linger) {
+    synchronized void hitbox(CgHitbox hitbox, CgWorldQuery level, long now, long linger, boolean defaultFaces) {
         this.level = level;
         fade = hitbox.stopped() ? linger : 0;
         until = now + HOLD_NANOS + fade;
         show = hitbox.showColour();
         colour = show != 0 ? show : HITBOX;
-        fill = fillOf(hitbox);
-        faceColour = scaled(colour, fill);
+        fill = ownFill(hitbox);
+        if (fill == DEFAULT_FILL && !defaultFaces) fill = 0;
+        faceColour = fill == DEFAULT_FILL ? colour : scaled(colour, fill);
         hitbox.parts(parts);
         this.level = null;
     }
 
     private void part(@Nullable CgHitPart name, CgShape shape, CgPose pose) {
         shapes.write(shape, pose, this);
-        if (fill > 0) shapes.faces(shape, pose, this);
+        if (fill != 0) shapes.faces(shape, pose, this);
     }
 
-    /** A hitbox's {@link CgHitbox#showFill(float)} of 255, {@link #FILL} unless it says. */
-    static int fillOf(CgHitbox hitbox) {
+    /** A hitbox's {@link CgHitbox#showFill(float)} share, of 255; {@link #DEFAULT_FILL} where it sets none. */
+    static int ownFill(CgHitbox hitbox) {
         float own = hitbox.showFill();
-        return Math.round((own < 0 ? FILL : own) * 255);
+        return own < 0 ? DEFAULT_FILL : Math.round(own * 255);
     }
 
     /** {@code argb} with its alpha times {@code of255} of 255. */
@@ -246,17 +248,21 @@ final class CgRecentLines implements CgShapeLines.Sink {
         return (int) ((argb >>> 24) * left / fades[i]) << 24 | argb & 0xFFFFFF;
     }
 
-    /** Drops what has expired by {@code now}, then hands {@code out} the rest. */
-    synchronized void drawTo(long now, Out out) {
+    /**
+     * Drops what has expired by {@code now}, then hands {@code out} the rest: faces at {@code opacity} of 255 of their
+     * share, those whose hitbox sets none only {@code transparent}.
+     */
+    synchronized void drawTo(long now, Out out, int opacity, boolean transparent) {
         expire(now);
         for (int i = 0; i < count; i++) {
-            int at = i * 9, argb = faded(colours[i], i, now);
+            int at = i * 9, argb = colours[i];
             if (faces[i]) {
                 if (starts[i]) out.piece();
-                out.triangle(argb, points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
+                if (fills[i] == DEFAULT_FILL && !transparent) continue;
+                out.triangle(faded(scaled(argb, opacity), i, now), points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
                         points[at + 5], points[at + 6], points[at + 7], points[at + 8]);
             } else {
-                out.line(argb, points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
+                out.line(faded(argb, i, now), points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
                         points[at + 5]);
             }
         }
@@ -264,17 +270,20 @@ final class CgRecentLines implements CgShapeLines.Sink {
 
     /**
      * Hands {@code pack} what of {@code level} starts within {@code range} of a point, in its show colour: edges
-     * first, so a full pack drops faces, and faces only {@code withFaces}. A fading record goes in its own colour or
-     * {@code fallback}, its alpha in eighths so runs stay few.
+     * first, so a full pack drops faces. A face carries its share in its alpha for the reader to scale by its opacity;
+     * one whose hitbox sets none only {@code withDefaultFaces}, marked, for a reader drawing transparent. A fading
+     * record goes in its own colour or {@code fallback}, its alpha in eighths so runs stay few.
      */
-    synchronized void packTo(CgWorldQuery level, double x, double y, double z, double range, boolean withFaces,
-                             int fallback, long now, CgLinePack pack) {
+    synchronized void packTo(CgWorldQuery level, double x, double y, double z, double range,
+                             boolean withDefaultFaces, int fallback, long now, CgLinePack pack) {
         double r2 = range * range;
-        for (int kinds = withFaces ? 2 : 1, kind = 0; kind < kinds; kind++) {
+        for (int kind = 0; kind < 2; kind++) {
             for (int i = 0; i < count && !pack.full(); i++) {
                 int at = i * 9;
                 double ex = points[at] - x, ey = points[at + 1] - y, ez = points[at + 2] - z;
                 if (faces[i] != (kind == 1) || levels[i] != level || ex * ex + ey * ey + ez * ez > r2) continue;
+                if (fills[i] == DEFAULT_FILL && !withDefaultFaces) continue;
+                pack.defaultFill(fills[i] == DEFAULT_FILL);
                 pack.colour(packed(i, fallback, now));
                 if (faces[i]) {
                     if (starts[i]) pack.piece();
@@ -293,10 +302,11 @@ final class CgRecentLines implements CgShapeLines.Sink {
      * one's, explicit, with its fill, a fading one's alpha in eighths.
      */
     private int packed(int i, int fallback, long now) {
-        int argb = scaled(shows[i] != 0 ? shows[i] : fallback, fills[i]);
+        int base = shows[i] != 0 ? shows[i] : fallback;
+        int argb = fills[i] == DEFAULT_FILL ? base : scaled(base, fills[i]);
         int faded = faded(argb, i, now);
-        // a face's fill travels in its colour
-        if (faded == argb) return fills[i] == 255 ? shows[i] : argb;
+        // a face's colour is explicit, its share in its alpha
+        if (faded == argb) return faces[i] ? argb : shows[i];
         int eighths = Math.max(1, ((faded >>> 24) * 8 + 254) / 255);
         return (eighths * 255 / 8) << 24 | argb & 0xFFFFFF;
     }

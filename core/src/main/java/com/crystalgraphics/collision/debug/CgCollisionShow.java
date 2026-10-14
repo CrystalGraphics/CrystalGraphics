@@ -34,7 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>{@code
  * -Dcrystalgraphics.collision.show=true                 // or from the console, or CgCollisionShow.SHOW.set(true)
  * -Dcrystalgraphics.collision.serve=false               // a server keeping its own to itself
- * -Dcrystalgraphics.collision.style=wireframe           // hitboxes as their edges alone; transparent by default
+ * -Dcrystalgraphics.collision.style=transparent         // hitboxes filled in; their edges alone by default
+ * -Dcrystalgraphics.collision.fillOpacity=0.4           // how strongly fills show: 0.25 of their colour's alpha
  * -Dcrystalgraphics.collision.linger=250                // a stopped hitbox kept 250 ms, fading; none by default
  * }</pre>
  *
@@ -51,9 +52,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>A server sends a player what is within {@link #RANGE} of them, at most {@link #MAX_RECORDS} segments and
  *       triangles a tick, edges before faces, while their client keeps asking; faces only to a client drawing
  *       them.</li>
- *   <li>{@link #STYLE} is each client's own: {@link Style#TRANSPARENT} fills a hitbox's faces in under its edges,
- *       at its {@link CgHitbox#showFill(float) fill}, {@link Style#WIREFRAME} draws the edges alone. Queries are
- *       lines under both.</li>
+ *   <li>{@link #STYLE} and {@link #FILL_OPACITY} are each client's own: {@link Style#WIREFRAME} draws a hitbox's
+ *       edges alone, {@link Style#TRANSPARENT} fills its faces in under them. A hitbox with its own
+ *       {@link CgHitbox#showFill(float) fill} is filled under both, at that share. Every fill shows at
+ *       {@link #FILL_OPACITY} of its colour's alpha, times its share. Queries are lines under both.</li>
  *   <li>Hitboxes are drawn as their last tick tested them, not between ticks, and only while active: one that
  *       stops is gone with its last tick, unless its {@link CgHitbox#showLinger(double) linger} or {@link #LINGER}
  *       keeps it, fading. A server's lingers by its own setting.</li>
@@ -76,9 +78,12 @@ public final class CgCollisionShow {
         WIREFRAME
     }
 
-    public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.TRANSPARENT,
-            CgVar.SAVED, "How this client draws the hitboxes it shows. transparent: see-through faces under solid"
-                    + " edges. wireframe: the edges alone.");
+    public static final CgVar.Choice<Style> STYLE = CgVar.choice("crystalgraphics.collision.style", Style.WIREFRAME,
+            CgVar.SAVED, "How this client draws the hitboxes it shows. wireframe: the edges alone. transparent:"
+                    + " see-through faces under solid edges. A hitbox with its own fill is filled under both.");
+    public static final CgVar.Num FILL_OPACITY = CgVar.number("crystalgraphics.collision.fillOpacity", 0.25f, 0f,
+            1f, CgVar.SAVED, "How strongly this client's hitbox fills show: the share of each one's colour's alpha its"
+                    + " faces take, times the hitbox's own share where it sets one.");
     public static final CgVar.Int LINGER = CgVar.integer("crystalgraphics.collision.linger", 0, 0, 5000,
             CgVar.SAVED, "Milliseconds a stopped hitbox stays shown, fading out, unless it sets its own. 0 shows each"
                     + " only while it is active.");
@@ -96,7 +101,10 @@ public final class CgCollisionShow {
     /** How long a server's last lines are drawn without a newer pack. */
     private static final long SERVER_HOLD_NANOS = 500_000_000L;
 
-    /** What a client asks for: {@link #ASK_NONE}, {@link #ASK_EDGES} or {@link #ASK_FACES}, edges and faces. */
+    /**
+     * What a client asks for: {@link #ASK_NONE}, {@link #ASK_EDGES} or {@link #ASK_FACES}, also the faces of hitboxes
+     * that set no fill. Those that set one come with their faces either way.
+     */
     static final CgMessage<Integer> ASK = CgMessage.toServer("crystalgraphics:collision/show", CgCodecs.INT);
     static final int ASK_NONE = 0, ASK_EDGES = 1, ASK_FACES = 2;
     static final CgMessage<byte[]> LINES = CgMessage.toClients("crystalgraphics:collision/lines", CgCodecs.BYTES);
@@ -108,6 +116,8 @@ public final class CgCollisionShow {
     private static final CgLinePack PACK = new CgLinePack();
     private static final double[] AT = new double[3];
     private static final CgRecentLines SERVER_LINES = new CgRecentLines(MAX_RECORDS);
+    /** Whether a player asking wants the faces of hitboxes that set no fill: recorded only then. */
+    private static volatile boolean serverFaces;
     /** Whose queries and hitboxes are a server's: an integrated server runs beside its client. */
     private static volatile Thread serverThread;
 
@@ -170,13 +180,27 @@ public final class CgCollisionShow {
         boolean showing = showing();
         if (showing) {
             long now = System.nanoTime();
-            CLIENT_LINES.drawTo(now, out);
+            int opacity = opacity();
+            boolean transparent = transparent();
+            CLIENT_LINES.drawTo(now, out, opacity, transparent);
             byte[] pack = serverLines;
-            if (pack != null && now - serverAt < SERVER_HOLD_NANOS) CgLinePack.read(pack, SERVER, out);
+            if (pack != null && now - serverAt < SERVER_HOLD_NANOS) {
+                CgLinePack.read(pack, SERVER, opacity, transparent, out);
+            }
         } else if (shown) {
             CLIENT_LINES.clear();
         }
         shown = showing;
+    }
+
+    /** Whether this client fills what sets no fill of its own. */
+    static boolean transparent() {
+        return STYLE.get() == Style.TRANSPARENT;
+    }
+
+    /** This client's {@link #FILL_OPACITY}, of 255. */
+    static int opacity() {
+        return Math.round(FILL_OPACITY.get() * 255);
     }
 
     /** Whether hitboxes are shown in this process: the variable, or the client's host view. */
@@ -216,7 +240,9 @@ public final class CgCollisionShow {
 
     private static void saw(CgHitbox hitbox, CgCollisionWorld world) {
         CgRecentLines into = lines();
-        if (into != null) into.hitbox(hitbox, world.blocks(), System.nanoTime(), lingerNanos(hitbox));
+        if (into == null) return;
+        boolean defaultFaces = into == SERVER_LINES ? serverFaces : transparent();
+        into.hitbox(hitbox, world.blocks(), System.nanoTime(), lingerNanos(hitbox), defaultFaces);
     }
 
     /** How long {@code hitbox} stays shown once stopped: its own linger, else {@link #LINGER}. */
@@ -265,6 +291,9 @@ public final class CgCollisionShow {
         long nanos = System.nanoTime();
         SERVER_LINES.expire(nanos);
         long now = CgNetwork.serverTicks();
+        boolean faces = false;
+        for (Watcher w : WATCHERS.values()) faces |= w.faces;
+        serverFaces = faces;
         for (Iterator<Watcher> it = WATCHERS.values().iterator(); it.hasNext(); ) {
             Watcher w = it.next();
             if (now - w.asked > FORGET_AFTER) {

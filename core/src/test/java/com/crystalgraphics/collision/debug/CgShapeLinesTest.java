@@ -34,6 +34,8 @@ public class CgShapeLinesTest {
 
     private static final double EPS = 1e-9;
     private static final CgCollisionWorld YARD = CgCollisionWorld.of(new Yard(), new Table());
+    /** The fill opacity a viewer draws at by default: a quarter. */
+    private static final int OPACITY = 64;
 
     @Test
     public void aBoxDrawsItsTwelveEdgesTurnedWithItsPose() {
@@ -114,11 +116,11 @@ public class CgShapeLinesTest {
         }
         assertEquals("not the hitbox's query, nor the empty world's cast", 1, heard[0]);
         List<Integer> colours = new ArrayList<>();
-        lines.drawTo(0, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
+        lines.drawTo(0, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb), OPACITY, true);
         assertTrue("its path, then where it stopped", colours.contains(CgRecentLines.PATH)
                 && colours.contains(CgRecentLines.HIT));
         colours.clear();
-        lines.drawTo(CgRecentLines.HOLD_NANOS, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb));
+        lines.drawTo(CgRecentLines.HOLD_NANOS, (argb, ax, ay, az, bx, by, bz) -> colours.add(argb), OPACITY, true);
         assertTrue("gone after its hold", colours.isEmpty());
     }
 
@@ -131,7 +133,7 @@ public class CgShapeLinesTest {
         pack.line(0, 0, 0, 1, 1, 1);
         assertTrue(pack.full());
         List<double[]> read = new ArrayList<>();
-        assertEquals(2, CgLinePack.read(pack.finish(), 0,
+        assertEquals(2, CgLinePack.read(pack.finish(), 0, 255, true,
                 (argb, ax, ay, az, bx, by, bz) -> read.add(new double[]{ax, ay, az, bx, by, bz})));
         double[] first = {101.25, 64.5, -310, 90, 70, -300.001};
         for (int i = 0; i < 6; i++) assertEquals(first[i], read.get(0)[i], CgLinePack.UNIT / 2);
@@ -149,7 +151,7 @@ public class CgShapeLinesTest {
         pack.colour(0);
         pack.line(1, 1, 1, 2, 2, 2);
         List<Integer> colours = new ArrayList<>();
-        assertEquals(4, CgLinePack.read(pack.finish(), CgCollisionShow.SERVER,
+        assertEquals(4, CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, 255, true,
                 (argb, ax, ay, az, bx, by, bz) -> colours.add(argb)));
         assertEquals(Arrays.asList(CgCollisionShow.SERVER, 0xFFFF0000, 0xFFFF0000, CgCollisionShow.SERVER), colours);
     }
@@ -243,12 +245,12 @@ public class CgShapeLinesTest {
         CgHitbox pair = CgHitbox.of(CgCompound.builder().add(CgSphere.of(0.5), 0, 0, 2).add(CgBox.of(1, 1, 1)).build())
                 .at(0, 1, 0);
         pair.tick(YARD, 1);
-        server.hitbox(pair, YARD.blocks(), 0, 0);
+        server.hitbox(pair, YARD.blocks(), 0, 0, true);
         CgLinePack pack = new CgLinePack();
         pack.begin(0, 0, 0, 1 << 12);
         server.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
         int[] pieces = {0};
-        CgLinePack.read(pack.finish(), 0, new CgRecentLines.Out() {
+        CgLinePack.read(pack.finish(), 0, 255, true, new CgRecentLines.Out() {
             @Override
             public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
             }
@@ -311,27 +313,27 @@ public class CgShapeLinesTest {
         long linger = 200_000_000L;
         CgRecentLines lines = new CgRecentLines(1 << 12);
         CgHitbox blow = blow();
-        lines.hitbox(blow, YARD.blocks(), 0, linger);
+        lines.hitbox(blow, YARD.blocks(), 0, linger, true);
         Tally drawn = new Tally();
-        lines.drawTo(CgRecentLines.HOLD_NANOS - 1, drawn);
+        lines.drawTo(CgRecentLines.HOLD_NANOS - 1, drawn, OPACITY, true);
         assertEquals("its edges", 12, drawn.lines);
         assertEquals("its faces", 12, drawn.faces);
         assertEquals("whole through its hold", 0xFFFF4040, drawn.line);
         assertEquals("its faces at a quarter", 0x40FF4040, drawn.face);
-        lines.drawTo(CgRecentLines.HOLD_NANOS + linger / 2, drawn.reset());
+        lines.drawTo(CgRecentLines.HOLD_NANOS + linger / 2, drawn.reset(), OPACITY, true);
         assertEquals(24, drawn.lines + drawn.faces);
         assertEquals("half faded", 0x7F, drawn.line >>> 24, 1);
         assertEquals(0xFF4040, drawn.line & 0xFFFFFF);
-        lines.drawTo(CgRecentLines.HOLD_NANOS + linger, drawn.reset());
+        lines.drawTo(CgRecentLines.HOLD_NANOS + linger, drawn.reset(), OPACITY, true);
         assertEquals("gone after its linger", 0, drawn.lines + drawn.faces);
     }
 
     @Test
     public void noLingerAndAStoppedHitboxGoesWithItsHold() {
         CgRecentLines lines = new CgRecentLines(1 << 12);
-        lines.hitbox(blow(), YARD.blocks(), 0, 0);
+        lines.hitbox(blow(), YARD.blocks(), 0, 0, true);
         Tally drawn = new Tally();
-        lines.drawTo(CgRecentLines.HOLD_NANOS, drawn);
+        lines.drawTo(CgRecentLines.HOLD_NANOS, drawn, OPACITY, true);
         assertEquals(0, drawn.lines + drawn.faces);
     }
 
@@ -348,7 +350,7 @@ public class CgShapeLinesTest {
 
             @Override
             public void stopped(CgHitbox hitbox, CgCollisionWorld world) {
-                lines.hitbox(hitbox, world.blocks(), 0, CgRecentLines.HOLD_NANOS);
+                lines.hitbox(hitbox, world.blocks(), 0, CgRecentLines.HOLD_NANOS, true);
             }
         });
         try {
@@ -357,7 +359,7 @@ public class CgShapeLinesTest {
             CgHitboxes.watch(null);
         }
         Tally drawn = new Tally();
-        lines.drawTo(CgRecentLines.HOLD_NANOS + 1, drawn);
+        lines.drawTo(CgRecentLines.HOLD_NANOS + 1, drawn, OPACITY, true);
         assertEquals("its last pose, past the hold", 12, drawn.lines);
     }
 
@@ -382,17 +384,17 @@ public class CgShapeLinesTest {
         for (int i = 0; i < 3; i++) {
             CgHitbox box = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(i * 4, 1, 0);
             box.tick(YARD, 1);
-            lines.hitbox(box, YARD.blocks(), 0, 0);
+            lines.hitbox(box, YARD.blocks(), 0, 0, true);
         }
         Tally drawn = new Tally();
-        lines.drawTo(0, drawn);
+        lines.drawTo(0, drawn, OPACITY, true);
         assertEquals("two boxes' edges each fill the cap apart", 24, drawn.lines);
         assertEquals(24, drawn.faces);
 
         CgLinePack pack = new CgLinePack();
         pack.begin(0, 0, 0, 30);
         lines.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
-        CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, drawn.reset());
+        CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, 255, true, drawn.reset());
         assertEquals("a full pack keeps every edge", 24, drawn.lines);
         assertEquals("and drops faces", 6, drawn.faces);
     }
@@ -402,12 +404,12 @@ public class CgShapeLinesTest {
         CgRecentLines lines = new CgRecentLines(1 << 12);
         CgHitbox box = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(0, 1, 0).activeFor(1);
         box.tick(YARD, 1);
-        lines.hitbox(box, YARD.blocks(), 0, 100);
+        lines.hitbox(box, YARD.blocks(), 0, 100, true);
         CgLinePack pack = new CgLinePack();
         pack.begin(0, 0, 0, 1 << 12);
         lines.packTo(YARD.blocks(), 0, 0, 0, 64, false, CgCollisionShow.SERVER, CgRecentLines.HOLD_NANOS + 50, pack);
         Tally drawn = new Tally();
-        CgLinePack.read(pack.finish(), 0, drawn);
+        CgLinePack.read(pack.finish(), 0, 255, true, drawn);
         assertEquals(12, drawn.lines);
         assertEquals(0, drawn.faces);
         assertEquals("the server's colour, in eighths of alpha", CgCollisionShow.SERVER & 0xFFFFFF,
@@ -423,22 +425,28 @@ public class CgShapeLinesTest {
         CgHitbox plain = CgHitbox.of(CgBox.of(0.5, 0.5, 0.5)).at(8, 1, 0);
         Tally drawn = new Tally();
         for (CgHitbox h : new CgHitbox[]{edges, half, plain}) h.tick(YARD, 1);
-        lines.hitbox(edges, YARD.blocks(), 0, 0);
-        lines.drawTo(0, drawn);
+        lines.hitbox(edges, YARD.blocks(), 0, 0, true);
+        lines.drawTo(0, drawn, OPACITY, true);
         assertEquals("edges alone", 12, drawn.lines);
         assertEquals(0, drawn.faces);
-        lines.hitbox(half, YARD.blocks(), 0, 0);
-        lines.drawTo(0, drawn.reset());
-        assertEquals("half its colour's alpha", 0x802060FF, drawn.face);
+        lines.hitbox(half, YARD.blocks(), 0, 0, true);
+        lines.drawTo(0, drawn.reset(), 255, true);
+        assertEquals("half its colour's alpha at a whole opacity", 0x802060FF, drawn.face);
+        lines.drawTo(0, drawn.reset(), OPACITY, false);
+        assertEquals("its own share, scaled by the viewer's opacity, though wireframe", 0x202060FF, drawn.face);
 
         CgRecentLines server = new CgRecentLines(1 << 12);
-        server.hitbox(plain, YARD.blocks(), 0, 0);
+        server.hitbox(plain, YARD.blocks(), 0, 0, true);
         CgLinePack pack = new CgLinePack();
         pack.begin(0, 0, 0, 1 << 12);
         server.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
-        CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, drawn.reset());
+        byte[] packed = pack.finish();
+        CgLinePack.read(packed, CgCollisionShow.SERVER, OPACITY, true, drawn.reset());
         assertEquals("edges in the reader's colour", CgCollisionShow.SERVER, drawn.line);
-        assertEquals("faces carry their quarter", 0x40000000 | CgCollisionShow.SERVER & 0xFFFFFF, drawn.face);
+        assertEquals("faces at the reader's opacity", 0x40000000 | CgCollisionShow.SERVER & 0xFFFFFF, drawn.face);
+        CgLinePack.read(packed, CgCollisionShow.SERVER, OPACITY, false, drawn.reset());
+        assertEquals("a wireframe reader skips what set no fill", 0, drawn.faces);
+        assertEquals(12, drawn.lines);
         assertThrows(IllegalArgumentException.class, () -> plain.showFill(1.5f));
     }
 
@@ -485,7 +493,7 @@ public class CgShapeLinesTest {
         pack.line(100, 65, -300, 100, 66, -300);
         List<String> read = new ArrayList<>();
         double[] last = new double[9];
-        assertEquals(4, CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, new CgRecentLines.Out() {
+        assertEquals(4, CgLinePack.read(pack.finish(), CgCollisionShow.SERVER, 255, true, new CgRecentLines.Out() {
             @Override
             public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
                 read.add("line " + Integer.toHexString(argb));

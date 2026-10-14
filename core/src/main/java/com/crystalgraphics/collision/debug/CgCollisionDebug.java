@@ -31,10 +31,11 @@ import java.util.Arrays;
  *   <li>Render thread. Colours are ARGB.</li>
  *   <li>Every live hitbox and world query at once is {@link CgCollisionShow#SHOW} or the host's F3+B, which this
  *       draws too, so a query drawn here as well is drawn twice.</li>
- *   <li>Shapes and hitboxes, the show's and those drawn here, have their faces drawn as well, at a quarter of their
- *       colour's alpha or a hitbox's {@link CgHitbox#showFill(float) fill}, so each reads as the space it tests
- *       with what is behind it still seen; not under {@link CgCollisionShow.Style#WIREFRAME}. Lines and marks are
- *       lines under both.</li>
+ *   <li>Under {@link CgCollisionShow.Style#TRANSPARENT}, shapes and hitboxes, the show's and those drawn here, have
+ *       their faces drawn as well, at {@link CgCollisionShow#FILL_OPACITY} of their colour's alpha, so each reads as
+ *       the space it tests with what is behind it still seen. A hitbox with its own
+ *       {@link CgHitbox#showFill(float) fill} is filled under either style, at that share of the opacity. Lines and
+ *       marks are lines under both.</li>
  *   <li>Drawn over the world's other transparent draws ({@link CgSortLayer#OVERLAY}): the faces turned away, the
  *       lines, then the faces turned toward the eye, each far to near, so a face tints the edges behind it.</li>
  * </ul>
@@ -56,7 +57,6 @@ public final class CgCollisionDebug {
         @Override
         public void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
                 double cy, double cz) {
-            if (!faces) return;
             colour = argb;
             FACES.triangle(ax, ay, az, bx, by, bz, cx, cy, cz);
         }
@@ -67,8 +67,9 @@ public final class CgCollisionDebug {
         }
     };
     private static boolean installed;
-    /** Whether faces are drawn: {@link CgCollisionShow#STYLE}, read once a frame. */
-    private static boolean faces;
+    /** {@link CgCollisionShow#opacity()} and {@link CgCollisionShow#transparent()}, read once a frame. */
+    private static int opacity;
+    private static boolean transparent;
     private static CgMaterial material;
     private static int colour, fill;
 
@@ -77,7 +78,7 @@ public final class CgCollisionDebug {
 
     /** Draws {@code shape} at {@code pose} on the next world frame. */
     public static void shape(CgShape shape, CgPose pose, int argb) {
-        shape(shape, pose, argb, Math.round(CgRecentLines.FILL * 255));
+        shape(shape, pose, argb, transparent ? 255 : 0);
     }
 
     /**
@@ -86,7 +87,8 @@ public final class CgCollisionDebug {
      */
     public static void hitbox(CgHitbox hitbox, int argb) {
         colour = argb;
-        fill = CgRecentLines.fillOf(hitbox);
+        int own = CgRecentLines.ownFill(hitbox);
+        fill = own == CgRecentLines.DEFAULT_FILL ? transparent ? 255 : 0 : own;
         hitbox.parts(CgCollisionDebug::part);
     }
 
@@ -111,7 +113,8 @@ public final class CgCollisionDebug {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
-        faces = CgCollisionShow.STYLE.get() == CgCollisionShow.Style.TRANSPARENT;
+        opacity = CgCollisionShow.opacity();
+        transparent = CgCollisionShow.transparent();
         CgCollisionShow.installClient();
         CgWorldRenderer.get().onFrame(CgCollisionDebug::frame);
     }
@@ -127,11 +130,12 @@ public final class CgCollisionDebug {
         shape(shape, pose, colour, fill);
     }
 
-    private static void shape(CgShape shape, CgPose pose, int argb, int of255) {
+    /** Its edges, and its faces at {@code share} of 255 of the opacity. */
+    private static void shape(CgShape shape, CgPose pose, int argb, int share) {
         colour = argb;
         SHAPES.write(shape, pose, LINES);
-        if (!faces || of255 == 0) return;
-        colour = CgRecentLines.scaled(argb, of255);
+        if (share <= 0 || opacity <= 0) return;
+        colour = CgRecentLines.scaled(CgRecentLines.scaled(argb, share), opacity);
         SHAPES.faces(shape, pose, FACES);
         colour = argb;
     }
@@ -139,7 +143,8 @@ public final class CgCollisionDebug {
     private static void frame(CgHostView view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
-        faces = CgCollisionShow.STYLE.get() == CgCollisionShow.Style.TRANSPARENT;
+        opacity = CgCollisionShow.opacity();
+        transparent = CgCollisionShow.transparent();
         CgCollisionShow.drawTo(view.x(), view.y(), view.z(), SHOWN);
         FACES.draw(view.x(), view.y(), view.z());
         LINES.draw(view.x(), view.y(), view.z());
