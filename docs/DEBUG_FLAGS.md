@@ -144,6 +144,15 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.net.budget` | 1024 to 2147483647 | `32768` | Bytes of objects a server sends each player a tick; CgNetObjects.budget sets it in code. Read at launch. |
 | `crystalgraphics.net.trace` | true, false | `false` | Log the first few frames each way through the host's network channel (1.7.10 and legacy Forge). Read at launch. |
 
+## `crystalgraphics.netprobe`
+
+| Variable | Takes | Default | |
+|---|---|---|---|
+| `crystalgraphics.netprobe` | true, false | `false` | Prove in a running game what networked objects do across a player's death, and how late a change arrives, logging a verdict per check for prodSmoke and a live server. Read at launch. |
+| `crystalgraphics.netprobe.exit` | true, false | `false` | End every process once the net probe's verdict is out. Read at launch. |
+| `crystalgraphics.netprobe.players` | 1 to 16 | `1` | How many players the net probe waits for before it starts. Read at launch. |
+| `crystalgraphics.netprobe.victim` | text | empty | The player the net probe kills, by name; the first to join unless said. Read at launch. |
+
 ## `crystalgraphics.noise`
 
 | Variable | Takes | Default | |

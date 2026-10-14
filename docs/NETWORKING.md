@@ -969,6 +969,23 @@ On 1.7.10 it is `:runtime:mc:1710:runServer -PcgLiveServer` and `:runtime:mc:171
 directory `run/client-bob`), and each client with `-Dcrystalgraphics.demo=false`: a client joining straight from launch
 builds the world demo while it logs in, and FML drops a client whose thread is busy for 5 seconds then.
 
+### Through a death: the net probe
+
+`CgNetProbe` kills a player and checks what lived on them: their mana (`copyOnDeath`) kept on the same object, a buff
+without it ended, a turret on their body ended, their chunk's object untouched, every client seeing the same, and how
+late a change reaches each client (a median within 50 ms when the host sends at the end of its tick; a tick later
+than that is 50 ms more).
+
+```bash
+# single player: a dev client's autotest, or prodSmoke -PcgSmokeProps=crystalgraphics.netprobe=true
+./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgui.autotest=true "-Dcrystalgui.autotest.world=*" -Dcrystalgraphics.netprobe=true
+# a server and two clients: every process with the flag, the server also with how many and whom
+-Dcrystalgraphics.netprobe=true -Dcrystalgraphics.netprobe.players=2 -Dcrystalgraphics.netprobe.victim=Alice
+```
+
+In single player it kills and respawns the player itself; on a dedicated server it logs `net probe: kill Alice now`
+and waits a minute for the console or RCON to do it. The verdict is `net probe: true` in the server's log.
+
 ### What it is doing
 
 ```java

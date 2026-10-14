@@ -35,7 +35,7 @@ public class WorldServiceReadersTest {
         READERS.put("CgModelSpace", Arrays.asList("world/CgEntityAttachments.java"));
         READERS.put("CgHostDebug", Arrays.asList("collision/debug/CgCollisionShow.java"));
         READERS.put("CgHostShapes", Arrays.asList("shape/CgShape.java", "shape/bounds/CgAABB.java"));
-        READERS.put("CgWorldStimulus", Arrays.asList("probe/CgWorldProbe.java"));
+        READERS.put("CgWorldStimulus", Arrays.asList("probe/CgWorldProbe.java", "net/object/CgNetProbe.java"));
     }
 
     @Test

@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.net.object.CgNetObjects;
+import com.crystalgraphics.net.object.CgNetProbe;
 import com.crystalgraphics.net.object.CgNetStress;
 import com.crystalgraphics.net.protocol.CgConnections;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
@@ -147,6 +148,7 @@ public final class CgNetwork {
         }
         LOGGER.info("[cg-net] connections installed; contributors: {}", CgProtocols.contributors());
         if (Boolean.getBoolean(CgNetStress.PROPERTY)) CgNetStress.install();
+        if (CgNetProbe.ENABLED) CgNetProbe.install();
         CgCollisionShow.install();
         return true;
     }
