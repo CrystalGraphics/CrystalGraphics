@@ -8,15 +8,16 @@ import com.crystalgraphics.api.material.CgRenderQueue;
  * sorts in Niagara's levels: its group (an effect) back to front, then within it by its own order and distance.
  *
  * <pre>
- * opaque       63    60 59    53 52 51  48 47          32 31          16 15          0
- *              | slot  | layer  | 0 | ord  | material id  | depth bucket | mesh id     |
- * transparent  63    60 59    53 52          37 36 35  32 31          16 15          0
- *              | slot  | layer  | group bucket | s | ord  | batch key    | depth bucket |
+ * opaque       63    60 59    53 52     45 44          29 28          13 12        0
+ *              | slot  | layer  | order   | material id  | depth bucket | mesh id   |
+ * transparent  63    60 59    53 52          37 36 35     28 27       16 15          0
+ *              | slot  | layer  | group bucket | s | order   | batch key | depth bucket |
  * </pre>
  *
  * <ul>
  *   <li>Slot: opaque 0, alpha test 1, transparent 2, from {@link CgRenderQueue}'s thresholds. Layer: a
- *       {@link CgSortLayer}'s rank. Order: 0 to 15, higher later, within the layer or the group.</li>
+ *       {@link CgSortLayer}'s rank. Order: 0 to 255, higher later, within the layer or the group. Batch key: 0 to
+ *       4,095.</li>
  *   <li>s: 0 for a transparent draw writing depth, which draws before the rest of its group whatever its order: what
  *       blends over it then sees its depth, and what is behind it is hidden by it.</li>
  *   <li>Opaque groups by material, then front to back, then by mesh, so neighbours that can instance are adjacent.
@@ -37,10 +38,10 @@ final class CgSortKey {
 
     static long opaque(int queue, int layer, int order, int materialId, int meshId, float distance) {
         return head(queue, layer)
-                | ((long) (order & 0xF)) << 48
-                | ((long) (materialId & 0xFFFF)) << 32
-                | ((long) bucket(distance)) << 16
-                | (meshId & 0xFFFF);
+                | ((long) (order & 0xFF)) << 45
+                | ((long) (materialId & 0xFFFF)) << 29
+                | ((long) bucket(distance)) << 13
+                | (meshId & 0x1FFF);
     }
 
     /**
@@ -52,8 +53,8 @@ final class CgSortKey {
         return head(queue, layer)
                 | ((long) (0xFFFF - bucket(groupDistance))) << 37
                 | (writesDepth ? 0L : 1L << 36)
-                | ((long) (order & 0xF)) << 32
-                | ((long) (batchKey & 0xFFFF)) << 16
+                | ((long) (order & 0xFF)) << 28
+                | ((long) (batchKey & 0xFFF)) << 16
                 | (0xFFFF - bucket(distance));
     }
 

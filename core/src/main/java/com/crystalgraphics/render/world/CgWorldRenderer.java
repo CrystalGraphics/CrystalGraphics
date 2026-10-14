@@ -1055,15 +1055,15 @@ public final class CgWorldRenderer {
             return this;
         }
 
-        /** 0 to 15; higher draws later within its layer, or within its {@link #group}. */
+        /** 0 to 255; higher draws later within its layer, or within its {@link #group}. */
         public Draw order(int order) {
-            if (order < 0 || order > 15) throw new IllegalArgumentException("order " + order + " is outside 0..15");
+            if (order < 0 || order > 255) throw new IllegalArgumentException("order " + order + " is outside 0..255");
             this.order = order;
             return this;
         }
 
         /**
-         * 0 to 65,535, 0 unless given: within its group and {@link #order}, transparent draws sort by it before distance,
+         * 0 to 4,095, 0 unless given: within its group and {@link #order}, transparent draws sort by it before distance,
          * back to front only among draws of one key. Draws of one material given one key in one group run together, so
          * the executor joins them into one multi-draw, at the price of blending each material's run over the others'.
          *
@@ -1072,7 +1072,7 @@ public final class CgWorldRenderer {
          * }</pre>
          */
         public Draw batchKey(int key) {
-            if (key < 0 || key > 0xFFFF) throw new IllegalArgumentException("batch key " + key + " is outside 0..65535");
+            if (key < 0 || key > 0xFFF) throw new IllegalArgumentException("batch key " + key + " is outside 0..4095");
             this.batchKey = key;
             return this;
         }
