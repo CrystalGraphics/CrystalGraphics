@@ -112,6 +112,8 @@ public final class YamlFileFormat extends TextFileFormat<Object> {
                     }
                     String note = notes.get(key);
                     if (note == null && value != null) note = ours.commentsOf(value).get(null);
+                    // A blank line above a commented key, the first in its map excepted, as TomlWriter does.
+                    if (note != null && !first) mine.add(new CommentLine(null, null, "", CommentType.BLANK_LINE));
                     if (note != null) mine.addAll(lines(note));
                     if (!mine.isEmpty()) t.getKeyNode().setBlockComments(mine);
                 }

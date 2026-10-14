@@ -69,6 +69,18 @@ public class CgYamlCommentsTest {
     }
 
     @Test
+    public void aCommentedKeyHasABlankLineAboveItTheFirstExcepted() throws IOException {
+        String text = CgFormats.YAML.toText(More.CODEC, new More());
+        assertTrue(text, text.startsWith("# Sound."));
+        assertTrue(text, text.contains("\n\n# Only on More.\nextra:"));
+        Path file = folder.getRoot().toPath().resolve("more.yml");
+        CgFormats.YAML.write(file, More.CODEC, new More());
+        CgFormats.YAML.write(file, More.CODEC, CgFormats.YAML.read(file, More.CODEC));
+        assertEquals("written again, the blank line is not doubled", text,
+                new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
+    @Test
     public void aPersonsCommentsSurviveTheModWritingTheFileAgain() throws IOException {
         Path file = folder.newFile("mymod.yml").toPath();
         Files.write(file, ("# my own: quiet at night\n"
