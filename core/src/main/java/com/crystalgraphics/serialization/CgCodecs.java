@@ -1,13 +1,17 @@
 package com.crystalgraphics.serialization;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /** Built-in primitive {@link CgCodec}s and generic combinators — the reusable low-level vocabulary
  * hand-written, type-specific codecs (like a future UI-tree codec) are built from. */
@@ -61,8 +65,10 @@ public final class CgCodecs {
         }
     };
 
-    /** A {@code CgCodec<List<A>>} built from an element codec — encodes/decodes every element via
-     * {@code elementCodec}, wrapping the result in the format's own list representation. */
+    /**
+     * A list, each element through {@code elementCodec}. Decoded into a list, it refills that list: element {@code i}
+     * through {@code elementCodec}'s own {@code decodeInto}, extras dropped, new ones added (serde's {@code Vec}).
+     */
     public static <A> CgCodec<List<A>> listOf(CgCodec<A> elementCodec) {
         return new CgCodec<List<A>>() {
             @Override
@@ -79,6 +85,21 @@ public final class CgCodecs {
                 for (T t : raw) decoded.add(elementCodec.decode(ops, t));
                 return decoded;
             }
+
+            @Override
+            public <T> List<A> decodeInto(CgDynamicOps<T> ops, T input, @Nullable List<A> target) {
+                if (target == null) return decode(ops, input);
+                List<T> raw = ops.getListValue(input);
+                int kept = Math.min(raw.size(), target.size());
+                for (int i = 0; i < kept; i++) {
+                    A current = target.get(i);
+                    A next = elementCodec.decodeInto(ops, raw.get(i), current);
+                    if (next != current) target.set(i, next);
+                }
+                if (target.size() > raw.size()) target.subList(raw.size(), target.size()).clear();
+                for (int i = kept; i < raw.size(); i++) target.add(elementCodec.decode(ops, raw.get(i)));
+                return target;
+            }
         };
     }
 
@@ -94,6 +115,8 @@ public final class CgCodecs {
      *   <li>Encoding follows the map's own order: hand it a {@code LinkedHashMap} or a {@code TreeMap} where the
      *       encoded bytes must not vary (a content hash, a save diffed by hand).</li>
      *   <li>NBT and JSON take only text keys: key by a codec that encodes as a string there.</li>
+     *   <li>Decoded into a map, it keeps that map: a key already there goes through its value's {@code decodeInto}, a
+     *       new one is added, and one the input lacks is removed.</li>
      * </ul>
      */
     public static <K, V> CgCodec<Map<K, V>> mapOf(CgCodec<K> keyCodec, CgCodec<V> valueCodec) {
@@ -116,6 +139,23 @@ public final class CgCodecs {
                 }
                 return decoded;
             }
+
+            @Override
+            public <T> Map<K, V> decodeInto(CgDynamicOps<T> ops, T input, @Nullable Map<K, V> target) {
+                if (target == null) return decode(ops, input);
+                Map<T, T> raw = ops.getMapValue(input);
+                Set<K> seen = new HashSet<>(raw.size() * 2);
+                for (Map.Entry<T, T> e : raw.entrySet()) {
+                    K key = keyCodec.decode(ops, e.getKey());
+                    seen.add(key);
+                    V current = target.get(key);
+                    V next = current == null ? valueCodec.decode(ops, e.getValue())
+                            : valueCodec.decodeInto(ops, e.getValue(), current);
+                    if (next != current) target.put(key, next);
+                }
+                target.keySet().retainAll(seen);
+                return target;
+            }
         };
     }
 
@@ -134,6 +174,7 @@ public final class CgCodecs {
      *   <li>A key {@code codecOf} answers null for fails to encode or decode, naming the key.</li>
      *   <li>The value always sits under {@code "value"}, never inlined beside the key: with no map-only codecs to tell
      *       shapes apart, inlining would make a value whose own field is called {@code "value"} ambiguous.</li>
+     *   <li>Decoded into a value of the same key, the key's codec updates it in place; another key makes a new one.</li>
      * </ul>
      */
     public static <K, V> CgCodec<V> dispatch(String keyName, CgCodec<K> keyCodec, Function<? super V, ? extends K> keyOf,
@@ -149,6 +190,16 @@ public final class CgCodecs {
             public <T> V decode(CgDynamicOps<T> ops, T input) {
                 MapCodecReader<T> r = read(ops, input);
                 return r.field("value", codecFor(r.field(keyName, keyCodec)));
+            }
+
+            @Override
+            public <T> V decodeInto(CgDynamicOps<T> ops, T input, @Nullable V target) {
+                MapCodecReader<T> r = read(ops, input);
+                K key = r.field(keyName, keyCodec);
+                if (target == null || !Objects.equals(keyOf.apply(target), key)) return r.field("value", codecFor(key));
+                T value = r.raw("value");
+                if (value == null) throw new CgCodecException("Missing required field 'value'");
+                return codecFor(key).decodeInto(ops, value, target);
             }
 
             @SuppressWarnings("unchecked")
@@ -248,6 +299,25 @@ public final class CgCodecs {
                 throw new CgCodecException("No " + type.getSimpleName() + " constant named '" + name + "'", e);
             }
         }, Enum::name);
+    }
+
+    /**
+     * A mutable object, each field declared once, decoded anew through {@code make} or into a live object: see
+     * {@link CgObjectCodec}.
+     *
+     * <pre>{@code
+     * static final CgObjectCodec<Settings> CODEC = CgCodecs.object(Settings::new)
+     *         .field("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v)
+     *         .build();
+     * }</pre>
+     */
+    public static <A> CgObjectCodec.Builder<A> object(Supplier<A> make) {
+        return CgObjectCodec.builder(make, "an object codec");
+    }
+
+    /** An object codec with no factory: the caller makes the object and decodes into it. */
+    public static <A> CgObjectCodec.Builder<A> object(Class<A> type) {
+        return CgObjectCodec.builder(null, type.getSimpleName() + "'s codec");
     }
 
     // ── Record building ─────────────────────────────────────────────────────

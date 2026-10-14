@@ -71,13 +71,33 @@ public final class CgFormats {
     @Nullable
     public static <V> V read(Path file, CgCodec<V> codec) throws IOException {
         if (!Files.exists(file)) return null;
+        return codec.decode(CgPlainOps.INSTANCE, tree(file));
+    }
+
+    /**
+     * What {@link #write} left in {@code file}, decoded into {@code target} ({@link CgCodec#decodeInto}): answers what
+     * now holds the data, {@code target} itself for a codec that updates in place. No file leaves {@code target} as
+     * it is.
+     *
+     * <pre>{@code
+     * CgFormats.readInto(file, Settings.CODEC, settings);   // every screen holding settings sees the reload
+     * }</pre>
+     *
+     * The file is read and parsed whole first, so a damaged one throws before {@code target} is touched.
+     */
+    public static <V> V readInto(Path file, CgCodec<V> codec, V target) throws IOException {
+        if (!Files.exists(file)) return target;
+        return codec.decodeInto(CgPlainOps.INSTANCE, tree(file), target);
+    }
+
+    private static Object tree(Path file) throws IOException {
         // whole, then decoded: the format checks each length against what remains, which a gzip stream cannot say
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (InputStream in = new GZIPInputStream(new BufferedInputStream(Files.newInputStream(file)))) {
             byte[] chunk = new byte[8192];
             for (int n; (n = in.read(chunk)) > 0; ) bytes.write(chunk, 0, n);
         }
-        return codec.decode(CgPlainOps.INSTANCE, CgBinaryFormat.decode(bytes.toByteArray()));
+        return CgBinaryFormat.decode(bytes.toByteArray());
     }
 
     /**
@@ -93,6 +113,11 @@ public final class CgFormats {
     /** What {@link #toNbt} wrote, back through {@code codec}. */
     public static <V> V fromNbt(CgCodec<V> codec, Object tag) {
         return codec.decode(nbt(), tag);
+    }
+
+    /** What {@link #toNbt} wrote, decoded into {@code target}: an entity's live data refreshed from its tag. */
+    public static <V> V fromNbtInto(CgCodec<V> codec, Object tag, V target) {
+        return codec.decodeInto(nbt(), tag, target);
     }
 
     /** The host's tags as a codec format, for a codec read or written by hand. */

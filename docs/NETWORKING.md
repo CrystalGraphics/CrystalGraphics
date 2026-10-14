@@ -382,6 +382,39 @@ written once beside it, a key per component, as `Purge` and `Ping` above do. The
 - **Encode and decode must use the same keys and codecs**: a key read that was never written throws on the
   receiving side.
 
+### A mutable object: `CgCodecs.object`
+
+A class whose instances live on (settings, a handler, a machine's state) declares each field once, with how to read
+and set it. That one declaration encodes, decodes, and **decodes into an object that already exists**, so everything
+holding it sees the new data:
+
+```java
+public final class Settings {
+    float volume = 1f;
+    final List<String> muted = new ArrayList<>();
+
+    public static final CgObjectCodec<Settings> CODEC = CgCodecs.object(Settings::new)
+            .optional("volume", CgCodecs.FLOAT, s -> s.volume, (s, v) -> s.volume = v, 1f)   // 1 is not written
+            .into("muted", CgCodecs.listOf(CgCodecs.STRING), s -> s.muted)                  // refilled in place
+            .build();
+}
+
+Settings fresh = CgFormats.read(file, Settings.CODEC);       // Settings::new, then filled
+CgFormats.readInto(file, Settings.CODEC, live);              // live refreshed; live.muted is the same list
+```
+
+- **`field(key, codec, get, set)`** sets the decoded value, updating the held one in place when its codec can (a
+  nested object codec, a list, a map). **`into(key, codec, get)`** is for a final member: always updated in place.
+- **A key the input lacks leaves the field as it is**: the constructor's default for a new object, the live value
+  otherwise. A partial file is a patch. A field holding null is not written.
+- **An object made elsewhere** (a registry, a constructor with arguments) uses `CgCodecs.object(Machine.class)`:
+  no factory, so it only decodes into an object you pass, `CODEC.decodeInto(ops, in, machine)`.
+- **A subclass** starts with `.extend(Parent.CODEC)`: the parent's keys, written flat beside its own.
+- Any codec decodes into: `listOf` refills the same list, `mapOf` keeps its entries by key, `dispatch` updates a value
+  of the same kind. Strings, numbers, records and enums cannot change, so the new value replaces the old.
+- A codec error part-way leaves the object with the fields read before it. A damaged file throws before anything
+  is touched.
+
 ### Versions
 
 When you change a message's payload in a way an older copy of your mod cannot read, raise your namespace's version:
@@ -903,9 +936,12 @@ own, compressed, in the same binary format the wire uses:
 Path file = worldDir.resolve("mymod/players/" + uuid + ".dat");
 CgFormats.write(file, PlayerData.CODEC, data);                 // makes the folders; replaces the file whole
 PlayerData data = CgFormats.read(file, PlayerData.CODEC);      // null when there is no file yet
+CgFormats.readInto(file, PlayerData.CODEC, live);              // into a live object: no file leaves it as it is
 ```
 
 A crash mid-save leaves the last save, never half of one: the file is written beside itself and moved over the old.
+`readInto` needs a codec that decodes into ([§4](#a-mutable-object-cgcodecsobject)); any other codec gives back a new
+value.
 
 ### When Minecraft wants NBT
 
@@ -917,6 +953,8 @@ turns any codec's value into them and back, on every version, so you still write
 tag.put("character", CgFormats.toNbt(Character.CODEC, character));   // typed as put takes it
 // loading
 Character character = CgFormats.fromNbt(Character.CODEC, tag.get("character"));
+// loading into the entity's live character
+CgFormats.fromNbtInto(Character.CODEC, tag.get("character"), this.character);
 ```
 
 - A map becomes a compound, a list a list tag, a number the tag of its width, `BYTES` a byte array; a boolean is a
