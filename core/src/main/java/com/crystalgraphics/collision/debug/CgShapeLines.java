@@ -77,6 +77,10 @@ final class CgShapeLines {
         default void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
                 double cz) {
         }
+
+        /** The triangles after this, up to the next, are one piece: a shape, or one child of a compound. */
+        default void piece() {
+        }
     }
 
     private CgPose[] poses = {new CgPose()};
@@ -290,6 +294,7 @@ final class CgShapeLines {
     }
 
     private void surface(CgShape shape) {
+        if (!(shape instanceof CgCompound)) out.piece();
         if (shape instanceof CgBox) {
             boxFaces((CgBox) shape);
         } else if (shape instanceof CgSphere) {

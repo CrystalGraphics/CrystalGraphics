@@ -223,6 +223,45 @@ public class CgShapeLinesTest {
     }
 
     @Test
+    public void aShapeInsideAnotherDrawsBetweenItsBackAndItsFront() {
+        CgCollisionDebug.Batch faces = new CgCollisionDebug.Batch(3);
+        CgShapeLines lines = new CgShapeLines();
+        lines.faces(CgSphere.of(3), new CgPose(), faces);
+        lines.faces(CgBox.of(1, 1, 1), new CgPose().facing(0.6, 0.3), faces);
+        int backs = faces.sortFrom(0.4, 1, -12);
+        List<String> runs = new ArrayList<>();
+        for (int k = 0; k < faces.count; k++) {
+            String run = (faces.pieceOf[faces.order[k]] == 0 ? "sphere " : "box ") + (k < backs ? "back" : "front");
+            if (runs.isEmpty() || !runs.get(runs.size() - 1).equals(run)) runs.add(run);
+        }
+        assertEquals(Arrays.asList("sphere back", "box back", "box front", "sphere front"), runs);
+    }
+
+    @Test
+    public void aPackKeepsWhereEachPieceBegins() {
+        CgRecentLines server = new CgRecentLines(1 << 12);
+        CgHitbox pair = CgHitbox.of(CgCompound.builder().add(CgSphere.of(0.5), 0, 0, 2).add(CgBox.of(1, 1, 1)).build())
+                .at(0, 1, 0);
+        pair.tick(YARD, 1);
+        server.hitbox(pair, YARD.blocks(), 0, 0);
+        CgLinePack pack = new CgLinePack();
+        pack.begin(0, 0, 0, 1 << 12);
+        server.packTo(YARD.blocks(), 0, 0, 0, 64, true, CgCollisionShow.SERVER, 0, pack);
+        int[] pieces = {0};
+        CgLinePack.read(pack.finish(), 0, new CgRecentLines.Out() {
+            @Override
+            public void line(int argb, double ax, double ay, double az, double bx, double by, double bz) {
+            }
+
+            @Override
+            public void piece() {
+                pieces[0]++;
+            }
+        });
+        assertEquals("a compound's two children", 2, pieces[0]);
+    }
+
+    @Test
     public void aHullsFacesAreItsOwnEachOnce() {
         assertEquals("a prism's two ends and three sides", 8 + 2 * Math.sqrt(5), surface(WEDGE), 1e-9);
         assertEquals("and its nine edges", 18, ends(WEDGE, new CgPose()).size());

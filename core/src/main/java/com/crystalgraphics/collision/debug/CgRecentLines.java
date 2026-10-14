@@ -52,6 +52,9 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private long[] fades = new long[256];
     /** How much of its colour's alpha a face takes, of 255; 255 for a segment. */
     private int[] fills = new int[256];
+    /** Whether a face begins a piece ({@link CgShapeLines.Sink#piece}). */
+    private boolean[] starts = new boolean[256];
+    private boolean pieceNext;
     private CgWorldQuery[] levels = new CgWorldQuery[256];
     private int count, lineCount, faceCount;
     // what is being written
@@ -135,6 +138,11 @@ final class CgRecentLines implements CgShapeLines.Sink {
     }
 
     @Override
+    public void piece() {
+        pieceNext = true;
+    }
+
+    @Override
     public void line(double ax, double ay, double az, double bx, double by, double bz) {
         int at = record(false);
         if (at < 0) return;
@@ -174,6 +182,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
             expires = Arrays.copyOf(expires, grown);
             fades = Arrays.copyOf(fades, grown);
             fills = Arrays.copyOf(fills, grown);
+            starts = Arrays.copyOf(starts, grown);
             levels = Arrays.copyOf(levels, grown);
         }
         if (face) faceCount++;
@@ -184,6 +193,8 @@ final class CgRecentLines implements CgShapeLines.Sink {
         expires[count] = until;
         fades[count] = fade;
         fills[count] = face ? fill : 255;
+        starts[count] = face && pieceNext;
+        if (face) pieceNext = false;
         levels[count] = level;
         return count++ * 9;
     }
@@ -193,9 +204,13 @@ final class CgRecentLines implements CgShapeLines.Sink {
     interface Out {
         void line(int argb, double ax, double ay, double az, double bx, double by, double bz);
 
-        /** A triangle of a hitbox's face, in its edges' colour; an out of lines alone leaves it. */
+        /** A triangle of a hitbox's face, at its fill; an out of lines alone leaves it. */
         default void triangle(int argb, double ax, double ay, double az, double bx, double by, double bz, double cx,
                 double cy, double cz) {
+        }
+
+        /** The triangles after this, up to the next, are one piece of a shape ({@link CgShapeLines.Sink#piece}). */
+        default void piece() {
         }
     }
 
@@ -213,6 +228,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
                 expires[kept] = expires[i];
                 fades[kept] = fades[i];
                 fills[kept] = fills[i];
+                starts[kept] = starts[i];
                 levels[kept] = levels[i];
             }
             if (faces[kept]) faceCount++;
@@ -236,6 +252,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
         for (int i = 0; i < count; i++) {
             int at = i * 9, argb = faded(colours[i], i, now);
             if (faces[i]) {
+                if (starts[i]) out.piece();
                 out.triangle(argb, points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
                         points[at + 5], points[at + 6], points[at + 7], points[at + 8]);
             } else {
@@ -260,6 +277,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
                 if (faces[i] != (kind == 1) || levels[i] != level || ex * ex + ey * ey + ez * ez > r2) continue;
                 pack.colour(packed(i, fallback, now));
                 if (faces[i]) {
+                    if (starts[i]) pack.piece();
                     pack.triangle(points[at], points[at + 1], points[at + 2], points[at + 3], points[at + 4],
                             points[at + 5], points[at + 6], points[at + 7], points[at + 8]);
                 } else {

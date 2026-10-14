@@ -6,20 +6,21 @@ import java.util.Arrays;
 /**
  * Line segments and face triangles packed for the wire: an origin, runs of one colour and one kind each, then each
  * point as shorts in {@link #UNIT}s from the origin. What a server sends a client that shows collision. Points past
- * {@link #REACH} are clamped; a run's colour 0 is drawn in the reader's own.
+ * {@link #REACH} are clamped; a run's colour 0 is drawn in the reader's own; a run of faces may begin a piece.
  */
 final class CgLinePack implements CgShapeLines.Sink {
 
     static final double UNIT = 1.0 / 128;
     static final double REACH = Short.MAX_VALUE * UNIT;
     private static final int HEADER = 3 * 8 + 4 + 4, RUN = 4 + 4, SEGMENT = 6 * 2, TRIANGLE = 9 * 2;
-    /** Set in a run's length when it counts triangles. */
-    private static final int FACES = 1 << 31;
+    /** Set in a run's length when it counts triangles, and when those begin a piece of a shape. */
+    private static final int FACES = 1 << 31, PIECE = 1 << 30;
 
     private ByteBuffer segments = ByteBuffer.allocate(SEGMENT * 256);
     private int[] runColours = new int[8], runLengths = new int[8];
     private double ox, oy, oz;
     private int count, max, runs, colour;
+    private boolean pieceNext;
 
     /** Starts a pack about the origin, holding at most {@code max} segments and triangles. */
     void begin(double ox, double oy, double oz, int max) {
@@ -28,12 +29,18 @@ final class CgLinePack implements CgShapeLines.Sink {
         this.oz = oz;
         this.max = max;
         count = runs = colour = 0;
+        pieceNext = false;
         segments.clear();
     }
 
     /** The colour the segments after this are drawn in; 0 for the reader's own. */
     void colour(int argb) {
         colour = argb;
+    }
+
+    @Override
+    public void piece() {
+        pieceNext = true;
     }
 
     boolean full() {
@@ -70,14 +77,16 @@ final class CgLinePack implements CgShapeLines.Sink {
             grown.put(segments);
             segments = grown;
         }
-        if (runs == 0 || runColours[runs - 1] != colour || (runLengths[runs - 1] & FACES) != kind) {
+        boolean piece = kind == FACES && pieceNext;
+        if (piece || runs == 0 || runColours[runs - 1] != colour || (runLengths[runs - 1] & FACES) != kind) {
             if (runs == runColours.length) {
                 runColours = Arrays.copyOf(runColours, runs * 2);
                 runLengths = Arrays.copyOf(runLengths, runs * 2);
             }
             runColours[runs] = colour;
-            runLengths[runs++] = kind;
+            runLengths[runs++] = kind | (piece ? PIECE : 0);
         }
+        if (kind == FACES) pieceNext = false;
         runLengths[runs - 1]++;
         count++;
     }
@@ -105,7 +114,8 @@ final class CgLinePack implements CgShapeLines.Sink {
             int drawn = colour == 0 ? argb : colour;
             boolean faces = (n & FACES) != 0;
             int size = faces ? TRIANGLE : SEGMENT;
-            n &= ~FACES;
+            if ((n & PIECE) != 0) out.piece();
+            n &= ~(FACES | PIECE);
             for (int k = 0; k < n && read < count && at + size <= pack.length; k++, read++, at += size) {
                 double ax = ox + in.getShort(at) * UNIT, ay = oy + in.getShort(at + 2) * UNIT;
                 double az = oz + in.getShort(at + 4) * UNIT, bx = ox + in.getShort(at + 6) * UNIT;

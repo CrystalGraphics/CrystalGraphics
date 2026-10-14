@@ -60,6 +60,11 @@ public final class CgCollisionDebug {
             colour = argb;
             FACES.triangle(ax, ay, az, bx, by, bz, cx, cy, cz);
         }
+
+        @Override
+        public void piece() {
+            FACES.piece();
+        }
     };
     private static boolean installed;
     /** Whether faces are drawn: {@link CgCollisionShow#STYLE}, read once a frame. */
@@ -158,9 +163,10 @@ public final class CgCollisionDebug {
     /**
      * The frame's segments, or its triangles, as floats from the first one's start, which the draw stands at in
      * doubles. Triangles blend over one another and write no depth, so they draw as two meshes, the back faces before
-     * the lines and the front faces after, each far to near.
+     * the lines and the front faces after. Each set goes piece by piece far to near, the back faces by a piece's far
+     * side and the front by its near: one shape inside another draws between its back and its front.
      */
-    private static final class Batch implements CgShapeLines.Sink {
+    static final class Batch implements CgShapeLines.Sink {
         /** Points a record: two a segment, three a triangle. */
         final int corners;
         float[] points;
@@ -172,8 +178,15 @@ public final class CgCollisionDebug {
         int[] order = new int[0];
         /** The records the mesh being written takes, in draw order. */
         int from, to;
-        private int[] keys = new int[0], orderScratch = new int[0], keyScratch = new int[0];
+        private int[] keys = new int[0], nearer = new int[0], orderScratch = new int[0];
         private final int[] counts = new int[256];
+        /** Each triangle's piece ({@link CgShapeLines.Sink#piece}), and each piece's middle and reach. */
+        int[] pieceOf = new int[512];
+        private double[] pieceX = new double[0], pieceY = new double[0], pieceZ = new double[0];
+        private double[] pieceR = new double[0];
+        private int[] pieceN = new int[0];
+        private int pieces, piece = -1;
+        private boolean pieceNext;
         /** The lines, or the back faces; and the front faces. */
         private CgMesh mesh, frontMesh;
 
@@ -190,9 +203,19 @@ public final class CgCollisionDebug {
         }
 
         @Override
+        public void piece() {
+            pieceNext = true;
+        }
+
+        @Override
         public void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
                 double cz) {
+            if (pieceNext || piece < 0) {
+                piece = pieces++;
+                pieceNext = false;
+            }
             int at = record(ax, ay, az);
+            pieceOf[count - 1] = piece;
             point(at, ax, ay, az);
             point(at + 3, bx, by, bz);
             point(at + 6, cx, cy, cz);
@@ -208,6 +231,7 @@ public final class CgCollisionDebug {
             if (count == colours.length) {
                 points = Arrays.copyOf(points, points.length * 2);
                 colours = Arrays.copyOf(colours, colours.length * 2);
+                pieceOf = Arrays.copyOf(pieceOf, colours.length);
             }
             colours[count] = colour;
             return count++ * corners * 3;
@@ -231,7 +255,8 @@ public final class CgCollisionDebug {
             } else {
                 mesh = submit(mesh, 0, count, 1, ex, ey, ez);
             }
-            count = 0;
+            count = pieces = 0;
+            piece = -1;
         }
 
         /** Writes records {@code from} to {@code to} into {@code into} and draws it at {@code order} of the group. */
@@ -251,55 +276,92 @@ public final class CgCollisionDebug {
         }
 
         /**
-         * {@link #order}: back faces then front faces, each far to near by its middle; how many are back faces. An
-         * LSD radix sort on the facing bit over its distance's float bits.
+         * {@link #order}: back faces then front faces, piece by piece far to near, a piece's back faces by its far side
+         * and its front by its near, and within a piece by each triangle's middle; how many are back faces. Two
+         * stable LSD radix sorts on float bits, the lesser key first.
          */
-        private int sortFrom(double ex, double ey, double ez) {
-            int backs = 0;
+        int sortFrom(double ex, double ey, double ez) {
             if (order.length < count) {
                 order = new int[colours.length];
                 keys = new int[colours.length];
+                nearer = new int[colours.length];
                 orderScratch = new int[colours.length];
-                keyScratch = new int[colours.length];
             }
+            if (pieceN.length < pieces) {
+                int size = Math.max(pieces, 2 * pieceN.length);
+                pieceX = new double[size];
+                pieceY = new double[size];
+                pieceZ = new double[size];
+                pieceR = new double[size];
+                pieceN = new int[size];
+            }
+            Arrays.fill(pieceX, 0, pieces, 0);
+            Arrays.fill(pieceY, 0, pieces, 0);
+            Arrays.fill(pieceZ, 0, pieces, 0);
+            Arrays.fill(pieceR, 0, pieces, 0);
+            Arrays.fill(pieceN, 0, pieces, 0);
             double cx = ox - ex, cy = oy - ey, cz = oz - ez;
+            // each piece's middle, from the eye: its corners' mean; then its reach, its farthest corner from that
+            for (int i = 0, at = 0; i < count; i++, at += 9) {
+                int g = pieceOf[i];
+                pieceX[g] += points[at] + points[at + 3] + points[at + 6] + 3 * cx;
+                pieceY[g] += points[at + 1] + points[at + 4] + points[at + 7] + 3 * cy;
+                pieceZ[g] += points[at + 2] + points[at + 5] + points[at + 8] + 3 * cz;
+                pieceN[g] += 3;
+            }
+            for (int g = 0; g < pieces; g++) {
+                pieceX[g] /= pieceN[g];
+                pieceY[g] /= pieceN[g];
+                pieceZ[g] /= pieceN[g];
+            }
+            for (int i = 0, at = 0; i < count; i++, at += 9) {
+                int g = pieceOf[i];
+                for (int c = 0; c < 9; c += 3) {
+                    double dx = points[at + c] + cx - pieceX[g], dy = points[at + c + 1] + cy - pieceY[g];
+                    double dz = points[at + c + 2] + cz - pieceZ[g];
+                    pieceR[g] = Math.max(pieceR[g], dx * dx + dy * dy + dz * dz);
+                }
+            }
+            int backs = 0;
             for (int i = 0, at = 0; i < count; i++, at += 9) {
                 double dx = (points[at] + points[at + 3] + points[at + 6]) / 3 + cx;
                 double dy = (points[at + 1] + points[at + 4] + points[at + 7]) / 3 + cy;
                 double dz = (points[at + 2] + points[at + 5] + points[at + 8]) / 3 + cz;
-                // faces wind outward (CgShapeLines), so a back face's normal points away from the eye: every back
-                // face draws before every front one, as two culled passes would, and each set far to near. A
-                // non-negative float's bits order as it does; flipped, ascending is far to near
+                // faces wind outward (CgShapeLines), so a back face's normal points away from the eye
                 double ux = points[at + 3] - points[at], uy = points[at + 4] - points[at + 1];
                 double uz = points[at + 5] - points[at + 2], vx = points[at + 6] - points[at];
                 double vy = points[at + 7] - points[at + 1], vz = points[at + 8] - points[at + 2];
                 double facing = (uy * vz - uz * vy) * dx + (uz * vx - ux * vz) * dy + (ux * vy - uy * vx) * dz;
-                int front = facing < 0 ? Integer.MIN_VALUE : 0;
-                if (front == 0) backs++;
-                keys[i] = front | Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
+                boolean front = facing < 0;
+                if (!front) backs++;
+                int g = pieceOf[i];
+                double middle = Math.sqrt(pieceX[g] * pieceX[g] + pieceY[g] * pieceY[g] + pieceZ[g] * pieceZ[g]);
+                double reach = Math.sqrt(pieceR[g]), side = front ? Math.max(0, middle - reach) : middle + reach;
+                // a non-negative float's bits order as it does; flipped, ascending is far to near
+                keys[i] = (front ? Integer.MIN_VALUE : 0) | Integer.MAX_VALUE - Float.floatToRawIntBits((float) side);
+                nearer[i] = Integer.MAX_VALUE - Float.floatToRawIntBits((float) (dx * dx + dy * dy + dz * dz));
                 order[i] = i;
             }
+            radix(nearer);
+            radix(keys);
+            return backs;
+        }
+
+        /** Orders {@link #order} by {@code key} of each triangle, keeping the order of equals. */
+        private void radix(int[] key) {
             for (int shift = 0; shift < 32; shift += 8) {
                 Arrays.fill(counts, 0);
-                for (int i = 0; i < count; i++) counts[keys[i] >>> shift & 0xFF]++;
+                for (int i = 0; i < count; i++) counts[key[order[i]] >>> shift & 0xFF]++;
                 for (int b = 0, sum = 0; b < 256; b++) {
                     int n = counts[b];
                     counts[b] = sum;
                     sum += n;
                 }
-                for (int i = 0; i < count; i++) {
-                    int to = counts[keys[i] >>> shift & 0xFF]++;
-                    keyScratch[to] = keys[i];
-                    orderScratch[to] = order[i];
-                }
-                int[] k = keys;
-                keys = keyScratch;
-                keyScratch = k;
+                for (int i = 0; i < count; i++) orderScratch[counts[key[order[i]] >>> shift & 0xFF]++] = order[i];
                 int[] o = order;
                 order = orderScratch;
                 orderScratch = o;
             }
-            return backs;
         }
 
         void release() {
