@@ -1245,15 +1245,18 @@ books of what spawns when, which is how it knows it has finished without asking 
 ## 14. Gas
 
 Smoke that rolls out along the ground and is blasted open, a bonfire's flame and smoke, steam, a mushroom cloud: these
-are a fluid, not particles. `CgVfxGas` (`vfx.gas`) is an element owning one: a box of cells fixed in the world, which
-its sources pour smoke, heat and fuel into. Heat rises, fuel burns into flame and smoke, the gas curls, flows round the
-world's blocks and out of its box, and the sun lights it through itself. It is simulated on the GPU at every compute
-tier, a brick of one atlas a gas, as GPU Gems 3's smoke is (chapter 30), and CS2's grenade smoke is the model for how
-it fills a space and heals after a blast.
+are a fluid, not particles. `CgVfxGas` (`vfx.gas`) is an element owning one: a grid of cells about where it was placed,
+which its sources pour smoke, heat and fuel into. Heat rises, fuel burns into flame and smoke and pushes outward as it
+burns, the gas curls and churns, flows round the world's blocks, and the sun and the sky light it through itself. The
+grid is **sparse**: it holds cells only where there is gas, in tiles of 16 drawn from one pool, as OpenVDB, EmberGen and
+Houdini's sparse Pyro hold theirs, so smoke flows as far as it goes instead of filling a box. It is simulated on the GPU
+at every compute tier, as GPU Gems 3's smoke is (chapter 30), in Houdini Pyro's step order and with Pyro's controls, so
+a look built in Pyro or EmberGen carries over; CS2's grenade smoke is the model for how it fills a space and heals after
+a blast.
 
 ```java
 public final class Grenade extends CgVfxEffect<Grenade> {
-    private final CgVfxGas smoke = new CgVfxGas(this).place(0f, 6f, 0f);       // its middle, from the effect's origin
+    private final CgVfxGas smoke = new CgVfxGas(this).place(0f, 2f, 0f);       // its middle, from the effect's origin
     private final CgVfxGas.Source vent = smoke.source(0f, 0.4f, 0f, 1.2f)
             .density(6f).heat(0.8f).velocity(0f, 2f, 0f);
 
@@ -1273,7 +1276,7 @@ public final class Grenade extends CgVfxEffect<Grenade> {
 }
 
 public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)   // its schema and the smoke layer
-        .set(CgVfxGas.SIZE, 18f).set(CgVfxGas.WEIGHT, 0.35f).build();
+        .set(CgVfxGas.CELL, 0.3f).set(CgVfxGas.WEIGHT, 0.35f).build();
 
 smoke.blast(x, y, z, 4f, 30f, 1f);              // thrown out at 30 blocks a second, cleared within 4, then it heals
 smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and smoke: a fire
@@ -1282,37 +1285,65 @@ smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and 
 | Call | Does |
 |---|---|
 | `new CgVfxGas(effect)`, `(effect, slot)` | A gas drawn on `CgVfxGas.SLOT`, or on a volume slot of the effect's own (`CgVfxSlot.volume(name)`) |
-| `place(x, y, z)` | Where its middle goes, from the effect's origin; taken when it first gets a brick, fixed in the world after |
+| `place(x, y, z)` | Where its grid's middle goes, from the effect's origin; taken when it first gets a place in the atlas, fixed in the world after |
 | `source(x, y, z, radius)` | A sphere it pours from: `density`, `heat` and `fuel` a second, a `velocity` it steers what is inside toward; `at`, `radius`, `on()`, `off()`. At most 8 |
 | `blast(x, y, z, radius, speed, carve)` | Everything within `radius` thrown out at up to `speed`, and `carve` (0 to 1) of its smoke cleared at the middle |
 | `tick(dt)`, `submit(frame)` | From the effect's own, every tick and every frame |
 | `faded()` | Nothing poured for as long as `DISSIPATION` takes its smoke to a fiftieth: what the effect waits for to die |
-| `release()` | Its brick given back now |
+| `release()` | Its place and tiles given back now |
+| `bounds(out)`, `cellSize()` | The box its tiles cover now, from its middle; a cell's side in blocks at this tier |
 
 | Parameter (`CgVfxGas`) | Default | Meaning |
 |---|---|---|
-| `SIZE` | 12 | the box's side in blocks |
+| `CELL` | 0.4 | a cell's side in blocks at High and Ultra (1.5 times at Medium, twice at Low): its finest detail, and how many of the pool's tiles its smoke takes. It reaches 256 cells each way from where it was placed |
 | `BUOYANCY`, `WEIGHT` | 2, 0.3 | lift a unit of temperature gives; sinking a unit of density gives, which spreads heavy smoke along the ground |
 | `VORTICITY` | 1.5 | how hard small swirls are kept from smoothing out |
 | `DISSIPATION`, `COOLING`, `DAMPING` | 0.08, 0.8, 0.3 | the share of its density, temperature and speed lost a second |
-| `BURN`, `HEAT` | 1.5, 3 | fuel burnt a second at most, and the temperature (and a unit of smoke) a unit burnt gives |
+| `BURN`, `HEAT` | 1.5, 3 | the share of its fuel burnt a second, and the temperature it burns at; a unit burnt is a unit of smoke, and where it burns fast it is flame |
+| `SMOKE_AMOUNT` | 0.5 | the smoke a unit of fuel leaves as it burns: a clean flame's 0.1, a sooty fire's 1 |
+| `EXPANSION` | 0 | the hot gas a unit of fuel releases as it burns, as the log of the volume it swells by: fuel 10 at 0.25 swells twelvefold. A charge bursts by what it holds and stops, so a cloud settles at its real size |
+| `TURBULENCE`, `TURBULENCE_SIZE` | 0, 3 | slow curl noise churning it where there is gas, and its swirls' size in blocks: billows |
+| `DISTURBANCE`, `DISTURBANCE_SIZE` | 0, 0.75 | fast, fine curl noise (Pyro's disturbance): small detail, flames torn. Under two cells it is lost in the grid |
 | `EXTINCTION` | 2.5 | light lost a block through a unit of density: how thick it looks and how deep its shadows |
+| `SCATTERING` | 0.6 | forward scattering, 0 to 0.9: steam shines silver toward the sun from 0.7 |
+| `DETAIL`, `DETAIL_SIZE` | 0.5, 1.2 | its thin edges worn into wisps by noise finer than its cells, carried by its flow; the noise's size |
+| `SOOT`, `GLOW` | 0.35, 1 | hot smoke's glow beside its flame's, and both together |
 | `SMOKE_COLOR`, `FIRE` | | the smoke in full light, and a tint on what burns; the smoke layer's `_Smoke` and `_Fire` bind them by name |
 
-- **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits for a brick, drawing nothing.
-- **Its resolution is the quality tier's**: 64 cells a side at High and Ultra, 48 at Medium, 32 at Low. `SIZE` stays,
-  so a lower tier is coarser; changing tier starts every gas again empty.
+How the four of `CgVfxGasDemo` are set up, as starting points:
+
+| Station | What makes it |
+|---|---|
+| Smoke grenade | two jets spinning round the canister along the floor; `WEIGHT` near `BUOYANCY` × its heat, so it floods out and stands; high `DAMPING` and low `DISSIPATION`; `EXTINCTION` 3, opaque |
+| Bonfire | fuel in gusts, `BURN` 5 so flames stay short, `HEAT` 3.6, a little `EXPANSION`; `TURBULENCE` at 1.8 blocks and fine `DISTURBANCE` to tear them; `COOLING` so the plume spreads as it climbs |
+| Steam geyser | a jet of 20 blocks a second in pulses, hot so it rises; high `DISSIPATION` (it evaporates), `TURBULENCE` at its shear layer's size, `SCATTERING` 0.78, `SOOT` 0 |
+| Mushroom cloud | a ground blast; a big charge of fuel burnt in a fraction of a second (`BURN` 8) at `HEAT` 4.5, bursting by `EXPANSION` 0.2 and rising into a ring under `VORTICITY` 3.5; a stem source drawing dust up, four sources running a base surge out along the floor; low `COOLING` and `DISSIPATION`, so the cap glows for seconds and hangs; `CELL` 0.6, since it grows huge |
+
+Temperature is over the air's, in the solver's units: the smoke layer reads a unit as 600 kelvin, so `HEAT` 3 burns
+orange and 4 yellow-white, and smoke below about 1.5 shows no glow.
+
+- **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits, drawing nothing.
+- **Every gas shares the pool's tiles**: 768 at Ultra, 384 at High, 256 at Medium, 128 at Low (`CgVfxGasAtlas.tiles`).
+  A tile is given out where gas arrives, on the face the GPU found it near a frame or two before, and taken back half a
+  second after it empties. A gas finding the pool full grows no further, and what flows past its last tiles is lost
+  there; a coarser `CELL` spends fewer tiles on the same smoke. The counters `vfx.gas.tiles` and `vfx.gas.pool-full`
+  say how full it runs. Changing tier starts every gas again empty.
 - **It steps 60 times a second on its effect's clock**, so pause and slow motion reach it, and an effect left unticked
-  for two seconds gives its brick back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
+  for two seconds gives its tiles back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
   takes fewer iterations, then one step a frame.
 - **It stays where it was placed**: a moving source trails through it. It flows round the voxel window's blocks and
   stands on its effect's `ground` where the host has no world.
 - **Drawing is a layer's, on a volume slot.** `CgVfxGas.SMOKE`'s `vfx/gas/smoke.shader` marches it: the sun through the
-  gas and the blocks (cached by the solver once a frame), the sky's light from the lightmap, a blackbody where it burns,
-  blooming. A shader of your own declares `_GasShade (sampler3D)`, includes `lib/vfx/fx_gas.glsl`, and reads what
-  `CgVfxSlot.Kind.VOLUME` documents.
-- **Particles ride it** through `CgVfxModule.Flow`: their velocity drawn toward the gas's where they are, inside its
-  box alone. The instance names its gas:
+  gas and the blocks and the sky over it less the gas above (both cached by the solver once a frame), a two-lobe phase
+  with powder at thin edges, its edges worn by noise carried along its flow, hot smoke glowing as it absorbs and flames
+  shining by themselves, blooming. The sun is the frame's, the one every material reads, so a host with no sky has the
+  default's. It skips the tiles the gas does not hold. A shader of your own declares `_GasShade`, `_GasFlow` and
+  `_GasPages` (`sampler3D`, first and in that order), includes `lib/vfx/fx_gas.glsl` (`fx_gas_slot`,
+  `fx_gas_pool_uvw`, `fx_gas_read`), and reads what `CgVfxSlot.Kind.VOLUME` documents.
+- **Detail under two cells is lost in the grid**: keep `TURBULENCE_SIZE` and `DISTURBANCE_SIZE` above twice `CELL`.
+- **Its speed is held under 40 blocks a second**, a backstop on confinement and turbulence feeding each other.
+- **Particles ride it** through `CgVfxModule.Flow`: their velocity drawn toward the gas's where they are, where it
+  holds a tile. The instance names its gas:
 
   ```java
   embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(smoke);   // and .module(new Flow(2.5f))

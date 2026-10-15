@@ -28,10 +28,12 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * Gas on the GPU ({@link CgVfxGas}), a station a brick of the atlas: a smoke grenade's cloud spreading along the ground
- * as CS2's does, punched open by two blasts and healing; a bonfire burning fuel into flame and smoke; a steam vent
- * jetting in pulses; and a mushroom cloud, a fireball rising and rolling into a ring. Every station plays again every
- * {@link #PERIOD} seconds, each standing on the world's ground under it, else on the origin's height, which the gas
+ * Gas on the GPU ({@link CgVfxGas}), a station a brick of the atlas, each set up as Houdini Pyro sets up its own: a smoke
+ * grenade's spinning jets flooding a dome of heavy smoke along the ground as CS2's does, punched open by two blasts and
+ * healing; a bonfire's fuel burning into licking flames under a tall, leaning plume of soot, embers riding it; a geyser
+ * of steam roaring up in pulses and billowing out white; and a mushroom cloud, a fireball ballooning off the ground,
+ * rising into a rolling ring on a stem of dust over a base surge, its glow cooling into soot. Every station plays again
+ * every {@link #PERIOD} seconds, each standing on the world's ground under it, else on the origin's height, which the gas
  * stands on where there is no world. The harness's {@code vfx-gas}, and a scene of {@link CgRenderDemo}.
  *
  * <pre>{@code
@@ -44,7 +46,9 @@ public final class CgVfxGasDemo {
 
     private static final Logger LOG = LogManager.getLogger("CgVfxGasDemo");
     /** Seconds between plays: the cloud has thinned by then. */
-    public static final float PERIOD = 24f;
+    public static final float PERIOD = 26f;
+    /** How far the stations reach either side of the origin along x, in blocks: what a camera frames. */
+    public static final float REACH = 68f;
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/gas");
     private static final CgVfxParam.Color EMBER = SCHEMA.color("ember", 0xFFFF4A0B, 1.2f);
     private static final CgVfxParam.Color FLAME = SCHEMA.color("flame", 0xFFFFC85B, 1.4f);
@@ -65,13 +69,13 @@ public final class CgVfxGasDemo {
             .module(new CgVfxModule.Ground(0.2f, 0.6f, 0.5f)).opacity(FADE).build();
 
     /**
-     * One station: where it stands, its look, where its gas's middle is above it, what drives its sources, and its
-     * emitters, which the gas carries.
+     * One station: where it stands, its look, how high its label stands, what drives its sources, and its emitters,
+     * which the gas carries.
      */
-    private record Station(String name, float x, float z, CgVfxLook look, float height, Function<CgVfxGas, Driver> driver,
+    private record Station(String name, float x, float z, CgVfxLook look, float label, Function<CgVfxGas, Driver> driver,
                            List<CgVfxEmitter> emitters) {
-        Station(String name, float x, float z, CgVfxLook look, float height, Function<CgVfxGas, Driver> driver) {
-            this(name, x, z, look, height, driver, List.of());
+        Station(String name, float x, float z, CgVfxLook look, float label, Function<CgVfxGas, Driver> driver) {
+            this(name, x, z, look, label, driver, List.of());
         }
     }
 
@@ -96,7 +100,7 @@ public final class CgVfxGasDemo {
         Play(Station station, double x, double y, double z) {
             super(station.look(), x + station.x(), y, z + station.z());
             ground(y);
-            gas = new CgVfxGas(this).place(0f, station.height(), 0f);
+            gas = new CgVfxGas(this).place(0f, 2f, 0f);
             driver = station.driver().apply(gas);
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance e = new CgVfxEmitterInstance(look().emitter(station.emitters().get(i).name()),
@@ -132,103 +136,156 @@ public final class CgVfxGasDemo {
         drives = owner == null;
         vfx = drives ? CgVfx.owner("crystalgraphics", new CgVfxSystem()) : owner;
         this.font = font;
-        grenade(-27f, 0f);
-        bonfire(-9f, 0f);
-        vent(7f, 0f);
-        mushroom(28f, 0f);
+        grenade(-52f, 0f);
+        bonfire(-26f, 0f);
+        vent(-2f, 0f);
+        mushroom(36f, 0f);
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-gas] {} at x {}, z {}", s.name(), s.x(), s.z());
         if (stations.size() > CgVfxGasAtlas.CAPACITY) throw new IllegalStateException("more stations than the atlas holds");
     }
 
     /**
-     * A smoke grenade, as CS2's: a canister pouring heavy, cool smoke that rolls out along the ground and piles up into a
-     * cloud, curling at its edges. Two blasts go off in it, each throwing it out and clearing a hole that heals as the
-     * smoke flows back in.
+     * A smoke grenade, as CS2's: a canister on the ground spinning as it hisses, two jets of heavy, cool smoke sweeping
+     * round it along the floor, flooding out into a dome some sixteen blocks across that rolls and curls at its edge and
+     * stands, opaque. Two blasts go off in it, each throwing it out and clearing a hole that heals as the smoke flows
+     * back in.
      */
     private void grenade(float x, float z) {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)
-                .set(CgVfxGas.SIZE, 18f).set(CgVfxGas.BUOYANCY, 0.8f).set(CgVfxGas.WEIGHT, 0.35f)
-                .set(CgVfxGas.VORTICITY, 2.5f).set(CgVfxGas.DISSIPATION, 0.035f).set(CgVfxGas.COOLING, 0.6f)
-                .set(CgVfxGas.DAMPING, 0.15f).set(CgVfxGas.EXTINCTION, 2.2f)
-                .set(CgVfxGas.SMOKE_COLOR, 0xFFC8C9CC).build();
-        stations.add(new Station("smoke grenade: rolling out, blasted open, healing", x, z, look, 7f, gas -> {
-            CgVfxGas.Source vent = gas.source(0f, 0.5f, 0f, 1.1f).density(7f).heat(0.8f).velocity(0f, 2f, 0f);
-            CgVfxGas.Source hiss = gas.source(0f, 0.3f, 0f, 0.6f).velocity(0f, 6f, 0f);
+                .set(CgVfxGas.CELL, 0.4f).set(CgVfxGas.BUOYANCY, 0.7f).set(CgVfxGas.WEIGHT, 0.28f)
+                .set(CgVfxGas.VORTICITY, 2.2f).set(CgVfxGas.DISSIPATION, 0.03f).set(CgVfxGas.COOLING, 0.5f)
+                .set(CgVfxGas.DAMPING, 0.55f).set(CgVfxGas.TURBULENCE, 2f).set(CgVfxGas.TURBULENCE_SIZE, 2.5f)
+                .set(CgVfxGas.DISTURBANCE, 3f).set(CgVfxGas.DISTURBANCE_SIZE, 1.2f)
+                .set(CgVfxGas.EXTINCTION, 3f).set(CgVfxGas.SCATTERING, 0.5f).set(CgVfxGas.DETAIL, 0.55f)
+                .set(CgVfxGas.DETAIL_SIZE, 0.9f).set(CgVfxGas.SOOT, 0f)
+                .set(CgVfxGas.SMOKE_COLOR, 0xFFD2D4D8).build();
+        stations.add(new Station("smoke grenade: flooding out, blasted open, healing", x, z, look, 12f, gas -> {
+            CgVfxGas.Source a = gas.source(0f, 0.3f, 0f, 0.6f).density(16f).heat(1f);
+            CgVfxGas.Source b = gas.source(0f, 0.3f, 0f, 0.6f).density(16f).heat(1f);
             return (before, age) -> {
-                // The canister rocks, so the jet wanders.
-                float wobble = (float) Math.sin(age * 2.3f) * 1.5f;
-                vent.velocity(wobble, 2f, (float) Math.cos(age * 1.7f) * 1.5f);
-                if (age > 11f) {
-                    vent.off();
-                    hiss.off();
+                // The canister spins as it hisses, so its two jets sweep round it along the floor.
+                float turn = age * 9f, c = (float) Math.cos(turn) * 14f, s = (float) Math.sin(turn) * 14f;
+                a.velocity(c, 3f, s).at(c / 40f, 0.3f, s / 40f);
+                b.velocity(-c, 3f, -s).at(-c / 40f, 0.3f, -s / 40f);
+                if (age > 10f) {
+                    a.off();
+                    b.off();
                 }
-                if (before < 6f && age >= 6f) gas.blast(3f, 1.5f, 1f, 4.5f, 30f, 1f);
-                if (before < 9.5f && age >= 9.5f) gas.blast(-3.5f, 2.5f, -2f, 4f, 26f, 1f);
-            };
-        }));
-    }
-
-    /** A bonfire: fuel burning into a flickering blackbody flame, thick smoke rising off it and curling as it cools. */
-    private void bonfire(float x, float z) {
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(EMBERS)
-                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(EMBERS).trails().size(0.7f).bind("_Color", EMBER)
-                        .bind("_Core", FLAME).build())
-                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(EMBERS).bind("_Color", EMBER).bind("_Hot", FLAME).build())
-                .set(CgVfxGas.SIZE, 14f).set(CgVfxGas.BUOYANCY, 3.2f).set(CgVfxGas.WEIGHT, 0f)
-                .set(CgVfxGas.VORTICITY, 3f).set(CgVfxGas.DISSIPATION, 0.12f).set(CgVfxGas.COOLING, 1.4f)
-                .set(CgVfxGas.DAMPING, 0.25f).set(CgVfxGas.BURN, 2.5f).set(CgVfxGas.HEAT, 3f)
-                .set(CgVfxGas.EXTINCTION, 2.8f).set(CgVfxGas.SMOKE_COLOR, 0xFF4F4C49)
-                .set(CgVfxGas.FIRE, 0xFFFFD9A6, 1.6f).build();
-        stations.add(new Station("bonfire: fuel burning into flame and smoke, embers riding it", x, z, look, 6f, gas -> {
-            CgVfxGas.Source logs = gas.source(0f, 0.6f, 0f, 1f).fuel(3.5f).heat(2f).density(0.2f).velocity(0f, 1.5f, 0f);
-            return (before, age) -> {
-                // A fire breathes: its fuel comes in gusts.
-                float gust = 0.7f + 0.3f * (float) (Math.sin(age * 5.1f) * Math.sin(age * 1.3f + 1f));
-                logs.fuel(3.5f * gust).at((float) Math.sin(age * 0.9f) * 0.25f, 0.6f, (float) Math.cos(age * 0.7f) * 0.25f);
-                if (age > PERIOD - 4f) logs.off();
-            };
-        }, List.of(EMBERS)));
-    }
-
-    /** A steam vent: a hot white jet in pulses, billowing out and thinning fast. */
-    private void vent(float x, float z) {
-        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)
-                .set(CgVfxGas.SIZE, 14f).set(CgVfxGas.BUOYANCY, 1.6f).set(CgVfxGas.WEIGHT, 0f)
-                .set(CgVfxGas.VORTICITY, 3.5f).set(CgVfxGas.DISSIPATION, 0.45f).set(CgVfxGas.COOLING, 0.9f)
-                .set(CgVfxGas.DAMPING, 0.2f).set(CgVfxGas.EXTINCTION, 1.6f)
-                .set(CgVfxGas.SMOKE_COLOR, 0xFFF2F4F7).build();
-        stations.add(new Station("steam vent: a jet in pulses", x, z, look, 6f, gas -> {
-            CgVfxGas.Source jet = gas.source(0f, 0.4f, 0f, 0.55f).density(5f).heat(1.2f).velocity(0f, 11f, 0f);
-            return (before, age) -> {
-                boolean on = (age % 3f) < 1.6f && age < PERIOD - 3f;
-                if (on != jet.isOn()) {
-                    if (on) jet.on();
-                    else jet.off();
-                }
+                if (before < 11f && age >= 11f) gas.blast(3f, 1.2f, 2f, 5f, 28f, 1f);
+                if (before < 14.5f && age >= 14.5f) gas.blast(-4f, 2f, -2f, 4.5f, 24f, 1f);
             };
         }));
     }
 
     /**
-     * A mushroom cloud: a fireball thrown up off the ground, its hot core rising fastest and rolling the edges down and
-     * in, into a ring vortex on a stem, burning out into dark smoke as it climbs.
+     * A bonfire: fuel gusting off its logs and burning fast into short, licking flames (turbulence and fine disturbance
+     * tearing them, expansion pushing them up), a tall plume of soot rising off them, cooling, slowing and spreading as
+     * it climbs, and embers riding it.
+     */
+    private void bonfire(float x, float z) {
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(EMBERS)
+                .layer(CgVfxLayer.of(PARTICLE + "streaks.shader").on(EMBERS).trails().size(0.7f).bind("_Color", EMBER)
+                        .bind("_Core", FLAME).build())
+                .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(EMBERS).bind("_Color", EMBER).bind("_Hot", FLAME).build())
+                .set(CgVfxGas.CELL, 0.375f).set(CgVfxGas.BUOYANCY, 2.8f).set(CgVfxGas.WEIGHT, 0f)
+                .set(CgVfxGas.VORTICITY, 2.5f).set(CgVfxGas.DISSIPATION, 0.1f).set(CgVfxGas.COOLING, 0.9f)
+                .set(CgVfxGas.DAMPING, 0.3f).set(CgVfxGas.BURN, 5f).set(CgVfxGas.HEAT, 3.6f)
+                .set(CgVfxGas.SMOKE_AMOUNT, 0.4f)
+                .set(CgVfxGas.EXPANSION, 0.5f).set(CgVfxGas.TURBULENCE, 3f).set(CgVfxGas.TURBULENCE_SIZE, 1.8f)
+                .set(CgVfxGas.DISTURBANCE, 6f).set(CgVfxGas.DISTURBANCE_SIZE, 0.9f)
+                .set(CgVfxGas.EXTINCTION, 2f).set(CgVfxGas.SCATTERING, 0.45f).set(CgVfxGas.DETAIL, 0.5f)
+                .set(CgVfxGas.DETAIL_SIZE, 0.8f).set(CgVfxGas.SOOT, 0.5f).set(CgVfxGas.GLOW, 1.2f)
+                .set(CgVfxGas.SMOKE_COLOR, 0xFF5A5550).set(CgVfxGas.FIRE, 0xFFFFE0B0).build();
+        stations.add(new Station("bonfire: licking flames under a plume of soot, embers riding it", x, z, look, 24f, gas -> {
+            CgVfxGas.Source logs = gas.source(0f, 0.5f, 0f, 1.3f).fuel(6f).heat(1f).density(0.1f).velocity(0f, 2f, 0f);
+            CgVfxGas.Source left = gas.source(-0.7f, 0.4f, 0.3f, 0.6f).fuel(3f).heat(1f);
+            CgVfxGas.Source right = gas.source(0.6f, 0.4f, -0.4f, 0.6f).fuel(3f).heat(1f);
+            return (before, age) -> {
+                // A fire breathes: its fuel comes in gusts, each log in its own.
+                float gust = 0.7f + 0.3f * (float) (Math.sin(age * 5.1f) * Math.sin(age * 1.3f + 1f));
+                logs.fuel(6f * gust).at((float) Math.sin(age * 0.9f) * 0.25f, 0.5f, (float) Math.cos(age * 0.7f) * 0.25f);
+                left.fuel(3f * (0.6f + 0.4f * (float) Math.sin(age * 7.3f + 2f)));
+                right.fuel(3f * (0.6f + 0.4f * (float) Math.sin(age * 6.1f + 4f)));
+                if (age > PERIOD - 4f) {
+                    logs.off();
+                    left.off();
+                    right.off();
+                }
+            };
+        }, List.of(EMBERS)));
+    }
+
+    /**
+     * A steam geyser: a hot white jet roaring up at twenty blocks a second in pulses, its shear layer billowing out
+     * (turbulence at two blocks, disturbance finer), rising on its heat and thinning fast as it evaporates, bright
+     * where the sun shines through it.
+     */
+    private void vent(float x, float z) {
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)
+                .set(CgVfxGas.CELL, 0.375f).set(CgVfxGas.BUOYANCY, 1.8f).set(CgVfxGas.WEIGHT, 0f)
+                .set(CgVfxGas.VORTICITY, 3f).set(CgVfxGas.DISSIPATION, 0.35f).set(CgVfxGas.COOLING, 0.6f)
+                .set(CgVfxGas.DAMPING, 0.2f).set(CgVfxGas.TURBULENCE, 4f).set(CgVfxGas.TURBULENCE_SIZE, 2f)
+                .set(CgVfxGas.DISTURBANCE, 4f).set(CgVfxGas.DISTURBANCE_SIZE, 0.9f)
+                .set(CgVfxGas.EXTINCTION, 2f).set(CgVfxGas.SCATTERING, 0.78f).set(CgVfxGas.DETAIL, 0.5f)
+                .set(CgVfxGas.DETAIL_SIZE, 0.7f).set(CgVfxGas.SOOT, 0f)
+                .set(CgVfxGas.SMOKE_COLOR, 0xFFF4F6F8).build();
+        stations.add(new Station("steam geyser: roaring up in pulses, billowing white", x, z, look, 24f, gas -> {
+            CgVfxGas.Source jet = gas.source(0f, 0.3f, 0f, 0.7f).density(8f).heat(2.5f).velocity(0f, 20f, 0f);
+            return (before, age) -> {
+                // Each pulse surges in, roars and chokes off.
+                float phase = age % 3.2f;
+                boolean on = phase < 2.2f && age < PERIOD - 4f;
+                if (on != jet.isOn()) {
+                    if (on) jet.on();
+                    else jet.off();
+                }
+                float surge = Math.min(1f, phase / 0.3f) * (1f - 0.3f * Math.max(0f, phase - 1.6f));
+                jet.velocity(0f, 20f * surge, 0f).density(8f * surge);
+            };
+        }));
+    }
+
+    /**
+     * A mushroom cloud, as Pyro's fireball is set up: a ground blast throwing a base surge of dust out along the floor; a
+     * big charge of fuel burning white-hot in a fraction of a second, bursting by the gas it releases (expansion, bounded
+     * by the fuel, so the cloud settles at its real size), its heat throwing it up into a cap that
+     * rolls its edges down and in, a ring vortex, turbulence breaking it into billows; a stem of dust drawn up under it
+     * by the updraft; its glow cooling from yellow through orange into dark soot as it climbs. Rubble whirls up in it and
+     * falls out.
      */
     private void mushroom(float x, float z) {
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).emitter(RUBBLE)
                 .layer(CgVfxLayer.of(PARTICLE + "speck.shader").on(RUBBLE).bind("_Color", DEBRIS).build())
-                .set(CgVfxGas.SIZE, 26f).set(CgVfxGas.BUOYANCY, 4.5f).set(CgVfxGas.WEIGHT, 0f)
-                .set(CgVfxGas.VORTICITY, 3f).set(CgVfxGas.DISSIPATION, 0.025f).set(CgVfxGas.COOLING, 0.3f)
-                .set(CgVfxGas.DAMPING, 0.08f).set(CgVfxGas.BURN, 3f).set(CgVfxGas.HEAT, 2.4f)
-                .set(CgVfxGas.EXTINCTION, 2f).set(CgVfxGas.SMOKE_COLOR, 0xFF6E6560)
-                .set(CgVfxGas.FIRE, 0xFFFFC890, 2f).build();
-        stations.add(new Station("mushroom cloud: a fireball rolling into a ring, rubble whirled up", x, z, look, 12f, gas -> {
-            CgVfxGas.Source core = gas.source(0f, 1.5f, 0f, 2.6f).fuel(40f).heat(10f).density(3f).velocity(0f, 9f, 0f);
-            CgVfxGas.Source stem = gas.source(0f, 0.8f, 0f, 1.2f).density(1.5f).heat(3f).velocity(0f, 5f, 0f);
+                .set(CgVfxGas.CELL, 0.6f).set(CgVfxGas.BUOYANCY, 3.5f).set(CgVfxGas.WEIGHT, 0.08f)
+                .set(CgVfxGas.VORTICITY, 3.5f).set(CgVfxGas.DISSIPATION, 0.03f).set(CgVfxGas.COOLING, 0.25f)
+                .set(CgVfxGas.DAMPING, 0.05f).set(CgVfxGas.BURN, 8f).set(CgVfxGas.HEAT, 4.5f)
+                .set(CgVfxGas.SMOKE_AMOUNT, 0.5f)
+                .set(CgVfxGas.EXPANSION, 0.2f).set(CgVfxGas.TURBULENCE, 3f).set(CgVfxGas.TURBULENCE_SIZE, 5f)
+                .set(CgVfxGas.DISTURBANCE, 2f).set(CgVfxGas.DISTURBANCE_SIZE, 2f)
+                .set(CgVfxGas.EXTINCTION, 1.8f).set(CgVfxGas.SCATTERING, 0.55f).set(CgVfxGas.DETAIL, 0.6f)
+                .set(CgVfxGas.DETAIL_SIZE, 2f).set(CgVfxGas.SOOT, 0.6f)
+                .set(CgVfxGas.SMOKE_COLOR, 0xFF6B5D52).set(CgVfxGas.FIRE, 0xFFFFD8A8).build();
+        stations.add(new Station("mushroom cloud: a fireball ballooning into a rolling cap, a stem and a surge", x, z, look,
+                44f, gas -> {
+            CgVfxGas.Source core = gas.source(0f, 4f, 0f, 5f).fuel(120f).heat(6f).density(3f).velocity(0f, 6f, 0f);
+            CgVfxGas.Source stem = gas.source(0f, 0.8f, 0f, 1.8f).density(2f).heat(2f).velocity(0f, 10f, 0f).off();
+            CgVfxGas.Source[] surge = new CgVfxGas.Source[4];
+            for (int i = 0; i < surge.length; i++) {
+                double a = i * Math.PI * 0.5 + 0.4;
+                float cx = (float) Math.cos(a), cz = (float) Math.sin(a);
+                surge[i] = gas.source(cx * 4f, 0.6f, cz * 4f, 1.6f).density(4f).heat(0.2f).velocity(cx * 9f, 0.5f, cz * 9f)
+                        .off();
+            }
             return (before, age) -> {
-                if (before < 0.1f && age >= 0.1f) gas.blast(0f, 0.5f, 0f, 4f, 14f, 0f);
-                if (age > 1.1f) core.off();
-                if (age > 5f) stem.off();
+                if (before < 0.05f && age >= 0.05f) gas.blast(0f, 0.5f, 0f, 6f, 30f, 0f);
+                if (age > 0.15f) core.off();
+                if (age > 0.3f && age < 7f) stem.on();
+                else stem.off();
+                for (CgVfxGas.Source s : surge) {
+                    if (age > 0.2f && age < 2f) s.on();
+                    else s.off();
+                }
             };
         }, List.of(RUBBLE)));
     }
@@ -257,7 +314,7 @@ public final class CgVfxGasDemo {
         for (int i = 0; i < stations.size(); i++) {
             Station s = stations.get(i);
             int split = s.name().indexOf(": ");
-            double lx = x + s.x(), ly = floors[i] + s.height() * 2f + 1.5f, lz = z + s.z();
+            double lx = x + s.x(), ly = floors[i] + s.label(), lz = z + s.z();
             world.text(s.name().substring(0, split)).at(lx, ly + 1.1, lz).height(1.1f).font(font)
                     .stroke(0.08f, 0xFF000000).submit();
             world.text(s.name().substring(split + 2)).at(lx, ly, lz).height(0.6f).font(font).color(0xFFB8D8FF)

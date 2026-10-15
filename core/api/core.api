@@ -3101,6 +3101,7 @@ com/crystalgraphics/demo/CgVfxGasDemo
   access public,final
   extends java/lang/Object
   field public,static,final PERIOD F
+  field public,static,final REACH F
   method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
   method public <init> (Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/vfx/CgVfxOwner;)V
   method public clear ()V
@@ -9366,28 +9367,40 @@ com/crystalgraphics/vfx/gas/CgVfxGas
   extends com/crystalgraphics/vfx/CgVfxElement
   field public,static,final BUOYANCY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final CELL Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final COOLING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DETAIL Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DETAIL_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final DISSIPATION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DISTURBANCE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DISTURBANCE_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final EXPANSION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final EXTINCTION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final FIRE Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;
+  field public,static,final GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final HEAT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final MAX_BLASTS I
   field public,static,final MAX_SOURCES I
+  field public,static,final SCATTERING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
-  field public,static,final SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final SLOT Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   field public,static,final SMOKE Lcom/crystalgraphics/vfx/look/CgVfxKit;
+  field public,static,final SMOKE_AMOUNT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final SMOKE_COLOR Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;
+  field public,static,final SOOT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TURBULENCE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final TURBULENCE_SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final VORTICITY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final WEIGHT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;)V
   method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;)V
   method public blast (FFFFFF)V
-  method public brick ()I
-  method public extent ()F
+  method public bounds ([F)Z
+  method public cellSize ()F
   method public extinction ()F
   method public faded ()Z
+  method public index ()I
   method public place (FFF)Lcom/crystalgraphics/vfx/gas/CgVfxGas;
   method public release ()V
   method public slot ()Lcom/crystalgraphics/vfx/look/CgVfxSlot;
@@ -9414,25 +9427,37 @@ com/crystalgraphics/vfx/gas/CgVfxGasAtlas
   extends java/lang/Object
   field public,static,final CAPACITY I
   field public,static,final FLOW_PROPERTIES Ljava/lang/String;
+  field public,static,final FLOW_SAMPLER Ljava/lang/String;
   field public,static,final GPU_BUDGET Lcom/crystalgraphics/render/CgGpuBudget;
   field public,static,final ITERATIONS I
+  field public,static,final LAYER I
   field public,static,final MAX_STEPS I
   field public,static,final MIN_ITERATIONS I
   field public,static,final ORDER I
+  field public,static,final PAGES I
+  field public,static,final PAGES_SAMPLER Ljava/lang/String;
   field public,static,final ROWS I
+  field public,static,final ROW_DISTURB I
   field public,static,final ROW_FADES I
   field public,static,final ROW_FORCES I
+  field public,static,final ROW_MOTION I
   field public,static,final ROW_ORIGIN I
   field public,static,final ROW_PLACE I
   field public,static,final ROW_STATE I
   field public,static,final SHADE_SAMPLER Ljava/lang/String;
+  field public,static,final SHADE_TILE I
+  field public,static,final SPAN I
   field public,static,final STEP F
+  field public,static,final TILE I
   method public bindFlow (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public cells ()I
+  method public flow ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public pages ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public shade ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public tenants ()I
-  method public,static cells (Lcom/crystalgraphics/settings/CgQuality;)I
+  method public tilesInUse ()I
+  method public,static cellScale (Lcom/crystalgraphics/settings/CgQuality;)F
   method public,static get ()Lcom/crystalgraphics/vfx/gas/CgVfxGasAtlas;
+  method public,static tiles (Lcom/crystalgraphics/settings/CgQuality;)I
 com/crystalgraphics/vfx/look/CgVfxEnding
   access public,final
   extends java/lang/Object

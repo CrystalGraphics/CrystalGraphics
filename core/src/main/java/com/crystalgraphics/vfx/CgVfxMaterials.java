@@ -264,11 +264,12 @@ final class CgVfxMaterials {
     /** The gas shade each volume material was last pointed at: the atlas makes it anew when its bricks change size. */
     private final Map<CgMaterial, CgTexture> shades = new IdentityHashMap<>();
 
-    /** Points volume {@code material} at {@code shade}, once each time the atlas remade it. */
-    void shade(CgMaterial material, CgTexture shade) {
+    /** Points volume {@code material} at the atlas's shade, flow and page tables, once each time the atlas remade them. */
+    void shade(CgMaterial material, CgTexture shade, CgTexture flow, CgTexture pages) {
         if (shades.get(material) == shade) return;
         shades.put(material, shade);
-        material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade));
+        material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade).sampler(CgVfxGasAtlas.FLOW_SAMPLER, 1, flow)
+                .sampler(CgVfxGasAtlas.PAGES_SAMPLER, 2, pages));
     }
 
     /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */

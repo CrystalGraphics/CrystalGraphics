@@ -63,10 +63,11 @@ public final class CgVfxSlot {
          */
         TRAIL,
         /**
-         * A {@code CgVfxGas}'s brick, marched through a cube round it ({@code fx_gas.glsl}), reading
-         * {@code CgVfxGasAtlas.shade()} as {@code _GasShade}: {@code CUSTOM0} its brick, cells a brick a side, bricks
-         * along the atlas and the layer's size; {@code CUSTOM1} the cube's side in blocks and the gas's extinction a
-         * block.
+         * A {@code CgVfxGas}, marched through a box round the tiles it holds ({@code fx_gas.glsl}), reading
+         * {@code CgVfxGasAtlas.shade()} as {@code _GasShade}, {@code flow()} as {@code _GasFlow} and {@code pages()} as
+         * {@code _GasPages}, declared first and in that order: the box a unit cube scaled by the transform;
+         * {@code CUSTOM0} the gas's place in the atlas, its cell in blocks, 0 and the layer's size; {@code CUSTOM1} its
+         * grid's low corner from the box's middle, and its extinction a block.
          */
         VOLUME;
 

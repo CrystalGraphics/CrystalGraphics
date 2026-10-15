@@ -1054,12 +1054,13 @@ public final class CgVfxParticlePool {
         if (shape.usesGas()) {
             words.target(instances, at + shape.gasAt() * 4, CgVfxShape.GAS_LANES, who + "'s gas");
             CgVfxGas gas = view.gas();
-            int cells = CgVfxGasAtlas.get().cells();
-            if (gas == null || gas.brick() < 0 || cells == 0) {
+            if (gas == null || gas.index() < 0 || CgVfxGasAtlas.get().flow() == null) {
                 words.vec4(0f, 0f, 0f, -1f).vec4(1f, 0f, 0f, 0f);
             } else {
-                words.vec4((float) (ox - gas.x()), (float) (oy - gas.y()), (float) (oz - gas.z()), gas.brick())
-                        .vec4(gas.extent() / cells, 0f, 0f, 0f);
+                // The instance's origin from its gas's grid's low corner, in blocks.
+                float cell = gas.cellSize(), grid = CgVfxGasAtlas.SPAN * 0.5f * cell;
+                words.vec4((float) (ox - gas.x()) + grid, (float) (oy - gas.y()) + grid, (float) (oz - gas.z()) + grid,
+                        gas.index()).vec4(cell, 0f, 0f, 0f);
             }
             words.finish("its gas lanes");
         }

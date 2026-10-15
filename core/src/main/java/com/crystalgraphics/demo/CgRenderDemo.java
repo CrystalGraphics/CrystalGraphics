@@ -158,7 +158,7 @@ public final class CgRenderDemo {
             new Kind("blast", 22, this::blast),
             new Kind("beams", 12, this::beams),
             new Kind("modules", 34, this::modules),
-            new Kind("gas", 40, this::gas),
+            new Kind("gas", 90, this::gas),
             new Kind("blasts", (int) CgVfxBlasts.REACH + 10, this::blasts),
             new Kind("collision", 24, this::collision),
     };

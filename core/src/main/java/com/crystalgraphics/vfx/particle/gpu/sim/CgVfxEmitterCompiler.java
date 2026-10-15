@@ -209,16 +209,16 @@ public final class CgVfxEmitterCompiler {
                     """);
         }
         if (shape.usesGas()) {
-            s.append("\n// The gas as a kind taking GAS reads it: this instance's origin from the gas's middle.\n")
+            s.append("\n// The gas as a kind taking GAS reads it: this instance's origin from the gas's grid's low corner.\n")
                     .append("FxGas step_gas(int inst) {\n")
                     .append("    vec4 a = step_instance(inst + ").append(shape.gasAt()).append("), b = step_instance(inst + ")
                     .append(shape.gasAt() + 1).append(");\n")
                     .append("""
                                 FxGas g;
                                 g.offset = a.xyz;
-                                g.brick = a.w;
+                                g.gas = int(a.w + 0.5);
                                 g.cell = b.x;
-                                g.live = a.w >= 0.0 && _GasCells > 0;
+                                g.live = a.w >= 0.0 && _GasLive != 0;
                                 return g;
                             }
                             """);

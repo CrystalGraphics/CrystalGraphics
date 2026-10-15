@@ -1,17 +1,25 @@
-// The gas solver (CgVfxGas): stable fluids in a brick per gas of one atlas, GPU Gems 3 ch. 30's step order (Crane,
-// Llamas and Tariq 2007): velocity carried, vorticity confinement (Fedkiw, Stam and Jensen 2001), buoyancy and
-// sources, divergence, Jacobi pressure warm-started from the last step, projection with free slip at the world's solid
-// octants; then density, temperature and fuel carried by MacCormack with the eight-texel limiter (Selle et al. 2008).
+// The gas solver (CgVfxGas), sparse: each gas a grid of 512 cells a side that holds cells only where it has gas, in
+// tiles of 16 cells drawn from one pool, as OpenVDB, EmberGen's sparse simulation and Houdini's sparse Pyro hold theirs;
+// a page table per gas names the pool slot of each tile it has. So smoke flows as far as it goes rather than meeting a
+// box. Houdini Pyro's step order over GPU Gems 3 ch. 30's kernels (Crane, Llamas and Tariq 2007): velocity carried;
+// buoyancy, vorticity confinement (Fedkiw, Stam and Jensen 2001), curl-noise turbulence (Bridson 2007) broad and slow,
+// and fine and fast for Pyro's disturbance, each where there is gas; sources; divergence less a goal (Pyro's
+// expansion: burnt fuel and blasts push outward, so a fireball bursts and billows, by what it burns and no more);
+// Jacobi pressure warm-started from the last step;
+// projection with free slip at the world's solid octants; then density, temperature, fuel and flame carried by
+// MacCormack with the eight-texel limiter (Selle et al. 2008), and fuel burnt into flame, heat and smoke.
 // First, Solids, once a frame: which cells are blocks or below the floor, so a step reads one texel for each.
-// Last, Shade, once a frame: what the renderer reads, in one volume that never swaps: density, temperature, the
-// transmittance toward the sun through the gas and the blocks (the march's lighting cache, as Unreal's heterogeneous
-// volumes keep one) and the sky light of the cell's block.
+// Last, Shade, once a frame: what the renderer reads, in two pools of tiles with a cell of apron round each, so a
+// filtered read inside a tile never needs its neighbour: SHADE (density, flame, the transmittance toward the sun
+// through the gas and the blocks, the sky light the gas above leaves) and FLOW (velocity, temperature). Then
+// Occupancy: which tiles hold gas, and which of their faces it is near, for CgVfxGasAtlas to grow and free tiles by.
 //
-// Every kernel runs over the whole atlas, a texel each: brick b is texels [b * _Brick, (b + 1) * _Brick) along x. Each
-// reads volumes as samplers and writes one image, so the lowered tiers run it too: no kernel loads what it writes.
-// Positions are in cells, centres at i + 0.5; a cell is BRICKS' cell size in blocks; the brick's middle is its gas's
-// origin. Outside a brick is still air: velocity 0, no smoke, pressure 0, so smoke leaves through its faces. A brick
-// given out since its last step is fresh: what the atlas held there before is read as nothing.
+// Every kernel runs over the pool's used layers, a texel each; a texel's slot is its tile in the pool, and TILES names
+// the gas and tile each slot holds. Cells are a gas's grid coordinates, 0 to 511, centres at i + 0.5; a cell is GASES'
+// cell size in blocks, and the grid's middle is the gas's origin. Where a gas has no tile it is still air: velocity 0,
+// no smoke, pressure 0, solid only where the world is. A tile given out since the last step is fresh: what the pool
+// held there before is read as nothing. Each reads volumes as samplers and writes one image (Shade two), so the
+// lowered tiers run it too. The sun is the frame's (CG_SUN_DIRECTION), the one the gas's layers light it by.
 #pragma kernel Solids 4 4 4 image
 #pragma kernel Advect 4 4 4 image
 #pragma kernel Curl 4 4 4 image
@@ -23,7 +31,9 @@
 #pragma kernel CarryBack 4 4 4 image
 #pragma kernel Settle 4 4 4 image
 #pragma kernel Shade 4 4 4 image
+#pragma kernel Occupancy 4 4 4 scatter
 
+#include "crystalgraphics:shaders/lib/vfx/fx_curl.glsl"
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl"
 
 Properties {
@@ -37,25 +47,26 @@ Properties {
     _WorldWrapZ    ("z",                                    int)       = 0
     _WorldLive     ("1 with a level, else 0: read nothing", int)       = 0
     _WorldDistance ("Distance to solid over FX_WORLD_FAR",  sampler3D) = "white"
+    _Pages    ("Each gas's page table: a tile's slot + 1, 0 for none", sampler3D) = "black"
     _Vel      ("Velocity, blocks a second",                 sampler3D) = "black"
-    _Scalars  ("Density, temperature over ambient, fuel",   sampler3D) = "black"
+    _Scalars  ("Density, temperature over ambient, fuel, flame", sampler3D) = "black"
     _Ahead    ("The scalars carried forward",               sampler3D) = "black"
     _Back     ("Those carried back",                        sampler3D) = "black"
     _Pressure ("Pressure",                                  sampler3D) = "black"
     _Div      ("Divergence",                                sampler3D) = "black"
     _Curl     ("Curl and its length",                       sampler3D) = "black"
     _Solid    ("Solid cells, 1 where blocked",              sampler3D) = "black"
-    _Brick    ("Cells a brick a side",                      int)       = 32
-    _Bricks   ("Bricks along the atlas",                    int)       = 1
     _Sources  ("How many SOURCES rows of three",            int)       = 0
-    _Iter     ("Jacobi's iteration: 0 reads no warm start in a fresh brick", int) = 1
-    _RowBase  ("This step's first BRICKS row",              int)       = 0
-    _Sun      ("Toward the sun, unit; w 1 with a sun",      vec4)      = (0, 1, 0, 0)
+    _Iter     ("Jacobi's iteration: 0 reads no warm start in a fresh tile", int) = 1
+    _Fresh    ("1 while a fresh tile's old state reads as nothing: a frame's first step, and Shade or Occupancy after none", int) = 1
+    _RowBase  ("This step's first GASES row",               int)       = 0
 }
 
 Buffers {
-    BRICKS  ("A block a step: each brick's five rows (CgVfxGasAtlas.ROW_*)",               uvec4, readonly)
-    SOURCES ("Each injection: brick, centre (cells), radius (cells); its four amounts; its velocity and kind", vec4, readonly)
+    GASES    ("A block a step: each gas's seven rows (CgVfxGasAtlas.ROW_*)",                       uvec4, readonly)
+    TILES    ("Each slot: its gas + 1 (0 free), its tile x | y << 8 | z << 16, 1 while fresh",     uvec4, readonly)
+    SOURCES  ("Each injection: gas, centre (cells), radius (cells); its four amounts; its velocity and kind", vec4, readonly)
+    OCCUPIED ("Each slot's eight flags: gas in it, then gas near its -x, +x, -y, +y, -z, +z face", uint,  readwrite)
 }
 
 Images {
@@ -65,61 +76,108 @@ Images {
     PRESSURE_OUT ("Pressure, next",               r16f,    writeonly, 3d)
     DIV_OUT      ("Divergence",                   r16f,    writeonly, 3d)
     CURL_OUT     ("Curl and its length",          rgba16f, writeonly, 3d)
-    SHADE_OUT    ("Density, temperature, sun, sky", rgba16f, writeonly, 3d)
+    SHADE_OUT    ("Density, flame, sun, sky",     rgba16f, writeonly, 3d)
+    FLOW_OUT     ("Velocity, temperature",        rgba16f, writeonly, 3d)
 }
 
-int g_brick() {
-    return CG_TEXEL.x / _Brick;
-}
+// Rows of a gas in GASES (CgVfxGasAtlas.ROWS).
+const int G_ROWS = 7;
+// Cells a tile side, tiles a page table side, cells a grid side, pool tiles a layer side: CgVfxGasAtlas's.
+const int G_TILE = 16;
+const int G_PAGES = 32;
+const int G_SPAN = 512;
+const int G_LAYER = 8;
+// Seconds a flame lingers once carried off what burns: how far its tongues lick.
+const float G_FLAME_LIFE = 0.12;
+// The hottest a cell gets, over the air: a source pouring heat for long stays bounded.
+const float G_HOTTEST = 12.0;
+// The most a cell expands a second as it burns: a burst's outflow past this outruns the speed cap.
+const float G_MOST_EXPANSION = 24.0;
+// The fastest the gas moves, blocks a second: a backstop on forces that feed each other (confinement, turbulence).
+const float G_FASTEST = 40.0;
+// The least density, fuel or flame Occupancy counts as gas, and how near a face, in cells, it asks for the neighbour.
+const float G_OCCUPIED = 0.002;
+const int G_NEAR_FACE = 4;
 
-ivec3 g_cell() {
-    return ivec3(CG_TEXEL.x - g_brick() * _Brick, CG_TEXEL.y, CG_TEXEL.z);
-}
+// This invocation: its gas (-1 for a free slot), its slot, the tile that slot holds and its cell.
+struct G {
+    int b;
+    int slot;
+    ivec3 tile;
+    ivec3 cell;
+};
 
 uvec4 g_words(int b, int r) {
-    return BRICKS(_RowBase + b * 5 + r);
+    return GASES(_RowBase + b * G_ROWS + r);
 }
 
 vec4 g_row(int b, int r) {
     return uintBitsToFloat(g_words(b, r));
 }
 
-// Row 0: alive (1, 0 a brick nothing holds), this step's seconds, a cell's width in blocks, 1 while fresh.
-bool g_alive(int b) {
-    return g_row(b, 0).x > 0.0;
+ivec3 g_pool_tile(int slot) {
+    return ivec3(slot % G_LAYER, (slot / G_LAYER) % G_LAYER, slot / (G_LAYER * G_LAYER));
 }
 
-bool g_fresh(int b) {
-    return g_row(b, 0).w > 0.5;
+// The invocation at texel t of a pool whose tiles are n texels a side, apron cells round each.
+G g_at(ivec3 t, int n, int apron) {
+    G g;
+    ivec3 p = t / n;
+    g.slot = p.x + G_LAYER * (p.y + G_LAYER * p.z);
+    uvec4 w = TILES(g.slot);
+    g.b = int(w.x) - 1;
+    g.tile = ivec3(int(w.y & 255u), int((w.y >> 8u) & 255u), int((w.y >> 16u) & 255u));
+    g.cell = g.tile * G_TILE + (t - p * n) - apron;
+    return g;
 }
 
-bool g_outside(vec3 cell) {
-    return any(lessThan(cell, vec3(0.0))) || any(greaterThanEqual(cell, vec3(float(_Brick))));
+// Row 0: alive (1, 0 a gas slot nothing holds), this step's seconds, a cell's width in blocks.
+bool g_live(G g) {
+    return g.b >= 0 && g_row(g.b, 0).x > 0.0;
 }
 
-// The atlas texel coordinate of a point of brick b, clamped to its own cells so a filtered read never takes a neighbour
-// brick's.
-vec3 g_uvw(int b, vec3 cell) {
-    vec3 c = clamp(cell, vec3(0.5), vec3(float(_Brick) - 0.5));
-    return (vec3(float(b * _Brick), 0.0, 0.0) + c) / vec3(float(_Brick * _Bricks), float(_Brick), float(_Brick));
+bool g_fresh(int slot) {
+    return _Fresh != 0 && TILES(slot).z != 0u;
 }
 
-vec4 g_sample(sampler3D v, int b, vec3 cell) {
-    return textureLod(v, g_uvw(b, cell), 0.0);
+// The slot holding cell c of gas b: -1 where it has no tile, and past its grid.
+int g_slot(int b, ivec3 c) {
+    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(G_SPAN)))) return -1;
+    ivec3 t = c >> 4;
+    return int(texelFetch(_Pages, ivec3(t.x, t.y, t.z + G_PAGES * b), 0).x + 0.5) - 1;
 }
 
-vec4 g_fetch(sampler3D v, int b, ivec3 c) {
-    c = clamp(c, ivec3(0), ivec3(_Brick - 1));
-    return texelFetch(v, ivec3(b * _Brick + c.x, c.y, c.z), 0);
+// As g_slot, without the page table for a cell of the invocation's own tile.
+int g_slot_near(G g, ivec3 c) {
+    return all(equal(c >> 4, g.tile)) ? g.slot : g_slot(g.b, c);
 }
 
-// The scalars as the last step left them: nothing in a fresh brick.
-vec4 g_scalars(int b, ivec3 c) {
-    return g_fresh(b) ? vec4(0.0) : g_fetch(_Scalars, b, c);
+ivec3 g_texel(int slot, ivec3 c) {
+    return g_pool_tile(slot) * G_TILE + (c & (G_TILE - 1));
 }
 
-vec4 g_scalars_at(int b, vec3 cell) {
-    return g_fresh(b) ? vec4(0.0) : g_sample(_Scalars, b, cell);
+// v at cell c: nothing where the gas has no tile; old state, the last step's, reads nothing in a fresh tile.
+vec4 g_get(sampler3D v, G g, ivec3 c, bool old) {
+    int s = g_slot_near(g, c);
+    if (s < 0 || (old && g_fresh(s))) return vec4(0.0);
+    return texelFetch(v, g_texel(s, c), 0);
+}
+
+// v filtered at p (cells): the hardware's inside a tile, eight fetches across tiles.
+vec4 g_sample(sampler3D v, G g, vec3 p, bool old) {
+    vec3 q = p - 0.5;
+    ivec3 i = ivec3(floor(q));
+    vec3 f = q - vec3(i);
+    int s = g_slot_near(g, i);
+    if (s >= 0 && all(equal(i >> 4, (i + 1) >> 4)) && !(old && g_fresh(s))) {
+        return textureLod(v, (vec3(g_texel(s, i)) + 0.5 + f) / vec3(textureSize(v, 0)), 0.0);
+    }
+    vec4 c000 = g_get(v, g, i, old), c100 = g_get(v, g, i + ivec3(1, 0, 0), old);
+    vec4 c010 = g_get(v, g, i + ivec3(0, 1, 0), old), c110 = g_get(v, g, i + ivec3(1, 1, 0), old);
+    vec4 c001 = g_get(v, g, i + ivec3(0, 0, 1), old), c101 = g_get(v, g, i + ivec3(1, 0, 1), old);
+    vec4 c011 = g_get(v, g, i + ivec3(0, 1, 1), old), c111 = g_get(v, g, i + ivec3(1, 1, 1), old);
+    return mix(mix(mix(c000, c100, f.x), mix(c010, c110, f.x), f.y),
+            mix(mix(c001, c101, f.x), mix(c011, c111, f.x), f.y), f.z);
 }
 
 // Row 1: the gas's origin, whole blocks, then its floor's height from the origin (its effect's ground where the host
@@ -133,9 +191,9 @@ FxWorld g_world(int b) {
     return w;
 }
 
-// Cell c's centre from the gas's origin, in blocks.
-vec3 g_offset(int b, vec3 cell) {
-    return (cell - 0.5 * float(_Brick)) * g_row(b, 0).z;
+// The point p (cells) from the gas's origin, in blocks.
+vec3 g_offset(int b, vec3 p) {
+    return (p - 0.5 * float(G_SPAN)) * g_row(b, 0).z;
 }
 
 // Whether the point offset blocks from the gas's origin is solid: below its floor, or in a solid octant of the world.
@@ -143,50 +201,56 @@ bool g_blocked(int b, vec3 offset) {
     return offset.y < g_row(b, 1).w || fx_world_solid(g_world(b), offset);
 }
 
-// Whether cell c is solid, as Solids found it this frame.
-bool g_solid(int b, ivec3 c) {
-    if (g_outside(vec3(c))) return false;
-    return g_fetch(_Solid, b, c).x > 0.5;
+// Whether cell c is solid: as Solids found it in a tile, below the floor where the gas has none. A missing tile is past
+// the ring kept round the gas, so the world's blocks there never meet it; reading only the floor keeps the voxel
+// window's volumes to Solids and Shade, under a dispatch's eight textures.
+bool g_solid(G g, ivec3 c) {
+    int s = g_slot_near(g, c);
+    if (s < 0) return g_offset(g.b, vec3(c) + 0.5).y < g_row(g.b, 1).w;
+    return texelFetch(_Solid, g_texel(s, c), 0).x > 0.5;
+}
+
+// Whether the gas has a tile at c, so a velocity or pressure is held there.
+bool g_has(G g, ivec3 c) {
+    return g_slot_near(g, c) >= 0;
 }
 
 void Solids() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    SOLID_OUT_WRITE(vec4(g_alive(b) && g_blocked(b, g_offset(b, vec3(c) + 0.5)) ? 1.0 : 0.0));
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    SOLID_OUT_WRITE(vec4(g_live(g) && g_blocked(g.b, g_offset(g.b, vec3(g.cell) + 0.5)) ? 1.0 : 0.0));
 }
 
-// Where the velocity at cell c came from, dt ago, in cells.
-vec3 g_back(int b, vec3 cell, vec3 v) {
+// Where the velocity at p came from, dt ago, in cells.
+vec3 g_back(int b, vec3 p, vec3 v) {
     vec4 r0 = g_row(b, 0);
-    return cell - v * r0.y / r0.z;
+    return p - v * r0.y / r0.z;
 }
 
 void Advect() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_fresh(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         VEL_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec3 at = vec3(c) + 0.5;
-    vec3 back = g_back(b, at, g_fetch(_Vel, b, c).xyz);
-    vec3 v = g_outside(back) ? vec3(0.0) : g_sample(_Vel, b, back).xyz;
-    // Row 4: the velocity's damping a second, the fuel's burn a second, the heat a unit burnt gives, extinction.
-    v *= exp(-g_row(b, 4).x * g_row(b, 0).y);
+    vec3 at = vec3(g.cell) + 0.5;
+    vec3 v = g_sample(_Vel, g, g_back(g.b, at, g_get(_Vel, g, g.cell, true).xyz), true).xyz;
+    // Row 4: the velocity's damping a second, the fuel's burn a second, the temperature it burns at, extinction.
+    v *= exp(-g_row(g.b, 4).x * g_row(g.b, 0).y);
     VEL_OUT_WRITE(vec4(v, 0.0));
 }
 
 void Curl() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g)) {
         CURL_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec3 l = g_fetch(_Vel, b, c - ivec3(1, 0, 0)).xyz, r = g_fetch(_Vel, b, c + ivec3(1, 0, 0)).xyz;
-    vec3 d = g_fetch(_Vel, b, c - ivec3(0, 1, 0)).xyz, u = g_fetch(_Vel, b, c + ivec3(0, 1, 0)).xyz;
-    vec3 n = g_fetch(_Vel, b, c - ivec3(0, 0, 1)).xyz, f = g_fetch(_Vel, b, c + ivec3(0, 0, 1)).xyz;
-    vec3 w = vec3((u.z - d.z) - (f.y - n.y), (f.x - n.x) - (r.z - l.z), (r.y - l.y) - (u.x - d.x)) * (0.5 / g_row(b, 0).z);
+    ivec3 c = g.cell;
+    vec3 l = g_get(_Vel, g, c - ivec3(1, 0, 0), false).xyz, r = g_get(_Vel, g, c + ivec3(1, 0, 0), false).xyz;
+    vec3 d = g_get(_Vel, g, c - ivec3(0, 1, 0), false).xyz, u = g_get(_Vel, g, c + ivec3(0, 1, 0), false).xyz;
+    vec3 n = g_get(_Vel, g, c - ivec3(0, 0, 1), false).xyz, f = g_get(_Vel, g, c + ivec3(0, 0, 1), false).xyz;
+    vec3 w = vec3((u.z - d.z) - (f.y - n.y), (f.x - n.x) - (r.z - l.z), (r.y - l.y) - (u.x - d.x))
+            * (0.5 / g_row(g.b, 0).z);
     CURL_OUT_WRITE(vec4(w, length(w)));
 }
 
@@ -195,27 +259,50 @@ float g_reach(vec4 centre, vec3 p) {
     return clamp(1.0 - distance(centre.xyz, p) / max(centre.w, 1.0e-3), 0.0, 1.0);
 }
 
+// Where the shaping forces act, 0 to 1: where there is smoke or heat, as Pyro's control fields default.
+float g_presence(vec4 s) {
+    return clamp(s.x * 3.0 + s.y * 0.5 + s.w, 0.0, 1.0);
+}
+
+// Curl noise at size blocks, drifting through the gas at drift times its size a second, never looping: two octaves.
+// Turbulence is a slow, broad one; disturbance a fast, fine one, the job Pyro's block disturbance does, smooth because
+// a block a cell or two wide turns into axis-aligned slabs in the flow.
+vec3 g_churn(vec3 offset, float size, float clock, float drift) {
+    vec3 q = offset / max(size, 0.05) + clock * drift * vec3(0.3, -1.0, 0.2);
+    return fx_curl(ivec3(0), q, ivec3(0), q * 2.03 + vec3(5.2, 1.3, 7.9));
+}
+
 void Forces() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         VEL_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec4 r0 = g_row(b, 0), r2 = g_row(b, 2), r3 = g_row(b, 3);
+    int b = g.b;
+    ivec3 c = g.cell;
+    vec4 r0 = g_row(b, 0), r2 = g_row(b, 2), r3 = g_row(b, 3), r5 = g_row(b, 5), r6 = g_row(b, 6);
     float dt = r0.y, cell = r0.z;
     vec3 at = vec3(c) + 0.5;
-    vec3 v = g_fetch(_Vel, b, c).xyz;
-    vec4 s = g_scalars(b, c);
+    vec3 v = g_get(_Vel, g, c, false).xyz;
+    vec4 s = g_get(_Scalars, g, c, true);
     // Row 3: the weight smoke sinks by, the vorticity confinement, density's and temperature's fading a second.
     vec3 force = vec3(0.0, r2.w * s.y - r3.x * s.x, 0.0);
     // Confinement: toward where the curl grows, round it, at the scale of a cell.
-    float gl = g_fetch(_Curl, b, c - ivec3(1, 0, 0)).w, gr = g_fetch(_Curl, b, c + ivec3(1, 0, 0)).w;
-    float gd = g_fetch(_Curl, b, c - ivec3(0, 1, 0)).w, gu = g_fetch(_Curl, b, c + ivec3(0, 1, 0)).w;
-    float gn = g_fetch(_Curl, b, c - ivec3(0, 0, 1)).w, gf = g_fetch(_Curl, b, c + ivec3(0, 0, 1)).w;
+    float gl = g_get(_Curl, g, c - ivec3(1, 0, 0), false).w, gr = g_get(_Curl, g, c + ivec3(1, 0, 0), false).w;
+    float gd = g_get(_Curl, g, c - ivec3(0, 1, 0), false).w, gu = g_get(_Curl, g, c + ivec3(0, 1, 0), false).w;
+    float gn = g_get(_Curl, g, c - ivec3(0, 0, 1), false).w, gf = g_get(_Curl, g, c + ivec3(0, 0, 1), false).w;
     vec3 grad = vec3(gr - gl, gu - gd, gf - gn);
     float gg = dot(grad, grad);
-    if (gg > 1.0e-12) force += r3.y * cell * cross(grad * inversesqrt(gg), g_fetch(_Curl, b, c).xyz);
+    if (gg > 1.0e-12) force += r3.y * cell * cross(grad * inversesqrt(gg), g_get(_Curl, g, c, false).xyz);
+    // Row 5: expansion, turbulence and its size in blocks, the gas's clock; row 6: disturbance and its size in blocks.
+    float presence = g_presence(s);
+    if (presence > 0.0) {
+        vec3 offset = g_offset(b, at);
+        // Its field drifts through at a swirl a second, so no swirl is pushed the same way for long: a force held
+        // still against light damping winds the gas up without limit.
+        if (r5.y > 0.0) force += g_churn(offset, r5.z, r5.w, 1.0) * (r5.y * presence);
+        if (r6.x > 0.0) force += g_churn(offset + vec3(41.0, 17.0, 29.0), r6.y, r5.w, 2.5) * (r6.x * presence);
+    }
     v += force * dt;
     for (int i = 0; i < _Sources; i++) {
         vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
@@ -233,132 +320,148 @@ void Forces() {
             v = mix(v, move.xyz, clamp(w * dt * 8.0, 0.0, 1.0));
         }
     }
+    float speed = length(v);
+    if (speed > G_FASTEST) v *= G_FASTEST / speed;
     VEL_OUT_WRITE(vec4(v, 0.0));
 }
 
-// The velocity a face sees from neighbour n of c: a solid neighbour's is 0, past the brick it is c's own.
-vec3 g_face(int b, ivec3 c, ivec3 n, vec3 own) {
-    if (g_outside(vec3(n))) return own;
-    if (g_solid(b, n)) return vec3(0.0);
-    return g_fetch(_Vel, b, n).xyz;
+// The velocity a face sees from neighbour n: a solid neighbour's is 0, where the gas has no tile it is c's own.
+vec3 g_face(G g, ivec3 n, vec3 own) {
+    if (!g_has(g, n)) return own;
+    if (g_solid(g, n)) return vec3(0.0);
+    return g_get(_Vel, g, n, false).xyz;
 }
 
 void Divergence() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         DIV_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec3 own = g_fetch(_Vel, b, c).xyz;
-    float l = g_face(b, c, c - ivec3(1, 0, 0), own).x, r = g_face(b, c, c + ivec3(1, 0, 0), own).x;
-    float d = g_face(b, c, c - ivec3(0, 1, 0), own).y, u = g_face(b, c, c + ivec3(0, 1, 0), own).y;
-    float n = g_face(b, c, c - ivec3(0, 0, 1), own).z, f = g_face(b, c, c + ivec3(0, 0, 1), own).z;
-    DIV_OUT_WRITE(vec4(0.5 * ((r - l) + (u - d) + (f - n)) / g_row(b, 0).z, 0.0, 0.0, 0.0));
+    int b = g.b;
+    ivec3 c = g.cell;
+    vec3 own = g_get(_Vel, g, c, false).xyz;
+    float cell = g_row(b, 0).z;
+    float l = g_face(g, c - ivec3(1, 0, 0), own).x, r = g_face(g, c + ivec3(1, 0, 0), own).x;
+    float d = g_face(g, c - ivec3(0, 1, 0), own).y, u = g_face(g, c + ivec3(0, 1, 0), own).y;
+    float n = g_face(g, c - ivec3(0, 0, 1), own).z, f = g_face(g, c + ivec3(0, 0, 1), own).z;
+    float div = 0.5 * ((r - l) + (u - d) + (f - n)) / cell;
+    // The goal the projection leaves: burning fuel releasing hot gas, row 5.x of volume (as a log) for each unit burnt,
+    // its fuel times row 4.y burnt a second, so a charge swells by what it holds and stops, however fast it burns; and
+    // each blast's outflow, 3 speed / radius through most of it, which a sphere spreading at its speed has, so
+    // projection keeps its throw.
+    float goal = min(g_row(b, 5).x * g_get(_Scalars, g, c, true).z * g_row(b, 4).y, G_MOST_EXPANSION);
+    vec3 at = vec3(c) + 0.5;
+    for (int i = 0; i < _Sources; i++) {
+        vec4 where = SOURCES(i * 3), move = SOURCES(i * 3 + 2);
+        if (move.w < 1.5 || int(where.x + 0.5) != b) continue;
+        float radius = SOURCES(i * 3 + 1).w;
+        goal += 3.0 * length(move.xyz) / max(radius * cell, 1.0e-3) * min(1.0, 2.0 * g_reach(vec4(where.yzw, radius), at));
+    }
+    DIV_OUT_WRITE(vec4(div - goal, 0.0, 0.0, 0.0));
 }
 
-// The pressure at c: the last step's, warm-starting Jacobi, but none in a fresh brick's first iteration.
-float g_p(int b, ivec3 c) {
-    return _Iter == 0 && g_fresh(b) ? 0.0 : g_fetch(_Pressure, b, c).x;
+// The pressure at c: the last step's, warm-starting Jacobi, but none in a fresh tile's first iteration.
+float g_p(G g, ivec3 c) {
+    return g_get(_Pressure, g, c, _Iter == 0).x;
 }
 
-// Neighbour n's pressure for c's: a solid one takes c's (no flow through it), past the brick 0 (open air).
-float g_pressure(int b, ivec3 n, float own) {
-    if (g_outside(vec3(n))) return 0.0;
-    if (g_solid(b, n)) return own;
-    return g_p(b, n);
+// Neighbour n's pressure for c's: a solid one takes c's (no flow through it), where the gas has no tile 0 (open air).
+float g_pressure(G g, ivec3 n, float own) {
+    if (!g_has(g, n)) return 0.0;
+    if (g_solid(g, n)) return own;
+    return g_p(g, n);
 }
 
 void Jacobi() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         PRESSURE_OUT_WRITE(vec4(0.0));
         return;
     }
-    float own = g_p(b, c), cell = g_row(b, 0).z;
-    float sum = g_pressure(b, c - ivec3(1, 0, 0), own) + g_pressure(b, c + ivec3(1, 0, 0), own)
-            + g_pressure(b, c - ivec3(0, 1, 0), own) + g_pressure(b, c + ivec3(0, 1, 0), own)
-            + g_pressure(b, c - ivec3(0, 0, 1), own) + g_pressure(b, c + ivec3(0, 0, 1), own);
-    PRESSURE_OUT_WRITE(vec4((sum - g_fetch(_Div, b, c).x * cell * cell) / 6.0, 0.0, 0.0, 0.0));
+    ivec3 c = g.cell;
+    float own = g_p(g, c), cell = g_row(g.b, 0).z;
+    float sum = g_pressure(g, c - ivec3(1, 0, 0), own) + g_pressure(g, c + ivec3(1, 0, 0), own)
+            + g_pressure(g, c - ivec3(0, 1, 0), own) + g_pressure(g, c + ivec3(0, 1, 0), own)
+            + g_pressure(g, c - ivec3(0, 0, 1), own) + g_pressure(g, c + ivec3(0, 0, 1), own);
+    PRESSURE_OUT_WRITE(vec4((sum - g_get(_Div, g, c, false).x * cell * cell) / 6.0, 0.0, 0.0, 0.0));
 }
 
 void Project() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         VEL_OUT_WRITE(vec4(0.0));
         return;
     }
-    float own = g_p(b, c);
-    vec3 grad = vec3(g_pressure(b, c + ivec3(1, 0, 0), own) - g_pressure(b, c - ivec3(1, 0, 0), own),
-            g_pressure(b, c + ivec3(0, 1, 0), own) - g_pressure(b, c - ivec3(0, 1, 0), own),
-            g_pressure(b, c + ivec3(0, 0, 1), own) - g_pressure(b, c - ivec3(0, 0, 1), own));
-    vec3 v = g_fetch(_Vel, b, c).xyz - grad * (0.5 / g_row(b, 0).z);
+    ivec3 c = g.cell;
+    float own = g_p(g, c);
+    vec3 grad = vec3(g_pressure(g, c + ivec3(1, 0, 0), own) - g_pressure(g, c - ivec3(1, 0, 0), own),
+            g_pressure(g, c + ivec3(0, 1, 0), own) - g_pressure(g, c - ivec3(0, 1, 0), own),
+            g_pressure(g, c + ivec3(0, 0, 1), own) - g_pressure(g, c - ivec3(0, 0, 1), own));
+    vec3 v = g_get(_Vel, g, c, false).xyz - grad * (0.5 / g_row(g.b, 0).z);
     // Free slip: nothing flows into a solid neighbour.
-    if (g_solid(b, c - ivec3(1, 0, 0))) v.x = max(v.x, 0.0);
-    if (g_solid(b, c + ivec3(1, 0, 0))) v.x = min(v.x, 0.0);
-    if (g_solid(b, c - ivec3(0, 1, 0))) v.y = max(v.y, 0.0);
-    if (g_solid(b, c + ivec3(0, 1, 0))) v.y = min(v.y, 0.0);
-    if (g_solid(b, c - ivec3(0, 0, 1))) v.z = max(v.z, 0.0);
-    if (g_solid(b, c + ivec3(0, 0, 1))) v.z = min(v.z, 0.0);
+    if (g_solid(g, c - ivec3(1, 0, 0))) v.x = max(v.x, 0.0);
+    if (g_solid(g, c + ivec3(1, 0, 0))) v.x = min(v.x, 0.0);
+    if (g_solid(g, c - ivec3(0, 1, 0))) v.y = max(v.y, 0.0);
+    if (g_solid(g, c + ivec3(0, 1, 0))) v.y = min(v.y, 0.0);
+    if (g_solid(g, c - ivec3(0, 0, 1))) v.z = max(v.z, 0.0);
+    if (g_solid(g, c + ivec3(0, 0, 1))) v.z = min(v.z, 0.0);
     VEL_OUT_WRITE(vec4(v, 0.0));
 }
 
 void Carry() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         SCALARS_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec3 back = g_back(b, vec3(c) + 0.5, g_fetch(_Vel, b, c).xyz);
-    SCALARS_OUT_WRITE(g_outside(back) ? vec4(0.0) : g_scalars_at(b, back));
+    vec3 at = vec3(g.cell) + 0.5;
+    SCALARS_OUT_WRITE(g_sample(_Scalars, g, g_back(g.b, at, g_get(_Vel, g, g.cell, false).xyz), true));
 }
 
 void CarryBack() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         SCALARS_OUT_WRITE(vec4(0.0));
         return;
     }
     // The forward result carried the other way: where it lands is ahead along the velocity.
-    vec3 ahead = g_back(b, vec3(c) + 0.5, -g_fetch(_Vel, b, c).xyz);
-    SCALARS_OUT_WRITE(g_outside(ahead) ? vec4(0.0) : g_sample(_Ahead, b, ahead));
+    vec3 at = vec3(g.cell) + 0.5;
+    SCALARS_OUT_WRITE(g_sample(_Ahead, g, g_back(g.b, at, -g_get(_Vel, g, g.cell, false).xyz), false));
 }
 
 void Settle() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b) || g_solid(b, c)) {
+    G g = g_at(CG_TEXEL, G_TILE, 0);
+    if (!g_live(g) || g_solid(g, g.cell)) {
         SCALARS_OUT_WRITE(vec4(0.0));
         return;
     }
+    int b = g.b;
+    ivec3 c = g.cell;
     vec4 r0 = g_row(b, 0), r3 = g_row(b, 3), r4 = g_row(b, 4);
     float dt = r0.y;
     vec3 at = vec3(c) + 0.5;
-    vec3 back = g_back(b, at, g_fetch(_Vel, b, c).xyz);
-    vec4 ahead = g_fetch(_Ahead, b, c);
-    vec4 s = ahead;
-    if (!g_outside(back)) {
-        // MacCormack: the forward step corrected by half its round trip's error, held within the eight cells round
-        // where it came from, which the forward step's trilinear read was a blend of.
-        s = ahead + 0.5 * (g_scalars(b, c) - g_fetch(_Back, b, c));
-        ivec3 lo = ivec3(floor(back - 0.5));
-        vec4 least = vec4(1.0e9), most = vec4(-1.0e9);
-        for (int k = 0; k < 8; k++) {
-            vec4 corner = g_scalars(b, lo + ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1));
-            least = min(least, corner);
-            most = max(most, corner);
-        }
-        s = clamp(s, least, most);
+    vec3 back = g_back(b, at, g_get(_Vel, g, c, false).xyz);
+    vec4 ahead = g_get(_Ahead, g, c, false);
+    // MacCormack: the forward step corrected by half its round trip's error, held within the eight cells round where it
+    // came from, which the forward step's trilinear read was a blend of.
+    vec4 s = ahead + 0.5 * (g_get(_Scalars, g, c, true) - g_get(_Back, g, c, false));
+    ivec3 lo = ivec3(floor(back - 0.5));
+    vec4 least = vec4(1.0e9), most = vec4(-1.0e9);
+    for (int k = 0; k < 8; k++) {
+        vec4 corner = g_get(_Scalars, g, lo + ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1), true);
+        least = min(least, corner);
+        most = max(most, corner);
     }
-    // Fuel burns into heat and smoke.
-    float burn = min(s.z, r4.y * dt);
+    s = clamp(s, least, most);
+    // Fuel burns at row 4.y of itself a second, into row 6.z of smoke a unit and a flame as hot as row 4.z: the flame
+    // is how fast it burns, 0 to 1, and lingers a moment where the flow carries it off.
+    float burn = s.z * (1.0 - exp(-r4.y * dt));
+    float flame = dt > 0.0 ? 1.0 - exp(-burn / dt) : 0.0;
     s.z -= burn;
-    s.y += burn * r4.z;
-    s.x += burn;
+    s.x += burn * g_row(b, 6).z;
+    s.y = max(s.y, r4.z * flame);
+    s.w = max(s.w * exp(-dt / G_FLAME_LIFE), flame);
     for (int i = 0; i < _Sources; i++) {
         vec4 where = SOURCES(i * 3), amounts = SOURCES(i * 3 + 1), move = SOURCES(i * 3 + 2);
         if (int(where.x + 0.5) != b) continue;
@@ -366,48 +469,80 @@ void Settle() {
         if (w <= 0.0) continue;
         if (move.w > 1.5) {
             // A blast clears what it reaches by its carve, amounts.x.
-            s.xz *= 1.0 - w * amounts.x;
+            s.xzw *= 1.0 - w * amounts.x;
         } else {
             s.xyz += amounts.xyz * w * dt;
         }
     }
     s.x *= exp(-r3.z * dt);
-    s.y *= exp(-r3.w * dt);
+    s.y = min(s.y * exp(-r3.w * dt), G_HOTTEST);
     SCALARS_OUT_WRITE(max(s, vec4(0.0)));
 }
 
-// How far past its brick a cell looks for a block between it and the sun, in blocks.
+// Cells toward the sun a cell looks through its gas, and blocks past that for a block between it and the sun.
+const int G_SUN_CELLS = 48;
 const int G_SUN_REACH = 16;
+// The optical depth past which a cell is dark to the sun: the march toward it stops there.
+const float G_DARK = 8.0;
+// Cells above a cell where Shade weighs the gas shading it from the sky.
+const float G_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);
 
 void Shade() {
-    int b = g_brick();
-    ivec3 c = g_cell();
-    if (!g_alive(b)) {
+    G g = g_at(CG_TEXEL, G_TILE + 2, 1);
+    if (!g_live(g)) {
         SHADE_OUT_WRITE(vec4(0.0, 0.0, 1.0, 1.0));
+        FLOW_OUT_WRITE(vec4(0.0));
         return;
     }
-    vec4 s = g_solid(b, c) ? vec4(0.0) : g_scalars(b, c);
+    int b = g.b;
+    ivec3 c = g.cell;
+    bool solid = g_solid(g, c);
+    vec4 s = solid ? vec4(0.0) : g_get(_Scalars, g, c, true);
     float cell = g_row(b, 0).z, extinction = g_row(b, 4).w;
-    vec3 p = vec3(c) + 0.5, dir = _Sun.xyz;
-    FxWorld world = g_world(b);
+    vec3 p = vec3(c) + 0.5, dir = CG_SUN_DIRECTION;
     float tau = 0.0;
-    if (_Sun.w > 0.5 && s.x > 1.0e-4) {
-        // Toward the sun a cell a step through the gas, then a block a step past the brick: a block stops it dead.
-        int i = 1;
-        for (; i <= _Brick; i++) {
-            vec3 q = p + dir * float(i);
-            if (g_outside(q)) break;
-            if (g_solid(b, ivec3(floor(q)))) {
+    if (s.x > 1.0e-4) {
+        // Toward the sun a cell a step through the gas's tiles, then a block a step past them: a block stops it dead.
+        float i = 1.0;
+        for (; i <= float(G_SUN_CELLS) && tau < G_DARK; i += 1.0) {
+            ivec3 q = ivec3(floor(p + dir * i));
+            int at = g_slot_near(g, q);
+            if (at < 0) break;
+            if (texelFetch(_Solid, g_texel(at, q), 0).x > 0.5) {
                 tau = 1.0e4;
                 break;
             }
-            tau += g_scalars_at(b, q).x * extinction * cell;
+            if (!g_fresh(at)) tau += texelFetch(_Scalars, g_texel(at, q), 0).x * extinction * cell;
         }
         float step = 1.0 / cell;
-        for (int k = 1; k <= G_SUN_REACH && tau < 1.0e4; k++) {
-            if (g_blocked(b, g_offset(b, p + dir * (float(i) + float(k) * step)))) tau = 1.0e4;
+        for (int k = 1; k <= G_SUN_REACH && tau < G_DARK; k++) {
+            if (g_blocked(b, g_offset(b, p + dir * (i + float(k) * step)))) tau = 1.0e4;
         }
     }
-    float sky = fx_world_light(world, g_offset(b, p), vec2(0.0, 15.0)).y / 15.0;
-    SHADE_OUT_WRITE(vec4(s.x, s.y, _Sun.w > 0.5 ? exp(-tau) : 0.0, sky));
+    // The sky's light over the cell, less what the gas above takes: half of the straight-up depth, as the sky is a
+    // dome rather than a ray. Smoke's underside darkens under its own body.
+    float up = 0.0, last = 0.0;
+    for (int k = 0; k < 6; k++) {
+        up += g_get(_Scalars, g, c + ivec3(0, int(G_UP[k]), 0), true).x * extinction * cell * (G_UP[k] - last);
+        last = G_UP[k];
+    }
+    float sky = fx_world_light(g_world(b), g_offset(b, p), vec2(0.0, 15.0)).y / 15.0 * exp(-0.5 * up);
+    SHADE_OUT_WRITE(vec4(s.x, s.w, exp(-tau), sky));
+    FLOW_OUT_WRITE(vec4(solid ? vec3(0.0) : g_get(_Vel, g, c, true).xyz, s.y));
+}
+
+void Occupancy() {
+    G g = g_at(CG_DISPATCH_ID, G_TILE, 0);
+    if (!g_live(g)) return;
+    vec4 s = g_get(_Scalars, g, g.cell, true);
+    if (s.x + s.z + s.w < G_OCCUPIED) return;
+    int at = g.slot * 8;
+    OCCUPIED_MAX(at, 1u);
+    ivec3 l = g.cell & (G_TILE - 1);
+    if (l.x < G_NEAR_FACE) OCCUPIED_MAX(at + 1, 1u);
+    if (l.x >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 2, 1u);
+    if (l.y < G_NEAR_FACE) OCCUPIED_MAX(at + 3, 1u);
+    if (l.y >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 4, 1u);
+    if (l.z < G_NEAR_FACE) OCCUPIED_MAX(at + 5, 1u);
+    if (l.z >= G_TILE - G_NEAR_FACE) OCCUPIED_MAX(at + 6, 1u);
 }

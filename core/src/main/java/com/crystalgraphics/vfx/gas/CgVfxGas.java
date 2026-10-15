@@ -11,9 +11,11 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
 
 /**
  * A volume of gas an effect owns: a smoke grenade's cloud, steam, a fireball's burning air. It is simulated on the GPU
- * in a brick of {@link CgVfxGasAtlas}, a box {@link #SIZE} blocks a side fixed in the world where it was placed: its
- * sources pour smoke, heat and fuel into it, heat rises, fuel burns into smoke and heat, it curls, flows round the
- * world's blocks and out of its box, and the sun lights it through itself. Its layers draw it on its slot.
+ * in {@link CgVfxGasAtlas}'s sparse tiles, cells {@link #CELL} blocks a side about where it was placed, held only where
+ * there is gas, so it flows as far as it goes: its sources pour smoke, heat and fuel into it, heat rises, fuel burns
+ * into flame, heat and smoke and pushes outward as it burns, it curls and churns, flows round the world's blocks, and
+ * the sun and the sky light it through itself. Its layers draw it on its slot. Its parameters are Houdini Pyro's, so a Pyro look carries over:
+ * buoyancy, cooling, dissipation, vorticity, turbulence, disturbance, expansion, burn rate and flame temperature.
  *
  * <pre>{@code
  * public final class Grenade extends CgVfxEffect<Grenade> {
@@ -37,30 +39,53 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  * }
  *
  * // Its look takes the gas's kit: its schema, and the engine's smoke on its slot
- * static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).set(CgVfxGas.SIZE, 16f).build();
+ * static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE).set(CgVfxGas.CELL, 0.3f).build();
  * }</pre>
  *
  * <pre>{@code
  * smoke.blast(x, y, z, 4f, 25f, 1f);               // a blast through it: thrown out at 25 blocks a second, cleared within 4
- * CgVfxGas.Source flame = fire.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and smoke (BURN, HEAT)
+ * CgVfxGas.Source flame = fire.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into flame and smoke (BURN, HEAT)
  * new CgVfxGas(this, STEAM);                       // a gas drawn on a volume slot of the effect's own
+ * }</pre>
+ *
+ * <p>A look sets how it moves and how it shades:
+ *
+ * <pre>{@code
+ * CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)
+ *         .set(CgVfxGas.CELL, 0.6f)                                         // big: coarser cells, fewer tiles
+ *         .set(CgVfxGas.BURN, 2f).set(CgVfxGas.HEAT, 4f)                    // fuel burns fast and white-hot
+ *         .set(CgVfxGas.EXPANSION, 0.25f)                                   // and bursts as it burns: a fireball
+ *         .set(CgVfxGas.TURBULENCE, 4f).set(CgVfxGas.TURBULENCE_SIZE, 3f)   // churned at three blocks
+ *         .set(CgVfxGas.DISTURBANCE, 3f).set(CgVfxGas.DISTURBANCE_SIZE, 1.5f) // broken up finer, faster
+ *         .set(CgVfxGas.DETAIL, 0.7f).set(CgVfxGas.SOOT, 0.4f)              // wispy edges; hot smoke glowing dull red
+ *         .build();
  * }</pre>
  *
  * <ul>
  *   <li>Positions are relative to the effect's origin, as everything an element draws is; the gas itself stays where
- *       it was placed when it took its brick, so a moving source trails through it.</li>
+ *       it was placed when it took its place in the atlas, so a moving source trails through it.</li>
+ *   <li>It reaches {@code CgVfxGasAtlas.SPAN / 2} cells from where it was placed each way: 256 cells, about 100 blocks
+ *       at a {@link #CELL} of 0.4.</li>
  *   <li>It flows round the voxel window's blocks, and stands on its effect's {@code ground} where it has one: a host
  *       with no world.</li>
  *   <li>Its look carries {@link #SCHEMA}: through {@link #SMOKE}, or a kit of its own that takes the schema.</li>
- *   <li>Call {@link #tick} every effect tick: it steps on the effect's clock, and one left unticked gives its brick back.</li>
- *   <li>At most {@link CgVfxGasAtlas#CAPACITY} gases hold bricks at once; one waiting for a brick draws nothing.</li>
+ *   <li>Call {@link #tick} every effect tick: it steps on the effect's clock, and one left unticked gives its tiles back.</li>
+ *   <li>At most {@link CgVfxGasAtlas#CAPACITY} gases at once; one waiting for a place draws nothing. Every gas shares
+ *       the pool's tiles: a finer {@link #CELL} spends more of them on the same smoke.</li>
+ *   <li>Temperature is over the air's, in the solver's units: the engine's smoke shows a unit as {@code 600} kelvin, so
+ *       {@link #HEAT} 3 burns orange and 4 yellow-white.</li>
+ *   <li>A {@link #DISTURBANCE_SIZE} or {@link #TURBULENCE_SIZE} under two cells is lost in the grid; a cell is
+ *       {@link #CELL} at High, half as fine again at Low.</li>
  * </ul>
  */
 public final class CgVfxGas extends CgVfxElement {
 
     public static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:gas");
-    /** Its box's side, in blocks: a brick's cells span it, so the same gas is coarser at a lower tier. */
-    public static final CgVfxParam.Scalar SIZE = SCHEMA.length("size", 12f);
+    /**
+     * A cell's side in blocks at High and Ultra, 1.5 times it at Medium, twice at Low: the finest detail it holds, and how
+     * many of the pool's tiles its smoke takes. Taken when it takes its place in the atlas.
+     */
+    public static final CgVfxParam.Scalar CELL = SCHEMA.length("cell", 0.4f);
     /** Upward acceleration a unit of temperature gives, blocks a second a second. */
     public static final CgVfxParam.Scalar BUOYANCY = SCHEMA.scalar("buoyancy", 2f);
     /** Downward acceleration a unit of density gives: heavy smoke sinks and spreads along the ground. */
@@ -71,11 +96,43 @@ public final class CgVfxGas extends CgVfxElement {
     public static final CgVfxParam.Scalar DISSIPATION = SCHEMA.rate("dissipation", 0.08f);
     public static final CgVfxParam.Scalar COOLING = SCHEMA.rate("cooling", 0.8f);
     public static final CgVfxParam.Scalar DAMPING = SCHEMA.rate("damping", 0.3f);
-    /** Fuel burnt a second, at most, and the temperature a unit burnt gives (a unit of smoke with it). */
+    /**
+     * The share of its fuel burnt a second, and the temperature it burns at: where it burns fast it is flame, which
+     * lingers a moment as the flow licks it off, and it leaves {@link #SMOKE_AMOUNT} of smoke.
+     */
     public static final CgVfxParam.Scalar BURN = SCHEMA.rate("burn", 1.5f);
     public static final CgVfxParam.Scalar HEAT = SCHEMA.scalar("heat", 3f);
+    /** The smoke a unit of fuel leaves as it burns (Pyro's smoke amount): a clean flame's 0.1, a sooty fire's 1. */
+    public static final CgVfxParam.Scalar SMOKE_AMOUNT = SCHEMA.scalar("smokeAmount", 0.5f);
+    /**
+     * The hot gas a unit of fuel releases as it burns (Pyro's expansion), as the log of the volume it swells by: a cell
+     * holding {@code f} of fuel grows {@code e^(EXPANSION * f)} times as it burns, at {@link #BURN}'s pace, at most 24
+     * a second. So a charge bursts by what it holds and stops, however big it is: a fireball of fuel 10 at 0.25 swells
+     * twelvefold.
+     */
+    public static final CgVfxParam.Scalar EXPANSION = SCHEMA.scalar("expansion", 0f);
+    /** Curl noise churning it, blocks a second a second, and the size of its swirls: billows on a plume. */
+    public static final CgVfxParam.Scalar TURBULENCE = SCHEMA.scalar("turbulence", 0f);
+    public static final CgVfxParam.Scalar TURBULENCE_SIZE = SCHEMA.length("turbulenceSize", 3f);
+    /**
+     * Fine, fast curl noise churning it (Pyro's disturbance), blocks a second a second, and its swirls' size: what
+     * breaks a smooth body of gas into small detail and tears flames.
+     */
+    public static final CgVfxParam.Scalar DISTURBANCE = SCHEMA.scalar("disturbance", 0f);
+    public static final CgVfxParam.Scalar DISTURBANCE_SIZE = SCHEMA.length("disturbanceSize", 0.75f);
     /** Light lost a block through a unit of density: how thick it looks, and how deep its shadows. */
     public static final CgVfxParam.Scalar EXTINCTION = SCHEMA.scalar("extinction", 2.5f);
+    /** How strongly it scatters light forward, 0 to 0.9: steam's silver edge toward the sun, from 0.7 up. */
+    public static final CgVfxParam.Scalar SCATTERING = SCHEMA.scalar("scattering", 0.6f);
+    /**
+     * Its edges worn away by noise finer than its cells, 0 to 1, carried by its flow, and that noise's size: wisps where
+     * it thins, which its cells are too coarse to hold.
+     */
+    public static final CgVfxParam.Scalar DETAIL = SCHEMA.scalar("detail", 0.5f);
+    public static final CgVfxParam.Scalar DETAIL_SIZE = SCHEMA.length("detailSize", 1.2f);
+    /** How its fire shines: hot smoke's glow beside its flame's, and both together, 1 as the engine's smoke shows them. */
+    public static final CgVfxParam.Scalar SOOT = SCHEMA.scalar("soot", 0.35f);
+    public static final CgVfxParam.Scalar GLOW = SCHEMA.scalar("glow", 1f);
     /** The smoke's colour in full light, and the light of what burns in it, past white where it should bloom. */
     public static final CgVfxParam.Color SMOKE_COLOR = SCHEMA.color("smoke", 0xFFB4B2AE);
     public static final CgVfxParam.Color FIRE = SCHEMA.color("fire", 0xFFFFFFFF);
@@ -84,7 +141,9 @@ public final class CgVfxGas extends CgVfxElement {
     public static final CgVfxSlot SLOT = CgVfxSlot.volume("crystalgraphics:gas");
     /** The engine's smoke on {@link #SLOT}: lit by the sun through itself and by the sky, glowing where it burns. */
     public static final CgVfxKit SMOKE = CgVfxKit.of("crystalgraphics:gas/smoke").params(SCHEMA)
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/gas/smoke.shader").on(SLOT).role(CgVfxLayer.Role.SMOKE).build())
+            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/gas/smoke.shader").on(SLOT).role(CgVfxLayer.Role.SMOKE)
+                    .bind("_Scattering", SCATTERING).bind("_Detail", DETAIL).bind("_DetailSize", DETAIL_SIZE)
+                    .bind("_Soot", SOOT).bind("_Glow", GLOW).build())
             .build();
 
     /** The most sources a gas pours from, and blasts it takes between two steps. */
@@ -99,12 +158,17 @@ public final class CgVfxGas extends CgVfxElement {
     private final float[] blasts = new float[MAX_BLASTS * 6];
     private int blastCount;
     private float placeX, placeY, placeZ;
-    /** Its middle in the world once it holds a brick. */
+    /** Its middle in the world once it holds a place in the atlas, and its cell in blocks there. */
     double worldX, worldY, worldZ;
-    private int brick = -1;
-    /** Seconds its effect has ticked that no step has taken yet; the atlas frame of its last tick. */
+    float cell;
+    private int index = -1;
+    /** The box its tiles cover, from its middle in blocks: lo xyz then hi xyz; whether it has any. */
+    private final float[] box = new float[6];
+    private boolean boxed;
+    /** Seconds its effect has ticked that no step has taken yet; the atlas frame of its last tick; seconds stepped. */
     float owed;
     long ticked;
+    float clock;
     /** Seconds since a source was on or a blast went off. */
     private float quiet;
 
@@ -119,7 +183,7 @@ public final class CgVfxGas extends CgVfxElement {
         this.slot = slot;
     }
 
-    /** Where its middle goes, from the effect's origin: taken when it first gets a brick, fixed after. */
+    /** Where its middle goes, from the effect's origin: taken when it first gets a place in the atlas, fixed after. */
     public CgVfxGas place(float x, float y, float z) {
         placeX = x;
         placeY = y;
@@ -156,12 +220,12 @@ public final class CgVfxGas extends CgVfxElement {
         blasts[at + 5] = Math.max(0f, Math.min(1f, carve));
     }
 
-    /** Its tick: from the effect's {@code tick}, every tick. Takes a brick the first time one is free. */
+    /** Its tick: from the effect's {@code tick}, every tick. Takes a place in the atlas the first time one is free. */
     public void tick(float dt) {
         CgVfxGasAtlas atlas = CgVfxGasAtlas.get();
-        if (brick < 0) {
-            brick = atlas.acquire(this);
-            if (brick >= 0) {
+        if (index < 0) {
+            index = atlas.acquire(this);
+            if (index >= 0) {
                 worldX = originX() + placeX;
                 worldY = originY() + placeY;
                 worldZ = originZ() + placeZ;
@@ -176,7 +240,7 @@ public final class CgVfxGas extends CgVfxElement {
 
     /** Draws it on its slot: from the effect's {@code submit}. */
     public void submit(CgVfxFrame frame) {
-        if (brick >= 0 && frame.draws(effect, slot)) frame.volume(effect, slot, this);
+        if (index >= 0 && boxed && frame.draws(effect, slot)) frame.volume(effect, slot, this);
     }
 
     /**
@@ -188,22 +252,23 @@ public final class CgVfxGas extends CgVfxElement {
         return quiet > Math.min(60f, (float) Math.log(1f / FADED) / rate);
     }
 
-    /** Gives its brick back now: it draws nothing from here, and a later tick takes one again, empty. */
+    /** Gives its place and tiles back now: it draws nothing from here, and a later tick takes a place again, empty. */
     public void release() {
-        CgVfxGasAtlas.get().release(brick);
-        brick = -1;
+        CgVfxGasAtlas.get().release(index);
+        index = -1;
+        boxed = false;
     }
 
-    /** Its brick in the atlas, -1 while it has none. */
-    public int brick() {
-        return brick;
+    /** Its place among the atlas's gases: its page table's, -1 while it has none. */
+    public int index() {
+        return index;
     }
 
     public CgVfxSlot slot() {
         return slot;
     }
 
-    /** Its middle in the world: valid while it holds a brick. */
+    /** Its middle in the world: valid while it holds a place in the atlas. */
     public double x() {
         return worldX;
     }
@@ -216,9 +281,42 @@ public final class CgVfxGas extends CgVfxElement {
         return worldZ;
     }
 
-    /** Its box's side in blocks: {@link #SIZE}'s value. */
-    public float extent() {
-        return get(SIZE);
+    /** A cell's side in blocks in the atlas now: {@link #CELL} at the quality tier; 0 before its first place. */
+    public float cellSize() {
+        return cell;
+    }
+
+    /**
+     * The box its tiles cover, from its middle in blocks, into {@code out}: lo xyz then hi xyz. False while it holds no
+     * tile, when {@code out} is left alone.
+     */
+    public boolean bounds(float[] out) {
+        if (!boxed) return false;
+        System.arraycopy(box, 0, out, 0, 6);
+        return true;
+    }
+
+    float cellSetting() {
+        return get(CELL);
+    }
+
+    /** The atlas set its box: null for no tile. */
+    void box(float[] lohi) {
+        boxed = lohi != null;
+        if (boxed) System.arraycopy(lohi, 0, box, 0, 6);
+    }
+
+    /** Asks the atlas for the tiles round each source pouring and each blast this frame, its place {@code b}. */
+    void wantTiles(CgVfxGasAtlas atlas, int b, int now) {
+        float ox = (float) (originX() - worldX), oy = (float) (originY() - worldY), oz = (float) (originZ() - worldZ);
+        for (int i = 0; i < sourceCount; i++) {
+            Source s = sources[i];
+            if (s.pours()) atlas.wantSphere(b, ox + s.x, oy + s.y, oz + s.z, s.radius, now);
+        }
+        for (int i = 0; i < blastCount; i++) {
+            int k = i * 6;
+            atlas.wantSphere(b, ox + blasts[k], oy + blasts[k + 1], oz + blasts[k + 2], blasts[k + 3] * 1.5f, now);
+        }
     }
 
     public float extinction() {
@@ -267,9 +365,34 @@ public final class CgVfxGas extends CgVfxElement {
         return get(HEAT);
     }
 
-    /** The atlas took its brick back: its effect died or stopped ticking. */
+    float expansion() {
+        return get(EXPANSION);
+    }
+
+    float smokeAmount() {
+        return get(SMOKE_AMOUNT);
+    }
+
+    float turbulence() {
+        return get(TURBULENCE);
+    }
+
+    float turbulenceSize() {
+        return get(TURBULENCE_SIZE);
+    }
+
+    float disturbance() {
+        return get(DISTURBANCE);
+    }
+
+    float disturbanceSize() {
+        return get(DISTURBANCE_SIZE);
+    }
+
+    /** The atlas took its place back: its effect died or stopped ticking. */
     void lost() {
-        brick = -1;
+        index = -1;
+        boxed = false;
     }
 
     /** A step took its blasts. */
@@ -285,12 +408,12 @@ public final class CgVfxGas extends CgVfxElement {
     }
 
     /**
-     * Its sources pouring, or its blasts, into {@code out} from float {@code at}, three vec4s each in {@code cells}
-     * cells a brick: {@code (brick, centre)}, {@code (density, temperature, fuel, radius)} (a blast's carve in x) and
+     * Its sources pouring, or its blasts, into {@code out} from float {@code at}, three vec4s each, positions in its
+     * grid's cells: {@code (place, centre)}, {@code (density, temperature, fuel, radius)} (a blast's carve in x) and
      * {@code (velocity, kind)}, kind 1 a source and 2 a blast (its speed in x). Answers the float after.
      */
-    int writeSources(float[] out, int at, int b, int cells, boolean blastRows) {
-        float cell = extent() / cells, half = cells * 0.5f;
+    int writeSources(float[] out, int at, int b, boolean blastRows) {
+        float half = CgVfxGasAtlas.SPAN * 0.5f;
         float ox = (float) (originX() - worldX), oy = (float) (originY() - worldY), oz = (float) (originZ() - worldZ);
         if (blastRows) {
             for (int i = 0; i < blastCount; i++) {
