@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
@@ -84,12 +85,17 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesEntities()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_entities_at.glsl\"\n");
         if (shape.usesNeighbours()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_neighbours_at.glsl\"\n");
         if (shape.usesGas()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/fx_gas_at.glsl\"\n");
-        // Declared ahead of the kinds' functions that call it; defined with the other step_ functions.
+        if (shape.usesGrid()) s.append("#include \"crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_at.glsl\"\n");
+        // Declared ahead of the kinds' functions that call them; defined with the other step_ functions.
         if (shape.feedsGas()) s.append("void step_feed(FxGas g, vec3 p, float density, float heat, float dt);\n");
+        if (shape.splatsGrid()) s.append("void step_splat(FxGrid g, vec3 p, vec4 amounts, float dt);\n");
         Set<String> kinds = new LinkedHashSet<>();
         for (int i = 0; i < shape.modules(); i++) {
             if (!kinds.add(shape.kind(i))) continue;
-            if (shape.source(i) == null) s.append("#include \"").append(KIND_DIR).append(shape.kind(i)).append(".glsl\"\n");
+            if (shape.source(i) == null) {
+                String file = shape.file(i) != null ? shape.file(i) : KIND_DIR + shape.kind(i) + ".glsl";
+                s.append("#include \"").append(file).append("\"\n");
+            }
             else s.append("\n// fx_").append(shape.kind(i)).append(", given as text\n").append(shape.source(i)).append('\n');
         }
         s.append("""
@@ -110,6 +116,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.usesEntities()) s.append(CgVfxEntityBoxes.PROPERTIES);
         if (shape.usesNeighbours()) s.append(NEIGHBOUR_PROPERTIES);
         if (shape.usesGas()) s.append(CgVfxGasAtlas.FLOW_PROPERTIES);
+        if (shape.usesGrid()) s.append(CgVfxGridAtlas.VIEW_PROPERTIES);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) {
                 s.append("    ").append(texture(i, t)).append(" (\"fx_").append(shape.kind(i)).append("'s texture ").append(t)
@@ -120,6 +127,7 @@ public final class CgVfxEmitterCompiler {
         s.append(CgVfxRecord.GLSL).append("\n");
         s.append(CgVfxParticlePool.EVENT_GLSL).append("\n\n");
         if (shape.feedsGas()) s.append(CgVfxGasAtlas.DEPOSIT_GLSL).append("\n\n");
+        if (shape.splatsGrid()) s.append(CgVfxGridAtlas.SPLAT_GLSL).append("\n\n");
         s.append("""
                 Buffers {
                     IN        ("Particles",       FxRecord, readonly)
@@ -133,6 +141,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.reports()) s.append("    REPORT_EVENTS (\"Events the CPU hears\",       FxEvent, append)\n");
         if (shape.usesEntities()) s.append("    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n");
         if (shape.feedsGas()) s.append("    GAS_DEPOSITS  (\"What particles pour into the gas\", FxDeposit, append)\n");
+        if (shape.splatsGrid()) s.append("    GRID_SPLATS   (\"What particles splat into the grid\", FxSplat, append)\n");
         if (shape.spawnsOnMesh()) s.append("    MESHES        (\"Spawn meshes' triangles and vertices\", uvec4, readonly)\n");
         if (shape.usesNeighbours()) {
             s.append("    SORTED        (\"Last step's particles by hashed cell\", uint, readonly)\n");
@@ -236,6 +245,33 @@ public final class CgVfxEmitterCompiler {
                         if (!g.live) return;
                         GAS_DEPOSITS_APPEND(FxDeposit(vec4((p + g.offset) / g.cell, float(g.gas)),
                                 vec4(density * dt, heat * dt, 0.0, 0.0)));
+                    }
+                    """);
+        }
+        if (shape.usesGrid()) {
+            s.append("\n// The grid as a kind taking GRID reads it: this instance's origin from the grid's low corner.\n")
+                    .append("FxGrid step_grid(int inst) {\n")
+                    .append("    vec4 a = step_instance(inst + ").append(shape.gridAt()).append("), b = step_instance(inst + ")
+                    .append(shape.gridAt() + 1).append(");\n")
+                    .append("""
+                                FxGrid g;
+                                g.offset = a.xyz;
+                                g.brick = int(a.w + 0.5);
+                                g.cell = b.x;
+                                g.cells = b.y;
+                                g.live = a.w >= 0.0 && _GridLive != 0;
+                                return g;
+                            }
+                            """);
+        }
+        if (shape.splatsGrid()) {
+            s.append("""
+
+                    // What a kind taking GRID_SPLAT adds: amounts a second into the grid's cell at p (from the instance's
+                    // origin), for this step's dt, as a splat the grid takes this frame.
+                    void step_splat(FxGrid g, vec3 p, vec4 amounts, float dt) {
+                        if (!g.live) return;
+                        GRID_SPLATS_APPEND(FxSplat(vec4((p + g.offset) / g.cell, float(g.brick)), amounts * dt));
                     }
                     """);
         }
@@ -754,6 +790,7 @@ public final class CgVfxEmitterCompiler {
                 case ENTITIES -> s.append(", step_entities(inst)");
                 case NEIGHBOURS -> s.append(", step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)");
                 case GAS, GAS_FEED -> s.append(", step_gas(inst)");
+                case GRID, GRID_SPLAT -> s.append(", step_grid(inst)");
             }
         }
         for (int t = 0; t < shape.textureCount(i); t++) s.append(", ").append(texture(i, t));

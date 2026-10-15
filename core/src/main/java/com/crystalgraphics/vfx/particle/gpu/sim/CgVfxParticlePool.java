@@ -21,6 +21,8 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
+import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxCurveDomain;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
@@ -701,6 +703,8 @@ public final class CgVfxParticlePool {
         if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
         if (shape.usesGas()) CgVfxGasAtlas.get().bindFlow(stepping);
         if (shape.feedsGas()) CgVfxGasAtlas.get().bindDeposits(stepping);
+        if (shape.usesGrid()) CgVfxGridAtlas.get().bindView(stepping);
+        if (shape.splatsGrid()) CgVfxGridAtlas.get().bindSplats(stepping);
         if (shape.usesNeighbours()) {
             stepping.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth)
                     .set("_NeighbourCells", cells);
@@ -1064,6 +1068,19 @@ public final class CgVfxParticlePool {
                         gas.index()).vec4(cell, 0f, 0f, 0f);
             }
             words.finish("its gas lanes");
+        }
+        if (shape.usesGrid()) {
+            words.target(instances, at + shape.gridAt() * 4, CgVfxShape.GRID_LANES, who + "'s grid");
+            CgVfxGrid3D grid = view.grid();
+            if (grid == null || grid.index() < 0 || grid.cells() == 0 || CgVfxGridAtlas.get().view() == null) {
+                words.vec4(0f, 0f, 0f, -1f).vec4(1f, 1f, 0f, 0f);
+            } else {
+                // The instance's origin from its grid's low corner, in blocks.
+                float half = grid.cells() * grid.cellSize() * 0.5f;
+                words.vec4((float) (ox - grid.x()) + half, (float) (oy - grid.y()) + half, (float) (oz - grid.z()) + half,
+                        grid.index()).vec4(grid.cellSize(), grid.cells(), 0f, 0f);
+            }
+            words.finish("its grid lanes");
         }
     }
 

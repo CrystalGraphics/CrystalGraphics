@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 
 import java.util.ArrayList;
@@ -270,6 +271,16 @@ final class CgVfxMaterials {
         shades.put(material, shade);
         material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade).sampler(CgVfxGasAtlas.FLOW_SAMPLER, 1, flow)
                 .sampler(CgVfxGasAtlas.PAGES_SAMPLER, 2, pages));
+    }
+
+    /** The grid view each grid material was last pointed at: the atlas makes it anew in a new context. */
+    private final Map<CgMaterial, CgTexture> views = new IdentityHashMap<>();
+
+    /** Points grid {@code material} at the atlas's view and light, once each time the atlas made them. */
+    void grid(CgMaterial material, CgTexture view, CgTexture light) {
+        if (views.get(material) == view) return;
+        views.put(material, view);
+        material.applyProperties(b -> b.sampler(CgVfxGridAtlas.VIEW_SAMPLER, 0, view).sampler(CgVfxGridAtlas.LIGHT_SAMPLER, 1, light));
     }
 
     /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */

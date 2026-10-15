@@ -69,7 +69,14 @@ public final class CgVfxSlot {
          * {@code CUSTOM0} the gas's place in the atlas, its cell in blocks, 0 and the layer's size; {@code CUSTOM1} its
          * grid's low corner from the box's middle, and its extinction a block.
          */
-        VOLUME;
+        VOLUME,
+        /**
+         * A {@code CgVfxGrid3D}, marched through the box it spans ({@code fx_grid.glsl}), reading
+         * {@code CgVfxGridAtlas.view()} as {@code _GridView} and {@code light()} as {@code _GridLight}, declared first and in
+         * that order: the box a unit cube scaled by the transform; {@code CUSTOM0} the grid's brick, its cell in blocks,
+         * its cells a side and the layer's size; {@code CUSTOM1} its extinction a block, then 0s.
+         */
+        GRID;
 
         /** The keyword a shader declares to draw on this kind: {@code FX_ON_TUBE}, {@code FX_ON_MESH} and so on. */
         public String keyword() {
@@ -131,6 +138,10 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot volume(String name) {
         return of(Kind.VOLUME, name);
+    }
+
+    public static CgVfxSlot grid(String name) {
+        return of(Kind.GRID, name);
     }
 
     /** The particles of the emitter named {@code emitter}. */

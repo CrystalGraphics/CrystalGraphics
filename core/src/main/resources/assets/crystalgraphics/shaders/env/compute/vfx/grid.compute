@@ -1,0 +1,139 @@
+// Every grid's step (CgVfxGrid3D, CgVfxGridAtlas), once a frame: four channels a cell, in a brick of the atlas each.
+// Splat sums what particles splatted (CgVfxModule.Splat) into its cell; Step fades each channel, spreads it to its
+// neighbours (explicit diffusion, outside the grid empty) and adds the splats; Shade writes what layers and particles
+// read, and the light of channel x's density: the transmittance toward the sun and the sky's light the grid over a
+// cell leaves. Every kernel but Splat runs over the used bricks, a texel a cell; a texel past its grid's cells, or of a
+// grid not live, writes nothing there. A fresh grid reads its brick's old cells as nothing.
+#pragma kernel Splat scatter
+#pragma kernel Step 4 4 4 image
+#pragma kernel Shade 4 4 4 image
+
+#include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
+
+Properties {
+    _View ("The channels as the last frame left them", sampler3D) = "black"
+    _Next ("The channels this frame",                 sampler3D) = "black"
+}
+
+struct FxSplat { vec4 cell; vec4 amounts; };
+
+Buffers {
+    GRIDS       ("Each grid's four rows (CgVfxGridAtlas.ROW_*)",                              vec4,    readonly)
+    SPLATS      ("What particles splatted: a grid's cell and the grid, then the four amounts", FxSplat, readonly)
+    SPLAT_COUNT ("How many SPLATS",                                                         uint,    readonly)
+    SPLAT_SUM   ("SPLATS summed a cell, four channels",                                     float,   readwrite)
+}
+
+Images {
+    NEXT_OUT  ("The channels, next",         rgba16f, writeonly, 3d)
+    VIEW_OUT  ("What layers read",           rgba16f, writeonly, 3d)
+    LIGHT_OUT ("Sun transmittance, sky light", rgba16f, writeonly, 3d)
+}
+
+// Rows of a grid in GRIDS: its state (live, fresh, cells a side, a cell in blocks), what each channel keeps this frame,
+// what each spreads to its neighbours, and its light (channel x's extinction a block, 1 to light it).
+const int G_ROWS = 4;
+const int G_BRICK = FX_GRID_BRICK;
+// Distances up, in cells, the sky's light is taken over, and the five ways toward the sky.
+const float G_UP[6] = float[6](1.0, 2.0, 4.0, 7.0, 11.0, 16.0);
+const vec3 G_DOME[5] = vec3[5](vec3(0.0, 1.0, 0.0), vec3(0.7071, 0.7071, 0.0), vec3(-0.7071, 0.7071, 0.0),
+        vec3(0.0, 0.7071, 0.7071), vec3(0.0, 0.7071, -0.7071));
+// Optical depth past which a cell is dark: the march toward the sun stops.
+const float G_DARK = 8.0;
+// The largest a channel holds: half floats past it are infinite.
+const float G_MOST = 60000.0;
+
+// The texel's grid, its cell and its cells a side; false for a texel past them or a grid not live.
+bool g_at(ivec3 t, out int b, out ivec3 c, out int n) {
+    b = t.z / G_BRICK;
+    c = ivec3(t.x, t.y, t.z - b * G_BRICK);
+    vec4 state = GRIDS(b * G_ROWS);
+    n = int(state.z + 0.5);
+    return state.x > 0.5 && all(lessThan(c, ivec3(n)));
+}
+
+// Cell c of grid b, as the last frame left it; nothing outside its n cells.
+vec4 g_last(int b, int n, ivec3 c) {
+    if (any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(n)))) return vec4(0.0);
+    return texelFetch(_View, ivec3(c.x, c.y, c.z + b * G_BRICK), 0);
+}
+
+void Splat() {
+    if (uint(CG_ELEMENT) >= min(SPLAT_COUNT(0), uint(SPLATS_LENGTH()))) return;
+    FxSplat s = SPLATS(CG_ELEMENT);
+    int b = int(s.cell.w + 0.5);
+    vec4 state = GRIDS(b * G_ROWS);
+    int n = int(state.z + 0.5);
+    ivec3 c = ivec3(floor(s.cell.xyz));
+    if (state.x < 0.5 || any(lessThan(c, ivec3(0))) || any(greaterThanEqual(c, ivec3(n)))) return;
+    int at = (c.x + G_BRICK * (c.y + G_BRICK * (c.z + G_BRICK * b))) * 4;
+    if (s.amounts.x != 0.0) SPLAT_SUM_ADD(at, s.amounts.x);
+    if (s.amounts.y != 0.0) SPLAT_SUM_ADD(at + 1, s.amounts.y);
+    if (s.amounts.z != 0.0) SPLAT_SUM_ADD(at + 2, s.amounts.z);
+    if (s.amounts.w != 0.0) SPLAT_SUM_ADD(at + 3, s.amounts.w);
+}
+
+void Step() {
+    int b, n;
+    ivec3 c;
+    if (!g_at(CG_TEXEL, b, c, n)) {
+        NEXT_OUT_WRITE(vec4(0.0));
+        return;
+    }
+    vec4 v = vec4(0.0);
+    if (GRIDS(b * G_ROWS).y < 0.5) {
+        v = g_last(b, n, c);
+        vec4 around = g_last(b, n, c + ivec3(1, 0, 0)) + g_last(b, n, c - ivec3(1, 0, 0))
+                + g_last(b, n, c + ivec3(0, 1, 0)) + g_last(b, n, c - ivec3(0, 1, 0))
+                + g_last(b, n, c + ivec3(0, 0, 1)) + g_last(b, n, c - ivec3(0, 0, 1));
+        v = (v + GRIDS(b * G_ROWS + 2) * (around - 6.0 * v)) * GRIDS(b * G_ROWS + 1);
+    }
+    int at = (c.x + G_BRICK * (c.y + G_BRICK * (c.z + G_BRICK * b))) * 4;
+    v += vec4(SPLAT_SUM(at), SPLAT_SUM(at + 1), SPLAT_SUM(at + 2), SPLAT_SUM(at + 3));
+    NEXT_OUT_WRITE(clamp(v, vec4(-G_MOST), vec4(G_MOST)));
+}
+
+// Channel x's optical depth from p (cells) along d, a cell a step, up to its edge or dark.
+float g_depth(int b, int n, vec3 p, vec3 d, float sigma) {
+    float tau = 0.0;
+    for (int i = 1; i <= G_BRICK && tau < G_DARK; i++) {
+        vec3 q = p + d * float(i);
+        if (any(lessThan(q, vec3(0.0))) || any(greaterThan(q, vec3(float(n))))) break;
+        tau += max(textureLod(_Next, fx_grid_uvw(_Next, b, float(n), q), 0.0).x, 0.0) * sigma;
+    }
+    return tau;
+}
+
+void Shade() {
+    int b, n;
+    ivec3 c;
+    if (!g_at(CG_TEXEL, b, c, n)) {
+        VIEW_OUT_WRITE(vec4(0.0));
+        LIGHT_OUT_WRITE(vec4(1.0, 1.0, 0.0, 0.0));
+        return;
+    }
+    vec4 v = texelFetch(_Next, CG_TEXEL, 0);
+    VIEW_OUT_WRITE(v);
+    vec4 light = GRIDS(b * G_ROWS + 3);
+    if (light.y < 0.5 || v.x < 1.0e-4) {
+        LIGHT_OUT_WRITE(vec4(1.0, 1.0, 0.0, 0.0));
+        return;
+    }
+    // A cell's extinction: channel x's a block times the cell's width.
+    float sigma = light.x * GRIDS(b * G_ROWS).w;
+    vec3 p = vec3(c) + 0.5;
+    float sun = exp(-g_depth(b, n, p, CG_SUN_DIRECTION, sigma));
+    // The sky over the cell, averaged over the dome's five ways: smoke's underside darkens under its own body.
+    float sky = 0.0;
+    for (int d = 0; d < 5; d++) {
+        float depth = 0.0, last = 0.0;
+        for (int k = 0; k < 6; k++) {
+            vec3 q = p + G_DOME[d] * G_UP[k];
+            if (any(lessThan(q, vec3(0.0))) || any(greaterThan(q, vec3(float(n))))) break;
+            depth += max(textureLod(_Next, fx_grid_uvw(_Next, b, float(n), q), 0.0).x, 0.0) * (G_UP[k] - last);
+            last = G_UP[k];
+        }
+        sky += exp(-depth * sigma);
+    }
+    LIGHT_OUT_WRITE(vec4(sun, sky * 0.2, 0.0, 0.0));
+}

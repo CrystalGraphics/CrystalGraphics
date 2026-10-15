@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
 import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 
@@ -55,6 +56,9 @@ public final class CgVfxEmitterInstance {
     /** The gas its particles are carried by ({@link #inGas}); null for none. */
     @Nullable
     private CgVfxGas gas;
+    /** The grid its particles are in ({@link #inGrid}); null for none. */
+    @Nullable
+    private CgVfxGrid3D grid;
     private int spawned, burstsDone;
     private float rateOwed, share = 1f;
     /** When {@link #stop} ended its spawning; infinite until then. What {@link #rateScale} multiplies its rate by. */
@@ -164,10 +168,6 @@ public final class CgVfxEmitterInstance {
     }
 
     /**
-     * The height of the ground, relative to the effect's origin now, for {@link CgVfxModule.Ground} where the host has no
-     * world (the harness); NaN for none. It is the world's: it stays put if the effect moves.
-     */
-    /**
      * The gas its particles are carried by: what a module taking {@code GAS} reads ({@link CgVfxModule.Flow}). Its
      * children are carried by it too.
      *
@@ -183,6 +183,26 @@ public final class CgVfxEmitterInstance {
         return this;
     }
 
+    /**
+     * The grid its particles are in: what a module taking {@code GRID} reads and {@code GRID_SPLAT} writes
+     * ({@link CgVfxModule.Splat}, {@link CgVfxModule.Follow}, {@link CgVfxModule.Gradient}). Its children are in it too.
+     *
+     * <pre>{@code
+     * agents.inGrid(trail);                        // a CgVfxGrid3D of the same effect
+     * }</pre>
+     */
+    public CgVfxEmitterInstance inGrid(@Nullable CgVfxGrid3D grid) {
+        this.grid = grid;
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.inGrid(grid);
+        }
+        return this;
+    }
+
+    /**
+     * The height of the ground, relative to the effect's origin now, for {@link CgVfxModule.Ground} where the host has no
+     * world (the harness); NaN for none. It is the world's: it stays put if the effect moves.
+     */
     public CgVfxEmitterInstance ground(float y) {
         groundY = y + driftY;
         for (CgVfxEmitterInstance child : children) {
@@ -613,6 +633,11 @@ public final class CgVfxEmitterInstance {
         @Override
         public CgVfxGas gas() {
             return gas;
+        }
+
+        @Override
+        public CgVfxGrid3D grid() {
+            return grid;
         }
     }
 

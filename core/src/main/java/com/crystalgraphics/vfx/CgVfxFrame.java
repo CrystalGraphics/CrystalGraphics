@@ -17,6 +17,8 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.vfx.gas.CgVfxGas;
 import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
+import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
+import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
@@ -681,6 +683,43 @@ public final class CgVfxFrame {
                     .halfResolution()
                     .custom(0, index, cell, 0f, CgVfxMaterials.size(effect, r))
                     .custom(1, grid - cx, grid - cy, grid - cz, gas.extinction())
+                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_VOLUME, 1);
+        }
+    }
+
+    /**
+     * Draws every layer on {@code slot}, a grid slot, through {@code grid}: the box it spans, which each layer's shader
+     * marches. What its shader reads is {@link CgVfxSlot.Kind#GRID}'s. A grid waiting for a place draws nothing.
+     *
+     * <pre>{@code
+     * frame.grid(this, CgVfxGrid3D.SLOT, trail);      // what CgVfxGrid3D.submit does
+     * }</pre>
+     */
+    public void grid(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxGrid3D grid) {
+        kind(slot, CgVfxSlot.Kind.GRID);
+        CgVfxGridAtlas atlas = CgVfxGridAtlas.get();
+        CgGraphTexture view = atlas.view(), light = atlas.light();
+        int index = grid.index();
+        if (index < 0 || view == null || grid.cells() == 0) return;
+        CgVfxLook look = effect.look();
+        float extent = grid.cells() * grid.cellSize(), half = extent * 0.5f;
+        float ox = (float) (grid.x() - effect.originX), oy = (float) (grid.y() - effect.originY),
+                oz = (float) (grid.z() - effect.originZ);
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(effect, placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            CgMaterial material = materials.material(r, CgVfxSlot.Kind.GRID);
+            materials.grid(material, view, light);
+            effect.boundBox(ox - half, oy - half, oz - half, ox + half, oy + half, oz + half);
+            CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
+                    .at(grid.x(), grid.y(), grid.z())
+                    .transform(sized.scaling(extent, extent, extent))
+                    .subject(effect.subject)
+                    .halfResolution()
+                    .custom(0, index, grid.cellSize(), grid.cells(), CgVfxMaterials.size(effect, r))
+                    .custom(1, grid.extinction(), 0f, 0f, 0f)
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_VOLUME, 1);

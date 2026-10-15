@@ -49,13 +49,17 @@ public class VfxStepKernelSpirvTest {
     /** Pouring into a gas, whose kernel appends deposits. */
     private static final CgVfxEmitter FEEDING = CgVfxEmitter.builder("feeding").capacity(64).burst(0f, 64).life(1f, 2f)
             .module(new CgVfxModule.Feed(4f, 0.5f)).build();
+    /** In a grid: steering by it, pushed down its slope, and splatting into it. */
+    private static final CgVfxEmitter IN_GRID = CgVfxEmitter.builder("inGrid").capacity(64).burst(0f, 64).life(1f, 2f)
+            .speed(1f, 2f).module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f)).module(new CgVfxModule.Gradient(1, 2f))
+            .module(new CgVfxModule.Splat(1f, 0.5f, 0f, 0f)).build();
 
     @AfterClass
     public static void close() { COMPILER.close(); }
 
     @Test
     public void everyShippedEmittersStepKernelCompiles() {
-        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, IN_GAS, FEEDING, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
+        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, FLOCKING, IN_GAS, FEEDING, IN_GRID, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
                 CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
         for (CgVfxEmitter emitter : emitters) {

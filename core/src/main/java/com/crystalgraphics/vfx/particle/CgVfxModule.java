@@ -711,6 +711,133 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
     }
 
+    /**
+     * Writes into a grid: each particle adds {@code x}, {@code y}, {@code z} and {@code w} a second to its instance's
+     * grid's four channels, in the cell where it is (Niagara's set-grid-value), after the solver. Particles become a
+     * field: a density drawn as smoke, a trail other particles follow.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f))       // density into channel x, a unit a second
+     * agents.inGrid(trail);                                 // in the effect, after making both
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The grid is the instance's ({@code CgVfxEmitterInstance.inGrid}); with none, it does nothing.</li>
+     *   <li>A splat lands in its nearest cell; the grid's spread smooths them ({@code CgVfxGrid3D.channel}).</li>
+     *   <li>At most {@code CgVfxGridAtlas.SPLATS} particles splat a frame, every instance's together; the rest splat
+     *       nothing.</li>
+     * </ul>
+     */
+    record Splat(float x, float y, float z, float w) implements CgVfxModule {
+        private static final CgVfxWorldInput[] SPLATS = {CgVfxWorldInput.GRID_SPLAT};
+
+        @Override
+        public String gpuKind() {
+            return "grid_splat";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_splat.glsl";
+        }
+
+        @Override
+        public boolean afterSolve() {
+            return true;
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(x, y, z, w);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return SPLATS;
+        }
+    }
+
+    /**
+     * Steers toward where a grid holds more of a channel, Physarum's sensor rule (Jones 2010) in 3D: five sensors
+     * {@code sense} blocks ahead, one straight on and four {@code angle} radians off it, and the particle turns toward
+     * the strongest at {@code turn} a second, keeping its speed. Particles that also {@link Splat} into the channel lay
+     * trails and follow each other's: slime mould, ant paths, a nervous system of light.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f))     // channel x, sensors 0.6 blocks ahead, 0.5 rad out
+     * .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f))         // and lay what the others follow
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A particle with no speed does not turn: give them a launch speed, and something to keep it (no drag).</li>
+     *   <li>It reads the grid as the last frame left it.</li>
+     * </ul>
+     */
+    record Follow(int channel, float sense, float angle, float turn) implements CgVfxModule {
+        private static final CgVfxWorldInput[] GRID = {CgVfxWorldInput.GRID};
+
+        public Follow {
+            if (channel < 0 || channel > 3) throw new IllegalArgumentException("a grid's channel " + channel + ": 0 to 3");
+        }
+
+        @Override
+        public String gpuKind() {
+            return "grid_follow";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_follow.glsl";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(channel, sense, angle, turn);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return GRID;
+        }
+    }
+
+    /**
+     * Pushed down a grid's slope of a channel, {@code strength} blocks a second squared a unit a block: particles that
+     * {@link Splat} density spread out of where they crowd, a pressure for fluid-like bodies; a negative strength draws
+     * them up it, together.
+     *
+     * <pre>{@code
+     * .module(new CgVfxModule.Gradient(0, 4f))               // out of where channel x is dense
+     * }</pre>
+     */
+    record Gradient(int channel, float strength) implements CgVfxModule {
+        private static final CgVfxWorldInput[] GRID = {CgVfxWorldInput.GRID};
+
+        public Gradient {
+            if (channel < 0 || channel > 3) throw new IllegalArgumentException("a grid's channel " + channel + ": 0 to 3");
+        }
+
+        @Override
+        public String gpuKind() {
+            return "grid_gradient";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_gradient.glsl";
+        }
+
+        @Override
+        public void writeParams(CgVfxWords out) {
+            out.vec4(channel, strength, 0f, 0f);
+        }
+
+        @Override
+        public CgVfxWorldInput[] worldInputs() {
+            return GRID;
+        }
+    }
+
     /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
     record Force(float x, float y, float z) implements CgVfxModule {
 

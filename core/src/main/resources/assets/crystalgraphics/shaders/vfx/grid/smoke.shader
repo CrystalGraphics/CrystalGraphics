@@ -1,0 +1,116 @@
+// A grid's channel x (CgVfxGrid3D) as smoke, marched through the box it spans (CgVfxFrame.grid): each step reads its
+// density and the light the grid's Shade left there (the transmittance toward the sun, the sky's light), wears the
+// thin edges with noise finer than the cells (Schneider's erosion), and adds the light scattered toward the eye by
+// Hillaire's energy-conserving step through a two-lobe phase with Horizon's powder: the gas's smoke, for a body that
+// particles splat. Drawn at half size as a volume, each frame's march starts elsewhere and names the depth its light came
+// from, so the resolve blends a frame's steps with the last ones'.
+// CG_OBJECT_TO_WORLD: the box, a unit cube scaled. CG_OBJECT_CUSTOM0: the grid's brick, its cell in blocks, its cells a
+// side, the layer's size (a density scale); CG_OBJECT_CUSTOM1.x its extinction a block. _Smoke is its colour in full
+// light.
+#type spatial
+#pragma cg_use rows
+#include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
+
+Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
+Queue = "Transparent"
+
+Properties {
+    _GridView   ("The grid atlas's channels (CgVfxGridAtlas)",  sampler3D) = "black"
+    _GridLight  ("Its light: sun transmittance, sky",          sampler3D) = "white"
+    _Noise      ("Gradient noise",                             sampler3D) = "cg_noise"
+    _Voronoi    ("Voronoi",                                    sampler3D) = "cg_voronoi"
+    _Smoke      ("The smoke in full light",                    color)     = (0.72, 0.71, 0.7, 1)
+    _Steps      ("Steps across the box, at most; never under half a cell", float) = 96.0
+    _Scattering ("Forward scattering, 0 to 0.9",               float)     = 0.6
+    _Sun        ("The sun's strength in it",                   float)     = 3.0
+    _Ambient    ("The sky's strength in it",                   float)     = 1.0
+    _Detail     ("Its edges worn by finer noise, 0 to 1",      float)     = 0.5
+    _DetailSize ("That noise's size, blocks",                  float)     = 0.6
+}
+
+struct v2f { vec3 world; };
+
+Pass {
+    Tags { "LightMode" = "Forward" }
+    RenderState {
+        Blend ONE ONE_MINUS_SRC_ALPHA
+        DepthTest ALWAYS
+        DepthWrite OFF
+        Cull FRONT
+    }
+
+    void vertex(out v2f o) {
+        vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
+        o.world = world.xyz;
+        gl_Position = cg_ProjMatrix * (cg_ViewMatrix * world);
+    }
+
+    void fragment(in v2f i, out vec4 fragColor) {
+        vec3 eye = CG_CAMERA_WORLD_POS, ray = FX_PIXEL_RAY;
+        int brick = int(CG_OBJECT_CUSTOM0.x + 0.5);
+        float cell = CG_OBJECT_CUSTOM0.y, cells = CG_OBJECT_CUSTOM0.z, scale = CG_OBJECT_CUSTOM0.w;
+        float extinction = CG_OBJECT_CUSTOM1.x;
+        vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
+        vec3 lo = centre - vec3(0.5 * cells * cell);
+        vec2 t = fx_gas_box(eye, ray, lo, lo + vec3(cells * cell));
+        t.x = max(t.x, 0.0);
+        t.y = min(t.y, FX_SCENE_DISTANCE(ray));
+        if (t.y <= t.x) discard;
+        float dt = max((t.y - t.x) / _Steps, 0.5 * cell);
+        // Interleaved gradient noise (Jimenez, 2014): each pixel's steps start apart, so banding becomes grain.
+        float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+#ifdef CG_VOLUME_TARGET
+        jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));
+#endif
+        float cosine = dot(ray, CG_SUN_DIRECTION);
+        float g = clamp(_Scattering, 0.0, 0.9);
+        float p0 = fx_gas_phase(cosine, g), p1 = fx_gas_phase(cosine, g * 0.5);
+        vec3 sun = mix(vec3(0.05, 0.06, 0.1), vec3(1.0, 0.95, 0.88), CG_DAYLIGHT) * _Sun;
+        vec3 sky = srgb_to_linear(CG_LIGHTMAP(vec2(0.0, 15.0))) * vec3(0.78, 0.87, 1.0) * _Ambient;
+        vec3 albedo = srgb_to_linear(_Smoke.rgb);
+        float transmit = 1.0, depth = 0.0;
+        vec3 light = vec3(0.0);
+        float at = t.x + jitter * dt;
+        for (int k = 0; k < 256 && at < t.y; k++) {
+            vec3 p = eye + ray * at;
+            vec3 c = (p - lo) / cell;
+            vec3 uvw = fx_grid_uvw(_GridView, brick, cells, c);
+            float density = max(textureLod(_GridView, uvw, 0.0).x, 0.0) * scale;
+            if (density < 1.0e-4) {
+                at += dt;
+                continue;
+            }
+            vec2 lit = textureLod(_GridLight, uvw, 0.0).xy;
+            if (_Detail > 0.0 && density < 2.0) {
+                density = fx_gas_erode(density, fx_gas_carried_detail(_Noise, _Voronoi, (p - lo) / max(_DetailSize, 0.05),
+                        vec3(0.0), FX_AGE, 0.0), _Detail);
+            }
+            float sigma = density * extinction;
+            float through = exp(-sigma * dt);
+            if (sigma > 1.0e-4) {
+                float scattered = (p0 * lit.x + 0.5 * p1 * sqrt(lit.x)) * fx_gas_powder(sigma, cosine);
+                float taken = transmit * (1.0 - through);
+                depth += at * taken;
+                light += albedo * (sun * scattered + sky * lit.y) * taken;
+            }
+            transmit *= through;
+            if (transmit < 0.01) break;
+            at += dt;
+        }
+        CG_VOLUME_DEPTH(transmit < 0.99 ? FX_EYE_DEPTH(ray, depth / (1.0 - transmit)) : 0.0);
+        float alpha = (1.0 - transmit) * FX_PRESENCE;
+        light *= FX_PRESENCE;
+        if (alpha < 1.0e-4) discard;
+        if (CG_LINEAR_SCENE) {
+            fragColor = vec4(light, alpha);
+        } else {
+            vec3 c = light / max(alpha, 1.0e-4);
+            fragColor = vec4((linear_to_srgb(min(c, vec3(1.0))) + max(c - 1.0, 0.0)) * alpha, alpha);
+        }
+    }
+}

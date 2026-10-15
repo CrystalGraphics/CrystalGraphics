@@ -70,6 +70,18 @@ public interface CgVfxGpuModule {
         return null;
     }
 
+    /**
+     * The file holding the kind's {@code fx_<kind>}, when it is not {@code shaders/lib/vfx/sim/fx_<kind>.glsl}: kinds
+     * grouped in a folder of their own. Null for that default; ignored where {@link #gpuSource} gives text.
+     *
+     * <pre>{@code
+     * public String gpuFile() { return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_splat.glsl"; }
+     * }</pre>
+     */
+    default String gpuFile() {
+        return null;
+    }
+
     /** True for a kind that runs after the solver has moved the particles. */
     boolean afterSolve();
 

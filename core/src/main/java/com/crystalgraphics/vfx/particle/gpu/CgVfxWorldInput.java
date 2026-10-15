@@ -4,7 +4,8 @@ package com.crystalgraphics.vfx.particle.gpu;
  * A value of the world the Step kernel fetches per particle for a module kind that runs after the solver, passed to its
  * {@code fx_<kind>} function after its lanes, in the order the kind declares ({@link CgVfxGpuModule#worldInputs}).
  * A closed list: a new world value is a change to the compiler, since only the kernel can read the world. Kinds after
- * the solver take any; kinds before it take {@link #NEIGHBOURS}, {@link #GAS} and {@link #GAS_FEED}.
+ * the solver take any; kinds before it take {@link #NEIGHBOURS}, {@link #GAS}, {@link #GAS_FEED}, {@link #GRID} and
+ * {@link #GRID_SPLAT}.
  *
  * <pre>{@code
  * private static final CgVfxWorldInput[] WORLD = {CgVfxWorldInput.FLOOR_Y};
@@ -64,7 +65,19 @@ public enum CgVfxWorldInput {
      * second's density and heat where a particle is, which the gas takes at its next step ({@code CgVfxModule.Feed}).
      * Lands only where the gas holds tiles; the engine asks for tiles round an instance feeding it.
      */
-    GAS_FEED("FxGas", "gas");
+    GAS_FEED("FxGas", "gas"),
+    /**
+     * The grid its instance is in ({@code CgVfxEmitterInstance.inGrid}), as an {@code FxGrid} that
+     * {@code sim/grid/fx_grid_at.glsl} reads: {@code fx_grid_value(grid, p)}, its four channels at a point from the
+     * instance's origin as the last frame left them, and {@code fx_grid_gradient_at(grid, p, mask)}, a channel's slope a
+     * block. Nothing outside it, and with no grid. A kind before the solver may take it: a force from the grid.
+     */
+    GRID("FxGrid", "grid"),
+    /**
+     * {@link #GRID}, which the kind also splats into: {@code step_splat(grid, p.position, amounts, s.dt)} adds a second's
+     * four amounts to the cell where a particle is, which the grid takes this frame ({@code CgVfxModule.Splat}).
+     */
+    GRID_SPLAT("FxGrid", "grid");
 
     /** No world inputs: what a kind before the solver declares. Never write into it. */
     public static final CgVfxWorldInput[] NONE = {};

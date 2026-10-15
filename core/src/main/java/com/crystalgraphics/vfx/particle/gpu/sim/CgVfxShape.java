@@ -10,9 +10,11 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxLane;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWorldInput;
 
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -38,6 +40,9 @@ import java.util.regex.Pattern;
 public final class CgVfxShape {
 
     private static final Pattern KIND = Pattern.compile("[a-z][a-z0-9_]*");
+    /** What a kind before the solver may take: inputs the pool supplies whatever the window holds. */
+    private static final Set<CgVfxWorldInput> BEFORE_SOLVER = EnumSet.of(CgVfxWorldInput.NEIGHBOURS, CgVfxWorldInput.GAS,
+            CgVfxWorldInput.GAS_FEED, CgVfxWorldInput.GRID, CgVfxWorldInput.GRID_SPLAT);
     /**
      * The vec4s a parameter row gives its events, when it has any: each event's age or period, then each one's most
      * firings, {@link CgVfxEvent#MAX_EVENTS} of each.
@@ -52,16 +57,16 @@ public final class CgVfxShape {
     private final CgTexture[][] textures;
     private final boolean[][] volumes;
     private final CgVfxEmitter.Renderer renderer;
-    private final String[] kinds, sources;
+    private final String[] kinds, sources, files;
     private final boolean[] afterSolve;
     private final int[] params, paramAt, lanesAt;
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, usesGas, feedsGas, floors,
-            spawnsOnMesh;
-    /** Where the gas's two lanes start in the instance row, after every module's: written by the pool, not a kind. */
-    private final int gasAt;
+    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, usesNeighbours, usesGas, feedsGas, usesGrid,
+            splatsGrid, floors, spawnsOnMesh;
+    /** Where the gas's and the grid's two lanes each start in the instance row, after every module's: the pool's, not a kind's. */
+    private final int gasAt, gridAt;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -73,6 +78,7 @@ public final class CgVfxShape {
         renderer = emitter.renderer();
         kinds = new String[n];
         sources = new String[n];
+        files = new String[n];
         afterSolve = new boolean[n];
         params = new int[n];
         paramAt = new int[n];
@@ -92,6 +98,7 @@ public final class CgVfxShape {
             }
             kinds[i] = kind;
             sources[i] = m.gpuSource();
+            files[i] = m.gpuFile();
             if (sources[i] != null) {
                 String known = SOURCES.putIfAbsent(kind, sources[i]);
                 if (known != null && !known.equals(sources[i])) {
@@ -106,9 +113,9 @@ public final class CgVfxShape {
             if (params[i] < 0) throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " declares " + params[i] + " param vectors");
             if (!afterSolve[i]) {
                 for (CgVfxWorldInput input : world[i]) {
-                    if (input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS && input != CgVfxWorldInput.GAS_FEED) {
+                    if (!BEFORE_SOLVER.contains(input)) {
                         throw new IllegalArgumentException(emitter.name() + ": fx_" + kind + " takes " + input
-                                + " but runs before the solver, which takes NEIGHBOURS, GAS and GAS_FEED alone");
+                                + " but runs before the solver, which takes " + BEFORE_SOLVER + " alone");
                     }
                 }
             }
@@ -154,15 +161,15 @@ public final class CgVfxShape {
         if (triggers.length > 0) param += EVENT_VECTORS;
         paramRow = param;
         boolean reads = false, distance = false, depth = false, entities = false, neighbours = false, gas = false,
-                feeds = false, floor = false;
+                feeds = false, grid = false, splats = false, floor = false;
         for (CgVfxWorldInput[] inputs : world) {
             for (CgVfxWorldInput input : inputs) {
-                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES
-                        && input != CgVfxWorldInput.NEIGHBOURS && input != CgVfxWorldInput.GAS
-                        && input != CgVfxWorldInput.GAS_FEED;
+                reads |= input != CgVfxWorldInput.DEPTH && input != CgVfxWorldInput.ENTITIES && !BEFORE_SOLVER.contains(input);
                 neighbours |= input == CgVfxWorldInput.NEIGHBOURS;
                 gas |= input == CgVfxWorldInput.GAS || input == CgVfxWorldInput.GAS_FEED;
                 feeds |= input == CgVfxWorldInput.GAS_FEED;
+                grid |= input == CgVfxWorldInput.GRID || input == CgVfxWorldInput.GRID_SPLAT;
+                splats |= input == CgVfxWorldInput.GRID_SPLAT;
                 distance |= input == CgVfxWorldInput.WORLD_DISTANCE;
                 depth |= input == CgVfxWorldInput.DEPTH;
                 entities |= input == CgVfxWorldInput.ENTITIES;
@@ -176,8 +183,11 @@ public final class CgVfxShape {
         usesNeighbours = neighbours;
         usesGas = gas;
         feedsGas = feeds;
+        usesGrid = grid;
+        splatsGrid = splats;
         gasAt = lane;
-        instanceRow = lane + (gas ? GAS_LANES : 0);
+        gridAt = lane + (gas ? GAS_LANES : 0);
+        instanceRow = gridAt + (grid ? GRID_LANES : 0);
         floors = floor;
         kernelKey = key.toString();
         this.key = kernelKey + identity;
@@ -223,6 +233,11 @@ public final class CgVfxShape {
     /** Module {@code i}'s GLSL given as text, or null for its file. */
     public String source(int i) {
         return sources[i];
+    }
+
+    /** Module {@code i}'s file where it names one ({@code CgVfxGpuModule.gpuFile}), else null for the default. */
+    public String file(int i) {
+        return files[i];
     }
 
     public boolean afterSolve(int i) {
@@ -312,6 +327,26 @@ public final class CgVfxShape {
 
     public int gasAt() {
         return gasAt;
+    }
+
+    /**
+     * Whether any module takes {@link CgVfxWorldInput#GRID} or {@link CgVfxWorldInput#GRID_SPLAT}: its instance rows carry
+     * {@link #GRID_LANES} at {@link #gridAt()}.
+     */
+    public boolean usesGrid() {
+        return usesGrid;
+    }
+
+    /** Whether any module takes {@link CgVfxWorldInput#GRID_SPLAT}: its Step appends splats into the grid. */
+    public boolean splatsGrid() {
+        return splatsGrid;
+    }
+
+    /** The grid's lanes: the instance's origin from the grid's low corner and its brick, then a cell's width and its cells. */
+    public static final int GRID_LANES = 2;
+
+    public int gridAt() {
+        return gridAt;
     }
 
     /** Whether any module takes a voxel window input: its Step kernel reads the window. */
