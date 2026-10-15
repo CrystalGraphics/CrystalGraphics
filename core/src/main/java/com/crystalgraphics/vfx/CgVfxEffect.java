@@ -13,6 +13,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -844,9 +845,11 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
         if (authority != null) return;
         CgVfxGas fed = emitter.books().gas();
         if (fed != null && emitter.emitter().feedsGas()) {
-            // Its particles' deposits land only where the gas holds tiles.
+            // Its particles' deposits land only where the gas holds tiles. A tile's span round the source: the gas grows
+            // its own tiles where what was poured flows, and a reach in blocks at fine cells asks for more than the pool.
             fed.wantTiles(emitter.originX() + emitter.sourceX(), emitter.originY() + emitter.sourceY(),
-                    emitter.originZ() + emitter.sourceZ(), Math.min(16f, emitter.emitter().reach(0f)));
+                    emitter.originZ() + emitter.sourceZ(),
+                    Math.min(CgVfxGasAtlas.TILE * fed.cellSize(), emitter.emitter().reach(0f)));
         }
         if (system == null) {
             emitter.books().schedule(dt, originX, originY, originZ);

@@ -1,6 +1,8 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.grid.CgVfxGrid3D;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
@@ -63,7 +65,10 @@ final class CgVfxGpuSteps {
     /** What {@link #admit} marks warm: set while an effect prewarms. */
     private boolean warming;
 
-    /** The view a pool's row reads: the instance, at its step's start. */
+    /**
+     * The view a pool's row reads: the instance, at its step's start. It forwards every method, defaults too: one left
+     * to its default hands the pool nothing (no gas, no grid) without a word.
+     */
     private static final class StepView implements CgVfxInstanceView {
         CgVfxEmitterInstance of;
 
@@ -83,6 +88,8 @@ final class CgVfxGpuSteps {
         public float boxHalfX() { return of.books().boxHalfX(); }
         public float boxHalfY() { return of.books().boxHalfY(); }
         public float boxHalfZ() { return of.books().boxHalfZ(); }
+        public CgVfxGas gas() { return of.books().gas(); }
+        public CgVfxGrid3D grid() { return of.books().grid(); }
     }
 
     private final List<Tenant> tenants = new ArrayList<>();
