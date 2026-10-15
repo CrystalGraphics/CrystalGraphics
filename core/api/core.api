@@ -3097,6 +3097,18 @@ com/crystalgraphics/demo/CgVfxDemoControls$Flash
   field public,static,final SINGLE Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
   method public,static values ()[Lcom/crystalgraphics/demo/CgVfxDemoControls$Flash;
+com/crystalgraphics/demo/CgVfxGasDemo
+  access public,final
+  extends java/lang/Object
+  field public,static,final PERIOD F
+  method public <init> (Lcom/crystalgraphics/api/font/CgFont;)V
+  method public <init> (Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/vfx/CgVfxOwner;)V
+  method public clear ()V
+  method public delete ()V
+  method public prepare ()V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDF)V
+  method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
+  method public warmed ()Z
 com/crystalgraphics/demo/CgVfxModules
   access public,final
   extends java/lang/Object
@@ -8924,6 +8936,7 @@ com/crystalgraphics/vfx/CgVfxFrame
   method public ribbons (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;FFFLorg/joml/Matrix4fc;FFFF)V
   method public trail (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/trail/CgVfxTrail;)V
   method public tube (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/path/CgVfxPath;I)V
+  method public volume (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;Lcom/crystalgraphics/vfx/gas/CgVfxGas;)V
   method public world ()Lcom/crystalgraphics/render/world/CgWorldRenderer;
 com/crystalgraphics/vfx/CgVfxMomentListener
   access public,abstract,interface
@@ -9348,6 +9361,76 @@ com/crystalgraphics/vfx/element/CgVfxExplosion
   method public drawn (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)Z
   method public emitters ()Ljava/util/List;
   method public kit ()Lcom/crystalgraphics/vfx/look/CgVfxKit;
+com/crystalgraphics/vfx/gas/CgVfxGas
+  access public,final
+  extends com/crystalgraphics/vfx/CgVfxElement
+  field public,static,final BUOYANCY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final BURN Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final COOLING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DAMPING Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final DISSIPATION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final EXTINCTION Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final FIRE Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;
+  field public,static,final HEAT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final MAX_BLASTS I
+  field public,static,final MAX_SOURCES I
+  field public,static,final SCHEMA Lcom/crystalgraphics/vfx/look/CgVfxSchema;
+  field public,static,final SIZE Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final SLOT Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  field public,static,final SMOKE Lcom/crystalgraphics/vfx/look/CgVfxKit;
+  field public,static,final SMOKE_COLOR Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;
+  field public,static,final VORTICITY Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  field public,static,final WEIGHT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
+  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;)V
+  method public <init> (Lcom/crystalgraphics/vfx/CgVfxEffect;Lcom/crystalgraphics/vfx/look/CgVfxSlot;)V
+  method public blast (FFFFFF)V
+  method public brick ()I
+  method public extent ()F
+  method public extinction ()F
+  method public faded ()Z
+  method public place (FFF)Lcom/crystalgraphics/vfx/gas/CgVfxGas;
+  method public release ()V
+  method public slot ()Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  method public source (FFFF)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public submit (Lcom/crystalgraphics/vfx/CgVfxFrame;)V
+  method public tick (F)V
+  method public x ()D
+  method public y ()D
+  method public z ()D
+com/crystalgraphics/vfx/gas/CgVfxGas$Source
+  access public,final
+  extends java/lang/Object
+  method public at (FFF)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public density (F)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public fuel (F)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public heat (F)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public isOn ()Z
+  method public off ()Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public on ()Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public radius (F)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+  method public velocity (FFF)Lcom/crystalgraphics/vfx/gas/CgVfxGas$Source;
+com/crystalgraphics/vfx/gas/CgVfxGasAtlas
+  access public,final
+  extends java/lang/Object
+  field public,static,final CAPACITY I
+  field public,static,final GPU_BUDGET Lcom/crystalgraphics/render/CgGpuBudget;
+  field public,static,final ITERATIONS I
+  field public,static,final MAX_STEPS I
+  field public,static,final MIN_ITERATIONS I
+  field public,static,final ORDER I
+  field public,static,final ROWS I
+  field public,static,final ROW_FADES I
+  field public,static,final ROW_FORCES I
+  field public,static,final ROW_ORIGIN I
+  field public,static,final ROW_PLACE I
+  field public,static,final ROW_STATE I
+  field public,static,final SHADE_SAMPLER Ljava/lang/String;
+  field public,static,final STEP F
+  method public cells ()I
+  method public shade ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public tenants ()I
+  method public,static cells (Lcom/crystalgraphics/settings/CgQuality;)I
+  method public,static get ()Lcom/crystalgraphics/vfx/gas/CgVfxGasAtlas;
 com/crystalgraphics/vfx/look/CgVfxEnding
   access public,final
   extends java/lang/Object
@@ -9614,6 +9697,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot
   method public,static ribbons (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static trail (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public,static tube (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
+  method public,static volume (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot;
 com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   access public,final,enum
   extends java/lang/Enum
@@ -9624,6 +9708,7 @@ com/crystalgraphics/vfx/look/CgVfxSlot$Kind
   field public,static,final RIBBONS Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final TRAIL Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   field public,static,final TUBE Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
+  field public,static,final VOLUME Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   method public keyword ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;
   method public,static values ()[Lcom/crystalgraphics/vfx/look/CgVfxSlot$Kind;

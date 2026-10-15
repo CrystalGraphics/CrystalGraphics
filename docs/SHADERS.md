@@ -379,7 +379,7 @@ fragColor = _Color * _Bands(1);    // read as always: the row's value where boun
   place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
 - **An array** is `color[n]` or `vec4[n]`, n at most 16, its default each element's in order; read as `_Name(i)` in
   every shader, with `rows` or without.
-- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) §6, §15).
+- The VFX engine is the binder: a layer's `bind` and its colours bound by name ([`VFX.md`](VFX.md) §6, §16).
 
 ### Reading a kernel's buffers
 

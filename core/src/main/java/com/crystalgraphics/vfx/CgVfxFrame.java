@@ -14,6 +14,9 @@ import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.vfx.gas.CgVfxGas;
+import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.look.CgVfxLayer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
@@ -59,7 +62,7 @@ public final class CgVfxFrame {
 
     private static final int DRAWS_MESH = CgTrace.name("vfx.draws.mesh"), DRAWS_RIBBONS = CgTrace.name("vfx.draws.ribbons"),
             DRAWS_BILLBOARD = CgTrace.name("vfx.draws.billboard"), DRAWS_PATH_RIBBONS = CgTrace.name("vfx.draws.path-ribbons"),
-            DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"),
+            DRAWS_TRAIL = CgTrace.name("vfx.draws.trail"), DRAWS_VOLUME = CgTrace.name("vfx.draws.volume"),
             DRAWS_PARTICLE_GPU = CgTrace.name("vfx.draws.particle-gpu"), DRAWS_PARTICLE_SETS = CgTrace.name("vfx.draws.particle-sets"),
             GPU_ZONE = CgTrace.name("vfx.particles.gpu");
     /**
@@ -640,6 +643,41 @@ public final class CgVfxFrame {
                     .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
             CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
             CgVfxTrace.count(DRAWS_TRAIL, 1);
+        }
+    }
+
+    /**
+     * Draws every layer on {@code slot}, a volume slot, through {@code gas}: a cube round its brick, which each layer's
+     * shader marches. What its shader reads is {@link CgVfxSlot.Kind#VOLUME}'s. A gas holding no brick draws nothing.
+     *
+     * <pre>{@code
+     * frame.volume(this, SMOKE, smoke);      // what CgVfxGas.submit does
+     * }</pre>
+     */
+    public void volume(CgVfxEffect<?> effect, CgVfxSlot slot, CgVfxGas gas) {
+        kind(slot, CgVfxSlot.Kind.VOLUME);
+        CgVfxGasAtlas atlas = CgVfxGasAtlas.get();
+        CgGraphTexture shade = atlas.shade();
+        int brick = gas.brick();
+        if (brick < 0 || shade == null) return;
+        CgVfxLook look = effect.look();
+        float extent = gas.extent(), half = extent * 0.5f;
+        float ox = (float) (gas.x() - effect.originX), oy = (float) (gas.y() - effect.originY),
+                oz = (float) (gas.z() - effect.originZ);
+        for (CgVfxLook.Placed placed : look.on(slot)) {
+            if (skips(effect, placed.layer())) continue;
+            CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            CgMaterial material = materials.material(r, CgVfxSlot.Kind.VOLUME);
+            materials.shade(material, shade);
+            effect.boundBox(ox - half, oy - half, oz - half, ox + half, oy + half, oz + half);
+            CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
+                    .at(gas.x(), gas.y(), gas.z()).transform(sized.scaling(extent))
+                    .subject(effect.subject)
+                    .custom(0, brick, atlas.cells(), CgVfxGasAtlas.CAPACITY, CgVfxMaterials.size(effect, r))
+                    .custom(1, extent, gas.extinction(), 0f, 0f)
+                    .custom(3, materials.row(effect, r), effect.age, effect.seed, effect.presence());
+            CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+            CgVfxTrace.count(DRAWS_VOLUME, 1);
         }
     }
 

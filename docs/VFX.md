@@ -26,12 +26,13 @@ you need. Where each class lives is `vfx/CLAUDE.md`, which loads itself for anyo
 11. [Effects gameplay depends on: server authority](#11-effects-gameplay-depends-on-server-authority)
 12. [Hits: what an effect strikes](#12-hits-what-an-effect-strikes)
 13. [Particles](#13-particles)
-14. [Writing an effect of your own](#14-writing-an-effect-of-your-own)
-15. [Writing a layer's shader](#15-writing-a-layers-shader)
-16. [Writing a particle module of your own](#16-writing-a-particle-module-of-your-own)
-17. [Performance and scale](#17-performance-and-scale)
-18. [Questions people ask](#18-questions-people-ask)
-19. [Checking and measuring](#19-checking-and-measuring)
+14. [Gas](#14-gas)
+15. [Writing an effect of your own](#15-writing-an-effect-of-your-own)
+16. [Writing a layer's shader](#16-writing-a-layers-shader)
+17. [Writing a particle module of your own](#17-writing-a-particle-module-of-your-own)
+18. [Performance and scale](#18-performance-and-scale)
+19. [Questions people ask](#19-questions-people-ask)
+20. [Checking and measuring](#20-checking-and-measuring)
 
 ---
 
@@ -422,7 +423,7 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 - A name the shader does not declare, or a value of the wrong kind, throws at the layer's first draw and names the
   properties the shader has.
 - Bound values are written once a frame per effect and layer into a **row**: a small block of numbers that travels
-  with each draw, which the shader reads in place of the material's value ([§15](#15-writing-a-layers-shader)). So two
+  with each draw, which the shader reads in place of the material's value ([§16](#16-writing-a-layers-shader)). So two
   effects playing different values still share one material and batch.
 - A layer's constants are its material's: two looks sharing a kit share its layers' materials.
 
@@ -570,7 +571,7 @@ each client finds the ending declared under that name in its own copy of your co
 - An ending animating a value its effect's look lacks throws at `end`.
 - A second `end`, or one after the effect died, is ignored: the first ending plays out.
 - `fadeOut` fades the effect's **presence**, which every engine shader multiplies its light by (`FX_PRESENCE`). A
-  shader of your own fades only if it does the same ([§15](#15-writing-a-layers-shader)).
+  shader of your own fades only if it does the same ([§16](#16-writing-a-layers-shader)).
 - A fade of another length is an ending of its own: `CgVfxEnding.over("mymod:slow_fade", 1.2f).fadeOut(CgEasings.IN_QUAD).build()`.
 
 **In an effect of your own**, override `ending(CgVfxEnding)` to drop what the graceful end would play; it is heard
@@ -655,7 +656,7 @@ wave.stop();                               // the tail runs out into the target,
 | `CgVfxBlast` | the blast, with its impact frame before it: beats, the cut, flash and impact volumes, the front hitbox | `CgVfxBlast.KIT`: `FIREBALL`, `HEART`, `SHOCKWAVE`, the explosion's emitters |
 | `CgBeamWake` | dust torn off the ground under the body | `WAKE` |
 
-Each element's schema, slots and moments are on its class. Any effect may use them ([§14](#built-from-elements)).
+Each element's schema, slots and moments are on its class. Any effect may use them ([§15](#built-from-elements)).
 
 ### Its looks
 
@@ -917,7 +918,7 @@ An effect that ends when its particles finish therefore ends itself on the serve
 - **The cue must be declared with its factory in common code.**
 - **It follows its entity by the attachment point's proportions**: a server has no model, so marked points are a
   client-only refinement.
-- What it costs: [§17](#on-the-server).
+- What it costs: [§18](#on-the-server).
 
 ### Making your own effect authoritative
 
@@ -1240,7 +1241,78 @@ books of what spawns when, which is how it knows it has finished without asking 
 
 ---
 
-## 14. Writing an effect of your own
+## 14. Gas
+
+Smoke that rolls out along the ground and is blasted open, a bonfire's flame and smoke, steam, a mushroom cloud: these
+are a fluid, not particles. `CgVfxGas` (`vfx.gas`) is an element owning one: a box of cells fixed in the world, which
+its sources pour smoke, heat and fuel into. Heat rises, fuel burns into flame and smoke, the gas curls, flows round the
+world's blocks and out of its box, and the sun lights it through itself. It is simulated on the GPU at every compute
+tier, a brick of one atlas a gas, as GPU Gems 3's smoke is (chapter 30), and CS2's grenade smoke is the model for how
+it fills a space and heals after a blast.
+
+```java
+public final class Grenade extends CgVfxEffect<Grenade> {
+    private final CgVfxGas smoke = new CgVfxGas(this).place(0f, 6f, 0f);       // its middle, from the effect's origin
+    private final CgVfxGas.Source vent = smoke.source(0f, 0.4f, 0f, 1.2f)
+            .density(6f).heat(0.8f).velocity(0f, 2f, 0f);
+
+    public Grenade(CgVfxLook look, double x, double y, double z) {
+        super(look, x, y, z);
+    }
+
+    @Override protected void tick(float dt) {
+        smoke.tick(dt);                                  // every tick: it steps on the effect's clock
+        if (age > 12f) vent.off();
+        if (smoke.faded()) die();
+    }
+
+    @Override protected void submit(CgVfxFrame frame) {
+        smoke.submit(frame);
+    }
+}
+
+public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)   // its schema and the smoke layer
+        .set(CgVfxGas.SIZE, 18f).set(CgVfxGas.WEIGHT, 0.35f).build();
+
+smoke.blast(x, y, z, 4f, 30f, 1f);              // thrown out at 30 blocks a second, cleared within 4, then it heals
+smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and smoke: a fire
+```
+
+| Call | Does |
+|---|---|
+| `new CgVfxGas(effect)`, `(effect, slot)` | A gas drawn on `CgVfxGas.SLOT`, or on a volume slot of the effect's own (`CgVfxSlot.volume(name)`) |
+| `place(x, y, z)` | Where its middle goes, from the effect's origin; taken when it first gets a brick, fixed in the world after |
+| `source(x, y, z, radius)` | A sphere it pours from: `density`, `heat` and `fuel` a second, a `velocity` it steers what is inside toward; `at`, `radius`, `on()`, `off()`. At most 8 |
+| `blast(x, y, z, radius, speed, carve)` | Everything within `radius` thrown out at up to `speed`, and `carve` (0 to 1) of its smoke cleared at the middle |
+| `tick(dt)`, `submit(frame)` | From the effect's own, every tick and every frame |
+| `faded()` | Nothing poured for as long as `DISSIPATION` takes its smoke to a fiftieth: what the effect waits for to die |
+| `release()` | Its brick given back now |
+
+| Parameter (`CgVfxGas`) | Default | Meaning |
+|---|---|---|
+| `SIZE` | 12 | the box's side in blocks |
+| `BUOYANCY`, `WEIGHT` | 2, 0.3 | lift a unit of temperature gives; sinking a unit of density gives, which spreads heavy smoke along the ground |
+| `VORTICITY` | 1.5 | how hard small swirls are kept from smoothing out |
+| `DISSIPATION`, `COOLING`, `DAMPING` | 0.08, 0.8, 0.3 | the share of its density, temperature and speed lost a second |
+| `BURN`, `HEAT` | 1.5, 3 | fuel burnt a second at most, and the temperature (and a unit of smoke) a unit burnt gives |
+| `EXTINCTION` | 2.5 | light lost a block through a unit of density: how thick it looks and how deep its shadows |
+| `SMOKE_COLOR`, `FIRE` | | the smoke in full light, and a tint on what burns; the smoke layer's `_Smoke` and `_Fire` bind them by name |
+
+- **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits for a brick, drawing nothing.
+- **Its resolution is the quality tier's**: 64 cells a side at High and Ultra, 48 at Medium, 32 at Low. `SIZE` stays,
+  so a lower tier is coarser; changing tier starts every gas again empty.
+- **It steps 60 times a second on its effect's clock**, so pause and slow motion reach it, and an effect left unticked
+  for two seconds gives its brick back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
+  takes fewer iterations, then one step a frame.
+- **It stays where it was placed**: a moving source trails through it. It flows round the voxel window's blocks and
+  stands on its effect's `ground` where the host has no world.
+- **Drawing is a layer's, on a volume slot.** `CgVfxGas.SMOKE`'s `vfx/gas/smoke.shader` marches it: the sun through the
+  gas and the blocks (cached by the solver once a frame), the sky's light from the lightmap, a blackbody where it burns,
+  blooming. A shader of your own declares `_GasShade (sampler3D)`, includes `lib/vfx/fx_gas.glsl`, and reads what
+  `CgVfxSlot.Kind.VOLUME` documents.
+- Not yet measured on a GPU: `vfx-gas` is the scene to time it in.
+
+## 15. Writing an effect of your own
 
 An effect has two jobs: `tick` (logic, on a fixed 120 Hz clock) and `submit` (hand what to draw to the frame, by
 slot). How it looks is its look's.
@@ -1492,7 +1564,7 @@ hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).act
 
 ---
 
-## 15. Writing a layer's shader
+## 16. Writing a layer's shader
 
 A layer's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) with three additions:
 
@@ -1552,7 +1624,7 @@ Pass {
 
 ---
 
-## 16. Writing a particle module of your own
+## 17. Writing a particle module of your own
 
 A module is a Java record implementing `CgVfxModule` plus a GLSL function `fx_<kind>`, which the generated GPU step
 calls. Its numbers are written once per emitter definition; nothing recompiles when they change.
@@ -1589,7 +1661,7 @@ record Swirl(float strength) implements CgVfxModule {
 
 ---
 
-## 17. Performance and scale
+## 18. Performance and scale
 
 ### On the client
 
@@ -1656,7 +1728,7 @@ across threads. Levers, once a profile asks: step the server's copy at 20 Hz; ca
 
 ---
 
-## 18. Questions people ask
+## 19. Questions people ask
 
 ### Does the server run my effect?
 
@@ -1738,7 +1810,7 @@ their *Add* and *Remove*. "Authority" is Unreal's word too.
 
 ---
 
-## 19. Checking and measuring
+## 20. Checking and measuring
 
 Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, from CrystalGUI's root):
 
@@ -1753,7 +1825,8 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),
-`vfx-showcase`, `vfx-modules` (a station per module), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's
+`vfx-showcase`, `vfx-modules` (a station per module), `vfx-gas` (gas: a grenade blasted open, a bonfire, a vent, a
+mushroom cloud), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's
 inspector, every look's values grouped by schema).
 
 Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxTuningTest`, `CgVfxEndingTest`,
@@ -1763,5 +1836,5 @@ com.crystalgraphics.vulkan.EngineOnTrackedBackendTest`.
 
 Profiling ([`PROFILING.md`](PROFILING.md)), trace channel `crystalgraphics.vfx`: zones `vfx.tick`,
 `vfx.emitters.workers`, `vfx.effect.tick/<namespace>`, `vfx.effect.submit/<namespace>`, and on the GPU
-`vfx.pool.step` and `vfx.pool.range`; counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`,
+`vfx.pool.step`, `vfx.pool.range` and `vfx.gas`; counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`,
 `vfx.effects/<namespace>`.

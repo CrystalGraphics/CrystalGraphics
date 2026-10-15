@@ -61,7 +61,14 @@ public final class CgVfxSlot {
          * first texel, its points, the layer's size and its life; {@code CUSTOM1} the draw's centre less the anchor the
          * points are from; {@code CUSTOM2} its sub-segments, its mode, its head's distance along and its length.
          */
-        TRAIL;
+        TRAIL,
+        /**
+         * A {@code CgVfxGas}'s brick, marched through a cube round it ({@code fx_gas.glsl}), reading
+         * {@code CgVfxGasAtlas.shade()} as {@code _GasShade}: {@code CUSTOM0} its brick, cells a brick a side, bricks
+         * along the atlas and the layer's size; {@code CUSTOM1} the cube's side in blocks and the gas's extinction a
+         * block.
+         */
+        VOLUME;
 
         /** The keyword a shader declares to draw on this kind: {@code FX_ON_TUBE}, {@code FX_ON_MESH} and so on. */
         public String keyword() {
@@ -119,6 +126,10 @@ public final class CgVfxSlot {
 
     public static CgVfxSlot trail(String name) {
         return of(Kind.TRAIL, name);
+    }
+
+    public static CgVfxSlot volume(String name) {
+        return of(Kind.VOLUME, name);
     }
 
     /** The particles of the emitter named {@code emitter}. */

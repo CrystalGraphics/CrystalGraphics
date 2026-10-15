@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.gas.CgVfxGasAtlas;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 
 import java.util.ArrayList;
@@ -259,6 +260,16 @@ final class CgVfxMaterials {
     }
 
     private int nextPool;
+
+    /** The gas shade each volume material was last pointed at: the atlas makes it anew when its bricks change size. */
+    private final Map<CgMaterial, CgTexture> shades = new IdentityHashMap<>();
+
+    /** Points volume {@code material} at {@code shade}, once each time the atlas remade it. */
+    void shade(CgMaterial material, CgTexture shade) {
+        if (shades.get(material) == shade) return;
+        shades.put(material, shade);
+        material.applyProperties(b -> b.sampler(CgVfxGasAtlas.SHADE_SAMPLER, 0, shade));
+    }
 
     /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */
     private final Map<CgMaterial, Integer> keys = new IdentityHashMap<>();

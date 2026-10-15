@@ -1243,7 +1243,7 @@ public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_BLAST = SCHE
 }
 ```
 
-The whole story (parts, authority on the server, confirmed hits on clients) is [`VFX.md`](VFX.md) §8.
+The whole story (parts, authority on the server, confirmed hits on clients) is [`VFX.md`](VFX.md) §11 and §12.
 
 **Which to use.** A volume carried by the attacker's body (a fist, a blade, a grab) is a claimed hitbox type (§10):
 it lands where the attacker saw the target. What an effect throws into the world (a beam, a blast, a shockwave) is the
@@ -1614,7 +1614,7 @@ the attacker's client decide what it hit, and the server still decides whether t
 ### What about particles?
 
 A particle's contact is the VFX engine's, simulated on the GPU and read back a few frames late, client only: never base
-gameplay on it ([`VFX.md`](VFX.md) §8).
+gameplay on it ([`VFX.md`](VFX.md) §12).
 
 ### Is that how other engines do it?
 

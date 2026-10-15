@@ -916,6 +916,11 @@ public final class CgVfxSystem {
         return sphereMesh;
     }
 
+    /** What a gas is marched through: the unit cube, -0.5 to 0.5. */
+    CgMesh cubeMesh() {
+        return CgMeshShapes.cube();
+    }
+
     /** What a volume layer's chunks are drawn on: the sphere, or with {@link #COARSE_VOLUMES} a coarse one round it. */
     CgMesh volumeMesh() {
         return volumeMesh;
