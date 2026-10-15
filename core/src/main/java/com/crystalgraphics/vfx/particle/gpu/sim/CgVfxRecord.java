@@ -1,24 +1,18 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
-
 import java.nio.ByteBuffer;
 
 /**
  * A particle as a pool stores it: 80 bytes, five 16-byte lanes, the layout the Step kernel reads and appends and Range
- * reads (vfx-gpu §13.3). The Java side packs and reads one, so a test can put the CPU path's particles into a pool and
- * compare what the GPU made of them.
+ * reads (vfx-gpu §13.3). The Java side reads one, so a check can see what the GPU made of a step.
  *
  * <pre>{@code
- * ByteBuffer records = ByteBuffer.allocateDirect(n * CgVfxRecord.BYTES).order(ByteOrder.nativeOrder());
- * for (int i = 0; i < n; i++) CgVfxRecord.pack(records, i, set, i, slot, paramRow);
- *
  * float x = CgVfxRecord.f(read, i, CgVfxRecord.POSITION);         // what a readback holds
  * int id = CgVfxRecord.i(read, i, CgVfxRecord.ID);
  * }</pre>
  *
  * <ul>
- *   <li>Positions are relative to the instance's origin, as on the CPU; {@link #SIZE} is the size at birth.</li>
+ *   <li>Positions are relative to the instance's origin; {@link #SIZE} is the size at birth.</li>
  *   <li>The buffer is read and written at absolute positions in its own byte order: give it native order, the GPU's.</li>
  * </ul>
  */
@@ -44,19 +38,6 @@ public final class CgVfxRecord {
     public static final int COLLISIONS_SHIFT = 16;
 
     private CgVfxRecord() {
-    }
-
-    /**
-     * Writes particle {@code i} of {@code p} as record {@code record} of {@code out}: a particle of the instance in
-     * {@code slot}, whose definition is parameter row {@code paramRow}.
-     */
-    public static void pack(ByteBuffer out, int record, CgVfxParticleSet p, int i, int slot, int paramRow) {
-        int at = record * BYTES;
-        out.putFloat(at, p.x[i]).putFloat(at + 4, p.y[i]).putFloat(at + 8, p.z[i]).putFloat(at + 12, p.age[i]);
-        out.putFloat(at + 16, p.px[i]).putFloat(at + 20, p.py[i]).putFloat(at + 24, p.pz[i]).putFloat(at + 28, p.life[i]);
-        out.putFloat(at + 32, p.vx[i]).putFloat(at + 36, p.vy[i]).putFloat(at + 40, p.vz[i]).putFloat(at + 44, p.size[i]);
-        out.putFloat(at + 48, p.seed[i]).putFloat(at + 52, p.spin[i]).putFloat(at + 56, p.spinRate[i]).putFloat(at + 60, p.heat[i]);
-        out.putInt(at + 64, p.id[i]).putInt(at + 68, slot).putInt(at + 72, p.resting[i] != 0f ? RESTING : 0).putInt(at + 76, paramRow);
     }
 
     /** Float word {@code word} of record {@code record}. */

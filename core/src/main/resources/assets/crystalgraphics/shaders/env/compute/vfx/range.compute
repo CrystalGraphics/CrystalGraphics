@@ -5,9 +5,9 @@
 // the culled sort past the end; and its index in its pool, which the sort carries. With _DepthBits 16 a slot that
 // sorts takes its view depth in the low bits, far first. CgGpuOps then sorts every pool's keys at once, counts each
 // slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the particles a
-// slot's draws read, in CgParticleBuffer's layout, from the slot's list base: what CgVfxSystem's writeRecords writes
-// on the CPU path. Objects writes the same particles as object records, for a mesh drawn per particle: what
-// CgVfxFrame.particleMeshes draws. Both light each particle from the voxel window at its block (CgVfxVoxelWindow).
+// slot's draws read, in CgParticleBuffer's layout, from the slot's list base. Objects writes the same particles as
+// object records, for a mesh drawn per particle. Both light each particle from the voxel window at its block
+// (CgVfxVoxelWindow).
 #pragma kernel Key map
 #pragma kernel Place gather
 #pragma kernel Objects gather
@@ -184,7 +184,6 @@ void Place() {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
         vec2 curve = range_curve(r.idSlot.w, range_curve_at(r, t));
-        // CgVfxParticleSet.x(i, alpha)'s order of operations, so the two round alike.
         d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
         d.motion = vec4(r.velocitySize.xyz, t);
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);

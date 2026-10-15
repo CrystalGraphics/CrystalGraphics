@@ -58,7 +58,7 @@ public final class CgVfxShape {
     private final CgVfxLane[][] lanes;
     private final CgVfxWorldInput[][] world;
     private final int paramRow, instanceRow;
-    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, floors;
+    private final boolean readsWorld, usesDistance, usesDepth, usesEntities, floors, spawnsOnMesh;
     private final CgVfxEvent.Trigger[] triggers;
     private final boolean[] eventSpawns, eventReports;
     private final int eventsAt;
@@ -121,6 +121,8 @@ public final class CgVfxShape {
                 identity.append(t == 0 && identity.length() == 0 ? "|tex:" : ",").append(textureId(texture));
             }
         }
+        spawnsOnMesh = emitter.spawnsOnMesh();
+        if (spawnsOnMesh) key.append("|mesh");
         List<CgVfxEvent> events = emitter.events();
         if (events.size() > CgVfxEvent.MAX_EVENTS) {
             throw new IllegalArgumentException(emitter.name() + " lists " + events.size() + " events, past " + CgVfxEvent.MAX_EVENTS);
@@ -257,6 +259,11 @@ public final class CgVfxShape {
     /** Whether any module takes {@link CgVfxWorldInput#DEPTH}: its Step kernel reads the scene's depth. */
     public boolean usesDepth() {
         return usesDepth;
+    }
+
+    /** Whether its emitter spawns on a mesh ({@link CgVfxGpuEmitter#spawnsOnMesh}): its Step kernel reads {@code CgVfxSpawnMeshes}. */
+    public boolean spawnsOnMesh() {
+        return spawnsOnMesh;
     }
 
     /** Whether any module takes {@link CgVfxWorldInput#ENTITIES}: its Step kernel reads the entity boxes. */

@@ -1,6 +1,6 @@
 // CgVfxModule.CollideWorld, after the solver: the voxel window's solid octants, with Godot's rigid response. A
 // particle inside one leaves by the octant's face the distance field's gradient points through most. With no level,
-// the instance's fixed ground, as the CPU path has. m: bounce, friction, rest, kill (fx_contact_respond).
+// the instance's fixed ground. m: bounce, friction, rest, kill (fx_contact_respond).
 #pragma once
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_world_at.glsl"
 #include "crystalgraphics:shaders/lib/vfx/sim/fx_contact.glsl"

@@ -217,6 +217,9 @@ final class CgVfxMaterials {
         if (r.tunings != r.layer.tunings()) retune(r);
         CgMaterial material = r.byKind[kind.ordinal()];
         if (material != null) return material;
+        if (r.layer.hasMesh() && kind != CgVfxSlot.Kind.MESH && kind != CgVfxSlot.Kind.PARTICLES) {
+            throw new IllegalStateException(r.layer + " draws a mesh, which a " + kind + " slot does not take");
+        }
         Map<String, CgMaterial> mine = materials.computeIfAbsent(r.layer, l -> new HashMap<>());
         String key = kind + "|" + r.signature;
         material = mine.get(key);

@@ -1,6 +1,11 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshLoader;
+import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
@@ -30,6 +35,11 @@ import java.util.concurrent.ConcurrentHashMap;
  *         .bind("_Colors", MyWave.BANDS)                   // a palette into color[3]
  *         .bind("_Reach", CgEnergyWave.RADIUS, 2.6f)       // RADIUS × 2.6, every draw
  *         .texture("_Strip", MyWave.SLEEVE)
+ *         .build();
+ *
+ * CgVfxLayer slash = CgVfxLayer.of("mymod:shaders/vfx/slash.shader")
+ *         .on(SLASH)                                       // a mesh slot: this mesh, not the unit sphere
+ *         .mesh("mymod:models/slash.obj")                  // loaded at its first draw
  *         .build();
  * }</pre>
  *
@@ -99,6 +109,11 @@ public final class CgVfxLayer {
     final List<Binding> bindings;
     final Map<String, CgTexture> textures;
     final Set<String> keywords, unbound;
+    /** What it draws on a mesh slot or per particle of a MESHES emitter instead of the sphere; a path loads at first draw. */
+    private final CgMeshLods meshLods;
+    private final String meshPath;
+    private volatile CgMeshLods loaded;
+    private volatile float meshRadius = Float.NaN;
     /** Constants a tuning changed: the layer's for as long as the run. */
     private final Map<String, float[]> tuned = new ConcurrentHashMap<>();
     private volatile int tunings;
@@ -118,6 +133,8 @@ public final class CgVfxLayer {
         this.textures = Collections.unmodifiableMap(new LinkedHashMap<>(b.textures));
         this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(b.keywords));
         this.unbound = Collections.unmodifiableSet(new LinkedHashSet<>(b.unbound));
+        this.meshLods = b.meshLods;
+        this.meshPath = b.meshPath;
     }
 
     public static Builder of(String shader) {
@@ -146,6 +163,8 @@ public final class CgVfxLayer {
         b.textures.putAll(textures);
         b.keywords.addAll(keywords);
         b.unbound.addAll(unbound);
+        b.meshLods = meshLods;
+        b.meshPath = meshPath;
         return b;
     }
 
@@ -235,6 +254,42 @@ public final class CgVfxLayer {
         return unbound;
     }
 
+    /** Whether it draws a mesh of its own ({@link Builder#mesh}). */
+    public boolean hasMesh() {
+        return meshLods != null || meshPath != null;
+    }
+
+    /** Its mesh, a path loaded the first time it is asked (on the render thread, at its first draw); null for none. */
+    public CgMeshLods mesh() {
+        if (meshLods != null) return meshLods;
+        if (meshPath == null) return null;
+        CgMeshLods lods = loaded;
+        if (lods == null) loaded = lods = single(CgMeshLoader.load(meshPath, CgVertexFormat.SPATIAL));
+        return lods;
+    }
+
+    /** The farthest its mesh reaches from its origin, at size 1: what a particle drawn with it is culled by; 1 for none. */
+    public float meshRadius() {
+        float r = meshRadius;
+        if (r == r) return r;
+        CgMeshLods lods = mesh();
+        if (lods == null) {
+            r = 1f;
+        } else {
+            CgAABB box = lods.finest().bounds(new CgAABB());
+            double x = Math.max(Math.abs(box.minX()), Math.abs(box.maxX()));
+            double y = Math.max(Math.abs(box.minY()), Math.abs(box.maxY()));
+            double z = Math.max(Math.abs(box.minZ()), Math.abs(box.maxZ()));
+            r = (float) Math.sqrt(x * x + y * y + z * z);
+        }
+        meshRadius = r;
+        return r;
+    }
+
+    private static CgMeshLods single(CgMesh mesh) {
+        return CgMeshLods.builder().level(mesh, 0f).build();
+    }
+
     @Override
     public String toString() {
         return "layer " + name + " (" + shader + ")";
@@ -254,6 +309,8 @@ public final class CgVfxLayer {
         private final List<Binding> bindings = new ArrayList<>();
         private final Map<String, CgTexture> textures = new LinkedHashMap<>();
         private final Set<String> keywords = new LinkedHashSet<>(), unbound = new LinkedHashSet<>();
+        private CgMeshLods meshLods;
+        private String meshPath;
 
         private Builder(String shader) {
             this.shader = Objects.requireNonNull(shader, "shader");
@@ -378,6 +435,35 @@ public final class CgVfxLayer {
          */
         public Builder texture(String property, CgTexture texture) {
             textures.put(Objects.requireNonNull(property, "property"), Objects.requireNonNull(texture, "texture"));
+            return this;
+        }
+
+        /**
+         * Draws {@code mesh} instead of the unit sphere: on a mesh slot placed by the slot's transform, or per particle
+         * of a {@code MESHES} emitter, turned and sized as each. On any other slot it throws at its first draw.
+         *
+         * <pre>{@code
+         * .layer(CgVfxLayer.of(SLASH_SHADER).on(SLASH).mesh(CgProceduralMesh.revolve(...).build()).build())
+         * .layer(CgVfxLayer.of(ROCK_SHADER).on(DEBRIS).mesh(ROCK_LODS).build())   // a MESHES emitter: one per particle
+         * }</pre>
+         */
+        public Builder mesh(CgMesh mesh) {
+            this.meshLods = single(Objects.requireNonNull(mesh, "mesh"));
+            this.meshPath = null;
+            return this;
+        }
+
+        /** As {@link #mesh(CgMesh)}, a level per screen height. */
+        public Builder mesh(CgMeshLods lods) {
+            this.meshLods = Objects.requireNonNull(lods, "lods");
+            this.meshPath = null;
+            return this;
+        }
+
+        /** As {@link #mesh(CgMesh)}, an OBJ or glTF file, loaded at the layer's first draw: a server naming it loads nothing. */
+        public Builder mesh(String path) {
+            this.meshPath = Objects.requireNonNull(path, "path");
+            this.meshLods = null;
             return this;
         }
 

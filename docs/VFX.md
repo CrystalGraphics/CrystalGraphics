@@ -406,6 +406,7 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 | `volume()` | A tube chunk drawn on a sphere round it, for a shader summing its own chunk's light (`body_light`) |
 | `closed()` | A tube chunk closed at both ends, for a shader tracing the view ray through it (`body_core`) |
 | `keyword(name)` | A `#pragma cg_feature` keyword on its materials |
+| `mesh(mesh)`, `mesh(lods)`, `mesh(path)` | Draws that mesh instead of the unit sphere: on a mesh slot, or per particle of a `MESHES` emitter. A path loads at its first draw; any other slot throws. `CgProceduralMesh` makes crescents, domes and swirls from a few numbers |
 | `unbound(property)` | Keeps a colour the shader's own, never bound by name |
 | `named(name)` | What tools and tunings call it; its shader's file name unless given |
 
@@ -1072,7 +1073,7 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name 
         .renderer(CgVfxEmitter.Renderer.QUADS) // a camera-facing quad each; MESHES a mesh each, ARCS a stroke each
         .capacity(1200)                        // the most alive at once
         .rate(120f, 0f, 4f)                    // 120 a second, from 0 s to 4 s
-        .shape(1.2f)                           // born up to 1.2 blocks out from the source
+        .shape(CgSphere.of(1.2))               // born anywhere in a ball 1.2 blocks round the source
         .launch(0.2f, 1f, 1f)                  // each flies a random way whose upward share is 0.2 to 1: up and out
         .speed(0.5f, 2f)                       // blocks a second, a random speed between
         .life(2.5f, 3f)                        // seconds
@@ -1085,6 +1086,57 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name 
 ```
 
 Every range (`speed(min, max)`, `life`, `size`) is a random value between, a different one each particle.
+
+### Where particles are born, and which way they fly
+
+The shape is one of the collision engine's ([`COLLISION.md`](COLLISION.md) §4), filled uniformly: a ball by volume, a
+surface by area, an edge by length.
+
+```java
+.shape(CgCone.of(3, Math.toRadians(25))).pointing(0, 1, 0)       // a spray aimed up
+.shape(CgRing.of(2.8, 3, 0)).edge().ordered(32)                   // 32 evenly round a circle on the ground
+.shape(CgSphere.of(2)).surface().hemisphere()                     // on a dome, flying outward
+.shape(CgBox.of(2, 0.05, 2)).direction(0, 1, 0, 10f)              // a sheet, launched up within 10 degrees
+.shape(CgCapsule.between(0, 0, 0, 0, 0, 12, 0.3)).edge()          // along a line 12 blocks forward
+.shape(CgShell.of(9, 11))                                         // between two spheres: rolling out from an edge
+.mesh("mymod:models/sword.obj")                                   // off a sword's surface, along its normals
+.mesh(RUNE).vertices().ordered(64)                                // at 64 of a mesh's vertices, in order
+.entity().surface()                                               // on the box of the entity its effect follows
+```
+
+| Call | Means |
+|---|---|
+| `shape(shape)` | a sphere, shell, box, cylinder, ring, cone or capsule; a point unless given |
+| `surface()`, `edge()` | on its surface, or its edge: a sphere's equator, a box's edges, a cylinder's or ring's outer circles, a cone's rim, a capsule's segment |
+| `hemisphere()`, `arc(degrees)` | the half above its middle along its axis; part of the way round its axis |
+| `ordered(n)` | spawn `k` at the `k mod n`-th of `n` even places round its axis (along a capsule's edge), not at random |
+| `pointing(x, y, z)`, `at(x, y, z)` | turns its axis that way; moves it from the source |
+| `outward()` (the default), `inward()` | launched away from its middle (its centre, or a cylinder's or capsule's axis), or toward it |
+| `direction(x, y, z, spread)` | launched that way, within `spread` degrees |
+| `launch(upMin, upMax, bias)` | launched at any heading with an upward share in that band; on a point or sphere, also where they are born |
+| `mesh(mesh)`, `mesh(path)` | on a mesh's surface, a triangle picked by area, launched along its normal; a path loads at its first spawn |
+| `vertices()` | at the mesh's vertices instead; with `ordered(n)`, the `k mod n`-th of `n` spread through them in order |
+| `entity()` | in the box of the entity its effect follows, as it stands each step (`surface()` and `edge()` as a box's); at the source while it follows none |
+
+A shape's axis is +Y, a cone's +Z from its apex, a capsule's its segment. An event's children are born in their
+emitter's shape about the event's normal.
+
+### A source that moves
+
+```java
+CgVfxEmitter.builder("wake").capacity(600).ratePerBlock(6f).inherit(0.4f)...   // six a block; 40% of its velocity
+
+wake.moveTo(x, y, z);       // in the effect's tick, before tick(wake, dt)
+```
+
+- **A moving source leaves an even line**: each step's rate spawns are spread from where the source was as the step
+  began to where it ended, each stepped for the part of the step after its birth. Bursts are born where the step began.
+- **`ratePerBlock(n)`** spawns by distance, until stopped (`ratePerBlock(n, from, until)` gives it a window, as `rate`
+  takes one). A step farther than `maxStep(blocks)`, 8 unless given, is a teleport: it spawns nothing by distance and
+  spreads nothing.
+- **`inherit(share)`** gives each particle that share of its source's velocity, as an event's `inherit` gives children
+  their parent's.
+- What a source follows moves it too: an effect that `follow`s an entity carries its emitters' sources with it.
 
 ### In a look
 
@@ -1121,12 +1173,12 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 
 ### Things to know
 
-- **Capacity is a hard limit**: a spawn into a full emitter is dropped. Size it to the burst plus what is still alive.
+- **Capacity is a hard limit**, 256 unless given: a spawn that would pass it is dropped. Size it to the burst plus what
+  is still alive; a rate per block needs one, since how fast its source moves is unbounded.
 - **Variants**: `SPARKS.toBuilder()...build()`. **The same burst bigger or smaller**: `SPARKS.scaled(s)` scales shape,
-  speed, size and forces, keeping the timing.
+  speed, size, forces and a rate per block's spacing, keeping the timing.
 - **`.optional()`** marks detail: halved at the Low quality tier. The player's density setting thins every emitter.
-- **`shape(inner, outer)`** spawns on a shell; **`sweep(speed)`** runs that shell outward, so particles are born on a
-  moving front.
+- **`sweep(speed)`** runs the shape outward, so particles are born on a moving front: a shell's, a ring's.
 - **Each layer on particles draws as one batch for the whole system**, sorted far to near within itself, so two
   layers order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
@@ -1181,8 +1233,8 @@ emitter where it fired, reports to the CPU, or both:
 ### Where particles run
 
 Every tier the engine supports runs them: compute on modern GL and Vulkan, lowered to draws on older GL
-([`SHADERS.md`](SHADERS.md) § *Every tier*). A Java simulation (`-Dcrystalgraphics.vfx.sim=cpu`) remains only as the
-"before" of a comparison and will be deleted: build nothing on it.
+([`SHADERS.md`](SHADERS.md) § *Every tier*). Nothing simulates them in Java: an emitter instance keeps only the
+books of what spawns when, which is how it knows it has finished without asking the GPU.
 
 ---
 
@@ -1549,7 +1601,7 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 
 | Gate | Holds |
 |---|---|
-| `vfx-sim-equivalence` | the GPU step's noise and hashes against Java |
+| `vfx-hashes` | the spawn hash, `fx_rand`, bit for bit against the Java the books use |
 | `vfx-events` | events: every row heard once, every child where expected |
 | `vfx-collide` | collisions and rates off a ground and a wall |
 | `vfx-inputs` | vector fields, heightfields, the depth pyramid |

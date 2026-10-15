@@ -38,7 +38,7 @@ public class CgVfxEmitterCompilerTest {
     @Test
     public void modulesRunInStackOrderAroundTheSolver() {
         String glsl = CgVfxEmitterCompiler.source(CgVfxShape.of(EVERY_KIND));
-        int solve = glsl.indexOf("CgVfxEmitterInstance.solve");
+        int solve = glsl.indexOf("// The solve");
         String[] before = {"fx_gravity(p, f, s", "fx_drag(p, f, s", "fx_wind(p, f, s", "fx_turbulence(p, f, s",
                 "fx_buoyancy(p, f, s", "fx_updraft(p, f, s", "fx_spin(p, f, s"};
         int at = -1;

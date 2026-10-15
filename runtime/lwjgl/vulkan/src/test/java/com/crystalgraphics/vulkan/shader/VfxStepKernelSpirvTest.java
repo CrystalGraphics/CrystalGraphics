@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan.shader;
 
+import com.crystalgraphics.api.mesh.CgProceduralMesh;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.compute.emit.CgKernelEmitter;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
@@ -36,13 +37,16 @@ public class VfxStepKernelSpirvTest {
             .module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f))
             .module(new CgVfxModule.Spin(0.5f))
             .build();
+    /** Spawning on a mesh, whose kernel reads the spawn meshes. */
+    private static final CgVfxEmitter ON_MESH = CgVfxEmitter.builder("on_mesh").capacity(64).burst(0f, 64).life(1f, 2f)
+            .mesh(CgProceduralMesh.revolve(CgProceduralMesh.cone(1f, 1f)).build()).build();
 
     @AfterClass
     public static void close() { COMPILER.close(); }
 
     @Test
     public void everyShippedEmittersStepKernelCompiles() {
-        CgVfxEmitter[] emitters = {EVERY_KIND, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
+        CgVfxEmitter[] emitters = {EVERY_KIND, ON_MESH, CgVfxExplosion.BILLOWS, CgVfxExplosion.SURGE, CgVfxExplosion.SPECKS, CgVfxExplosion.DUST, CgVfxExplosion.SPARKLES,
                 CgVfxExplosion.INK, CgVfxExplosion.RAYS, CgVfxExplosion.RINGS, CgVfxExplosion.SKIRT};
         List<String> failures = new ArrayList<>();
         for (CgVfxEmitter emitter : emitters) {

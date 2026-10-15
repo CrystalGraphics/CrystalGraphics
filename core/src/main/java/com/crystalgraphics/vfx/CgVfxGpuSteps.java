@@ -74,6 +74,15 @@ final class CgVfxGpuSteps {
         public float sourceX() { return of.sourceX(); }
         public float sourceY() { return of.sourceY(); }
         public float sourceZ() { return of.sourceZ(); }
+        public float fromX() { return of.fromX(); }
+        public float fromY() { return of.fromY(); }
+        public float fromZ() { return of.fromZ(); }
+        public float boxX() { return of.boxX(); }
+        public float boxY() { return of.boxY(); }
+        public float boxZ() { return of.boxZ(); }
+        public float boxHalfX() { return of.boxHalfX(); }
+        public float boxHalfY() { return of.boxHalfY(); }
+        public float boxHalfZ() { return of.boxHalfZ(); }
     }
 
     private final List<Tenant> tenants = new ArrayList<>();
@@ -184,7 +193,10 @@ final class CgVfxGpuSteps {
             tenant.timeAfter = instance.time();
             tenant.pool.instance(tenant.slot, instance.seedBits(), instance.share(), instance.groundY(), view);
             // A fed slot spawns only what its parent's events spawn.
-            if (tenant.parent == null) tenant.pool.spawn(tenant.slot, instance.stepFirstSpawn(), instance.stepCandidates());
+            if (tenant.parent == null) {
+                tenant.pool.spawn(tenant.slot, instance.stepFirstSpawn(), instance.stepCandidates(),
+                        instance.stepCandidates() - instance.stepBursts());
+            }
         }
         view.of = null;
         for (int i = 0; i < pools.size(); i++) pools.get(i).endStep();

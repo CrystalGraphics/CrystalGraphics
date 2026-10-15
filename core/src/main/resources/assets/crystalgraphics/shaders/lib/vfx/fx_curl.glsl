@@ -1,4 +1,4 @@
-// Curl noise: CgVfxCurlNoise on the GPU, the turbulence force's field. Each component is roughly -2..2.
+// Curl noise (Bridson): the turbulence force's field. Each component is roughly -2..2.
 //
 // Where it is sampled arrives split per octave into a lattice cell and a fraction, so world coordinates keep their
 // fraction in float. The CPU splits the instance's origin (in doubles) for both octaves: the second samples at

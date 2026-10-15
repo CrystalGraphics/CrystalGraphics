@@ -16,11 +16,11 @@ import java.util.Objects;
 
 /**
  * One step of an emitter's update, run over all its particles every tick, in the order the emitter lists them: the
- * pieces a particle's physics is built from, as Niagara's update modules are. Each is data, a kind and its numbers, so
- * the same stack drives the CPU path ({@link #apply}) and the GPU simulation ({@link CgVfxGpuModule}: each kind's
- * {@code fx_<kind>.glsl} in {@code shaders/lib/vfx/sim/}). Force modules add to the accelerations and drags the solver
- * integrates; {@link Ground}, {@link Current}, {@link Collide}, {@link Kill}, {@link Orbit} and {@link LimitSpeed} run
- * after the solver, on the moved particles. Units are blocks and seconds.
+ * pieces a particle's physics is built from, as Niagara's update modules are. Each is data, a kind and its numbers,
+ * which the GPU simulation runs ({@link CgVfxGpuModule}: each kind's {@code fx_<kind>.glsl} in
+ * {@code shaders/lib/vfx/sim/}). Force modules add to the accelerations and drags the solver integrates;
+ * {@link Ground}, {@link Current}, {@link Collide}, {@link Kill}, {@link Orbit} and {@link LimitSpeed} run after the
+ * solver, on the moved particles. Units are blocks and seconds.
  *
  * <p>Ported from Godot Engine (MIT, © 2014-present Godot Engine contributors): {@link Attract}, {@link VectorField},
  * {@link Orbit}, {@link Damping}, {@link LimitSpeed} and {@link Collide}'s shapes and response, from
@@ -52,16 +52,13 @@ import java.util.Objects;
  *   <li>{@link Attract}, {@link VectorField}, {@link Conform}, {@link Collide} and {@link Kill} act in a collision
  *       engine shape, a {@link CgSphere}, {@link CgBox} or {@link CgPlane}, centred on the source or {@code at} a point
  *       from it. Any other shape is refused.</li>
- *   <li>{@link Ground} does nothing unless the instance has a ground height
- *       ({@link CgVfxEmitterInstance#ground(float)}).</li>
- *   <li>A new kind is a record here, its {@code apply}, and its GPU side: {@code fx_<kind>.glsl} and the
- *       {@link CgVfxGpuModule} methods. Both paths must give the same step (harness {@code vfx-sim-equivalence}).</li>
+ *   <li>{@link Ground} lands particles on the voxel window's blocks, or on the instance's ground height where the host
+ *       has no world ({@link CgVfxEmitterInstance#ground(float)}).</li>
+ *   <li>A new kind is a record here and its GPU side: {@code fx_<kind>.glsl} and the {@link CgVfxGpuModule} methods.
+ *       A mod's own kind implements {@link CgVfxGpuModule} instead.</li>
  * </ul>
  */
 public sealed interface CgVfxModule extends CgVfxGpuModule {
-
-    /** Runs over every particle of {@code emitter} for a tick of {@code dt} seconds. */
-    void apply(CgVfxEmitterInstance emitter, float dt);
 
     /** True for a module that runs after the solver has moved the particles. */
     @Override
@@ -95,12 +92,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) p.ay[i] -= strength;
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(strength);
         }
@@ -127,15 +118,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                p.drag[i] += linear;
-                p.dragQuad[i] += quadratic;
-            }
-        }
-
-        @Override
         public String gpuKind() {
             return "drag";
         }
@@ -151,23 +133,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * comes up to the wind's speed, as Niagara's Wind Force. One already moving faster along the wind is not pushed.
      */
     record Wind(float resistance) implements CgVfxModule {
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxAir air = emitter.air();
-            float wx = air.windX(), wy = air.windY(), wz = air.windZ();
-            float speed = (float) Math.sqrt(wx * wx + wy * wy + wz * wz);
-            if (speed < 1.0e-5f) return;
-            float dx = wx / speed, dy = wy / speed, dz = wz / speed;
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                float along = p.vx[i] * dx + p.vy[i] * dy + p.vz[i] * dz;
-                if (along >= speed) continue;
-                float push = (speed - along) * resistance;
-                p.ax[i] += dx * push;
-                p.ay[i] += dy * push;
-                p.az[i] += dz * push;
-            }
-        }
 
         @Override
         public String gpuKind() {
@@ -181,7 +146,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
-     * Swirling air: a curl-noise force ({@link CgVfxCurlNoise}) of up to about {@code strength} blocks a second squared,
+     * Swirling air: a curl-noise force (Bridson's, {@code fx_curl.glsl}) of up to about {@code strength} blocks a second squared,
      * with eddies about 1 / {@code frequency} blocks across, the field drifting at {@code evolve} a second. The same field
      * for every emitter at a point, so neighbouring particles swirl together.
      */
@@ -193,24 +158,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** Each octave's lattice cell and fraction of where the instance's origin samples (fx_curl.glsl). */
         private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4, CgVfxLane.IVEC4, CgVfxLane.VEC4};
-        /** CgVfxCurlNoise's second octave: x * 2.03 + offset. */
+        /** fx_curl's second octave: x * 2.03 + offset. */
         private static final double OCTAVE = 2.03, OFFSET_X = 5.2, OFFSET_Y = 1.3, OFFSET_Z = 7.9;
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float[] v = emitter.scratch();
-            float drift = emitter.time() * evolve;
-            double ox = emitter.originX(), oy = emitter.originY(), oz = emitter.originZ();
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                CgVfxCurlNoise.sample((float) ((ox + p.x[i]) * frequency) + drift, (float) ((oy + p.y[i]) * frequency),
-                        (float) ((oz + p.z[i]) * frequency) - drift * 0.7f, v);
-                p.ax[i] += v[0] * strength * 0.5f;
-                p.ay[i] += v[1] * strength * 0.5f;
-                p.az[i] += v[2] * strength * 0.5f;
-            }
-        }
 
         @Override
         public float pull(float heat) {
@@ -259,16 +208,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float keep = (float) Math.exp(-dt / Math.max(cooling, 1.0e-3f));
-            for (int i = 0; i < p.count(); i++) {
-                p.ay[i] += lift * p.heat[i];
-                p.heat[i] *= keep;
-            }
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(lift * heat);
         }
@@ -297,20 +236,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         /** Its fade at the step's start, then the source. */
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            float fading = 1f - smooth(0f, duration, emitter.time());
-            if (fading <= 0f) return;
-            CgVfxParticleSet p = emitter.particles();
-            float sx = emitter.sourceX(), sy = emitter.sourceY(), sz = emitter.sourceZ();
-            float inv = 1f / (radius * radius);
-            for (int i = 0; i < p.count(); i++) {
-                float dx = p.x[i] - sx, dz = p.z[i] - sz, up = p.y[i] - sy;
-                float column = (float) Math.exp(-(dx * dx + dz * dz) * inv) * (1f - smooth(0f, height, up));
-                p.ay[i] += strength * column * fading;
-            }
-        }
 
         @Override
         public float pull(float heat) {
@@ -344,7 +269,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     }
 
     /**
-     * The ground: the host world's surface under each particle (the instance's {@link CgVfxGround}), or its fixed
+     * The ground: the host world's surface under each particle (the voxel window's blocks), or the instance's fixed
      * height where there is no world. A particle reaching it bounces back up at {@code restitution} of its speed, loses
      * {@code friction} of its sliding speed, and comes to rest once slower than {@code rest} blocks a second. Runs after
      * the solver. A particle rests on it as a ball of {@code radius} times its size, all of it by default, as
@@ -365,29 +290,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public CgVfxModule scaled(float scale) {
             return new Ground(restitution, friction, rest * scale, radius);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            if (!emitter.hasGround()) return;
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                float floor = emitter.floorUnder(i);
-                if (Float.isNaN(floor)) continue;
-                floor += radius * p.size[i];
-                if (p.y[i] > floor) continue;
-                p.y[i] = floor;
-                if (p.vy[i] < 0f) p.vy[i] = -p.vy[i] * restitution;
-                p.vx[i] *= 1f - friction;
-                p.vz[i] *= 1f - friction;
-                float speed = (float) Math.sqrt(p.vx[i] * p.vx[i] + p.vy[i] * p.vy[i] + p.vz[i] * p.vz[i]);
-                if (speed < rest) {
-                    p.vx[i] = p.vy[i] = p.vz[i] = 0f;
-                    p.spinRate[i] = 0f;
-                    p.resting[i] = 1f;
-                }
-            }
         }
 
         @Override
@@ -436,23 +338,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            if (!emitter.hasGround()) return;
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                float floor = emitter.floorUnder(i);
-                if (Float.isNaN(floor)) continue;
-                float h = p.y[i] - floor, speed = (float) Math.sqrt(p.vx[i] * p.vx[i] + p.vz[i] * p.vz[i]);
-                float lift = roll * speed * Math.max(1f - h / depth, 0f) + loft * (1f - smooth(0f, slow, speed));
-                float keep = (float) Math.exp(-roll * smooth(0.5f * depth, depth, h) * dt);
-                p.vy[i] += lift * dt;
-                p.vx[i] *= keep;
-                p.vz[i] *= keep;
-            }
-        }
-
-        @Override
         public boolean afterSolve() {
             return true;
         }
@@ -477,21 +362,10 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public CgVfxWorldInput[] worldInputs() {
             return WORLD;
         }
-
-        private static float smooth(float edge0, float edge1, float x) {
-            float t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0f), 1f);
-            return t * t * (3f - 2f * t);
-        }
     }
 
     /** Spinning slows down: the spin rate decays by {@code drag} a second. */
     record Spin(float drag) implements CgVfxModule {
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float keep = (float) Math.exp(-drag * dt);
-            for (int i = 0; i < p.count(); i++) p.spinRate[i] *= keep;
-        }
 
         @Override
         public String gpuKind() {
@@ -526,7 +400,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Attract {
-            if (CgVfxContacts.check(shape) instanceof CgPlane) throw new IllegalArgumentException("a plane attracts nothing");
+            if (CgVfxShapeRows.check(shape) instanceof CgPlane) throw new IllegalArgumentException("a plane attracts nothing");
             if (!(attenuation >= 0f)) throw new IllegalArgumentException("attenuation " + attenuation);
             float length = (float) Math.sqrt(axisX * axisX + axisY * axisY + axisZ * axisZ);
             if (length > 0f) {
@@ -556,27 +430,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float[] dir = emitter.scratch();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            float keep = 1f - directionality;
-            for (int i = 0; i < p.count(); i++) {
-                float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
-                float d = CgVfxContacts.reach(shape, rx, ry, rz);
-                if (d > 1f) continue;
-                float amount = (float) Math.pow(Math.max(0f, 1f - d), attenuation);
-                CgVfxContacts.safeNormalize(rx, ry, rz, dir);
-                CgVfxContacts.safeNormalize(dir[0] * keep + -axisX * directionality, dir[1] * keep + -axisY * directionality,
-                        dir[2] * keep + -axisZ * directionality, dir);
-                float pull = amount * strength;
-                p.ax[i] -= dir[0] * pull;
-                p.ay[i] -= dir[1] * pull;
-                p.az[i] -= dir[2] * pull;
-            }
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(strength);
         }
@@ -593,7 +446,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            CgVfxContacts.writeShape(shape, out);
+            CgVfxShapeRows.writeShape(shape, out);
             out.vec4(strength, attenuation, directionality, 0f).vec4(axisX, axisY, axisZ, 0f);
         }
 
@@ -604,7 +457,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
+            CgVfxShapeRows.writeCentre(shape, x, y, z, instance, out);
         }
     }
 
@@ -625,22 +478,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             axisX /= length;
             axisY /= length;
             axisZ /= length;
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float a = turns * 6.2831855f * dt;
-            float c = (float) Math.cos(a), s = (float) Math.sin(a), turn = 1f - c;
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                float vx = p.x[i] - cx, vy = p.y[i] - cy, vz = p.z[i] - cz;
-                float along = (axisX * vx + axisY * vy + axisZ * vz) * turn;
-                p.x[i] = cx + vx * c + (axisY * vz - axisZ * vy) * s + axisX * along;
-                p.y[i] = cy + vy * c + (axisZ * vx - axisX * vz) * s + axisY * along;
-                p.z[i] = cz + vz * c + (axisX * vy - axisY * vx) * s + axisZ * along;
-            }
         }
 
         @Override
@@ -691,21 +528,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float[] v = emitter.scratch();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            for (int i = 0; i < p.count(); i++) {
-                CgVfxContacts.safeNormalize(p.x[i] - cx, p.y[i] - cy, p.z[i] - cz, v);
-                float ox = v[0], oy = v[1], oz = v[2];
-                CgVfxContacts.safeNormalize(axisY * oz - axisZ * oy, axisZ * ox - axisX * oz, axisX * oy - axisY * ox, v);
-                p.ax[i] += v[0] * tangential + ox * radial;
-                p.ay[i] += v[1] * tangential + oy * radial;
-                p.az[i] += v[2] * tangential + oz * radial;
-            }
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(tangential) + Math.abs(radial);
         }
@@ -738,15 +560,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
     /** A constant push, blocks a second squared: Niagara's acceleration force, {@link Gravity} in any direction. */
     record Force(float x, float y, float z) implements CgVfxModule {
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                p.ax[i] += x;
-                p.ay[i] += y;
-                p.az[i] += z;
-            }
-        }
 
         @Override
         public float pull(float heat) {
@@ -793,27 +606,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float[] v = emitter.scratch();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            float ex = (float) box.halfX(), ey = (float) box.halfY(), ez = (float) box.halfZ();
-            boolean tiles = field.tiles();
-            for (int i = 0; i < p.count(); i++) {
-                float u = ((p.x[i] - cx) / ex + 1f) * 0.5f, w = ((p.y[i] - cy) / ey + 1f) * 0.5f;
-                float t = ((p.z[i] - cz) / ez + 1f) * 0.5f;
-                if (!tiles && (u < 0f || w < 0f || t < 0f || u > 1f || w > 1f || t > 1f)) continue;
-                field.sample(u, w, t, v);
-                float length = (float) Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-                if (length <= 0f) continue;
-                float push = (float) Math.pow(length, attenuation) * strength;
-                p.ax[i] += v[0] / length * push;
-                p.ay[i] += v[1] / length * push;
-                p.az[i] += v[2] / length * push;
-            }
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(strength) * (float) Math.pow(field.largest(), attenuation);
         }
@@ -841,7 +633,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxContacts.writeCentre(box, x, y, z, instance, out);
+            CgVfxShapeRows.writeCentre(box, x, y, z, instance, out);
         }
 
         @Override
@@ -855,23 +647,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * {@link Drag}, a slow particle stops as soon as a fast one slows by the same amount.
      */
     record Damping(float rate) implements CgVfxModule {
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float lose = rate * dt;
-            for (int i = 0; i < p.count(); i++) {
-                float v = (float) Math.sqrt(p.vx[i] * p.vx[i] + p.vy[i] * p.vy[i] + p.vz[i] * p.vz[i]);
-                if (v <= 0f) continue;
-                float left = v - lose;
-                if (left < 0f) {
-                    p.vx[i] = p.vy[i] = p.vz[i] = 0f;
-                } else {
-                    p.vx[i] = p.vx[i] / v * left;
-                    p.vy[i] = p.vy[i] / v * left;
-                    p.vz[i] = p.vz[i] / v * left;
-                }
-            }
-        }
 
         @Override
         public String gpuKind() {
@@ -891,22 +666,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     record LimitSpeed(float most) implements CgVfxModule {
         public LimitSpeed {
             if (!(most >= 0f)) throw new IllegalArgumentException("a limit of " + most);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                float v = (float) Math.sqrt(p.vx[i] * p.vx[i] + p.vy[i] * p.vy[i] + p.vz[i] * p.vz[i]);
-                if (v <= most) continue;
-                float scale = most / v;
-                p.vx[i] *= scale;
-                p.vy[i] *= scale;
-                p.vz[i] *= scale;
-                p.x[i] = p.px[i] + p.vx[i] * dt;
-                p.y[i] = p.py[i] + p.vy[i] * dt;
-                p.z[i] = p.pz[i] + p.vz[i] * dt;
-            }
         }
 
         @Override
@@ -956,31 +715,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            float radius = (float) sphere.radius();
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                float rx = cx - p.x[i], ry = cy - p.y[i], rz = cz - p.z[i];
-                float distance = (float) Math.sqrt(rx * rx + ry * ry + rz * rz);
-                if (distance <= 0f) continue;
-                float dx = rx / distance, dy = ry / distance, dz = rz / distance;
-                float surface = distance - radius;
-                if (surface > influence) continue;
-                float radial = p.vx[i] * dx + p.vy[i] * dy + p.vz[i] * dz;
-                float t = Math.max(0f, Math.min(1f, Math.abs(surface) / shell));
-                float within = t * t * (3f - 2f * t);
-                float delta = Math.signum(surface) * within * speed - radial;
-                float accel = attraction * sticky * (1f - within) + attraction * within;
-                float change = Math.signum(delta) * Math.min(Math.abs(delta), dt * accel);
-                p.vx[i] += dx * change;
-                p.vy[i] += dy * change;
-                p.vz[i] += dz * change;
-            }
-        }
-
-        @Override
         public float pull(float heat) {
             return Math.abs(attraction * Math.max(1f, sticky));
         }
@@ -1007,7 +741,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxContacts.writeCentre(sphere, x, y, z, instance, out);
+            CgVfxShapeRows.writeCentre(sphere, x, y, z, instance, out);
         }
     }
 
@@ -1038,7 +772,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Collide {
-            CgVfxContacts.check(shape);
+            CgVfxShapeRows.check(shape);
         }
 
         public Collide(CgShape shape, float bounce, float friction, float rest) {
@@ -1066,19 +800,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float[] n = emitter.scratch();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            for (int i = 0; i < p.count(); i++) {
-                float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
-                if (p.resting[i] != 0f || !CgVfxContacts.over(shape, rx, ry, rz)) continue;
-                float depth = CgVfxContacts.contact(shape, keepsInside, rx, ry, rz, radius * p.size[i], n);
-                if (depth == depth) CgVfxContacts.respond(p, i, n[0], n[1], n[2], depth, bounce, friction, rest, kill);
-            }
-        }
-
-        @Override
         public boolean afterSolve() {
             return true;
         }
@@ -1095,7 +816,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            CgVfxContacts.writeShape(shape, out);
+            CgVfxShapeRows.writeShape(shape, out);
             out.vec4(bounce, friction, rest, kill ? 1f : 0f).vec4(radius, keepsInside ? 1f : 0f, 0f, 0f);
         }
 
@@ -1106,15 +827,15 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
+            CgVfxShapeRows.writeCentre(shape, x, y, z, instance, out);
         }
     }
 
     /**
-     * The host world's blocks, with {@link Collide}'s response: on the GPU every solid half-block octant of the voxel
-     * window, a particle inside one leaving by the face the distance field points through. The CPU path has only the
-     * instance's ground ({@link CgVfxEmitterInstance#ground(float)}), as {@link Ground} has, and so has the GPU with no
-     * level. Unlike {@link Ground} it fires {@link CgVfxEvent#onCollision()} and can kill. Runs after the solver.
+     * The host world's blocks, with {@link Collide}'s response: every solid half-block octant of the voxel window, a
+     * particle inside one leaving by the face the distance field points through. With no level, the instance's ground
+     * ({@link CgVfxEmitterInstance#ground(float)}), as {@link Ground} has. Unlike {@link Ground} it fires
+     * {@link CgVfxEvent#onCollision()} and can kill. Runs after the solver.
      *
      * <pre>{@code
      * new CgVfxModule.CollideWorld(0.4f, 0.3f, 0.3f)             // debris on stairs and walls
@@ -1130,18 +851,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         public CollideWorld killing() {
             return new CollideWorld(bounce, friction, rest, true);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            if (!emitter.hasGround()) return;
-            CgVfxParticleSet p = emitter.particles();
-            for (int i = 0; i < p.count(); i++) {
-                if (p.resting[i] != 0f) continue;
-                float floor = emitter.floorUnder(i);
-                if (Float.isNaN(floor) || p.y[i] >= floor) continue;
-                CgVfxContacts.respond(p, i, 0f, 1f, 0f, floor - p.y[i] + CgVfxContacts.EPSILON, bounce, friction, rest, kill);
-            }
         }
 
         @Override
@@ -1168,8 +877,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     /**
      * What the camera sees, with {@link Collide}'s response (Niagara's and Unity's depth buffer collision): a particle
      * behind the scene's depth by at most {@code thickness} blocks goes back to where it was and responds along the
-     * surface's normal there. Blind off screen and behind the first surface; the CPU path has no depth and skips it.
-     * Runs after the solver.
+     * surface's normal there. Blind off screen and behind the first surface. Runs after the solver.
      *
      * <pre>{@code
      * new CgVfxModule.CollideDepth(0.5f, 0.2f, 0.3f, 0.6f)       // sparks off anything on screen
@@ -1184,10 +892,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         public CollideDepth killing() {
             return new CollideDepth(bounce, friction, rest, thickness, true);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
         }
 
         @Override
@@ -1219,8 +923,8 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
     /**
      * The entities round the camera (mobs, players; not items or projectiles), with {@link Collide}'s response at the
      * face of the box a particle entered, on screen or not. A particle strikes a box only on entering it, so one born
-     * inside its caster flies out; its collision events carry the entity ({@code CgVfxEventRows.entity}). The CPU path
-     * skips it. Runs after the solver.
+     * inside its caster flies out; its collision events carry the entity ({@code CgVfxEventRows.entity}). Runs after the
+     * solver.
      *
      * <pre>{@code
      * new CgVfxModule.CollideEntities(0.4f, 0.3f, 0.3f, 0.5f)            // debris bouncing off mobs
@@ -1244,10 +948,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         public CollideEntities killing() {
             return new CollideEntities(bounce, friction, rest, size, true);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
         }
 
         @Override
@@ -1290,7 +990,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         private static final CgVfxLane[] LANES = {CgVfxLane.VEC4};
 
         public Kill {
-            CgVfxContacts.check(shape);
+            CgVfxShapeRows.check(shape);
         }
 
         public Kill(CgShape shape, boolean inside) {
@@ -1300,17 +1000,6 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         /** The shape centred {@code (x, y, z)} from the source. */
         public Kill at(float x, float y, float z) {
             return new Kill(shape, x, y, z, inside);
-        }
-
-        @Override
-        public void apply(CgVfxEmitterInstance emitter, float dt) {
-            CgVfxParticleSet p = emitter.particles();
-            float cx = emitter.sourceX() + x, cy = emitter.sourceY() + y, cz = emitter.sourceZ() + z;
-            for (int i = 0; i < p.count(); i++) {
-                float rx = p.x[i] - cx, ry = p.y[i] - cy, rz = p.z[i] - cz;
-                boolean in = CgVfxContacts.inside(shape, rx, ry, rz) && CgVfxContacts.over(shape, rx, ry, rz);
-                if (in == inside) p.life[i] = p.age[i];
-            }
         }
 
         @Override
@@ -1330,7 +1019,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            CgVfxContacts.writeShape(shape, out);
+            CgVfxShapeRows.writeShape(shape, out);
             out.vec4(inside ? 1f : 0f, 0f, 0f, 0f);
         }
 
@@ -1341,7 +1030,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeInstance(CgVfxInstanceView instance, CgVfxWords out) {
-            CgVfxContacts.writeCentre(shape, x, y, z, instance, out);
+            CgVfxShapeRows.writeCentre(shape, x, y, z, instance, out);
         }
     }
 }

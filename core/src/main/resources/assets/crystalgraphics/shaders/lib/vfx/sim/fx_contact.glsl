@@ -1,5 +1,5 @@
-// A module's shape and the rigid collision response, shared by the attracting, colliding and killing kinds; the CPU
-// side is CgVfxContacts, term for term. A volume is e: its extents (a CgSphere's radius in x, a CgBox's half extents, a
+// A module's shape and the rigid collision response, shared by the attracting, colliding and killing kinds; the Java
+// side writes the shape (CgVfxShapeRows). A volume is e: its extents (a CgSphere's radius in x, a CgBox's half extents, a
 // CgPlane's unit normal) and its form in w (FX_SPHERE, FX_BOX, FX_PLANE); every point is relative to its centre.
 //
 // Ported from Godot Engine (MIT, (c) 2014-present Godot Engine contributors): the attractor falloff and the sphere and

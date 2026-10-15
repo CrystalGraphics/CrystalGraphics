@@ -7,8 +7,8 @@ Every engine switch is a variable (`com.crystalgraphics.variable.CgVar`): typed,
 |---|---|
 | code | `VAR.set(value)`: a mod's own default, a screen previewing a value |
 | settings file | a player's setting (`CgSettings`); player settings are variables too, `<file>.<section>.<key>`, and are not listed below |
-| `-D` | `-Dcrystalgraphics.vfx.sim=cpu` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
-| console | a person, live: the in-game console, a dev tool's key (the harness's V, P, H, L, G) |
+| `-D` | `-Dcrystalgraphics.vfx.particleStep=1` at launch; a bare `-Dcrystalgraphics.state.verify` turns a bool on |
+| console | a person, live: the in-game console, a dev tool's key (the harness's P, H, L, G) |
 | remote | a remote tool |
 
 ```bash

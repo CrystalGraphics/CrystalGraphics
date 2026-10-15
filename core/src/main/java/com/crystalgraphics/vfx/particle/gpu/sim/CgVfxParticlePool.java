@@ -87,9 +87,12 @@ public final class CgVfxParticlePool {
     /**
      * An instance row's own vec4s ahead of its modules' lanes: {@code uvec4(param row, seed bits, slot, 0)},
      * {@code vec4(source xyz, time)}, {@code vec4(share, ground height or NaN, step scale, 1 to kill)}, {@code ivec4(origin's whole
-     * blocks, 0)}, {@code vec4(origin within its block, 0)}: the last two place a particle in the world's blocks.
+     * blocks, 0)}, {@code vec4(origin within its block, 0)}, {@code vec4(the source at the step's start, its bursts)},
+     * {@code vec4(the followed entity's box's centre from the source, 0)}, {@code vec4(its half extents, 0)}: the fourth
+     * and fifth place a particle in the world's blocks; the step's first bursts candidates are born at the sixth's
+     * source, the rest spread from it to the second's.
      */
-    public static final int INSTANCE_HEADER = 5;
+    public static final int INSTANCE_HEADER = 8;
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -286,6 +289,7 @@ public final class CgVfxParticlePool {
             RELEASED.clear();
             unfed = spawnStream = spawnCount = reportStream = reportCounts = null;
             CgVfxEntityBoxes.forget();
+            CgVfxSpawnMeshes.forget();
         }
     };
 
@@ -392,6 +396,12 @@ public final class CgVfxParticlePool {
         for (int i = 0; i < STEPPING.size(); i++) {
             if (STEPPING.get(i).shape.usesEntities()) {
                 CgVfxEntityBoxes.upload(recording);
+                break;
+            }
+        }
+        for (int i = 0; i < STEPPING.size(); i++) {
+            if (STEPPING.get(i).shape.spawnsOnMesh()) {
+                CgVfxSpawnMeshes.upload(recording);
                 break;
             }
         }
@@ -513,6 +523,7 @@ public final class CgVfxParticlePool {
         }
         if (shape.usesDepth()) bindDepth(stepping);
         if (shape.usesEntities()) CgVfxEntityBoxes.bind(stepping);
+        if (shape.spawnsOnMesh()) CgVfxSpawnMeshes.bind(stepping);
         for (int i = 0; i < shape.modules(); i++) {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
@@ -827,7 +838,10 @@ public final class CgVfxParticlePool {
                 .vec4(view.sourceX(), view.sourceY(), view.sourceZ(), view.time())
                 .vec4(share, groundY, stepScale, kill ? 1f : 0f)
                 .ivec4((int) bx, (int) by, (int) bz, 0)
-                .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f);
+                .vec4((float) (ox - bx), (float) (oy - by), (float) (oz - bz), 0f)
+                .vec4(view.fromX(), view.fromY(), view.fromZ(), 0f)
+                .vec4(view.boxX(), view.boxY(), view.boxZ(), 0f)
+                .vec4(view.boxHalfX(), view.boxHalfY(), view.boxHalfZ(), 0f);
         words.finish("its instance row's header");
         for (int i = 0; i < shape.modules(); i++) {
             int lanes = shape.laneCount(i);
@@ -838,13 +852,31 @@ public final class CgVfxParticlePool {
         }
     }
 
-    /** Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}. */
+    /** Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}, all bursts. */
     public void spawn(int slot, int firstSpawn, int candidates) {
+        spawn(slot, firstSpawn, candidates, 0);
+    }
+
+    /**
+     * Queues {@code candidates} spawns for {@code slot} this step, spawn indices from {@code firstSpawn}: the first
+     * {@code candidates - spread} born at the source where the step began, the last {@code spread} spread along where it
+     * went, each stepped for the rest of the step. After the slot's {@link #instance} row, once a step.
+     *
+     * <pre>{@code
+     * pool.spawn(slot, i.stepFirstSpawn(), i.stepCandidates(), i.stepCandidates() - i.stepBursts());
+     * }</pre>
+     */
+    public void spawn(int slot, int firstSpawn, int candidates, int spread) {
         inStep("spawn");
         openSlot(slot, "spawn");
-        if (firstSpawn < 0 || candidates < 0) throw new IllegalArgumentException("spawn " + firstSpawn + " + " + candidates);
+        if (firstSpawn < 0 || candidates < 0 || spread < 0 || spread > candidates) {
+            throw new IllegalArgumentException("spawn " + firstSpawn + " + " + candidates + ", " + spread + " spread");
+        }
         if (candidates == 0) return;
         int s = steps;
+        if (written[slot] != s + 1) throw new IllegalStateException("slot " + slot + " spawned before its instance row");
+        int bursts = stepInstanceAt[s] + slot * instanceWords + (INSTANCE_HEADER - 1) * 4 + 3;
+        instances[bursts] = Float.floatToRawIntBits(candidates - spread);
         if (spawns.length < spawnEnd + 4) spawns = Arrays.copyOf(spawns, Math.max(spawnEnd + 4, spawns.length * 2));
         spawns[spawnEnd] = slot;
         spawns[spawnEnd + 1] = firstSpawn;
@@ -957,13 +989,13 @@ public final class CgVfxParticlePool {
 
     /**
      * Replaces the pool's particles with the first {@code count} records of {@code data}, in {@link CgVfxRecord}'s
-     * layout and native order, ahead of the steps recorded after it: a check stepping the CPU's particles on the GPU.
+     * layout and native order, ahead of the steps recorded after it: a check stepping particles it placed itself.
      * Render thread, between steps.
      *
      * <pre>{@code
-     * for (int i = 0; i < n; i++) CgVfxRecord.pack(packed, i, cpu.particles(), i, slot, paramRow);
+     * packed.putFloat(r * CgVfxRecord.BYTES, x)...;      // each record's 20 words, CgVfxRecord's layout
      * pool.seed(recording, packed, n);
-     * pool.beginStep(dt, windX, windY, windZ);    // the step the CPU took, its instance rows and spawns
+     * pool.beginStep(dt, windX, windY, windZ);    // a step, its instance rows and spawns
      * ...
      * pool.endStep();
      * pool.record(recording);

@@ -12,7 +12,11 @@ import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.platform.gl.CgGL;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.primitive.CgBox;
+import com.crystalgraphics.shape.primitive.CgCapsule;
+import com.crystalgraphics.shape.primitive.CgCone;
 import com.crystalgraphics.shape.primitive.CgPlane;
+import com.crystalgraphics.shape.primitive.CgRing;
+import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -28,7 +32,6 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.CgVfxField;
-import com.crystalgraphics.vfx.particle.CgVfxGround;
 import com.crystalgraphics.vfx.particle.CgVfxModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -46,8 +49,7 @@ import java.util.function.Consumer;
  * X6's module catalogue, a station each, to walk round and compare: energy gathering into a core, a tornado, a bar
  * magnet's field, a shield taking shape; colliders (a sphere with collision events, a cage, a slope, a block, an
  * obstacle course); damping beside drag, a speed limit; flipbook smoke and fire, and the five facing modes. Every station
- * replays every {@link #PERIOD} seconds, so a switch of {@link CgVfxSystem#simulation} reaches it within one. The
- * stations span about 60 blocks along x and 30 along z round the origin; each stands on the world's ground under it
+ * replays every {@link #PERIOD} seconds. The stations span about 60 blocks along x and 30 along z round the origin; each stands on the world's ground under it
  * ({@link CgWorldQueries#groundBelow}), else at the origin's height, and its particles land on the world's ground
  * wherever it stands, else on its floor. The boulder's sparks and chips and the block's rain also hit whatever is on screen
  * through the scene's depth ({@link CgVfxModule.CollideDepth}): a mob or player standing under them. The harness's
@@ -70,10 +72,8 @@ public final class CgVfxModules {
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
     private static final int SHEETS_ZONE = CgTrace.name("demo.modules.sheets");
-    /** Columns of world ground a play's particles find, each way from its station: past the widest station's spread. */
-    private static final int GROUND_REACH = 16;
     /** The station grid: columns along x, rows along z, toward the camera. */
-    private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f};
+    private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f};
 
     private static final CgVfxSchema SCHEMA = CgVfxSchema.of("crystalgraphics:demo/modules");
     private static final CgVfxParam.Color GOLD = SCHEMA.color("gold", 0xFFFF8C1F);
@@ -100,9 +100,18 @@ public final class CgVfxModules {
     private static final CgKeyframes FADE = CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD)
             .to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build();
 
-    /** One station: its emitters started at their sources, its look, and what it stands beside. */
+    /** One station: its emitters started at their sources, its look, what it stands beside, and what moves them. */
     private record Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
-                           Consumer<Props> props) {
+                           Consumer<Props> props, Mover mover) {
+        Station(String name, float x, float z, CgVfxLook look, List<CgVfxEmitter> emitters, float[][] sources,
+                Consumer<Props> props) {
+            this(name, x, z, look, emitters, sources, props, null);
+        }
+    }
+
+    /** Where emitter {@code i}'s source is at {@code age}, written into {@code at}: a station whose sources travel. */
+    private interface Mover {
+        void at(int i, float age, float[] at);
     }
 
     /** What a station draws besides its particles: a collider's shape, a label over part of it. */
@@ -137,25 +146,29 @@ public final class CgVfxModules {
      */
     private static final class Play extends CgVfxEffect {
         private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
-        private final CgVfxGround ground;
+        private final Mover mover;
+        private final float[] at = new float[3];
 
         Play(Station station, double x, double y, double z) {
             super(station.look(), x + station.x(), y, z + station.z());
-            ground = new CgVfxGround(GROUND_REACH).reset(originX, originY, originZ, 0f, 0f, 0f);
+            mover = station.mover();
             for (int i = 0; i < station.emitters().size(); i++) {
                 CgVfxEmitterInstance emitter = new CgVfxEmitterInstance(station.emitters().get(i), seed + i * 0.137f);
                 float[] s = station.sources()[i];
                 emitter.start(s[0], s[1], s[2]);
-                emitter.ground(0f).ground(ground);
+                emitter.ground(0f);
                 emitters.add(emitter);
             }
         }
 
         @Override
         protected void tick(float dt) {
-            ground.fill(CgVfxGround.FILL_PER_TICK);
             boolean done = true;
             for (int i = 0; i < emitters.size(); i++) {
+                if (mover != null) {
+                    mover.at(i, age, at);
+                    emitters.get(i).moveTo(at[0], at[1], at[2]);
+                }
                 tick(emitters.get(i), dt);
                 done &= emitters.get(i).finished();
             }
@@ -207,6 +220,9 @@ public final class CgVfxModules {
         shield(COLUMNS[1], ROWS[2], dot);
         flipbooks(COLUMNS[2], ROWS[2], smokeSheet, fireSheet);
         facings(COLUMNS[3], ROWS[2], star, rune, wispSheet, dot, ring);
+        shapes(COLUMNS[0], ROWS[3]);
+        moving(COLUMNS[1], ROWS[3]);
+        wake(COLUMNS[2], ROWS[3]);
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
@@ -215,13 +231,80 @@ public final class CgVfxModules {
     // ── stations ──────────────────────────────────────────────────────────────
 
     /**
+     * Where particles are born, one shape each, left to right: a cone's spray aimed up, a ring's edge 24 even places
+     * round, a dome's surface flying outward, a thin box's sheet launched up within 10 degrees, and a capsule's segment
+     * 12 even places along it.
+     */
+    private void shapes(float x, float z) {
+        CgVfxEmitter cone = CgVfxEmitter.builder("shapeCone").capacity(600).rate(160f, 0f, PERIOD - 3f)
+                .shape(CgCone.of(0.6, Math.toRadians(18))).pointing(0f, 1f, 0f).speed(4f, 7f).life(0.9f, 1.3f)
+                .size(0.05f, 0.09f, 1f).heat(1f).module(new CgVfxModule.Gravity(5f)).opacity(FADE).build();
+        CgVfxEmitter ring = CgVfxEmitter.builder("shapeRing").capacity(600).rate(48f, 0f, PERIOD - 3f)
+                .shape(CgRing.of(1.6, 1.6, 0)).edge().ordered(24).speed(0f, 0f).life(2f, 2f)
+                .size(0.08f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Force(0f, 0.8f, 0f)).opacity(FADE).build();
+        CgVfxEmitter dome = CgVfxEmitter.builder("shapeDome").capacity(800).rate(220f, 0f, PERIOD - 3f)
+                .shape(CgSphere.of(1.4)).surface().hemisphere().speed(0.4f, 0.8f).life(1.2f, 1.8f)
+                .size(0.04f, 0.07f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter sheet = CgVfxEmitter.builder("shapeSheet").capacity(600).rate(160f, 0f, PERIOD - 3f)
+                .shape(CgBox.of(1.4, 0.02, 1.4)).direction(0f, 1f, 0f, 10f).speed(1.5f, 2.5f).life(1f, 1.4f)
+                .size(0.04f, 0.07f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxEmitter line = CgVfxEmitter.builder("shapeLine").capacity(400).rate(60f, 0f, PERIOD - 3f)
+                .shape(CgCapsule.between(0, 0, -1.6, 0, 0, 1.6, 0)).edge().ordered(12).outward().speed(0.3f, 0.3f)
+                .life(1.6f, 1.6f).size(0.06f, 0.06f, 1f).heat(1f).opacity(FADE).build();
+        List<CgVfxEmitter> emitters = List.of(cone, ring, dome, sheet, line);
+        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA);
+        for (CgVfxEmitter e : emitters) look.emitter(e).layer(sparkLayer(e, CYAN, WHITE));
+        float[][] sources = {{-6f, 0.3f, 0f}, {-3f, 0.6f, 0f}, {0f, 0.3f, 0f}, {3f, 0.6f, 0f}, {6f, 1.2f, 0f}};
+        stations.add(new Station("shapes: cone, ring edge ordered, dome surface, box sheet, capsule segment", x, z,
+                look.build(), emitters, sources, null));
+    }
+
+    /**
+     * A source moving 30 blocks a second round a circle: its rate spread along where it went each step, each particle
+     * stepped for the rest of the step from its birth, so it leaves an even line rather than clumps a step apart.
+     */
+    private void moving(float x, float z) {
+        CgVfxEmitter trail = CgVfxEmitter.builder("movingTrail").capacity(2000).rate(600f, 0f, PERIOD - 3f)
+                .speed(0f, 0.15f).life(1.2f, 1.6f).size(0.05f, 0.05f, 1f).heat(1f).opacity(FADE).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(trail).layer(sparkLayer(trail, GOLD, WHITE)).build();
+        Mover round = (i, age, at) -> {
+            float a = age * 30f / 3.5f;
+            at[0] = 3.5f * (float) Math.cos(a);
+            at[1] = 1.5f;
+            at[2] = 3.5f * (float) Math.sin(a);
+        };
+        stations.add(new Station("moving: a source at 30 blocks a second, its rate spread along its path", x, z, look,
+                List.of(trail), new float[][]{{3.5f, 1.5f, 0f}}, null, round));
+    }
+
+    /**
+     * A wake by distance: eight particles a block its source travels, each taking 40% of its velocity, along a line it
+     * runs back and forth on, faster each way; at each end it teleports across, spawning nothing over the jump.
+     */
+    private void wake(float x, float z) {
+        CgVfxEmitter wake = CgVfxEmitter.builder("wake").capacity(1500).ratePerBlock(8f, 0f, PERIOD - 3f).inherit(0.4f)
+                .shape(CgShell.of(0.1, 0.3)).launch(0.2f, 0.8f, 1f).speed(0.3f, 0.8f).life(1.4f, 2f)
+                .size(0.05f, 0.08f, 1f).heat(1f).module(new CgVfxModule.Drag(1.5f, 0f)).opacity(FADE).build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(wake).layer(sparkLayer(wake, CYAN, WHITE)).build();
+        Mover run = (i, age, at) -> {
+            // A run of 1.4 s from x -5 to 5, quicker as it goes; then it is back at -5 at once.
+            float t = (age % 1.4f) / 1.4f;
+            at[0] = -5f + 10f * t * t;
+            at[1] = 0.4f;
+            at[2] = 0f;
+        };
+        stations.add(new Station("wake: ratePerBlock 8 and inherit 0.4, teleporting at each end", x, z, look,
+                List.of(wake), new float[][]{{-5f, 0.4f, 0f}}, null, run));
+    }
+
+    /**
      * Energy gathering in a hand: motes drawn in by a pull that strengthens toward the centre, whirled faster the closer
      * they come (a constant push round the axis against drag: a free vortex), stirred by curl noise and swallowed by the
      * core, which swells as it charges and crackles with sparks.
      */
     private void gather(float x, float z) {
         CgVfxEmitter motes = CgVfxEmitter.builder("gather").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
-                .rate(380f, 0f, PERIOD - 3f).shape(6.5f).launch(-0.4f, 0.4f, 1f).speed(0f, 0.3f).life(3f, 4f)
+                .rate(380f, 0f, PERIOD - 3f).shape(CgSphere.of(6.5f)).launch(-0.4f, 0.4f, 1f).speed(0f, 0.3f).life(3f, 4f)
                 .size(0.04f, 0.1f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Attract(CgSphere.of(9f), 30f).attenuation(1.6f))
                 .module(new CgVfxModule.Vortex(0.15f, 1f, 0.1f, 7f, 0f, 0f, 0f, 0f))
@@ -238,7 +321,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
                 .build();
         CgVfxEmitter crackle = CgVfxEmitter.builder("gatherCrackle").renderer(CgVfxEmitter.Renderer.QUADS).capacity(600)
-                .rate(90f, 0.8f, PERIOD - 2f).shape(0.4f).launch(-1f, 1f, 1f).speed(2f, 5f).life(0.08f, 0.2f)
+                .rate(90f, 0.8f, PERIOD - 2f).shape(CgSphere.of(0.4f)).launch(-1f, 1f, 1f).speed(2f, 5f).life(0.08f, 0.2f)
                 .size(0.02f, 0.04f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
                 .module(new CgVfxModule.Drag(6f, 0f))
@@ -265,7 +348,7 @@ public final class CgVfxModules {
         CgBox box = CgBox.of(TORNADO_HALF, TORNADO_TOP / 2f, TORNADO_HALF);
         float boxY = TORNADO_TOP / 2f - 0.3f;
         CgVfxEmitter funnel = CgVfxEmitter.builder("tornado").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2000)
-                .rate(320f, 0f, PERIOD - 2.5f).shape(0.6f).launch(0f, 1f, 1f).speed(0f, 0.5f).life(3f, 4f)
+                .rate(320f, 0f, PERIOD - 2.5f).shape(CgSphere.of(0.6f)).launch(0f, 1f, 1f).speed(0f, 0.5f).life(3f, 4f)
                 .size(0.25f, 0.4f, 1f).spin(0.5f, 1.5f)
                 .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Turbulence(10f, 0.6f, 0.8f))
@@ -274,7 +357,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 0.9f, CgEasings.OUT_QUAD).to(0.75f, 0.8f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter debris = CgVfxEmitter.builder("tornadoDebris").renderer(CgVfxEmitter.Renderer.QUADS).capacity(800)
-                .rate(120f, 0f, PERIOD - 2.5f).shape(2.5f).launch(0f, 0.3f, 1f).speed(0.5f, 2f).life(2f, 3f)
+                .rate(120f, 0f, PERIOD - 2.5f).shape(CgSphere.of(2.5f)).launch(0f, 0.3f, 1f).speed(0.5f, 2f).life(2f, 3f)
                 .size(0.05f, 0.12f, 1.5f).spin(2f, 8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.2f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Gravity(9.8f))
@@ -282,7 +365,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Ground(0.2f, 0.05f, 0.3f))
                 .opacity(FADE).build();
         CgVfxEmitter dust = CgVfxEmitter.builder("tornadoDust").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(45f, 0f, PERIOD - 2.5f).shape(2.5f).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
+                .rate(45f, 0f, PERIOD - 2.5f).shape(CgSphere.of(2.5f)).launch(0f, 0.1f, 1f).speed(0.2f, 0.8f).life(1.6f, 2.4f)
                 .size(0.9f, 1.4f, 1f).spin(0.2f, 0.8f)
                 .module(new CgVfxModule.VectorField(air, box, 1.5f, 1f).at(0f, boxY, 0f))
                 .module(new CgVfxModule.Force(0f, -2f, 0f))
@@ -350,7 +433,7 @@ public final class CgVfxModules {
         List<float[]> sources = new ArrayList<>();
         for (int s = 0; s < shares.length; s++) {
             CgVfxEmitter shell = CgVfxEmitter.builder("fieldShell" + s).renderer(CgVfxEmitter.Renderer.QUADS)
-                    .capacity(900).rate(110f, 0f, PERIOD - 3.5f).shape(0.35f).launch(shares[s], shares[s] + 0.02f, 1f)
+                    .capacity(900).rate(110f, 0f, PERIOD - 3.5f).shape(CgSphere.of(0.35f)).launch(shares[s], shares[s] + 0.02f, 1f)
                     .speed(0.5f, 1f).life(4.5f, 5.5f).size(0.022f, 0.032f, 1.5f).heat(1f)
                     .module(new CgVfxModule.VectorField(air, box, drag, 1f).at(0f, boxY, 0f))
                     .module(new CgVfxModule.Vortex(0f, 1f, 0f, 6f, 0f, 0f, -MAGNET_POLE, 0f))
@@ -369,7 +452,7 @@ public final class CgVfxModules {
         CgVfxEmitter north = pole("fieldNorth"), south = pole("fieldSouth");
         CgVfxEmitter northCrackle = crackle("fieldNorthCrackle"), southCrackle = crackle("fieldSouthCrackle");
         CgVfxEmitter pulse = CgVfxEmitter.builder("fieldPulse").renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
-                .rate(0.8f, 0.5f, PERIOD - 3f).shape(0f).speed(0f, 0f).life(1.6f, 1.6f).size(1f, 1f, 1f).heat(1f)
+                .rate(0.8f, 0.5f, PERIOD - 3f).speed(0f, 0f).life(1.6f, 1.6f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 1f))
                 .size(CgKeyframes.start(0f, 0.3f).to(1f, 3.6f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 0.8f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
@@ -390,7 +473,7 @@ public final class CgVfxModules {
     /** Sparks crackling round a pole: short-lived, torn about by fast noise. */
     private static CgVfxEmitter crackle(String name) {
         return CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(70f, 0f, PERIOD - 2.5f).shape(0.25f).speed(2f, 5f).life(0.08f, 0.22f).size(0.02f, 0.04f, 1.5f)
+                .rate(70f, 0f, PERIOD - 2.5f).shape(CgSphere.of(0.25f)).speed(2f, 5f).life(0.08f, 0.22f).size(0.02f, 0.04f, 1.5f)
                 .heat(1f)
                 .module(new CgVfxModule.Turbulence(20f, 2f, 3f))
                 .module(new CgVfxModule.Drag(6f, 0f))
@@ -442,7 +525,7 @@ public final class CgVfxModules {
      */
     private void shield(float x, float z, CgTexture dot) {
         CgVfxEmitter motes = CgVfxEmitter.builder("shield").renderer(CgVfxEmitter.Renderer.QUADS).capacity(2500)
-                .rate(520f, 0f, PERIOD - 3f).shape(5.5f).launch(-0.5f, 0.5f, 1f).speed(0.3f, 1.5f).life(2.6f, 3.4f)
+                .rate(520f, 0f, PERIOD - 3f).shape(CgSphere.of(5.5f)).launch(-0.5f, 0.5f, 1f).speed(0.3f, 1.5f).life(2.6f, 3.4f)
                 .size(0.06f, 0.14f, 1.5f).heat(0.7f)
                 .module(new CgVfxModule.Conform(CgSphere.of(2.6f), 4.5f, 40f, 6f))
                 .module(new CgVfxModule.Turbulence(9f, 0.9f, 0.6f))
@@ -471,7 +554,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.CollideDepth(0.4f, 0.2f, 0.3f, DEPTH_THICKNESS))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter sparks = CgVfxEmitter.builder("boulder").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1200)
-                .rate(120f, 0f, PERIOD - 3f).shape(1.2f).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
+                .rate(120f, 0f, PERIOD - 3f).shape(CgSphere.of(1.2f)).launch(-1f, -0.7f, 1f).speed(0.5f, 2f).life(2.5f, 3f)
                 .size(0.08f, 0.14f, 1f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(CgSphere.of(1.8f), 0.6f, 0.05f, 0.3f).at(0f, -5.2f, 0f))
@@ -497,7 +580,7 @@ public final class CgVfxModules {
                 .speed(0f, 0f).life(0.06f, 0.12f).size(0.18f, 0.3f, 1f).heat(1f)
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.OUT_QUAD).build()).build();
         CgVfxEmitter balls = CgVfxEmitter.builder("cage").renderer(CgVfxEmitter.Renderer.QUADS).capacity(500)
-                .burst(0f, 300).burst(3.5f, 150).shape(1f).launch(-1f, 1f, 1f).speed(4f, 9f)
+                .burst(0f, 300).burst(3.5f, 150).shape(CgSphere.of(1f)).launch(-1f, 1f, 1f).speed(4f, 9f)
                 .life(PERIOD - 1f, PERIOD - 0.5f).size(0.1f, 0.2f, 1f).heat(0.9f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Collide(CgBox.of(2.5f, 2.5f, 2.5f), 0.78f, 0.03f, 0.4f).container())
@@ -540,7 +623,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.6f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         CgVfxEmitter shards = CgVfxEmitter.builder("slope").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
-                .rate(200f, 0f, PERIOD - 3f).shape(2.5f).launch(-1f, -0.8f, 1f).speed(0.5f, 1.5f).life(3f, 4f)
+                .rate(200f, 0f, PERIOD - 3f).shape(CgSphere.of(2.5f)).launch(-1f, -0.8f, 1f).speed(0.5f, 1.5f).life(3f, 4f)
                 .size(0.08f, 0.2f, 1.5f).spin(2f, 8f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 1.5f))
@@ -606,7 +689,7 @@ public final class CgVfxModules {
         // Still at launch, so gravity alone sets them falling straight down; the launch only spreads where they start.
         // Long enough lived to fall 90 blocks, to the ground under a station standing in the air.
         CgVfxEmitter.Builder rain = CgVfxEmitter.builder(name).renderer(CgVfxEmitter.Renderer.QUADS).capacity(1000)
-                .rate(rate, 0f, PERIOD - 3f).shape(spread).launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f)
+                .rate(rate, 0f, PERIOD - 3f).shape(CgSphere.of(spread)).launch(-1f, 0f, 1f).speed(0f, 0f).life(3f, 3f)
                 .size(0.025f, 0.035f, 1f).heat(0.4f)
                 .module(new CgVfxModule.Gravity(20f))
                 .module(new CgVfxModule.Collide(CgBox.of(1.5f, 1f, 1.5f), 0f, 0f, 0f).at(0f, 1f - source, 0f))
@@ -641,7 +724,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(1.5f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter beads = CgVfxEmitter.builder("obstacles").renderer(CgVfxEmitter.Renderer.QUADS).capacity(1500)
-                .rate(220f, 0f, PERIOD - 3f).shape(0.4f).launch(-1f, -0.9f, 1f).speed(0f, 0f).life(4.5f, 5.5f)
+                .rate(220f, 0f, PERIOD - 3f).shape(CgSphere.of(0.4f)).launch(-1f, -0.9f, 1f).speed(0f, 0f).life(4.5f, 5.5f)
                 .size(0.05f, 0.08f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 2.5f))
@@ -739,7 +822,7 @@ public final class CgVfxModules {
      */
     private void flipbooks(float x, float z, CgTexture smokeSheet, CgTexture fireSheet) {
         CgVfxEmitter puffs = CgVfxEmitter.builder("puffs").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(18f, 0f, PERIOD - 3f).shape(0.5f).launch(0.8f, 1f, 1f).speed(0.8f, 1.5f).life(3f, 4f)
+                .rate(18f, 0f, PERIOD - 3f).shape(CgSphere.of(0.5f)).launch(0.8f, 1f, 1f).speed(0.8f, 1.5f).life(3f, 4f)
                 .size(0.7f, 1.1f, 1f).spin(0.05f, 0.35f).heat(0.7f)
                 .module(new CgVfxModule.Buoyancy(3f, 1.5f))
                 .module(new CgVfxModule.Turbulence(1.4f, 0.3f, 0.35f))
@@ -748,7 +831,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.15f, 0.95f, CgEasings.OUT_QUAD).to(0.6f, 0.75f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter fire = CgVfxEmitter.builder("fire").renderer(CgVfxEmitter.Renderer.QUADS).capacity(300)
-                .rate(55f, 0f, PERIOD - 3f).shape(0.4f).launch(0.85f, 1f, 1f).speed(0.4f, 1f).life(0.6f, 1f)
+                .rate(55f, 0f, PERIOD - 3f).shape(CgSphere.of(0.4f)).launch(0.85f, 1f, 1f).speed(0.4f, 1f).life(0.6f, 1f)
                 .size(0.55f, 0.9f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(5f, 1.2f))
                 .module(new CgVfxModule.Turbulence(2.5f, 0.9f, 1.4f))
@@ -757,14 +840,14 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(0.7f, 0.9f, CgEasings.LINEAR)
                         .to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter embers = CgVfxEmitter.builder("fireEmbers").renderer(CgVfxEmitter.Renderer.QUADS).capacity(200)
-                .rate(18f, 0f, PERIOD - 3f).shape(0.3f).launch(0.8f, 1f, 1f).speed(1f, 2.5f).life(1.2f, 2.2f)
+                .rate(18f, 0f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.8f, 1f, 1f).speed(1f, 2.5f).life(1.2f, 2.2f)
                 .size(0.025f, 0.05f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(7f, 0.9f))
                 .module(new CgVfxModule.Turbulence(7f, 1.1f, 1.5f))
                 .module(new CgVfxModule.Drag(0.8f, 0f))
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter soot = CgVfxEmitter.builder("fireSmoke").renderer(CgVfxEmitter.Renderer.QUADS).capacity(100)
-                .rate(9f, 0.4f, PERIOD - 3f).shape(0.3f).launch(0.9f, 1f, 1f).speed(0.4f, 0.8f).life(2.5f, 3.5f)
+                .rate(9f, 0.4f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.9f, 1f, 1f).speed(0.4f, 0.8f).life(2.5f, 3.5f)
                 .size(0.6f, 0.9f, 1f).spin(0.1f, 0.4f).heat(0.5f)
                 .module(new CgVfxModule.Buoyancy(2.5f, 2f))
                 .module(new CgVfxModule.Turbulence(1.2f, 0.35f, 0.3f))
@@ -795,14 +878,14 @@ public final class CgVfxModules {
     private void facings(float x, float z, CgTexture star, CgTexture rune, CgTexture wisp, CgTexture dot,
                          CgTexture ring) {
         CgVfxEmitter glints = CgVfxEmitter.builder("faceCamera").renderer(CgVfxEmitter.Renderer.QUADS).capacity(120)
-                .rate(16f, 0f, PERIOD - 3f).shape(1f).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
+                .rate(16f, 0f, PERIOD - 3f).shape(CgSphere.of(1f)).speed(0.05f, 0.2f).life(1.5f, 2.5f).size(0.2f, 0.45f, 1.5f)
                 .spin(0.3f, 1.2f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0.4f, 1.5f))
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(CgKeyframes.start(0f, 0f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(0.45f, 0.35f, CgEasings.IN_OUT_QUAD)
                         .to(0.7f, 1f, CgEasings.IN_OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build()).build();
         CgVfxEmitter runes = CgVfxEmitter.builder("facePosition").renderer(CgVfxEmitter.Renderer.QUADS).capacity(40)
-                .rate(4f, 0f, PERIOD - 3.5f).shape(0.9f).launch(-0.2f, 0.2f, 1f).speed(0f, 0f).life(3f, 3.5f)
+                .rate(4f, 0f, PERIOD - 3.5f).shape(CgSphere.of(0.9f)).launch(-0.2f, 0.2f, 1f).speed(0f, 0f).life(3f, 3.5f)
                 .size(0.4f, 0.55f, 1f).spin(0.2f, 0.5f).heat(1f)
                 .module(new CgVfxModule.Vortex(0f, 1f, 0f, 1.2f, -0.8f, 0f, 0f, 0f))
                 .module(new CgVfxModule.Force(0f, 0.35f, 0f))
@@ -810,7 +893,7 @@ public final class CgVfxModules {
                 .module(new CgVfxModule.Drag(1f, 0f))
                 .opacity(FADE).build();
         CgVfxEmitter flames = CgVfxEmitter.builder("faceUpright").renderer(CgVfxEmitter.Renderer.QUADS).capacity(150)
-                .rate(30f, 0f, PERIOD - 3f).shape(0.3f).launch(0.85f, 1f, 1f).speed(0.3f, 0.8f).life(0.6f, 1f)
+                .rate(30f, 0f, PERIOD - 3f).shape(CgSphere.of(0.3f)).launch(0.85f, 1f, 1f).speed(0.3f, 0.8f).life(0.6f, 1f)
                 .size(0.55f, 0.85f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(4f, 1f))
                 .module(new CgVfxModule.Turbulence(2.5f, 0.6f, 1.2f))
@@ -820,7 +903,7 @@ public final class CgVfxModules {
                 .build();
         // Near upright, so the fountain stays in its lane: 1.5 blocks out at most, bounces included.
         CgVfxEmitter sparks = CgVfxEmitter.builder("faceVelocity").renderer(CgVfxEmitter.Renderer.QUADS).capacity(250)
-                .rate(90f, 0f, PERIOD - 3f).shape(0.05f).launch(0.99f, 1f, 1f).speed(5f, 7f).life(1.2f, 1.8f)
+                .rate(90f, 0f, PERIOD - 3f).shape(CgSphere.of(0.05f)).launch(0.99f, 1f, 1f).speed(5f, 7f).life(1.2f, 1.8f)
                 .size(0.045f, 0.07f, 1.5f).heat(1f)
                 .module(new CgVfxModule.Gravity(9.8f))
                 .module(new CgVfxModule.Buoyancy(0f, 0.6f))
@@ -829,7 +912,7 @@ public final class CgVfxModules {
                 .opacity(CgKeyframes.start(0f, 1f).to(0.8f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
                 .build();
         CgVfxEmitter waves = CgVfxEmitter.builder("faceAxis").renderer(CgVfxEmitter.Renderer.QUADS).capacity(8)
-                .rate(1.6f, 0f, PERIOD - 3f).shape(0f).speed(0f, 0f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
+                .rate(1.6f, 0f, PERIOD - 3f).speed(0f, 0f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
                 .module(new CgVfxModule.Buoyancy(0f, 0.8f))
                 .size(CgKeyframes.start(0f, 0.15f).to(1f, 1.5f, CgEasings.OUT_CUBIC).build())
                 .opacity(CgKeyframes.start(0f, 1f).to(1f, 0f, CgEasings.IN_QUAD).build()).build();

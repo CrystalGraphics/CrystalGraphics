@@ -90,7 +90,7 @@ vec4 fx_world_field(sampler3D distance, sampler3D sections, ivec3 base, ivec3 wr
     return vec4(gradient, mix(y.x, y.y, f.z));
 }
 
-// CgVfxGround.floor on the window, at half a block: the highest surface under a particle at p from its origin that
+// The floor on the window, at half a block: the highest surface under a particle at p from its origin that
 // was at previousY a step ago, relative to the origin, not above max(y, previousY) + 0.01 so it cannot tunnel. A
 // surface is the top of a solid half block with air over it, so a particle inside solid lands under that span. NaN
 // for none within FX_WORLD_SCAN blocks, or once the column reaches a block not known.

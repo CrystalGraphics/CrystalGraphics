@@ -1,7 +1,9 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEvent;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
@@ -21,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <pre>{@code
  * static final CgVfxEmitter EMBERS = CgVfxEmitter.builder("embers")
  *         .capacity(400).burst(0f, 360)
- *         .launch(-0.1f, 1f, 0.6f).speed(6f, 18f)          // up-biased, 6..18 blocks a second
+ *         .shape(CgSphere.of(0.5)).launch(-0.1f, 1f, 0.6f).speed(6f, 18f)   // up-biased, 6..18 blocks a second
  *         .life(4f, 7f).size(0.05f, 0.25f, 2f).heat(1f)
  *         .module(new CgVfxModule.Gravity(9.8f))
  *         .module(new CgVfxModule.Drag(4f, 0f))
@@ -35,10 +37,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * CgVfxEmitter sparse = EMBERS.toBuilder().capacity(120).burst(0f, 100).build();
  * }</pre>
  *
+ * Where particles are born and which way they fly:
+ *
+ * <pre>{@code
+ * CgVfxEmitter.builder("spray").shape(CgCone.of(3, Math.toRadians(25))).speed(4f, 8f)   // a muzzle's spray
+ * CgVfxEmitter.builder("ring").shape(CgRing.of(2.8, 3, 0)).edge().ordered(32)            // 32 evenly round a ring
+ * CgVfxEmitter.builder("dome").shape(CgSphere.of(2)).surface().hemisphere()              // on a dome, outward
+ * CgVfxEmitter.builder("sheet").shape(CgBox.of(2, 0.05, 2)).direction(0, 1, 0, 10f)      // up, within 10 degrees
+ * CgVfxEmitter.builder("wake").capacity(600).ratePerBlock(6f).inherit(0.4f)              // six a block the source moves
+ * CgVfxEmitter.builder("glow").mesh("mymod:models/sword.obj")                            // off a sword's surface
+ * CgVfxEmitter.builder("aura").entity().surface().local()                                // off whoever its effect follows
+ * }</pre>
+ *
  * <ul>
  *   <li>{@link Builder#capacity} bounds the live particles; a spawn into a full set is dropped.</li>
- *   <li>The launch direction is the vertical share {@code up} in [{@code upMin}, {@code upMax}], skewed toward
- *       {@code upMax} by a bias under 1, at any heading.</li>
+ *   <li>A source that moves within a step spreads that step's rate along its path, each particle stepped for the part of
+ *       the step after its birth: a fast emitter leaves an even line, never clumps a step apart.</li>
  *   <li>The player's density setting thins every emitter; one marked {@link Builder#optional} spawns half again at the
  *       Low quality tier.</li>
  *   <li>Particles live in the world: an effect that moves ({@code follow}) spawns them where it is now, and those already
@@ -65,7 +79,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final float[] burstTimes;
     final int[] burstCounts;
     final float rate, rateFrom, rateUntil;
-    final float shapeInner, shapeRadius, sweep, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    final float sweep, upMin, upMax, upBias, speedMin, speedMax, lifeMin, lifeMax;
+    final CgVfxSpawnShape spawn;
+    /** Spawns a block the source moves and when, the most blocks a step may move and still count, its velocity's share. */
+    final float perBlock, blockFrom, blockUntil, maxStep, inherit;
     /** The sweep as spawn k's front, {@code frontA k - frontB k^2} blocks, k held at its peak: what both paths read. */
     final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
@@ -93,8 +110,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         rate = b.rate;
         rateFrom = b.rateFrom;
         rateUntil = b.rateUntil;
-        shapeInner = b.shapeInner;
-        shapeRadius = b.shapeRadius;
+        spawn = b.spawn.build(b.name);
+        perBlock = b.perBlock;
+        blockFrom = b.blockFrom;
+        blockUntil = b.blockUntil;
+        maxStep = b.maxStep;
+        inherit = b.inherit;
         sweep = b.sweep;
         // Spawn k is born k / rate into the rate's span T: the front, sweep (t - t^2 / 2T), in k.
         float span = b.rateUntil - b.rateFrom;
@@ -134,8 +155,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /**
      * This emitter at {@code scale} times its size, on the same clock: where particles start, how fast they fly, how big
-     * they are, and each module's lengths and forces ({@link CgVfxModule#scaled}), so the same burst plays smaller or
-     * larger. Event children scale with it. One copy per scale, kept: an effect may ask at every start.
+     * they are, how far apart a rate per block spaces them, and each module's lengths and forces
+     * ({@link CgVfxModule#scaled}), so the same burst plays smaller or larger. Event children scale with it. One copy per
+     * scale, kept: an effect may ask at every start.
      *
      * <pre>{@code
      * // a kit authored for a 9.6-block blast, at 3.6 blocks
@@ -148,8 +170,9 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         if (scale == 1f) return this;
         return scaledCopies.computeIfAbsent(scale, s -> {
             Builder b = toBuilder();
-            b.shapeInner *= s;
-            b.shapeRadius *= s;
+            b.spawn = new CgVfxSpawnShape.Builder(spawn.scaled(s, name));
+            b.perBlock /= s;
+            b.maxStep *= s;
             b.sweep *= s;
             b.speedMin *= s;
             b.speedMax *= s;
@@ -199,12 +222,17 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     @Override
+    public boolean spawnsOnMesh() {
+        return spawn.kind() == CgVfxSpawnShape.MESH;
+    }
+
+    @Override
     public void writeSpawn(CgVfxWords out) {
-        out.vec4(shapeRadius, upMin, upMax, upBias)
-           .vec4(speedMin, speedMax, lifeMin, lifeMax)
+        out.vec4(speedMin, speedMax, lifeMin, lifeMax)
            .vec4(sizeMin, sizeMax, sizeSkew, heat)
-           .vec4(spinMin, spinMax, shapeInner, 0f)
+           .vec4(spinMin, spinMax, inherit, 0f)
            .vec4(frontA, frontB, 0f, 0f);
+        spawn.write(out, upMin, upMax, upBias);
     }
 
     /** How far out spawn {@code k}'s front has swept, in blocks: 0 without {@link Builder#sweep}. */
@@ -234,16 +262,22 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     }
 
     /**
-     * The most particles one instance can have alive at once, at full share: what a GPU pool sizes its slot by, since a
-     * pool never drops a spawn. Every burst within any span of its longest life, plus its rate over that span.
+     * The most particles one instance can have alive at once, at full share: what a GPU pool sizes its slot by. Every
+     * burst within any span of its longest life, plus its rate over that span, and never past its {@link #capacity}, which
+     * the instance's books hold it to.
      *
      * <pre>{@code
      * int slot = pool.open(EMBERS, EMBERS.peakAlive());
      * }</pre>
      */
     public int peakAlive() {
+        return Math.min(capacity, uncappedPeak());
+    }
+
+    /** The most alive at once if nothing held it to its capacity: unbounded for a rate per block. */
+    int uncappedPeak() {
         // A particle can outlast its life by its last step: a tenth of a second covers any particle step.
-        return spawnsWithin(lifeMax + 0.1f);
+        return perBlock > 0f ? Integer.MAX_VALUE : spawnsWithin(lifeMax + 0.1f);
     }
 
     /**
@@ -306,7 +340,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             wind |= modules.get(i) instanceof CgVfxModule.Wind;
         }
         float swept = sweep != 0f ? 0.5f * Math.abs(sweep) * (rateUntil - rateFrom) : 0f;
-        return shapeRadius + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
+        return spawn.extent() + swept + speedMax * lifeMax + 0.5f * pull * lifeMax * lifeMax + (wind ? windSpeed * lifeMax : 0f);
     }
 
     /** The largest a particle draws, before a look's own scale: its largest size times its size curve's peak. */
@@ -316,7 +350,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
 
     /** Seconds from the instance's start after which this emitter spawns nothing more. */
     float lastSpawn() {
-        float last = rate > 0f ? rateUntil : 0f;
+        float last = Math.max(rate > 0f ? rateUntil : 0f, perBlock > 0f ? blockUntil : 0f);
         for (float t : burstTimes) last = Math.max(last, t);
         return last;
     }
@@ -330,7 +364,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private final List<Float> burstTimes = new ArrayList<>();
         private final List<Integer> burstCounts = new ArrayList<>();
         private float rate, rateFrom, rateUntil;
-        private float shapeInner, shapeRadius, sweep;
+        private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
+        private float sweep, perBlock, blockFrom, blockUntil, inherit, maxStep = 8f;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
@@ -360,8 +395,12 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             rate = e.rate;
             rateFrom = e.rateFrom;
             rateUntil = e.rateUntil;
-            shapeInner = e.shapeInner;
-            shapeRadius = e.shapeRadius;
+            spawn = new CgVfxSpawnShape.Builder(e.spawn);
+            perBlock = e.perBlock;
+            blockFrom = e.blockFrom;
+            blockUntil = e.blockUntil;
+            maxStep = e.maxStep;
+            inherit = e.inherit;
             sweep = e.sweep;
             upMin = e.upMin;
             upMax = e.upMax;
@@ -405,7 +444,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * simulation space and Niagara's Local Space; an event's children take their parent's.
          *
          * <pre>{@code
-         * CgVfxEmitter.builder("auraSparkles").local().rate(40f, 0f, Float.POSITIVE_INFINITY).shape(0.6f, 0.9f)...
+         * CgVfxEmitter.builder("auraSparkles").local().rate(40f, 0f, Float.POSITIVE_INFINITY).shape(CgShell.of(0.6f, 0.9f))...
          * }</pre>
          */
         public Builder local() {
@@ -413,7 +452,10 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** Live particles at most. */
+        /**
+         * Live particles at most, 256 unless given: a spawn that would pass it is dropped. The slot it plays in is sized by
+         * the least of this and what its bursts and rate can have alive ({@link CgVfxEmitter#peakAlive}).
+         */
         public Builder capacity(int capacity) {
             this.capacity = capacity;
             return this;
@@ -438,18 +480,170 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** Particles start within this many blocks of the source, along their launch direction. */
-        public Builder shape(float radius) {
-            return shape(0f, radius);
+        /**
+         * Where particles are born: filling {@code shape}, about the source. A point unless given.
+         *
+         * <pre>{@code
+         * .shape(CgSphere.of(1.2))                     // anywhere in a ball
+         * .shape(CgShell.of(9, 11))                    // between two spheres: a cloud rolling out from an edge
+         * .shape(CgCone.of(3, Math.toRadians(25)))     // a spray along +Z; pointing(...) turns it
+         * .shape(CgRing.of(2.8, 3, 0)).edge()          // on a circle on the ground
+         * .shape(CgCapsule.between(0, 0, 0, 0, 0, 12, 0.3)).edge()   // along a line, 12 blocks forward
+         * }</pre>
+         *
+         * <table>
+         *   <tr><th>Shape</th><th>Its axis</th><th>{@link #edge}</th></tr>
+         *   <tr><td>{@code CgSphere}, {@code CgShell}</td><td>+Y</td><td>its equator</td></tr>
+         *   <tr><td>{@code CgBox}</td><td>+Y</td><td>its twelve edges</td></tr>
+         *   <tr><td>{@code CgCylinder}, {@code CgRing}</td><td>+Y</td><td>its outer circles</td></tr>
+         *   <tr><td>{@code CgCone}</td><td>+Z, from its apex</td><td>its rim</td></tr>
+         *   <tr><td>{@code CgCapsule}</td><td>along its segment</td><td>the segment</td></tr>
+         * </table>
+         *
+         * <ul>
+         *   <li>Uniform throughout: a ball fills by volume, a surface by area, an edge by length.</li>
+         *   <li>A shell's or ring's front, a plane, a compound or a hull throws: none has an inside to be born in.</li>
+         * </ul>
+         */
+        public Builder shape(CgShape shape) {
+            this.spawn.shape(shape, name);
+            return this;
         }
 
         /**
-         * Particles start between {@code inner} and {@code outer} blocks from the source, along their launch direction:
-         * a shell, as a cloud rolling out from the edge of something already there.
+         * Born on {@code mesh}'s surface, by area, and launched along its normal there unless told otherwise: a blade
+         * glowing, a rune burning off a model. Turned from its +Y by {@link #pointing} and moved by {@link #at}, as a
+         * shape is.
+         *
+         * <pre>{@code
+         * .mesh(SWORD).rate(80f).speed(0.2f, 0.6f)                                  // glowing off the blade
+         * .mesh(CgProceduralMesh.revolve(CgProceduralMesh.sphere(2f, 0f, 2f)).build())   // a dome of your own making
+         * }</pre>
+         *
+         * <ul>
+         *   <li>Read once, at its first spawn: an edit after that is not seen. Triangles, float positions.</li>
+         *   <li>Its surface or {@link #vertices()}: {@link #edge()}, {@link #hemisphere()} and {@link #arc} throw.</li>
+         * </ul>
          */
-        public Builder shape(float inner, float outer) {
-            shapeInner = inner;
-            shapeRadius = outer;
+        public Builder mesh(CgMesh mesh) {
+            if (mesh == null) throw new IllegalArgumentException(name + ": mesh(null)");
+            spawn.mesh(mesh, null);
+            return this;
+        }
+
+        /** As {@link #mesh(CgMesh)}, an OBJ or glTF file loaded at its first spawn: a server naming it loads nothing. */
+        public Builder mesh(String path) {
+            if (path == null) throw new IllegalArgumentException(name + ": mesh(null)");
+            spawn.mesh(null, path);
+            return this;
+        }
+
+        /**
+         * Born at the {@link #mesh}'s vertices instead of across its surface, each launched along its normal: one at
+         * random, or with {@link #ordered} spawn {@code k} at the {@code k mod n}-th of {@code n} spread through them
+         * in their order.
+         *
+         * <pre>{@code
+         * .mesh("mymod:models/rune.obj").vertices().ordered(64).burst(0f, 64)   // one at each of 64 of its vertices
+         * }</pre>
+         */
+        public Builder vertices() {
+            spawn.placement = CgVfxSpawnShape.VERTICES;
+            return this;
+        }
+
+        /**
+         * Born in the box of the entity its effect follows ({@code CgVfxEffect.follow}), as it stands each step, and
+         * launched out of its middle: an aura round whoever casts it, embers off a burning mob. {@link #surface} and
+         * {@link #edge} put them on its faces or edges.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("aura").entity().surface().rate(60f).speed(0.1f, 0.4f).local()
+         * }</pre>
+         *
+         * <ul>
+         *   <li>An effect following nothing has no box: they are born at the source.</li>
+         *   <li>The box is axis aligned where the entity stands: {@link #pointing}, {@link #at}, {@link #arc} and
+         *       {@link #ordered} throw.</li>
+         * </ul>
+         */
+        public Builder entity() {
+            spawn.entity();
+            return this;
+        }
+
+        /** Born on the shape's surface, by area, rather than filling it. */
+        public Builder surface() {
+            spawn.placement = CgVfxSpawnShape.SURFACE;
+            return this;
+        }
+
+        /** Born on the shape's edge ({@link #shape}'s table), by length: a ring's circle, a capsule's segment. */
+        public Builder edge() {
+            spawn.placement = CgVfxSpawnShape.EDGE;
+            return this;
+        }
+
+        /** Only the half of the shape above its middle along its axis: a dome, a half pillar. */
+        public Builder hemisphere() {
+            spawn.hemisphere = true;
+            return this;
+        }
+
+        /** Only {@code degrees} of the way round its axis from its +X: a crescent of a ring. Not on a box. */
+        public Builder arc(float degrees) {
+            if (!(degrees > 0f && degrees <= 360f)) throw new IllegalArgumentException(name + ": an arc of " + degrees);
+            spawn.arc = (float) Math.toRadians(degrees);
+            return this;
+        }
+
+        /**
+         * Spawn {@code k} at the {@code k mod n}-th of {@code n} even places round the shape's axis (along a capsule's
+         * edge), rather than at random: the evenly spaced rings anime effects are made of (Effekseer's ordered spawning).
+         * A partial {@link #arc} puts one at each end. Not on a box.
+         *
+         * <pre>{@code
+         * .shape(CgRing.of(3, 3, 0)).edge().ordered(24).burst(0f, 24)   // 24 evenly round, once
+         * }</pre>
+         */
+        public Builder ordered(int n) {
+            if (n < 1) throw new IllegalArgumentException(name + ": ordered(" + n + ")");
+            spawn.ordered = n;
+            return this;
+        }
+
+        /** Turns the shape so its axis ({@link #shape}'s table) points along {@code (x, y, z)}: a cone aimed up, a ring stood on its edge. */
+        public Builder pointing(float x, float y, float z) {
+            spawn.pointing(x, y, z, name);
+            return this;
+        }
+
+        /** Moves the shape {@code (x, y, z)} blocks from the source, after it is turned. */
+        public Builder at(float x, float y, float z) {
+            spawn.atX = x;
+            spawn.atY = y;
+            spawn.atZ = z;
+            return this;
+        }
+
+        /** Launched away from the shape's middle: its centre, or a cylinder's or capsule's axis. The default. */
+        public Builder outward() {
+            spawn.mode = CgVfxSpawnShape.OUTWARD;
+            return this;
+        }
+
+        /** Launched toward the shape's middle: a gathering, an implosion. */
+        public Builder inward() {
+            spawn.mode = CgVfxSpawnShape.INWARD;
+            return this;
+        }
+
+        /**
+         * Launched along {@code (x, y, z)}, in the effect's frame, within {@code spreadDegrees} of it, wherever it is born.
+         * An event's children take the event's normal as up.
+         */
+        public Builder direction(float x, float y, float z, float spreadDegrees) {
+            spawn.direction(x, y, z, spreadDegrees, name);
             return this;
         }
 
@@ -459,7 +653,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
          * {@code speed} times the rate's span, halved; a size curve of {@code OUT_QUAD} over that span follows it.
          *
          * <pre>{@code
-         * CgVfxEmitter.builder("skirt").rate(400f, 0f, 1.6f).shape(9f, 9.5f).launch(0f, 0.15f, 1f)
+         * CgVfxEmitter.builder("skirt").rate(400f, 0f, 1.6f).shape(CgShell.of(9f, 9.5f)).launch(0f, 0.15f, 1f)
          *         .sweep(46f)                                    // 9 blocks out at the start, 46 at 1.6 s
          *         ...
          * }</pre>
@@ -474,11 +668,55 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             return this;
         }
 
-        /** The launch direction's vertical share, from {@code upMin} to {@code upMax}, skewed up by a bias under 1. */
+        /**
+         * Launched at any heading with an upward share from {@code upMin} to {@code upMax}, skewed up by a bias under 1.
+         * On a point or a sphere it is also where they are born, along that direction: a ball that only fills its lower
+         * half, debris thrown up and out.
+         *
+         * <pre>{@code
+         * .shape(CgSphere.of(3)).launch(0.05f, 1f, 0.7f)    // born and flying in the upper half, mostly up
+         * }</pre>
+         */
         public Builder launch(float upMin, float upMax, float bias) {
             this.upMin = upMin;
             this.upMax = upMax;
             this.upBias = bias;
+            spawn.mode = CgVfxSpawnShape.LAUNCH;
+            return this;
+        }
+
+        /**
+         * {@code perBlock} particles for each block its source moves, from the start until it is
+         * {@link CgVfxEmitterInstance#stop stopped}, beside its {@link #rate}: a wake, a trail of footsteps. A step moving
+         * farther than {@link #maxStep} is a teleport and spawns nothing by distance. How fast its source travels is
+         * unbounded, so its {@link #capacity} is what holds it: give it one.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("wake").capacity(600).ratePerBlock(6f).inherit(0.4f)...
+         * wake.moveTo(x, y, z);   // each tick: the books count how far it went
+         * }</pre>
+         */
+        public Builder ratePerBlock(float perBlock) {
+            return ratePerBlock(perBlock, 0f, Float.POSITIVE_INFINITY);
+        }
+
+        /** {@code perBlock} particles for each block its source moves from {@code from} to {@code until} seconds after its start. */
+        public Builder ratePerBlock(float perBlock, float from, float until) {
+            this.perBlock = perBlock;
+            blockFrom = from;
+            blockUntil = until;
+            return this;
+        }
+
+        /** The farthest a source may move in one step and still spawn by distance and give its velocity: 8 blocks unless given. */
+        public Builder maxStep(float blocks) {
+            this.maxStep = blocks;
+            return this;
+        }
+
+        /** Each particle starts with {@code share} of its source's velocity, as an event's children take their parent's. */
+        public Builder inherit(float share) {
+            this.inherit = share;
             return this;
         }
 

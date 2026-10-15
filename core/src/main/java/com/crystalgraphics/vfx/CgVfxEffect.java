@@ -16,9 +16,7 @@ import com.crystalgraphics.vfx.look.CgVfxEnding;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxValues;
-import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
-import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -81,6 +79,9 @@ public abstract class CgVfxEffect {
     /** Keeps its offset from the point ({@link #followKeepingOffset}): NaN until its first placement measures it. */
     boolean followKeep;
     double followDx = Double.NaN, followDy, followDz;
+    /** The followed entity's box this frame: its centre in the world and half extents; halves 0 while it follows none. */
+    double followBoxX, followBoxY, followBoxZ;
+    float followHalfX, followHalfY, followHalfZ;
     /** Seconds into its life it starts at, for its system's first update to fast-forward to; 0 once there. */
     float startAge;
     /** Fast-forwarding to its start age: shakes and moments are not played. */
@@ -94,13 +95,11 @@ public abstract class CgVfxEffect {
     private int scheduledCount;
     /** Its look's materials have been handed to the system to compile ahead of use. */
     boolean warmed;
-    /** Its emitters' GPU programs have been started, for {@code vfx.sim=gpu}. */
+    /** Its emitters' GPU programs have been started. */
     boolean gpuPrepared;
     private final CgVfxLook look;
     private final CgVfxValues values;
     private State state = State.PLAYING;
-    /** The air an effect's particles move through before it is played: still. */
-    private static final CgVfxAir STILL = new CgVfxAir().wind(0f, 0f, 0f);
     private double groundY = Double.NaN;
     /** The shakes it holds, by parameter; made when first held. */
     private CgVfxParam.Shake[] heldParams;
@@ -119,14 +118,9 @@ public abstract class CgVfxEffect {
     private int dueCount;
     /** Each queued emitter's step, in particle steps: an effect may tick each at its own dt. */
     private float[] dueDts = new float[0];
-    /** Live particles of the queued emitters the CPU steps: what decides whether the system's workers wake. */
-    private int dueCpuParticles;
     /** The emitters {@link #tickEmitters} scheduled for the first time, for the system's GPU queue. */
     private CgVfxEmitterInstance[] admitted = new CgVfxEmitterInstance[0];
     private int admittedCount;
-    /** The CPU-stepped emitters whose step this tick left event rows, delivered by the system after the steps. */
-    private CgVfxEmitterInstance[] reporting = new CgVfxEmitterInstance[0];
-    private int reportingCount;
     /** Values easing toward a target: each one's float offset (-1 its presence), from, to, start, length, easing. */
     private int[] tweenAt = new int[0];
     private float[] tweenFrom = new float[0], tweenTo = new float[0], tweenStart = new float[0], tweenLength = new float[0];
@@ -296,7 +290,7 @@ public abstract class CgVfxEffect {
      * what else is the client's:
      *
      * <pre>{@code
-     * if (!authoritative()) blastGround.fill(CgVfxGround.FILL_PER_TICK);   // reads the client's world
+     * if (!authoritative()) decals.scorch(hitX, hitY, hitZ);   // the client's world
      * }</pre>
      */
     public final boolean authoritative() {
@@ -735,7 +729,7 @@ public abstract class CgVfxEffect {
 
     /**
      * Where its particles land where the host has no world (the harness), as a world height; NaN, the default, for no
-     * ground. In a world they land on its own surfaces ({@code CgVfxGround}).
+     * ground. In a world they land on its blocks (the voxel window).
      */
     public final CgVfxEffect ground(double worldY) {
         groundY = worldY;
@@ -747,16 +741,11 @@ public abstract class CgVfxEffect {
         return (float) (groundY - originY);
     }
 
-    /** The air its particles move through: its system's, or still air before it is played. */
-    protected final CgVfxAir air() {
-        return system != null ? system.air() : STILL;
-    }
-
     /**
-     * Advances one of its emitters by a tick, in its system's air and at its spawn share, sampling turbulence at its
-     * origin. Played, the emitter runs after {@link #tick(float)} returns, with this effect's other emitters, in the
-     * order they were asked, on whichever thread takes the effect, and only every {@link CgVfxSystem#particleStep()}th
-     * tick, by that many ticks' time; unplayed, at once, by {@code dt}. Call it every tick either way.
+     * Advances one of its emitters by a tick, at its spawn share: books what it spawns, which its GPU slot steps. Played,
+     * the emitter runs after {@link #tick(float)} returns, with this effect's other emitters, in the order they were
+     * asked, on whichever thread takes the effect, and only every {@link CgVfxSystem#particleStep()}th tick, by that many
+     * ticks' time; unplayed, its books alone, at once, by {@code dt}. Call it every tick either way.
      *
      * <pre>{@code
      * for (CgVfxEmitterInstance e : blast) {
@@ -776,19 +765,14 @@ public abstract class CgVfxEffect {
     protected final void tick(CgVfxEmitterInstance emitter, float dt) {
         if (authority != null) return;
         if (system == null) {
-            emitter.tick(dt, air(), originX, originY, originZ);
+            emitter.schedule(dt, originX, originY, originZ);
             return;
         }
         if (!system.particleTick()) return;
-        // The same test as tickEmitters': an instance keeps the path it first stepped on.
-        boolean cpu = !emitter.scheduled() && !(system.stepsOnGpu() && emitter.time() == 0f);
         emitter.share(system.spawnShare(emitter.emitter()));
-        if (cpu) dueCpuParticles += emitter.particles().count();
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
-            if (child == null) continue;
-            child.share(system.spawnShare(child.emitter()));
-            if (cpu) dueCpuParticles += child.particles().count();
+            if (child != null) child.share(system.spawnShare(child.emitter()));
         }
         if (dueCount == due.length) {
             due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
@@ -803,40 +787,26 @@ public abstract class CgVfxEffect {
         return dueCount > 0;
     }
 
-    /** Live particles of the emitters queued this tick that the CPU steps; read before {@link #tickEmitters}. */
-    final int dueCpuParticles() {
-        return dueCpuParticles;
-    }
-
     /**
-     * Runs the emitters queued this tick, in order: each ticked, or scheduled for its system's GPU queue once it is
-     * stepped there (an instance keeps the path it first stepped on). Any thread, one at a time per effect.
+     * Books the emitters queued this tick, in order, for its system's GPU queue: one first booked here takes a slot when
+     * the system admits it. Any thread, one at a time per effect.
      */
     final void tickEmitters() {
-        CgVfxAir air = air();
-        boolean gpu = system != null && system.stepsOnGpu();
         for (int i = 0; i < dueCount; i++) {
             CgVfxEmitterInstance emitter = due[i];
-            if (emitter.scheduled() || gpu && emitter.time() == 0f) {
-                boolean fresh = !emitter.scheduled();
-                emitter.schedule(dueDts[i], originX, originY, originZ);
-                if (fresh) {
-                    if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
-                    admitted[admittedCount++] = emitter;
-                    if (scheduled.length == scheduledCount) scheduled = Arrays.copyOf(scheduled, Math.max(4, scheduledCount * 2));
-                    scheduled[scheduledCount++] = emitter;
-                }
-            } else {
-                emitter.tick(dueDts[i], air, originX, originY, originZ);
-                if (emitter.rowsDue()) {
-                    if (reporting.length == reportingCount) reporting = Arrays.copyOf(reporting, Math.max(4, reportingCount * 2));
-                    reporting[reportingCount++] = emitter;
-                }
+            boolean fresh = !emitter.scheduled();
+            emitter.entityBox((float) (followBoxX - originX), (float) (followBoxY - originY), (float) (followBoxZ - originZ),
+                    followHalfX, followHalfY, followHalfZ);
+            emitter.schedule(dueDts[i], originX, originY, originZ);
+            if (fresh) {
+                if (admitted.length == admittedCount) admitted = Arrays.copyOf(admitted, Math.max(4, admittedCount * 2));
+                admitted[admittedCount++] = emitter;
+                if (scheduled.length == scheduledCount) scheduled = Arrays.copyOf(scheduled, Math.max(4, scheduledCount * 2));
+                scheduled[scheduledCount++] = emitter;
             }
             due[i] = null;
         }
         dueCount = 0;
-        dueCpuParticles = 0;
     }
 
     /** Ends the slots of every instance it scheduled, particles and all, at {@code steps}' next step. Render thread. */
@@ -851,15 +821,6 @@ public abstract class CgVfxEffect {
             admitted[i] = null;
         }
         admittedCount = 0;
-    }
-
-    /** Hands the event rows its CPU-stepped emitters left this tick to {@code listeners}. Render thread. */
-    final void deliverRows(List<CgVfxEventListener> listeners) {
-        for (int i = 0; i < reportingCount; i++) {
-            reporting[i].deliverRows(listeners);
-            reporting[i] = null;
-        }
-        reportingCount = 0;
     }
 
     /** Whether anything hears its moments: skip working out a moment's framing when nothing does. */

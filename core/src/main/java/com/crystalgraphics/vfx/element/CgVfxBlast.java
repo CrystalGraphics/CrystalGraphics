@@ -25,7 +25,6 @@ import com.crystalgraphics.vfx.look.CgVfxSchema;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
-import com.crystalgraphics.vfx.particle.CgVfxGround;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -195,13 +194,11 @@ public final class CgVfxBlast extends CgVfxElement {
     public static final float RING_SECONDS = 0.7f;
     /** Its volumes' priorities, over a scene's mood volumes: the impact frame over the flash. */
     public static final int FLASH_PRIORITY = 10, IMPACT_PRIORITY = 11;
-    private static final int BURST_ZONE = CgTrace.name("vfx.blast.burst"),
-            GROUND_FILL_NS = CgTrace.name("vfx.blast.ground-fill-ns");
+    private static final int BURST_ZONE = CgTrace.name("vfx.blast.burst");
 
     private final CgHitPart front;
     private final Matrix4f placed = new Matrix4f();
     private final List<CgVfxEmitterInstance> emitters = new ArrayList<>();
-    private CgVfxGround ground;
     private CgPostVolume flash, impact;
     private CgPostSettings impactLook;
     private float x, y, z, nx, ny = 1f, nz;
@@ -242,11 +239,6 @@ public final class CgVfxBlast extends CgVfxElement {
     public boolean tick(float dt) {
         boolean now = false;
         if (!Float.isNaN(ignited)) now = timeline();
-        if (ground != null) {
-            long fill = CgVfxTrace.start();
-            ground.fill(CgVfxGround.FILL_PER_TICK);
-            CgVfxTrace.lap(GROUND_FILL_NS, fill);
-        }
         boolean finished = true;
         for (int i = 0; i < emitters.size(); i++) {
             tick(emitters.get(i), dt);
@@ -307,13 +299,12 @@ public final class CgVfxBlast extends CgVfxElement {
                 .activeFor(within).source(followingId());
         if (authoritative()) return;
         CgTrace.marker(CgVfxTrace.CHANNEL, MARKER);
-        ground = new CgVfxGround(32).reset(originX(), originY(), originZ(), x, y, z);
         List<CgVfxEmitter> kit = EXPLOSION.emitters();
         for (int i = 0; i < kit.size(); i++) {
             CgVfxEmitterInstance e = instance(kit.get(i), KIT, i * 0.137f);
             if (e == null || impact == null && EXPLOSION.drawn(e.emitter())) continue;
             e.start(x, y, z);
-            e.ground(groundHeight()).ground(ground);
+            e.ground(groundHeight());
             emitters.add(e);
         }
     }

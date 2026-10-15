@@ -12,11 +12,11 @@ import java.util.List;
  *
  * <pre>{@code
  * public void writeSpawn(CgVfxWords out) {
- *     out.vec4(shapeRadius, upMin, upMax, upBias)
- *        .vec4(speedMin, speedMax, lifeMin, lifeMax)
+ *     out.vec4(speedMin, speedMax, lifeMin, lifeMax)
  *        .vec4(sizeMin, sizeMax, sizeSkew, heat)
- *        .vec4(spinMin, spinMax, shapeInner, 0f)
+ *        .vec4(spinMin, spinMax, inherit, 0f)
  *        .vec4(frontA, frontB, 0f, 0f);
+ *     spawnShape.write(out, upMin, upMax, upBias);   // six more: where it is born, which way it flies
  * }
  * }</pre>
  *
@@ -29,23 +29,31 @@ import java.util.List;
 public interface CgVfxGpuEmitter {
 
     /** The vec4s {@link #writeSpawn} writes. */
-    int SPAWN_VECTORS = 5;
+    int SPAWN_VECTORS = 10;
 
     /** For messages. */
     String name();
 
     CgVfxEmitter.Renderer renderer();
 
-    /** Its module stack, in the order the CPU runs it. */
+    /** Its module stack, in the order each step runs it. */
     List<? extends CgVfxGpuModule> modules();
 
     /**
-     * Writes its spawn numbers, {@link #SPAWN_VECTORS} vec4s in this order: (shape radius, up min, up max, up bias),
-     * (speed min, speed max, life min, life max), (size min, size max, size skew, heat), (spin min, spin max, shape
-     * inner, 0), (front a, front b, 0, 0): spawn k of the instance starts {@code a k - b k^2} blocks further out, its k
-     * held where that peaks ({@code a / 2b}); 0, 0 for a shell that stays put.
+     * Writes its spawn numbers, {@link #SPAWN_VECTORS} vec4s in this order: (speed min, speed max, life min, life max),
+     * (size min, size max, size skew, heat), (spin min, spin max, the share of its source's velocity, 0), (front a, front
+     * b, 0, 0): spawn k starts {@code a k - b k^2} blocks further out, its k held where that peaks ({@code a / 2b}), 0, 0
+     * for a shape that stays put; then where it is born: (up min, up max, up bias, direction mode), (direction xyz, cos
+     * of its spread), (shape kind, placement | 4 for the upper half, arc, ordered), (the shape's numbers), its rotation
+     * from the sampling frame (axis +Y), (its offset from the source, 0). {@code CgVfxSpawnShape} has the codes; a mesh's
+     * numbers name its section of {@code CgVfxSpawnMeshes}.
      */
     void writeSpawn(CgVfxWords out);
+
+    /** Whether it spawns on a mesh: its shape's Step kernel then reads {@code CgVfxSpawnMeshes}. */
+    default boolean spawnsOnMesh() {
+        return false;
+    }
 
     /**
      * What its particles do that it reacts to, in order: an event's index here is what {@link CgVfxEvent#childKey} and

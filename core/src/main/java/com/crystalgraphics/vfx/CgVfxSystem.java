@@ -7,7 +7,6 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.gl.buffer.CgFrameRing;
-import com.crystalgraphics.gl.buffer.shader.CgParticleBuffer;
 import com.crystalgraphics.gl.texture.CgTexture2D;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -15,7 +14,6 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgSortLayer;
-import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -27,13 +25,11 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.particle.CgVfxAir;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
-import com.crystalgraphics.vfx.particle.CgVfxParticleSet;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxEventListener;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.path.CgVfxPathTexture;
-import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxTube;
 import com.crystalgraphics.vfx.world.CgVfxVoxelWindow;
@@ -44,7 +40,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.function.IntConsumer;
 
@@ -68,10 +63,10 @@ import java.util.function.IntConsumer;
  *       than the CPU keeps up with slows effects down rather than stalling the frame. It touches no GPU state.</li>
  *   <li>GPU particles step when {@code WORLD_OPAQUE} records: while the world is not drawn every effect holds, once half
  *       a second of steps waits ({@code vfx.ticks.held}).</li>
- *   <li>Each tick steps every effect in order, then runs their particle emitters on several threads, one effect a
- *       thread ({@link CgJob#forEach}; {@code -Dcrystalgraphics.job.forEachThreads}).</li>
- *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture and the particle
- *       buffer hold only the last upload.</li>
+ *   <li>Each tick steps every effect in order, then books their particle emitters for the GPU, on several threads
+ *       once many effects have emitters due ({@link CgJob#forEach}; {@code -Dcrystalgraphics.job.forEachThreads}).</li>
+ *   <li>{@link #submit} is render thread, and must run every frame an effect draws: the path texture holds only the
+ *       last upload.</li>
  *   <li>Every mesh the package draws is made here, so a change to how meshes are made is one edit.</li>
  *   <li>{@link #air} is the wind every effect's particles move through; set it once, or change it while playing.</li>
  *   <li>It applies the player's settings ({@link CgGraphicsSettings}) to every effect: particle density and the
@@ -81,26 +76,6 @@ import java.util.function.IntConsumer;
  */
 public final class CgVfxSystem {
 
-    /**
-     * Where every system's particles are simulated and prepared for drawing: today's Java path, or the GPU's.
-     * The GPU's by default; {@code -Dcrystalgraphics.vfx.sim=cpu} picks the Java path at launch, and
-     * {@link #simulation(Simulation)} switches it live.
-     *
-     * <pre>{@code
-     * CgVfxSystem.simulation(CgVfxSystem.Simulation.GPU);   // every system, from the next update
-     * }</pre>
-     *
-     * <ul>
-     *   <li>A switch reaches emitter instances that start after it; one already playing finishes where it started.</li>
-     * </ul>
-     */
-    public enum Simulation {
-        CPU, GPU
-    }
-
-    private static final CgVar.Choice<Simulation> SIMULATION = CgVar.choice("crystalgraphics.vfx.sim", Simulation.GPU,
-            CgVar.DEV, "Where effects' particles simulate; V switches it in any harness scene with a 3D camera. cpu is the"
-                    + " Java path, kept as the comparison until it is removed.");
     private static final CgVar.Int PARTICLE_STEP = CgVar.integer("crystalgraphics.vfx.particleStep", 2, 1, 64, CgVar.DEV,
             "Ticks a particle step spans: 2 steps particles at 60 Hz while effects tick at 120, 1 every tick.");
     private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
@@ -114,23 +89,13 @@ public final class CgVfxSystem {
     private static final CgVar.Bool SHARED_DISTORTION = CgVar.bool("crystalgraphics.vfx.sharedDistortion", false, CgVar.DEV,
             "Measurement: distortion layers after every effect's draws, so they share one copy of the target.");
 
-    /** The simulation chosen for every system: what a HUD shows, built or not. */
-    public static Simulation simulation() {
-        return SIMULATION.get();
-    }
-
-    /** Chooses where every system simulates, from its next update: a person's switch, outranking {@code -D}. */
-    public static void simulation(Simulation chosen) {
-        SIMULATION.set(CgVar.Source.CONSOLE, chosen);
-    }
-
     /**
      * Ticks a particle step spans in every system: particles move every {@code particleStep()}th tick, by that many
      * ticks' time. 2 by default, so 60 Hz while effects tick at 120; {@code -Dcrystalgraphics.vfx.particleStep} sets it
      * at launch and {@link #particleStep(int)} live.
      *
      * <pre>{@code
-     * CgVfxSystem.particleStep(1);   // every tick, 120 Hz: what the CPU path did before
+     * CgVfxSystem.particleStep(1);   // every tick, 120 Hz
      * }</pre>
      */
     public static int particleStep() {
@@ -170,14 +135,12 @@ public final class CgVfxSystem {
 
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
-            PATHS_ZONE = CgTrace.name("vfx.paths.upload"), PARTICLES_ZONE = CgTrace.name("vfx.particles.write"),
+            PATHS_ZONE = CgTrace.name("vfx.paths.upload"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), EFFECT_EMITTERS_ZONE = CgTrace.name("vfx.effect.emitters"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
             GPU_STEPS_ZONE = CgTrace.name("vfx.gpu.steps"),
-            EFFECTS = CgTrace.name("vfx.effects"), PARTICLES_WRITTEN = CgTrace.name("vfx.particles.written"),
-            FILL_ZONE = CgTrace.name("vfx.particles.fill"), LIGHT_ZONE = CgTrace.name("vfx.particles.light"),
-            UPLOAD_ZONE = CgTrace.name("vfx.particles.upload");
+            EFFECTS = CgTrace.name("vfx.effects");
 
     /** Seconds of one simulation step. */
     public static final float TICK = 1f / 120f;
@@ -195,14 +158,10 @@ public final class CgVfxSystem {
     static {
         SKIP.onChange(list -> skipped = parts(list));
     }
-    /** Fewer records than this are written on the render thread alone. */
-    private static final int PARALLEL_RECORDS = 4096;
     /**
-     * Fewer CPU-stepped particles than this tick on the render thread alone: a GPU-stepped emitter's tick is a few
-     * stores, and workers woken for it could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
+     * Fewer effects with emitters due than this book them on the render thread alone, about a millisecond (0.25 us
+     * each): workers woken for less could take the render thread's core on a loaded machine (33 ms, mc-perf-notes).
      */
-    private static final int PARALLEL_PARTICLES = 4096;
-    /** Or this many effects with emitters due: about a millisecond of GPU-stepped ticks (0.25 us each). */
     private static final int PARALLEL_EFFECTS = 4096;
     private static final int MAX_TICKS = 12;
     /** GPU steps a pool may hold unrecorded, half a second at 60 Hz, before every effect waits for the world to draw. */
@@ -210,8 +169,6 @@ public final class CgVfxSystem {
     private static final String PATH_SAMPLER = "_FxPath";
 
     private static final CgSortLayer DISTORTION = CgSortLayer.after("crystalgraphics:vfx-distortion", CgSortLayer.EFFECTS);
-
-    private static final List<CgVfxEventListener> NO_LISTENERS = Collections.emptyList();
 
     private final List<CgVfxEffect> effects = new ArrayList<>();
     private final List<CgVfxMomentListener> momentListeners = new ArrayList<>();
@@ -229,10 +186,7 @@ public final class CgVfxSystem {
     private final List<CgVfxEmitter> gpuWarming = new ArrayList<>();
     private CgTexture2D boundTexture;
     // The tube is this system's own; the ribbons, sphere and quads are shared.
-    private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, quadMesh, volumeMesh;
-    /** The emitters drawn this frame through the particle buffer, in the order their records go into it. */
-    private final List<CgVfxEmitterInstance> particleEmitters = new ArrayList<>();
-    private int particleRecords;
+    private CgMesh tubeMesh, closedTubeMesh, ribbonMesh, sphereMesh, volumeMesh;
     private final CgVfxAir air = new CgVfxAir();
     /** The effects that queued emitter ticks this tick: what the workers run. */
     private final List<CgVfxEffect> emitting = new ArrayList<>();
@@ -248,14 +202,8 @@ public final class CgVfxSystem {
     private final List<CgVfxOwner> owners = new ArrayList<>();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH], point = new double[3];
     private float timeScale = 1f;
-    private final IntConsumer writeEach = this::writeRecords;
     private final CgVfxGpuSteps gpuSteps = new CgVfxGpuSteps();
-    private boolean stepsOnGpu, rangePrepared;
-    /** This frame's particle records, filled by {@link #writeEach}; each emitter's first record in {@link #bases}. */
-    private float[] records = new float[0];
-    private int[] bases = new int[0];
-    private float writeAlpha;
-    private boolean writeLit;
+    private boolean rangePrepared;
     /** Ticks since the particles' last step, and how many ticks that step spanned. */
     private int tickCount, sinceParticleTick, drawnStep = 1;
     private boolean particleTick = true;
@@ -338,7 +286,6 @@ public final class CgVfxSystem {
     public void update(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
-        stepsOnGpu = SIMULATION.get() == Simulation.GPU;
         follow();
         if (Double.isNaN(clock)) {
             clock = seconds;
@@ -346,9 +293,8 @@ public final class CgVfxSystem {
         }
         owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world) * timeScale);
         clock = seconds;
-        // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, the CPU's included, as
-        // Niagara and VFX Graph pause what is not drawn: dropped steps would leave particles alive in a slot the CPU
-        // closes as finished.
+        // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, as Niagara and VFX Graph
+        // pause what is not drawn: dropped steps would leave particles alive in a slot its books close as finished.
         if (gpuSteps.queuedSteps() >= MAX_QUEUED_STEPS) {
             owed = 0f;
             CgVfxTrace.count(HELD, 1);
@@ -369,7 +315,6 @@ public final class CgVfxSystem {
                         particleDt = TICK * step;
                         drawnStep = step;
                     }
-                    int cpuParticles = 0;
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
                         if (effect.state() != CgVfxEffect.State.DEAD) {
@@ -380,13 +325,10 @@ public final class CgVfxSystem {
                                 fail(effect, e);
                             }
                         }
-                        if (effect.hasEmitterTicks()) {
-                            emitting.add(effect);
-                            cpuParticles += effect.dueCpuParticles();
-                        }
+                        if (effect.hasEmitterTicks()) emitting.add(effect);
                     }
                     try (CgTrace.Zone run = CgTrace.zone(CgVfxTrace.CHANNEL, EMITTERS_ZONE)) {
-                        if (cpuParticles >= PARALLEL_PARTICLES || emitting.size() >= PARALLEL_EFFECTS) {
+                        if (emitting.size() >= PARALLEL_EFFECTS) {
                             try (CgTrace.Zone ticking = CgTrace.zone(CgVfxTrace.CHANNEL, WORKERS_ZONE)) {
                                 CgJob.forEach(emitting.size(), tickEach);
                             }
@@ -402,7 +344,6 @@ public final class CgVfxSystem {
                                 }
                                 // A failed effect's instances already scheduled still take their slots, and coast.
                                 effect.admitScheduled(gpuSteps);
-                                effect.deliverRows(eventListeners);
                             }
                         }
                     } finally {
@@ -481,8 +422,15 @@ public final class CgVfxSystem {
             if (entities.pose(effect.followEntity, partialTick, pose)) {
                 CgEntityAttachments.point(effect.followEntity, effect.followPoint, partialTick, pose, point);
                 effect.moveToFollowed(point[0], point[1], point[2]);
+                double half = pose[CgEntityQuery.HEIGHT] * 0.5;
+                effect.followBoxX = pose[CgEntityQuery.X];
+                effect.followBoxY = pose[CgEntityQuery.Y] + half;
+                effect.followBoxZ = pose[CgEntityQuery.Z];
+                effect.followHalfX = effect.followHalfZ = (float) (pose[CgEntityQuery.WIDTH] * 0.5);
+                effect.followHalfY = (float) half;
             } else {
                 effect.followEntity = -1;
+                effect.followHalfX = effect.followHalfY = effect.followHalfZ = 0f;
                 effect.stop();
             }
         }
@@ -521,12 +469,11 @@ public final class CgVfxSystem {
         float stepped = Math.min(target, MAX_START_SECONDS);
         int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
         int windowFrom = ticks - windowTicks;
-        boolean gpu = stepsOnGpu;
         int particleStep = PARTICLE_STEP.get();
-        int coarse = gpu ? Math.max(particleStep, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS) : particleStep;
+        int coarse = Math.max(particleStep, (windowTicks + PREWARM_STEPS - 1) / PREWARM_STEPS);
         for (int t = 0; t < ticks && effect.state() != CgVfxEffect.State.DEAD; t++) {
             boolean inWindow = t >= windowFrom;
-            if (gpu && t == windowFrom) {
+            if (t == windowFrom) {
                 gpuSteps.beginPrewarm();
                 effect.admitScheduled(gpuSteps);
             }
@@ -538,20 +485,11 @@ public final class CgVfxSystem {
                 effect.tickEmitters();
                 if (effect.failure != null) throw effect.failure;
                 // Before the window its instances keep their books alone: admitted at its start.
-                if (inWindow || !gpu) effect.admitScheduled(gpuSteps);
-                effect.deliverRows(NO_LISTENERS);
+                if (inWindow) effect.admitScheduled(gpuSteps);
             }
-            if (gpu && inWindow && particleTick) gpuSteps.prewarmStep(particleDt, air);
+            if (inWindow && particleTick) gpuSteps.prewarmStep(particleDt, air);
         }
         if (target > stepped) effect.age = target;
-    }
-
-    /**
-     * Whether an emitter instance starting this update is stepped on the GPU: read once an update, so the workers see
-     * one answer. An instance already stepping keeps its path.
-     */
-    boolean stepsOnGpu() {
-        return stepsOnGpu;
     }
 
     /** Its GPU queue: the pools' owner. */
@@ -598,16 +536,16 @@ public final class CgVfxSystem {
     }
 
     /**
-     * The particles drawn in the latest frame, every system's: those the CPU path submitted, and those Range kept to draw
-     * from the GPU pools after culling, which arrive a frame or two late. For a readout, never a decision; the first ask
-     * starts the GPU count's small readback. Render thread.
+     * The particles drawn in the latest frame, every system's: those Range kept to draw from the GPU pools after
+     * culling, which arrive a frame or two late. For a readout, never a decision; the first ask starts the GPU count's
+     * small readback. Render thread.
      *
      * <pre>{@code
      * hud.line("Particles: " + CgVfxSystem.particlesDrawn());
      * }</pre>
      */
     public static int particlesDrawn() {
-        return cpuDrawn + CgVfxRange.visibleCount();
+        return CgVfxRange.visibleCount();
     }
 
     /**
@@ -618,16 +556,8 @@ public final class CgVfxSystem {
         return CgVfxRange.visibleCount(framebuffer);
     }
 
-    /** The CPU path's particles drawn in {@link #drawnFrame}, every system's; reset by its first submit. */
-    private static int cpuDrawn;
-    private static long drawnFrame = -1;
-
     /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
     public void submit(CgWorldRenderer world) {
-        if (CgFrameRing.frame() != drawnFrame) {
-            drawnFrame = CgFrameRing.frame();
-            cpuDrawn = 0;
-        }
         if (effects.isEmpty()) return;
         if (tubeMesh == null) {
             tubeMesh = CgVfxTube.mesh(false);
@@ -637,7 +567,6 @@ public final class CgVfxSystem {
             // 12 x 24 faces come within cos(15Â°) cos(7.5Â°) of the centre: at radius 1.05 they still enclose the unit sphere.
             volumeMesh = COARSE_VOLUMES.get()
                     ? CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.sphere(m, 12, 24, 1.05f)) : sphereMesh;
-            quadMesh = CgVfxQuads.mesh();
         }
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
@@ -670,88 +599,10 @@ public final class CgVfxSystem {
             }
             frame.end();
             materials.upload();
-            cpuDrawn += frame.cpuDrawn();
             try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, PATHS_ZONE)) {
                 paths.upload();
                 bindPaths();
             }
-            try (CgTrace.Zone write = CgTrace.zone(CgVfxTrace.CHANNEL, PARTICLES_ZONE)) {
-                writeParticles(frame.particleAlpha());
-            }
-        }
-    }
-
-    /**
-     * Where {@code emitter}'s records start in this frame's particle buffer, adding them on its first draw this frame.
-     * Its draws read {@code [base, base + count)}.
-     */
-    int particleBase(CgVfxEmitterInstance emitter) {
-        int base = 0;
-        for (int i = 0; i < particleEmitters.size(); i++) {
-            if (particleEmitters.get(i) == emitter) return base;
-            base += particleEmitters.get(i).particles().count();
-        }
-        particleEmitters.add(emitter);
-        particleRecords += emitter.particles().count();
-        return base;
-    }
-
-    /** Every particle drawn this frame into the buffer, once, in the order their bases were handed out. */
-    private void writeParticles(float alpha) {
-        int total = particleRecords, emitters = particleEmitters.size();
-        if (total > 0) {
-            CgVfxTrace.count(PARTICLES_WRITTEN, total);
-            // Touches CgParticleBuffer on the render thread first: it makes its buffer when first touched.
-            int floats = total * CgParticleBuffer.RECORD_FLOATS;
-            if (records.length < floats) records = new float[Math.max(floats, records.length + records.length / 2)];
-            if (bases.length < emitters) bases = new int[Math.max(emitters, bases.length * 2)];
-            for (int k = 0, base = 0; k < emitters; k++) {
-                bases[k] = base;
-                base += particleEmitters.get(k).particles().count();
-            }
-            writeAlpha = alpha;
-            // The host's light is read on the render thread alone; with no level every record is fully lit.
-            writeLit = CgWorldQueries.client().levelEpoch() != 0;
-            try (CgTrace.Zone fill = CgTrace.zone(CgVfxTrace.CHANNEL, FILL_ZONE)) {
-                if (total >= PARALLEL_RECORDS) {
-                    CgJob.forEach(emitters, writeEach);
-                } else {
-                    for (int k = 0; k < emitters; k++) writeRecords(k);
-                }
-            }
-            if (writeLit) {
-                try (CgTrace.Zone lit = CgTrace.zone(CgVfxTrace.CHANNEL, LIGHT_ZONE)) {
-                    for (int k = 0; k < emitters; k++) {
-                        CgVfxEmitterInstance emitter = particleEmitters.get(k);
-                        CgVfxParticleSet p = emitter.particles();
-                        for (int i = 0; i < p.count(); i++) {
-                            int light = CgWorldLight.at(emitter.originX() + p.x(i, alpha), emitter.originY() + p.y(i, alpha),
-                                    emitter.originZ() + p.z(i, alpha));
-                            CgParticleBuffer.light(records, bases[k] + i, light);
-                        }
-                    }
-                }
-            }
-            try (CgTrace.Zone upload = CgTrace.zone(CgVfxTrace.CHANNEL, UPLOAD_ZONE)) {
-                CgParticleBuffer.upload(records, total);
-            }
-        }
-        particleEmitters.clear();
-        particleRecords = 0;
-    }
-
-    /** Emitter {@code k}'s records into {@link #records}, from {@link #bases}{@code [k]}: one of {@link #writeEach}'s jobs. */
-    private void writeRecords(int k) {
-        CgVfxEmitterInstance emitter = particleEmitters.get(k);
-        CgVfxEmitter def = emitter.emitter();
-        CgVfxParticleSet p = emitter.particles();
-        float alpha = writeAlpha, ahead = alpha * particleDt;
-        int light = writeLit ? 0 : CgWorldLight.FULL, base = bases[k];
-        for (int i = 0; i < p.count(); i++) {
-            float t = p.progress(i);
-            CgParticleBuffer.write(records, base + i, p.x(i, alpha), p.y(i, alpha), p.z(i, alpha), p.size[i] * def.sizeAt(t),
-                    p.vx[i], p.vy[i], p.vz[i], t, p.seed[i], p.spin[i] + p.spinRate[i] * ahead, p.heat[i], def.opacityAt(t),
-                    light);
         }
     }
 
@@ -763,7 +614,7 @@ public final class CgVfxSystem {
     private void warm(CgWorldRenderer world) {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
-            if (stepsOnGpu && !effect.gpuPrepared) {
+            if (!effect.gpuPrepared) {
                 effect.gpuPrepared = true;
                 prepareGpu(effect.look(), true);
             }
@@ -915,7 +766,6 @@ public final class CgVfxSystem {
         ribbonMesh = null;
         sphereMesh = null;
         volumeMesh = null;
-        quadMesh = null;
         boundTexture = null;
         pathsBound = 0;
         warming.clear();
@@ -975,10 +825,6 @@ public final class CgVfxSystem {
 
     CgMesh ribbonMesh() {
         return ribbonMesh;
-    }
-
-    CgMesh quadMesh() {
-        return quadMesh;
     }
 
     /** Points every material at the path texture: once each, and again if the texture was made anew. */
