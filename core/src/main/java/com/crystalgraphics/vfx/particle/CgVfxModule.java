@@ -762,23 +762,39 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * Steers toward where a grid holds more of a channel, Physarum's sensor rule (Jones 2010) in 3D: five sensors
      * {@code sense} blocks ahead, one straight on and four {@code angle} radians off it, and the particle turns toward
      * the strongest at {@code turn} a second, keeping its speed. Particles that also {@link Splat} into the channel lay
-     * trails and follow each other's: slime mould, ant paths, a nervous system of light.
+     * trails and follow each other's: slime mould, ant paths, a nervous system of light. Past {@code full} a trail draws
+     * them no harder, Jones's crowding rule (one agent a cell) in a continuous field: without it every agent ends on one
+     * thick trail.
      *
      * <pre>{@code
-     * .module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f))     // channel x, sensors 0.6 blocks ahead, 0.5 rad out
-     * .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f))         // and lay what the others follow
+     * .module(new CgVfxModule.Follow(0, 0.9f, 0.785f, 13f, 2f))   // channel x, sensors 0.9 blocks out, 45 degrees, full at 2
+     * .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f))              // and lay what the others follow
      * }</pre>
      *
      * <ul>
      *   <li>A particle with no speed does not turn: give them a launch speed, and something to keep it (no drag).</li>
+     *   <li>A network wants a domain about ten sensor reaches across, and nothing else steering: a container
+     *       ({@link Collide#container()}), never a pull.</li>
+     *   <li>{@code full} 0 sets no ceiling.</li>
      *   <li>It reads the grid as the last frame left it.</li>
      * </ul>
      */
-    record Follow(int channel, float sense, float angle, float turn) implements CgVfxModule {
+    record Follow(int channel, float sense, float angle, float turn, float full) implements CgVfxModule {
         private static final CgVfxWorldInput[] GRID = {CgVfxWorldInput.GRID};
 
         public Follow {
             if (channel < 0 || channel > 3) throw new IllegalArgumentException("a grid's channel " + channel + ": 0 to 3");
+            if (!(full >= 0f)) throw new IllegalArgumentException("full " + full);
+        }
+
+        /** No ceiling: a trail draws harder the more it holds. */
+        public Follow(int channel, float sense, float angle, float turn) {
+            this(channel, sense, angle, turn, 0f);
+        }
+
+        @Override
+        public int paramVectors() {
+            return 2;
         }
 
         @Override
@@ -793,7 +809,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public void writeParams(CgVfxWords out) {
-            out.vec4(channel, sense, angle, turn);
+            out.vec4(channel, sense, angle, turn).vec4(full, 0f, 0f, 0f);
         }
 
         @Override

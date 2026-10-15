@@ -10528,10 +10528,13 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Follow
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (IFFF)V
+  method public <init> (IFFFF)V
   method public angle ()F
   method public channel ()I
+  method public full ()F
   method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
+  method public paramVectors ()I
   method public sense ()F
   method public turn ()F
   method public worldInputs ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWorldInput;

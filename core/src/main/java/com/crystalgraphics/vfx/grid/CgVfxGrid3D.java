@@ -20,7 +20,7 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  * <pre>{@code
  * public final class SlimeMould extends CgVfxEffect<SlimeMould> {
  *     private final CgVfxGrid3D trail = new CgVfxGrid3D(this).place(0f, 3f, 0f)
- *             .channel(0, 0.8f, 0.4f).lit(false);           // channel x: fades 0.8 a second, spreads 0.4 blocks² a second
+ *             .channel(0, 1.75f, 0.125f).lit(false);        // channel x: fades 1.75 a second, spreads 0.125 blocks² a second
  *     private final CgVfxEmitterInstance agents;
  *
  *     public SlimeMould(CgVfxLook look, double x, double y, double z) {
@@ -40,10 +40,13 @@ import com.crystalgraphics.vfx.look.CgVfxSlot;
  *     }
  * }
  *
- * // agents splat into channel x and steer toward where it is strongest: Physarum's trails
- * CgVfxEmitter.builder("agents").capacity(20000).burst(0f, 20000).shape(CgSphere.of(4)).speed(2f, 2f).life(1e6f, 1e6f)
- *         .module(new CgVfxModule.Follow(0, 0.6f, 0.5f, 6f)).module(new CgVfxModule.Splat(1f, 0f, 0f, 0f)).build();
- * CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).set(CgVfxGrid3D.CELL, 0.2f)...
+ * // agents splat into channel x and steer toward where it is strongest, inside a sphere: Physarum's trails, Jones's
+ * // ratios at 0.15-block cells (sensors 6 cells out, 45 degrees, a domain ten sensor reaches across)
+ * CgVfxEmitter.builder("agents").capacity(20000).burst(0f, 20000).shape(CgSphere.of(4)).speed(2.5f, 2.5f).life(1e6f, 1e6f)
+ *         .module(new CgVfxModule.Follow(0, 0.9f, 0.785f, 13f, 1.5f))
+ *         .module(new CgVfxModule.Collide(CgSphere.of(4.5), 1f, 0f, 0f).container())
+ *         .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f)).build();
+ * CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).set(CgVfxGrid3D.CELL, 0.15f)...
  * }</pre>
  *
  * <pre>{@code

@@ -170,19 +170,24 @@ public final class CgVfxParticleSmokeDemo {
     private void slimeMould(float x, float z) {
         CgVfxEmitter agents = CgVfxEmitter.builder("mouldAgents").capacity(20000).burst(0f, 20000).shape(CgSphere.of(4))
                 .speed(2.4f, 2.6f).life(LIFE, LIFE).size(0.012f, 0.02f).heat(1f)
-                .module(new CgVfxModule.Follow(0, 0.45f, 0.45f, 10f))
-                .module(new CgVfxModule.Attract(CgSphere.of(3.8), 1.5f))
-                .module(new CgVfxModule.Turbulence(0.4f, 0.5f, 0.5f))
+                // Jones 2010's ratios at 0.15-block cells and 2.5 blocks a second (a cell moved each 0.06 s): sensors 6 cells
+                // out, 45 degrees off, a 45-degree turn a cell, in a domain ten sensor reaches across; shorter sensors and
+                // lasting trails fold the network into spots, a domain a few reaches across into a few loops. Full under the
+                // glow's hot level: a vein that strong pulls no harder, so the web never coarsens into one white tube.
+                .module(new CgVfxModule.Follow(0, 0.9f, 0.785f, 13f, 1.5f))
+                // Jones's agents only steer: a constant speed, and a domain they bounce off rather than a pull.
+                .module(new CgVfxModule.Collide(CgSphere.of(4.5), 1f, 0f, 0f).container())
                 .module(new CgVfxModule.Splat(1f, 0f, 0f, 0f)).opacity(FADE).build();
         CgVfxLook look = CgVfxLook.builder(SCHEMA).with(CgVfxGrid3D.GLOW).emitter(agents)
                 .layer(CgVfxLayer.of(PARTICLE + "spark.shader").on(agents).size(0.6f).bind("_Color", CYAN).bind("_Hot", WHITE)
                         .build())
-                .set(CgVfxGrid3D.CELL, 0.2f)
+                .set(CgVfxGrid3D.CELL, 0.15f)
                 .set(CgVfxGrid3D.GLOW_COLOR, 0xFF1E5BFF, 1.3f).set(CgVfxGrid3D.HOT, 0xFFAEF4FF, 3f)
                 .set(CgVfxGrid3D.GLOW_GAIN, 0.35f).set(CgVfxGrid3D.HOT_AT, 2.5f).build();
         stations.add(new Station("slime mould: twenty thousand agents laying trails and following them", x, z, look, 10f,
                 List.of(agents), new float[][] {{0f, 4.8f, 0f}},
-                p -> p.grid = new CgVfxGrid3D(p).place(0f, 4.8f, 0f).channel(0, 0.5f, 0.04f).lit(false), NOTHING));
+                // Jones's trail: a tenth lost and a 3x3 blur each cell moved.
+                p -> p.grid = new CgVfxGrid3D(p).place(0f, 4.8f, 0f).channel(0, 1.75f, 0.125f).lit(false), NOTHING));
     }
 
     /**
