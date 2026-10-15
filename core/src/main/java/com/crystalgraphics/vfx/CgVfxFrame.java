@@ -26,6 +26,7 @@ import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -69,6 +70,9 @@ public final class CgVfxFrame {
     private final CgVfxSystem system;
     private final CgVfxMaterials materials;
     private final Matrix4f scaled = new Matrix4f(), sized = new Matrix4f();
+    private final Vector3f scale = new Vector3f();
+    /** How far the unit cube's corners are from its middle: what a ribbons or billboard draw reaches. */
+    private static final float CUBE_REACH = 1.7320508f;
     private CgWorldRenderer world;
     private float alpha, particleAlpha;
     /** Where the merged particle draws sort as one group: the middle of the system's effects. */
@@ -188,9 +192,12 @@ public final class CgVfxFrame {
         return effect.look().draws(slot);
     }
 
-    /** Whether this frame's quality tier is below {@code layer}'s, or {@link CgVfxSystem#skipped()} names it. */
-    private boolean skips(CgVfxLayer layer) {
-        if (!system.quality().atLeast(layer.from())) return true;
+    /**
+     * Whether {@code effect}'s tier this frame (the system's, lowered by its distance) is below {@code layer}'s, or
+     * {@link CgVfxSystem#skipped()} names it.
+     */
+    private boolean skips(CgVfxEffect effect, CgVfxLayer layer) {
+        if (!system.quality(effect.lowered).atLeast(layer.from())) return true;
         for (String token : CgVfxSystem.skippedParts()) {
             if (layer.shader().contains(token)) return true;
         }
@@ -206,6 +213,11 @@ public final class CgVfxFrame {
         return system.paths().add(path, seed, age);
     }
 
+    /** Grows {@code effect}'s bounds by {@code path}'s rings, each {@code size} times its own radius across. */
+    private static void boundPath(CgVfxEffect effect, CgVfxPath path, float size) {
+        for (int i = 0; i < path.count(); i++) effect.bound(path.x(i), path.y(i), path.z(i), path.radius(i) * size);
+    }
+
     /** Draws every layer on {@code slot}, a tube slot, as tubes along {@code path} at {@code row}, round the origin. */
     public void tube(CgVfxEffect effect, CgVfxSlot slot, CgVfxPath path, int row) {
         kind(slot, CgVfxSlot.Kind.TUBE);
@@ -213,8 +225,9 @@ public final class CgVfxFrame {
         CgVfxLook.Placed[] on = look.on(slot);
         for (CgVfxLook.Placed placed : on) {
             CgVfxLayer layer = placed.layer();
-            if (skips(layer)) continue;
+            if (skips(effect, layer)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
+            boundPath(effect, path, CgVfxMaterials.size(effect, r));
             CgMesh mesh = layer.isVolume() ? system.volumeMesh() : layer.isClosed() ? system.closedTubeMesh() : system.tubeMesh();
             system.tube().submit(world, mesh, materials.material(r, CgVfxSlot.Kind.TUBE), placed, path, row,
                     effect.originX, effect.originY, effect.originZ, CgVfxMaterials.size(effect, r),
@@ -237,13 +250,13 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.MESH);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(placed.layer())) continue;
+            if (skips(effect, placed.layer())) continue;
             CgVfxTrace.count(DRAWS_MESH, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.MESH);
             CgMeshLods own = placed.layer().mesh();
             dress(own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material), effect, r, x, y, z,
-                    transform, ex, ey, ez, ew).submit();
+                    transform, placed.layer().meshRadius(), ex, ey, ez, ew).submit();
         }
     }
 
@@ -257,11 +270,11 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.RIBBONS);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(placed.layer())) continue;
+            if (skips(effect, placed.layer())) continue;
             CgVfxTrace.count(DRAWS_RIBBONS, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             dress(world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.RIBBONS)), effect, r, x, y, z,
-                    transform, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+                    transform, CUBE_REACH, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
         }
     }
 
@@ -286,6 +299,12 @@ public final class CgVfxFrame {
      * }</pre>
      */
     public void particles(CgVfxEffect effect, CgVfxEmitterInstance emitter) {
+        // Its particles' bounds: a sphere round the source no particle can leave, as Niagara gives a GPU emitter fixed ones.
+        CgVfxEmitter def = emitter.emitter();
+        effect.bound((float) (emitter.originX() - effect.originX) + emitter.sourceX(),
+                (float) (emitter.originY() - effect.originY) + emitter.sourceY(),
+                (float) (emitter.originZ() - effect.originZ) + emitter.sourceZ(),
+                def.reach(system.air().maxSpeed()) + def.largestSize() + emitter.entityBoxReach());
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
             if (child != null) particles(effect, child);
@@ -310,7 +329,7 @@ public final class CgVfxFrame {
         CgVfxRange range = CgVfxRange.of(pool);
         float reach = 0f;
         for (CgVfxLook.Placed placed : look.on(emitter.emitter().slot())) {
-            if (skips(placed.layer())) continue;
+            if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
             float size = CgVfxMaterials.size(effect, r);
@@ -426,12 +445,12 @@ public final class CgVfxFrame {
         kind(slot, CgVfxSlot.Kind.BILLBOARD);
         CgVfxLook look = effect.look();
         for (CgVfxLook.Placed placed : look.on(slot)) {
-            if (skips(placed.layer())) continue;
+            if (skips(effect, placed.layer())) continue;
             CgVfxTrace.count(DRAWS_BILLBOARD, 1);
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             // Its bounds: the cube its transform scales, whichever way the shader turns it.
             dress(world.draw(CgMesh.quads(1), materials.material(r, CgVfxSlot.Kind.BILLBOARD)), effect, r, x, y, z,
-                    sized.scaling(size), ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
+                    sized.scaling(size), CUBE_REACH, ex, ey, ez, ew).bounds(CgAABBc.UNIT).submit();
         }
     }
 
@@ -463,10 +482,11 @@ public final class CgVfxFrame {
         }
         float cx = (minX + maxX) * 0.5f, cy = (minY + maxY) * 0.5f, cz = (minZ + maxZ) * 0.5f;
         for (CgVfxLook.Placed placed : on) {
-            if (skips(placed.layer())) continue;
+            if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
             float size = CgVfxMaterials.size(effect, r);
             float reach = widest * Math.max(size, 1f) * 2f;
+            effect.boundBox(minX - reach, minY - reach, minZ - reach, maxX + reach, maxY + reach, maxZ + reach);
             // The ribbon mesh spans -1..1: half the extent each way.
             scaled.scaling((maxX - minX) * 0.5f + reach, (maxY - minY) * 0.5f + reach, (maxZ - minZ) * 0.5f + reach);
             CgWorldRenderer.Draw draw = world.draw(system.ribbonMesh(), materials.material(r, CgVfxSlot.Kind.PATH_RIBBONS))
@@ -481,11 +501,17 @@ public final class CgVfxFrame {
         }
     }
 
-    /** {@code draw} placed and given the per-draw data every mesh-like slot's shader reads, for the caller to submit. */
+    /**
+     * {@code draw} placed and given the per-draw data every mesh-like slot's shader reads, for the caller to submit; its
+     * mesh, {@code radius} across before its transform, grows the effect's bounds.
+     */
     private CgWorldRenderer.Draw dress(CgWorldRenderer.Draw draw, CgVfxEffect effect, CgVfxMaterials.Resolved r, float x,
-                                       float y, float z, Matrix4fc transform, float ex, float ey, float ez, float ew) {
+                                       float y, float z, Matrix4fc transform, float radius, float ex, float ey, float ez,
+                                       float ew) {
         float size = CgVfxMaterials.size(effect, r);
         scaled.set(transform).scale(size);
+        scaled.getScale(scale);
+        effect.bound(x, y, z, radius * Math.max(scale.x, Math.max(scale.y, scale.z)));
         draw.at(effect.originX + x, effect.originY + y, effect.originZ + z).transform(scaled).subject(effect.subject)
                 .custom(0, size, 0f, effect.age, effect.seed)
                 .custom(1, ex, ey, ez, ew)

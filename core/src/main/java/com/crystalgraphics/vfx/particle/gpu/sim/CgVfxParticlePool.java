@@ -5,6 +5,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gl.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gl.lifecycle.CgLifecycleListener;
+import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -93,6 +94,12 @@ public final class CgVfxParticlePool {
      * source, the rest spread from it to the second's.
      */
     public static final int INSTANCE_HEADER = 8;
+
+    /**
+     * The GPU's frame the particles may take, every pool's steps and every range together: what the VFX systems' pressure
+     * reads ({@code CgVfxScalability}) and their spawn shares follow.
+     */
+    public static final CgGpuBudget GPU_BUDGET = CgGpuBudget.define("vfx", 3f);
 
     /**
      * An event row, as a Step kernel appends it and a child's reads it: where it fired within its slot's origin's block,
@@ -405,7 +412,7 @@ public final class CgVfxParticlePool {
                 break;
             }
         }
-        CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).async();
+        CgComputePass pass = recording.compute("vfx.pool.step").timed(GPU_STEP).timed(GPU_BUDGET).async();
         if (reportRows > 0) CgGpuOps.fill(pass, reportCounts, 0, CgGpuCount.of(maxSteps));
         for (int s = 0; s < maxSteps; s++) {
             boolean parents = false;

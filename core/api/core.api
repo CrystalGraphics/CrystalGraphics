@@ -8833,6 +8833,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final animate (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;FFFFFLcom/crystalgraphics/easing/CgEasing;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final animate (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;IFLcom/crystalgraphics/easing/CgEasing;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final animate (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;FFLcom/crystalgraphics/easing/CgEasing;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final asleep ()Z
   method public,final authoritative ()Z
   method public,final curve (Lcom/crystalgraphics/vfx/look/CgVfxParam$Curve;)Lcom/crystalgraphics/easing/CgKeyframes;
   method public,final end (Lcom/crystalgraphics/vfx/look/CgVfxEnding;)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -8851,6 +8852,8 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final onHit (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final owner ()Lcom/crystalgraphics/vfx/CgVfxOwner;
   method public,final presence ()F
+  method public,final scalability ()Lcom/crystalgraphics/vfx/CgVfxScalability;
+  method public,final scalability (Lcom/crystalgraphics/vfx/CgVfxScalability;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final seed ()F
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;FFFF)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;I)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -8862,6 +8865,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;F)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;Lcom/crystalgraphics/vfx/camera/CgCameraShake;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final shake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;)Lcom/crystalgraphics/vfx/camera/CgCameraShake;
+  method public,final spawnBox (DDDFFF)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final startAt (F)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final state ()Lcom/crystalgraphics/vfx/CgVfxEffect$State;
   method public,final values ()Lcom/crystalgraphics/vfx/look/CgVfxValues;
@@ -8968,6 +8972,42 @@ com/crystalgraphics/vfx/CgVfxRegistry$Factory
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract spawn (Lcom/crystalgraphics/vfx/look/CgVfxLook;DDDDDD)Lcom/crystalgraphics/vfx/CgVfxEffect;
+com/crystalgraphics/vfx/CgVfxScalability
+  access public,final
+  extends java/lang/Object
+  field public,static,final AMBIENT Lcom/crystalgraphics/vfx/CgVfxScalability;
+  field public,static,final DEFAULT Lcom/crystalgraphics/vfx/CgVfxScalability;
+  field public,static,final FAR Lcom/crystalgraphics/vfx/CgVfxScalability;
+  field public,static,final HERO Lcom/crystalgraphics/vfx/CgVfxScalability;
+  field public,static,final IMPACT Lcom/crystalgraphics/vfx/CgVfxScalability;
+  field public,static,final MAX_SLEEP_SECONDS F
+  method public lodDistance ()F
+  method public maxDistance ()F
+  method public maxInstances ()I
+  method public maxPerLook ()I
+  method public name ()Ljava/lang/String;
+  method public reaction ()Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
+  method public toString ()Ljava/lang/String;
+  method public unseen ()F
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+com/crystalgraphics/vfx/CgVfxScalability$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/vfx/CgVfxScalability;
+  method public lodDistance (F)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+  method public maxDistance (F)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+  method public maxInstances (I)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+  method public maxPerLook (I)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+  method public unseen (F)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+  method public whenCulled (Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;)Lcom/crystalgraphics/vfx/CgVfxScalability$Builder;
+com/crystalgraphics/vfx/CgVfxScalability$Reaction
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final KILL Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
+  field public,static,final SLEEP Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
+  field public,static,final STOP Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
+  method public,static values ()[Lcom/crystalgraphics/vfx/CgVfxScalability$Reaction;
 com/crystalgraphics/vfx/CgVfxSystem
   access public,final
   extends java/lang/Object
@@ -9448,6 +9488,7 @@ com/crystalgraphics/vfx/look/CgVfxLook
   method public layout ()Lcom/crystalgraphics/vfx/look/CgVfxLayout;
   method public on (Lcom/crystalgraphics/vfx/look/CgVfxSlot;)[Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;
   method public placed ()Ljava/util/List;
+  method public scalability ()Lcom/crystalgraphics/vfx/CgVfxScalability;
   method public schema ()Lcom/crystalgraphics/vfx/look/CgVfxSchema;
   method public shake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;)Lcom/crystalgraphics/vfx/camera/CgCameraShake;
   method public,static builder (Lcom/crystalgraphics/vfx/look/CgVfxSchema;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
@@ -9460,6 +9501,7 @@ com/crystalgraphics/vfx/look/CgVfxLook$Builder
   method public link (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;F)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public params ([Lcom/crystalgraphics/vfx/look/CgVfxSchema;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public replace (Lcom/crystalgraphics/vfx/look/CgVfxKit;Lcom/crystalgraphics/vfx/look/CgVfxKit;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
+  method public scalability (Lcom/crystalgraphics/vfx/CgVfxScalability;)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public scaled (F)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;I)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
   method public set (Lcom/crystalgraphics/vfx/look/CgVfxParam$Color;IF)Lcom/crystalgraphics/vfx/look/CgVfxLook$Builder;
@@ -9855,6 +9897,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public seedBits ()I
   method public share ()F
   method public share (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
+  method public slotLost ()V
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
@@ -10475,6 +10518,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   field public,static,final CURVE_WORDS I
   field public,static,final EVENT_BYTES I
   field public,static,final EVENT_GLSL Ljava/lang/String;
+  field public,static,final GPU_BUDGET Lcom/crystalgraphics/render/CgGpuBudget;
   field public,static,final INSTANCE_HEADER I
   field public,static,final ORDER I
   method public beginStep (FFFF)V

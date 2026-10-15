@@ -93,6 +93,19 @@ public abstract class CgVfxEffect {
     /** Every instance it has scheduled for the GPU: the slots a kill closes. */
     private CgVfxEmitterInstance[] scheduled = new CgVfxEmitterInstance[0];
     private int scheduledCount;
+    /** Its own over its look's ({@link #scalability(CgVfxScalability)}); null for the look's. */
+    private CgVfxScalability scalability;
+    /** What it drew last frame, relative to its origin: min then max; empty (min above max) until it submits. */
+    float boundMinX = Float.POSITIVE_INFINITY, boundMinY, boundMinZ, boundMaxX = Float.NEGATIVE_INFINITY, boundMaxY, boundMaxZ;
+    /** Culled and holding: seconds asleep, and seconds since anything of it was in view. */
+    boolean asleep;
+    float sleptFor, unseenFor;
+    /** Its system's culling this update: wanted, how far the camera is from its bounds, the tiers it draws below. */
+    boolean wanted = true;
+    float cullDistance;
+    int lowered;
+    /** The share of its emitters' particles its distance leaves. */
+    float distanceShare = 1f;
     /** Its look's materials have been handed to the system to compile ahead of use. */
     boolean warmed;
     /** Its emitters' GPU programs have been started. */
@@ -249,6 +262,47 @@ public abstract class CgVfxEffect {
     /** As {@link #follow(int, int)}, at the entity's feet. */
     public final CgVfxEffect follow(int entity) {
         return follow(entity, 0);
+    }
+
+    /**
+     * Culled, lowered and put to sleep by {@code scalability} rather than its look's: one effect that matters more (the
+     * player's own) or less than the others of its look.
+     *
+     * <pre>{@code
+     * VFX.play(new Aura(Aura.LOOK, x, y, z).follow(playerId, CgEntityAttachments.FEET)).scalability(CgVfxScalability.HERO);
+     * }</pre>
+     */
+    public final CgVfxEffect scalability(CgVfxScalability scalability) {
+        this.scalability = scalability;
+        return this;
+    }
+
+    /**
+     * The box its {@code entity()} emitters spawn in while it follows nothing: its centre in the world and its half
+     * extents. Following an entity, the entity's box takes its place each frame.
+     *
+     * <pre>{@code
+     * VFX.play(new Aura(LOOK, x, y, z).spawnBox(x, y + 0.9, z, 0.3f, 0.9f, 0.3f));   // round a mannequin
+     * }</pre>
+     */
+    public final CgVfxEffect spawnBox(double x, double y, double z, float halfX, float halfY, float halfZ) {
+        followBoxX = x;
+        followBoxY = y;
+        followBoxZ = z;
+        followHalfX = halfX;
+        followHalfY = halfY;
+        followHalfZ = halfZ;
+        return this;
+    }
+
+    /** What culls it: its own, else its look's. */
+    public final CgVfxScalability scalability() {
+        return scalability != null ? scalability : look.scalability();
+    }
+
+    /** Whether it is culled and holding ({@link CgVfxScalability.Reaction#SLEEP}): ticking and drawing nothing. */
+    public final boolean asleep() {
+        return asleep;
     }
 
     /** The entity it follows by network id, or -1. */
@@ -769,10 +823,10 @@ public abstract class CgVfxEffect {
             return;
         }
         if (!system.particleTick()) return;
-        emitter.share(system.spawnShare(emitter.emitter()));
+        emitter.share(system.spawnShare(emitter.emitter(), lowered) * distanceShare);
         for (int e = 0; e < emitter.emitter().events().size(); e++) {
             CgVfxEmitterInstance child = emitter.child(e);
-            if (child != null) child.share(system.spawnShare(child.emitter()));
+            if (child != null) child.share(system.spawnShare(child.emitter(), lowered) * distanceShare);
         }
         if (dueCount == due.length) {
             due = Arrays.copyOf(due, Math.max(4, dueCount * 2));
@@ -812,6 +866,60 @@ public abstract class CgVfxEffect {
     /** Ends the slots of every instance it scheduled, particles and all, at {@code steps}' next step. Render thread. */
     final void killSlots(CgVfxGpuSteps steps) {
         for (int i = 0; i < scheduledCount; i++) steps.kill(scheduled[i]);
+    }
+
+    /** Culled to sleep: its particles freed, its instances to ask for slots again when it wakes. Render thread. */
+    final void sleep(CgVfxGpuSteps steps) {
+        killSlots(steps);
+        for (int i = 0; i < scheduledCount; i++) {
+            scheduled[i].slotLost();
+            scheduled[i] = null;
+        }
+        scheduledCount = 0;
+        for (int i = 0; i < admittedCount; i++) admitted[i] = null;
+        admittedCount = 0;
+        for (int i = 0; i < dueCount; i++) due[i] = null;
+        dueCount = 0;
+        asleep = true;
+        sleptFor = 0f;
+    }
+
+    /** Wanted again: its next update steps it on over the time it slept, as {@link #startAt} does. */
+    final void wake() {
+        asleep = false;
+        startAge += sleptFor;
+        sleptFor = 0f;
+    }
+
+    /** Empties its bounds, ahead of the draws that grow them. */
+    final void clearBounds() {
+        boundMinX = boundMinY = boundMinZ = Float.POSITIVE_INFINITY;
+        boundMaxX = boundMaxY = boundMaxZ = Float.NEGATIVE_INFINITY;
+    }
+
+    /** Grows its bounds by a sphere at {@code (x, y, z)} from its origin. */
+    final void bound(float x, float y, float z, float radius) {
+        boundMinX = Math.min(boundMinX, x - radius);
+        boundMinY = Math.min(boundMinY, y - radius);
+        boundMinZ = Math.min(boundMinZ, z - radius);
+        boundMaxX = Math.max(boundMaxX, x + radius);
+        boundMaxY = Math.max(boundMaxY, y + radius);
+        boundMaxZ = Math.max(boundMaxZ, z + radius);
+    }
+
+    /** Grows its bounds by a box from its origin. */
+    final void boundBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+        boundMinX = Math.min(boundMinX, minX);
+        boundMinY = Math.min(boundMinY, minY);
+        boundMinZ = Math.min(boundMinZ, minZ);
+        boundMaxX = Math.max(boundMaxX, maxX);
+        boundMaxY = Math.max(boundMaxY, maxY);
+        boundMaxZ = Math.max(boundMaxZ, maxZ);
+    }
+
+    /** Whether it has drawn anything to bound. */
+    final boolean bounded() {
+        return boundMinX <= boundMaxX;
     }
 
     /** Hands the instances {@link #tickEmitters} scheduled for the first time to {@code steps}. Render thread. */

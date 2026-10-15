@@ -81,6 +81,8 @@ public final class CgVfxSystem {
     private static final CgVar.Text SKIP = CgVar.text("crystalgraphics.vfx.skip", "", CgVar.DEV,
             "Comma-separated: layers whose shader path contains any of these draw nothing, to see what a frame's GPU"
                     + " time is spent on, one profile per group (body_light,haze).");
+    private static final CgVar.Num CPU_BUDGET_MS = CgVar.number("crystalgraphics.vfx.cpuBudgetMs", 4f, 0.1f, 1000f, CgVar.DEV,
+            "CPU milliseconds a frame a system's updates and draws may take before its scalability shrinks every distance and cap.");
     private static final CgVar.Num SIM_BUDGET_MS = CgVar.number("crystalgraphics.vfx.simBudgetMs", 12f, 0f, 1000f, CgVar.DEV,
             "Wall milliseconds an update may spend catching up ticks before it drops the rest and effects slow down.");
     // Measurement switches: each is what one saving on the beams' GPU time would be worth.
@@ -136,6 +138,7 @@ public final class CgVfxSystem {
     private static final int TICK_ZONE = CgTrace.name("vfx.tick"), SUBMIT_ZONE = CgTrace.name("vfx.submit"),
             WARM_ZONE = CgTrace.name("vfx.warm"), EFFECT_ZONE = CgTrace.name("vfx.effect.submit"),
             PATHS_ZONE = CgTrace.name("vfx.paths.upload"),
+            CULLED = CgTrace.name("vfx.culled"), ASLEEP = CgTrace.name("vfx.asleep"), PRESSURE = CgTrace.name("vfx.pressure-percent"),
             TICKS = CgTrace.name("vfx.ticks"), CAPPED = CgTrace.name("vfx.ticks.capped"), HELD = CgTrace.name("vfx.ticks.held"),
             EMITTERS_ZONE = CgTrace.name("vfx.emitters"), EFFECT_TICK_ZONE = CgTrace.name("vfx.effect.tick"),
             WORKERS_ZONE = CgTrace.name("vfx.emitters.workers"), EFFECT_EMITTERS_ZONE = CgTrace.name("vfx.effect.emitters"), ADMIT_ZONE = CgTrace.name("vfx.emitters.admit"),
@@ -213,11 +216,16 @@ public final class CgVfxSystem {
     private float owed, simulated;
     private float density = 1f;
     private CgQuality quality = CgQuality.HIGH;
+    private final CgVfxCulling culling = new CgVfxCulling();
+    /** Load on its budgets, smoothed: 1 at rest, above while over; and the CPU nanoseconds this frame's update took. */
+    private float pressure = 1f;
+    private long updateNanos;
 
     public <E extends CgVfxEffect> E play(E effect) {
         if (effect.system != null) throw new IllegalStateException("already played: " + effect);
         effect.system = this;
         effects.add(effect);
+        precull(effect);
         CgVfxOwner owner = effect.owner;
         if (owner != null) {
             if (owner.listedIn != this) {
@@ -284,6 +292,15 @@ public final class CgVfxSystem {
      * paused or frozen, slower or faster under {@code /tick rate}.
      */
     public void update(double seconds) {
+        long began = System.nanoTime();
+        try {
+            updateTimed(seconds);
+        } finally {
+            updateNanos = System.nanoTime() - began;
+        }
+    }
+
+    private void updateTimed(double seconds) {
         CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
         readSettings(world);
         follow();
@@ -291,8 +308,10 @@ public final class CgVfxSystem {
             clock = seconds;
             return;
         }
-        owed = Math.max(0f, owed + (float) (seconds - clock) * pace(world) * timeScale);
+        float passed = (float) (seconds - clock) * pace(world) * timeScale;
+        owed = Math.max(0f, owed + passed);
         clock = seconds;
+        cull(passed);
         // WORLD_OPAQUE records the GPU's steps. While it does not fire, every effect holds, as Niagara and VFX Graph
         // pause what is not drawn: dropped steps would leave particles alive in a slot its books close as finished.
         if (gpuSteps.queuedSteps() >= MAX_QUEUED_STEPS) {
@@ -317,7 +336,7 @@ public final class CgVfxSystem {
                     }
                     for (int i = 0; i < effects.size(); i++) {
                         CgVfxEffect effect = effects.get(i);
-                        if (effect.state() != CgVfxEffect.State.DEAD) {
+                        if (effect.state() != CgVfxEffect.State.DEAD && !effect.asleep) {
                             int zone = effect.owner != null ? effect.owner.tickZone : EFFECT_TICK_ZONE;
                             try (CgTrace.Zone stepping = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
                                 effect.step(TICK);
@@ -436,11 +455,74 @@ public final class CgVfxSystem {
         }
     }
 
+    /**
+     * Its scalability pass, {@code passed} simulated seconds after the last: each effect culled, lowered or woken against
+     * the world's latest camera, and what is culled put to sleep, stopped or killed as its scalability says.
+     */
+    private void cull(float passed) {
+        pressure += (load() - pressure) * 0.1f;
+        CgTrace.counter(CgVfxTrace.CHANNEL, PRESSURE, Math.round(pressure * 100f));
+        culling.view(CgRenderStage.WORLD_OPAQUE.host().view());
+        culling.run(effects, passed, CgEntityQueries.client().localPlayer(), reach());
+        int asleep = 0;
+        for (int i = 0; i < effects.size(); i++) {
+            CgVfxEffect effect = effects.get(i);
+            if (effect.state() == CgVfxEffect.State.DEAD) continue;
+            if (effect.asleep) {
+                if (effect.wanted) {
+                    effect.wake();
+                    continue;
+                }
+                effect.sleptFor += passed;
+                if (effect.sleptFor > CgVfxScalability.MAX_SLEEP_SECONDS) effect.kill();
+                asleep++;
+                continue;
+            }
+            if (effect.wanted) continue;
+            CgVfxTrace.count(CULLED, 1);
+            switch (effect.scalability().reaction()) {
+                case SLEEP -> {
+                    effect.sleep(gpuSteps);
+                    asleep++;
+                }
+                case STOP -> effect.stop();
+                case KILL -> effect.kill();
+            }
+        }
+        CgTrace.counter(CgVfxTrace.CHANNEL, ASLEEP, asleep);
+    }
+
+    /** A play the camera is past its scalability's distance from never starts, or starts asleep. */
+    private void precull(CgVfxEffect effect) {
+        if (effect.authoritative() || !culling.viewed()) return;
+        CgVfxScalability s = effect.scalability();
+        if (!s.culls() || culling.distanceTo(effect.originX, effect.originY, effect.originZ) <= s.maxDistance * reach()) return;
+        CgVfxTrace.count(CULLED, 1);
+        if (s.reaction() == CgVfxScalability.Reaction.SLEEP) {
+            effect.asleep = true;
+            effect.wanted = false;
+        } else {
+            effect.kill();
+        }
+    }
+
+    /** Its load: the CPU its updates took against {@code cpuBudgetMs}, or the particles' GPU scale's shortfall. */
+    private float load() {
+        float cpu = updateNanos / 1.0e6f / CPU_BUDGET_MS.get();
+        float gpu = 1f / Math.max(CgVfxParticlePool.GPU_BUDGET.scale(), 0.25f);
+        return Math.max(1f, Math.max(cpu, gpu));
+    }
+
+    /** How far every distance and cap reaches under the pressure: 1 at rest, a quarter at the most. */
+    float reach() {
+        return Math.max(0.25f, Math.min(1f, 1f / pressure));
+    }
+
     /** Steps each effect played with a start age to it, ahead of this update's ticks. */
     private void startLate() {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect effect = effects.get(i);
-            if (effect.startAge <= 0f) continue;
+            if (effect.startAge <= 0f || effect.asleep) continue;
             float target = effect.startAge;
             effect.startAge = 0f;
             if (effect.state() == CgVfxEffect.State.DEAD) continue;
@@ -466,7 +548,7 @@ public final class CgVfxSystem {
      * {@link #PREWARM_STEPS} steps while every other slot holds still: older particles would be dead by now.
      */
     private void fastForward(CgVfxEffect effect, float target) {
-        float stepped = Math.min(target, MAX_START_SECONDS);
+        float from = effect.age, stepped = Math.min(target, MAX_START_SECONDS);
         int ticks = Math.round(stepped / TICK), windowTicks = Math.round(Math.min(stepped, PREWARM_SECONDS) / TICK);
         int windowFrom = ticks - windowTicks;
         int particleStep = PARTICLE_STEP.get();
@@ -489,7 +571,7 @@ public final class CgVfxSystem {
             }
             if (inWindow && particleTick) gpuSteps.prewarmStep(particleDt, air);
         }
-        if (target > stepped) effect.age = target;
+        if (target > stepped) effect.age = from + target;
     }
 
     /** Its GPU queue: the pools' owner. */
@@ -514,13 +596,26 @@ public final class CgVfxSystem {
 
     /** The share of {@code emitter}'s particles to spawn: the player's density, halved again at Low for an optional one. */
     public float spawnShare(CgVfxEmitter emitter) {
-        return emitter.optional() && quality == CgQuality.LOW ? density * 0.5f : density;
+        return spawnShare(emitter, 0);
+    }
+
+    /** As {@link #spawnShare(CgVfxEmitter)}, for an effect drawn {@code lowered} tiers below this update's. */
+    float spawnShare(CgVfxEmitter emitter, int lowered) {
+        float share = density * CgVfxParticlePool.GPU_BUDGET.scale();
+        return emitter.optional() && quality(lowered) == CgQuality.LOW ? share * 0.5f : share;
     }
 
     /** The quality tier this update draws at. */
     public CgQuality quality() {
         return quality;
     }
+
+    /** The tier {@code lowered} below this update's, Low at the least. */
+    CgQuality quality(int lowered) {
+        return TIERS[Math.max(0, quality.ordinal() - lowered)];
+    }
+
+    private static final CgQuality[] TIERS = CgQuality.values();
 
     private void readSettings(CgHostEnvironment world) {
         density = CgGraphicsSettings.DENSITY.get();
@@ -589,9 +684,10 @@ public final class CgVfxSystem {
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect effect = effects.get(i);
                 // Killed since the update: cleared by its owner, or failed.
-                if (effect.state() == CgVfxEffect.State.DEAD) continue;
+                if (effect.state() == CgVfxEffect.State.DEAD || effect.asleep) continue;
                 int zone = effect.owner != null ? effect.owner.submitZone : EFFECT_ZONE;
                 try (CgTrace.Zone submitting = CgTrace.zone(CgVfxTrace.CHANNEL, zone)) {
+                    effect.clearBounds();
                     effect.submit(frame);
                 } catch (RuntimeException e) {
                     fail(effect, e);

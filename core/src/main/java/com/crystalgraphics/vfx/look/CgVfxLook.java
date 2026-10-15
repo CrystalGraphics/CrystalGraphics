@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
 import com.crystalgraphics.easing.CgKeyframes;
+import com.crystalgraphics.vfx.CgVfxScalability;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 
@@ -73,6 +74,7 @@ public final class CgVfxLook {
     private final List<CgVfxLayer> layers;
     private final Placed[][] bySlot;
     private final List<CgVfxEmitter> emitters;
+    private final CgVfxScalability scalability;
     private final Builder recipe;
 
     private CgVfxLook(Builder b) {
@@ -121,6 +123,7 @@ public final class CgVfxLook {
         List<CgVfxEmitter> emitted = new ArrayList<>();
         for (Entry e : b.entries) if (e.part instanceof CgVfxEmitter) emitted.add((CgVfxEmitter) e.part);
         this.emitters = Collections.unmodifiableList(emitted);
+        this.scalability = b.scalability;
         this.recipe = b.copy();
     }
 
@@ -166,6 +169,11 @@ public final class CgVfxLook {
     /** The emitters its effect plays. */
     public List<CgVfxEmitter> emitters() {
         return emitters;
+    }
+
+    /** When its effects are culled, lowered or put to sleep: {@link CgVfxScalability#DEFAULT} unless it names another. */
+    public CgVfxScalability scalability() {
+        return scalability;
     }
 
     /** The emitter named {@code name}, or null. */
@@ -250,6 +258,7 @@ public final class CgVfxLook {
         private final List<Consumer<CgVfxValues>> ops = new ArrayList<>();
         /** Kits added that hold no layer or emitter: still {@link #has} them. */
         private final List<CgVfxKit> empty = new ArrayList<>();
+        private CgVfxScalability scalability = CgVfxScalability.DEFAULT;
 
         private Builder(CgVfxSchema primary) {
             this.primary = Objects.requireNonNull(primary, "schema");
@@ -261,6 +270,7 @@ public final class CgVfxLook {
             b.entries.addAll(entries);
             b.ops.addAll(ops);
             b.empty.addAll(empty);
+            b.scalability = scalability;
             return b;
         }
 
@@ -320,6 +330,19 @@ public final class CgVfxLook {
                 }
             }
             entries.add(new Entry(emitter, Collections.emptyList()));
+            return this;
+        }
+
+        /**
+         * When its effects are culled, drawn lower or put to sleep, shared with every look naming the same object
+         * ({@link CgVfxScalability}'s caps count them together).
+         *
+         * <pre>{@code
+         * CgVfxLook.builder(SCHEMA).with(SPARKS).scalability(CgVfxScalability.IMPACT).build();
+         * }</pre>
+         */
+        public Builder scalability(CgVfxScalability scalability) {
+            this.scalability = Objects.requireNonNull(scalability, "scalability");
             return this;
         }
 

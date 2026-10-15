@@ -383,6 +383,22 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         return scheduled;
     }
 
+    /**
+     * Its slot was freed with every particle in it, by its effect's system putting the effect to sleep: its next
+     * {@link #schedule} asks for a slot again, its capacity's books start empty, and its first step after has no motion.
+     */
+    public void slotLost() {
+        scheduled = false;
+        stepped = false;
+        alive = 0;
+        retired = -1;
+        lastDeath = -1f;
+        if (dying != null) Arrays.fill(dying, 0);
+        for (CgVfxEmitterInstance child : children) {
+            if (child != null) child.slotLost();
+        }
+    }
+
     /** When {@link #schedule}'s last step began: the time the pool's view of that step reads. */
     public float stepTime() {
         return stepTime;
