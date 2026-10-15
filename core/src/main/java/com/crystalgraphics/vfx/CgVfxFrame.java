@@ -332,6 +332,7 @@ public final class CgVfxFrame {
         CgVfxLook look = effect.look();
         CgVfxRange range = CgVfxRange.of(pool);
         float reach = 0f;
+        boolean strips = false;
         for (CgVfxLook.Placed placed : look.on(emitter.emitter().slot())) {
             if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
@@ -340,6 +341,12 @@ public final class CgVfxFrame {
             int row = materials.row(effect, r);
             if (!meshes && placed.layer().hasMesh()) {
                 throw new IllegalStateException(placed.layer() + " draws a mesh, which only a mesh slot or a MESHES emitter takes");
+            }
+            if (placed.layer().strip() != CgVfxLayer.Strip.NONE) {
+                strips = true;
+                reach = Math.max(reach, size);
+                strip(effect, emitter, placed, material, size, row, pool, range, slot, capacity, ox, oy, oz);
+                continue;
             }
             boolean inOrder = blendsInOrder(material);
             if (inOrder) range.sorted(slot);
@@ -393,13 +400,55 @@ public final class CgVfxFrame {
             CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
         }
         if (reach <= 0f) return;
-        if (arcs) {
+        if (arcs || strips) {
             // An arc reaches from its source to its particle, which no radius about the particle covers.
             CgVfxEmitter def = emitter.emitter();
             pool.cullAbout(slot, def.reach(system.air().maxSpeed()) + emitter.entityBoxReach() + def.largestSize() * reach);
         } else {
             pool.cullScale(slot, reach);
         }
+    }
+
+    /**
+     * One strip layer's draw of {@code slot}, vertex-pulled ({@code fx_trail.glsl}): a trail behind each visible particle
+     * through its ring, or one ribbon through them newest first. What its shader reads:
+     * <ul>
+     *   <li>{@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size, quads a segment.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM1}: the particle alpha, the particle step's seconds, 0, the effect's age.</li>
+     *   <li>{@code CG_OBJECT_CUSTOM2}, trails: the slot's first ring point, rings, points a ring, the newest step.</li>
+     * </ul>
+     * Drawn at the instance's origin; culled as one sphere about it, the slot whole.
+     */
+    private void strip(CgVfxEffect effect, CgVfxEmitterInstance emitter, CgVfxLook.Placed placed, CgMaterial material,
+                       float size, int row, CgVfxParticlePool pool, CgVfxRange range, int slot, int capacity, double ox,
+                       double oy, double oz) {
+        CgVfxLayer layer = placed.layer();
+        int subs = layer.subdivisions(), per;
+        CgWorldRenderer.Draw draw;
+        if (layer.strip() == CgVfxLayer.Strip.TRAILS) {
+            int points = pool.ringPoints(slot);
+            if (points < 2) {
+                throw new IllegalStateException(layer + " draws trails, but " + emitter.emitter().name()
+                        + " keeps no positions: give it trail(points)");
+            }
+            per = (points - 1) * subs * 6;
+            material.buffer("HISTORY", pool.history());
+            draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material)
+                    .custom(2, pool.ringFirst(slot), capacity, points, pool.lastStep());
+        } else {
+            per = subs * 6;
+            range.ribbon(slot, emitter.spawnedSoFar());
+            draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material);
+        }
+        draw.buffer(CgBindingPoints.PARTICLES, range.drawn())
+                .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.VERTICES, per)
+                .gpuCulled()
+                .at(ox, oy, oz)
+                .custom(0, range.base(slot), capacity, size, subs)
+                .custom(1, particleAlpha, system.particleDt(), 0f, effect.age)
+                .custom(3, row, effect.age, effect.seed, effect.presence());
+        CgVfxSystem.place(draw, placed, effect.originX, effect.originY, effect.originZ).submit();
+        CgVfxTrace.count(DRAWS_PARTICLE_GPU, 1);
     }
 
     /**

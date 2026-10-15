@@ -105,6 +105,8 @@ public final class CgVfxLayer {
     final Role role;
     final CgQuality from;
     final boolean volume, closed;
+    final Strip strip;
+    final int subdivisions;
     final Map<String, float[]> constants;
     final List<Binding> bindings;
     final Map<String, CgTexture> textures;
@@ -128,6 +130,8 @@ public final class CgVfxLayer {
         this.from = b.from;
         this.volume = b.volume;
         this.closed = b.closed;
+        this.strip = b.strip;
+        this.subdivisions = b.subdivisions;
         this.constants = Collections.unmodifiableMap(new LinkedHashMap<>(b.constants));
         this.bindings = Collections.unmodifiableList(new ArrayList<>(b.bindings));
         this.textures = Collections.unmodifiableMap(new LinkedHashMap<>(b.textures));
@@ -158,6 +162,8 @@ public final class CgVfxLayer {
         b.from = from;
         b.volume = volume;
         b.closed = closed;
+        b.strip = strip;
+        b.subdivisions = subdivisions;
         b.constants.putAll(constants);
         b.bindings.addAll(bindings);
         b.textures.putAll(textures);
@@ -209,6 +215,16 @@ public final class CgVfxLayer {
     /** Whether each chunk of a tube is closed at both ends ({@link Builder#closed}). */
     public boolean isClosed() {
         return closed;
+    }
+
+    /** How it draws an emitter's particles: each as its renderer says, a trail behind each, or one ribbon through them. */
+    public Strip strip() {
+        return strip;
+    }
+
+    /** Quads between two points of a {@link Strip} ({@link Builder#subdivisions}). */
+    public int subdivisions() {
+        return subdivisions;
     }
 
     /** Its constants by property as built: one float a number, four a colour, four an element an array. */
@@ -295,6 +311,16 @@ public final class CgVfxLayer {
         return "layer " + name + " (" + shader + ")";
     }
 
+    /** How a layer on an emitter draws its particles ({@link Builder#trails}, {@link Builder#ribbon}). */
+    public enum Strip {
+        /** Each particle as its emitter's renderer says. */
+        NONE,
+        /** A trail behind each particle, through the positions its emitter keeps. */
+        TRAILS,
+        /** One ribbon through an instance's particles in spawn order. */
+        RIBBON
+    }
+
     public static final class Builder {
 
         private final String shader;
@@ -305,6 +331,8 @@ public final class CgVfxLayer {
         private Role role = Role.SURFACE;
         private CgQuality from = CgQuality.LOW;
         private boolean volume, closed;
+        private Strip strip = Strip.NONE;
+        private int subdivisions = 2;
         private final Map<String, float[]> constants = new LinkedHashMap<>();
         private final List<Binding> bindings = new ArrayList<>();
         private final Map<String, CgTexture> textures = new LinkedHashMap<>();
@@ -375,6 +403,41 @@ public final class CgVfxLayer {
          */
         public Builder closed() {
             this.closed = true;
+            return this;
+        }
+
+        /**
+         * Draws a trail behind each of its emitter's particles, through the last positions the emitter keeps
+         * ({@code CgVfxEmitter.Builder.trail}), with a strip shader ({@code shaders/vfx/particle/streaks.shader}). Its size
+         * is the trail's half-width at a particle of size 1.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/streaks.shader").on(EMBERS).trails().size(0.6f)
+         * }</pre>
+         */
+        public Builder trails() {
+            this.strip = Strip.TRAILS;
+            return this;
+        }
+
+        /**
+         * Draws one ribbon through its emitter's particles in each instance, joined in the order they spawned, newest
+         * first ({@code shaders/vfx/particle/ribbon.shader}): a stream whose particles each move as their modules push
+         * them. Its size is the ribbon's half-width at a particle of size 1; the size curve shapes it along its life.
+         *
+         * <pre>{@code
+         * CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/ribbon.shader").on(STREAM).ribbon().size(0.3f)
+         * }</pre>
+         */
+        public Builder ribbon() {
+            this.strip = Strip.RIBBON;
+            return this;
+        }
+
+        /** Quads between two points of its trails or ribbon, 2 unless given: more where points are far apart. */
+        public Builder subdivisions(int quads) {
+            if (quads < 1 || quads > 16) throw new IllegalArgumentException("subdivisions " + quads + ", 1 to 16");
+            this.subdivisions = quads;
             return this;
         }
 

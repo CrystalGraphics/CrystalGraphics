@@ -108,6 +108,7 @@ public class CgVfxParticlePoolTest {
         final String name;
         final CgVfxEmitter.Renderer renderer;
         final List<CgVfxGpuModule> modules;
+        int trailPoints;
 
         Def(String name, CgVfxEmitter.Renderer renderer, CgVfxGpuModule... modules) {
             this.name = name;
@@ -134,6 +135,15 @@ public class CgVfxParticlePoolTest {
 
         public void writeCurves(float[] out, int at, int texels) {
             Arrays.fill(out, at, at + 2 * texels, 1f);
+        }
+
+        public int trailPoints() {
+            return trailPoints;
+        }
+
+        Def trail(int points) {
+            trailPoints = points;
+            return this;
         }
     }
 
@@ -274,6 +284,28 @@ public class CgVfxParticlePoolTest {
         assertEquals(2, pool.paramRows());
         assertEquals(3, pool.open(b, 5));                               // b's row was freed: written again
         assertEquals(2, pool.paramRows());
+    }
+
+    @Test
+    public void trailRingsAreASlotsOwnAndGivenBackWhenItCloses() {
+        Def kept = new Def("kept", CgVfxEmitter.Renderer.QUADS, new Pull(1f)).trail(8);
+        Def plain = new Def("plain", CgVfxEmitter.Renderer.QUADS, new Pull(1f));
+        CgVfxParticlePool pool = CgVfxParticlePool.of(OWNER, kept);
+        int a = pool.open(kept, 100), b = pool.open(plain, 50), c = pool.open(kept, 20);
+        assertEquals(0, pool.ringFirst(a));
+        assertEquals(8, pool.ringPoints(a));
+        assertEquals(0, pool.ringPoints(b));
+        assertEquals(800, pool.ringFirst(c));                          // a ring a particle of a's capacity
+        pool.close(a);
+        int d = pool.open(kept, 30);
+        assertEquals(0, pool.ringFirst(d));                            // into a's run, first fit
+        int e = pool.open(kept, 200);
+        assertEquals(960, pool.ringFirst(e));                          // too big for what is left of it: past the end
+        // A draw submitted now reads the step the queued ones will have stored last.
+        pool.beginStep(0.01f, 0f, 0f, 0f);
+        for (int s : new int[]{b, c, d, e}) pool.instance(s, 0, 1f, 0f, new At(0, 0f));
+        pool.endStep();
+        assertEquals(0, pool.lastStep());
     }
 
     @Test

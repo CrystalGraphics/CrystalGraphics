@@ -24,7 +24,8 @@ public final class CgParticleBuffer {
 
     /**
      * place: position and size; motion: velocity and progress through life; state: seed, spin, heat, opacity; light: block
-     * and sky light, 0 to 15, then the floor under it as its height over it and 1 (for kinds that land on a floor).
+     * and sky light, 0 to 15, as block + 16 sky, its spawn index (low 24 bits), then the floor under it as its height over
+     * it and 1 (for kinds that land on a floor).
      */
     public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticle", STD430)
             .vec4("place")

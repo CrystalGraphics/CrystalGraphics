@@ -56,6 +56,14 @@ public interface CgVfxGpuEmitter {
     }
 
     /**
+     * How many of each particle's last positions its pool keeps, one a step, for a {@code trails()} layer to draw: 0
+     * keeps none.
+     */
+    default int trailPoints() {
+        return 0;
+    }
+
+    /**
      * What its particles do that it reacts to, in order: an event's index here is what {@link CgVfxEvent#childKey} and
      * {@link CgVfxEventListener} name it by. The triggers' kinds join its {@link CgVfxShape}; at most
      * {@link CgVfxEvent#MAX_EVENTS}.

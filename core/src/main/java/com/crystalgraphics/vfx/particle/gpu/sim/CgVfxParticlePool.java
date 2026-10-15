@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.compute.ops.CgGpuOps;
@@ -136,13 +137,14 @@ public final class CgVfxParticlePool {
     private static final int GPU_STEP = CgGpuTrace.name("vfx.pool.step");
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
+    private static final String TRAIL_KERNELS = "crystalgraphics:shaders/env/compute/vfx/trail.compute";
 
     private final CgVfxShape shape;
     /** What event rows name it by: below 2^13, as a feed's key takes it. */
     private final int id = nextId++ & 0x1FFF;
     private final CgVfxWords words = new CgVfxWords();
     private final int paramWords, instanceWords;
-    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName;
+    private final String passName, recordsName, paramsName, curvesName, instancesName, spawnsName, historyName, ringsName;
     private final String[] countNames;
 
     /** Each definition playing here: its row, and how many open slots use it. */
@@ -178,6 +180,25 @@ public final class CgVfxParticlePool {
     private CgGraphBuffer feedBuffer;
     private int slotCount, openSlots, capacity;
     private boolean basesStale;
+    /**
+     * Per slot: where its trail rings start in {@link #history()}, a ring a particle of its capacity, and points a ring
+     * (0: it keeps none). Its region is its own while it is open, so a ring's points never move.
+     */
+    private int[] ringFirst = new int[0], ringPoints = new int[0];
+    /** Points the history has given out, its free runs as (start, length) pairs, and the slots keeping trails. */
+    private int ringEnd, ringFreeCount, ringSlots;
+    private int[] ringFree = new int[0];
+    /** Runs given out since the last recording, cleared there so a new slot reads no old slot's tags: (start, length). */
+    private int[] ringClears = new int[0];
+    private int ringClearCount;
+    /** Each slot's ring words, four a slot: what {@code trail.compute} reads as RINGS. */
+    private int[] ringWords = new int[0];
+    /** Steps this pool has recorded: each step's place in every ring. */
+    private int stepsStored;
+    /** Whether the history is new since the last recording; the one it replaced, and any between, to release there. */
+    private boolean historyFresh;
+    private CgGraphBuffer historyFrom;
+    private final List<CgGraphBuffer> historyDrops = new ArrayList<>();
 
     /** The steps queued since the last {@link #takeSteps()}: four floats each (dt, wind). */
     private int steps;
@@ -198,8 +219,8 @@ public final class CgVfxParticlePool {
     private int spawnEnd;
 
     // The GPU half: made at the first recording, grown as slots open.
-    private CgKernel step;
-    private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer;
+    private CgKernel step, store;
+    private CgGraphBuffer records, paramBuffer, curveBuffer, instanceBuffer, spawnBuffer, history, ringTable;
     /** Ping-ponged append counts: {@code counts[current]} is how many records the newest version holds. */
     private final CgGraphBuffer[] counts = new CgGraphBuffer[2];
     private int current, storage;
@@ -218,6 +239,8 @@ public final class CgVfxParticlePool {
         instancesName = name + ".instances";
         spawnsName = name + ".spawns";
         countNames = new String[]{name + ".live0", name + ".live1"};
+        historyName = name + ".trails";
+        ringsName = name + ".rings";
     }
 
     /**
@@ -258,6 +281,7 @@ public final class CgVfxParticlePool {
     public static void prepare(CgVfxGpuEmitter emitter) {
         CgVfxEmitterCompiler.compile(CgVfxShape.of(emitter)).kernel("Step").prepare();
         CgGpuOps.prepareFill();
+        if (emitter.trailPoints() > 0) CgCompute.load(TRAIL_KERNELS).kernel("Store").prepare();
     }
 
     /**
@@ -302,6 +326,9 @@ public final class CgVfxParticlePool {
 
     private void forgetStorage() {
         records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = feedBuffer = counts[0] = counts[1] = null;
+        history = ringTable = historyFrom = null;
+        historyDrops.clear();
+        historyFresh = false;
         current = storage = 0;
         paramsChanged = true;
     }
@@ -453,7 +480,91 @@ public final class CgVfxParticlePool {
         if (step == null) step = CgVfxEmitterCompiler.compile(shape).kernel("Step");
         reserve(recording, capacity);
         upload(recording);
+        if (ringSlots > 0) reserveRings(recording);
         return true;
+    }
+
+    /**
+     * Fills a history {@link #history()} made since the last recording, the old one's points copied into it, clears runs
+     * given out since, and writes each slot's rings.
+     */
+    private void reserveRings(CgRecording recording) {
+        if (store == null) store = CgCompute.load(TRAIL_KERNELS).kernel("Store");
+        CgGraphBuffer into = history();
+        if (historyFresh) {
+            recording.fill(into, 0);
+            if (historyFrom != null) {
+                recording.copy(historyFrom, 0, into, 0, historyFrom.size());
+                recording.release(historyFrom);
+                historyFrom = null;
+            }
+            for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
+            historyDrops.clear();
+            historyFresh = false;
+        }
+        for (int i = 0; i < ringClearCount; i++) {
+            recording.fill(history, ringClears[i * 2] * 16L, ringClears[i * 2 + 1] * 16L, 0);
+        }
+        ringClearCount = 0;
+        if (ringWords.length < slotCount * 4) ringWords = new int[Math.max(16, slotCount * 8)];
+        for (int s = 0; s < slotCount; s++) {
+            boolean keeps = slotEmitter[s] != null && ringPoints[s] > 0;
+            ringWords[s * 4] = keeps ? ringFirst[s] : 0;
+            ringWords[s * 4 + 1] = keeps ? slotCapacity[s] : 1;
+            ringWords[s * 4 + 2] = keeps ? ringPoints[s] : 0;
+            ringWords[s * 4 + 3] = 0;
+        }
+        ringTable = fit(recording, ringTable, ringsName, slotCount * 4);
+        put(recording, ringTable, ringWords, slotCount * 4);
+    }
+
+    /** A run of {@code points} in the history: the first free run it fits, else past the end. */
+    private int takeRing(int points) {
+        for (int i = 0; i < ringFreeCount; i++) {
+            int start = ringFree[i * 2], length = ringFree[i * 2 + 1];
+            if (length < points) continue;
+            if (length == points) {
+                System.arraycopy(ringFree, (i + 1) * 2, ringFree, i * 2, (ringFreeCount - i - 1) * 2);
+                ringFreeCount--;
+            } else {
+                ringFree[i * 2] = start + points;
+                ringFree[i * 2 + 1] = length - points;
+            }
+            return clearLater(start, points);
+        }
+        int start = ringEnd;
+        ringEnd += points;
+        return clearLater(start, points);
+    }
+
+    private int clearLater(int start, int points) {
+        if (ringClears.length < (ringClearCount + 1) * 2) ringClears = Arrays.copyOf(ringClears, Math.max(8, ringClearCount * 4));
+        ringClears[ringClearCount * 2] = start;
+        ringClears[ringClearCount * 2 + 1] = points;
+        ringClearCount++;
+        return start;
+    }
+
+    /** Gives back a run, joined to the free runs it touches, and the end drawn in past a run that reaches it. */
+    private void giveRing(int start, int points) {
+        int at = 0;
+        while (at < ringFreeCount && ringFree[at * 2] < start) at++;
+        if (ringFree.length < (ringFreeCount + 1) * 2) ringFree = Arrays.copyOf(ringFree, Math.max(8, ringFreeCount * 4));
+        System.arraycopy(ringFree, at * 2, ringFree, (at + 1) * 2, (ringFreeCount - at) * 2);
+        ringFree[at * 2] = start;
+        ringFree[at * 2 + 1] = points;
+        ringFreeCount++;
+        for (int i = ringFreeCount - 2; i >= 0; i--) {
+            if (ringFree[i * 2] + ringFree[i * 2 + 1] == ringFree[(i + 1) * 2]) {
+                ringFree[i * 2 + 1] += ringFree[(i + 1) * 2 + 1];
+                System.arraycopy(ringFree, (i + 2) * 2, ringFree, (i + 1) * 2, (ringFreeCount - i - 2) * 2);
+                ringFreeCount--;
+            }
+        }
+        if (ringFreeCount > 0 && ringFree[(ringFreeCount - 1) * 2] + ringFree[(ringFreeCount - 1) * 2 + 1] == ringEnd) {
+            ringEnd = ringFree[(ringFreeCount - 1) * 2];
+            ringFreeCount--;
+        }
     }
 
     /**
@@ -535,6 +646,11 @@ public final class CgVfxParticlePool {
             for (int t = 0; t < shape.textureCount(i); t++) stepping.texture(CgVfxEmitterCompiler.texture(i, t), shape.texture(i, t));
         }
         current = 1 - current;
+        if (ringSlots > 0) {
+            pass.dispatch(store, storage).bind("RECORDS", records).bind("LIVE", counts[current])
+                    .bind("RINGS", ringTable).bind("HISTORY", history).set("_Step", stepsStored);
+        }
+        stepsStored++;
     }
 
     /** The scene's depth as {@code fx_depth_at.glsl} reads it, or none. */
@@ -660,9 +776,13 @@ public final class CgVfxParticlePool {
     }
 
     private void releaseStorage(CgRecording recording) {
-        CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer};
+        CgGraphBuffer[] owned = {records, counts[0], counts[1], paramBuffer, curveBuffer, instanceBuffer, spawnBuffer,
+                history, ringTable, historyFrom};
         for (CgGraphBuffer buffer : owned) if (buffer != null) recording.release(buffer);
+        for (int i = 0; i < historyDrops.size(); i++) recording.release(historyDrops.get(i));
         records = paramBuffer = curveBuffer = instanceBuffer = spawnBuffer = counts[0] = counts[1] = null;
+        history = ringTable = historyFrom = null;
+        historyDrops.clear();
     }
 
     public CgVfxShape shape() {
@@ -696,6 +816,11 @@ public final class CgVfxParticlePool {
         slotRow[slot] = useRow(emitter);
         slotScale[slot] = 1f;
         slotSourceReach[slot] = 0f;
+        ringPoints[slot] = emitter.trailPoints();
+        if (ringPoints[slot] > 0) {
+            ringFirst[slot] = takeRing(capacity * ringPoints[slot]);
+            ringSlots++;
+        }
         if (slot == slotCount) slotCount++;
         openSlots++;
         this.capacity += capacity;
@@ -714,6 +839,11 @@ public final class CgVfxParticlePool {
             freeRows[freeRowCount++] = row[0];
         }
         capacity -= slotCapacity[slot];
+        if (ringPoints[slot] > 0) {
+            giveRing(ringFirst[slot], slotCapacity[slot] * ringPoints[slot]);
+            ringPoints[slot] = 0;
+            ringSlots--;
+        }
         slotEmitter[slot] = null;
         slotOwner[slot] = null;
         slotCapacity[slot] = 0;
@@ -927,6 +1057,48 @@ public final class CgVfxParticlePool {
     /** How many records the newest version of {@link #records()} holds: a {@code uint} at word 0. */
     public CgGraphBuffer live() {
         return counts[current];
+    }
+
+    /**
+     * Every trail ring's points, a {@code vec4} each: position from its slot's origin, and 1 + its particle's id (low 24
+     * bits), 0 where none has stored. Slot {@code s}'s particle {@code id} keeps its ring at
+     * {@code ringFirst(s) + (id % capacity(s)) * ringPoints(s)}, and step {@code k}'s point at {@code k % ringPoints(s)}
+     * of it. A new handle when slots keeping trails grew it, so ask each frame; render thread, between steps.
+     */
+    public CgGraphBuffer history() {
+        long need = Math.max(ringEnd, 1) * 16L;
+        if (history == null || history.size() < need) {
+            // A new handle now, so a draw submitted before the recording binds the buffer it will read; the recording
+            // copies the old one's points into it.
+            if (history != null) {
+                if (historyFrom == null) historyFrom = history;
+                else historyDrops.add(history);
+            }
+            history = CgGraphBuffer.persistent(historyName, CgBufferDesc.of(Math.max(256L, Long.highestOneBit(need - 1) << 1),
+                    CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            historyFresh = true;
+        }
+        return history;
+    }
+
+    /** Where {@code slot}'s trail rings start in {@link #history()}. */
+    public int ringFirst(int slot) {
+        openSlot(slot, "ringFirst");
+        return ringFirst[slot];
+    }
+
+    /** Points each of {@code slot}'s rings holds: its definition's {@code trailPoints()}, 0 for none. */
+    public int ringPoints(int slot) {
+        openSlot(slot, "ringPoints");
+        return ringPoints[slot];
+    }
+
+    /**
+     * The step whose points are the newest in every ring once this frame's queued steps record: what a draw submitted
+     * now reads as its head's last step.
+     */
+    public int lastStep() {
+        return stepsStored + steps - 1;
     }
 
     /** The records {@link #records()} has room for. */
@@ -1228,6 +1400,8 @@ public final class CgVfxParticlePool {
         slotScale = Arrays.copyOf(slotScale, size);
         slotGround = Arrays.copyOf(slotGround, size);
         slotSourceReach = Arrays.copyOf(slotSourceReach, size);
+        ringFirst = Arrays.copyOf(ringFirst, size);
+        ringPoints = Arrays.copyOf(ringPoints, size);
         feedPool = Arrays.copyOf(feedPool, size);
         feedParent = Arrays.copyOf(feedParent, size);
         feedSlot = Arrays.copyOf(feedSlot, size);

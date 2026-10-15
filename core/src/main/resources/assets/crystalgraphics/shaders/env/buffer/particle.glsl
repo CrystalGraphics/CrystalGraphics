@@ -21,7 +21,10 @@
 #define CG_PARTICLE_SPIN(n) (PARTICLE_DATA(n).state.y)
 #define CG_PARTICLE_HEAT(n) (PARTICLE_DATA(n).state.z)
 #define CG_PARTICLE_OPACITY(n) (PARTICLE_DATA(n).state.w)
-// The world's block and sky light where it is, 0 to 15 each: what a lit particle sets cg_Light to.
-#define CG_PARTICLE_LIGHT(n) (PARTICLE_DATA(n).light.xy)
+// The world's block and sky light where it is, 0 to 15 each: what a lit particle sets cg_Light to. Stored as one
+// word, block + 16 sky.
+#define CG_PARTICLE_LIGHT(n) (vec2(mod(PARTICLE_DATA(n).light.x, 16.0), floor(PARTICLE_DATA(n).light.x / 16.0)))
+// Its spawn index in its emitter instance, its low 24 bits: what orders a ribbon and finds a particle's trail.
+#define CG_PARTICLE_ID(n) (PARTICLE_DATA(n).light.y)
 // Its height over the floor under it, and 1; (0, 0) for none: written for kinds that land on a floor (Ground).
 #define CG_PARTICLE_FLOOR(n) (PARTICLE_DATA(n).light.zw)

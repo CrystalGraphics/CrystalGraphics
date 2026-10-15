@@ -178,8 +178,8 @@ public final class CgVfxRange {
     private static ByteBuffer staging = ByteBuffer.allocate(0);
 
     private final CgVfxParticlePool pool;
-    /** Per slot: whether this frame draws its particles far to near. */
-    private boolean[] sortedSlots = new boolean[8];
+    /** Per slot, this frame's order: 0 the pool's, 1 far to near, 2 + its newest spawn's id for a ribbon. */
+    private int[] slotOrder = new int[8];
     private float alpha = 1f, ahead;
 
     private CgVfxRange(CgVfxParticlePool pool) {
@@ -284,8 +284,22 @@ public final class CgVfxRange {
      * frame, before the world records.
      */
     public CgVfxRange sorted(int slot) {
-        if (slot >= sortedSlots.length) sortedSlots = Arrays.copyOf(sortedSlots, Math.max(slot + 1, sortedSlots.length * 2));
-        sortedSlots[slot] = true;
+        return order(slot, 1);
+    }
+
+    /**
+     * Has this frame's {@link #drawn()} hold {@code slot}'s particles in spawn order, newest first, for a ribbon through
+     * them: {@code newest} is the id the slot's next spawn takes ({@code CgVfxEmitterInstance.spawnedSoFar}). Spawns more
+     * than 65,535 back share the last place. Cull such a slot as one sphere ({@code CgVfxParticlePool.cullAbout}), or a
+     * particle culled mid-ribbon joins its neighbours across the gap. Each frame, before the world records.
+     */
+    public CgVfxRange ribbon(int slot, int newest) {
+        return order(slot, 2 + newest);
+    }
+
+    private CgVfxRange order(int slot, int code) {
+        if (slot >= slotOrder.length) slotOrder = Arrays.copyOf(slotOrder, Math.max(slot + 1, slotOrder.length * 2));
+        slotOrder[slot] = code;
         anySorted = true;
         return this;
     }
@@ -497,7 +511,7 @@ public final class CgVfxRange {
 
     private static void clearSorted() {
         if (!anySorted) return;
-        for (int i = 0; i < ALL.size(); i++) Arrays.fill(ALL.get(i).sortedSlots, false);
+        for (int i = 0; i < ALL.size(); i++) Arrays.fill(ALL.get(i).slotOrder, 0);
         anySorted = false;
     }
 
@@ -542,8 +556,8 @@ public final class CgVfxRange {
         for (int i = 0, g = 0; i < ALL.size(); i++) {
             CgVfxRange range = ALL.get(i);
             if (range.pool.isReleased()) continue;
-            boolean[] sorted = range.sortedSlots;
-            for (int s = 0; s < range.pool.slotCount(); s++, g++) staging.putInt(g * 4, s < sorted.length && sorted[s] ? 1 : 0);
+            int[] order = range.slotOrder;
+            for (int s = 0; s < range.pool.slotCount(); s++, g++) staging.putInt(g * 4, s < order.length ? order[s] : 0);
         }
         staging.limit(allSlots * 4);
         recording.update(sorts, 0, staging);

@@ -83,6 +83,8 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     final CgVfxSpawnShape spawn;
     /** Spawns a block the source moves and when, the most blocks a step may move and still count, its velocity's share. */
     final float perBlock, blockFrom, blockUntil, maxStep, inherit;
+    /** Each particle's last positions its pool keeps for a {@code trails()} layer; 0 for none. */
+    final int trailPoints;
     /** The sweep as spawn k's front, {@code frontA k - frontB k^2} blocks, k held at its peak: what both paths read. */
     final float frontA, frontB;
     final float sizeMin, sizeMax, sizeSkew, spinMin, spinMax, heat;
@@ -116,6 +118,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         blockUntil = b.blockUntil;
         maxStep = b.maxStep;
         inherit = b.inherit;
+        trailPoints = b.trailPoints;
         sweep = b.sweep;
         // Spawn k is born k / rate into the rate's span T: the front, sweep (t - t^2 / 2T), in k.
         float span = b.rateUntil - b.rateFrom;
@@ -219,6 +222,11 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
     @Override
     public List<CgVfxEvent> events() {
         return events;
+    }
+
+    @Override
+    public int trailPoints() {
+        return trailPoints;
     }
 
     @Override
@@ -366,6 +374,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         private float rate, rateFrom, rateUntil;
         private CgVfxSpawnShape.Builder spawn = new CgVfxSpawnShape.Builder();
         private float sweep, perBlock, blockFrom, blockUntil, inherit, maxStep = 8f;
+        private int trailPoints;
         private float upMin = -1f, upMax = 1f, upBias = 1f;
         private float speedMin, speedMax;
         private float lifeMin = 1f, lifeMax = 1f;
@@ -401,6 +410,7 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
             blockUntil = e.blockUntil;
             maxStep = e.maxStep;
             inherit = e.inherit;
+            trailPoints = e.trailPoints;
             sweep = e.sweep;
             upMin = e.upMin;
             upMax = e.upMax;
@@ -717,6 +727,22 @@ public final class CgVfxEmitter implements CgVfxGpuEmitter {
         /** Each particle starts with {@code share} of its source's velocity, as an event's children take their parent's. */
         public Builder inherit(float share) {
             this.inherit = share;
+            return this;
+        }
+
+        /**
+         * Keeps each particle's last {@code points} positions, one a particle step (60 a second), so a layer with
+         * {@code trails()} on it draws a trail behind every particle: sparks streaking along curved paths, embers swirling.
+         * 2 to 64; a trail lasts {@code points - 1} steps.
+         *
+         * <pre>{@code
+         * CgVfxEmitter.builder("embers").capacity(400).trail(16)...   // a quarter of a second behind each
+         * CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/streaks.shader").on(EMBERS).trails().size(0.04f)
+         * }</pre>
+         */
+        public Builder trail(int points) {
+            if (points < 2 || points > 64) throw new IllegalArgumentException("trail(" + points + "): 2 to 64 points");
+            this.trailPoints = points;
             return this;
         }
 

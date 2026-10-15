@@ -60,25 +60,13 @@ Pass {
 
     void fragment(in v2f i, out vec4 fragColor) {
         if (i.shape.z < 0.5) discard;
-        float u = i.trail.x, across = abs(i.trail.y), along = i.trail.z, fromHead = i.trail.w;
-        float halfWidth = max(i.shape.x, 1.0e-3);
-        // Rounded where it leaves its thing: within its first half-width the strip closes as a circle does.
-        float cap = clamp(fromHead / halfWidth, 0.0, 1.0);
-        float r = across / max(sqrt(1.0 - (1.0 - cap) * (1.0 - cap)), 1.0e-3);
-        if (r >= 1.0) discard;
-        float core = exp(-r * r / (_CoreWidth * _CoreWidth) * 2.0);
-        float body = pow(1.0 - r, _Softness);
-        vec3 q = vec3(along * _Tiling.x - FX_AGE * _Flow * _Tiling.x, i.trail.y * _Tiling.y, FX_SEED * 9.0);
-        float n = 0.5 + 0.5 * fx_fbm(q, 3);
-        float streak = pow(fx_ridged(vec3(q.x * 0.6, q.y * 2.2, FX_SEED * 5.0 + FX_AGE * 0.7), 3), 4.0);
-        float e = body * (0.55 + 0.45 * n) + streak * 0.45 * (1.0 - r) - u * u * _Erode;
-        float alpha = smoothstep(0.0, 0.3, e);
-        float fade = pow(1.0 - u, _Fade);
-        float strength = alpha * fade * i.shape.y * _Color.a * FX_PRESENCE * fx_flicker(FX_AGE, FX_SEED);
-        float hot = clamp(core * 1.15 + streak * 0.5 - u * 0.6, 0.0, 1.0);
-        vec3 light = mix(_Color.rgb * (0.65 + 0.55 * n), _Core.rgb, hot);
+        FxGlow g = FxGlow(_Color.rgb, _Core.rgb, _CoreWidth, _Softness, _Fade, _Tiling.xy, _Flow, _Erode);
+        vec3 glow;
+        vec3 light = fx_trail_glow(g, _Noise, i.trail, i.shape.x, FX_AGE, FX_SEED, glow);
+        float strength = i.shape.y * _Color.a * FX_PRESENCE;
+        if (dot(light, light) == 0.0) discard;
         fragColor = vec4(light * strength, 0.0);
-        CG_GLOW((_Core.rgb * hot + _Color.rgb * body * 0.35) * strength * _GlowGain);
+        CG_GLOW(glow * strength * _GlowGain);
     }
 }
 

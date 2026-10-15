@@ -444,8 +444,8 @@ public final class CgVfxEmitterInstance implements CgVfxInstanceView {
         return children[e];
     }
 
-    /** Spawn indices handed out so far, kept or thinned. */
-    int spawnedSoFar() {
+    /** The spawn index its next particle takes: the spawn indices handed out so far, kept or thinned. */
+    public int spawnedSoFar() {
         return spawned;
     }
 

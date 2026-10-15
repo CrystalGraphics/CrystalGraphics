@@ -9413,6 +9413,8 @@ com/crystalgraphics/vfx/look/CgVfxLayer
   method public size ()F
   method public sizeParam ()Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   method public slots ()Ljava/util/List;
+  method public strip ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
+  method public subdivisions ()I
   method public textures ()Ljava/util/Map;
   method public toString ()Ljava/lang/String;
   method public tunings ()I
@@ -9439,6 +9441,7 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Builder
   method public named (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public on ([Lcom/crystalgraphics/vfx/look/CgVfxSlot;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public on ([Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public ribbon ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public role (Lcom/crystalgraphics/vfx/look/CgVfxLayer$Role;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public set (Ljava/lang/String;F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public set (Ljava/lang/String;FF)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
@@ -9446,7 +9449,9 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Builder
   method public setArray (Ljava/lang/String;[F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public size (F)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public size (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public subdivisions (I)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
+  method public trails ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public unbound (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
   method public volume ()Lcom/crystalgraphics/vfx/look/CgVfxLayer$Builder;
 com/crystalgraphics/vfx/look/CgVfxLayer$Role
@@ -9458,6 +9463,14 @@ com/crystalgraphics/vfx/look/CgVfxLayer$Role
   field public,static,final SURFACE Lcom/crystalgraphics/vfx/look/CgVfxLayer$Role;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Role;
   method public,static values ()[Lcom/crystalgraphics/vfx/look/CgVfxLayer$Role;
+com/crystalgraphics/vfx/look/CgVfxLayer$Strip
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final NONE Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
+  field public,static,final RIBBON Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
+  field public,static,final TRAILS Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
+  method public,static values ()[Lcom/crystalgraphics/vfx/look/CgVfxLayer$Strip;
 com/crystalgraphics/vfx/look/CgVfxLayout
   access public,final
   extends java/lang/Object
@@ -9818,6 +9831,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter
   method public slot ()Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   method public spawnsOnMesh ()Z
   method public toBuilder ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public trailPoints ()I
   method public writeCurves ([FII)V
   method public writeSpawn (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
@@ -9862,6 +9876,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitter$Builder
   method public spin (FF)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public surface ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public sweep (F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
+  method public trail (I)Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
   method public vertices ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Builder;
 com/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer
   access public,final,enum
@@ -9907,6 +9922,7 @@ com/crystalgraphics/vfx/particle/CgVfxEmitterInstance
   method public sourceX ()F
   method public sourceY ()F
   method public sourceZ ()F
+  method public spawnedSoFar ()I
   method public start (FFF)V
   method public stepBursts ()I
   method public stepCandidates ()I
@@ -10425,6 +10441,7 @@ com/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter
   method public curveDomain ()Lcom/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain;
   method public events ()Ljava/util/List;
   method public spawnsOnMesh ()Z
+  method public trailPoints ()I
   method public,abstract modules ()Ljava/util/List;
   method public,abstract name ()Ljava/lang/String;
   method public,abstract renderer ()Lcom/crystalgraphics/vfx/particle/CgVfxEmitter$Renderer;
@@ -10503,6 +10520,7 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public drawn ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public frame (FF)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public objects ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public ribbon (II)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public sorted (I)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public visible ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public visibleWord (I)I
@@ -10539,10 +10557,12 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public endStep ()V
   method public feed (ILcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;II)V
   method public ground (I)F
+  method public history ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;)V
   method public instance (IIFFLcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;FZ)V
   method public isOpen (I)Z
   method public isReleased ()Z
+  method public lastStep ()I
   method public listBase (I)I
   method public live ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public open (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxGpuEmitter;I)I
@@ -10553,6 +10573,8 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public queuedSteps ()I
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public records ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public ringFirst (I)I
+  method public ringPoints (I)I
   method public seed (Lcom/crystalgraphics/render/graph/CgRecording;Ljava/nio/ByteBuffer;I)V
   method public shape ()Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxShape;
   method public slotCount ()I

@@ -1385,6 +1385,34 @@ scorch.tick(dt, x, groundY + 0.02, z);
 A shader of your own declares `_FxTrail ("Trail points", sampler2D) = "black"`, has no vertex data (`#type none`), and
 places each vertex with `fx_trail_vertex`; `fx_trail_place(v, scale)` scales its width by a taper of its own.
 
+#### A trail behind every particle, and ribbons through them
+
+Particles draw strips too, built the same way on the GPU, with nothing for the effect to do:
+
+```java
+// A trail behind each spark: its pool keeps each particle's last 12 positions, one a step
+static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").capacity(1500).trail(12)...build();
+CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/streaks.shader").on(SPARKS).trails().bind("_Color", FLAME).build()
+
+// One ribbon through an instance's particles in spawn order: a stream bent wherever its particles drift
+static final CgVfxEmitter STREAM = CgVfxEmitter.builder("stream").capacity(600).ratePerBlock(16f)
+        .module(new CgVfxModule.Turbulence(1.4f, 0.9f, 1.2f))...build();
+CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/ribbon.shader").on(STREAM).ribbon().size(0.2f).build()
+```
+
+| | `trails()` | `ribbon()` |
+|---|---|---|
+| Is | a strip behind each particle, through where it was | one strip through all an instance's particles, newest first |
+| Needs | `trail(points)` on the emitter: 2 to 64, lasting `points - 1` particle steps | nothing; joins neighbours at most `_Gap` spawns apart |
+| Width | the particle's size times the layer's, tapering | each particle's size times the layer's: its size curve shapes it |
+| Shader | `particle/streaks.shader` | `particle/ribbon.shader` |
+
+- Both follow every curve the particles fly, since the points are the particles: curl noise makes a ribbon writhe, a
+  vortex coils it, a bounce shows in a spark's trail.
+- **The slot is culled whole**, as one sphere round its source, rather than particle by particle.
+- A particle's trail lives in a ring its pool keeps per slot, written after each step at every tier; each point carries
+  its particle's id, so a reused ring never joins two particles. `layer.subdivisions(n)` sets quads between points (2).
+
 ### Built from elements
 
 Reuse what the engine has: a charge, a blast, a beam's body. An element reaches its effect's values, shakes, post

@@ -3,7 +3,8 @@
 // Slots are numbered across every pool, each pool's from _SlotFirst. Key, once per pool, gives each live particle a
 // key, its slot if it may be on screen (inside the view, and not behind the scene's depth) and _AllSlots if not, so
 // the culled sort past the end; and its index in its pool, which the sort carries. With _DepthBits 16 a slot that
-// sorts takes its view depth in the low bits, far first. CgGpuOps then sorts every pool's keys at once, counts each
+// sorts takes its view depth in the low bits, far first, and a ribbon slot how many spawns ago it was born, newest
+// first. CgGpuOps then sorts every pool's keys at once, counts each
 // slot's visible particles and scans the counts into each slot's start. Place, once per pool, writes the particles a
 // slot's draws read, in CgParticleBuffer's layout, from the slot's list base. Objects writes the same particles as
 // object records, for a mesh drawn per particle. Both light each particle from the voxel window at its block
@@ -75,7 +76,7 @@ Buffers {
     RECORDS ("Particles",                                         FxRecord, readonly)
     LIVE    ("How many are alive",                                uint,     readonly)
     SLOTS   ("Each slot's origin from the camera, and its reach (below 0: one sphere's)", vec4, readonly)
-    SORTS   ("Each slot's: 1 when it sorts far to near",          uint,     readonly)
+    SORTS   ("Each slot's: 1 far to near, 2 + its newest spawn's id for a ribbon in spawn order", uint, readonly)
     KEYS    ("Keys",                                              uint,     writeonly)
     INDICES ("Indices, sorted by slot",                           uint,     readwrite)
     VISIBLE ("Each slot's visible particles",                     uint,     readonly)
@@ -115,7 +116,9 @@ void Key() {
         vec3 lo = c - vec3(reach), hi = c + vec3(reach);
         if (!outside && !cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) {
             key = owner << _DepthBits;
-            if (_DepthBits > 0 && SORTS(int(owner)) != 0u) key |= 65535u - range_depth(p);
+            uint order = SORTS(int(owner));
+            if (_DepthBits > 0 && order == 1u) key |= 65535u - range_depth(p);
+            else if (_DepthBits > 0 && order >= 2u) key |= min(order - 2u - r.idSlot.x, 65535u);
         }
     }
     KEYS_WRITE(key);
@@ -160,6 +163,11 @@ vec2 range_light(int slot, vec3 p) {
             ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), b, vec2(15.0));
 }
 
+// Block and sky light as one word, block + 16 sky: CG_PARTICLE_LIGHT unpacks it.
+float range_light_word(vec2 light) {
+    return floor(light.x + 0.5) + 16.0 * floor(light.y + 0.5);
+}
+
 // The floor under a particle at p from slot's origin (CG_PARTICLE_FLOOR): its height over it, and 1; or (0, 0) for
 // none. The Step's floor: the window's where it knows, else the slot's flat ground.
 vec2 range_floor(int slot, vec3 p, float previousY) {
@@ -179,7 +187,7 @@ void Place() {
     d.place = vec4(0.0);
     d.motion = vec4(0.0);
     d.state = vec4(0.0);
-    d.light = vec4(15.0, 15.0, 0.0, 0.0);
+    d.light = vec4(range_light_word(vec2(15.0)), 0.0, 0.0, 0.0);
     if (rank < int(VISIBLE(lo))) {
         FxRecord r = RECORDS(int(INDICES(int(STARTS(lo)) + rank)));
         float t = min(r.positionAge.w / r.previousLife.w, 1.0);
@@ -187,7 +195,9 @@ void Place() {
         d.place = vec4(r.previousLife.xyz + (r.positionAge.xyz - r.previousLife.xyz) * _Alpha, r.velocitySize.w * curve.x);
         d.motion = vec4(r.velocitySize.xyz, t);
         d.state = vec4(r.seedSpin.x, r.seedSpin.y + r.seedSpin.z * _Ahead, r.seedSpin.w, curve.y);
-        d.light = vec4(range_light(lo, d.place.xyz), _Floors != 0 ? range_floor(lo, d.place.xyz, r.previousLife.y) : vec2(0.0));
+        // Light packed into one lane, its spawn id in the next: what a trail or ribbon of it reads (CG_PARTICLE_ID).
+        vec2 ground = _Floors != 0 ? range_floor(lo, d.place.xyz, r.previousLife.y) : vec2(0.0);
+        d.light = vec4(range_light_word(range_light(lo, d.place.xyz)), float(r.idSlot.x & 16777215u), ground);
     }
     DRAWN_WRITE(d);
 }

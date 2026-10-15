@@ -267,6 +267,8 @@ public final class CgVfxModules {
         anime(COLUMNS[3], ROWS[4]);
         storm(COLUMNS[0], ROWS[5]);
         meteor(COLUMNS[1] + 4f, ROWS[5], smokeSheet);
+        sparks(COLUMNS[2] + 6f, ROWS[5]);
+        streams(COLUMNS[3] + 10f, ROWS[5]);
         floors = new float[stations.size()];
         for (Station s : stations) LOG.info("[vfx-modules] {} at x {}, z {}", s.name(), s.x(), s.z());
         LOG.info("[vfx-modules] every station replays every {}s; a simulation switch reaches it from the next", PERIOD);
@@ -1307,6 +1309,131 @@ public final class CgVfxModules {
                     p.label(4f, 3.6f, 1f, 0.42f, "flat + scorch", 0xFFFFFFFF);
                     p.label(4f, 3.1f, 1f, 0.26f, "gouged as it skids", 0xFFB8D8FF);
                 }, follow, show, null));
+    }
+
+    private static final String STREAKS = "crystalgraphics:shaders/vfx/particle/streaks.shader",
+            RIBBON = "crystalgraphics:shaders/vfx/particle/ribbon.shader";
+
+    /**
+     * A trail behind every particle, each through the places its pool kept, so it follows the curve its particle flew: a
+     * grinder's fountain of sparks arcing out and skipping off the ground, embers spiralling up a vortex through curling
+     * air, and a firework bursting overhead every two seconds into drooping streamers.
+     */
+    private void sparks(float x, float z) {
+        CgVfxEmitter grinder = CgVfxEmitter.builder("sparksGrinder").capacity(1500).rate(320f, 0f, MOTION).trail(10)
+                .shape(CgCone.of(0.05, Math.toRadians(22))).pointing(1f, 0.55f, 0f).speed(6f, 11f).life(0.7f, 1.5f)
+                .size(0.03f, 0.05f, 1.4f).heat(1f).module(new CgVfxModule.Gravity(9.8f))
+                .module(new CgVfxModule.Drag(0.4f, 0f)).module(new CgVfxModule.Ground(0.45f, 0.3f, 0.5f))
+                .opacity(CgKeyframes.start(0f, 1f).to(0.7f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
+                .build();
+        CgVfxEmitter embers = CgVfxEmitter.builder("sparksEmbers").capacity(500).rate(80f, 0f, MOTION).trail(30)
+                .shape(CgRing.of(0.3, 1.4, 0)).speed(0.2f, 0.6f).life(2.4f, 3.4f).size(0.035f, 0.06f, 1.4f).heat(1f)
+                .module(new CgVfxModule.Vortex(0f, 1f, 0f, 5f, -1.2f, 0f, 0f, 0f))
+                .module(new CgVfxModule.Force(0f, 2.2f, 0f)).module(new CgVfxModule.Turbulence(2.2f, 0.7f, 0.9f))
+                .module(new CgVfxModule.Drag(1f, 0f)).opacity(FADE).build();
+        CgVfxEmitter firework = CgVfxEmitter.builder("sparksFirework").capacity(900).burst(0.5f, 280).burst(2.5f, 280)
+                .burst(4.5f, 280).trail(24).shape(CgSphere.of(0.1)).speed(5f, 6.5f).life(1.6f, 2.3f)
+                .size(0.03f, 0.05f, 1.2f).heat(1f).module(new CgVfxModule.Gravity(3.2f))
+                .module(new CgVfxModule.Drag(1.3f, 0f))
+                .opacity(CgKeyframes.start(0f, 1f).to(0.6f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
+                .build();
+        CgVfxLook look = CgVfxLook.builder(SCHEMA).emitter(grinder).emitter(embers).emitter(firework)
+                .layer(CgVfxLayer.of(STREAKS).on(grinder).trails().bind("_Color", FLAME).bind("_Core", WHITE).build())
+                .layer(CgVfxLayer.of(STREAKS).on(embers).trails().size(0.8f).bind("_Color", EMBER).bind("_Core", FLAME)
+                        .set("_Tail", 0.3f).set("_Fade", 0.8f).build())
+                .layer(CgVfxLayer.of(STREAKS).on(firework).trails().size(1.2f).bind("_Color", MAGENTA)
+                        .bind("_Core", WHITE).set("_Erode", 0.7f).build())
+                .layer(sparkLayer(grinder, FLAME, WHITE))
+                .layer(sparkLayer(embers, EMBER, FLAME))
+                .layer(sparkLayer(firework, MAGENTA, WHITE))
+                .build();
+        float[][] places = {{-5f, 1.2f, -2f}, {3f, 0.2f, 1f}};
+        float[][] bursts = {{-3f, 7.5f, 1f}, {2.5f, 8f, -1f}, {0f, 7f, 2.5f}};
+        // The firework bursts somewhere new each time; the fountain and the embers stay.
+        Mover burstAt = (i, age, at) -> {
+            float[] b = i < 2 ? places[i] : bursts[age < 1.5f ? 0 : age < 3.5f ? 1 : 2];
+            at[0] = b[0];
+            at[1] = b[1];
+            at[2] = b[2];
+        };
+        stations.add(new Station("sparks: a trail behind every particle", x, z, look, List.of(grinder, embers, firework),
+                new float[][]{places[0], places[1], bursts[0]}, p -> {
+                    p.sphere(-5f, 1.2f, -2f, 0.35f);
+                    p.label(-5f, 5.2f, -2f, 0.42f, "trail(10) + trails()", 0xFFFFFFFF);
+                    p.label(-5f, 4.7f, -2f, 0.26f, "sparks arcing, skipping off the ground", 0xFFB8D8FF);
+                    p.label(3f, 5.2f, 1f, 0.42f, "trail(30)", 0xFFFFFFFF);
+                    p.label(3f, 4.7f, 1f, 0.26f, "embers up a vortex through curling air", 0xFFB8D8FF);
+                }, burstAt, null, null));
+    }
+
+    /**
+     * One ribbon through each emitter instance's particles in spawn order, every particle moved by its own modules: a ki
+     * stream spiralling up and down a column, writhing in curl noise and swelling then thinning along its life; and five
+     * rivers of energy pulled in round a vortex to a swelling core, a spirit bomb gathering.
+     */
+    private void streams(float x, float z) {
+        CgVfxEmitter helix = CgVfxEmitter.builder("streamHelix").capacity(700).ratePerBlock(16f, 0f, MOTION)
+                .maxStep(4f).speed(0.1f, 0.3f).life(1.4f, 1.4f).size(1f, 1f, 1f).heat(1f)
+                .module(new CgVfxModule.Turbulence(1.4f, 0.9f, 1.2f)).module(new CgVfxModule.Drag(1.2f, 0f))
+                .size(CgKeyframes.start(0f, 0.15f).to(0.12f, 1f, CgEasings.OUT_QUAD).to(0.6f, 0.7f, CgEasings.LINEAR)
+                        .to(1f, 0f, CgEasings.IN_QUAD).build())
+                .opacity(CgKeyframes.start(0f, 1f).to(0.75f, 1f, CgEasings.LINEAR).to(1f, 0f, CgEasings.IN_QUAD).build())
+                .build();
+        CgVfxLook.Builder look = CgVfxLook.builder(SCHEMA).emitter(helix)
+                .layer(CgVfxLayer.of(RIBBON).on(helix).ribbon().size(0.22f).subdivisions(2).bind("_Color", CYAN)
+                        .bind("_Core", WHITE).build());
+        List<CgVfxEmitter> emitters = new ArrayList<>(List.of(helix));
+        List<float[]> sources = new ArrayList<>();
+        sources.add(new float[]{-4f, 0.5f, 0f});
+        float[] core = {4f, 3.5f, 0f};
+        int rivers = 5;
+        for (int k = 0; k < rivers; k++) {
+            float a = k * (float) (2.0 * Math.PI / rivers);
+            float[] at = {core[0] + 6.5f * (float) Math.cos(a), 0.6f + 1.8f * (k % 2), core[2] + 6.5f * (float) Math.sin(a)};
+            float dx = core[0] - at[0], dy = core[1] - at[1], dz = core[2] - at[2];
+            CgVfxEmitter river = CgVfxEmitter.builder("streamRiver" + k).capacity(500).rate(90f, 0.2f, MOTION - 0.5f)
+                    .speed(0.2f, 0.5f).life(3f, 3f).size(1f, 1f, 1f).heat(1f)
+                    .module(new CgVfxModule.Attract(CgSphere.of(8f), 26f).at(dx, dy, dz))
+                    .module(new CgVfxModule.Vortex(0f, 1f, 0f, 6f, 0f, dx, dy, dz))
+                    .module(new CgVfxModule.Turbulence(0.8f, 0.35f, 0.5f))
+                    .module(new CgVfxModule.Drag(1.4f, 0f))
+                    .module(new CgVfxModule.Kill(CgSphere.of(0.55f), true).at(dx, dy, dz))
+                    .size(CgKeyframes.start(0f, 0.3f).to(0.2f, 1f, CgEasings.OUT_QUAD).to(1f, 0.4f, CgEasings.LINEAR).build())
+                    .opacity(FADE).build();
+            look.emitter(river).layer(CgVfxLayer.of(RIBBON).on(river).ribbon().size(0.12f).bind("_Color", GOLD)
+                    .bind("_Core", WHITE).set("_Tiling", 0.15f, 1.3f, 0f, 0f).build());
+            emitters.add(river);
+            sources.add(at);
+        }
+        CgVfxEmitter ball = CgVfxEmitter.builder("streamCore").capacity(4).burst(0f, 1).speed(0f, 0f)
+                .life(MOTION, MOTION).size(1.4f, 1.4f, 1f).heat(1f)
+                .size(CgKeyframes.start(0f, 0.2f).to(0.9f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
+                .opacity(CgKeyframes.start(0f, 0f).to(0.08f, 1f, CgEasings.OUT_QUAD).to(1f, 1f, CgEasings.LINEAR).build())
+                .build();
+        look.emitter(ball).layer(sparkLayer(ball, GOLD, WHITE));
+        emitters.add(ball);
+        sources.add(core.clone());
+        // The stream's source spirals up a column and back down, so it never jumps.
+        Mover spiral = (i, age, at) -> {
+            if (i != 0) {
+                float[] s = sources.get(i);
+                at[0] = s[0];
+                at[1] = s[1];
+                at[2] = s[2];
+                return;
+            }
+            float a = age * 5f, rise = (float) (0.5 - 0.5 * Math.cos(age * Math.PI / 2.6));
+            at[0] = -4f + 1.6f * (float) Math.cos(a);
+            at[1] = 0.5f + 6f * rise;
+            at[2] = 1.6f * (float) Math.sin(a);
+        };
+        stations.add(new Station("streams: ribbons through particles", x, z, look.build(), emitters,
+                sources.toArray(new float[0][]), p -> {
+                    p.label(-4f, 8f, 0f, 0.42f, "ribbon()", 0xFFFFFFFF);
+                    p.label(-4f, 7.5f, 0f, 0.26f, "a ki stream writhing in curl noise", 0xFFB8D8FF);
+                    p.label(4f, 7f, 0f, 0.42f, "five ribbons", 0xFFFFFFFF);
+                    p.label(4f, 6.5f, 0f, 0.26f, "rivers pulled round a vortex into a core", 0xFFB8D8FF);
+                }, spiral, null, null));
     }
 
     /** A flipbook smoke sheet's layer properties, drawn first in its effect. */
