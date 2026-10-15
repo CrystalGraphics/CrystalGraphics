@@ -11,24 +11,31 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * A way an effect ends: over some seconds, numbers and colours animated to where they end, then gone. An effect's
- * {@code stop()} is its own graceful end; an ending is one a look or a game picks.
+ * A way to end an effect other than its own: over some seconds, numbers and colours tweened to where they end, then
+ * gone, skipping what the effect's graceful {@code stop()} would play. A bolt that fizzles rather than bursts, an aura
+ * faded when its buff is dispelled.
  *
  * <pre>{@code
- * // declared once, by name, beside the effect or the look
- * public static final CgVfxEnding FADE = CgVfxEnding.over("mymod:wave/fade", 0.35f)
- *         .animate(CgEnergyWave.RADIUS, 0f, CgEasings.IN_QUAD)     // it gives way rather than deflates
+ * // declared once, as a constant on the effect's class
+ * public static final CgVfxEnding FIZZLE = CgVfxEnding.over("mymod:bolt/fizzle", 0.4f)   // its name and its seconds
+ *         .animate(Bolt.RADIUS, 0f, CgEasings.IN_QUAD)          // each value: where it ends, how it gets there
+ *         .animate(Bolt.CORE, 0xFFFF3020, CgEasings.LINEAR)
+ *         .fadeOut(CgEasings.IN_QUAD)                           // and the whole effect's presence to 0
  *         .build();
  *
- * wave.end(FADE);                                          // on a server's copy, every viewer's ends the same
- * aura.end(CgVfxEnding.FADE_OUT);                         // any effect: its presence to nothing
+ * bolt.end(FIZZLE);                  // an effect you played
+ * playing.end(FIZZLE);               // a lasting cue: every viewer's copy fizzles
+ * aura.end(CgVfxEnding.FADE_OUT);    // any effect, faded out over 0.3 s
  *
- * // a fade of another length, declared as any ending is
+ * // a fade of another length is an ending of its own
  * public static final CgVfxEnding SLOW_FADE = CgVfxEnding.over("mymod:slow_fade", 1.2f).fadeOut(CgEasings.IN_QUAD).build();
  * }</pre>
  *
  * <ul>
- *   <li>Its name travels: declare it in code both sides run, before a cue ends with it.</li>
+ *   <li>It crosses the network as its name alone, each client finding the ending declared under it ({@link #named}):
+ *   declare it on a class every client has loaded by then (the effect's, or the look's), or it does nothing there.</li>
+ *   <li>Prefix the name with your mod's id: a second ending of one name throws.</li>
+ *   <li>Ending an effect whose look lacks one of its values throws.</li>
  *   <li>An effect hears it in {@code ending(CgVfxEnding)}, to skip what a graceful end would play (a wave's blast).</li>
  *   <li>Its easings travel by their place in {@link CgEasings}: one made by a factory reaches viewers as linear.</li>
  * </ul>

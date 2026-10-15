@@ -48,8 +48,8 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * <ul>
- *   <li>Its values start as its look's; {@link #set} changes this effect alone, {@link #animate} eases one there.</li>
- *   <li>{@link #stop()} is its graceful end; {@link #end(CgVfxEnding)} ends it another way a look or a game picks.</li>
+ *   <li>Its values start as its look's; {@link #set} changes this effect alone, {@link #animate} tweens one there.</li>
+ *   <li>{@link #stop()} is its graceful end; {@link #end(CgVfxEnding)} ends it another way, one the caller picks.</li>
  *   <li>An effect is done when it calls {@link #die()}; the system then drops it before the next frame.</li>
  *   <li>It announces the moments of its life with {@link #moment}, which a {@link CgVfxMomentListener} hears: name
  *       them as constants on the effect.</li>
@@ -566,14 +566,16 @@ public abstract class CgVfxEffect {
     }
 
     /**
-     * Eases a number from where it is to {@code to} over {@code seconds}, on its tick: what follows it follows. On a
-     * server, an effect a lasting cue runs plays it on every viewer at once, rather than sending each step.
+     * A tween: moves a number from where it is to {@code to} over {@code seconds} rather than jumping there, eased along
+     * {@code easing}, a step each tick. What follows it by a link follows. On a server, an effect a lasting cue runs
+     * plays it on every viewer at once, rather than sending each step.
      *
      * <pre>{@code
-     * wave.animate(CgEnergyWave.RADIUS, 1.4f, 0.5f, CgEasings.OUT_BACK);   // powered up
+     * wave.animate(CgEnergyWave.RADIUS, 1.4f, 0.5f, CgEasings.OUT_BACK);   // powered up: past 1.4, then settling there
      * }</pre>
      *
-     * A later tween of the same value replaces it from where it has got to; a {@link #set} of it stops it.
+     * A later tween of the same value replaces it from where it has got to; a {@link #set} of it stops it. It breaks the
+     * value's own link.
      */
     public final CgVfxEffect animate(CgVfxParam.Scalar param, float to, float seconds, CgEasing easing) {
         int at = values.layout().offset(param);

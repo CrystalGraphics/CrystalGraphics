@@ -47,7 +47,12 @@ you need. Where each class lives is `vfx/CLAUDE.md`, which loads itself for anyo
 | **Layer** | One draw: a `.shader` on one or more slots, its properties set, bound to parameters, or bound by name. | `CgVfxLayer` |
 | **Slot** | A place an effect draws: its body along a path, its head on a sphere, its sparks. An element declares its slots; a layer names the ones it draws on. | `CgVfxSlot` |
 | **Emitter**, **module** | One kind of particle, and the physics pieces it stacks (gravity, drag, collision). Simulated on the GPU. | `CgVfxEmitter`, `CgVfxModule` |
-| **Ending** | A way an effect ends: values eased somewhere over some seconds, then gone. | `CgVfxEnding` |
+| **Link** | A size that follows another, times a factor: the head is 1.45 times the radius, so setting the radius resizes it. | `SCHEMA.length("head", RADIUS, 1.45f)` |
+| **Tween** | One value moved from where it is to a new one over some seconds, rather than jumping: a beam swelling as it powers up. | `effect.animate(...)` |
+| **Easing** | The shape of a tween's motion: steady, slow then fast, fast then settling, overshooting and back. | `CgEasings.LINEAR`, `OUT_QUAD`, ... |
+| **Ending** | A way to end an effect other than its own: some values tweened to where they end, then gone. Declared once under a name, which is how a server tells clients which ending to play. | `CgVfxEnding` |
+| **Presence** | How present an effect is, 0 to 1. Every engine shader multiplies its light by it, so fading it fades the whole effect. | `effect.presence()`, `FX_PRESENCE` |
+| **Moment** | A named instant in an effect's life (the release, the impact), announced for capture tools. | `moment("impact", ...)` |
 | **Owner** | Your mod's handle on the engine: play, stop and clear your effects, timed under your name. | `CgVfxOwner`, from `CgVfx.owner("mymod")` |
 | **Cue** | An effect named for the network, so the server can tell clients to play it. | `CgVfxCue` |
 | **Authority** | The server running an effect itself, because gameplay depends on what it does. | `CgVfxCue.Builder.authoritative()` |
@@ -93,6 +98,8 @@ VFX.play("crystalgraphics:kamehameha_toon", x, y, z, tx, ty, tz);   // at a poin
 ```
 
 ### A variant of a look
+
+`derive()` copies a look into a builder; what you change there makes a new look, and the original stays as it was.
 
 ```java
 public static final CgVfxLook THIN = CgEnergyWave.kamehameha().derive()
@@ -191,7 +198,7 @@ VFX.prepare(LOOK);      // builds a look's shaders, meshes and kernels ahead of 
 | Call | What happens |
 |---|---|
 | `effect.stop()` | Its own graceful end: emission ends, what is in flight plays out (a wave's tail runs into its target and bursts) |
-| `effect.end(ending)` | An ending the game picks: values eased over its seconds, then gone ([§7](#7-tweens-and-endings)) |
+| `effect.end(ending)` | Another way you pick, for an interrupted or cancelled effect: values eased over the ending's seconds, then gone ([§7](#an-ending)) |
 | `effect.kill()` | At once: the effect and its particles are gone by the next particle step |
 
 ### Following an entity
@@ -218,8 +225,10 @@ VFX.play(new HitSpark(look, hitX, hitY, hitZ).followKeepingOffset(targetId, CgEn
   CgEntityAttachments.mark(entityId, PALM, bone.getWorldPosition());            // GeckoLib
   ```
 
-  A mark wins over a registered `Provider`, which wins over the fallback's proportions. Marking a built-in point
-  moves every effect already following it. A point at a share of the body's height:
+  Where a point is comes from three places, the first that knows winning: a **mark**, from where the model was drawn
+  this frame; a **provider** (`CgEntityAttachments.provide(provider)`), code that answers points for the entities it
+  knows; else the **fallback**, the point estimated from the entity's box by a player's proportions. Marking a built-in
+  point moves every effect already following it. A point at a share of the body's height:
   `CgEntityAttachments.declareAtHeight("mymod:strike", 0.7)`.
 
 ### Starting part-way through
@@ -229,8 +238,9 @@ VFX.play(new Storm(Storm.LOOK, x, y, z).startAt(12f));   // as if it had been pl
 ```
 
 Call it before its first tick. The effect's ticks run exactly up to that age (up to
-`CgVfxSystem.MAX_START_SECONDS`; past it, its age jumps), its particles prewarm over the last two seconds, and its
-shakes and moments stay silent until it gets there. This is how a player joining late sees a lasting cue.
+`CgVfxSystem.MAX_START_SECONDS`; past it, its age jumps). Its particles **prewarm**: the last two seconds of them are
+simulated in a few quick steps, so they are already in the air when it appears. Its shakes and moments stay silent
+until it gets there. This is how a player joining late sees a lasting cue.
 
 ### Other controls
 
@@ -289,6 +299,9 @@ public static final CgVfxParam.Shake HIT = SCHEMA.shake("hit", CgCameraShakes.IM
 - **Declare every parameter before the first look including its schema is built**: building one freezes the schema,
   and a declaration after throws.
 - **A name is a network field's** ([§10](#look-parameters-and-data-of-its-own)): renaming one is a network change.
+- **A curve is keyframes**: `start(time, value)`, then `.to(time, value, easing)` for each key after, eased from the
+  one before ([§7](#easings) has the easings). An effect reads it at a time of its choosing, usually its progress 0 to
+  1: `curve(GLOW).at(t)`. Before the first key it holds the first value, after the last the last.
 - **A camera shake is a parameter**, so a look can change it. Never hard-code shake numbers in an effect.
 
 ### Links: sizes that follow
@@ -407,8 +420,9 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 
 - A name the shader does not declare, or a value of the wrong kind, throws at the layer's first draw and names the
   properties the shader has.
-- Bound values are written once a frame per effect and layer into a row the shader reads ([§15](#15-writing-a-layers-shader)),
-  so effects playing different values still batch.
+- Bound values are written once a frame per effect and layer into a **row**: a small block of numbers that travels
+  with each draw, which the shader reads in place of the material's value ([§15](#15-writing-a-layers-shader)). So two
+  effects playing different values still share one material and batch.
 - A layer's constants are its material's: two looks sharing a kit share its layers' materials.
 
 ### Slots
@@ -434,8 +448,9 @@ public static final CgVfxSlot ARCS = CgVfxSlot.pathRibbons("crystalgraphics:wave
   layer draws on costs nothing, and `frame.draws(this, slot)` skips the work of preparing it.
 - **One shader on several kinds**: a layer on a tube and a sphere makes a material per kind and enables the kind's
   keyword (`FX_ON_TUBE`, `FX_ON_MESH`, ...) where the shader declares it.
-- Each kind's per-draw customs are documented once, on `CgVfxSlot.Kind`; each element documents what its slots' four
-  numbers mean.
+- **Every draw of a slot carries four numbers of its element's choosing** (`ex ey ez ew` above: the head's half width,
+  half length and strength), which its layers' shaders read. Each element documents what its slots' four mean; what each kind
+  passes besides is on `CgVfxSlot.Kind`.
 
 ### Draw order
 
@@ -474,44 +489,104 @@ layer.texture("_Strip", SLEEVE).texture("_Aura", FLAMES).texture("_Sheet", madeA
 
 ### A tween
 
+A tween moves one value of a playing effect from where it is now to a new value over some seconds, rather than
+jumping there: a beam swelling as it powers up, an aura reddening as its owner weakens. The word is animation's, from
+*in-betweening*: you give the end and how long, and the engine fills in every tick between.
+
 ```java
-wave.animate(CgEnergyWave.RADIUS, 1.4f, 0.5f, CgEasings.OUT_BACK);         // powering up
-aura.animate(Aura.CORE, 0xFFFF3030, 0.25f, CgEasings.LINEAR);               // a colour
+//            the value            to    seconds  how it moves
+wave.animate(CgEnergyWave.RADIUS,  1.4f, 0.5f,    CgEasings.OUT_BACK);   // powering up: past 1.4, then settling there
+aura.animate(Aura.CORE, 0xFFFF3030,      0.25f,   CgEasings.LINEAR);     // a colour: its four channels together
 ```
 
-- It steps every tick, so it is smooth at any frame rate; a tween on a number moves what follows it by a link.
-- Setting the value (`set`) stops the tween on it.
-- On a server's authoritative effect it plays on every viewer at once, sent as one event rather than a value a tick.
+- It steps every tick, so it is smooth at any frame rate. What follows the value by a link follows the tween.
+- A second tween of the same value takes over from wherever the first had got to. `set` of it stops it where it is.
+- Tweening a linked value breaks its link: the tween drives it now.
+- It changes this one effect, never its look.
+- On a server's authoritative effect, or through a lasting cue's `aura.animate(...)`, it runs on every viewer at once:
+  sent as one event (where to, how long, which easing), not a value a tick.
+
+### Easings
+
+An easing is the shape of a tween's motion over its seconds. `CgEasings` holds the usual set, each drawn at
+[easings.net](https://easings.net):
+
+| Easing | Moves | Reads as |
+|---|---|---|
+| `LINEAR` | at one speed | mechanical; right for colours |
+| `IN_QUAD`, `IN_CUBIC`, `IN_EXPO` | slow, then faster and faster | giving way, falling in |
+| `OUT_QUAD`, `OUT_CUBIC`, `OUT_EXPO` | fast, then settling in | most growth and motion |
+| `IN_OUT_QUAD`, `IN_OUT_SINE` | slow at both ends | a drift |
+| `OUT_BACK` | past the end, then back to it | a punch, a power-up |
+| `OUT_ELASTIC`, `OUT_BOUNCE` | ringing or bouncing into place | cartoon |
+
+`QUAD` to `QUINT` and `EXPO` are the same shape, steeper each; CSS's `EASE`, `EASE_IN` and `EASE_OUT` are there too.
+An easing travels the network by its place among these constants, so one you make yourself (`cubicBezier(...)`,
+`bake(...)`) reaches viewers as linear.
 
 ### An ending
 
-```java
-// declared once, by name, in code both sides run
-public static final CgVfxEnding FIZZLE = CgVfxEnding.over("mymod:bolt/fizzle", 0.4f)
-        .animate(Bolt.RADIUS, 0f, CgEasings.IN_QUAD)
-        .animate(Bolt.CORE, 0x00FFFFFF, CgEasings.LINEAR)
-        .build();
+An effect ends one of three ways:
 
-bolt.end(FIZZLE);                         // eased, then gone
-aura.end(CgVfxEnding.FADE_OUT);           // any effect: its presence to nothing, over 0.3 s
-wave.end(CgEnergyWave.FADE);              // the wave's own: it thins away where it is, no blast
+| Call | Ends | For |
+|---|---|---|
+| `stop()` | the effect's own way: emission stops, its tail runs out, it bursts | the normal end |
+| `end(ending)` | an ending's way: a few values tweened to where they end over its seconds, then gone. What the graceful end plays (the burst) is skipped | interrupted, cancelled, dispelled |
+| `kill()` | at once | clearing up |
+
+An **ending** is the second: a bolt that fizzles rather than bursts, an aura that fades when its buff is dispelled.
+It is declared once, as a constant with a name:
+
+```java
+public static final CgVfxEnding FIZZLE = CgVfxEnding.over("mymod:bolt/fizzle", 0.4f)   // its name and its seconds
+        .animate(Bolt.RADIUS, 0f, CgEasings.IN_QUAD)        // each value: where it ends, and how it gets there
+        .animate(Bolt.CORE, 0xFFFF3020, CgEasings.LINEAR)  // reddening as it goes
+        .fadeOut(CgEasings.IN_QUAD)                         // and the whole effect to nothing
+        .build();
 ```
 
-- **An ending is not `stop()`**: `stop` is the effect's own graceful end (the wave's tail runs out and bursts). An
-  ending is one a look or a game picks; the effect hears it in `ending(CgVfxEnding)` to skip what a graceful end would
-  play.
-- `FADE_OUT`, and any ending built with `.fadeOut(easing)`, eases the effect's **presence** to 0, which every engine
-  shader multiplies its light by. A fade of another length is an ending of its own, declared as above.
-- Its name travels: declare it before a cue ends with it. Its easings travel by their place in `CgEasings`: one made
-  by a factory reaches viewers as linear.
-- On a cue: `playing.end(FIZZLE)`; a late joiner starts it where it is.
+Then any effect whose look has those values can end by it:
+
+```java
+bolt.end(FIZZLE);                  // an effect you played
+playing.end(FIZZLE);               // a lasting cue: every viewer's copy fizzles
+aura.end(CgVfxEnding.FADE_OUT);    // the engine's: any effect faded out over 0.3 s
+wave.end(CgEnergyWave.FADE);       // the wave's own: it thins where it is, no blast
+```
+
+**Why it has a name.** An ending crosses the network as its name alone: the server sends `"mymod:bolt/fizzle"`, and
+each client finds the ending declared under that name in its own copy of your code (`CgVfxEnding.named`). So:
+
+- **Declare it as a `static final` on a class every client has loaded** by the time it arrives: the effect's own
+  class, or the look's. On a class only the server touches, a client never declares it and the ending does nothing
+  there.
+- **Prefix the name with your mod's id**: a second ending of one name throws.
+- A player who joins while it plays starts it where it has got to.
+
+**Easy to get wrong:**
+
+- An ending animating a value its effect's look lacks throws at `end`.
+- A second `end`, or one after the effect died, is ignored: the first ending plays out.
+- `fadeOut` fades the effect's **presence**, which every engine shader multiplies its light by (`FX_PRESENCE`). A
+  shader of your own fades only if it does the same ([§15](#15-writing-a-layers-shader)).
+- A fade of another length is an ending of its own: `CgVfxEnding.over("mymod:slow_fade", 1.2f).fadeOut(CgEasings.IN_QUAD).build()`.
+
+**In an effect of your own**, override `ending(CgVfxEnding)` to drop what the graceful end would play; it is heard
+before `stop()`. `ending()` says which one is playing, or null.
+
+```java
+@Override protected void ending(CgVfxEnding ending) {
+    burstOnStop = false;   // stop() would burst; an ending never does
+}
+```
 
 ---
 
 ## 8. Tuning a look live, and saving it
 
-Open a look for tuning and every number and colour of it, and every constant its layers set, becomes a variable:
-set from the console, a tuning panel or a remote tool. The look takes a change at once, every effect playing it at
+Open a look for tuning and every number and colour of it, and every constant its layers set, becomes a **variable**:
+a named value in the engine's registry (`CgVars`), which the console, a tuning panel and remote tools all read and
+write. The look takes a change at once, every effect playing it at
 its next tick, every effect played after starts from it.
 
 ```java
@@ -707,8 +782,9 @@ aura.end(CgVfxEnding.FADE_OUT);                             // or stop(), or kil
 | `set(FIELD, value)` | one of its own fields |
 | `moveTo(x, y, z)` | a new position, and who is in range is worked out again |
 
-A field is sent only when its value changed. On each viewer, look values are set on its effect as they arrive; then
-an effect implementing `CgVfxCue.Live` takes the rest once a frame (the wave takes its aim and target).
+A field is sent only when its value changed. On each viewer, look values are set on its effect as they arrive. The
+rest (a new direction, target or field of its own) reaches only an effect that implements `CgVfxCue.Live`: its
+`cueChanged(cue)` runs once a frame after a change, and reads what it wants (the wave takes its aim and target).
 
 ### Look parameters and data of its own
 
@@ -765,7 +841,7 @@ Some effects *are* the gameplay: a beam damages whatever it reaches. If each cli
 would see a different result. So the server runs the effect too, as the referee, and every client draws what the
 server decided.
 
-The server runs **the same effect class**, headless against the server's world (`CgVfxAuthority`): it decides where
+The server runs **the same effect class**, headless (nothing drawn) against the server's world (`CgVfxAuthority`): it decides where
 the effect goes and what it strikes, hears its hits, and publishes what clients must draw. Unreal and Unity Netcode
 run one actor on both sides the same way.
 
@@ -992,18 +1068,23 @@ emitter), and the engine compiles that into GPU programs.
 ### An emitter
 
 ```java
-static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").renderer(CgVfxEmitter.Renderer.QUADS)
+static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks")   // its name in a look
+        .renderer(CgVfxEmitter.Renderer.QUADS) // a camera-facing quad each; MESHES a mesh each, ARCS a stroke each
         .capacity(1200)                        // the most alive at once
         .rate(120f, 0f, 4f)                    // 120 a second, from 0 s to 4 s
-        .shape(1.2f)                           // born anywhere in a ball of radius 1.2
-        .launch(-1f, -0.7f, 1f).speed(0.5f, 2f)
-        .life(2.5f, 3f)
-        .size(0.08f, 0.14f, 1f).heat(1f)
+        .shape(1.2f)                           // born up to 1.2 blocks out from the source
+        .launch(0.2f, 1f, 1f)                  // each flies a random way whose upward share is 0.2 to 1: up and out
+        .speed(0.5f, 2f)                       // blocks a second, a random speed between
+        .life(2.5f, 3f)                        // seconds
+        .size(0.08f, 0.14f, 1f)                // blocks; the third, above 1, makes most small and a few large
+        .heat(1f)                              // 0 to 1, which Buoyancy turns into lift
         .module(new CgVfxModule.Gravity(9.8f))
         .module(new CgVfxModule.CollideWorld(0.35f, 0.4f, 0.4f))   // bounces off blocks
         .opacity(CgKeyframes.start(0f, 0f).to(0.1f, 1f, CgEasings.OUT_QUAD).to(1f, 0f, CgEasings.IN_QUAD).build())
-        .build();
+        .build();                              // ^ over its life, 0 to 1: in quickly, out slowly
 ```
+
+Every range (`speed(min, max)`, `life`, `size`) is a random value between, a different one each particle.
 
 ### In a look
 
@@ -1050,7 +1131,8 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
   layers order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
   ([`SHADERS.md`](SHADERS.md) § *Depth from a transparent material*).
-- Particles step 60 times a second while effects tick 120 times, so a particle is drawn at `frame.particleAlpha()`.
+- Particles step 60 times a second while effects tick 120 times. A particle is drawn between its last two steps, at
+  `frame.particleAlpha()` (how far this frame is between them, 0 to 1), never `frame.alpha()`, the effects' own.
 - A particle always belongs to an effect: one-off particles are a `CgVfxBurst` each. A shared emit call for
   Minecraft-style spam is planned (plan `vfx-gpu` X15).
 
@@ -1221,8 +1303,9 @@ effect calls. `instance(definition, kit, salt)` makes an emitter instance scaled
 
 ```java
 // A screen flash that fades with distance and the player's FLASHES setting; closed when the effect dies
-flash = openVolume(10, new CgPostSettings().flash(1.5f), hitX, hitY, hitZ).radius(24f).blend(64f);
-flash.weight(curve(FLASH).at(t));                    // each tick
+flash = openVolume(10, new CgPostSettings().flash(1.5f), hitX, hitY, hitZ)   // 10: over lower priorities it overlaps
+        .radius(24f).blend(64f);                     // full within 24 blocks, fading to nothing 64 past that
+flash.weight(curve(FLASH).at(t));                    // each tick, 0 to 1
 
 playShake(SHOCK, hitX, hitY, hitZ, radius);          // once
 holdShake(RUMBLE, 0f, 0f, 0f, radius, level);        // every tick while it lasts
