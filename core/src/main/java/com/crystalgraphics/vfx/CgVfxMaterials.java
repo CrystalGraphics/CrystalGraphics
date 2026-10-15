@@ -11,6 +11,7 @@ import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
 import com.crystalgraphics.vfx.look.CgVfxValues;
+import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,6 +44,8 @@ final class CgVfxMaterials {
         /** Where its size parameter is, -1 for none. */
         final int sizeAt;
         final CgMaterial[] byKind = new CgMaterial[CgVfxSlot.Kind.values().length];
+        /** Its trails layer's materials by pool, each bound to that pool's history ({@link #material(Resolved, CgVfxParticlePool)}). */
+        final Map<CgVfxParticlePool, CgMaterial> byPool = new IdentityHashMap<>();
         final int[] keyByKind = new int[CgVfxSlot.Kind.values().length];
         /** The layer's {@code tunings()} its materials' constants were last set at. */
         int tunings;
@@ -234,6 +237,28 @@ final class CgVfxMaterials {
         r.keyByKind[kind.ordinal()] = keys.get(material);
         return material;
     }
+
+    /**
+     * {@code r}'s particle material for {@code pool}'s trails, its {@code HISTORY} that pool's ({@code trails()} layers):
+     * one per pool, since a material's bindings are captured once a stage, so two pools drawing one layer through one
+     * material would both read the last history set. Made at its first ask, tuned with the rest.
+     */
+    CgMaterial material(Resolved r, CgVfxParticlePool pool) {
+        material(r, CgVfxSlot.Kind.PARTICLES);
+        CgMaterial material = r.byPool.get(pool);
+        if (material == null) {
+            material = CgMaterial.newInstance(r.layer.shader());
+            configure(material, r, CgVfxSlot.Kind.PARTICLES);
+            materials.get(r.layer).put(CgVfxSlot.Kind.PARTICLES + "|" + r.signature + "|pool" + (nextPool++), material);
+            all.add(material);
+            keys.put(material, nextKey++ & 0xFFF);
+            r.byPool.put(pool, material);
+        }
+        material.buffer("HISTORY", pool.history());
+        return material;
+    }
+
+    private int nextPool;
 
     /** Each material's batch key, in the order they were made: draws of one material given one key sort together. */
     private final Map<CgMaterial, Integer> keys = new IdentityHashMap<>();

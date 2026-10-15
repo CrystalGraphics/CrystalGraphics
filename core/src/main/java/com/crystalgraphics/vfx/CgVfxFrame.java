@@ -109,8 +109,6 @@ public final class CgVfxFrame {
             CgVfxRange range = CgVfxRange.of(set.pool);
             CgMesh mesh = set.strip == CgVfxLayer.Strip.NONE ? slotMesh(set.renderer, set.capacity)
                     : CgMesh.vertices(sizeClass(set.capacity, 1) * set.factor, CgMeshTopology.TRIANGLES);
-            // Captured per draw: each pool's merged trails read its own history.
-            if (set.strip == CgVfxLayer.Strip.TRAILS) set.material.buffer("HISTORY", set.pool.history());
             CgWorldRenderer.Draw draw = world.draw(mesh, set.material)
                     .buffer(CgBindingPoints.PARTICLES, range.drawn())
                     .indirectEach(range.visible(), set.mode, set.factor)
@@ -354,7 +352,8 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : look.on(emitter.emitter().slot())) {
             if (skips(effect, placed.layer())) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.PARTICLES);
+            CgMaterial material = placed.layer().strip() == CgVfxLayer.Strip.TRAILS ? materials.material(r, pool)
+                    : materials.material(r, CgVfxSlot.Kind.PARTICLES);
             float size = CgVfxMaterials.size(effect, r);
             int row = materials.row(effect, r);
             if (!meshes && placed.layer().hasMesh()) {
@@ -479,7 +478,6 @@ public final class CgVfxFrame {
             c[f + 15] = effect.presence();
             return;
         }
-        if (trails) material.buffer("HISTORY", pool.history());
         CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * per, CgMeshTopology.TRIANGLES), material)
                 .buffer(CgBindingPoints.PARTICLES, range.drawn())
                 .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.VERTICES, per)
