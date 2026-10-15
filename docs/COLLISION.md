@@ -858,7 +858,7 @@ Game ticks, fractional allowed:
 | `pose(pose)` | at a pose you compute, set before each tick (an owner-ticked hitbox) |
 
 Attachment points (`CgEntityAttachments`): `FEET`, `CENTRE`, `CHEST`, `HEAD`, `EYES`, `RIGHT_HAND`, `LEFT_HAND`,
-`RIGHT_HAND_FORWARD`, `LEFT_HAND_FORWARD`, `HANDS_FORWARD`, and points your mod declares (`docs/VFX.md` §4), among
+`RIGHT_HAND_FORWARD`, `LEFT_HAND_FORWARD`, `HANDS_FORWARD`, and points your mod declares (`docs/VFX.md` § *Following an entity*), among
 them a point at a share of the body's height. On a client a hitbox sits where the point is drawn: a model that marks
 its hand (`CgEntityAttachments.mark`) moves the swing with the animation, on every client that draws it. A server draws
 nothing, so it places from the entity's proportions; for a claimed hitbox the padding covers the difference.
@@ -1243,7 +1243,7 @@ public static final CgHitPart PART_BOLT = SCHEMA.part("bolt"), PART_BLAST = SCHE
 }
 ```
 
-The whole story (parts, authority on the server, confirmed hits on clients) is [`VFX.md`](VFX.md) §11 and §12.
+The whole story (parts, authority on the server, confirmed hits on clients) is [`VFX.md`](VFX.md) § *Effects gameplay depends on: server authority* and § *Hits: what an effect strikes*.
 
 **Which to use.** A volume carried by the attacker's body (a fist, a blade, a grab) is a claimed hitbox type (§10):
 it lands where the attacker saw the target. What an effect throws into the world (a beam, a blast, a shockwave) is the
@@ -1614,7 +1614,7 @@ the attacker's client decide what it hit, and the server still decides whether t
 ### What about particles?
 
 A particle's contact is the VFX engine's, simulated on the GPU and read back a few frames late, client only: never base
-gameplay on it ([`VFX.md`](VFX.md) §12).
+gameplay on it ([`VFX.md`](VFX.md) § *Hits: what an effect strikes*).
 
 ### Is that how other engines do it?
 

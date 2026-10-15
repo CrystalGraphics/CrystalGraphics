@@ -1,38 +1,66 @@
 # VFX — the guide
 
 The VFX engine (`com.crystalgraphics.vfx`) plays visual effects in a world: beams, explosions, auras, hit sparks,
-dust. It simulates their particles on the GPU, draws them through the engine's world renderer, sends them over the
-network, and can run an effect on the server when gameplay depends on it.
+dust, trails, smoke and fire. It simulates their particles and their gas on the GPU, draws them through the engine's
+world renderer, sends them over the network, and can run an effect on the server when gameplay depends on it.
 
 It splits an effect into **what it does** (an effect class and the elements it is made of: Java, ticking at 120 Hz)
 and **how it looks** (a look: parameters, kits of layers, emitters: data). The same Kamehameha class plays as the
 realistic beam, as a toon beam in flat bands, or as Dragon Forge's anime wave, and only the look differs.
 
 Read sections 1 and 2 first: they give you the words and the picture everything else uses. After that, jump to what
-you need. Where each class lives is `vfx/CLAUDE.md`, which loads itself for anyone editing a VFX file.
+you need: the contents are grouped by what you are doing. Where each class lives is `vfx/CLAUDE.md`, which loads
+itself for anyone editing a VFX file.
 
 ## Contents
+
+**Start here**
 
 1. [The words you need](#1-the-words-you-need)
 2. [Quick start](#2-quick-start)
 3. [Client, server, or both](#3-client-server-or-both)
+
+**Playing effects**
+
 4. [Playing effects](#4-playing-effects)
-5. [Parameters: what a look carries](#5-parameters-what-a-look-carries)
-6. [Kits, layers and slots: how a look draws](#6-kits-layers-and-slots-how-a-look-draws)
-7. [Tweens and endings](#7-tweens-and-endings)
-8. [Tuning a look live, and saving it](#8-tuning-a-look-live-and-saving-it)
-9. [The energy wave](#9-the-energy-wave)
-10. [Effects over the network: cues](#10-effects-over-the-network-cues)
-11. [Effects gameplay depends on: server authority](#11-effects-gameplay-depends-on-server-authority)
-12. [Hits: what an effect strikes](#12-hits-what-an-effect-strikes)
-13. [Particles](#13-particles)
+5. [The engine's effects](#5-the-engines-effects)
+
+**How an effect looks**
+
+6. [Parameters: what a look carries](#6-parameters-what-a-look-carries)
+7. [Kits, layers and slots: how a look draws](#7-kits-layers-and-slots-how-a-look-draws)
+8. [Meshes](#8-meshes)
+9. [Tweens and endings](#9-tweens-and-endings)
+10. [Tuning a look live, and saving it](#10-tuning-a-look-live-and-saving-it)
+
+**Particles**
+
+11. [Particles](#11-particles)
+12. [Modules and events](#12-modules-and-events)
+13. [Trails and ribbons](#13-trails-and-ribbons)
+
+**Gas and smoke**
+
 14. [Gas](#14-gas)
-15. [Writing an effect of your own](#15-writing-an-effect-of-your-own)
-16. [Writing a layer's shader](#16-writing-a-layers-shader)
-17. [Writing a particle module of your own](#17-writing-a-particle-module-of-your-own)
-18. [Performance and scale](#18-performance-and-scale)
-19. [Questions people ask](#19-questions-people-ask)
-20. [Checking and measuring](#20-checking-and-measuring)
+15. [Smoke that fills a space: CS2's grenades](#15-smoke-that-fills-a-space-cs2s-grenades)
+
+**Over the network, and gameplay**
+
+16. [Effects over the network: cues](#16-effects-over-the-network-cues)
+17. [Effects gameplay depends on: server authority](#17-effects-gameplay-depends-on-server-authority)
+18. [Hits: what an effect strikes](#18-hits-what-an-effect-strikes)
+
+**Writing your own**
+
+19. [Writing an effect of your own](#19-writing-an-effect-of-your-own)
+20. [Writing a layer's shader](#20-writing-a-layers-shader)
+21. [Writing a particle module of your own](#21-writing-a-particle-module-of-your-own)
+
+**Running well**
+
+22. [Performance and scale](#22-performance-and-scale)
+23. [Questions people ask](#23-questions-people-ask)
+24. [Checking and measuring](#24-checking-and-measuring)
 
 ---
 
@@ -48,11 +76,14 @@ you need. Where each class lives is `vfx/CLAUDE.md`, which loads itself for anyo
 | **Layer** | One draw: a `.shader` on one or more slots, its properties set, bound to parameters, or bound by name. | `CgVfxLayer` |
 | **Slot** | A place an effect draws: its body along a path, its head on a sphere, its sparks. An element declares its slots; a layer names the ones it draws on. | `CgVfxSlot` |
 | **Emitter**, **module** | One kind of particle, and the physics pieces it stacks (gravity, drag, collision). Simulated on the GPU. | `CgVfxEmitter`, `CgVfxModule` |
+| **Trail**, **ribbon** | A strip through where something moving has been: a fist's streak, a blade's swoosh, a line behind every spark. | `CgVfxTrail`; a layer's `trails()` and `ribbon()` |
+| **Gas** | Smoke, flame and steam as a fluid on the GPU: poured from sources, rising, curling round blocks, lit through itself. | `CgVfxGas`, `CgVfxSmoke` |
 | **Link** | A size that follows another, times a factor: the head is 1.45 times the radius, so setting the radius resizes it. | `SCHEMA.length("head", RADIUS, 1.45f)` |
 | **Tween** | One value moved from where it is to a new one over some seconds, rather than jumping: a beam swelling as it powers up. | `effect.animate(...)` |
 | **Easing** | The shape of a tween's motion: steady, slow then fast, fast then settling, overshooting and back. | `CgEasings.LINEAR`, `OUT_QUAD`, ... |
 | **Ending** | A way to end an effect other than its own: some values tweened to where they end, then gone. Declared once under a name, which is how a server tells clients which ending to play. | `CgVfxEnding` |
 | **Presence** | How present an effect is, 0 to 1. Every engine shader multiplies its light by it, so fading it fades the whole effect. | `effect.presence()`, `FX_PRESENCE` |
+| **Scalability** | What happens to an effect too far away, one too many, or out of view: culled, drawn lower, or asleep. | `CgVfxScalability` |
 | **Moment** | A named instant in an effect's life (the release, the impact), announced for capture tools. | `moment("impact", ...)` |
 | **Owner** | Your mod's handle on the engine: play, stop and clear your effects, timed under your name. | `CgVfxOwner`, from `CgVfx.owner("mymod")` |
 | **Cue** | An effect named for the network, so the server can tell clients to play it. | `CgVfxCue` |
@@ -92,7 +123,8 @@ wave.stop();                     // its tail runs out into what it hit, which bu
 wave.end(CgEnergyWave.FADE);     // or: it thins away where it is, no blast
 ```
 
-The engine registers its effects by id, so a tool or a command can play one without knowing its class:
+The engine registers its effects by id ([§5](#5-the-engines-effects)), so a tool or a command can play one without knowing its
+class:
 
 ```java
 VFX.play("crystalgraphics:kamehameha_toon", x, y, z, tx, ty, tz);   // at a point, aimed at a target
@@ -117,7 +149,7 @@ public static final CgVfxLook MINE = CgEnergyWave.kamehameha().derive()
 ### An effect that is only particles
 
 A look with emitters and layers on them needs no effect class: `CgVfxBurst` starts every emitter once and dies when
-they finish. Building `PUFF_LOOK` is [§13](#13-particles).
+they finish. Building `PUFF_LOOK` is [§11](#11-particles).
 
 ```java
 VFX.play(new CgVfxBurst(PUFF_LOOK, x, y, z));
@@ -133,8 +165,8 @@ public static final CgVfxCue PUFF = VFX.cue("puff", PUFF_LOOK,
 PUFF.at(level, x, y, z).send();   // server, whenever
 ```
 
-That is [§10](#10-effects-over-the-network-cues). An effect gameplay depends on (a beam that damages what it hits)
-runs on the server too: [§11](#11-effects-gameplay-depends-on-server-authority).
+That is [§16](#16-effects-over-the-network-cues). An effect gameplay depends on (a beam that damages what it hits)
+runs on the server too: [§17](#17-effects-gameplay-depends-on-server-authority).
 
 ---
 
@@ -146,11 +178,12 @@ runs on the server too: [§11](#11-effects-gameplay-depends-on-server-authority)
 |---|---|---|
 | Drawing: meshes, layers, glow | yes | never |
 | Particles (simulated on the GPU) | yes | never |
+| Gas (simulated on the GPU) | yes | never: a smoke grenade's server copy floods its cells and answers sight with no gas |
 | Post effects: flashes, colour shifts, impact frames | yes | never |
 | Camera shakes | yes | never |
 | An effect's logic: where a beam goes, when it fires, when it bursts | yes, for drawing | only for an **authoritative** cue |
 | What a beam hits, for gameplay | no: it would differ per client | yes, with an authoritative cue |
-| Sending an effect to players | no (a client can only *predict*, [§10](#predicting-from-a-client)) | yes, with a cue |
+| Sending an effect to players | no (a client can only *predict*, [§16](#predicting-from-a-client)) | yes, with a cue |
 
 - **On a client**, effects play into the client world's system, which the engine updates every frame, draws, and
   clears when the world goes (logout, disconnect, a dimension change).
@@ -199,7 +232,7 @@ VFX.prepare(LOOK);      // builds a look's shaders, meshes and kernels ahead of 
 | Call | What happens |
 |---|---|
 | `effect.stop()` | Its own graceful end: emission ends, what is in flight plays out (a wave's tail runs into its target and bursts) |
-| `effect.end(ending)` | Another way you pick, for an interrupted or cancelled effect: values eased over the ending's seconds, then gone ([§7](#an-ending)) |
+| `effect.end(ending)` | Another way you pick, for an interrupted or cancelled effect: values eased over the ending's seconds, then gone ([§9](#an-ending)) |
 | `effect.kill()` | At once: the effect and its particles are gone by the next particle step |
 
 ### Following an entity
@@ -265,7 +298,128 @@ vfx.submit(CgWorldRenderer.get());
 
 ---
 
-## 5. Parameters: what a look carries
+## 5. The engine's effects
+
+The engine ships these, each registered by id, so a tool, a command or a test plays one without naming its class:
+
+| Id | Class | What it is |
+|---|---|---|
+| `crystalgraphics:kamehameha`, `final_flash`, `galick_gun`, `kamehameha_toon` | `CgEnergyWave` | a beam charged at a muzzle, fired, homing or steered, bursting into a blast ([below](#the-energy-wave)) |
+| `crystalgraphics:explosion` | `CgVfxBurst` | the realistic explosion on its own: billows, a base surge of dust, debris, embers and a shock front ([below](#an-explosion-on-its-own)) |
+| `crystalgraphics:heat_haze` | `CgVfxHeatHaze` | the air shimmering over a point for as long as it plays ([below](#heat-haze)) |
+| `crystalgraphics:smoke_grenade` | `CgSmokeGrenade` | Counter-Strike 2's smoke, flooding round what stands in its way, shot through and healing ([§15](#15-smoke-that-fills-a-space-cs2s-grenades)) |
+
+```java
+VFX.play("crystalgraphics:explosion", x, y, z, x, y, z);                          // at a point, aimed at a target
+
+CgVfxRegistry.register("mymod:hit_spark", "Hit spark", "Impacts", HitSpark.LOOK,   // your own, once at startup
+        (look, x, y, z, tx, ty, tz) -> new HitSpark(look, x, y, z));
+```
+
+- An id is registered once; a second registration under it throws.
+- The factory takes the look to play, so a tool can hand it a variant (`entry.look().derive()...build()`).
+- The target is where a beam homes and blasts. An effect that only faces takes the direction to it; one with neither
+  ignores it.
+
+### The energy wave
+
+`CgEnergyWave` (`vfx.effect.beam`) charges at a muzzle, fires a beam that flows out, bends where its source turns,
+homes on a target or is steered by a player's aim, stops where it hits, and bursts into a blast as its tail runs
+out into what it hit.
+
+```java
+CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z)
+        .follow(playerId, CgEntityAttachments.HANDS_FORWARD).hold());   // charging until fired
+wave.aim(dx, dy, dz).target(tx, ty, tz);   // each tick, as the source turns
+wave.collide();                            // or: find its own target along the aim
+wave.fire();
+wave.stop();                               // the tail runs out into the target, which bursts
+```
+
+#### Made of elements
+
+| Element | Owns | Its kit in the engine's looks |
+|---|---|---|
+| `CgVfxCharge` | the ball growing over `TIME` along `SIZE`, streaks and arcs, the release's flash and shock ring, the root it settles to | `REALISTIC_CHARGE` |
+| `CgBeamBody` | the stream and its path, the body's profile (launch swell, throb, pulse, surges), the head | `REALISTIC_BODY`, `REALISTIC_HEAD` |
+| `CgBeamContact` | where it hits while it hits: the orb, splash, rings, the hit shake | `REALISTIC_CONTACT` |
+| `CgVfxBlast` | the blast, with its impact frame before it: beats, the cut, flash and impact volumes, the front hitbox | `CgVfxBlast.KIT`: `FIREBALL`, `HEART`, `SHOCKWAVE`, the explosion's emitters |
+| `CgBeamWake` | dust torn off the ground under the body | `WAKE` |
+
+Each element's schema, slots and moments are on its class. Any effect may use them ([§19](#built-from-elements)).
+
+#### Its looks
+
+| Look | What it is |
+|---|---|
+| `kamehameha()` | every realistic kit, blue-white |
+| `finalFlash()` | the same kits, gold, `RADIUS` 1 and faster |
+| `galickGun()` | the same kits, violet |
+| `toon()` | the Kamehameha with `TOON` for its body, ball and head: three flat bands of `BANDS` and a soft halo, one draw a slot |
+
+#### Its parameters
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `RADIUS` | 0.8 | the body's radius: every link follows it |
+| `SPEED` | 40 | how fast energy leaves the muzzle |
+| `TURN_RATE`, `NAVIGATION` | 4, 3 | how hard it homes (proportional navigation) |
+| `STEER` | 0 | above 0, steered: a curve from the muzzle along the aim into an end that chases the target, turning at most this many radians a second |
+| `MAX_LENGTH` | 120 | how far the head flies when it hits nothing |
+| `MUZZLE_FORWARD` | 0 | how far along the aim the drawn wave starts once fired: a caster's hands are the muzzle, the beam clears their body. Its casts still start at the muzzle |
+| `CORE`, `CORE_RIM`, `SHELL`, `SHELL_HOT`, `SPIRAL`, `GLOW` | | the energy palette its realistic kits read by name |
+| `CgBeamBody.HEAD_WIDTH`, `HEAD_LENGTH` | `RADIUS` × 1.45, × 1.9 | the head |
+| `CgVfxCharge.RADIUS`, `ROOT_SIZE` | `RADIUS` × 1.7, 0.8 | the ball, and the root it settles to once fired |
+| `CgVfxBlast.RADIUS` | `RADIUS` × 12 | the blast |
+
+#### A wave of your own drawing
+
+Dragon Forge's anime wave is the engine's wave with its realistic drawing swapped out:
+
+```java
+public static final CgVfxLook KAMEHAMEHA = CgEnergyWave.kamehameha().derive()
+        .without(CgEnergyWave.REALISTIC_BODY, CgEnergyWave.REALISTIC_HEAD, CgEnergyWave.REALISTIC_CHARGE,
+                CgEnergyWave.REALISTIC_CONTACT, CgEnergyWave.WAKE, CgVfxBlast.HEART, CgVfxBlast.SHOCKWAVE)
+        .with(KiWaves.KI)                                                    // its bands, flames, sleeves, sparkles
+        .set(CgEnergyWave.RADIUS, 0.3f)
+        .link(CgBeamBody.HEAD_WIDTH, CgEnergyWave.RADIUS, 2.38f)
+        .set(CgEnergyWave.MUZZLE_FORWARD, 1.2f)
+        .set(CgBeamBody.THROB, 0f)
+        .set(CgEnergyWave.SHELL, 0xFF00FFFF)
+        .build();
+```
+
+- Bind your layers' sizes to `RADIUS` (`bind("_Radius", CgEnergyWave.RADIUS)`, `size(...)`), and `FADE` thins the whole
+  of it.
+- A look must carry its elements' schemas: derive it from one of the wave's looks, or add them with `params(...)`.
+  The wave's constructor says which is missing.
+
+### An explosion on its own
+
+The blast a wave bursts into, as a burst of its own: every emitter of `CgVfxBlast.EXPLOSION`'s kit started once.
+
+```java
+static final CgVfxLook EXPLOSION = CgVfxLook.builder(CgVfxBurst.SCHEMA).with(CgVfxBlast.EXPLOSION.kit()).build();
+VFX.play(new CgVfxBurst(EXPLOSION, x, y, z));
+```
+
+Its colours are its own schema's (`body`, `hot`, `debris`, `dust`, `sparkCore`); [§11](#in-a-look) lists what it is
+made of.
+
+### Heat haze
+
+```java
+CgVfxHeatHaze haze = VFX.play(new CgVfxHeatHaze(CgVfxHeatHaze.standard(), x, y, z));
+haze.set(CgVfxHeatHaze.RADIUS, 3f);        // blocks; INTENSITY is how strongly it bends
+haze.stop();                                // fades out over FADE seconds, then ends
+```
+
+The air over a fire, a lava pool or a cooling crater, with nothing else drawn. It fades in and out, so starting or
+stopping it never pops, and it draws nothing at the Low quality tier.
+
+---
+
+## 6. Parameters: what a look carries
 
 A parameter is a dial an artist turns: a beam's radius, its colours, how long it charges. Effects and their
 elements read them every tick and shaders read them every draw, so changing one changes the effect.
@@ -299,9 +453,9 @@ public static final CgVfxParam.Shake HIT = SCHEMA.shake("hit", CgCameraShakes.IM
   code.
 - **Declare every parameter before the first look including its schema is built**: building one freezes the schema,
   and a declaration after throws.
-- **A name is a network field's** ([§10](#look-parameters-and-data-of-its-own)): renaming one is a network change.
+- **A name is a network field's** ([§16](#look-parameters-and-data-of-its-own)): renaming one is a network change.
 - **A curve is keyframes**: `start(time, value)`, then `.to(time, value, easing)` for each key after, eased from the
-  one before ([§7](#easings) has the easings). An effect reads it at a time of its choosing, usually its progress 0 to
+  one before ([§9](#easings) has the easings). An effect reads it at a time of its choosing, usually its progress 0 to
   1: `curve(GLOW).at(t)`. Before the first key it holds the first value, after the last the last.
 - **A camera shake is a parameter**, so a look can change it. Never hard-code shake numbers in an effect.
 
@@ -334,8 +488,8 @@ wave.set(CgEnergyWave.SHELL, 0xFFFF2020, 1.5f);
 float r = wave.get(CgEnergyWave.RADIUS);
 ```
 
-A look never changes once built (except under a tuning, [§8](#8-tuning-a-look-live-and-saving-it)); a variant is a new
-look. A value set on a server's authoritative effect reaches every viewer ([§11](#syncing-parameters)).
+A look never changes once built (except under a tuning, [§10](#10-tuning-a-look-live-and-saving-it)); a variant is a new
+look. A value set on a server's authoritative effect reaches every viewer ([§17](#syncing-parameters)).
 
 ### Many schemas in one look
 
@@ -348,7 +502,7 @@ not draw what you expect.
 
 ---
 
-## 6. Kits, layers and slots: how a look draws
+## 7. Kits, layers and slots: how a look draws
 
 ### Composing a look from kits
 
@@ -407,7 +561,7 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 | `volume()` | A tube chunk drawn on a sphere round it, for a shader summing its own chunk's light (`body_light`) |
 | `closed()` | A tube chunk closed at both ends, for a shader tracing the view ray through it (`body_core`) |
 | `keyword(name)` | A `#pragma cg_feature` keyword on its materials |
-| `mesh(mesh)`, `mesh(lods)`, `mesh(path)` | Draws that mesh instead of the unit sphere: on a mesh slot, or per particle of a `MESHES` emitter. A path loads at its first draw; any other slot throws. `CgProceduralMesh` makes crescents, domes and swirls from a few numbers |
+| `mesh(mesh)`, `mesh(lods)`, `mesh(path)` | Draws that mesh instead of the unit sphere: on a mesh slot, or per particle of a `MESHES` emitter. A path loads at its first draw; any other slot throws. `CgProceduralMesh` makes crescents, domes and swirls from a few numbers ([§8](#8-meshes)) |
 | `unbound(property)` | Keeps a colour the shader's own, never bound by name |
 | `named(name)` | What tools and tunings call it; its shader's file name unless given |
 
@@ -423,7 +577,7 @@ CgVfxLayer flames = CgVfxLayer.of("mymod:shaders/vfx/ends_aura.shader")
 - A name the shader does not declare, or a value of the wrong kind, throws at the layer's first draw and names the
   properties the shader has.
 - Bound values are written once a frame per effect and layer into a **row**: a small block of numbers that travels
-  with each draw, which the shader reads in place of the material's value ([§16](#16-writing-a-layers-shader)). So two
+  with each draw, which the shader reads in place of the material's value ([§20](#20-writing-a-layers-shader)). So two
   effects playing different values still share one material and batch.
 - A layer's constants are its material's: two looks sharing a kit share its layers' materials.
 
@@ -488,7 +642,111 @@ layer.texture("_Strip", SLEEVE).texture("_Aura", FLAMES).texture("_Sheet", madeA
 
 ---
 
-## 7. Tweens and endings
+## 8. Meshes
+
+A layer draws on what its slot gives it: a tube along a path, the unit sphere at a transform, a quad per particle.
+Give it a mesh and it draws that instead: a sword slash's crescent, a shield's dome, a rock for every particle of
+debris. A mesh is data (`CgMesh`, [`ENGINE_API.md`](ENGINE_API.md) § *Meshes*): built on any thread, from a file or
+from a few numbers.
+
+### On a mesh slot
+
+```java
+public static final CgVfxSlot SLASH = CgVfxSlot.mesh("mymod:slash");
+static final CgMesh CRESCENT = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1.25f, 1.6f, 0.06f))
+        .angles(-75f, 75f).divisions(48, 3).build();
+
+public static final CgVfxKit KIT = CgVfxKit.of("mymod:slash")
+        .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/mesh/flow.shader").on(SLASH).mesh(CRESCENT)
+                .bind("_Color", KI).set("_Scroll", 2.5f, 0f, 0f, 0f).build())
+        .build();
+
+// in submit: placed by the slot's transform, as the sphere would be. flow.shader's four numbers are how far its
+// reveal has swept along u, its strength, and how much fades behind the reveal
+frame.mesh(this, SLASH, 0f, 1.2f, 0f, transform, reveal, 1f, 0.3f, 0f);
+```
+
+- **Three ways to name it**: `mesh(CgMesh)`; `mesh(CgMeshLods)`, a level per screen height; `mesh(path)`, an OBJ or
+  glTF file loaded at the layer's first draw, so a constant in common code costs a server nothing.
+- **Only a mesh slot or a `MESHES` emitter takes one**; on any other slot it throws at the first draw.
+- **`shaders/vfx/mesh/flow.shader`** is the engine's look for one: energy flowing over its UVs (Effekseer's UV-scroll
+  and erosion material), white-hot where a reveal sweeps along it, added. `_Scroll`, `_Tiling`, `_Erosion`, `_Edges`
+  and `_Rim` shape it.
+
+### One for every particle
+
+```java
+static final CgVfxEmitter ROCKS = CgVfxEmitter.builder("rocks").renderer(CgVfxEmitter.Renderer.MESHES).capacity(40)
+        .burst(0.5f, 24).shape(CgSphere.of(0.5)).launch(0.5f, 1f, 1f).speed(4f, 7f).life(3f, 4f)
+        .size(0.12f, 0.3f, 1f).spin(1f, 4f)
+        .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.2f, 0.4f, 0.6f)).build();
+
+.layer(CgVfxLayer.of("mymod:shaders/vfx/rock.shader").on(ROCKS).mesh(ROCK).build())
+```
+
+Each particle draws the mesh turned as it spins and sized by its size times the layer's, drawn as instances and culled
+on the GPU. With no mesh on its layer, a `MESHES` emitter draws the unit sphere's levels.
+
+### From a few numbers: procedural meshes
+
+`CgProceduralMesh` (Effekseer's generator, ported) revolves a profile round +Y, or runs ribbons along it:
+
+```java
+// a crescent for a slash: a thin band of a cylinder through 150 degrees
+CgMesh slash = CgProceduralMesh.revolve(CgProceduralMesh.cylinder(1.25f, 1.6f, 0.06f)).angles(-75f, 75f).build();
+
+// a dome over an impact, swaying as it rises
+CgMesh dome = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1.6f, 0f, 1.6f)).divisions(40, 12)
+        .wave(1.5f, 0.15f).build();
+
+// three ribbons spiralling up a cone, wide at the base and pinched at the tip
+CgMesh swirl = CgProceduralMesh.ribbons(CgProceduralMesh.cone(1.3f, 3.2f)).count(3).twist(1.25f)
+        .width(0.5f, 0.05f).build();
+
+// a rough rock: a sphere worn by curl noise
+CgMesh rock = CgProceduralMesh.revolve(CgProceduralMesh.sphere(1f, -1f, 1f)).divisions(12, 8).curl(1.3f, 0.25f).build();
+
+// a flame's body: a spline through four points
+CgMesh flame = CgProceduralMesh.revolve(CgProceduralMesh.spline(0.35f, -0.05f, 0.95f, 0.9f, 0.7f, 2.2f, 0f, 3.4f))
+        .build();
+```
+
+| Profile | Its shape, as (radius, height) |
+|---|---|
+| `sphere(radius, depthMin, depthMax)` | a sphere's arc between two heights: `(r, -r, r)` the whole sphere, `(r, 0, r)` a dome |
+| `cone(radius, depth)` | from its apex at the origin out to `radius` at `depth` |
+| `cylinder(radius1, radius2, depth)` | `radius1` at the bottom to `radius2` at `depth`: a band, a ring (`depth` 0), a cut cone |
+| `spline(r1, h1, r2, h2, r3, h3, r4, h4)` | a natural cubic spline through four points |
+
+| Revolved (`revolve`) | Ribbons (`ribbons`) |
+|---|---|
+| `angles(begin, end)`: degrees round, 0 on +Z toward +X; 0 to 360 unless given | `count(n)`, spaced evenly round: 1 unless given; `vertices(n)` along each: 32 |
+| `divisions(around, along)`: 32 and 8 unless given | `width(start, end)` in blocks; `roll(start, end)` about its length, in degrees |
+| `twist(turns)` from the profile's start to its end: a swirl | `twist(turns)`; `section(PLANE \| CROSS \| POINT)`; `scatter(angle, depth)` and `seed(s)` to stray from even |
+
+Both take `tilt(...)`, a lean as it rises; `wave(frequency, power)`, a sway; `curl(frequency, power)`, roughness by
+curl noise (`noiseSeed(seed)`); `axis(X | Y | Z)`, built round another axis; and `uv(u0, v0, width, height)`, where its
+UVs land.
+
+- **Its UVs**: u runs round it (along a ribbon), v from 1 at the profile's start to 0 at its end. `flow.shader`
+  scrolls its noise along them.
+- **Faces wind counter-clockwise seen from outside**. A ribbon has two sides, so its shader draws with culling off.
+- **Data only**: build it once, as a constant, on any thread. Each `build()` makes a new mesh.
+
+### Particles born on a mesh
+
+An emitter's `mesh(...)` spawns on a mesh's surface, a triangle picked by area and launched along its normal, and
+`vertices()` at its vertices ([§11](#where-particles-are-born-and-which-way-they-fly)): sparks along a sword, glints
+on a shield.
+
+```java
+CgVfxEmitter.builder("glints").mesh(SWIRL).vertices().ordered(96)...    // 96 points through its vertices, in order
+CgVfxEmitter.builder("glow").mesh("mymod:models/sword.obj")...           // off a sword's surface
+```
+
+---
+
+## 9. Tweens and endings
 
 ### A tween
 
@@ -571,7 +829,7 @@ each client finds the ending declared under that name in its own copy of your co
 - An ending animating a value its effect's look lacks throws at `end`.
 - A second `end`, or one after the effect died, is ignored: the first ending plays out.
 - `fadeOut` fades the effect's **presence**, which every engine shader multiplies its light by (`FX_PRESENCE`). A
-  shader of your own fades only if it does the same ([§16](#16-writing-a-layers-shader)).
+  shader of your own fades only if it does the same ([§20](#20-writing-a-layers-shader)).
 - A fade of another length is an ending of its own: `CgVfxEnding.over("mymod:slow_fade", 1.2f).fadeOut(CgEasings.IN_QUAD).build()`.
 
 **In an effect of your own**, override `ending(CgVfxEnding)` to drop what the graceful end would play; it is heard
@@ -585,7 +843,7 @@ before `stop()`. `ending()` says which one is playing, or null.
 
 ---
 
-## 8. Tuning a look live, and saving it
+## 10. Tuning a look live, and saving it
 
 Open a look for tuning and every number and colour of it, and every constant its layers set, becomes a **variable**:
 a named value in the engine's registry (`CgVars`), which the console, a tuning panel and remote tools all read and
@@ -631,439 +889,7 @@ layer.body_shell._Flow: 30.0
 
 ---
 
-## 9. The energy wave
-
-`CgEnergyWave` (`vfx.effect.beam`) charges at a muzzle, fires a beam that flows out, bends where its source turns,
-homes on a target or is steered by a player's aim, stops where it hits, and bursts into a blast as its tail runs
-out into what it hit.
-
-```java
-CgEnergyWave wave = VFX.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z)
-        .follow(playerId, CgEntityAttachments.HANDS_FORWARD).hold());   // charging until fired
-wave.aim(dx, dy, dz).target(tx, ty, tz);   // each tick, as the source turns
-wave.collide();                            // or: find its own target along the aim
-wave.fire();
-wave.stop();                               // the tail runs out into the target, which bursts
-```
-
-### Made of elements
-
-| Element | Owns | Its kit in the engine's looks |
-|---|---|---|
-| `CgVfxCharge` | the ball growing over `TIME` along `SIZE`, streaks and arcs, the release's flash and shock ring, the root it settles to | `REALISTIC_CHARGE` |
-| `CgBeamBody` | the stream and its path, the body's profile (launch swell, throb, pulse, surges), the head | `REALISTIC_BODY`, `REALISTIC_HEAD` |
-| `CgBeamContact` | where it hits while it hits: the orb, splash, rings, the hit shake | `REALISTIC_CONTACT` |
-| `CgVfxBlast` | the blast, with its impact frame before it: beats, the cut, flash and impact volumes, the front hitbox | `CgVfxBlast.KIT`: `FIREBALL`, `HEART`, `SHOCKWAVE`, the explosion's emitters |
-| `CgBeamWake` | dust torn off the ground under the body | `WAKE` |
-
-Each element's schema, slots and moments are on its class. Any effect may use them ([§15](#built-from-elements)).
-
-### Its looks
-
-| Look | What it is |
-|---|---|
-| `kamehameha()` | every realistic kit, blue-white |
-| `finalFlash()` | the same kits, gold, `RADIUS` 1 and faster |
-| `galickGun()` | the same kits, violet |
-| `toon()` | the Kamehameha with `TOON` for its body, ball and head: three flat bands of `BANDS` and a soft halo, one draw a slot |
-
-### Its parameters
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `RADIUS` | 0.8 | the body's radius: every link follows it |
-| `SPEED` | 40 | how fast energy leaves the muzzle |
-| `TURN_RATE`, `NAVIGATION` | 4, 3 | how hard it homes (proportional navigation) |
-| `STEER` | 0 | above 0, steered: a curve from the muzzle along the aim into an end that chases the target, turning at most this many radians a second |
-| `MAX_LENGTH` | 120 | how far the head flies when it hits nothing |
-| `MUZZLE_FORWARD` | 0 | how far along the aim the drawn wave starts once fired: a caster's hands are the muzzle, the beam clears their body. Its casts still start at the muzzle |
-| `CORE`, `CORE_RIM`, `SHELL`, `SHELL_HOT`, `SPIRAL`, `GLOW` | | the energy palette its realistic kits read by name |
-| `CgBeamBody.HEAD_WIDTH`, `HEAD_LENGTH` | `RADIUS` × 1.45, × 1.9 | the head |
-| `CgVfxCharge.RADIUS`, `ROOT_SIZE` | `RADIUS` × 1.7, 0.8 | the ball, and the root it settles to once fired |
-| `CgVfxBlast.RADIUS` | `RADIUS` × 12 | the blast |
-
-### A wave of your own drawing
-
-Dragon Forge's anime wave is the engine's wave with its realistic drawing swapped out:
-
-```java
-public static final CgVfxLook KAMEHAMEHA = CgEnergyWave.kamehameha().derive()
-        .without(CgEnergyWave.REALISTIC_BODY, CgEnergyWave.REALISTIC_HEAD, CgEnergyWave.REALISTIC_CHARGE,
-                CgEnergyWave.REALISTIC_CONTACT, CgEnergyWave.WAKE, CgVfxBlast.HEART, CgVfxBlast.SHOCKWAVE)
-        .with(KiWaves.KI)                                                    // its bands, flames, sleeves, sparkles
-        .set(CgEnergyWave.RADIUS, 0.3f)
-        .link(CgBeamBody.HEAD_WIDTH, CgEnergyWave.RADIUS, 2.38f)
-        .set(CgEnergyWave.MUZZLE_FORWARD, 1.2f)
-        .set(CgBeamBody.THROB, 0f)
-        .set(CgEnergyWave.SHELL, 0xFF00FFFF)
-        .build();
-```
-
-- Bind your layers' sizes to `RADIUS` (`bind("_Radius", CgEnergyWave.RADIUS)`, `size(...)`), and `FADE` thins the whole
-  of it.
-- A look must carry its elements' schemas: derive it from one of the wave's looks, or add them with `params(...)`.
-  The wave's constructor says which is missing.
-
----
-
-## 10. Effects over the network: cues
-
-On a server you cannot call `VFX.play`: nothing draws there. You send a **cue**, and every client that should see it
-builds and plays the effect. The model is Unreal's gameplay cues.
-
-Each play is a networked object (`net.object`, [`NETWORKING.md`](NETWORKING.md) § 6): the network layer decides who
-sees it, sends what changed once a tick, and starts a player who comes into view at its age. `Playing.object()`
-reaches it when you need it.
-
-### Which kind do I want?
-
-| You want | Use | Late joiners see it? |
-|---|---|---|
-| A one-off: a hit spark, a puff, an explosion | `cue.at(...).send()` | no: it is gone once played |
-| Something that lasts: an aura, a beam, a burning crater | `cue.at(...).start()`, a `Playing` | yes, started at its current age |
-| A client showing its own action at once | `cue.at(...).predict()` on the client | the server decides |
-| An effect gameplay depends on | an `authoritative()` cue, `start()`ed | yes |
-
-### Declaring a cue
-
-Once, as a constant, in code both sides run, at init, before any player joins:
-
-```java
-public static final CgVfxCue HIT = VFX.cue("hit_spark", HitSpark.LOOK,
-        (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z())).build();
-```
-
-| Call | Does |
-|---|---|
-| `.range(96)` | How far round its point a play reaches when it follows nothing; 64 blocks unless said |
-| `.fields(LEVEL, GUARDED)` | Data of its own, beyond its look ([below](#look-parameters-and-data-of-its-own)) |
-| `.authoritative()` | The server runs it too ([§11](#11-effects-gameplay-depends-on-server-authority)) |
-| `.persisted()` | Lasting plays are saved with the world and resume when the server starts. Not with `follow` or `authoritative()` |
-
-- **Finish with `build()`**: a cue is a network type, fixed once built.
-- **When what it plays uses client-only classes**, declare the cue alone in common and register what it plays on the
-  client:
-
-  ```java
-  public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL).build();                     // common
-  VFX.register(HIT, HitSpark.LOOK, (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()));   // client init
-  ```
-
-  Declared without its look, a cue carries none of the look's parameters: send what varies as fields of its own.
-- **A cue a client has nothing registered for** is dropped there, with one warning per id.
-
-### Sending a one-off
-
-```java
-HIT.at(level, x, y, z).send();
-HIT.at(level, x, y, z).toward(dx, dy, dz).follow(target, MyMod.BODY).keepOffset().set(HitSpark.SIZE, 2f).send();
-```
-
-- `level` is a level, an entity in it, or a dimension id.
-- **Who receives it**: the players tracking what it follows; otherwise everyone within the cue's range.
-- It goes with the tick's other changes, at the end of the server tick. A player who predicted it is not sent it again.
-
-### Starting a lasting one
-
-```java
-CgVfxCue.Playing aura = AURA.on(player, CgEntityAttachments.CENTRE).start();
-aura.set(Aura.INTENSITY, 3f);                               // every viewer, at the end of this tick
-aura.animate(Aura.INTENSITY, 0f, 2f, CgEasings.OUT_QUAD);   // a tween, run on every viewer at once
-aura.end(CgVfxEnding.FADE_OUT);                             // or stop(), or kill()
-```
-
-- **`on(entity, point)`** is "at this entity, following it at this point, in its level".
-- It ends by `stop()`, `end(ending)`, `kill()`, the play's `.lifetime(seconds)`, or the entity it follows dying.
-
-### Changing a lasting one
-
-| Call | Viewers get |
-|---|---|
-| `toward(dx, dy, dz)`, `target(x, y, z)` | a new direction, a new target point |
-| `set(PARAM, value)`, `set(COLOUR, argb)` | a number or colour of its look |
-| `animate(PARAM, to, seconds, easing)` | a tween, as one event |
-| `set(FIELD, value)` | one of its own fields |
-| `moveTo(x, y, z)` | a new position, and who is in range is worked out again |
-
-A field is sent only when its value changed. On each viewer, look values are set on its effect as they arrive. The
-rest (a new direction, target or field of its own) reaches only an effect that implements `CgVfxCue.Live`: its
-`cueChanged(cue)` runs once a frame after a change, and reads what it wants (the wave takes its aim and target).
-
-### Look parameters and data of its own
-
-Every number and colour of a cue's look, across every schema it includes, is a float field of the cue, so
-`set(Blast.RADIUS, 6f)` reaches each viewer's effect with no code in the factory. Curves and camera shakes do not
-travel.
-
-Data the look has no parameter for is a field the cue declares:
-
-```java
-public static final CgNetField<Integer> LEVEL = CgNetField.ofInt("level");
-public static final CgNetField<Boolean> GUARDED = CgNetField.ofBool("guarded");
-public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL, GUARDED).build();
-
-HIT.at(level, x, y, z).setInt(LEVEL, 2).setBool(GUARDED, true).send();              // server
-VFX.register(HIT, HitSpark.LOOK, (look, cue) ->                                     // client
-        new HitSpark(look, cue.x(), cue.y(), cue.z(), cue.getInt(LEVEL), cue.getBool(GUARDED)));
-```
-
-- A field never set reads as its fallback: 0, false, null, or what `.fallback(v)` said.
-- `CgNetField.ofInt`, `ofFloat`, `ofDouble`, `ofBool`, and `of(name, codec)` for anything else.
-- State an effect class publishes itself, whichever cue plays it, is declared on its schema instead
-  (`SCHEMA.networked(...)`, [§11](#making-your-own-effect-authoritative)).
-
-### Every client draws the same thing
-
-- **The seed travels with the cue**, so every client's random choices match.
-- **An effect following an entity** finds the attachment point from the entity as that client draws it.
-- Particles collide with each client's own world, so tiny differences are possible and harmless.
-
-### Predicting from a client
-
-```java
-HIT.at(x, y, z).set(HitSpark.SIZE, 2f).predict();                    // client: plays here now
-HIT.fromClients((player, play) -> withinReach(player, play));        // server, at init: who may
-```
-
-- The server refuses unless the cue allows it, the player is within the rate (20 a second, in bursts of 20) and the
-  point is within `range` of them. `refused()` counts refusals.
-- Accepted, the server's play takes over the client's own, so the predicting player sees it once. Refused, the
-  client's copy plays out alone.
-- Only one-offs are predicted, so an authoritative cue never is.
-
-### Cues are for showing, not for state
-
-A plain cue is cosmetic. Anything a player must not miss (damage, health, a status) is the game's to replicate; the
-cue only shows it. If the effect itself decides gameplay, make the cue authoritative.
-
----
-
-## 11. Effects gameplay depends on: server authority
-
-Some effects *are* the gameplay: a beam damages whatever it reaches. If each client decided what it hit, every client
-would see a different result. So the server runs the effect too, as the referee, and every client draws what the
-server decided.
-
-The server runs **the same effect class**, headless (nothing drawn) against the server's world (`CgVfxAuthority`): it decides where
-the effect goes and what it strikes, hears its hits, and publishes what clients must draw. Unreal and Unity Netcode
-run one actor on both sides the same way.
-
-### The whole thing, with the Kamehameha
-
-```java
-// common, at init: one declaration, one factory for both sides
-public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
-        CgEnergyWave::fromCue).range(96).authoritative().build();
-
-// server: start it, then drive its effect exactly as on a client
-CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
-CgEnergyWave beam = wave.effect();
-beam.hold().aim(look.x, look.y, look.z);   // key down
-
-wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.kind() == CgHit.Kind.ENTITY) stagger(h.entity()); })
-    .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
-    .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
-
-beam.aim(look.x, look.y, look.z);          // each tick, as the caster turns
-beam.set(CgEnergyWave.RADIUS, 1.2f);       // powered up: every viewer's beam widens, and the server's ray with it
-beam.fire();                               // key up
-wave.end(CgEnergyWave.FADE);               // every viewer's thins away; or stop(), and the blast is still heard
-```
-
-```java
-// client, at init: the hits the server counted, for feedback that must agree with the damage
-WAVE.onConfirmedHit(CgEnergyWave.PART_BURST, h -> decals.scorch(h.x(), h.y(), h.z()));
-```
-
-### What happens each server tick
-
-1. The server steps its copy on the client's clock (120 ticks a second, six a server tick).
-2. The wave tests its aim against the server's world: where the beam ends and what entity is there.
-3. What changed is written into the cue's fields and sent at the end of the tick: where the beam ends, the entity it
-   hit, the aim, hold and fire, every value set on the effect, and its tweens and endings as events. What it struck
-   goes too, as a confirmed hit.
-4. Each viewer's copy homes on that end rather than testing its own world, so every player sees the beam end where
-   the server says.
-
-### Driving it
-
-- **`wave.effect()`** is the server's copy. Call it exactly as on a client: `aim`, `fire`, `set`, `animate`, `end`,
-  `stop`.
-- **Stopping the effect stops every viewer's copy.** The cue lasts until the server's copy has played out (at most 10
-  seconds), so what it strikes meanwhile still reaches viewers.
-- A play started during a tick is published before any viewer hears of it, so the first state viewers receive
-  includes what you set right after `start()`.
-
-### Syncing parameters
-
-Any number or colour you `set` on the server's effect reaches every viewer, and anyone who joins later; a tween or an
-ending runs on every viewer as one event. This needs no code of the effect's own. Curves and camera shakes do not
-travel.
-
-### What is switched off on the server
-
-| Part | On the server |
-|---|---|
-| Particles | not simulated: emitters do nothing |
-| Post effects | not applied: the effect gets a detached volume, so its timing logic runs the same |
-| Camera shakes, moments | silent |
-| Hits | heard by the effect's own listeners on the server thread, and sent to viewers as confirmed hits |
-
-An effect that ends when its particles finish therefore ends itself on the server.
-
-### Limits and rules
-
-- **Lasting cues only** (`start()`); never `persisted()`.
-- **`at(level, ...)` must be a level or an entity in one**: that is the world it tests.
-- **The cue must be declared with its factory in common code.**
-- **It follows its entity by the attachment point's proportions**: a server has no model, so marked points are a
-  client-only refinement.
-- What it costs: [§18](#on-the-server).
-
-### Making your own effect authoritative
-
-Most effects need nothing: declare the cue `authoritative()` and values sync by themselves. An effect whose own state
-must reach viewers (the wave's end point) adds two interfaces:
-
-```java
-public final class Bolt extends CgVfxEffect<Bolt> implements CgVfxCue.Live, CgVfxCue.Authoritative {
-    private final CgHit hit = new CgHit();
-    private final CgSphere bolt = CgSphere.of(0.3);
-    private double endX = Double.NaN, endY, endZ;
-
-    @Override protected void tick(float dt) {
-        // world() is the server's world on the server and the client's on a client
-        if (world().cast(bolt).at(originX, originY, originZ).along(dirX, dirY, dirZ, 64)
-                .source(followingId()).blocksToo().first(hit)) {
-            endX = hit.x(); endY = hit.y(); endZ = hit.z();
-            hit(hit);                    // heard by onHit; on the server, confirmed to viewers
-        }
-    }
-
-    // server, after each tick: write what viewers draw; a value written unchanged sends nothing
-    @Override public void publish(CgVfxCue.Play cue) {
-        if (!Double.isNaN(endX)) cue.target(endX, endY, endZ);
-    }
-
-    // every viewer, once a frame that changed the cue
-    @Override public void cueChanged(CgVfxCue.Play cue) {
-        if (!authoritative() && cue.hasTarget()) endAt(cue.tx(), cue.ty(), cue.tz());
-    }
-}
-```
-
-State with no place in a play is fields its schema declares, which every cue playing the effect then carries:
-
-```java
-public static final CgNetField<Boolean> CHARGING = CgNetField.ofBool("bolt/charging");
-static { SCHEMA.networked(CHARGING); }
-
-cue.setBool(CHARGING, charging);                 // in publish
-if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the factory
-```
-
-- **`authoritative()`** on the effect is true for the server's copy: guard anything client-only with it.
-- **`cue.authoritative()`** in a factory is true while the server builds its copy: one factory configures both sides
-  (`CgEnergyWave.fromCue` turns on its own collision this way).
-
-### When it never hits
-
-- **Is the target in the beam?** A target summoned under a hovering caster falls out of it: summon test targets with
-  `{NoGravity:1b}`.
-- **Was `at(...)` given a level or an entity?** If not, the log says the authority tests no world.
-- **Trace it**: `-Dcrystalgraphics.vfx.traceAuthority` (or the console, `docs/DEBUG_FLAGS.md`) logs every server cast.
-
----
-
-## 12. Hits: what an effect strikes
-
-An effect strikes through the collision engine ([`COLLISION.md`](COLLISION.md)): the queries it makes through
-`world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
-
-```java
-CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(playerId, HANDS_FORWARD).collide());
-wave.onHit(h -> { if (h.kind() == CgHit.Kind.ENTITY) flash(h.entity()); });
-```
-
-### Parts
-
-An effect with more than one thing that strikes declares each as a **part** on its schema, and every hit names its
-part:
-
-```java
-wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()))
-    .onHit(CgEnergyWave.PART_BURST, h -> shatter(h.x(), h.y(), h.z(), wave.blastRadius()))
-    .onHit(CgEnergyWave.PART_BLAST, h -> knockBack(h.entity()));
-```
-
-A listener on the whole effect hears every part, and `h.part()` says which (compare with `==`).
-
-| Field | Meaning |
-|---|---|
-| `kind()` | `ENTITY`, `HITBOX` (a hittable hitbox: `entity()` is its owner), `BLOCK`, `FLUID`, `UNLOADED`, `BORDER`, `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
-| `entity()`, `parent()` | Minecraft's entity met, and the whole one for a part of a multipart entity |
-| `entityId()`, `parentId()` | the same by network id; -1 otherwise |
-| `blockX() blockY() blockZ()` | the block met |
-| `x() y() z()` | where |
-| `normalX() normalY() normalZ()`, `distance()` | toward what it met, and how far it travelled; 0 on a confirmed hit |
-| `part()` | which part struck |
-
-- **The hit is valid during the call**: copy what you keep (`new CgHit().set(h)`).
-- **An effect reports a contact as it starts**, and again when what it strikes changes, never every tick. A hitbox
-  hits each target once.
-- **Listeners hear on the thread the effect ticks on.** One that throws is logged and the others still hear.
-- **The wave** reports `PART_BEAM` as its head reaches what it hits, `PART_BURST` once where it bursts after its
-  impact frame, then `PART_BLAST` for each entity as the shock front reaches it, out to `blastRadius()`.
-
-### Particles
-
-A particle's contact is not a hit: it happens on the GPU, comes back a few frames late, and only on a client. An
-emitter that wants its contacts reports them as an event, and a system listener hears the rows, each tagged with the
-effect whose particle it was:
-
-```java
-.module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
-.event(CgVfxEvent.onCollision().readback(32))   // at most 32 rows a step, shared by every effect playing this emitter
-
-CgVfx.world().onEvents((definition, event, rows) -> {   // render thread
-    for (int i = 0; i < rows.count(); i++) {
-        if (rows.hit(i) == CgVfxEventRows.HIT_BLOCK) decals.scorch(rows.x(i), rows.y(i), rows.z(i));
-    }
-});
-```
-
-Never base gameplay on them.
-
-### Damage on the server, sparks on every client
-
-```java
-// server
-WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start()
-        .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
-
-// client, at init
-WAVE.onConfirmedHit(CgEnergyWave.PART_BLAST, h -> VFX.play(new CgVfxBurst(SPARKS, h.x(), h.y(), h.z())));
-```
-
-A confirmed hit arrives a network trip after the server's. For feedback timed to what this client draws, listen to the
-viewer's own copy: the factory builds both copies, and `cue.authoritative()` tells them apart.
-
-```java
-public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
-    CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
-    if (!cue.authoritative()) wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()));   // each viewer
-    return wave;
-}).range(96).authoritative().build();
-```
-
-- Both land where the damage does: a viewer's copy reports where the server published the beam ending.
-- A late joiner gets no sparks for hits it missed: hits are silent while an effect fast-forwards to its age.
-- A visual that depends on the outcome (blocked, a critical hit) is something only the server knows: send a one-off
-  cue from the server's listener.
-
----
-
-## 13. Particles
+## 11. Particles
 
 Particles are simulated entirely on the GPU, so hundreds of thousands are affordable. You describe them as data (an
 emitter), and the engine compiles that into GPU programs.
@@ -1190,7 +1016,46 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
 - A particle always belongs to an effect: one-off particles are a `CgVfxBurst` each. A shared emit call for
   Minecraft-style spam is planned (plan `vfx-gpu` X15).
 
-### Modules: what moves a particle
+### Every emitter call
+
+| Call | Sets |
+|---|---|
+| `renderer(QUADS \| MESHES \| ARCS)` | a camera-facing quad each (unless given), a mesh each ([§8](#8-meshes)), a stroke round the source |
+| `capacity(n)` | the most alive at once: 256 unless given |
+| `rate(perSecond)`, `rate(perSecond, from, until)` | a steady rate, for ever or between two of its seconds |
+| `burst(time, count)` | `count` at once at `time` seconds; call it again for more |
+| `ratePerBlock(n)`, `ratePerBlock(n, from, until)`, `maxStep(blocks)` | spawns by the distance its source moves ([above](#a-source-that-moves)) |
+| `shape`, `surface`, `edge`, `hemisphere`, `arc`, `ordered`, `pointing`, `at`, `mesh`, `vertices`, `entity` | where they are born ([above](#where-particles-are-born-and-which-way-they-fly)) |
+| `launch`, `outward`, `inward`, `direction` | which way they fly |
+| `speed(min, max)`, `inherit(share)` | blocks a second; a share of the source's velocity |
+| `life(min, max)` | seconds |
+| `size(min, max)`, `size(min, max, skew)`, `size(curve)` | blocks; a skew above 1 makes most small and a few large; a curve over life, a share of the starting size |
+| `opacity(curve)` | 0 to 1 over life |
+| `spin(min, max)` | radians a second, either way: a quad's turn, a mesh's tumble |
+| `heat(h)` | 0 to 1 at birth: `Buoyancy` lifts it, and hot shaders (`spark`) glow by it |
+| `module(m)`, `clearModules()` | a physics piece, run in order ([§12](#12-modules-and-events)) |
+| `event(e)` | children spawned or rows reported when something happens to a particle ([§12](#12-modules-and-events)) |
+| `trail(points)` | its last positions kept, for a `trails()` layer ([§13](#13-trails-and-ribbons)) |
+| `sweep(speed)` | born on a front running out at that speed; rate spawns only |
+| `local()` | its particles ride the effect as it moves, rather than staying where they were born |
+| `optional()` | detail: halved at the Low quality tier |
+| `name(name)` | its name in a look, which `look.emitter(name)` finds and a look's `emitter` replaces by |
+| `toBuilder()`, `scaled(s)` | a variant; the same emitter bigger or smaller, its timing kept |
+
+### Where particles run
+
+Every tier the engine supports runs them: compute on modern GL and Vulkan, lowered to draws on older GL
+([`SHADERS.md`](SHADERS.md) § *Every tier*). Nothing simulates them in Java: an emitter instance keeps only the
+books of what spawns when, which is how it knows it has finished without asking the GPU.
+
+---
+
+## 12. Modules and events
+
+Modules move particles: forces, collisions, kills, flocking, a gas's flow. Events fire when something happens to a
+particle and spawn children or report it.
+
+### Every module
 
 Modules run in order every step. Forces come first and are integrated together; a module after the solver
 (collisions, kills) sees where the particle went.
@@ -1202,6 +1067,7 @@ Modules run in order every step. Forces come first and are integrated together; 
 | `Wind`, `Turbulence`, `Buoyancy`, `Updraft` | The system's gusting air; curl noise; hot particles rising as they cool; a column of rising air |
 | `Attract`, `Orbit`, `Vortex`, `Conform` | Pull toward a sphere or box; circling an axis; a vortex's pull; settling onto a sphere's shell |
 | `Flock` | Reynolds' boids among an instance's own particles: apart from the nearest, along with their heading, toward their middle |
+| `Feed` | Pours density and heat into the gas its instance is in, where each particle is: sparks trailing smoke ([§14](#14-gas)) |
 | `Flow` | Carried by the gas its instance is in (`instance.inGas(gas)`, [§14](#14-gas)): embers riding a plume, debris whirled through a cloud |
 | `VectorField` | A 3D field (`CgVfxField`) in a box, setting velocity |
 | `Spin` | Spin rate decaying |
@@ -1219,6 +1085,34 @@ Modules run in order every step. Forces come first and are integrated together; 
 .module(new CgVfxModule.Kill(CgBox.of(4, 1, 4), true).at(0f, -2f, 0f))
 ```
 
+### Flocking
+
+`Flock` is Reynolds' boids among an instance's own particles: each steers apart from those nearest it, along with
+their heading and toward their middle. A flock of spirits round a heart, a school of fish round a vortex, a murmuration
+of embers.
+
+```java
+static final CgVfxEmitter SPIRITS = CgVfxEmitter.builder("spirits").capacity(300).burst(0f, 300)
+        .shape(CgSphere.of(3)).speed(1f, 2f).life(30f, 30f).trail(16)
+        .module(new CgVfxModule.Flock(1.6f, 0.5f, 3f, 1.5f, 0.8f))       // radius, apart, separation, alignment, cohesion
+        .module(new CgVfxModule.Attract(CgSphere.of(1), 2f))             // round a heart
+        .module(new CgVfxModule.LimitSpeed(4f))                           // boids want a top speed
+        .build();
+```
+
+| Argument | Means |
+|---|---|
+| `radius` | blocks: the neighbours it sees |
+| `apart`, `separation` | it is pushed from each neighbour nearer than `apart` blocks, harder the nearer, by `separation` |
+| `alignment` | how fast a second its velocity matches its neighbours' |
+| `cohesion` | its pull toward their middle, blocks a second squared a block |
+| `most` | at most this many neighbours counted, 24 unless given: a dense flock costs what a sparse one does |
+
+- **Its neighbours are its own instance's**: two effects' flocks never mix.
+- **A pool builds a grid of its particles after each step** while a kind in it takes neighbours, at every tier; a
+  newborn joins at the next step.
+- A module of your own reads the same grid ([§21](#21-writing-a-particle-module-of-your-own)).
+
 ### Events: particles spawning particles
 
 An event fires per particle (landing, death, an age, each collision, every period) and spawns children of another
@@ -1234,210 +1128,17 @@ emitter where it fired, reports to the CPU, or both:
 - **Add every child to the look** (its emitter and a layer on it), or it simulates and draws nothing.
 - At most `CgVfxEvent.MAX_EVENTS` events an emitter and `MAX_CHILDREN` children an event.
 
-### Where particles run
-
-Every tier the engine supports runs them: compute on modern GL and Vulkan, lowered to draws on older GL
-([`SHADERS.md`](SHADERS.md) § *Every tier*). Nothing simulates them in Java: an emitter instance keeps only the
-books of what spawns when, which is how it knows it has finished without asking the GPU.
-
 ---
 
-## 14. Gas
+## 13. Trails and ribbons
 
-Smoke that rolls out along the ground and is blasted open, a bonfire's flame and smoke, steam, a mushroom cloud: these
-are a fluid, not particles. `CgVfxGas` (`vfx.gas`) is an element owning one: a grid of cells about where it was placed,
-which its sources pour smoke, heat and fuel into. Heat rises, fuel burns into flame and smoke and pushes outward as it
-burns, the gas curls and churns, flows round the world's blocks, and the sun and the sky light it through itself. The
-grid is **sparse**: it holds cells only where there is gas, in tiles of 16 drawn from one pool, as OpenVDB, EmberGen and
-Houdini's sparse Pyro hold theirs, so smoke flows as far as it goes instead of filling a box. It is simulated on the GPU
-at every compute tier, as GPU Gems 3's smoke is (chapter 30), in Houdini Pyro's step order and with Pyro's controls, so
-a look built in Pyro or EmberGen carries over; CS2's grenade smoke is the model for how it fills a space and heals after
-a blast.
+A trail is where something moving has been: a fist's ki streak, a sword's swoosh, a dash's wake, a meteor's smoke. An
+effect moves a `CgVfxTrail` and a trail slot's layers draw it; particles draw the same strips behind each of them, or
+one through all of them.
 
-```java
-public final class Grenade extends CgVfxEffect<Grenade> {
-    private final CgVfxGas smoke = new CgVfxGas(this).place(0f, 2f, 0f);       // its middle, from the effect's origin
-    private final CgVfxGas.Source vent = smoke.source(0f, 0.4f, 0f, 1.2f)
-            .density(6f).heat(0.8f).velocity(0f, 2f, 0f);
+### Behind something an effect moves
 
-    public Grenade(CgVfxLook look, double x, double y, double z) {
-        super(look, x, y, z);
-    }
-
-    @Override protected void tick(float dt) {
-        smoke.tick(dt);                                  // every tick: it steps on the effect's clock
-        if (age > 12f) vent.off();
-        if (smoke.faded()) die();
-    }
-
-    @Override protected void submit(CgVfxFrame frame) {
-        smoke.submit(frame);
-    }
-}
-
-public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)   // its schema and the smoke layer
-        .set(CgVfxGas.CELL, 0.3f).set(CgVfxGas.WEIGHT, 0.35f).build();
-
-smoke.blast(x, y, z, 4f, 30f, 1f);              // thrown out at 30 blocks a second, cleared within 4, then it heals
-smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and smoke: a fire
-```
-
-| Call | Does |
-|---|---|
-| `new CgVfxGas(effect)`, `(effect, slot)` | A gas drawn on `CgVfxGas.SLOT`, or on a volume slot of the effect's own (`CgVfxSlot.volume(name)`) |
-| `place(x, y, z)` | Where its grid's middle goes, from the effect's origin; taken when it first gets a place in the atlas, fixed in the world after |
-| `source(x, y, z, radius)` | A sphere it pours from: `density`, `heat` and `fuel` a second, a `velocity` it steers what is inside toward; `at`, `radius`, `on()`, `off()`. At most 8 |
-| `blast(x, y, z, radius, speed, carve)` | Everything within `radius` thrown out at up to `speed`, and `carve` (0 to 1) of its smoke cleared at the middle |
-| `tick(dt)`, `submit(frame)` | From the effect's own, every tick and every frame |
-| `faded()` | Nothing poured for as long as `DISSIPATION` takes its smoke to a fiftieth: what the effect waits for to die |
-| `release()` | Its place and tiles given back now |
-| `bounds(out)`, `cellSize()` | The box its tiles cover now, from its middle; a cell's side in blocks at this tier |
-
-| Parameter (`CgVfxGas`) | Default | Meaning |
-|---|---|---|
-| `CELL` | 0.4 | a cell's side in blocks at High and Ultra (1.5 times at Medium, twice at Low): its finest detail, and how many of the pool's tiles its smoke takes. It reaches 256 cells each way from where it was placed |
-| `BUOYANCY`, `WEIGHT` | 2, 0.3 | lift a unit of temperature gives; sinking a unit of density gives, which spreads heavy smoke along the ground |
-| `VORTICITY` | 1.5 | how hard small swirls are kept from smoothing out |
-| `DISSIPATION`, `COOLING`, `DAMPING` | 0.08, 0.8, 0.3 | the share of its density, temperature and speed lost a second |
-| `BURN`, `HEAT` | 1.5, 3 | the share of its fuel burnt a second, and the temperature it burns at; a unit burnt is a unit of smoke, and where it burns fast it is flame |
-| `SMOKE_AMOUNT` | 0.5 | the smoke a unit of fuel leaves as it burns: a clean flame's 0.1, a sooty fire's 1 |
-| `EXPANSION` | 0 | the hot gas a unit of fuel releases as it burns, as the log of the volume it swells by: fuel 10 at 0.25 swells twelvefold. A charge bursts by what it holds and stops, so a cloud settles at its real size |
-| `TURBULENCE`, `TURBULENCE_SIZE` | 0, 3 | slow curl noise churning it where there is gas, and its swirls' size in blocks: billows |
-| `DISTURBANCE`, `DISTURBANCE_SIZE` | 0, 0.75 | fast, fine curl noise (Pyro's disturbance): small detail, flames torn. Under two cells it is lost in the grid |
-| `EXTINCTION` | 2.5 | light lost a block through a unit of density: how thick it looks and how deep its shadows |
-| `SCATTERING` | 0.6 | forward scattering, 0 to 0.9: steam shines silver toward the sun from 0.7 |
-| `DETAIL`, `DETAIL_SIZE` | 0.5, 1.2 | its thin edges worn into wisps by noise finer than its cells, carried by its flow; the noise's size |
-| `SOOT`, `GLOW` | 0.35, 1 | hot smoke's glow beside its flame's, and both together |
-| `SMOKE_COLOR`, `FIRE` | | the smoke in full light, and a tint on what burns; the smoke layer's `_Smoke` and `_Fire` bind them by name |
-
-How the four of `CgVfxGasDemo` are set up, as starting points:
-
-| Station | What makes it |
-|---|---|
-| Smoke grenade | two jets spinning round the canister along the floor; `WEIGHT` near `BUOYANCY` × its heat, so it floods out and stands; high `DAMPING` and low `DISSIPATION`; `EXTINCTION` 3, opaque |
-| Bonfire | fuel in gusts, `BURN` 5 so flames stay short, `HEAT` 3.6, a little `EXPANSION`; `TURBULENCE` at 1.8 blocks and fine `DISTURBANCE` to tear them; `COOLING` so the plume spreads as it climbs |
-| Steam geyser | a jet of 20 blocks a second in pulses, hot so it rises; high `DISSIPATION` (it evaporates), `TURBULENCE` at its shear layer's size, `SCATTERING` 0.78, `SOOT` 0 |
-| Mushroom cloud | a ground blast; a big charge of fuel burnt in a fraction of a second (`BURN` 8) at `HEAT` 4.5, bursting by `EXPANSION` 0.2 and rising into a ring under `VORTICITY` 3.5; a stem source drawing dust up, four sources running a base surge out along the floor; low `COOLING` and `DISSIPATION`, so the cap glows for seconds and hangs; `CELL` 0.6, since it grows huge |
-
-Temperature is over the air's, in the solver's units: the smoke layer reads a unit as 600 kelvin, so `HEAT` 3 burns
-orange and 4 yellow-white, and smoke below about 1.5 shows no glow.
-
-- **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits, drawing nothing.
-- **Every gas shares the pool's tiles**: 768 at Ultra, 384 at High, 256 at Medium, 128 at Low (`CgVfxGasAtlas.tiles`).
-  A tile is given out where gas arrives, on the face the GPU found it near a frame or two before, and taken back half a
-  second after it empties. A gas finding the pool full grows no further, and what flows past its last tiles is lost
-  there; a coarser `CELL` spends fewer tiles on the same smoke. The counters `vfx.gas.tiles` and `vfx.gas.pool-full`
-  say how full it runs. Changing tier starts every gas again empty.
-- **It steps 60 times a second on its effect's clock**, so pause and slow motion reach it, and an effect left unticked
-  for two seconds gives its tiles back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
-  takes fewer iterations, then one step a frame.
-- **It stays where it was placed**: a moving source trails through it. It flows round the voxel window's blocks and
-  stands on its effect's `ground` where the host has no world.
-- **Drawing is a layer's, on a volume slot.** `CgVfxGas.SMOKE`'s `vfx/gas/smoke.shader` marches it: the sun through the
-  gas and the blocks and the sky over it less the gas above (both cached by the solver once a frame), a two-lobe phase
-  with powder at thin edges, its edges worn by noise carried along its flow, hot smoke glowing as it absorbs and flames
-  shining by themselves, blooming. The sun is the frame's, the one every material reads, so a host with no sky has the
-  default's. It skips the tiles the gas does not hold. A shader of your own declares `_GasShade`, `_GasFlow` and
-  `_GasPages` (`sampler3D`, first and in that order), includes `lib/vfx/fx_gas.glsl` (`fx_gas_slot`,
-  `fx_gas_pool_uvw`, `fx_gas_read`), and reads what `CgVfxSlot.Kind.VOLUME` documents.
-- **Detail under two cells is lost in the grid**: keep `TURBULENCE_SIZE` and `DISTURBANCE_SIZE` above twice `CELL`.
-- **Its speed is held under 40 blocks a second**, a backstop on confinement and turbulence feeding each other.
-- **Particles ride it** through `CgVfxModule.Flow`: their velocity drawn toward the gas's where they are, where it
-  holds a tile. The instance names its gas:
-
-  ```java
-  embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(smoke);   // and .module(new Flow(2.5f))
-  ```
-
-- Not yet measured on a GPU: `vfx-gas` is the scene to time it in.
-
-## 15. Writing an effect of your own
-
-An effect has two jobs: `tick` (logic, on a fixed 120 Hz clock) and `submit` (hand what to draw to the frame, by
-slot). How it looks is its look's.
-
-```java
-public final class Bolt extends CgVfxEffect<Bolt> {
-    public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
-    public static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 0.4f);
-    public static final CgVfxParam.Scalar LIFE = SCHEMA.time("life", 2f);
-    public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFE9A0, 1.5f);
-    public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
-
-    public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
-            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/beam/orb_light.shader").on(ORB).size(6f)
-                    .bind("_Glow", CORE).role(CgVfxLayer.Role.LIGHT).build())
-            .layer(CgVfxLayer.of("mymod:shaders/vfx/bolt_orb.shader").on(ORB).build())   // _Core binds by name
-            .build();
-    public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
-
-    private final Matrix4f transform = new Matrix4f();
-
-    public Bolt(CgVfxLook look, double x, double y, double z) {
-        super(look, x, y, z);
-    }
-
-    @Override protected void tick(float dt) {
-        if (age >= get(LIFE)) die();
-    }
-
-    @Override protected void submit(CgVfxFrame frame) {
-        if (!frame.draws(this, ORB)) return;
-        float r = get(RADIUS);
-        transform.scaling(r);
-        frame.mesh(this, ORB, 0f, 1f, 0f, transform, r, r, 1f, 0f);   // every layer on ORB
-    }
-}
-```
-
-- **Coordinates**: `originX/Y/Z` is where the effect is (moved by `follow`); everything it positions is relative to it.
-- **`age`** is seconds since it started; **`seed`** a stable random number in 0..1 that shaders read too.
-- **Die** with `die()` when done; `stop()` from outside lets it finish gracefully.
-- **Read every number from its parameters**, never a constant in code: then a look, a tuning and a cue reach it.
-- **Name the class in its declaration** (`extends CgVfxEffect<Bolt>`): every setter (`follow`, `startAt`, `set`,
-  `onHit`, ...) then answers a `Bolt`, so `VFX.play(new Bolt(LOOK, x, y, z).follow(id, CHEST).charge(2f))` chains into
-  its own methods and stays a `Bolt`. Code holding any effect writes `CgVfxEffect<?>`.
-
-### What a frame draws
-
-| Call | Draws |
-|---|---|
-| `frame.particles(this, instance)` | an emitter's particles, through every layer on it |
-| `frame.mesh(this, slot, x, y, z, transform, ex, ey, ez, ew)` | a sphere at a transform; four numbers the slot documents |
-| `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
-| `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
-| `frame.ribbons(...)`, `frame.pathRibbons(this, slot, path, row, intensity)` | ribbons a shader places |
-| `frame.trail(this, slot, trail)` | a trail behind something moving ([below](#trails)) |
-
-### Particles in an effect
-
-```java
-private final CgVfxEmitterInstance sparks;
-
-public Sparks(CgVfxLook look, double x, double y, double z) {
-    super(look, x, y, z);
-    sparks = new CgVfxEmitterInstance(look.emitter("sparks"), seed);
-    sparks.start(0f, 1f, 0f);                           // where it emits, relative to the effect
-}
-
-@Override protected void tick(float dt) {
-    tick(sparks, dt);                                   // never sparks.tick(...): this schedules it on the GPU
-    if (sparks.finished() && age > 1f) die();
-}
-
-@Override protected void submit(CgVfxFrame frame) {
-    frame.particles(this, sparks);
-}
-```
-
-Take the emitter from the look (`look.emitter(name)`), so a look that replaced it plays its own. One instance per
-emitter per effect; `moveTo(x, y, z)` moves a source without restarting it, `rateScale(s)` scales its rate, `stop()`
-ends an open-ended rate.
-
-### Trails
-
-A trail is where something moving has been: a fist's ki streak, a sword's swoosh, a dash's wake, a meteor's smoke. The
-effect moves a `CgVfxTrail` each tick, in world coordinates, so the trail stays behind as the effect moves; a trail
+The effect moves a `CgVfxTrail` each tick, in world coordinates, so the trail stays behind as the effect moves; a trail
 slot's layers draw it.
 
 ```java
@@ -1500,7 +1201,7 @@ scorch.tick(dt, x, groundY + 0.02, z);
 A shader of your own declares `_FxTrail ("Trail points", sampler2D) = "black"`, has no vertex data (`#type none`), and
 places each vertex with `fx_trail_vertex`; `fx_trail_place(v, scale)` scales its width by a taper of its own.
 
-#### A trail behind every particle, and ribbons through them
+### A trail behind every particle, and ribbons through them
 
 Particles draw strips too, built the same way on the GPU, with nothing for the effect to do:
 
@@ -1530,6 +1231,677 @@ CgVfxLayer.of("crystalgraphics:shaders/vfx/particle/ribbon.shader").on(STREAM).r
 - Every slot drawing one strip layer from one pool is a record of one draw, as particles are: a hundred sparks' effects
   cost one draw. A ring is keyed by its particle's spawn id, so where an emitter's capacity binds and the density
   setting thins its spawns, two particles alive at once may share one, the later shortening the earlier's trail.
+
+---
+
+## 14. Gas
+
+Smoke that rolls out along the ground and is blasted open, a bonfire's flame and smoke, steam, a mushroom cloud: these
+are a fluid, not particles. `CgVfxGas` (`vfx.gas`) is an element owning one: a grid of cells about where it was placed,
+which its sources pour smoke, heat and fuel into. Heat rises, fuel burns into flame and smoke and pushes outward as it
+burns, the gas curls and churns, flows round the world's blocks, and the sun and the sky light it through itself. The
+grid is **sparse**: it holds cells only where there is gas, in tiles of 16 drawn from one pool, as OpenVDB, EmberGen and
+Houdini's sparse Pyro hold theirs, so smoke flows as far as it goes instead of filling a box. It is simulated on the GPU
+at every compute tier, as GPU Gems 3's smoke is (chapter 30), in Houdini Pyro's step order and with Pyro's controls, so
+a look built in Pyro or EmberGen carries over; CS2's grenade smoke is the model for how it fills a space and heals after
+a blast.
+
+### A gas in an effect
+
+```java
+public final class Grenade extends CgVfxEffect<Grenade> {
+    private final CgVfxGas smoke = new CgVfxGas(this).place(0f, 2f, 0f);       // its middle, from the effect's origin
+    private final CgVfxGas.Source vent = smoke.source(0f, 0.4f, 0f, 1.2f)
+            .density(6f).heat(0.8f).velocity(0f, 2f, 0f);
+
+    public Grenade(CgVfxLook look, double x, double y, double z) {
+        super(look, x, y, z);
+    }
+
+    @Override protected void tick(float dt) {
+        smoke.tick(dt);                                  // every tick: it steps on the effect's clock
+        if (age > 12f) vent.off();
+        if (smoke.faded()) die();
+    }
+
+    @Override protected void submit(CgVfxFrame frame) {
+        smoke.submit(frame);
+    }
+}
+
+public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(CgVfxGas.SMOKE)   // its schema and the smoke layer
+        .set(CgVfxGas.CELL, 0.3f).set(CgVfxGas.WEIGHT, 0.35f).build();
+
+smoke.blast(x, y, z, 4f, 30f, 1f);              // thrown out at 30 blocks a second, cleared within 4, then it heals
+smoke.source(0f, 0f, 0f, 0.8f).fuel(3f).heat(2f);   // fuel burns into heat and smoke: a fire
+```
+
+| Call | Does |
+|---|---|
+| `new CgVfxGas(effect)`, `(effect, slot)` | A gas drawn on `CgVfxGas.SLOT`, or on a volume slot of the effect's own (`CgVfxSlot.volume(name)`) |
+| `place(x, y, z)` | Where its grid's middle goes, from the effect's origin; taken when it first gets a place in the atlas, fixed in the world after |
+| `source(x, y, z, radius)` | A sphere it pours from: `density`, `heat` and `fuel` a second, a `velocity` it steers what is inside toward; `at`, `radius`, `on()`, `off()`. At most 8 |
+| `blast(x, y, z, radius, speed, carve)` | Everything within `radius` thrown out at up to `speed`, and `carve` (0 to 1) of its smoke cleared at the middle |
+| `tick(dt)`, `submit(frame)` | From the effect's own, every tick and every frame |
+| `faded()` | Nothing poured for as long as `DISSIPATION` takes its smoke to a fiftieth: what the effect waits for to die |
+| `release()` | Its place and tiles given back now |
+| `bounds(out)`, `cellSize()` | The box its tiles cover now, from its middle; a cell's side in blocks at this tier |
+
+### Its parameters
+
+| Parameter (`CgVfxGas`) | Default | Meaning |
+|---|---|---|
+| `CELL` | 0.4 | a cell's side in blocks at High and Ultra (1.5 times at Medium, twice at Low): its finest detail, and how many of the pool's tiles its smoke takes. It reaches 256 cells each way from where it was placed |
+| `BUOYANCY`, `WEIGHT` | 2, 0.3 | lift a unit of temperature gives; sinking a unit of density gives, which spreads heavy smoke along the ground |
+| `VORTICITY` | 1.5 | how hard small swirls are kept from smoothing out |
+| `DISSIPATION`, `COOLING`, `DAMPING` | 0.08, 0.8, 0.3 | the share of its density, temperature and speed lost a second |
+| `BURN`, `HEAT` | 1.5, 3 | the share of its fuel burnt a second, and the temperature it burns at; a unit burnt is a unit of smoke, and where it burns fast it is flame |
+| `SMOKE_AMOUNT` | 0.5 | the smoke a unit of fuel leaves as it burns: a clean flame's 0.1, a sooty fire's 1 |
+| `EXPANSION` | 0 | the hot gas a unit of fuel releases as it burns, as the log of the volume it swells by: fuel 10 at 0.25 swells twelvefold. A charge bursts by what it holds and stops, so a cloud settles at its real size |
+| `TURBULENCE`, `TURBULENCE_SIZE` | 0, 3 | slow curl noise churning it where there is gas, and its swirls' size in blocks: billows |
+| `DISTURBANCE`, `DISTURBANCE_SIZE` | 0, 0.75 | fast, fine curl noise (Pyro's disturbance): small detail, flames torn. Under two cells it is lost in the grid |
+| `EXTINCTION` | 2.5 | light lost a block through a unit of density: how thick it looks and how deep its shadows |
+| `SCATTERING` | 0.6 | forward scattering, 0 to 0.9: steam shines silver toward the sun from 0.7 |
+| `DETAIL`, `DETAIL_SIZE` | 0.5, 1.2 | its thin edges worn into wisps by noise finer than its cells, carried by its flow; the noise's size |
+| `SOOT`, `GLOW` | 0.35, 1 | hot smoke's glow beside its flame's, and both together |
+| `SMOKE_COLOR`, `FIRE` | | the smoke in full light, and a tint on what burns; the smoke layer's `_Smoke` and `_Fire` bind them by name |
+
+Temperature is over the air's, in the solver's units: the smoke layer reads a unit as 600 kelvin, so `HEAT` 3 burns
+orange and 4 yellow-white, and smoke below about 1.5 shows no glow.
+
+- **Detail under two cells is lost in the grid**: keep `TURBULENCE_SIZE` and `DISTURBANCE_SIZE` above twice `CELL`.
+- **Its speed is held under 40 blocks a second**, a backstop on confinement and turbulence feeding each other.
+
+### Starting points
+
+How the four of `CgVfxGasDemo` (`vfx-gas`) are set up:
+
+| Station | What makes it |
+|---|---|
+| Smoke grenade | `CgSmokeGrenade` ([§15](#15-smoke-that-fills-a-space-cs2s-grenades)): CS2's flood, shot through at eight seconds and blasted open at ten, healing |
+| Bonfire | fuel in gusts, `BURN` 5 so flames stay short, `HEAT` 3.6, a little `EXPANSION`; `TURBULENCE` at 1.8 blocks and fine `DISTURBANCE` to tear them; `COOLING` so the plume spreads as it climbs |
+| Steam geyser | a jet of 20 blocks a second in pulses, hot so it rises; high `DISSIPATION` (it evaporates), `TURBULENCE` at its shear layer's size, `SCATTERING` 0.78, `SOOT` 0 |
+| Mushroom cloud | a ground blast; a big charge of fuel burnt in a fraction of a second (`BURN` 8) at `HEAT` 4.5, bursting by `EXPANSION` 0.2 and rising into a ring under `VORTICITY` 3.5; a stem source drawing dust up, four sources running a base surge out along the floor; low `COOLING` and `DISSIPATION`, so the cap glows for seconds and hangs; `CELL` 0.5, since it grows huge |
+
+### Where it lives: the pool, the clock, the world
+
+- **At most four gases at once** (`CgVfxGasAtlas.CAPACITY`); one asking past that waits, drawing nothing.
+- **Every gas shares one pool of tiles**: 1024 at Ultra, 512 at High, 256 at Medium, 128 at Low
+  (`CgVfxGasAtlas.tiles`). A tile is given out where gas arrives, on the face the GPU found it near a frame or two
+  before, and taken back half a second after it empties. A gas finding the pool full grows no further, and what flows
+  past its last tiles is lost there; a coarser `CELL` spends fewer tiles on the same smoke. The counters
+  `vfx.gas.tiles` and `vfx.gas.pool-full` say how full it runs. Changing tier starts every gas again empty.
+- **It steps 60 times a second on its effect's clock**, so pause and slow motion reach it, and an effect left unticked
+  for two seconds gives its tiles back. Under the GPU's budget (`CgVfxGasAtlas.GPU_BUDGET`, 2 ms) its pressure solve
+  takes fewer iterations, then one step a frame.
+- **It stays where it was placed**: a moving source trails through it. It flows round the voxel window's blocks and
+  stands on its effect's `ground` where the host has no world.
+- Not yet measured on a GPU: `vfx-gas` is the scene to time it in.
+
+### Particles and entities in it
+
+**Particles ride it, and pour into it.** `CgVfxModule.Flow` draws their velocity toward the gas's where they are;
+`CgVfxModule.Feed` makes each pour density and heat a second where it is, summed in cells four of the gas's a side and
+taken at the gas's next step. The instance names its gas:
+
+```java
+embers = new CgVfxEmitterInstance(look().emitter("embers"), seed).inGas(smoke);   // .module(new Flow(2.5f))
+sparks = new CgVfxEmitterInstance(look().emitter("sparks"), seed).inGas(smoke);   // .module(new Feed(4f, 0.5f))
+```
+
+- What particles pour lands where the gas holds tiles: the engine asks for tiles round each instance feeding it, and
+  `smoke.wantTiles(x, y, z, radius)` asks round a point of your own.
+- At most `CgVfxGasAtlas.DEPOSITS` particles pour between two steps, every instance's together; the rest pour nothing.
+- **Entities wade through it**: the living entities in a gas's box (`CgVfxGasAtlas.MAX_ENTITIES`, every gas's
+  together) drag it along and shove it aside, by how fast each moved since the last frame. None on a host with no
+  level.
+
+### How it is drawn
+
+A layer on its volume slot draws it. `CgVfxGas.SMOKE`'s `vfx/gas/smoke.shader` marches it: the sun through the gas and
+the blocks, the sky over the gas less what the gas toward the sky takes (both cached by the solver once a frame),
+density between cells by a cubic B-spline, a two-lobe phase with powder at thin edges, its edges worn by noise carried
+along its flow, hot smoke glowing as it absorbs and flames shining by themselves, blooming. The sun is the frame's, the
+one every material reads, so a host with no sky has the default's. It skips the tiles the gas does not hold.
+
+- **It is drawn at half size and blended with its last frames** (the world renderer's volumes, `ENGINE_API.md`
+  § *CgWorldRenderer*): each frame its march starts elsewhere, and the frames average out its grain. `H` in the
+  harness draws it at full size, frame by frame.
+- Its colours are the look's `SMOKE_COLOR` and `FIRE`, which `_Smoke` and `_Fire` bind by name.
+- A shader of your own for it: [§20](#a-volumes-shader).
+
+---
+
+## 15. Smoke that fills a space: CS2's grenades
+
+`CgSmokeGrenade` floods smoke from where it lands as Counter-Strike 2's does: half-block cells (`CgVfxSmokeFill.CELL`,
+a block's eighth, CS2's twenty units) spreading round walls, down stairs and through doors, never through a block,
+cheaper down than up, until a budget of cells is spent. It holds for eighteen seconds and thins away; shots and blasts
+carve it open and it heals. A gas fills the cells and gives them motion: its density is held to the cells revealed and
+drained outside them, so the shape is the flood's and the churn the gas's ([§14](#14-gas)).
+
+### Playing one
+
+```java
+// common, at init
+public static final CgVfxCue SMOKE = VFX.cue("smoke", CgSmokeGrenade.LOOK, CgSmokeGrenade::fromCue)
+        .range(128).authoritative().build();
+
+// server
+CgVfxCue.Playing smoke = SMOKE.at(level, x, y, z).start();     // floods the server's world, sends every client the cells
+CgSmokeGrenade grenade = smoke.effect();
+```
+
+```java
+VFX.play(new CgSmokeGrenade(CgSmokeGrenade.LOOK, x, y, z));     // one client alone: it floods that client's world
+```
+
+An authoritative cue is the one to use when the smoke hides players: every client draws the server's cells, and the
+server answers what they hide.
+
+### What it hides: sight, shots and blasts
+
+```java
+if (grenade.blocksSight(eyeX, eyeY, eyeZ, tx, ty, tz)) hidden();   // gameplay: the same answer on every side
+grenade.shot(eyeX, eyeY, eyeZ, hitX, hitY, hitZ);                  // a tunnel healing in 1.5 s; every viewer's opens too
+grenade.blast(x, y, z, 3.5f);                                       // a hole healing over 5 s, CS2's curve
+```
+
+- **A line is hidden** once it crosses `SIGHT` blocks of whole smoke, counted cell by cell through the cells revealed,
+  thinning as it fades and where it has been carved.
+- **Positions are absolute world coordinates**, as gameplay holds them.
+- **A shot** carves a capsule along the line, a third of a block round it; **a blast** clears a sphere and throws the
+  gas out, then heals as CS2's smoke does (`pow(smoothstep(0.5, 5, t), 1.8)`).
+- Called on the server's copy, a carve reaches every viewer; the server keeps its sixteen latest.
+
+### Its parameters
+
+| Parameter (`CgVfxSmoke`) | Default | Meaning |
+|---|---|---|
+| `SPREAD` | 1.6 | seconds to reach its last cell, fast at first |
+| `DURATION`, `FADE` | 18, 2.5 | seconds it holds, then thins away over |
+| `CELLS`, `REACH` | 2600, 8 | the most cells it fills; the farthest it spreads across, blocks |
+| `DENSITY`, `HOLD` | 2.5, 3 | the density its cells hold its gas at, and how fast a second it is pulled there |
+| `SIGHT` | 1.5 | blocks of whole smoke a line crosses before it is hidden |
+
+The look (`CgSmokeGrenade.LOOK`) also sets the gas's own (`CgVfxGas.CELL` at the cells' size, `DISSIPATION` 0 since
+the cells hold its density): derive it to change either.
+
+### Who floods, and what travels
+
+- **An authoritative cue's server copy floods** the server's blocks and sends the cells (`CgSmokeGrenade.CELLS`) with
+  the first state every viewer gets, so every client draws the same smoke. A plain cue, or a local play, floods the
+  client's own world.
+- **A block is solid** where its collision box holds a cell's middle; an unloaded block counts as solid.
+- **Carves travel** (`CgSmokeGrenade.CARVES`), each healing on each viewer's clock.
+- **A server's copy runs no gas**: it floods, carves and answers sight alone.
+
+### In an effect of your own
+
+`CgVfxSmoke` is the element under the grenade: give your effect one and call it from `tick` and `submit`.
+
+```java
+private final CgVfxSmoke smoke = new CgVfxSmoke(this);
+
+@Override protected void tick(float dt) {
+    if (smoke.fill() == null) smoke.flood();      // the effect's world, from its origin; or fill(cells) from a cue
+    smoke.tick(dt);
+    if (smoke.done()) die();
+}
+
+@Override protected void submit(CgVfxFrame frame) {
+    smoke.submit(frame);
+}
+```
+
+- Its look carries `CgVfxSmoke.SCHEMA` and `CgVfxGas.SCHEMA`: build it with `CgVfxGas.SMOKE` and `params(CgVfxSmoke.SCHEMA)`.
+- `revealed()` and `presence()` say how far it has spread and how present it is, for sound or a HUD.
+- **The flood alone**, headless, for a server rule or a test:
+  `CgVfxSmokeFill.flood(CgVfxSmokeFill.blocks(world, floorY), x, y, z, cells, reach)`; `encode()` and `decode` carry
+  it over a wire.
+
+---
+
+## 16. Effects over the network: cues
+
+On a server you cannot call `VFX.play`: nothing draws there. You send a **cue**, and every client that should see it
+builds and plays the effect. The model is Unreal's gameplay cues.
+
+Each play is a networked object (`net.object`, [`NETWORKING.md`](NETWORKING.md) § 6): the network layer decides who
+sees it, sends what changed once a tick, and starts a player who comes into view at its age. `Playing.object()`
+reaches it when you need it.
+
+### Which kind do I want?
+
+| You want | Use | Late joiners see it? |
+|---|---|---|
+| A one-off: a hit spark, a puff, an explosion | `cue.at(...).send()` | no: it is gone once played |
+| Something that lasts: an aura, a beam, a burning crater | `cue.at(...).start()`, a `Playing` | yes, started at its current age |
+| A client showing its own action at once | `cue.at(...).predict()` on the client | the server decides |
+| An effect gameplay depends on | an `authoritative()` cue, `start()`ed | yes |
+
+### Declaring a cue
+
+Once, as a constant, in code both sides run, at init, before any player joins:
+
+```java
+public static final CgVfxCue HIT = VFX.cue("hit_spark", HitSpark.LOOK,
+        (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z())).build();
+```
+
+| Call | Does |
+|---|---|
+| `.range(96)` | How far round its point a play reaches when it follows nothing; 64 blocks unless said |
+| `.fields(LEVEL, GUARDED)` | Data of its own, beyond its look ([below](#look-parameters-and-data-of-its-own)) |
+| `.authoritative()` | The server runs it too ([§17](#17-effects-gameplay-depends-on-server-authority)) |
+| `.persisted()` | Lasting plays are saved with the world and resume when the server starts. Not with `follow` or `authoritative()` |
+
+- **Finish with `build()`**: a cue is a network type, fixed once built.
+- **When what it plays uses client-only classes**, declare the cue alone in common and register what it plays on the
+  client:
+
+  ```java
+  public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL).build();                     // common
+  VFX.register(HIT, HitSpark.LOOK, (look, cue) -> new HitSpark(look, cue.x(), cue.y(), cue.z()));   // client init
+  ```
+
+  Declared without its look, a cue carries none of the look's parameters: send what varies as fields of its own.
+- **A cue a client has nothing registered for** is dropped there, with one warning per id.
+
+### Sending a one-off
+
+```java
+HIT.at(level, x, y, z).send();
+HIT.at(level, x, y, z).toward(dx, dy, dz).follow(target, MyMod.BODY).keepOffset().set(HitSpark.SIZE, 2f).send();
+```
+
+- `level` is a level, an entity in it, or a dimension id.
+- **Who receives it**: the players tracking what it follows; otherwise everyone within the cue's range.
+- It goes with the tick's other changes, at the end of the server tick. A player who predicted it is not sent it again.
+
+### Starting a lasting one
+
+```java
+CgVfxCue.Playing aura = AURA.on(player, CgEntityAttachments.CENTRE).start();
+aura.set(Aura.INTENSITY, 3f);                               // every viewer, at the end of this tick
+aura.animate(Aura.INTENSITY, 0f, 2f, CgEasings.OUT_QUAD);   // a tween, run on every viewer at once
+aura.end(CgVfxEnding.FADE_OUT);                             // or stop(), or kill()
+```
+
+- **`on(entity, point)`** is "at this entity, following it at this point, in its level".
+- It ends by `stop()`, `end(ending)`, `kill()`, the play's `.lifetime(seconds)`, or the entity it follows dying.
+
+### Changing a lasting one
+
+| Call | Viewers get |
+|---|---|
+| `toward(dx, dy, dz)`, `target(x, y, z)` | a new direction, a new target point |
+| `set(PARAM, value)`, `set(COLOUR, argb)` | a number or colour of its look |
+| `animate(PARAM, to, seconds, easing)` | a tween, as one event |
+| `set(FIELD, value)` | one of its own fields |
+| `moveTo(x, y, z)` | a new position, and who is in range is worked out again |
+
+A field is sent only when its value changed. On each viewer, look values are set on its effect as they arrive. The
+rest (a new direction, target or field of its own) reaches only an effect that implements `CgVfxCue.Live`: its
+`cueChanged(cue)` runs once a frame after a change, and reads what it wants (the wave takes its aim and target).
+
+### Look parameters and data of its own
+
+Every number and colour of a cue's look, across every schema it includes, is a float field of the cue, so
+`set(Blast.RADIUS, 6f)` reaches each viewer's effect with no code in the factory. Curves and camera shakes do not
+travel.
+
+Data the look has no parameter for is a field the cue declares:
+
+```java
+public static final CgNetField<Integer> LEVEL = CgNetField.ofInt("level");
+public static final CgNetField<Boolean> GUARDED = CgNetField.ofBool("guarded");
+public static final CgVfxCue HIT = VFX.cue("hit_spark").fields(LEVEL, GUARDED).build();
+
+HIT.at(level, x, y, z).setInt(LEVEL, 2).setBool(GUARDED, true).send();              // server
+VFX.register(HIT, HitSpark.LOOK, (look, cue) ->                                     // client
+        new HitSpark(look, cue.x(), cue.y(), cue.z(), cue.getInt(LEVEL), cue.getBool(GUARDED)));
+```
+
+- A field never set reads as its fallback: 0, false, null, or what `.fallback(v)` said.
+- `CgNetField.ofInt`, `ofFloat`, `ofDouble`, `ofBool`, and `of(name, codec)` for anything else.
+- State an effect class publishes itself, whichever cue plays it, is declared on its schema instead
+  (`SCHEMA.networked(...)`, [§17](#making-your-own-effect-authoritative)).
+
+### Every client draws the same thing
+
+- **The seed travels with the cue**, so every client's random choices match.
+- **An effect following an entity** finds the attachment point from the entity as that client draws it.
+- Particles collide with each client's own world, so tiny differences are possible and harmless.
+
+### Predicting from a client
+
+```java
+HIT.at(x, y, z).set(HitSpark.SIZE, 2f).predict();                    // client: plays here now
+HIT.fromClients((player, play) -> withinReach(player, play));        // server, at init: who may
+```
+
+- The server refuses unless the cue allows it, the player is within the rate (20 a second, in bursts of 20) and the
+  point is within `range` of them. `refused()` counts refusals.
+- Accepted, the server's play takes over the client's own, so the predicting player sees it once. Refused, the
+  client's copy plays out alone.
+- Only one-offs are predicted, so an authoritative cue never is.
+
+### Cues are for showing, not for state
+
+A plain cue is cosmetic. Anything a player must not miss (damage, health, a status) is the game's to replicate; the
+cue only shows it. If the effect itself decides gameplay, make the cue authoritative.
+
+---
+
+## 17. Effects gameplay depends on: server authority
+
+Some effects *are* the gameplay: a beam damages whatever it reaches. If each client decided what it hit, every client
+would see a different result. So the server runs the effect too, as the referee, and every client draws what the
+server decided.
+
+The server runs **the same effect class**, headless (nothing drawn) against the server's world (`CgVfxAuthority`): it decides where
+the effect goes and what it strikes, hears its hits, and publishes what clients must draw. Unreal and Unity Netcode
+run one actor on both sides the same way.
+
+### The whole thing, with the Kamehameha
+
+```java
+// common, at init: one declaration, one factory for both sides
+public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(),
+        CgEnergyWave::fromCue).range(96).authoritative().build();
+
+// server: start it, then drive its effect exactly as on a client
+CgVfxCue.Playing wave = WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start();
+CgEnergyWave beam = wave.effect();
+beam.hold().aim(look.x, look.y, look.z);   // key down
+
+wave.onHit(CgEnergyWave.PART_BEAM, h -> { if (h.kind() == CgHit.Kind.ENTITY) stagger(h.entity()); })
+    .onHit(CgEnergyWave.PART_BURST, h -> explode(h.x(), h.y(), h.z(), beam.blastRadius()))
+    .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
+
+beam.aim(look.x, look.y, look.z);          // each tick, as the caster turns
+beam.set(CgEnergyWave.RADIUS, 1.2f);       // powered up: every viewer's beam widens, and the server's ray with it
+beam.fire();                               // key up
+wave.end(CgEnergyWave.FADE);               // every viewer's thins away; or stop(), and the blast is still heard
+```
+
+```java
+// client, at init: the hits the server counted, for feedback that must agree with the damage
+WAVE.onConfirmedHit(CgEnergyWave.PART_BURST, h -> decals.scorch(h.x(), h.y(), h.z()));
+```
+
+### What happens each server tick
+
+1. The server steps its copy on the client's clock (120 ticks a second, six a server tick).
+2. The wave tests its aim against the server's world: where the beam ends and what entity is there.
+3. What changed is written into the cue's fields and sent at the end of the tick: where the beam ends, the entity it
+   hit, the aim, hold and fire, every value set on the effect, and its tweens and endings as events. What it struck
+   goes too, as a confirmed hit.
+4. Each viewer's copy homes on that end rather than testing its own world, so every player sees the beam end where
+   the server says.
+
+### Driving it
+
+- **`wave.effect()`** is the server's copy. Call it exactly as on a client: `aim`, `fire`, `set`, `animate`, `end`,
+  `stop`.
+- **Stopping the effect stops every viewer's copy.** The cue lasts until the server's copy has played out (at most 10
+  seconds), so what it strikes meanwhile still reaches viewers.
+- A play started during a tick is published before any viewer hears of it, so the first state viewers receive
+  includes what you set right after `start()`.
+
+### Syncing parameters
+
+Any number or colour you `set` on the server's effect reaches every viewer, and anyone who joins later; a tween or an
+ending runs on every viewer as one event. This needs no code of the effect's own. Curves and camera shakes do not
+travel.
+
+### What is switched off on the server
+
+| Part | On the server |
+|---|---|
+| Particles | not simulated: emitters do nothing |
+| Post effects | not applied: the effect gets a detached volume, so its timing logic runs the same |
+| Camera shakes, moments | silent |
+| Hits | heard by the effect's own listeners on the server thread, and sent to viewers as confirmed hits |
+
+An effect that ends when its particles finish therefore ends itself on the server.
+
+### Limits and rules
+
+- **Lasting cues only** (`start()`); never `persisted()`.
+- **`at(level, ...)` must be a level or an entity in one**: that is the world it tests.
+- **The cue must be declared with its factory in common code.**
+- **It follows its entity by the attachment point's proportions**: a server has no model, so marked points are a
+  client-only refinement.
+- What it costs: [§22](#on-the-server).
+
+### Making your own effect authoritative
+
+Most effects need nothing: declare the cue `authoritative()` and values sync by themselves. An effect whose own state
+must reach viewers (the wave's end point) adds two interfaces:
+
+```java
+public final class Bolt extends CgVfxEffect<Bolt> implements CgVfxCue.Live, CgVfxCue.Authoritative {
+    private final CgHit hit = new CgHit();
+    private final CgSphere bolt = CgSphere.of(0.3);
+    private double endX = Double.NaN, endY, endZ;
+
+    @Override protected void tick(float dt) {
+        // world() is the server's world on the server and the client's on a client
+        if (world().cast(bolt).at(originX, originY, originZ).along(dirX, dirY, dirZ, 64)
+                .source(followingId()).blocksToo().first(hit)) {
+            endX = hit.x(); endY = hit.y(); endZ = hit.z();
+            hit(hit);                    // heard by onHit; on the server, confirmed to viewers
+        }
+    }
+
+    // server, after each tick: write what viewers draw; a value written unchanged sends nothing
+    @Override public void publish(CgVfxCue.Play cue) {
+        if (!Double.isNaN(endX)) cue.target(endX, endY, endZ);
+    }
+
+    // every viewer, once a frame that changed the cue
+    @Override public void cueChanged(CgVfxCue.Play cue) {
+        if (!authoritative() && cue.hasTarget()) endAt(cue.tx(), cue.ty(), cue.tz());
+    }
+}
+```
+
+State with no place in a play is fields its schema declares, which every cue playing the effect then carries:
+
+```java
+public static final CgNetField<Boolean> CHARGING = CgNetField.ofBool("bolt/charging");
+static { SCHEMA.networked(CHARGING); }
+
+cue.setBool(CHARGING, charging);                 // in publish
+if (cue.getBool(CHARGING)) ...                   // in cueChanged, and in the factory
+```
+
+- **`authoritative()`** on the effect is true for the server's copy: guard anything client-only with it.
+- **`cue.authoritative()`** in a factory is true while the server builds its copy: one factory configures both sides
+  (`CgEnergyWave.fromCue` turns on its own collision this way).
+
+### When it never hits
+
+- **Is the target in the beam?** A target summoned under a hovering caster falls out of it: summon test targets with
+  `{NoGravity:1b}`.
+- **Was `at(...)` given a level or an entity?** If not, the log says the authority tests no world.
+- **Trace it**: `-Dcrystalgraphics.vfx.traceAuthority` (or the console, `docs/DEBUG_FLAGS.md`) logs every server cast.
+
+---
+
+## 18. Hits: what an effect strikes
+
+An effect strikes through the collision engine ([`COLLISION.md`](COLLISION.md)): the queries it makes through
+`world()` and the hitboxes it owns. Each thing it strikes is a `CgHit`, and `onHit` hears them:
+
+```java
+CgEnergyWave wave = VFX.play(new CgEnergyWave(look, x, y, z).follow(playerId, HANDS_FORWARD).collide());
+wave.onHit(h -> { if (h.kind() == CgHit.Kind.ENTITY) flash(h.entity()); });
+```
+
+### Parts
+
+An effect with more than one thing that strikes declares each as a **part** on its schema, and every hit names its
+part:
+
+```java
+wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()))
+    .onHit(CgEnergyWave.PART_BURST, h -> shatter(h.x(), h.y(), h.z(), wave.blastRadius()))
+    .onHit(CgEnergyWave.PART_BLAST, h -> knockBack(h.entity()));
+```
+
+A listener on the whole effect hears every part, and `h.part()` says which (compare with `==`).
+
+| Field | Meaning |
+|---|---|
+| `kind()` | `ENTITY`, `HITBOX` (a hittable hitbox: `entity()` is its owner), `BLOCK`, `FLUID`, `UNLOADED`, `BORDER`, `POINT` (nothing: the point it was aimed at, or where it burst in the air) |
+| `entity()`, `parent()` | Minecraft's entity met, and the whole one for a part of a multipart entity |
+| `entityId()`, `parentId()` | the same by network id; -1 otherwise |
+| `blockX() blockY() blockZ()` | the block met |
+| `x() y() z()` | where |
+| `normalX() normalY() normalZ()`, `distance()` | toward what it met, and how far it travelled; 0 on a confirmed hit |
+| `part()` | which part struck |
+
+- **The hit is valid during the call**: copy what you keep (`new CgHit().set(h)`).
+- **An effect reports a contact as it starts**, and again when what it strikes changes, never every tick. A hitbox
+  hits each target once.
+- **Listeners hear on the thread the effect ticks on.** One that throws is logged and the others still hear.
+- **The wave** reports `PART_BEAM` as its head reaches what it hits, `PART_BURST` once where it bursts after its
+  impact frame, then `PART_BLAST` for each entity as the shock front reaches it, out to `blastRadius()`.
+
+### Particles
+
+A particle's contact is not a hit: it happens on the GPU, comes back a few frames late, and only on a client. An
+emitter that wants its contacts reports them as an event, and a system listener hears the rows, each tagged with the
+effect whose particle it was:
+
+```java
+.module(new CgVfxModule.CollideWorld(0.3f, 0.4f, 0.4f))
+.event(CgVfxEvent.onCollision().readback(32))   // at most 32 rows a step, shared by every effect playing this emitter
+
+CgVfx.world().onEvents((definition, event, rows) -> {   // render thread
+    for (int i = 0; i < rows.count(); i++) {
+        if (rows.hit(i) == CgVfxEventRows.HIT_BLOCK) decals.scorch(rows.x(i), rows.y(i), rows.z(i));
+    }
+});
+```
+
+Never base gameplay on them.
+
+### Damage on the server, sparks on every client
+
+```java
+// server
+WAVE.on(caster, CgEntityAttachments.HANDS_FORWARD).start()
+        .onHit(CgEnergyWave.PART_BLAST, h -> damage(h.entity()));
+
+// client, at init
+WAVE.onConfirmedHit(CgEnergyWave.PART_BLAST, h -> VFX.play(new CgVfxBurst(SPARKS, h.x(), h.y(), h.z())));
+```
+
+A confirmed hit arrives a network trip after the server's. For feedback timed to what this client draws, listen to the
+viewer's own copy: the factory builds both copies, and `cue.authoritative()` tells them apart.
+
+```java
+public static final CgVfxCue WAVE = VFX.cue("kamehameha", CgEnergyWave.kamehameha(), (look, cue) -> {
+    CgEnergyWave wave = CgEnergyWave.fromCue(look, cue);
+    if (!cue.authoritative()) wave.onHit(CgEnergyWave.PART_BEAM, h -> flash(h.x(), h.y(), h.z()));   // each viewer
+    return wave;
+}).range(96).authoritative().build();
+```
+
+- Both land where the damage does: a viewer's copy reports where the server published the beam ending.
+- A late joiner gets no sparks for hits it missed: hits are silent while an effect fast-forwards to its age.
+- A visual that depends on the outcome (blocked, a critical hit) is something only the server knows: send a one-off
+  cue from the server's listener.
+
+---
+
+## 19. Writing an effect of your own
+
+An effect has two jobs: `tick` (logic, on a fixed 120 Hz clock) and `submit` (hand what to draw to the frame, by
+slot). How it looks is its look's.
+
+```java
+public final class Bolt extends CgVfxEffect<Bolt> {
+    public static final CgVfxSchema SCHEMA = CgVfxSchema.of("mymod:bolt");
+    public static final CgVfxParam.Scalar RADIUS = SCHEMA.length("radius", 0.4f);
+    public static final CgVfxParam.Scalar LIFE = SCHEMA.time("life", 2f);
+    public static final CgVfxParam.Color CORE = SCHEMA.color("core", 0xFFFFE9A0, 1.5f);
+    public static final CgVfxSlot ORB = CgVfxSlot.mesh("mymod:bolt/orb");
+
+    public static final CgVfxKit KIT = CgVfxKit.of("mymod:bolt")
+            .layer(CgVfxLayer.of("crystalgraphics:shaders/vfx/beam/orb_light.shader").on(ORB).size(6f)
+                    .bind("_Glow", CORE).role(CgVfxLayer.Role.LIGHT).build())
+            .layer(CgVfxLayer.of("mymod:shaders/vfx/bolt_orb.shader").on(ORB).build())   // _Core binds by name
+            .build();
+    public static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(KIT).build();
+
+    private final Matrix4f transform = new Matrix4f();
+
+    public Bolt(CgVfxLook look, double x, double y, double z) {
+        super(look, x, y, z);
+    }
+
+    @Override protected void tick(float dt) {
+        if (age >= get(LIFE)) die();
+    }
+
+    @Override protected void submit(CgVfxFrame frame) {
+        if (!frame.draws(this, ORB)) return;
+        float r = get(RADIUS);
+        transform.scaling(r);
+        frame.mesh(this, ORB, 0f, 1f, 0f, transform, r, r, 1f, 0f);   // every layer on ORB
+    }
+}
+```
+
+- **Coordinates**: `originX/Y/Z` is where the effect is (moved by `follow`); everything it positions is relative to it.
+- **`age`** is seconds since it started; **`seed`** a stable random number in 0..1 that shaders read too.
+- **Die** with `die()` when done; `stop()` from outside lets it finish gracefully.
+- **Read every number from its parameters**, never a constant in code: then a look, a tuning and a cue reach it.
+- **Name the class in its declaration** (`extends CgVfxEffect<Bolt>`): every setter (`follow`, `startAt`, `set`,
+  `onHit`, ...) then answers a `Bolt`, so `VFX.play(new Bolt(LOOK, x, y, z).follow(id, CHEST).charge(2f))` chains into
+  its own methods and stays a `Bolt`. Code holding any effect writes `CgVfxEffect<?>`.
+
+### What a frame draws
+
+| Call | Draws |
+|---|---|
+| `frame.particles(this, instance)` | an emitter's particles, through every layer on it |
+| `frame.mesh(this, slot, x, y, z, transform, ex, ey, ez, ew)` | a sphere at a transform, or its layers' own mesh ([§8](#8-meshes)); four numbers the slot documents |
+| `frame.billboard(this, slot, x, y, z, size, ex, ey, ez, ew)` | a camera-facing quad |
+| `int row = frame.path(path, seed, age)`, then `frame.tube(this, slot, path, row)` | a tube along a path |
+| `frame.ribbons(...)`, `frame.pathRibbons(this, slot, path, row, intensity)` | ribbons a shader places |
+| `frame.trail(this, slot, trail)` | a trail behind something moving ([§13](#13-trails-and-ribbons)) |
+| `gas.submit(frame)` | a gas, on its volume slot ([§14](#14-gas)) |
+
+### Particles in an effect
+
+```java
+private final CgVfxEmitterInstance sparks;
+
+public Sparks(CgVfxLook look, double x, double y, double z) {
+    super(look, x, y, z);
+    sparks = new CgVfxEmitterInstance(look.emitter("sparks"), seed);
+    sparks.start(0f, 1f, 0f);                           // where it emits, relative to the effect
+}
+
+@Override protected void tick(float dt) {
+    tick(sparks, dt);                                   // never sparks.tick(...): this schedules it on the GPU
+    if (sparks.finished() && age > 1f) die();
+}
+
+@Override protected void submit(CgVfxFrame frame) {
+    frame.particles(this, sparks);
+}
+```
+
+Take the emitter from the look (`look.emitter(name)`), so a look that replaced it plays its own. One instance per
+emitter per effect; `moveTo(x, y, z)` moves a source without restarting it, `rateScale(s)` scales its rate, `stop()`
+ends an open-ended rate.
 
 ### Built from elements
 
@@ -1603,7 +1975,7 @@ hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).act
 
 ---
 
-## 16. Writing a layer's shader
+## 20. Writing a layer's shader
 
 A layer's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) with three additions:
 
@@ -1661,9 +2033,40 @@ Pass {
   through a tube's rings), `fx_bands` (flat bands by distance from an axis), `fx_ribbon`, `fx_lightning`,
   `fx_particle`, `fx_billow`, `fx_ring`, `fx_haze`; each listed in `vfx/CLAUDE.md`.
 
+### A volume's shader
+
+A shader drawing a gas of your own look declares the gas's three volumes first, includes its library, and reads what
+`CgVfxSlot.Kind.VOLUME` documents:
+
+```glsl
+#include "crystalgraphics:shaders/lib/vfx/fx_gas.glsl"     // fx_gas_slot, fx_gas_pool_uvw, fx_gas_smooth, fx_gas_read
+
+Properties {
+    _GasShade ("Density, flame, light", sampler3D) = "black"    // these three first, in this order
+    _GasFlow  ("Velocity, temperature", sampler3D) = "black"
+    _GasPages ("Its page table", sampler3D) = "black"
+    ...
+}
+```
+
+- **Blend `ONE ONE_MINUS_SRC_ALPHA`**, premultiplied: that is what the world renderer draws at half size and blends
+  with its last frames.
+- **Name the depth its light came from**, or its last frame cannot follow the camera; and start the march somewhere
+  new each frame, so the frames average out its grain:
+
+  ```glsl
+  CG_VOLUME_DEPTH(transmit < 0.99 ? FX_EYE_DEPTH(ray, weightedDistance) : 0.0);   // what its last frame is reprojected by
+  #ifdef CG_VOLUME_TARGET
+      jitter = fract(jitter + 0.618034 * float(CG_FRAME_INDEX % 64));              // a new start each frame
+  #endif
+  ```
+
+- **Hide it behind the scene** from `cg_DepthBuffer` with `DepthTest ALWAYS`: its half-size target has no depth.
+- `vfx/gas/smoke.shader` is the whole of one, from the box's back faces through the page table.
+
 ---
 
-## 17. Writing a particle module of your own
+## 21. Writing a particle module of your own
 
 A module is a Java record implementing `CgVfxModule` plus a GLSL function `fx_<kind>`, which the generated GPU step
 calls. Its numbers are written once per emitter definition; nothing recompiles when they change.
@@ -1693,6 +2096,7 @@ record Swirl(float strength) implements CgVfxModule {
 | the entities round the camera | `worldInputs()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
 | the particles near it, as a force before the solver | `worldInputs()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
 | the gas its instance is in, before or after the solver | `worldInputs()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
+| to pour into that gas | `worldInputs()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, density, heat, s.dt)` (`fx_gas_feed.glsl`) |
 
 - `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **Prefix the kind with your mod's name**: two kinds of one name with different source throw.
@@ -1701,7 +2105,7 @@ record Swirl(float strength) implements CgVfxModule {
 
 ---
 
-## 18. Performance and scale
+## 22. Performance and scale
 
 ### On the client
 
@@ -1752,6 +2156,15 @@ VFX.play(new Aura(LOOK, x, y, z)).scalability(CgVfxScalability.HERO);   // one e
 - Asleep past `MAX_SLEEP_SECONDS` (120) an effect is killed, so a one-off culled for good never lingers.
 - A server's copy of an authoritative effect is never culled.
 
+### Budgets on the GPU
+
+| What | Budget | Over it |
+|---|---|---|
+| Particles (`CgVfxParticlePool.GPU_BUDGET`) | 3 ms a frame | spawn shares, and every scalability distance and cap, shrink |
+| Gas (`CgVfxGasAtlas.GPU_BUDGET`) | 2 ms a frame | fewer pressure iterations, then one step a frame |
+
+Each is measured on the GPU a frame or two late and eased, so a heavy moment thins gradually rather than popping.
+
 ### On the server
 
 Estimated from the code, not measured: profile before relying on these ([`PROFILING.md`](PROFILING.md)). Per
@@ -1768,7 +2181,7 @@ across threads. Levers, once a profile asks: step the server's copy at 20 Hz; ca
 
 ---
 
-## 19. Questions people ask
+## 23. Questions people ask
 
 ### Does the server run my effect?
 
@@ -1850,7 +2263,7 @@ their *Add* and *Remove*. "Authority" is Unreal's word too.
 
 ---
 
-## 20. Checking and measuring
+## 24. Checking and measuring
 
 Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, from CrystalGUI's root):
 
@@ -1865,16 +2278,28 @@ Harness gates (`./gradlew :gl-debug-harness:runHarness --args="--mode=<gate>"`, 
 
 Each must pass at every forced tier (`-Dcrystalgraphics.compute.tier=G43|G40|G33`) and on `--device=vulkan`. Scenes to
 look at: `vfx-spheres` (the waves' lanes, `crystalgraphics.harness.vfx.moments` for a contact sheet of every moment),
-`vfx-showcase`, `vfx-modules` (a station per module), `vfx-gas` (gas: a grenade blasted open, a bonfire, a vent, a
+`vfx-showcase`, `vfx-modules` (a station per feature, below), `vfx-gas` (gas: a smoke grenade shot through and blasted open, a bonfire, a vent, a
 mushroom cloud), `vfx-blasts` (360,000 particles), `vfx-lab` (CrystalGUI's
 inspector, every look's values grouped by schema).
 
+In game and in the harness, `vfx-modules` is a station per feature, replayed every few seconds:
+
+| Row | Its stations |
+|---|---|
+| Modules | one per module: gravity to kill volumes, collisions against the world, the screen and entities |
+| Spawning | one per spawn shape; a source moving 30 blocks a second; a wake by distance; procedural meshes on mesh slots with sparks born on them; rocks as meshes; an aura round a mannequin (`entity()`) |
+| Trails | a fighter's wake and limb streaks; blade swooshes; ki blasts with smoke trails; cel streaks; lightning; a meteor's scorch |
+| Particle strips | a trail behind every particle (sparks, embers, fireworks); ribbons through particles |
+| Flocking | spirits round a heart, a school round a vortex, a murmuration of embers |
+
 Unit tests (`./gradlew :core:test --tests "<class>"`): `CgVfxLookTest`, `CgVfxTuningTest`, `CgVfxEndingTest`,
-`CgPropertyRowsTest`, `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`, `CgVfxOwnerTest`, `CgVfxStartAtTest`.
+`CgPropertyRowsTest`, `CgVfxCueTest`, `CgVfxAuthorityTest`, `CgVfxHitsTest`, `CgVfxOwnerTest`, `CgVfxStartAtTest`,
+`CgVfxSmokeFillTest`.
 Every shipped shader, each keyword variant, links under shaderc in `:runtime:lwjgl:vulkan:test --tests
 com.crystalgraphics.vulkan.EngineOnTrackedBackendTest`.
 
 Profiling ([`PROFILING.md`](PROFILING.md)), trace channel `crystalgraphics.vfx`: zones `vfx.tick`,
 `vfx.emitters.workers`, `vfx.effect.tick/<namespace>`, `vfx.effect.submit/<namespace>`, and on the GPU
-`vfx.pool.step`, `vfx.pool.range` and `vfx.gas`; counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`,
-`vfx.effects/<namespace>`.
+`vfx.pool.step`, `vfx.pool.range`, `vfx.gas`, and the world renderer's `world.volume` and `world.volumeResolve`;
+counters `vfx.gpu.slots-stepped`, `vfx.draws.particle-gpu`, `vfx.effects/<namespace>`, `vfx.gas.tiles`,
+`vfx.gas.pool-full` and `world.volumeDraws`.

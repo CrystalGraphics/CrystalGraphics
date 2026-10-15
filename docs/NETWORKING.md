@@ -104,7 +104,7 @@ Networked objects ([§6](#6-networked-objects-state-that-lives-on-the-server)) t
 16. [Performance and debugging](#16-performance-and-debugging)
 17. [Questions people ask](#17-questions-people-ask)
 
-Effects over the network (cues) are built on networked objects and have their own guide: `docs/VFX.md` § 6.
+Effects over the network (cues) are built on networked objects and have their own guide: `docs/VFX.md` § *Effects over the network: cues*.
 
 ---
 
@@ -1037,7 +1037,7 @@ LOGGER.info(CgNetObjects.report());
 | Data about a player or a chunk | a per-holder networked object |
 | Something that happened to a thing: a shot, a hit | an event on its object |
 | A player asking to act on a thing they own | a command on its object |
-| A visual effect seen by every player | a cue (`docs/VFX.md` § 6), itself a networked object |
+| A visual effect seen by every player | a cue (`docs/VFX.md` § *Effects over the network: cues*), itself a networked object |
 
 ### Do I register a channel, or packets, per loader?
 
